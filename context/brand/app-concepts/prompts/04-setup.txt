@@ -1,0 +1,10 @@
+A desktop web app screen of the ostra first-run setup. Style: a straight-on, full-screen screenshot of a real production web app, crisp and realistic, built with shadcn/ui components. No device frame, no perspective, no browser chrome. Dark mode. Colors: page background deep blue-green near-black #0C1D21; raised panels #13272B with 1px borders #2F4A47; primary text warm off-white #F3F0E8; secondary text #CFD8D4 at lower emphasis. The ONLY accent color is amber #FFB224, used solely to mark things that need a person; primary buttons are filled #F3F0E8 with dark #0C1D21 text. No gradients, no glow, no purple, no illustrations, no emoji. Type: headings in Manrope ExtraBold, body in IBM Plex Sans, ticket keys, branch names, file paths and commands in IBM Plex Mono. Corners rounded about 8px. Calm, dense, professional. Every word perfectly legible and spelled exactly as given.
+No sidebar. A single centered column about 720px wide on the dark background. At the top the attached logo mark next to the lowercase wordmark "ostra". Heading "Set up ostra" in Manrope ExtraBold, then the line "About 30 minutes to your first agent-made pull request." A thin progress bar with the label "3 of 7 done".
+A vertical checklist of seven steps, each a row with a status circle on the left:
+1. "Create the admin account" — completed, check mark.
+2. "Connect GitHub" — completed, check mark, muted detail "GitHub App ostra-acme · installed on 3 repos".
+3. "Connect Linear" — the current step, expanded into a panel card: text "Create your Linear app with our pre-filled link, then paste its credentials here." An outline button "Open Linear" with a small external-link icon. Two text inputs with labels "Client ID" and "Client secret" (the secret masked with dots). A filled off-white button "Connect Linear".
+4. "Attach a board and link repos" — upcoming, muted.
+5. "Add an environment" — upcoming, muted, detail "Setup script, variables and .env files".
+6. "Connect a runner" — upcoming, muted, detail in mono "npx ostra-runner login".
+7. "Start your first task" — upcoming, muted.

@@ -1,0 +1,15 @@
+A desktop web app screen of ostra, a control panel for coding agents. Style: a straight-on, full-screen screenshot of a real production web app, crisp and realistic, built with shadcn/ui components. No device frame, no perspective, no browser chrome. Dark mode. Colors: page background deep blue-green near-black #0C1D21; raised panels #13272B with 1px borders #2F4A47; primary text warm off-white #F3F0E8; secondary text #CFD8D4 at lower emphasis. The ONLY accent color is amber #FFB224, used solely to mark things that need a person; primary buttons are filled #F3F0E8 with dark #0C1D21 text. No gradients, no glow, no purple, no illustrations, no emoji. Type: headings in Manrope ExtraBold, body in IBM Plex Sans, ticket keys, branch names, file paths and commands in IBM Plex Mono. Corners rounded about 8px. Calm, dense, professional. Every word perfectly legible and spelled exactly as given.
+Left sidebar 240px wide on the same dark background with a 1px right border: at the top the attached logo mark (a light rounded square with one diagonal channel) next to the lowercase wordmark "ostra" in Manrope ExtraBold; under it a team switcher "Acme"; nav items with thin line icons: Home, Tasks, Inbox, Runners, Boards, Settings; at the bottom a member row "Alex Kim" with an initials avatar. The nav item "Home" is selected.
+Top bar: a search field "Search tasks…" with a "⌘K" hint, and a primary button "New task".
+Main content, page title "Home".
+Section "Needs you" with a small amber count badge "3". Three rows, each with a thin amber left edge:
+1) mono "ENG-142" then "Retry webhook delivery on 5xx", second line "Claude Code wants to run pnpm db:migrate", buttons "Deny" (outline) and "Approve" (filled amber with dark text).
+2) mono "ENG-155" then "Add CSV export to invoices", second line "Plan ready for review", button "Review plan" (outline).
+3) mono "ENG-131" then "Fix timezone bug in reports", second line "PR #418 ready for review", button "Open PR" (outline).
+Section "Running" with count "4": a compact table with columns Ticket, Repo, Runner, Driver, Time, Activity. Rows:
+"ENG-160 Rate-limit login attempts | acme/api | build-01 · remote | Sam Rivera | 12m | Editing src/auth/limiter.ts";
+"ENG-161 Paginate the audit log | acme/web | alex-macbook · local | Alex Kim | 4m | Running pnpm test";
+"ENG-158 Upgrade Prisma client | acme/api | build-02 · remote | Priya Shah | 27m | Reading prisma/schema.prisma";
+"ENG-163 Fix broken invite email | acme/web | build-01 · remote | Sam Rivera | 2m | Preparing workspace".
+Each running row has a small steady off-white dot, not amber.
+Section "Recent": three rows with small muted status pills: "ENG-150 Add audit log filters · Merged", "ENG-149 Cache team settings · In review", "ENG-147 Drop legacy export · Stopped".
