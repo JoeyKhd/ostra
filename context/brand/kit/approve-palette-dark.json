@@ -1,0 +1,13 @@
+{
+  "approval_summary": "Same five colours as revision 1. The maintainer asked for dark mode first ('we want more of a darkmode btw'), so Abyss becomes the background and Shell the text.",
+  "palette": {
+    "colors": [
+      { "hex": "#0C1D21", "name": "Abyss", "role": "background" },
+      { "hex": "#F3F0E8", "name": "Shell", "role": "text" },
+      { "hex": "#2F4A47", "name": "Kelp", "role": "support" },
+      { "hex": "#CFD8D4", "name": "Mist", "role": "support" },
+      { "hex": "#FFB224", "name": "Buoy Amber", "role": "accent" }
+    ],
+    "gradients": []
+  }
+}

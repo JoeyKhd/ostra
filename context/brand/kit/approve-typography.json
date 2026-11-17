@@ -1,0 +1,12 @@
+{
+  "approval_summary": "The maintainer selected the Rounded Geometry pair by replying 'ROUNDED GEOMETRY' to the three-pair review: Manrope ExtraBold 800 for display, IBM Plex Sans 400 for body, with IBM Plex Mono for code and logs.",
+  "typography": {
+    "display": { "family": "Manrope", "source": "google:Manrope", "style": "normal", "weight": 800 },
+    "body": { "family": "IBM Plex Sans", "source": "google:IBM Plex Sans", "style": "normal", "weight": 400 },
+    "font_links": [
+      "https://fonts.google.com/specimen/Manrope",
+      "https://fonts.google.com/specimen/IBM+Plex+Sans",
+      "https://fonts.google.com/specimen/IBM+Plex+Mono"
+    ]
+  }
+}

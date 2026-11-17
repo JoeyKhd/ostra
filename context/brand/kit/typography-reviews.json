@@ -1,0 +1,49 @@
+{
+  "reviews": [
+    {
+      "stage": "typography",
+      "name": "Machined",
+      "premise": "Space Grotesk's squared-off curves echo the hinge's machined corners; Inter keeps the panel quiet and readable. Code and logs: JetBrains Mono.",
+      "keywords": ["engineered", "exact", "technical"],
+      "palette": [],
+      "logo_ideas": [],
+      "logo_svg": "C:/Users/santi/ostra/context/brand/kit/logo/export/ostra-hinge-single-color.svg",
+      "display_font": { "family": "Space Grotesk", "source": "google:Space Grotesk", "weight": 700 },
+      "body_font": { "family": "Inter", "source": "google:Inter", "weight": 400 },
+      "headline": "ostra",
+      "body": "The open-source, self-hosted control plane for coding agents, where your tracker stays the source of truth.",
+      "background_color": "#0C1D21",
+      "text_color": "#F3F0E8"
+    },
+    {
+      "stage": "typography",
+      "name": "Rounded Geometry",
+      "premise": "Manrope's round, even bowls match the hinge's generous corner radii; IBM Plex Sans adds a calm, technical warmth to body text. Code and logs: IBM Plex Mono.",
+      "keywords": ["calm", "sturdy", "warm"],
+      "palette": [],
+      "logo_ideas": [],
+      "logo_svg": "C:/Users/santi/ostra/context/brand/kit/logo/export/ostra-hinge-single-color.svg",
+      "display_font": { "family": "Manrope", "source": "google:Manrope", "weight": 800 },
+      "body_font": { "family": "IBM Plex Sans", "source": "google:IBM Plex Sans", "weight": 400 },
+      "headline": "ostra",
+      "body": "The open-source, self-hosted control plane for coding agents, where your tracker stays the source of truth.",
+      "background_color": "#0C1D21",
+      "text_color": "#F3F0E8"
+    },
+    {
+      "stage": "typography",
+      "name": "Squircle",
+      "premise": "Sora is built on the same squared circle as the hinge itself, so mark and wordmark share one shape; Public Sans stays plain and open for the panel. Code and logs: Source Code Pro.",
+      "keywords": ["unified", "solid", "open"],
+      "palette": [],
+      "logo_ideas": [],
+      "logo_svg": "C:/Users/santi/ostra/context/brand/kit/logo/export/ostra-hinge-single-color.svg",
+      "display_font": { "family": "Sora", "source": "google:Sora", "weight": 700 },
+      "body_font": { "family": "Public Sans", "source": "google:Public Sans", "weight": 400 },
+      "headline": "ostra",
+      "body": "The open-source, self-hosted control plane for coding agents, where your tracker stays the source of truth.",
+      "background_color": "#0C1D21",
+      "text_color": "#F3F0E8"
+    }
+  ]
+}

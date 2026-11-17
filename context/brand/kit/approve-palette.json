@@ -1,0 +1,13 @@
+{
+  "approval_summary": "The maintainer delegated the choice ('work on the palette and brand', then 'and logo') after seeing three options. Chosen: Deep Water, with its signal changed from Coral to Buoy Amber so 'needs you' never reads as a failure next to error red.",
+  "palette": {
+    "colors": [
+      { "hex": "#0C1D21", "name": "Abyss", "role": "text" },
+      { "hex": "#F3F0E8", "name": "Shell", "role": "background" },
+      { "hex": "#2F4A47", "name": "Kelp", "role": "support" },
+      { "hex": "#CFD8D4", "name": "Mist", "role": "support" },
+      { "hex": "#FFB224", "name": "Buoy Amber", "role": "accent" }
+    ],
+    "gradients": []
+  }
+}

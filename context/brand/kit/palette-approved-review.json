@@ -1,0 +1,24 @@
+{
+  "reviews": [
+    {
+      "stage": "palette",
+      "name": "Deep Water and Buoy",
+      "premise": "The sea the name comes from: a blue-green abyss and a pale shell, with buoy amber as the one light that says: this needs you.",
+      "keywords": ["deep", "steady", "clear"],
+      "palette": [
+        { "hex": "#0C1D21", "name": "Abyss" },
+        { "hex": "#F3F0E8", "name": "Shell" },
+        { "hex": "#2F4A47", "name": "Kelp" },
+        { "hex": "#CFD8D4", "name": "Mist" },
+        { "hex": "#FFB224", "name": "Buoy Amber" }
+      ],
+      "logo_ideas": [
+        "A lowercase o made of two half-rings, like two shell valves",
+        "An amber pearl held inside a sharp-tipped crescent",
+        "A solid rounded square split by a diagonal channel, joined at one hinge"
+      ],
+      "background_color": "#F3F0E8",
+      "text_color": "#0C1D21"
+    }
+  ]
+}

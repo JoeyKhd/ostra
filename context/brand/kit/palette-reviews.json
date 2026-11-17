@@ -1,0 +1,121 @@
+{
+  "reviews": [
+    {
+      "stage": "palette",
+      "name": "Shell and Signal",
+      "premise": "A warm shell white and a deep ink, with one sharp vermilion that only ever means: this needs you.",
+      "keywords": [
+        "sharp",
+        "warm",
+        "calm"
+      ],
+      "palette": [
+        {
+          "hex": "#111214",
+          "name": "Ink"
+        },
+        {
+          "hex": "#F5F2EB",
+          "name": "Shell"
+        },
+        {
+          "hex": "#2A2C30",
+          "name": "Graphite"
+        },
+        {
+          "hex": "#DCD6CA",
+          "name": "Sand"
+        },
+        {
+          "hex": "#FF4D1F",
+          "name": "Signal Vermilion"
+        }
+      ],
+      "logo_ideas": [
+        "A hinge: two arcs meeting at one sharp point, the place where a shell's halves join",
+        "A closed form with a single vermilion dot held inside it, like a pearl",
+        "A lowercase o built from two offset half-shells"
+      ],
+      "background_color": "#F5F2EB",
+      "text_color": "#111214"
+    },
+    {
+      "stage": "palette",
+      "name": "Deep Water",
+      "premise": "The sea the name comes from: a blue-green abyss and a pale shell, with coral as the one warm signal.",
+      "keywords": [
+        "deep",
+        "steady",
+        "quiet"
+      ],
+      "palette": [
+        {
+          "hex": "#0C1D21",
+          "name": "Abyss"
+        },
+        {
+          "hex": "#F3F0E8",
+          "name": "Shell"
+        },
+        {
+          "hex": "#2F4A47",
+          "name": "Kelp"
+        },
+        {
+          "hex": "#CFD8D4",
+          "name": "Mist"
+        },
+        {
+          "hex": "#FF6A4D",
+          "name": "Coral"
+        }
+      ],
+      "logo_ideas": [
+        "Concentric growth lines, like the rings a shell lays down over time: work that keeps its history",
+        "An open arc around a solid dot: something valuable inside a protective curve",
+        "A rounded tile whose lower edge rises like a tide line"
+      ],
+      "background_color": "#F3F0E8",
+      "text_color": "#0C1D21"
+    },
+    {
+      "stage": "palette",
+      "name": "Graphite and Safety",
+      "premise": "Tool-grade and built to last: graphite and paper, with safety yellow for the one thing that needs a human.",
+      "keywords": [
+        "robust",
+        "industrial",
+        "exact"
+      ],
+      "palette": [
+        {
+          "hex": "#161719",
+          "name": "Graphite"
+        },
+        {
+          "hex": "#FAFAF8",
+          "name": "Paper"
+        },
+        {
+          "hex": "#5C6068",
+          "name": "Steel"
+        },
+        {
+          "hex": "#E4E5E7",
+          "name": "Fog"
+        },
+        {
+          "hex": "#FFD21F",
+          "name": "Safety Yellow"
+        }
+      ],
+      "logo_ideas": [
+        "A heavy, machined shell outline with one yellow notch where it opens",
+        "Two interlocking halves of a shape that close without a gap, like a hinge built to tolerance",
+        "A solid geometric mark with a single round cutout: the pearl as negative space"
+      ],
+      "background_color": "#FAFAF8",
+      "text_color": "#161719"
+    }
+  ]
+}

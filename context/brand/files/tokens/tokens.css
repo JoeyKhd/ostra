@@ -1,0 +1,33 @@
+/* ostra brand tokens. Dark first: :root is dark, [data-theme="light"] opts into light. */
+:root {
+  --color-abyss: #0C1D21;
+  --color-shell: #F3F0E8;
+  --color-kelp: #2F4A47;
+  --color-mist: #CFD8D4;
+  --color-buoy-amber: #FFB224;
+  --font-display: 'Manrope', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+  --background: var(--color-abyss);
+  --surface: var(--color-kelp);
+  --text: var(--color-shell);
+  --text-muted: var(--color-mist);
+  --line: var(--color-kelp);
+  --signal: var(--color-buoy-amber);
+  --on-signal: var(--color-abyss);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: var(--color-shell);
+  --surface: var(--color-mist);
+  --text: var(--color-abyss);
+  --text-muted: var(--color-kelp);
+  --line: var(--color-mist);
+  --signal: var(--color-buoy-amber);
+  --on-signal: var(--color-abyss);
+}

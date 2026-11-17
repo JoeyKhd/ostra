@@ -1,0 +1,25 @@
+{
+  "reviews": [
+    {
+      "stage": "essential",
+      "name": "ostra identity",
+      "premise": "Deep Water and Buoy, the Hinge mark, and Manrope with IBM Plex Sans: dark first, with amber reserved for the one thing that needs you.",
+      "keywords": ["calm", "robust", "open"],
+      "palette": [
+        { "hex": "#0C1D21", "name": "Abyss" },
+        { "hex": "#F3F0E8", "name": "Shell" },
+        { "hex": "#2F4A47", "name": "Kelp" },
+        { "hex": "#CFD8D4", "name": "Mist" },
+        { "hex": "#FFB224", "name": "Buoy Amber" }
+      ],
+      "logo_ideas": [],
+      "logo_svg": "C:/Users/santi/ostra/context/brand/kit/logo/export/ostra-hinge-single-color.svg",
+      "display_font": { "family": "Manrope", "source": "google:Manrope", "weight": 800 },
+      "body_font": { "family": "IBM Plex Sans", "source": "google:IBM Plex Sans", "weight": 400 },
+      "headline": "ostra",
+      "body": "The open-source, self-hosted control plane for coding agents, where your tracker stays the source of truth.",
+      "background_color": "#0C1D21",
+      "text_color": "#F3F0E8"
+    }
+  ]
+}
