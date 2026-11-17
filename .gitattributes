@@ -1,0 +1,8 @@
+# Text files use LF everywhere, matching Prettier
+* text=auto eol=lf
+# Approved logo SVGs must stay byte-exact (higgsfield-brandkit geometry fingerprint)
+*.svg -text
+# Fonts and images are binary
+*.ttf binary
+*.png binary
+*.ico binary

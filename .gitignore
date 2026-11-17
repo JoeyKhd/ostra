@@ -1,0 +1,26 @@
+# Secrets stay local (AGENTS.md). Only the README describing them is committed.
+keys/*
+!keys/README.md
+
+# Installed agent skills: third-party, under their own licenses. Reinstall from skills-lock.json.
+.agents/skills/
+.claude/skills/
+.claude/settings.local.json
+
+# Brandkit records that hold account-specific Higgsfield paths
+context/brand/kit/state.json
+context/brand/kit/approve-logo.json
+context/brand/kit/logo/candidates/result-*.json
+context/brand/kit/logo/candidates/result-*.err
+
+# Tooling
+node_modules/
+.turbo/
+.next/
+dist/
+coverage/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
