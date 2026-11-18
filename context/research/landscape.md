@@ -761,3 +761,34 @@ Where ostra could credibly be the best option:
 - How Nuphos runtimes connect and how it creates PRs.
 - Whether the Ona acquisition closed. Devin's VPC option. Factory and Devin pricing. Jira Agents GA date and developer protocol.
 - Whether oh-my-pi supports ACP (does `pi-acp` work with `omp`?). Cross-check with agent-harnesses.md.
+
+
+## Addendum 2026-11-18: Omnara (omnara-ai/omnara)
+
+Checked on 2026-11-18 against the repo, its README and https://docs.omnara.com/llms.txt.
+
+- **What it is now:** "The open-source managed agent platform. A self-hostable alternative to Claude Managed Agents and OpenAI's Agents API" (https://github.com/omnara-ai/omnara). It pivoted from its 2025 origin as a mobile companion for Claude Code.
+- **License and activity:** Apache-2.0, about 3.4k stars, release `cluster-v0.2.25` on 2026-11-18. Very active.
+- **Stack:** a Go backend and a TypeScript frontend. Runs on Postgres, Redis, blob storage and a memory filesystem.
+- **The key difference from ostra:** Omnara runs **its own agent loop**, calling model APIs directly with the customer's keys (OpenAI, Anthropic, OpenRouter, Bedrock, Ollama and others). It doesn't drive Claude Code, Codex or other harnesses. It presents itself as what harness users move to: "Cloud agents that run as a service, across machines and users". Claude Code only connects to it as an MCP client, to launch Omnara agents.
+- **Architecture:**
+  - an API, plus a Postgres event log that is each agent's state, so any worker resumes after a crash without rerunning tools
+  - stateless workers that run the loop
+  - "machines": an `omnarad` daemon that connects outbound, from a laptop, VM or container
+  - sandboxes from twelve providers: Agent37, Arker, Blaxel, boxd, CreateOS, Daytona, E2B, Freestyle, Modal, Superserve, Tenki and Unikraft
+  - an agent can move from an offline laptop to a sandbox and sync its work through git
+- **Also:** ask, allow or block permissions per tool; streaming and webhooks; live config changes; cron schedules; Slack, Discord and GitHub integrations; role-based access; multi-tenancy; a REST API, SDK, CLI and MCP server.
+- **Trackers:** none. There's an example coding agent for Slack and GitHub that opens PRs.
+- **What it means for ostra:**
+  - It validates ostra's architecture almost point for point: ADR 0011, 0012 and 0010, and F-026.
+  - It can't be ostra's base, for four reasons:
+    - it would replace Claude Code with Omnara's loop on API keys, which contradicts ADR 0004, ADR 0018 and the maintainer's "we only have Claude Code"
+    - it's Go (ADR 0008)
+    - it's heavier to self-host
+    - its product direction overlaps ostra's
+  - Ideas worth borrowing:
+    - elastic sandbox runners from providers
+    - pools of machines
+    - schedules
+    - moving work from an offline laptop to a sandbox
+  - A possible later agent adapter, for teams that want any-model agents on API keys.

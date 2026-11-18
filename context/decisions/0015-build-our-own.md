@@ -12,6 +12,12 @@ ostra is written from scratch. It's not a fork of Cyrus, Vibe Kanban, Kandev or 
   - Forking would tie ostra to that roadmap.
 - **Fork Vibe Kanban.** Rejected: the company behind it shut down, it has no tracker support, and v0.1.44 broke its team boards.
 - **Kandev** (Go, AGPL) and **Multica** (not open source). Rejected for the language and the license.
+- **Building on Omnara** (Apache-2.0, Go; looked at on 2026-11-18 when the maintainer asked). Rejected:
+  - It runs its own agent loop on model API keys instead of driving Claude Code (ADR 0004, ADR 0018).
+  - It's Go (ADR 0008), and heavier to self-host.
+  - Its product overlaps ostra's.
+
+  Its architecture confirms ostra's, and its sandbox-provider runners are worth borrowing (`research/landscape.md`, addendum).
 
 ## Consequences
 
