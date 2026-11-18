@@ -1,6 +1,6 @@
 # Rivet Sandbox Agent drives the agents
 
-**Status:** accepted on 2026-11-18, to be validated by spike 1. It supersedes the "ostra's own generic ACP driver" part of ADR 0018. The maintainer: "I think we were going for Rivet ... something that I really liked."
+**Status:** under review (Q51). `research/rivet.md` (2026-11-18) recommends taking it out of the runtime path. It was accepted on 2026-11-18, to be validated by spike 1. It supersedes the "ostra's own generic ACP driver" part of ADR 0018. The maintainer: "I think we were going for Rivet ... something that I really liked."
 
 In every box, ostra's runner drives the coding agent through **Rivet Sandbox Agent** (`rivet-dev/agents`, `sandbox-agent/`).
 
