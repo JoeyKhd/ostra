@@ -14,7 +14,11 @@
     "test": "turbo run test && vitest run",
     "build": "turbo run build",
     "check:licenses": "node scripts/check-licenses.ts",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "db:dev": "node packages/db/scripts/dev-postgres.ts",
+    "db:migrate": "node packages/db/scripts/migrate.ts",
+    "db:generate": "node packages/db/scripts/generate.ts",
+    "dev:reset": "node packages/db/scripts/reset.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

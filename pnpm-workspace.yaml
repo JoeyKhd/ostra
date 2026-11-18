@@ -14,3 +14,14 @@ minimumReleaseAgeExclude:
   - "@vitest/spy@5.1.1"
   - turbo@2.11.13
   - vitest@5.1.1
+
+# Install scripts we allow: embedded-postgres's platform binaries (a dev dependency of packages/db,
+# ADR 0007) and Prisma's engines download.
+allowBuilds:
+  "@embedded-postgres/windows-x64": true
+  "@embedded-postgres/linux-x64": true
+  "@embedded-postgres/linux-arm64": true
+  "@embedded-postgres/darwin-arm64": true
+  "@embedded-postgres/darwin-x64": true
+  "@prisma/engines": true
+  prisma: true

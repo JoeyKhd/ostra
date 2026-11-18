@@ -57,6 +57,8 @@ export default defineConfig(
     "**/.next/**",
     "**/.turbo/**",
     "**/coverage/**",
+    // Prisma's generated client (packages/db), rebuilt by `pnpm db:generate`.
+    "**/src/generated/**",
     "spikes/**",
     "context/**",
     ".agents/**",

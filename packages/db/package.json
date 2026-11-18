@@ -1,16 +1,35 @@
 {
   "name": "@ostra/db",
   "version": "0.0.0",
-  "description": "The Prisma schema and client",
+  "description": "The Prisma schema, its client, the row mappers and the dev database",
   "private": true,
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./dev": "./src/dev/index.ts",
+    "./testing": "./src/testing/index.ts",
+    "./testing/global-setup": "./src/testing/global-setup.ts"
   },
   "scripts": {
+    "generate": "node scripts/generate.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "db:dev": "node scripts/dev-postgres.ts",
+    "db:migrate": "node scripts/migrate.ts",
+    "dev:reset": "node scripts/reset.ts"
+  },
+  "dependencies": {
+    "@ostra/protocol": "workspace:*",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "pg": "8.23.1",
+    "prisma": "7.10.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "embedded-postgres": "18.6.0-beta.19"
   }
 }

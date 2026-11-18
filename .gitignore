@@ -19,6 +19,12 @@ context/brand/kit/approve-logo.json
 context/brand/kit/logo/candidates/result-*.json
 context/brand/kit/logo/candidates/result-*.err
 
+# The dev stack's data: the embedded Postgres cluster and the server's dev data (ticket 05)
+.ostra-dev/
+
+# Prisma's generated client, rebuilt by `pnpm db:generate`
+packages/db/src/generated/
+
 # Tooling
 node_modules/
 .turbo/

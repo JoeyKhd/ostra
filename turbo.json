@@ -2,9 +2,19 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["tsconfig.base.json", "eslint.config.js"],
   "tasks": {
-    "typecheck": {},
-    "lint": {},
-    "test": {},
+    "generate": {
+      "inputs": ["prisma/**", "scripts/generate.ts"],
+      "outputs": ["src/generated/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["generate", "^generate"]
+    },
+    "lint": {
+      "dependsOn": ["generate", "^generate"]
+    },
+    "test": {
+      "dependsOn": ["generate", "^generate"]
+    },
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
