@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { runCli } from "../src/cli.ts";
+
+const capture = (args: readonly string[]): { code: number; out: string[]; err: string[] } => {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = runCli(args, {
+    out: (line) => {
+      out.push(line);
+    },
+    err: (line) => {
+      err.push(line);
+    },
+  });
+  return { code, out, err };
+};
+
+describe("runCli", () => {
+  it("prints each result on its own line and returns 0", () => {
+    assert.deepEqual(capture(["1 + 1", "2 * 3"]), { code: 0, out: ["2", "6"], err: [] });
+  });
+
+  it("groups thousands with --thousands", () => {
+    assert.deepEqual(capture(["--thousands", "1000 * 1000"]).out, ["1,000,000"]);
+  });
+
+  it("reports a wrong expression on err and returns 1", () => {
+    const result = capture(["1 +"]);
+    assert.equal(result.code, 1);
+    assert.deepEqual(result.out, []);
+    assert.match(result.err.join("\n"), /^error: /);
+  });
+
+  it("stops at the first wrong expression", () => {
+    const result = capture(["1 + 1", "nope", "3 + 3"]);
+    assert.equal(result.code, 1);
+    assert.deepEqual(result.out, ["2"]);
+  });
+
+  it("returns 2 with the usage when there is nothing to calculate", () => {
+    const result = capture([]);
+    assert.equal(result.code, 2);
+    assert.match(result.err.join("\n"), /Usage: calc/);
+  });
+
+  it("returns 2 for an unknown option", () => {
+    const result = capture(["--nope", "1"]);
+    assert.equal(result.code, 2);
+    assert.match(result.err.join("\n"), /unknown option --nope/);
+  });
+
+  it("prints the usage for --help and returns 0", () => {
+    const result = capture(["--help"]);
+    assert.equal(result.code, 0);
+    assert.match(result.out.join("\n"), /Usage: calc/);
+  });
+});

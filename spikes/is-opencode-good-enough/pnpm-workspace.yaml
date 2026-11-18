@@ -1,0 +1,29 @@
+packages:
+  - "."
+
+# pnpm 11 holds back releases younger than its minimum age. These were
+# pinned on purpose: OpenCode 2.3.2 is the version research/rivet.md pins,
+# the same one spike 1 drives.
+minimumReleaseAgeExclude:
+  - '@opencode/cli-darwin-arm64@2.3.2'
+  - '@opencode/cli-darwin-x64-baseline@2.3.2'
+  - '@opencode/cli-darwin-x64@2.3.2'
+  - '@opencode/cli-linux-arm64-musl@2.3.2'
+  - '@opencode/cli-linux-arm64@2.3.2'
+  - '@opencode/cli-linux-x64-baseline-musl@2.3.2'
+  - '@opencode/cli-linux-x64-baseline@2.3.2'
+  - '@opencode/cli-linux-x64-musl@2.3.2'
+  - '@opencode/cli-linux-x64@2.3.2'
+  - '@opencode/cli-windows-arm64@2.3.2'
+  - '@opencode/cli-windows-x64-baseline@2.3.2'
+  - '@opencode/cli-windows-x64@2.3.2'
+  - '@opencode/cli@2.3.2'
+  - '@vitest/mocker@5.1.1'
+  - '@vitest/spy@5.1.1'
+  - vitest@5.1.1
+
+# The OpenCode wrapper's postinstall only copies the platform binary over a
+# stub. The driver resolves the binary from the platform package itself, so
+# no install script runs.
+allowBuilds:
+  '@opencode/cli': false

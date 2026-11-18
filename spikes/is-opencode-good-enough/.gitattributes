@@ -1,0 +1,4 @@
+# The sample repo is edited by exact text and run as it stands: keep LF endings on every checkout, whatever core.autocrlf says.
+sample-repo/** text eol=lf
+src/tickets/reference/** text eol=lf
+src/tickets/acceptance/** text eol=lf

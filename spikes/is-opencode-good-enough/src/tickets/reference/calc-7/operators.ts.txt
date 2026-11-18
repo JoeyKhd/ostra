@@ -1,0 +1,19 @@
+export type BinaryOp = "+" | "-" | "*" | "/" | "^";
+
+export type OperatorDefinition = {
+  readonly precedence: number;
+  readonly apply: (a: number, b: number) => number;
+};
+
+/** Every binary operator, defined once: the tokenizer, the parser and the evaluator all read from here. */
+export const OPERATORS: Readonly<Record<BinaryOp, OperatorDefinition>> = {
+  "+": { precedence: 1, apply: (a, b) => a + b },
+  "-": { precedence: 1, apply: (a, b) => a - b },
+  "*": { precedence: 2, apply: (a, b) => a * b },
+  "/": { precedence: 2, apply: (a, b) => a / b },
+  "^": { precedence: 3, apply: (a, b) => a ** b },
+};
+
+export const OPERATOR_CHARS: string = Object.keys(OPERATORS).join("");
+
+export const isBinaryOp = (op: string): op is BinaryOp => Object.hasOwn(OPERATORS, op);

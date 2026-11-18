@@ -1,0 +1,9 @@
+node_modules/
+# Temporary workspaces, OpenCode data dirs, run records and logs
+.runs/
+*.log
+# Secrets never live here, but block the usual files anyway
+.env
+.env.*
+*.pem
+*.key
