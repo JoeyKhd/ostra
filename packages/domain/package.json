@@ -14,6 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ostra/adapter-sdk": "workspace:*",
     "@ostra/db": "workspace:*",
     "@ostra/protocol": "workspace:*",
     "zod": "4.6.7"

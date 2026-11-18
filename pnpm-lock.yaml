@@ -91,6 +91,9 @@ importers:
 
   packages/domain:
     dependencies:
+      '@ostra/adapter-sdk':
+        specifier: workspace:*
+        version: link:../adapter-sdk
       '@ostra/db':
         specifier: workspace:*
         version: link:../db

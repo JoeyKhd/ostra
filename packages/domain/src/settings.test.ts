@@ -1,0 +1,97 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+import { devDatabaseUrl, DEV_PG_PORT_DEFAULT, repoRoot } from "@ostra/db/dev";
+import { runnerEnvNames } from "@ostra/protocol";
+import { describe, expect, it } from "vitest";
+
+import { devOnlyEnvNames, parseServerSettings, settingNames } from "./settings.ts";
+
+describe("the server's settings", () => {
+  it("parse an empty environment in development, with every default", () => {
+    const result = parseServerSettings({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.settings).toMatchObject({
+      mode: "development",
+      databaseUrl: devDatabaseUrl(DEV_PG_PORT_DEFAULT),
+      webPort: 3000,
+      corePort: 8787,
+      publicUrl: "http://localhost:3000",
+      corePublicUrl: "http://localhost:8787",
+      secretsKey: null,
+      catalogFetch: true,
+      openSignupAccounts: false,
+      openSignupOrganizations: false,
+      betterAuthSecret: null,
+      setupToken: null,
+    });
+    expect(result.settings.dataDir).toBe(path.join(repoRoot, ".ostra-dev", "server"));
+  });
+
+  it("refuses an unknown OSTRA_ variable, listing the known ones", () => {
+    const result = parseServerSettings({ OSTRA_WEB_PROT: "3001" });
+    expect(result.ok).toBe(false);
+    const errors = result.ok ? "" : result.errors.join("\n");
+    expect(errors).toContain("OSTRA_WEB_PROT");
+    expect(errors).toContain("OSTRA_WEB_PORT");
+  });
+
+  it("lets the runner's and the dev setup's variables through, and ignores others", () => {
+    expect(
+      parseServerSettings({
+        OSTRA_SERVER_URL: "http://localhost:8787",
+        OSTRA_DEV_MODEL_ID: "test-model",
+        PATH: "/usr/bin",
+        HOME: "/home/dev",
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("requires DATABASE_URL in production", () => {
+    expect(parseServerSettings({ NODE_ENV: "production" })).toEqual({
+      ok: false,
+      errors: ["DATABASE_URL is required in production"],
+    });
+    const result = parseServerSettings({ NODE_ENV: "production", DATABASE_URL: "postgresql://db/ostra" });
+    expect(result.ok && result.settings.dataDir).toBe("/var/lib/ostra");
+  });
+
+  it("reads booleans, ports and URLs, and names a bad one without its value", () => {
+    const result = parseServerSettings({ OSTRA_CATALOG_FETCH: "off", OSTRA_CORE_PORT: "9000", OSTRA_OPEN_SIGNUP_ACCOUNTS: "yes" });
+    expect(result.ok && [result.settings.catalogFetch, result.settings.corePort, result.settings.openSignupAccounts]).toEqual([
+      false,
+      9000,
+      true,
+    ]);
+    const bad = parseServerSettings({ BETTER_AUTH_SECRET: "too-short-secret-value", OSTRA_WEB_PORT: "http" });
+    expect(bad.ok).toBe(false);
+    const errors = bad.ok ? "" : bad.errors.join("\n");
+    expect(errors).toContain("BETTER_AUTH_SECRET");
+    expect(errors).toContain("OSTRA_WEB_PORT");
+    expect(errors).not.toContain("too-short-secret-value");
+  });
+});
+
+describe("docs/configuration.md", () => {
+  const documented = async (): Promise<ReadonlySet<string>> => {
+    const text = await readFile(path.join(repoRoot, "docs", "configuration.md"), "utf8");
+    return new Set([...text.matchAll(/^\| `([A-Z][A-Z0-9_]+)` \|/gm)].flatMap((match) => (match[1] === undefined ? [] : [match[1]])));
+  };
+
+  it("lists every setting the server, the runner and the dev setup know", async () => {
+    const names = await documented();
+    for (const name of [...settingNames, ...runnerEnvNames, ...devOnlyEnvNames]) {
+      expect(names.has(name), `${name} is missing from docs/configuration.md`).toBe(true);
+    }
+  });
+
+  it("lists no setting the code doesn't know", async () => {
+    const known = new Set<string>([...settingNames, ...runnerEnvNames, ...devOnlyEnvNames]);
+    for (const name of await documented()) {
+      expect(known.has(name), `${name} is in docs/configuration.md but no schema reads it`).toBe(true);
+    }
+  });
+});
