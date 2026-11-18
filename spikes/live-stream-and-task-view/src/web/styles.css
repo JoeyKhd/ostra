@@ -1,0 +1,49 @@
+/* Placeholder styling for the spike. The brand target (context/brand/app-design.md) is milestone-1 work. */
+:root {
+  color-scheme: dark;
+  --bg: #121212;
+  --panel: #1a1a1a;
+  --line: #2a2a2a;
+  --text: #e6e6e6;
+  --muted: #8a8a8a;
+  --amber: #ffb224;
+  --add: #7bd88f;
+  --del: #ff8a80;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+.page { display: flex; flex-direction: column; height: 100vh; max-width: 920px; margin: 0 auto; }
+.bar { display: flex; gap: 16px; align-items: baseline; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.title { font-weight: 700; font-size: 15px; }
+.muted { color: var(--muted); }
+.thread { flex: 1; min-height: 0; display: flex; }
+.viewport { flex: 1; overflow-y: auto; padding: 8px 16px; }
+.message { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.message.user .user-text { background: var(--panel); padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; }
+.text p { margin: 4px 0; }
+.reasoning { color: var(--muted); margin: 4px 0; }
+.tool { padding: 4px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.tool .line, .tool .exec, .tool .edit { flex: 1 1 60%; }
+.verb { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+pre { margin: 4px 0; padding: 6px 8px; background: var(--panel); border-radius: 4px; overflow-x: auto; white-space: pre-wrap; }
+.add { color: var(--add); } .del { color: var(--del); }
+.state { color: var(--muted); font-size: 11.5px; }
+.error { color: var(--del); flex-basis: 100%; }
+.approval { flex-basis: 100%; border-left: 3px solid var(--amber); padding: 6px 10px; }
+.approval.settled { border-left-color: var(--line); color: var(--muted); }
+.actions { display: flex; gap: 8px; margin-top: 6px; }
+button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.plan { margin: 4px 0; padding-left: 20px; }
+.question, .divider, .system { padding: 4px 0; color: var(--muted); }
+.question { border-left: 3px solid var(--amber); padding-left: 10px; color: var(--text); }
+.unsupported { color: var(--amber); }
+.composer { border-top: 1px solid var(--line); padding: 10px 16px; display: flex; flex-direction: column; gap: 6px; }
+.composer-input { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: none; }
+.composer-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.hint { margin: 0; color: var(--muted); font-size: 12px; }
+.watcher-bar { border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 8px; align-items: center; }
+.load-earlier { margin: 8px 0; }

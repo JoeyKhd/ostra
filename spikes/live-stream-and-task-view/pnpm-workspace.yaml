@@ -1,0 +1,11 @@
+packages:
+  - "."
+# embedded-postgres ships its binaries in one optional package per platform, and each one has a postinstall
+# that restores symlinks (needed on Linux and macOS). pnpm 11 stops the install until they are allowed, so allow
+# exactly those, and nothing else.
+allowBuilds:
+  "@embedded-postgres/windows-x64": true
+  "@embedded-postgres/linux-x64": true
+  "@embedded-postgres/linux-arm64": true
+  "@embedded-postgres/darwin-x64": true
+  "@embedded-postgres/darwin-arm64": true
