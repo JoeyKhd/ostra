@@ -1,8 +1,8 @@
 # ostra
 
-Open-source, self-hostable control panel that connects a team's tracker (Linear, later Jira) to its coding agents (Claude Code, OpenCode, oh-my-pi, …). A ticket becomes a task, and an agent works it on its own branch on a local or remote runner. Members can steer it and reopen it at any time, and it ships a GitHub PR. The brief: `context/project.md`.
+Open-source, self-hostable control panel that connects an organization's tracker (Linear, later Jira) to its coding agents (OpenCode first, Claude Code before launch, more later through the same interface). A ticket or a prompt becomes a task, and an agent works it on its own branch on a runner. Members can steer it and reopen it at any time, and it ships a GitHub PR for each repo it changes. The brief: `context/project.md`.
 
-**Phase: milestone 0, spikes** (`context/build-order.md`). The plan was signed off on 2026-11-17, and product code starts with milestone 1. Until then, all code is a spike: throwaway code that answers one question. It lives in `spikes/<kebab-question>/`, and its finding goes into `context/research/`.
+**Phase: milestone 0, spikes** (`context/build-order.md`). The plan was signed off on 2026-11-17 and reworked on 2026-11-18, and product code starts with milestone 1. Until then, all code is a spike: throwaway code that answers one question. It lives in `spikes/<kebab-question>/`, and its finding goes into `context/research/`.
 
 ## Context
 
@@ -10,10 +10,11 @@ Open-source, self-hostable control panel that connects a team's tracker (Linear,
 |---|---|
 | Asked where things stand, or what comes next | `context/README.md`, then `context/build-order.md` |
 | Working on a task, session, runner or any lifecycle | `context/domain-model.md` |
-| Deciding what to build, or whether it's done | `context/features.md` (the ledger); the feature's spec, `context/specs/<feature>/spec.md` |
+| Deciding what to build, or whether it's done | `context/features.md` (the ledger); the spec under `context/specs/` that names its feature ID |
 | Naming a domain concept | `context/GLOSSARY.md` |
 | Touching architecture, stack, data model or an adapter's design | `context/decisions/` |
 | Meeting something undecided | `context/open-questions.md`: add it there and settle it with the maintainer |
+| Wanting the reasoning behind a settled question | `context/history/`: the answers that settled it, and why |
 | Researching an agent, tracker, vendor or similar tool | `context/research/` first: it may be answered there |
 | Building or restyling anything visual (a screen, a component, the docs site, a launch image) | `context/brand/brief.md` (palette, logo, type, voice) and `context/brand/app-design.md` (the console layout), then the `ui-taste` skill, image first |
 | Making or changing a brand file (logo, icon, social image) | `context/brand/assets.md`; made with the `higgsfield-brandkit` skill, whose state lives in `context/brand/kit/` |
@@ -23,8 +24,8 @@ Open-source, self-hostable control panel that connects a team's tracker (Linear,
 A change is done, and ready to commit, when every line that applies holds in that one commit:
 
 - **Checks:** sized to the change (the table under this list), on the packages it touches.
-- **Adapter parity:** a feature that touches trackers, agents or code hosts works through the shared interface for every shipped adapter. The alternative is that the interface declares it an optional capability, and each adapter states whether it has it. A feature that works only for Linear or only for Claude Code, without that declaration, is a bug.
-- **Runner parity:** a task behaves the same on a local runner and a remote one. A difference is a bug unless an ADR records it.
+- **Adapter parity:** a feature that touches trackers, agents or code hosts works through the shared interface for every shipped adapter. The alternative is that the interface declares it an optional capability, and each adapter states whether it has it. A feature that works only for Linear or only for OpenCode, without that declaration, is a bug.
+- **Runner parity:** a task behaves the same on a personal runner and a pool runner, and on every executor (`docker`, `host`, `kubernetes`). A difference is a bug unless an ADR records it (ADR 0029 records the two for the `host` executor).
 - **Self-hosting:** a fresh install with only the required settings still works. A new setting ships with a working default and its line in the configuration reference.
 - **Feature ledger:** a finished feature has its status set in `context/features.md`, and is `done` only when every "done when" condition holds. Specs in `context/specs/` name the feature IDs they cover.
 - **ADR:** a hard-to-reverse decision is written up in `context/decisions/NNNN-kebab-title.md`.
@@ -82,7 +83,7 @@ Everything is **strictly typed**, end to end. The maintainer: "everything needs 
 - `import type` for type-only imports. Named exports, except where the framework requires a default export.
 - Files and folders: kebab-case (`task-timeline.tsx`, `use-runner-status.ts`, `task-timeline.test.ts`). Conventional root docs keep their names (`README.md`, `AGENTS.md`, `CLAUDE.md`, `GLOSSARY.md`).
 - Functions, components and handlers: `const helloWorld = () => {}`. In `.tsx`, write generics as `<T,>`.
-- **Adapters are the one place for classes** (ADR 0025): each integration extends its kind's abstract base class (`TrackerAdapter`, `CodeHostAdapter`, `AgentAdapter`, `RunnerProviderAdapter`, `ModelProviderAdapter`, `NotificationAdapter`, `SecretStoreAdapter`), only one level deep, and passes its kind's contract test suite.
+- **Adapters are the one place for classes** (ADR 0025): each integration extends its kind's abstract base class (`TrackerAdapter`, `CodeHostAdapter`, `AgentAdapter`, `ExecutorAdapter`, `ModelProviderAdapter`, `NotificationAdapter`, `SecretStoreAdapter`, `BlobStoreAdapter`), only one level deep, and passes its kind's contract test suite.
 
 ## Boundaries
 

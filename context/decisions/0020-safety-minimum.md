@@ -1,6 +1,6 @@
 # The minimum safety bar for v1
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 3.
+**Status:** superseded by ADR 0031 (2026-11-18). ADR 0031 replaces it with a revised safety minimum: a box per task, the sidecar with its key proxy and git proxy, an egress baseline, approval for tasks from outside ostra, and a warning, not a refusal, for an unprotected default branch (F-040, F-060). It was accepted with the plan on 2026-11-17, chosen in grilling round 3, and the text below is kept as the historical record.
 
 Ticket text comes from anyone with access to the tracker and goes into an agent that can run commands. v1 holds these lines:
 

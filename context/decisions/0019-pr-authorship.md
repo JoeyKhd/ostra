@@ -1,6 +1,6 @@
 # Who authors a PR
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 3, following `research/platform-auth-github.md`.
+**Status:** superseded by ADR 0040 (2026-11-18). ADR 0040 replaces it: the organization's GitHub App opens every PR and authors every commit, each member whose prompt led to a commit is credited with a `Co-authored-by` trailer, and an `ostra/independent-review` check covers the gap that a requester can approve the bot's PR (Q55, F-104). It was accepted with the plan on 2026-11-17, chosen in grilling round 3 following `research/platform-auth-github.md`, and the text below is kept as the historical record.
 
 - **When a member drives the task:**
   - The PR is opened with that member's own GitHub login, which the server holds and uses only there.

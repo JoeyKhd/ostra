@@ -1,6 +1,6 @@
 # A server and runners: the ostra runner is always on the box
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 2. The maintainer asked whether someone could "just setup a server somewhere with codex ohmypi or whatever harness and then connect it to our tool".
+**Status:** superseded by ADR 0029 (2026-11-18). It was accepted at the plan's sign-off on 2026-11-17, and the text below is kept as the historical record. ADR 0029 replaces the single runner binary with runner pools, executors and boxes: a runner joins a pool with a join token, and its executor gives each task a box of its own (Q32, Q38, Q48, Q93 to Q98). Chosen on 2026-11-17 in grilling round 2. The maintainer asked whether someone could "just setup a server somewhere with codex ohmypi or whatever harness and then connect it to our tool".
 
 - **The server** is the control plane: the panel, accounts, boards, rules, task history and the integrations. It never needs to run an agent itself.
 - **A runner** is the ostra runner binary on any machine: a member's laptop, or a server or VM.

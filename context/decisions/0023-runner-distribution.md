@@ -1,6 +1,6 @@
 # Shipping the runner: npm and Docker first, signed binaries before launch
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen in grilling round 6.
+**Status:** superseded by ADR 0046 (2026-11-18). ADR 0046 replaces it with one `ostra` CLI, whose name retires `ostra-runner`, and three images (the server, the runner and the box base), and it moves the signed binaries to after v1 (Q80, Q82, F-085). It was accepted with the plan on 2026-11-17, chosen in grilling round 6, and the text below is kept as the historical record.
 
 An unsigned binary downloaded on macOS is blocked by Gatekeeper, and Windows warns about it through SmartScreen. So the runner ships in three forms:
 

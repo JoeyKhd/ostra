@@ -10,16 +10,16 @@
   <a href="#the-plan-lives-here">The plan</a>
 </p>
 
-> **ostra is being planned in the open.** The plan is signed off, and the first code, a set of short experiments, comes next. There's nothing to install yet. Star or watch the repo to follow along.
+> **ostra is being planned in the open.** The plan was signed off on 2026-11-17 and reworked on 2026-11-18. The first code, ten short experiments, comes next. There's nothing to install yet. Star or watch the repo to follow along.
 
 ## What ostra is
 
 ostra is an open-source, self-hosted control panel that turns the coding agents your team already uses into **cloud agents**.
 
-A ticket from your tracker, or a plain prompt, becomes a **task**. An agent works on it on its own branch, in an isolated box prepared from your project's environment. Your team can watch it live, steer it, approve risky steps, and reopen it months later. It ships a GitHub pull request.
+A ticket from your tracker, or a plain prompt, becomes a **task**. An agent works on it on its own branch, in an isolated box prepared from your project's environment. Your team can watch it live, steer it, approve risky steps, and reopen it months later. It ships a GitHub pull request for each repo it changes.
 
-- **Your agents.** Any coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com), starting with OpenCode and Claude Code.
-- **Your machines.** Run runners wherever you like: a laptop, your servers, your Kubernetes cluster. They connect out to your ostra with a join token, and each task gets its own box.
+- **Your agents.** Any coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com): OpenCode first, Claude Code before launch, and more later through the same interface.
+- **Your machines.** Run runners wherever you like: your servers, your Kubernetes cluster, a laptop. They connect out to your ostra, and on Docker and Kubernetes each task gets its own isolated box.
 - **Your models.** Any provider with an API base URL and a bearer token. Names, prices and logos come from [models.dev](https://models.dev).
 - **Your tracker.** Linear first, then Jira. The tracker stays the source of truth.
 
@@ -28,19 +28,20 @@ A ticket from your tracker, or a plain prompt, becomes a **task**. An agent work
 ```mermaid
 flowchart LR
     T["Ticket<br/>or prompt"] --> K["Task"]
-    K --> B["A box on a runner<br/>repo, deps, services, secrets"]
+    K --> B["A box on a runner<br/>repos, deps, services,<br/>and a sidecar that holds the keys"]
     B --> A["Agent session"]
     A <-->|"steer · approve · answer"| P["Your team<br/>in the panel"]
     A --> C["Checks"]
-    C --> R["Pull request<br/>on GitHub"]
+    C --> R["Pull requests<br/>on GitHub"]
     R -->|"reopen any time"| K
 ```
 
-1. **Organize by project.** A project, such as `calculator`, links a tracker board, its repos and its **environment**: the computer every task starts from, with a setup script, services and secrets per repo.
-2. **Start tasks.** Start them by hand, from a prompt, or automatically from tickets that match an intake rule.
-3. **Run anywhere.** Runners dial out to the server, so they work behind NAT. Shared runner pools serve every project.
-4. **Step in.** Anything that waits on a person shows as **needs you**: an approval, a question, a plan, a PR to review. One person drives a task at a time, and anyone can take over.
-5. **Ship and come back.** Checks run before the PR opens. A task lives as long as its ticket does, so reopening it continues where it stopped.
+1. **Organize by project.** An organization holds its members, its model providers and its runner pools. Each project in it, such as `calculator`, holds its repos, its tracker boards if it has any, and its **environment**: the computer every task starts from, with a setup script, services, and variables and secrets that each belong to one repo.
+2. **Start tasks.** Start them by hand, from a prompt, or automatically from tickets that match an intake rule or a schedule. A task belongs to one project and can change several of its repos, with one pull request for each. It is a refine, code or review task.
+3. **Run anywhere.** A runner dials out to the server, so it works behind NAT. Servers and clusters join a runner pool with a join token, and a pool serves every project that's allowed to use it. A laptop joins as a personal runner that runs only its owner's tasks.
+4. **Keep the keys out of reach.** On Docker and Kubernetes, each task gets its own **box**: the agent's container, a **sidecar** and the environment's services. The sidecar holds the task's credentials and proxies the agent's model calls and its git. The agent only ever sees a fake key, so no model key and no GitHub token enters its container. A runner on the `host` executor, such as a laptop, has no box. It runs the task in a worktree and is labelled "not isolated".
+5. **Step in.** Anything that waits on a person shows as **needs you**: an approval, a question, a plan, a PR to review. One person drives a task at a time, and anyone can take over.
+6. **Ship and come back.** Checks run before a PR opens. A task is long-lived: it can be reopened months later, with or without a ticket. A box stops when it's idle, so reopening a task starts a fresh box from its saved session and branches, and continues where it stopped.
 
 The whole system on one page: [`context/architecture/system-overview.png`](context/architecture/system-overview.png).
 
@@ -63,15 +64,16 @@ These are design concepts built in HTML, not screenshots of shipped software.
 
 | Milestone | What it delivers | |
 |---|---|---|
-| 0 · Spikes | Short experiments that test the plan's riskiest assumptions | **next** |
-| 1 · First PR | Install, connect GitHub and Linear, and turn one ticket into one pull request | |
-| 2 · Robust core | Nothing is lost: restarts, dropped runners and duplicate events are handled | |
-| 3 · Step in and come back | Agent profiles, steering, approvals, plan first, reopening | |
-| 4 · The team | Accounts, roles, shared runners | |
-| 5 · From the tracker | Intake rules, starting tasks from Linear | |
-| 6 · Launch | Docs, accessibility, signed runner downloads | |
+| 0 · Spikes | Ten short experiments that test the plan's riskiest assumptions | **next** |
+| 1 · First PR, from a prompt | Install ostra, add a model provider and the GitHub App, create a project and type a prompt. OpenCode works in a box and opens a pull request | |
+| 2 · Tickets in, nothing lost | A Linear ticket becomes a PR linked back on the ticket. Restarts, dropped runners and duplicate events lose nothing, and a task reopens on a fresh box a day later | |
+| 3 · Step in and come back | Agent profiles, steering, approvals, plan first, comments on the diff, and boxes that start from a snapshot with their services | |
+| 4 · The organization | Several projects with their own access, two roles at each level, spend and budgets, and project memory | |
+| 5 · The fleet | Runner pools on Docker hosts and Kubernetes, plus laptops, joined with a token and load-tested at 1,000 tasks at once | |
+| 6 · The whole team, and autonomy | Refine, code and review tasks, intake rules and schedules, and review loops for CI and the AI review | |
+| 7 · Launch | Claude Code as the second agent, docs, accessibility and a security review. A new install goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs | |
 
-The details, and which feature lands where, are in [`context/build-order.md`](context/build-order.md) and the feature ledger [`context/features.md`](context/features.md).
+Signed runner binaries come after v1. The details, and which feature lands where, are in [`context/build-order.md`](context/build-order.md) and the feature ledger [`context/features.md`](context/features.md).
 
 ## The plan lives here
 
@@ -82,8 +84,9 @@ ostra is planned in this repo, in plain Markdown.
 | [`context/project.md`](context/project.md) | The brief: the problem, the core loop, the principles |
 | [`context/features.md`](context/features.md) | Every feature, with its "done when" and its milestone |
 | [`context/decisions/`](context/decisions/) | Architecture decisions (ADRs) and why we made them |
-| [`context/domain-model.md`](context/domain-model.md) | Tasks, sessions, runners and their lifecycles |
+| [`context/domain-model.md`](context/domain-model.md) | Organizations, projects, tasks, boxes, runners and their lifecycles |
 | [`context/open-questions.md`](context/open-questions.md) | What's still undecided |
+| [`context/history/`](context/history/) | The reasoning behind settled questions, such as the answers of 2026-11-18 |
 | [`context/research/`](context/research/) | Research on agents, trackers, sandboxes and similar tools, with sources |
 | [`context/brand/`](context/brand/) | The brand and the panel's design |
 
@@ -95,7 +98,7 @@ TypeScript end to end, strictly typed:
 - **Sign-in:** better-auth
 - **Agents:** the Agent Client Protocol
 
-Every integration is an adapter with a shared contract: trackers, code hosts, agents, runner providers, model providers, notifications and secret stores.
+Every integration is an adapter with a shared contract: trackers, code hosts, agents, executors, model providers, notifications, secret stores and blob stores.
 
 ## Contributing
 

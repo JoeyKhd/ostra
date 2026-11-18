@@ -1,95 +1,341 @@
 # Domain model
 
-**Status:** draft (2026-11-17), from grilling rounds 1–5. Terms follow `GLOSSARY.md`; this document says how they relate and how they change. Features are cited by ledger ID (`features.md`), decisions by ADR number (`decisions/`).
+**Status:** draft (2026-11-17), from grilling rounds 1–5. Reworked on 2026-11-18 from the delegated answers in `history/answers-2026-11-18.md` (section 4.5). Terms follow `GLOSSARY.md`; this document says how they relate and how they change. Features are cited by ledger ID (`features.md`), decisions by ADR number (`decisions/`), and the answers by question ID (Q-numbers in the answers file).
 
 ## What exists
 
 ```
-Team ─┬─ Member (admin | member)
-      ├─ Board ───────── links ─────────▶ Repo ── has one ──▶ Environment
-      ├─ Runner (local: owned by one member | remote: shared)
-      ├─ Agent profile
-      ├─ Intake rule ── names ──▶ Board, Repo, Agent profile, runner labels
-      ├─ Credential (team API keys, the GitHub App, the Linear app)
-      └─ Audit entry
+Install ── Organization ─┬─ Member (admin | member)
+                         ├─ Connection (the GitHub App, the Linear app)
+                         ├─ Model provider ── Model
+                         ├─ Runner pool ── Runner        (a personal runner belongs to one member)
+                         ├─ Agent profile
+                         ├─ Memory note, Budget, Audit entry
+                         └─ Project ─┬─ Project member (admin | member), when the project is restricted
+                                     ├─ Repo (linked), Board
+                                     ├─ Environment ── Variable or secret (per repo), Service, Check, Snapshot
+                                     ├─ Automation (intake rule | schedule)
+                                     ├─ Memory note, Proposal, Budget
+                                     └─ Task (refine | code | review)
+                                          ├─ Session ── Turn ── Event
+                                          ├─ Needs-you item, Approval
+                                          ├─ Task repo (branch, PR)        one per repo the task changed
+                                          ├─ Box (through a lease)
+                                          └─ Draft (refine) · Finding (review)
 
-Ticket (lives in the tracker) ──▶ Task (per repo) ──┬─ Session ── Turn ── Event
-                                                   ├─ Needs-you item
-                                                   ├─ branch, workspace (on a runner)
-                                                   └─ PR (lives on the code host)
+Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ PR (the code host), one per task repo
 ```
+
+### The organization
 
 | Thing | Belongs to | Notes |
 |---|---|---|
-| **Team** | the install | Every other record belongs to exactly one team (ADR 0010). |
-| **Member** | a team | Is an admin or a member (F-003). Links a GitHub login, used for PR authorship and `@ostra` (ADR 0019, F-053). |
-| **Board** | a team | A Linear team or project, later a Jira project or board. Links to one or more repos, and maps ticket statuses (F-007, F-031). |
-| **Repo** | a team | A GitHub repo the team's App is installed on. Has one environment (F-050). |
-| **Environment** | a repo | Setup script, variables and secrets, files like `.env`, and optional check commands (F-050, F-054). |
-| **Runner** | a team | A local runner is owned by one member and runs only that member's tasks (ADR 0014). A remote runner is shared. Each has labels, a capacity and a version (F-067, F-069, F-061). |
-| **Agent profile** | a team | Agent, model, instructions, skills, MCP servers, permission mode and plan-first (F-021, F-026, F-063). |
-| **Intake rule** | a team | A tracker filter plus the board, repo, agent profile and runner labels it dispatches with (F-011). |
+| **Organization** | the install | An install holds many. A self-hosted install starts with one, and the first account is the instance admin (Q102, F-049). Every other record belongs to exactly one organization (ADR 0026). |
+| **Member** | an organization | An account with a unique username, an email address and a password (Q54, F-002). One account can be a member of several organizations. Is an admin or a member of the organization (Q35, F-003). Links a GitHub account once, for identity only: co-author credit, `@ostra` and matching reviewers (Q55, F-119, F-053). |
+| **Connection** | an organization | The organization's own GitHub App and Linear app. Webhooks are routed by connection, not by one install-wide address (Q102, F-005, F-006). |
+| **Model provider** | an organization | An API base URL and a token, in one of the two API formats that "Test connection" detects (Q34, F-088). Usable on personal runners only when an admin allows it for that provider; off by default (Q47). |
+| **Model** | a model provider | Listed from the endpoint itself. Names, limits and prices come from the models.dev catalog, the endpoint's own list, or a price an admin enters (Q34, Q105). |
+| **Runner pool** | an organization | A named set of runners that projects send tasks to (Q9, F-091). Has its join tokens, may require an admin to approve each new runner, and caps its total boxes and each project's share (Q43, Q48). |
+| **Join token** | a runner pool | The key a runner joins the pool with. Shown once, stored hashed, expires after 30 days by default *(working value)*, and can be revoked. Every join is an audit entry (Q48, Q94). |
+| **Runner** | a runner pool, or one member | ostra's runner program, `ostra runner`. A pool runner gives tasks of any allowed project a place to run. A personal runner belongs to one member and runs only that member's tasks (Q32, Q44, F-013, F-014, F-015). Each reports its executor (`docker`, `host` or `kubernetes`), capacity, labels and version (F-061, F-067). |
+| **Agent profile** | an organization | Agent, model, instructions, skills, MCP servers, approval rules and plan-first. Can be limited to some members. A project picks a default per task kind (Q28, Q70, F-021, F-026, F-063). |
+| **Memory note** | an organization or a project | One fact every task in its scope should know. Written by members, scanned for secrets (Q84, Q86, Q88, F-109). Agents get an index and search the rest through ostra's MCP tools (Q85, F-110). Repo and path scopes come later (F-129). |
+| **Budget** | an organization or a project | A monthly spend limit. At 80% admins are told; at 100% new tasks and automatic rounds wait, and running tasks finish their current turn (Q105, F-037). |
+| **Audit entry** | an organization | Who did what, when: task starts, approvals, takeovers, joins, credential use, provider, budget, pool and memory changes, admin changes (F-073). |
+
+### The project
+
+| Thing | Belongs to | Notes |
+|---|---|---|
+| **Project** | an organization | A product the organization works on: its repos, boards, environment, automations, memory and tasks (Q28, Q29, F-086). Open to the whole organization, or restricted to listed members (Q35, F-087). Names the pools it may use, a default box size and a default agent profile per task kind (Q32, Q43). |
+| **Project member** | a project | A member's role in a restricted project: admin or member (Q35, F-087). |
+| **Repo** | a project | A GitHub repo the organization's App is installed on, linked to the project. A repo linked to two projects is two links, with a separate set of secrets in each environment (Q29). |
+| **Board** | a project | A Linear team or Linear project, later a Jira project or board. Maps ticket statuses, "ready" among them (Q67, F-007, F-031). A project may have no board and run on prompts only (Q31). |
+| **Environment** | a project | One per project: the recipe for every box. A base image, a setup script, services, checks, and variables, secrets and files that each belong to one repo (Q33, F-050). Drafted by detection (Q2, F-112), and checked by the onboarding task (Q49, F-113). |
+| **Variable or secret** | an environment | Names one repo. A secret marked "available during setup" is mounted for the snapshot's build only (Q39). Secrets stay visible to the code under test (Q17). |
+| **Service** | an environment | A program started beside the agent for its tests, such as a database: image, variables, port, health check (Q40, Q96, F-094). The `host` executor starts none (ADR 0029). |
+| **Check** | an environment | A command ostra runs before it opens a PR (F-054). The code host's own pipeline is CI. |
+| **Snapshot** | an environment | The environment prepared ahead of time: an OCI image with the base image, every repo checked out and the setup's result, never a secret. One per project (Q39, Q95, F-051). Pushed to the organization's registry, which a `kubernetes` pool requires (F-120). |
+| **Automation** | a project | A rule that starts tasks by itself: an intake rule (a ticket filter) or a schedule. Names a task kind, an agent profile and pool labels, never a repo (Q10, F-011, F-106). |
+| **Proposal** | a project | A memory note suggested by an agent or a review, waiting for a member (Q86, Q87, F-111). Shown as a count on the project's Memory page, not as a needs-you item. |
 | **Ticket** | the tracker | ostra stores a reference and a cached copy, never the source of truth. |
-| **Task** | a team | One ticket in one repo. Holds the branch, the current workspace, the PR, the driver and its sessions (ADR 0006). |
-| **Session** | a task | One conversation with one agent profile on one runner. Its full history is kept on the server (ADR 0006). |
-| **Turn** | a session | One prompt and the agent's full response. |
-| **Event** | a session | One thing the agent or ostra did: a message, a tool call, a file change, a question, a state change. Events are saved before ostra acts on them (ADR 0011). |
-| **Needs-you item** | a task | A question, an approval, a plan, or a reason the task stopped. It has a state of open, answered or dismissed. |
-| **Audit entry** | a team | Who did what, when: task starts, approvals, takeovers, credential use, admin changes (F-073). |
+
+### The task
+
+| Thing | Belongs to | Notes |
+|---|---|---|
+| **Task** | a project | ostra's long-lived unit of work in one project (ADR 0006, ADR 0027). Has a kind (refine, code or review) and a source (a ticket, a prompt, or later a PR) (Q64, Q31, F-097). Holds the driver, its sessions and its task repos. May change any of the project's repos (Q29, F-098). A review task links to the code task it reviews (Q71). |
+| **Task repo** | a task | One per repo the task changed: the branch and the PR. The branch name is the same in every repo, and the PRs link to each other and to the ticket (Q29, F-030, F-031). |
+| **Workspace** | a task | The checkouts of the project's repos inside the task's box, side by side, on the task's branches (F-016). |
+| **Box** | a task, through a lease | The task's own isolated computer: the agent's container (the repos and the tools, no credentials), the sidecar, and the environment's services (Q38, ADR 0029). Serves one task and can be thrown away at any time. The `host` executor has no box: the task runs in a worktree, and the runner process does the sidecar's work. |
+| **Sidecar** | a box | The ostra container that holds the task's credentials, runs the key proxy, the git proxy, ostra's MCP tools and the ACP driver, and spools events. It connects to the server itself, with a short-lived token for that one task, tied to the lease (Q26, Q38, ADR 0030). |
+| **Lease** | a task | The server's grant that lets one box work on the task. Each dispatch raises its epoch, and writes from an older epoch are refused (ADR 0034, F-045). |
+| **Session** | a task | One conversation with one agent profile in one box. Records how it began (below). Its full history is kept on the server (ADR 0006). |
+| **Turn** | a session | One prompt and the agent's full response. After every turn, unfinished work goes to a hidden ref and the agent's session archive goes to the server (Q42, Q53, F-096). |
+| **Event** | a session | One thing the agent or ostra did: a message, a tool call, a file change, a question, a state change. Saved before ostra acts on it, and carries two numbers (below) (ADR 0011). |
+| **Command** | a task | A numbered instruction from the server to a runner or a sidecar: dispatch, steer, interrupt, stop, an approval's answer. |
+| **Needs-you item** | a task | Something a person has to act on, shown to its audience (below). Open, answered or dismissed. |
+| **Approval** | a task | The agent's request to do something its profile's rules hold back, such as a new dependency or a migration (F-026). Shown as a needs-you item. Has its own lifecycle (below). |
+| **Draft** | a refine task | What a refine task hands in, as typed fields: description, acceptance criteria, edge cases, open questions and sub-tickets (Q67, F-099). |
+| **Finding** | a review task | One point an AI review raises about a PR: blocking or a nit, with a file and a line (Q71, F-100). |
+
+## Task kinds
+
+A task's kind is in the schema from the first migration (Q64, ADR 0028). It fixes what the box may do and how the task ends.
+
+| Kind | Starts from | The box may | Hands in | Ends |
+|---|---|---|---|---|
+| **refine** | a ticket or a prompt | read the code, answer questions, prototype. Its git proxy accepts fetches only (Q66) | a draft, through ostra's MCP tools (Q67) | **done** when a member accepts the draft |
+| **code** | a ticket or a prompt | change any of the project's repos and push the task's branches and its hidden ref (Q29, Q41) | the PR text, through ostra's MCP tools; one PR per changed repo | **merged** when its last PR merges |
+| **review** | a code task's PR (later, a PR people wrote: F-123) | read the PR's head, read-only (Q71) | findings, through ostra's MCP tools | **done** when its findings are posted |
+
+The onboarding task is a code task from a built-in template, not a fourth kind (Q49).
 
 ## A task's lifecycle
+
+A task's state is a discriminated union per kind (Q64). Every kind shares the first six states.
+
+### Every kind
 
 ```
  awaiting approval ─┐   (tasks from outside ostra, F-040)
                     ▼
- ──▶ queued ──▶ preparing ──▶ running ──▶ in review ──▶ merged
-                                │  ▲         │   ▲        │
-                                ▼  │         │   │        │ reopen: new branch (F-066)
-                             needs you ◀─────┘   │        ▼
-                                │                │      queued …
-                                └── reopen ──────┘
+ ──▶ queued ──▶ preparing ──▶ running ──▶ the kind's own states (below)
+                   │            │  ▲
+                   ▼            ▼  │
+                needs you ◀─────┘  │
+                   │               │
+                   └── answer, steer or reopen ──▶ queued …
                   any state ──▶ stopped (by a member; can be reopened)
 ```
 
 | State | Means | Leaves when |
 |---|---|---|
 | **awaiting approval** | Started by someone outside ostra; nothing runs yet (F-040) | A member approves it (→ queued) or rejects it (→ stopped) |
-| **queued** | Waiting for a runner with capacity, ordered by ticket priority (F-067, F-069) | A runner takes it (→ preparing) |
-| **preparing** | The runner is creating or restoring the workspace and running the environment's setup (F-016, F-050) | Setup succeeds (→ running) or fails (→ needs you) |
-| **running** | A session is active | The session ends with changes (→ in review, through checks and the PR), or anything in the "needs you" list below happens |
-| **needs you** | A person has to act (below) | A member answers, approves, steers or reopens (→ queued or running), or stops it |
-| **in review** | The PR is open and no session runs | A member reopens it, writes `@ostra`, uses Update branch or comments on the diff (→ queued); the PR merges (→ merged) or closes (→ stopped) |
-| **merged** | The PR is merged | Reopening starts a fresh branch and a new PR (→ queued, F-066) |
-| **stopped** | A member stopped it, or the PR closed unmerged | Reopening (→ queued) |
+| **queued** | Waiting for a place to run: a runner in one of the project's pools, by labels, box size and free capacity, within the project's cap on that pool and its budget. Or the member's own personal runner, when they chose it. Ordered by ticket priority (Q4, Q32, Q43, Q105, F-067, F-069) | A runner takes it (→ preparing) |
+| **preparing** | The executor is creating the box from the snapshot, starting its services, checking out the task's branches and restoring the session (F-016, F-050, F-051, F-094) | The box is ready (→ running), or setup fails (→ needs you) |
+| **running** | A session is active | The session ends with what the kind hands in (→ the kind's states), or anything in the "needs you" list below happens |
+| **needs you** | A person has to act (below) | A member answers, approves, steers or reopens (→ queued, or → running while the box is still warm), or stops it |
+| **stopped** | A member stopped it, or the task's work was closed without merging | Reopening (→ queued) |
 
-**A task needs you when** (each case is a needs-you item):
+A task that is queued after a stop or a long wait almost always lands on a fresh box. That's the normal path, not the exception (Q42, Q53, F-033).
+
+### Code tasks
+
+```
+ running ──▶ in review ──▶ merged ── reopen ──▶ queued …   (a fresh branch in each repo whose PR merged, F-066)
+               │
+               ├──▶ needs you   (a round cap or the spend cap is reached)
+               ├──▶ queued      (reopen, @ostra, Update branch, a diff comment, a "changes requested" review)
+               └──▶ stopped     (every open PR closed unmerged)
+```
+
+**In review** holds while any of the task's PRs is open (Q29). Its sub-state says what it's waiting on:
+
+```
+ CI running ── fails ──▶ fixing CI ── pushed ──▶ CI running
+     │ passes
+     ▼
+ AI review ── blocking findings ──▶ fixing findings ── pushed ──▶ CI running
+     │ no blocking findings, or AI review is off for the project
+     ▼
+ waiting for a reviewer
+```
+
+| Sub-state | Means | Leaves when |
+|---|---|---|
+| **CI running** | The code host's CI runs on the task's PRs | It passes (→ AI review) or fails (→ fixing CI) |
+| **fixing CI** | The coding agent has the failing checks and their logs, for at most 2 rounds *(working value)* (Q12, F-035) | It pushes (→ CI running), or the cap is reached (→ needs you) |
+| **AI review** | The linked review task reads the PR's head (Q71, F-100) | Its findings are posted: blocking ones (→ fixing findings), none (→ waiting for a reviewer) |
+| **fixing findings** | The coding agent has the blocking findings, for at most 2 rounds *(working value)*. Nits are only listed (Q72, F-101) | It pushes (→ CI running), or the cap is reached (→ needs you) |
+| **waiting for a reviewer** | The PRs are green and reviewed by the agent. A reviewer has it under "needs you" (Q73, F-102) | A "changes requested" review (→ queued, F-105), the last PR merges (→ merged) |
+
+In the two fixing sub-states a session runs in a box, and the task stays in review because its PRs stay open. Together, the CI and AI review rounds give a task at most 4 automatic turns *(working value)* before a person has to act. Every automatic turn also stops at the task's spend cap, and waits while its budget is full (Q72, Q105, ADR 0041, ADR 0042).
+
+| State | Means | Leaves when |
+|---|---|---|
+| **in review** | At least one PR is open. The sub-state above says what it waits on | As the diagram shows |
+| **merged** | The task's last open PR merged | Reopening (→ queued). A repo whose PR merged gets a fresh branch and a new PR (F-066) |
+
+### Refine and review tasks
+
+```
+ refine:  running ──▶ needs you (the draft is handed in) ── a member accepts it ──▶ done ── reopen ──▶ queued …
+ review:  running ──▶ done (the findings are posted) ── the next round ──▶ queued …
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **done** | Refine: a member accepted the draft, with "Update ticket" or "Mark ready" (Q67). Review: ostra posted the findings to GitHub as a comment-type review with line comments. The review agent never approves and never requests changes (Q71) | Reopening (→ queued). For a review task, the code task's next round of review reopens it on the new head |
+
+### When a task needs you
+
+Each case is a needs-you item:
 - the agent asks a question or wants an approval (F-026)
 - the agent proposes a plan, under plan-first (F-063)
 - a session ends without changes (F-065)
-- a session times out or stalls (F-068)
-- a session or the environment setup crashes (F-047)
+- a session times out, stalls or reaches the task's spend cap (F-068)
+- a session, the box or the environment's setup crashes (F-047)
 - the ticket was closed or cancelled while the task ran (F-066)
+- a refine task hands in its draft (Q67)
+- a fixing round reaches its cap (Q12, Q72)
+- a code task's PRs wait for a reviewer (Q73)
+- an onboarding task proposes a corrected environment, for a project admin to accept (Q49)
+
+A turn that waits on a person follows the box's idle timer: after 15 minutes *(working value)* the turn is cancelled and the box stops. The needs-you item stays open, and answering it reopens the task with the decision (Q42).
+
+**Each item has an audience** (Q73, F-036):
+
+| Audience | Gets |
+|---|---|
+| **the driver** | the task's questions, approvals, plans, drafts, stops and crashes, while the task has a driver |
+| **the reviewer** | a code task waiting for a reviewer. The reviewer comes from the PR's requested reviewers or CODEOWNERS, matched to members by their linked GitHub account (Q73) |
+| **the members of the project** | items on a task with no driver, such as one an automation or someone outside ostra started, and environment proposals |
+
+Any member who can open the project may answer an approval, whoever its audience is. The first answer wins, and it's an audit entry.
 
 ## A session's lifecycle
 
 ```
  starting ──▶ running ⇄ waiting (on a needs-you item)
+                │  ▲
+                ▼  │
+               idle (the turn is over; the box stays warm)
                 │
-                ├──▶ ended (with changes | without changes)
-                ├──▶ stopped (by a member, or by runaway protection)
-                └──▶ crashed (the agent or runner died; the workspace stays)
+                ├──▶ ended (the box stopped: with changes | without changes)
+                ├──▶ stopped (by a member, by runaway protection, or at the spend cap)
+                └──▶ crashed (the agent, the sidecar or the box died; the branches, hidden ref and archive stay)
 ```
 
-Only one session per task is starting, running or waiting at any time.
+Only one session per task is starting, running, waiting or idle at any time.
+
+**A session records how it began** (Q53, ADR 0006, ADR 0039):
+
+| Origin | When | From |
+|---|---|---|
+| **new** | the task's first session | the ticket or the prompt |
+| **resumed** | the task's stopped box is still kept, on `docker` | the agent's own session, in place |
+| **restored** | a fresh box: the normal case once boxes stop after 15 idle minutes (F-033) | the session archive and the hidden ref |
+| **rebuilt** | the archive can't be restored | a fixed template: the ticket, the PRs' text, every member message, the agent's last message and the branches' log. ostra calls no model to write it |
+
+## A box's lifecycle
+
+```
+ creating ──▶ preparing ──▶ ready ⇄ idle ──▶ stopped ──▶ released
+     │            │           │       │
+     └────────────┴───────────┴───────┴──▶ failed
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **creating** | The executor is creating the box's containers (`docker`) or pod (`kubernetes`). An autoscaled pool reports "waiting for a node" here, so the dispatch doesn't time out | The containers run (→ preparing) |
+| **preparing** | The box pulls the snapshot, starts its services, checks out the branches and restores the session. The sidecar connects to the server with its task token | It's ready (→ ready), or setup fails (→ failed) |
+| **ready** | A session runs a turn, or one can start at once | The turn ends (→ idle) |
+| **idle** | No turn is running. The hidden ref and the archive were saved when the last turn ended | A new turn starts (→ ready), or 15 minutes pass *(working value)* (→ stopped) (Q42) |
+| **stopped** | The containers are stopped. On `docker` the box is kept until its host needs the space, so the next turn can resume in place | The task's next session resumes it (→ ready), or the host needs the space (→ released). On `kubernetes` the pod is deleted at once (→ released) |
+| **released** | The box is gone and its lease has ended (F-079) | Never: a box is never reused |
+| **failed** | Creating or preparing failed, or the box was lost with its host | Never. The task reopens on a fresh box (F-045, F-047) |
+
+The `host` executor has no box. Its worktree goes through the same states, so a task behaves the same on every executor. It starts no services and has no box sizes: the two differences ADR 0029 records.
+
+## A runner's lifecycle
+
+```
+ joining ──▶ online ⇄ offline
+    │          │
+    │          ▼
+    │       draining ──▶ revoked
+    └─────────────────▶ revoked (rejected)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **joining** | A pool runner has traded its join token for its own identity, a key pair whose private half never leaves it. A personal runner is signing in with a device code. A pool that requires it waits here for an admin to approve (Q48, Q94). The runner is pinned to its server's version (F-061) | It's accepted (→ online), or rejected (→ revoked) |
+| **online** | Connected, and takes dispatches up to its capacity | The connection drops (→ offline), or an admin drains it (→ draining) |
+| **offline** | Not connected. On `docker` and `kubernetes` its boxes keep working, because each sidecar connects on its own (Q38). Leases that outlive the grace period end, and their writes are refused (F-045) | It reconnects (→ online) |
+| **draining** | Takes no new tasks. Its running tasks finish | An admin revokes it (→ revoked) |
+| **revoked** | Its identity is revoked, and it can't connect again. Each runner is revoked on its own; rotating a join token disconnects no runner that already joined (Q94) | Never |
+
+## A snapshot's lifecycle
+
+```
+ queued ──▶ building ──▶ ready ──▶ replaced
+              │
+              └──▶ failed
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **queued** | A rebuild is due: the environment changed, a lockfile changed on a default branch, or a default branch moved since last night (Q39) | A runner takes the build (→ building) |
+| **building** | A runner builds the image: a `docker` runner itself, a `kubernetes` pool in a rootless BuildKit pod. Setup secrets are mounted for the build only (Q39, Q95) | The image is pushed and checked (→ ready), or the build fails (→ failed) |
+| **ready** | New boxes of the project start from it | A newer snapshot is ready (→ replaced) |
+| **replaced** | A newer snapshot took its place. Boxes that already started from it keep it | Never |
+| **failed** | The build failed, or a setup secret's value was found in the image (Q39) | Never. The previous ready snapshot stays in use |
+
+## An approval's lifecycle
+
+```
+ open ──┬──▶ answered (once | for this task | deny)
+        ├──▶ answered by a rule
+        └──▶ closed (cancelled | expired)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **open** | The agent asked, and the turn waits. It's a needs-you item | A member answers (→ answered), a rule answers (→ answered by a rule), or the turn ends without an answer (→ closed) |
+| **answered** | A member answered: once, for this task, or deny. "For this task" adds an ostra rule to the task; the agent is always answered "once" (F-026) | Never |
+| **answered by a rule** | A rule in the agent profile, or one added to the task, answered without a person | Never |
+| **closed** | **cancelled:** the turn was interrupted or the task stopped. **expired:** the turn waited 15 minutes and was cancelled. The needs-you item stays open, and an answer then reopens the task with the decision (Q42) | Never |
+
+## A proposal's lifecycle
+
+```
+ proposed ──┬──▶ approved
+            ├──▶ rejected
+            └──▶ merged into another note
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **proposed** | An agent called the "propose a note" tool while it worked, or a member used "Remember this" on a review comment or a finding (Q87). It was scanned for secrets (Q88). A proposal that contradicts an existing note is shown beside it | A member approves it (→ approved), rejects it (→ rejected), or merges it into the note it overlaps (→ merged into another note) |
+| **approved** | It became a memory note. Agents see it from their next session (Q86) | Never |
+| **rejected** | No agent ever sees it | Never |
+| **merged into another note** | Its content went into an existing note | Never |
+
+## Events and their two numbers
+
+Every event carries two numbers (ADR 0011, ADR 0035):
+
+- **The session number.** The sidecar, or the runner on `host`, numbers events per session as it spools them. A replayed event has a number the server already holds, so saving is idempotent.
+- **The task number.** The server numbers events per task as it saves them. It's the cursor a browser resumes from after a reload or a dropped connection.
+
+Text the agent is still writing isn't an event. It reaches browsers at most every 250 ms, is never saved, and nothing acts on it (Q23).
 
 ## Rules that always hold
 
-- **One team.** Every record belongs to one team, and no query crosses teams (ADR 0010).
-- **One ticket, one repo.** A ticket that needs two repos becomes two linked tasks (F-007). A ticket with sub-issues becomes one task per sub-issue (F-077).
+- **One organization.** Every record belongs to one organization, and records inside a project also carry the project. No query crosses organizations. A restricted project's records are visible only to its members and the organization's admins (ADR 0026, F-003, F-049).
+- **One ticket, one active code task per project.** A ticket with sub-issues still becomes one task per sub-issue (F-077). Variants, later, are the one exception (Q14).
 - **One driver.** At most one member drives a task at a time. Taking over is a recorded event (F-024, F-073).
 - **One active session per task**, as above.
-- **The branch is the task's.** It's named from the ticket, and only the task's sessions push to it (F-016).
-- **Saved before acted on.** Every event, state change and outside call is written down first. A restart picks up from what's written (ADR 0011).
-- **Rebuildable.** A task can always be rebuilt from its branch and its stored history. That's why workspaces can be cleaned up (ADR 0006, F-079).
+- **The branches are the task's.** The git proxy enforces it: only the task's sessions can push to them, and a refine or review task can't push at all (Q26, Q66, F-090).
+- **A box serves one task** and is never reused for another (Q38).
+- **No credential in the agent's container.** Model keys and GitHub tokens stay in the sidecar. The agent holds a fake key valid for one task (Q17, Q26, ADR 0030, F-089).
+- **Saved before acted on.** Every event, state change and outside call is written down first. A restart picks up from what's written. Partial text is the one thing shown without being saved, and nothing acts on it (ADR 0011, Q23).
+- **Rebuildable.** A task can always be rebuilt from its branches, its hidden ref, its session archive and its stored history. That's why boxes can be thrown away (ADR 0006, F-079).
+- **Nothing reaches the tracker or memory from an agent without a person.** Drafts and proposals wait for a member (Q67, Q86).
+- **Nothing automatic runs without a limit.** Every loop has a cap of rounds, a spend cap and a budget above it (Q72, Q105).
 - **The tracker owns the ticket, and the code host owns the PR.** ostra keeps references and caches. Drift is fixed by regular checks (F-044).
-- **Branded IDs.** `TeamId`, `TaskId`, `SessionId`, `RunnerId`, `TicketKey` and the rest are distinct types (`AGENTS.md`).
+- **Branded IDs.** `OrganizationId`, `ProjectId`, `TaskId`, `SessionId`, `RunnerId`, `PoolId`, `BoxId`, `ProviderId`, `NoteId`, `TicketKey` and the rest are distinct types (`AGENTS.md`).
+
+## What changed on 2026-11-18
+
+The eight changes of section 4.5 of the answers, for tracing:
+
+1. **Organization replaces Team** as the owner of every record. Records inside a project also carry the project (Q28, Q30, Q102, ADR 0026).
+2. **The environment moves** from the repo to the project. Its secrets, variables and files each name one repo (Q33, Q16, F-050).
+3. **A task gains a kind and a source.** "Task repo" replaces the task's single repo, branch and PR. A review task links to the code task it reviews (Q29, Q31, Q64, Q71, ADR 0027, ADR 0028).
+4. **A task's lifecycle is a discriminated union per kind,** with code's "in review" sub-states (Q12, Q64, Q72).
+5. **A session records how it began** (Q53).
+6. **Box, runner, snapshot, approval and proposal** gain lifecycles of their own (Q38, Q39, Q42, Q48, Q86, Q94).
+7. **Events get two numbers** (Q23).
+8. **Needs-you items gain an audience** (Q73, F-036).

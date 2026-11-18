@@ -1,58 +1,224 @@
 # v1 build order
 
-**Status:** agreed (2026-11-17), with the plan's sign-off. Each milestone ends in something a team could actually use, and builds only on what's already done. Feature IDs come from `features.md`, and every v1 row appears below exactly once, or once per milestone that grows it.
+**Status:** agreed (2026-11-18, from the delegated answers in `history/answers-2026-11-18.md`). It replaces the order agreed on 2026-11-17, which assumed Claude Code on a subscription login and one repo per task. Each milestone ends in something people could actually use, and builds only on what's already done. Feature IDs come from `features.md`, and every v1 row appears below exactly once, or once per milestone that grows it.
 
 ## Built in from the first milestone
 
 These aren't a milestone of their own. Every milestone is built on them, and they're checked at each milestone's end:
 
-- **Team-scoped data** (ADR 0010). It's the model from the first migration, even with one team.
-- **The event log and the durable queue** (ADR 0011, ADR 0017). Nothing is acted on before it's saved.
+- **Organization-scoped data**, with the project on every project record (ADR 0026). It's the model from the first migration, even with one organization and one project.
+- **The task kind, and the task's repos** (the "task repo" record), in the schema before refine tasks, review tasks and several repos ship (ADR 0027, ADR 0028).
+- **The event log and the durable queue** (ADR 0011, ADR 0035, ADR 0017, ADR 0037). Nothing is acted on before it's saved.
+- **No credential in the agent's container** (ADR 0030).
+- **ACP as the only way to talk to an agent** (ADR 0018, ADR 0032).
 - **Strict typing end to end** (`AGENTS.md`).
 - **Dark first, responsive, English text in message files:** F-082, F-075 and F-083.
-- **ACP as the only way to talk to an agent** (ADR 0018).
 
 ## Milestones
 
 | # | Milestone | Features | Ends with |
 |---|---|---|---|
-| 0 | Spikes | None. Six throwaway experiments (below), whose findings go into `research/` | Every assumption the plan rests on has been tried for real |
-| 1 | First PR | F-001 one-command install · F-076 setup in the panel (first version) · F-006 GitHub App · F-005 Linear, plain API · F-007 boards and repos · F-010 ticket inbox · F-064 ticket context · F-013 runner (built-in only) · F-016 workspace per task · F-050 environments · F-018 Claude Code · F-023 live activity · F-025 stop · F-030 open the PR · F-078 repo conventions · F-065 no empty PRs · F-031 ticket sync | An admin installs ostra on one machine, connects GitHub and Linear, and picks a ticket. They watch Claude Code work live and get a PR linked on the ticket |
-| 2 | Robust core | F-043 nothing is lost · F-044 drift gets fixed · F-045 runners can drop out · F-046 no duplicates · F-047 crashes don't kill tasks · F-048 failure tests · F-068 runaway protection · F-060 protected default branch · F-055 signed-commit repos · F-079 cleanup and retention | The failure suite passes: kill the runner, drop webhooks, restart the server mid-task, and nothing is lost or duplicated. Everything after this is built on a proven core |
-| 3 | Step in and come back | F-021 agent profiles · F-024 steer and take over · F-026 approvals · F-063 plan first · F-062 home ("needs you") · F-036 notifications in the panel and Linear · F-027 diff · F-072 diff comments · F-028 take it local · F-041 `ostra attach` · F-070 update branch · F-054 checks before the PR · F-053 `@ostra` on the PR · F-032 reopen · F-066 after the merge · F-084 usage | A member steers, approves, answers and reviews in the panel, and reopens a task from the panel, from GitHub and from their own terminal, on the same branch and PR |
-| 4 | The team | F-002 team accounts · F-003 roles · F-049 several teams · F-013 runner (sign-in code, reconnect) · F-014 local runners · F-015 remote runners · F-039 runner image · F-069 choosing a runner · F-067 capacity and queue · F-061 runner versions · F-033 reopen anywhere · F-073 audit log · F-080 search | The maintainer's team works one board together, each on their own laptop plus a shared server. Any member picks up anyone's task, on any runner |
-| 5 | From the tracker | F-011 intake rules · F-012 start from Linear (agent mode) · F-040 approval for outside tasks · F-042 private installs · F-077 sub-issues | Anyone in Linear hands a ticket to ostra and follows it there. Rules pick up labelled tickets by themselves, and outside tasks wait for a member's approval |
-| 6 | Launch | F-058 docs site · F-081 keyboard and accessibility · F-085 signed runner downloads · F-076 setup in the panel (complete, measured) · and the final check of F-075, F-082 and F-083 | Public v1. A team new to ostra goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs |
+| 0 | Spikes | None. Ten throwaway experiments (below), whose findings go into `research/` | Every assumption the plan rests on has been tried for real |
+| 1 | First PR, from a prompt | F-001 one-command install · F-076 setup in the panel (first version) · F-002 accounts (the first admin) · F-086 projects (one repo) · F-088 model providers · F-089 key proxy · F-090 git proxy · F-006 GitHub App · F-013 runner (the built-in pool runner, WebSocket) · F-017 a box per task (the `docker` executor) · F-016 workspace per task · F-050 environment · F-112 environment detection · F-019 OpenCode · F-097 prompt tasks · F-023 live activity · F-025 stop · F-030 open the PR · F-078 repo conventions · F-065 no empty PRs | An admin installs ostra on one machine, adds a model provider and the GitHub App, creates a project and types a prompt. They watch OpenCode work in a box and get a PR |
+| 2 | Tickets in, nothing lost | F-005 Linear, plain API · F-007 boards · F-010 ticket inbox · F-064 ticket context · F-031 ticket sync · F-042 private installs · F-043 to F-048 (nothing is lost, drift gets fixed, runners can drop out, no duplicates, agent crashes don't kill tasks, failure tests) · F-068 runaway protection · F-079 cleanup and retention · F-114 blob storage · F-096 idle, stop and release · F-032 reopen · F-033 reopen anywhere · F-055 signed-commit repos · F-060 default-branch warning | A ticket picked from the Inbox becomes a PR linked on the ticket. The failure suite passes: kill the runner, drop webhooks, restart the server mid-task, and nothing is lost or duplicated. A task reopens on a fresh box a day later, with its context |
+| 3 | Step in and come back | F-021 agent profiles · F-024 steer (queue or interrupt) and take over · F-026 approvals · F-063 plan first · F-062 home ("needs you") · F-036 notifications in the panel and Linear · F-115 email notifications · F-027 diff · F-072 diff comments · F-028 take it local, with F-103 `ostra checkout` · F-070 update branch · F-054 checks before the PR · F-051 environment snapshots · F-094 services · F-053 `@ostra` on the PR · F-119 verified GitHub link · F-066 after the merge · F-084 usage | A member steers, approves, answers and comments on the diff. Boxes start from a snapshot with their services. **ostra's own tickets run through ostra from here on** |
+| 4 | The organization | F-002 accounts (invites, resets) · F-003 roles at two levels · F-087 project access · F-049 several organizations · F-073 audit log · F-080 search · F-037 costs and budgets · F-108 Insights · F-109 memory notes · F-110 memory for agents · F-111 memory proposals · F-098 tasks across several repos · F-104 the `ostra/independent-review` check | The maintainer's team works in several projects with their own access. Spend is visible and limited. Projects remember what they learned |
+| 5 | The fleet | F-091 runner pools and join tokens · F-092 fleet view · F-014 personal runners · F-015 pool runners · F-093 `kubernetes` executor · F-120 snapshot registry · F-095 box sizes · F-067 capacity and queue · F-069 choosing a runner · F-061 runner versions · F-039 three images · F-116 egress baseline · F-118 Helm chart · F-117 scale-out and the load test · F-013 runner (the HTTP fallback) | Pools on Docker hosts and on a Kubernetes cluster, plus laptops. Any number of runners join with a token. The load test holds 1,000 tasks |
+| 6 | The whole team, and autonomy | F-011 intake rules · F-106 schedules · F-107 start many at once · F-012 start from Linear (agent mode) · F-040 approval for outside tasks · F-077 sub-issues · F-099 refine tasks · F-100 AI review · F-101 review rounds · F-102 review screen and reviewers · F-035 fix failing CI · F-105 a "changes requested" review reopens the task · F-113 onboarding task | Product people refine tickets. Rules and schedules start tasks. PRs arrive green and already reviewed by an agent, and a reviewer finds them under "needs you". Anyone in Linear hands a ticket to ostra |
+| 7 | The second agent, and launch | **F-018 Claude Code, on keys through the key proxy** · F-058 docs site · F-081 keyboard and accessibility · the final check of F-075, F-082 and F-083 · F-076 setup in the panel (complete, measured) · F-117 the load test as the gate · a security review of the box · publishing (ADR 0045) | Public v1, with two agents. A team new to ostra goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs |
+
+Notes on the order:
+
+- **Two agents at launch.** OpenCode is the default and the only agent from milestone 1 to milestone 6 (ADR 0032). Claude Code ships in milestone 7, before launch, to prove the agent interface with two real agents. It goes through the same ACP driver, on keys through the key proxy, against an endpoint that speaks Anthropic's Messages API. No subscription login is used anywhere (Q45, Q47). Adapter parity (`AGENTS.md`) applies at launch: every feature that touches agents works for both, or the interface declares it an optional capability and each adapter says whether it has it. The scripted fake agent stays in the contract suite. Codex stays after v1 (F-038).
+- **Money before loops.** Budgets and Insights (F-037, F-108) are built in milestone 4, before any loop that spends without a person: the CI loop and the review rounds (F-035, F-101) in milestone 6 (Q105).
+- **Jira is checked from milestone 2.** The tracker contract suite runs against a Jira fake as well as Linear, so the interface isn't shaped only for Linear. The fake models a status graph with transitions, rich text that isn't markdown (ADF) and issue keys that change. Jira itself is the first tracker after v1 (Q104, F-008).
+
+## The v1 cut
+
+The maintainer asked that v1 not shrink the product, and the cut keeps its shape. Three rules decide it:
+
+1. **Every noun in the plan exists in v1,** and is in the first migration where it shapes the data: organization, project, environment, pool, provider, the task kinds, repos per task. Adding a noun later is a rewrite.
+2. **Each noun gets the least depth that works:** one tracker, one code host, two agents (OpenCode, and Claude Code from milestone 7), password sign-in, two roles per level, one model catalog. The exception is executors: `docker`, `host` and `kubernetes` all ship. Adding depth later is one adapter or one setting.
+3. **Anything that spends money or widens access ships with its limit:** loops with caps and budgets, pools with join-token rules, boxes with the egress baseline.
+
+A fourth rule keeps it honest: **the maintainer's team uses it early.** From milestone 3, ostra's own tickets run through ostra (Q101).
+
+This is a large v1: 104 ledger rows against 66. It's shippable because the depth is thin and because nothing in it is a research project. Each hard part has a spike with a pass bar and a named fallback (below).
+
+### In v1
+
+- **The organization:** many organizations per install, accounts with a username or email and a password, invite and reset links, two organization roles, the audit log, search, budgets and Insights.
+- **Projects:** several repos, boards from Linear or none at all, open or restricted access, two project roles.
+- **The environment:** detection, a setup script, variables and secrets per repo, services, checks, snapshots, and the onboarding task that tests it.
+- **Models:** any endpoint with a base URL and a token, in either API format, with the models.dev catalog. Keys never reach the agent, and every call is counted.
+- **Runners:** pools and join tokens, the fleet view, the `docker`, `host` and `kubernetes` executors, a box per task, box sizes, the queue with a cap per project, an egress baseline, personal runners, the HTTP fallback, a Helm chart.
+- **The agents:** OpenCode, then Claude Code on keys, both over ACP through ostra's own driver, with agent profiles, approval rules, plan first, and queue or interrupt.
+- **Tasks:** from a ticket, a prompt, an intake rule, a schedule, Linear's agent mode, or `@ostra` on a PR. Three kinds. Live activity for many viewers, one driver, take over, stop, reopen on any box months later.
+- **Shipping:** checks before the PR, one PR per changed repo, opened by the GitHub App with co-authors, ticket sync, update branch, a new branch after a merge.
+- **Review:** the CI loop, AI review and its fix rounds, the review screen, reviewers, the "changes requested" loop, the independent-review check, `ostra checkout`.
+- **Memory:** notes for organizations and projects, the index and MCP search for agents, and proposals that a member approves.
+- **Robustness:** the six guarantees and their failure suite, runaway protection with a spend cap, cleanup, and the load test at 1,000 tasks.
+- **The rest:** notifications in the panel, on the ticket and by mail; dark first, responsive, keyboard-driven, translatable; the docs site.
+
+### After v1, in this order
+
+1. **Right after:** seeing the running app with screenshots (F-121), Jira (F-008), Codex on keys (F-038), network allowlists (F-052), Slack (F-057), signed runner binaries (F-085).
+2. **Then:** AI review of people's PRs (F-123), prototype mockups (F-122), variants (F-124), memory depth (F-129), SSO and custom roles (F-004), providers that sign requests (F-130), a secret store adapter for a vault (F-133), GitLab (F-009), the public API (F-074).
+3. **Later still:** attach (F-041), a terminal in the browser (F-029), bulk onboarding (F-126), community executors (F-127), workflows (F-125), signed commits (F-056), and the hosted version.
+
+### What slips first if v1 runs long
+
+In this order, and none of them changes the data model:
+
+1. the onboarding task (F-113): detection alone still drafts the environment
+2. schedules (F-106)
+3. refine tasks (F-099): the kind stays in the schema
+4. PRs across several repos (F-098): the schema stays, and v1 would run one repo per task
+5. building snapshots inside Kubernetes: a `docker` runner would build them for the cluster
+
+What never slips: the organization and project model, the box with its sidecar, the failure suite, and budgets before any loop.
 
 ## Milestone 0: spikes
 
-Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes into `research/`:
+Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes into `research/`. No spike assumes a model provider, and none uses a subscription login. Each reads its endpoint from `~/.config/ostra-dev/model.env`: a base URL, a token and a model ID (Q106). Claude Code isn't spiked: it arrives in milestone 7 (F-018), and spike 1's cases and the agent contract suite are the bar it has to meet.
 
-1. **Claude Code through ACP** (ADR 0018). Start, stream, steer mid-turn, interrupt, and resume through `claude-agent-acp`, on the maintainer's own Claude Code login, with no API key. An approval that waits for hours.
-2. **Moving a session** (ADR 0006). Archive a Claude Code session on one machine and restore it on another (step 2). Rebuild from ticket, summary and branch, and judge how well that works (step 3).
-3. **Linear agent mode** (ADR 0013). A test workspace through a tunnel: the 5-second and 10-second deadlines, delegation, stop and follow-up.
-4. **GitHub App** (`research/platform-auth-github.md`). The manifest flow from a local server, and one-repo push tokens handed to a runner through a git credential helper.
-5. **The runner** (ADR 0023). As an npm package on Node and as a Bun-compiled binary, on Windows, macOS and Linux: spawning `claude-agent-acp` and reconnecting to a server.
-6. **The durable queue** (ADR 0017). Compare Postgres-backed queue libraries, then ask the maintainer before adding one.
+1. **`how-should-the-runner-drive-opencode`** (6 days)
+   - **Question:** can ostra's own driver, on the official ACP SDK, run OpenCode for real work through the key proxy, on any endpoint?
+   - **Tests the decisions:** Q11, Q45, Q51, Q52, Q103.
+   - **Passes when:**
+     - Cases T1, T3–T11, T13, T14 and T16 of the test list in `research/rivet.md` pass on Linux in a container, on Windows 11 without WSL, and on macOS.
+     - A 20-minute turn ends cleanly. A question reaches the driver, and its answer reaches the model. A cancel returns within 5 s and leaves no process behind.
+     - A turn completes against the endpoint in `model.env`, and against a local stub in each of the two API formats.
+     - The agent's environment holds only the fake key, and the proxy's token count is within 2% of what the endpoint reports.
+     - Recorded: events per minute, and whether OpenCode's own HTTP API can steer mid-turn.
+   - **If it fails:** try OpenCode's HTTP API for the capability that failed. If that fails too, the choice of default agent is reopened.
+
+2. **`can-a-session-move-to-a-fresh-box`** (4 days)
+   - **Question:** can a task carry on in a new box, with its context and its unfinished work?
+   - **Tests the decisions:** Q42, Q53, Q99. F-033 rests on it.
+   - **Passes when:**
+     - After export, upload, a fresh container, import and `session/load`, the agent answers 5 of 5 questions about earlier turns and finishes an edit it was interrupted in.
+     - Uncommitted and untracked files come back from the hidden ref. GitHub accepts that ref and starts no CI for it.
+     - It still works after OpenCode's patch version changes.
+     - A 200-turn session restores in under 30 s *(working value)*. The archive's size is recorded.
+     - The rebuild template alone gets at least 4 of 5.
+   - **If it fails:** pin another OpenCode version, or make the rebuild template the normal path and say so in F-033.
+
+3. **`what-is-inside-a-box`** (7 days)
+   - **Question:** does the box (agent container, sidecar, services) hold on Docker and on Kubernetes?
+   - **Tests the decisions:** Q26, Q27, Q38, Q95, Q96.
+   - **Passes when:**
+     - From a shell in the agent's container, none of these works: reading a model key or a GitHub token from the environment, the process list, files or the network; answering its own approval; reaching a private address, the metadata address or another box.
+     - The bridge between sidecar and agent carries a 20-minute turn, and stopping a task leaves no process.
+     - A box is ready in under 10 s on Docker with the image present, and under 60 s on a warm Kubernetes node *(working values)*. 50 boxes run on one host. The sidecar stays under 100 MB.
+     - A snapshot builds from a generated Dockerfile on both. A setup secret isn't found in any layer. A database service is reachable from the agent's container.
+     - The same checks pass with gVisor as the runtime.
+   - **If it fails:** one container per box, with the runner as a separate OS user (Q27 as first written).
+
+4. **`github-app-and-git-proxy`** (5 days)
+   - **Question:** can the App and the git proxy carry all of a task's work on GitHub?
+   - **Tests the decisions:** Q26, Q41, Q55.
+   - **Passes when:**
+     - The manifest flow creates the App from a local server, with the permissions v1 needs, `checks: write` among them.
+     - Through the proxy, stock git clones, fetches and pushes the task's branch. A push to the default branch, a delete and a push to another repo are refused before a byte reaches GitHub. The token never appears in the agent's container.
+     - LFS, a shallow clone and a 500 MB pack work, or their limits are written down.
+     - A PR the App opened with a co-author trailer shows the member as co-author. The App can post a comment-type review with line comments on its own PR. A check run flips when someone approves.
+     - Linear's GitHub integration links a PR the App opened.
+   - **If it fails:** the sidecar pushes from its own clean clone instead of proxying.
+
+5. **`linear-agent-mode`** (4 days)
+   - **Question:** can the server alone meet Linear's agent deadlines from a self-hosted install?
+   - **Tests the decisions:** ADR 0013, Q25. F-012 rests on it.
+   - **Passes when:**
+     - The app installs from a manifest link, as its own workspace user.
+     - Across 50 delegations, the webhook is answered in under 5 s and the first activity lands in under 10 s, with no runner involved.
+     - Stop and follow-up arrive. A silent turn of 35 minutes stays alive.
+     - `@linear/sdk` typechecks under ostra's strict flags and adds under 20 s to `tsc` *(working value)*.
+   - **If it fails:** agent mode (F-012) moves after v1. The plain API stays.
+
+6. **`runner-transport`** (6 days)
+   - **Question:** does the protocol lose nothing, through real networks, at the scale floor?
+   - **Tests the decisions:** ADR 0034 and `research/runner-transport.md`, Q18. F-045 and F-061 rest on it.
+   - **Passes when** (on Node only, on Windows, macOS and Linux):
+     - Through a CONNECT proxy, a TLS-inspecting proxy and nginx's defaults, the runner connects, or falls back to HTTP by itself within 30 s.
+     - After `kill -9`, and after network cuts of 30 s, 5 min and 11 min, every event is stored exactly once. After 11 min the task stops cleanly and stale writes are refused.
+     - With two core replicas, a steer reaches the runner in under 500 ms at p99, and in under 2.5 s with notifications off.
+     - One replica holds 2,000 connections. Three replicas and one Postgres carry 1,000 sessions at the event rates spike 1 recorded.
+     - A runner one minor older or newer works, or is refused with a clear message.
+     - A laptop that sleeps through the grace period can't write afterwards.
+   - **If it fails:** batch harder first. Then weigh another WebSocket server.
+
+7. **`live-stream-and-task-view`** (6 days)
+   - **Question:** can a task page on the AI SDK's types and assistant-ui show a real session live to two viewers, from ostra's own stream?
+   - **Tests the decisions:** Q23, Q50, Q18.
+   - **Passes when:**
+     - 5,000 events a second sustained and a burst of 10,000, at p99 under 500 ms from runner to browser, with Postgres under 50% of 4 vCPU.
+     - Every kind of event in the recorded sessions renders, and nothing is dropped silently.
+     - A reload shows the partial text again within 1 s. A 10 s network drop leaves no gap and no duplicate.
+     - A watcher can't send, in the UI or by calling the API. When two members answer one approval, one wins.
+     - 5,000 events render in under 1.5 s.
+     - Strict typecheck and lint pass with only documented suppressions. The page calls no third party.
+   - **If it fails:** if assistant-ui fails, render with AI Elements. If live text fails, carry it in the notification. If fan-out fails, evaluate Centrifugo, as `research/live-sync.md` suggests.
+
+8. **`durable-queue-choice`** (3 days)
+   - **Question:** does pg-boss cover ostra's background work?
+   - **Tests the decisions:** Q24, ADR 0037.
+   - **Passes when:**
+     - A job enqueued inside a Prisma 7 transaction exists only if the transaction commits.
+     - `kill -9` on one of two replicas mid-job: the job resumes on the other, and a fake GitHub that counts idempotency keys sees no duplicate.
+     - A limit of 2 per key holds across three replicas for 1,000 jobs on 20 keys. Any brief overshoot is recorded.
+     - 200 schedules created at runtime each fire once per tick while replicas restart.
+     - Delayed jobs survive a restart and can be cancelled.
+     - The panel process enqueues without running workers.
+     - It compiles under ostra's strict flags.
+   - **If it fails:** run the failed scenario on DBOS and compare.
+
+9. **`auth-foundation`** (2 days)
+   - **Question:** does better-auth give ostra organizations, usernames and runner sign-in on its stack?
+   - **Tests the decisions:** Q35, Q54, Q102, ADR 0026.
+   - **Passes when:**
+     - With Prisma 7 on Postgres: sign up, sign in by username and by email, two organizations with one member in both, an invite link with no mail server, an admin's reset link, and a device-code sign-in for a personal runner.
+     - A member of one organization can't read the other's rows.
+     - Strict typecheck passes, the version is pinned exactly, and a contract test (sign up, session, role) is green.
+   - **If it fails:** sign in by email only, or ostra keeps its own invitations.
+
+10. **`is-opencode-good-enough`** (4 days)
+    - **Question:** does OpenCode, on an ordinary model, turn realistic tickets into PRs a reviewer would merge?
+    - **Tests the decisions:** Q45, Q46.
+    - **Passes when:**
+      - 10 tickets (3 bug fixes, 3 small features, 2 refactors, 2 that add tests), three runs each, on the model in `model.env`.
+      - Rated blind: at least half are "merge as it is" or "merge with small edits" *(working value)*.
+      - Recorded per run: spend from the proxy, time, turns, approvals and events.
+    - **If it fails:** repeat on a second model. If both miss the bar, compare agents before milestone 1 builds further on OpenCode.
+
+**Order.** Spikes 1, 2 and 3 run in sequence, because each builds on the one before. Spikes 4 to 9 are independent and can run beside them. Spike 10 runs last, on what 1 to 4 built. That's about 47 working days in a row, and fewer in parallel.
+
+**What happened to the first six.** The old spike 1 (Claude Code through ACP, on a subscription login) is spike 1 with OpenCode, on keys. Claude Code on keys moves to milestone 7 and isn't spiked. The old 2 is spike 2. The old 3 is spike 5. The old 4 is spike 4, with the git proxy in place of a credential helper. The old 5 (the runner on Node and Bun) is spikes 3 and 6, without Bun. The old 6 is spike 8, with the order of the two libraries reversed. Spikes 7, 9 and 10 are new. The sync-engine spike, the hosted-sandbox spike and the Rivet arm are dropped.
 
 ## Outside the code (long lead times)
 
+Secrets for development live in `~/.config/ostra-dev/`, never in the repo.
+
 | What | Needed for | Status |
 |---|---|---|
-| A Linear workspace for development and tests | Milestone 0 | The maintainer will provide access |
-| A GitHub org with test repos, and the public ostra repo | Milestone 0 | Not started |
-| An Anthropic API key, for shared remote runners and CI test runs (ADR 0014). The spikes use the maintainer's own Claude Code login, which Anthropic's terms allow on their own machine | Milestone 4 | Not needed yet |
-| A public HTTPS address for the dev server (a tunnel) | Milestone 0 (spike 3) | Not started |
-| The name, checked 2026-11-17. **Taken:** npm `ostra` (abandoned since 2023), GitHub `ostra` (a personal account), ostra.dev, ostra.ai, ostra.app (a board game) and ostrahq.com. **Free:** npm `ostra-runner`, GitHub `ostrahq` and `getostra`, and getostra.com. **To confirm at a registrar:** ostra.sh, ostra.so and ostra.io showed no record | Before the repo goes public | Open |
-| Signing the runner binary: an Apple Developer Program membership and a Windows code-signing certificate (ADR 0023) | Milestone 6 | Agreed; not started |
+| A GitHub org used only as a sandbox. It holds the test repos and the test GitHub App, so no real repo is ever touched. The public ostra repo is separate | Spikes 2, 3, 4 and 10, and every end-to-end test after them | For the maintainer to create |
+| A Linear workspace for tests | Spikes 5 and 10 | The maintainer will set it up |
+| `~/.config/ostra-dev/model.env`: any base URL, token and model ID | Spikes 1, 2, 3, 7 and 10 | For the maintainer to fill in |
+| An endpoint that speaks Anthropic's Messages API, from any provider or gateway that serves it, for Claude Code (F-018). `model.env` may already serve it. If its endpoint speaks only the other API format, a second endpoint is needed | Milestone 7 | Not needed yet |
+| A public HTTPS address for the dev server (any tunnel or reverse proxy) | Spike 5, and the webhooks in spike 4 | For the maintainer to choose |
+| A Linux machine with Docker, for gVisor and a small Kubernetes cluster | Spikes 3 and 6 | Any machine or VM |
+| Any container registry the test cluster can pull from | Spike 3 | Any registry will do |
+| A free name for the CLI's npm package, and a namespace for the images (Q80, Q82) | Milestone 7 | For the maintainer to check and register |
+| The name check of 2026-11-17. **Taken:** npm `ostra` (abandoned since 2023), GitHub `ostra` (a personal account), ostra.dev, ostra.ai, ostra.app (a board game) and ostrahq.com. **Free:** GitHub `ostrahq` and `getostra`, and getostra.com. npm `ostra-runner` was free too, but ADR 0046 retired that name, so it isn't a candidate for the CLI's package. **To confirm at a registrar:** ostra.sh, ostra.so and ostra.io showed no record | Milestone 7 | Recorded; confirm before registering |
+| Signing certificates for runner binaries: an Apple Developer Program membership and a Windows code-signing certificate (F-085) | After v1 | Not needed for v1: signed binaries are dropped from the v1 list |
 
 ## How each milestone runs
 
 1. The milestone's panel screens are designed first, image first, through the `ui-taste` skill against `brand/brief.md`. The approved pictures land in `brand/app-targets/`.
-2. A spec in `specs/<milestone>/spec.md` (the `to-spec` skill) names the milestone's feature IDs. Its test seams and schema changes are agreed before building.
+2. A spec in `context/specs/<slug>/spec.md` (the `to-spec` skill) names the milestone's feature IDs. Its test seams and schema changes are agreed before building.
 3. Tickets come from the spec (the `to-tickets` skill), each with its blocking edges.
 4. The milestone ends with a demo against the test workspaces. Every feature it finished is set to `done` in the ledger in the same commit.
 
 ## ostra builds ostra
 
-Once the maintainer provides Linear access, ostra's own tickets move from `specs/` into a Linear workspace. From milestone 3 on, ostra's development runs through ostra itself, which makes the maintainer's team its first real users.
+Once the maintainer provides Linear access, ostra's own tickets move from `context/specs/` into a Linear workspace. From milestone 3 on, ostra's development runs through ostra itself, which makes the maintainer's team its first real users (Q101).

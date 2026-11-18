@@ -1,0 +1,72 @@
+# Runner pools, executors and boxes
+
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0012. Settles Q9, Q32, Q38, Q43, Q44, Q48, Q93, Q94, Q97 and Q98 (Q95 and Q96 are in ADR 0038), and round 14's problems 1–10.
+
+The server is the control plane and never runs an agent itself, as ADR 0012 said. A runner is the `ostra` CLI running `ostra runner` on a machine that someone hosts anywhere. It connects out to the server, so it works behind NAT.
+
+**Runners join pools.**
+- A runner pool is a named set of runners in one organization. Each project lists the pools it may use (Q9).
+- A pool runner starts with the pool's join token in `OSTRA_JOIN_TOKEN`. On first contact it trades the token for its own identity, an Ed25519 key pair whose private half never leaves the runner. After that it uses short-lived access tokens (Q94, `research/runner-transport.md` §8).
+- A personal runner signs in with a device code that its member approves in the browser. It runs only that member's tasks, on the `host` executor (Q44, Q94).
+- Each runner can be revoked on its own. Rotating a join token doesn't disconnect runners that already joined.
+- A runner reports its executor, capacity, labels and version (F-013).
+
+**A join token is as sensitive as every secret of every project that may use its pool** (Q48). So:
+- it's shown once, stored hashed, and expires after 30 days by default *(working value)*. An admin can set another lifetime, or none
+- a pool can require an admin to approve each new runner
+- every join is an audit entry and a notification to admins
+
+**Executors.** A runner gives each task its place to run through its executor. An executor is an `ExecutorAdapter`, which runs in the runner under Apache-2.0 (Q98, ADR 0025). v1 ships three, built in this order:
+1. **`docker`:** a box of containers on a private network, with gVisor as an optional runtime.
+2. **`host`:** a worktree on the machine, and no box. Personal runners use it. A pool may use it when an admin opts in, for machines that can't run containers for the job, such as Macs that build iOS apps. The panel labels it "not isolated". On a pool, the agent runs as a separate OS user (Q27).
+3. **`kubernetes`:** a box as one pod. The cluster's own autoscaler supplies the elasticity.
+
+**A box per task** (Q38).
+- A box is the agent's container (the repos and the tools, no credentials), an ostra sidecar (the credentials, both proxies, the ACP driver, the event spool) and the environment's services.
+- On `docker` they share a private network. On `kubernetes` they're one pod.
+- The pool runner only creates and removes boxes. Each box's sidecar connects to the server itself, with a short-lived token for that one task, tied to the task's lease.
+- A box serves one task and is never reused for another.
+- The sidecar is the same `ostra` binary in an internal mode (Q80). On the `host` executor, the runner process does the sidecar's work. So the same task code runs on every executor.
+
+**Dispatch.** A task goes to one of its project's pools, by labels and free capacity. A member may choose their own personal runner when they start a task. An organization's model provider is usable on personal runners only when an admin allows it for that provider (Q32, Q47, ADR 0030).
+
+**Box sizes** (Q43). The organization names the sizes: small (2 vCPU, 4 GB), medium (4, 8) and large (8, 16) *(working values)*. A project picks its default. A pool caps its total and each project's share.
+
+**The two allowed differences of the `host` executor.** `AGENTS.md` requires that every difference between runners is recorded in an ADR. These are the only two:
+1. **No services.** The `host` executor doesn't start an environment's services. The scheduler never sends it a task whose environment declares them (Q40, ADR 0038).
+2. **No box sizes.** It counts slots only (Q43).
+
+**Autoscaled pools.** A pool runner accepts a dispatch at once and reports "waiting for a node" while its box is pending. Otherwise the two-minute offer timeout (`research/runner-transport.md` §4) would fire while the cluster is still adding a node (round 14, problem 10).
+
+**A `kubernetes` pool requires a registry.** A cluster can only pull images from one. For `docker` and `host` the registry stays optional (round 14, problem 4, ADR 0038).
+
+**The Docker socket** (Q97). The `docker` executor needs the Docker socket, which is root on that host.
+- Pool runners belong on dedicated hosts, and the docs recommend rootless Docker or the gVisor runtime.
+- The default compose file mounts the socket into its runner. That's right for a one-machine install, and the docs say so.
+- The `kubernetes` executor needs only its own namespace and a service account scoped to it.
+
+**The egress baseline.** A box can't reach private address ranges, the cloud metadata address or another box (`research/elastic-sandboxes.md`, isolation rule 5). v1 ships it as a network policy on `kubernetes` and as host rules on `docker` (round 14, problem 11, F-116). Allowlists per environment (F-052) come later. ADR 0031 lists it with the other safety lines.
+
+**ADR 0012's rule, reworded.** A runner holds no long-lived credential for code or models. Its identity key is long-lived, and grants only the right to connect and receive the tasks dispatched to it.
+
+## Considered options
+
+- **One runner container that runs many tasks in worktrees** (ADR 0012, ADR 0020). Rejected: a pool serves many projects, and their tasks would share one container with no boundary between them (`research/elastic-sandboxes.md`, isolation rule 6).
+- **The runner inside each box** (round 9). Rejected on its own: something outside the box has to create it on an autoscaled pool.
+- **The runner outside the box, doing all of the task's work** (round 14). Rejected on its own: a pool runner that crashed or upgraded would stop every task it held, and `host` would run different task code. The sidecar keeps both: one program, and the same task code everywhere.
+- **A hosted sandbox vendor, E2B first** (`research/elastic-sandboxes.md`, recommendation 1). Rejected by the maintainer (Q36): people run runners where they want and join with a key. Hosted sandboxes may become community executors later (F-127).
+- **Build `host` first** (Q93). Rejected: the box layout decides the proxies, snapshots and services, so `docker` comes first.
+- **`host` only on laptops** (Q93). Rejected: a pool of Mac minis can only be served by `host`.
+- **A one-time code per runner** (ADR 0012, F-013). Rejected: a join token per pool lets one key start any number of runners. The device code stays for personal runners.
+- **Join tokens that never expire.** Rejected as the default: a leaked token would let a stranger's runner receive a project's code and secrets. GitHub's runner registration tokens expire after an hour (`research/platform-auth-github.md` §1.7).
+
+## Consequences
+
+- Runner parity holds by construction: the same task code runs in every sidecar. The two `host` differences above are the only allowed ones, and any other is a bug.
+- A pool runner that crashes or upgrades doesn't interrupt its tasks, because each box talks to the server itself.
+- New lifecycles, each a discriminated union. A runner is joining (possibly waiting for approval), then online ⇄ offline, then draining, then revoked. A box is creating, preparing, ready ⇄ idle, stopped and released, or failed (ADR 0039).
+- Spike 3 (`what-is-inside-a-box`) proves the layout. A box is ready in under 10 s on Docker with the image present, and in under 60 s on a warm Kubernetes node. 50 boxes run on one host, and the sidecar stays under 100 MB *(working values)*. If it fails, the fallback is one container per box, with the runner as a separate OS user (Q27 as first written).
+- The `kubernetes` executor builds snapshots with a rootless BuildKit pod, which spike 3 also checks.
+- If expiry gets in the way of autoscaled pools, join tokens can be bound to a cluster's identity instead.
+- Pools shared between organizations aren't possible. The hosted version may revisit that.
+- Ledger rows: F-013, F-014, F-015, F-017, F-067, F-069, F-091, F-092, F-093, F-095, F-116 and F-118. The fleet view (Q5) ships with them in milestone 5.

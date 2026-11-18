@@ -1,8 +1,8 @@
 # Reliability guarantees
 
-**Status:** accepted (plan signed off 2026-11-17). The maintainer: connecting GitHub repos and attaching Linear or Jira boards "must be very robust". These six guarantees were accepted in grilling round 2 (2026-11-17), and each is a v1 row in the "Reliability" section of `features.md`.
+**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: guarantee 1 gains one sentence, that partial text is shown, never saved, and nothing acts on it (Q23, ADR 0035). The maintainer: connecting GitHub repos and attaching Linear or Jira boards "must be very robust". These six guarantees were accepted in grilling round 2 (2026-11-17), and each is a v1 row (F-043 to F-048) in the "Reliability and scale" section of `features.md`.
 
-1. **Nothing is lost.** Every ticket event, task change and agent event is saved before ostra acts on it. A server restart picks every task up where it was.
+1. **Nothing is lost.** Every ticket event, task change and agent event is saved before ostra acts on it. A server restart picks every task up where it was. Text an agent is still writing is shown to viewers but never saved, and nothing acts on it.
 2. **Drift gets fixed.** Regular checks against the tracker and GitHub catch anything a missed webhook would have changed.
 3. **Runners can drop out.** A runner that disconnects reconnects and carries on. If it's gone for good, its tasks stop cleanly and can be reopened elsewhere (ADR 0006).
 4. **No duplicates.** Every call to a tracker or code host retries safely. A retry never creates a second PR, comment or status change.

@@ -1,6 +1,6 @@
 # Agent credentials: your own on your machine, the team's keys on shared runners
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 2.
+**Status:** superseded by ADR 0030 (2026-11-18). ADR 0030 replaces it: no model key and no GitHub token ever enters the agent's container, and every runner, a member's laptop included, runs on provider keys through the key proxy in the box's sidecar, with no subscription login used, stored or passed on anywhere (Q17, Q26, Q47). It was accepted with the plan on 2026-11-17, chosen in grilling round 2, and the text below is kept as the historical record.
 
 - **Local runners** use the member's own agent logins.
   - A Claude subscription works only inside Claude Code itself, which Anthropic's terms allow.
