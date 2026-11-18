@@ -118,12 +118,19 @@ export type FakeLinear = {
   readonly tokenUrl: string;
   readonly organizationId: OrganizationId;
   readonly admin: FakePerson;
+  /**
+   * The admin's personal API key. Linear takes it as the raw Authorization header (no "Bearer"). It can read and comment,
+   * but an agent activity posted with it is refused, as in real Linear (403, "unexpected authentication method (apiKey)").
+   */
+  readonly adminApiKey: string;
   readonly rules: FakeRules;
   createAppFromLink: (link: string, deliveryUrl: string) => CreateAppResult;
   setDeliveryUrl: (deliveryUrl: string) => void;
   /** Whether `actor=app` is honoured. Turn it off to model a Linear that hands out a person's token. */
   setHonorActorApp: (honor: boolean) => void;
   authorizations: () => readonly AuthorizationRecord[];
+  /** An OAuth access token for the app user, or for the admin as a person, without going through the install. For tests of a saved token. */
+  mintToken: (kind: "app" | "person") => string;
   appUser: () => { readonly id: AppUserId; readonly name: string } | undefined;
   /** Creates an issue and a session on it, and sends the `created` webhook. Resolves when delivery ends. */
   delegate: (options?: { readonly title?: string; readonly description?: string }) => Promise<{ readonly sessionId: AgentSessionId; readonly delivery: DeliveryRecord }>;
@@ -178,6 +185,8 @@ type SessionRec = {
   readonly creator: FakePerson;
   readonly appUserId: AppUserId;
   readonly createdAtClock: number;
+  /** The comment this session hangs from: a reply to it in the thread is a follow-up (a `prompted` event). */
+  readonly commentId: string;
   createdAtPerf: number;
   readonly activities: ActivityRec[];
   externalUrls: { label: string; url: string }[];
@@ -202,7 +211,7 @@ type App = {
   deliveryUrl: string;
 };
 
-type Principal = { readonly appUserId: AppUserId | null; readonly name: string };
+type Principal = { readonly appUserId: AppUserId | null; readonly name: string; readonly via: "oauth" | "apiKey" };
 
 const readText = (req: IncomingMessage): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -239,6 +248,7 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
 
   const organizationId = OrganizationId.parse(`org-${randomUUID()}`);
   const admin: FakePerson = { id: LinearUserId.parse(`user-${randomUUID()}`), name: "Test Admin", email: "admin@example.test" };
+  const adminApiKey = `lin_api_${randomBytes(24).toString("hex")}`;
 
   let app: App | undefined;
   let appUser: { readonly id: AppUserId; readonly name: string } | undefined;
@@ -325,6 +335,7 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
       creator: admin,
       appUserId: appUser.id,
       createdAtClock: clock.now(),
+      commentId: randomUUID(),
       createdAtPerf: performance.now(),
       activities: [],
       externalUrls: [],
@@ -440,6 +451,10 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
       graphqlError(res, 400, "invalid input", "Entity not found: AgentSession");
       return;
     }
+    if (principal.via === "apiKey") {
+      graphqlError(res, 403, "forbidden", "Using an unexpected authentication method (apiKey) for an operation");
+      return;
+    }
     if (principal.appUserId === null || session.appUserId !== principal.appUserId) {
       graphqlError(res, 403, "forbidden", "An app cannot publish activities to another agent's session");
       return;
@@ -523,6 +538,38 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
     });
   };
 
+  const commentInputSchema = z.object({ issueId: z.string().min(1), body: z.string().min(1), parentId: z.string().min(1).nullish() });
+
+  // A reply to the comment a session hangs from is a follow-up: Linear sends the app a `prompted` event. The webhook goes
+  // out after the mutation is answered, as Linear sends it, so a caller cannot rely on it having arrived by then.
+  const handleCommentCreate = (res: ServerResponse, principal: Principal, variables: Record<string, unknown>): void => {
+    countCall("commentCreate");
+    const input = commentInputSchema.safeParse(variables["input"]);
+    if (!input.success) {
+      graphqlError(res, 400, "invalid input", "Invalid CommentCreateInput");
+      return;
+    }
+    const parent = input.data.parentId ?? undefined;
+    const session = parent === undefined ? undefined : [...sessions.values()].find((candidate) => candidate.commentId === parent);
+    if (parent !== undefined && session === undefined) {
+      graphqlError(res, 400, "invalid input", "Entity not found: Comment");
+      return;
+    }
+    if (session !== undefined) {
+      if (session.issue.id !== input.data.issueId) {
+        graphqlError(res, 400, "invalid input", "The parent comment is on another issue");
+        return;
+      }
+      if (principal.appUserId === null) {
+        const body = input.data.body;
+        touch(session, "prompt", null, false, body);
+        deliver(session, "prompted", (now) => ({ ...buildPromptedPayload({ ...common(session, now), activityId: randomUUID(), body, stop: false }) })).catch(() => undefined);
+      }
+    }
+    lastSyncId += 1;
+    json(res, 200, { data: { commentCreate: { __typename: "CommentPayload", lastSyncId, comment: { id: randomUUID() }, success: true } } });
+  };
+
   const handleGraphql = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const text = await readText(req);
     let parsedJson: unknown;
@@ -538,8 +585,14 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
       return;
     }
     const authorization = req.headers.authorization ?? "";
+    // An OAuth token comes as "Bearer <token>". A personal API key comes bare, as Linear takes it.
     const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
-    const principal = token === undefined ? undefined : tokens.get(token);
+    const principal: Principal | undefined =
+      token !== undefined
+        ? tokens.get(token)
+        : authorization === adminApiKey
+          ? { appUserId: null, name: admin.name, via: "apiKey" }
+          : undefined;
     if (principal === undefined) {
       graphqlError(res, 401, "authentication error", "Authentication required, not authenticated");
       return;
@@ -558,8 +611,12 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
       if (found === undefined) {
         graphqlError(res, 400, "invalid input", "Entity not found: AgentSession");
       } else {
-        json(res, 200, { data: { agentSession: { id: found.id, status: view(found).status } } });
+        json(res, 200, {
+          data: { agentSession: { id: found.id, status: view(found).status, comment: { id: found.commentId }, issue: { id: found.issue.id, identifier: found.issue.identifier } } },
+        });
       }
+    } else if (/\bcommentCreate\s*\(/.test(query)) {
+      handleCommentCreate(res, principal, variables);
     } else if (/\bviewer\b/.test(query)) {
       countCall("viewer");
       json(res, 200, {
@@ -633,8 +690,8 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
     tokens.set(
       accessToken,
       asApp && appUser !== undefined
-        ? { appUserId: appUser.id, name: appUser.name }
-        : { appUserId: null, name: admin.name },
+        ? { appUserId: appUser.id, name: appUser.name, via: "oauth" }
+        : { appUserId: null, name: admin.name, via: "oauth" },
     );
     json(res, 200, {
       access_token: accessToken,
@@ -681,6 +738,7 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
     tokenUrl: `${base}/oauth/token`,
     organizationId,
     admin,
+    adminApiKey,
     rules,
     createAppFromLink: (link, deliveryUrl) => {
       const parsed = parseManifestLink(link);
@@ -701,6 +759,16 @@ export const createFakeLinear = async (options: FakeLinearOptions): Promise<Fake
       honorActorApp = honor;
     },
     authorizations: () => [...authorizations],
+    mintToken: (kind) => {
+      const accessToken = `lin_oauth_${randomBytes(24).toString("hex")}`;
+      if (kind === "app") {
+        const owner = must(appUser, "no app user yet: install first");
+        tokens.set(accessToken, { appUserId: owner.id, name: owner.name, via: "oauth" });
+      } else {
+        tokens.set(accessToken, { appUserId: null, name: admin.name, via: "oauth" });
+      }
+      return accessToken;
+    },
     appUser: () => appUser,
     delegate: async (opts = {}) => {
       const session = makeSession(opts.title ?? "Fix the flaky retry in the sync job", opts.description ?? "Steps to reproduce are in the thread.");

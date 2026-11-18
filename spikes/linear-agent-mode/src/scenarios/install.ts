@@ -1,4 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { AppUserId } from "../ids.ts";
 import { createUnavailableDriver } from "../turn-driver.ts";
 import { buildManifest, checkPublicUrl, OSTRA_SCOPES, parseManifestLink, WEBHOOK_PATH } from "../manifest.ts";
 import type { PublicUrlProblem } from "../manifest.ts";
@@ -10,8 +14,10 @@ import { createOstraServer, INSTALL_PATH, MANIFEST_PATH } from "../server.ts";
 import type { OstraServer, PendingInstallLimits } from "../server.ts";
 import { isRecord, stableStringify, until } from "../util.ts";
 import { CALLBACK_PATH } from "../manifest.ts";
+import { DEFAULT_TOKEN_PATH, loadToken, reuseSavedToken, saveToken } from "../token-store.ts";
+import type { StoredToken } from "../token-store.ts";
 import { createRig, DEFAULT_PUBLIC_URL, guarded, logText, readJson } from "./common.ts";
-import type { Recorder, ScenarioReport } from "./common.ts";
+import type { Recorder, Rig, ScenarioReport } from "./common.ts";
 
 type UrlCase = { readonly url: string; readonly expect: PublicUrlProblem | "ok" };
 
@@ -56,6 +62,112 @@ const bareServer = async (options: { readonly publicUrl: string; readonly pendin
   });
   const { port } = await server.listen();
   return { server, origin: `http://127.0.0.1:${String(port)}` };
+};
+
+/** A second server against the same fake Linear and the same app: what a later run is, with nothing in memory from the install. */
+const laterServer = async (rig: Rig): Promise<OstraServer> => {
+  const server = createOstraServer({
+    publicUrl: DEFAULT_PUBLIC_URL,
+    linear: { ...rig.credentials, endpoints: { apiUrl: rig.fake.apiUrl, authorizeUrl: rig.fake.authorizeUrl, tokenUrl: rig.fake.tokenUrl } },
+    agent: { firstActivityBudgetMs: 7_000, finalActivityBudgetMs: 30_000, hedgeAfterMs: 3_000, heartbeat: { kind: "off" } },
+    driver: createUnavailableDriver("not used here"),
+    log: silentLogger,
+  });
+  await server.listen();
+  return server;
+};
+
+/**
+ * The token an install leaves in a file, and what a later run does with it: take it only when Linear confirms it is the app
+ * user, with the right scopes, and run the install again otherwise. The file is in a temporary directory, never the real one.
+ */
+const checkSavedToken = async (r: Recorder): Promise<void> => {
+  const repoRoot = resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
+  r.check(
+    "the default token file is outside the repo, which is public",
+    relative(repoRoot, DEFAULT_TOKEN_PATH).startsWith("..") && DEFAULT_TOKEN_PATH.endsWith(join(".config", "ostra-dev", "linear-app-token.json")),
+  );
+  const dir = await mkdtemp(join(tmpdir(), "ostra-spike-token-"));
+  const file = join(dir, "linear-app-token.json");
+  const rig = await createRig({ driver: createUnavailableDriver("not used here"), onInstalled: (token) => saveToken(file, token) });
+  const servers: OstraServer[] = [];
+  const later = async (): Promise<OstraServer> => {
+    const server = await laterServer(rig);
+    servers.push(server);
+    return server;
+  };
+  /** Writes `token` as the saved file and tries to reuse it on a server that has no install. Returns the outcome and that server. */
+  const tryWith = async (token: StoredToken): Promise<{ readonly outcome: Awaited<ReturnType<typeof reuseSavedToken>>; readonly server: OstraServer }> => {
+    await saveToken(file, token);
+    const server = await later();
+    return { outcome: await reuseSavedToken(server, file), server };
+  };
+  const why = (outcome: Awaited<ReturnType<typeof reuseSavedToken>>): string => (outcome.kind === "reused" ? "" : outcome.why);
+  const nothing = (server: OstraServer): boolean => server.installations().length === 0;
+  try {
+    await rig.install();
+    const loaded = await loadToken(file);
+    const appUser = rig.fake.appUser();
+    r.check(
+      "an install leaves the app's token in the file, with the app user, the workspace and the scopes it was issued with",
+      loaded.ok && loaded.token.appUserId === appUser?.id && loaded.token.organizationId === rig.fake.organizationId && OSTRA_SCOPES.every((scope) => loaded.token.scopes.includes(scope)),
+    );
+    r.check("and nothing else is left beside it (the write is by rename, so no half-written file)", stableStringify(await readdir(dir)) === stableStringify(["linear-app-token.json"]));
+    if (!loaded.ok) return;
+    const saved = loaded.token;
+    r.check("the token is in the file only: not in a log line, not in the installation summary", !logText(rig.logs).includes(saved.accessToken) && !JSON.stringify(rig.server.installations()).includes(saved.accessToken));
+
+    // A later run, nothing in memory.
+    const reuse = await tryWith(saved);
+    const reused = reuse.server.installations();
+    r.check(
+      "a later server takes the saved token as the install, after Linear confirms the user",
+      reuse.outcome.kind === "reused" && reused.length === 1 && reused[0]?.appUserId === appUser?.id && reused[0]?.scopes.length === saved.scopes.length,
+      why(reuse.outcome),
+    );
+    const viewer = await reuse.server.api(saved.organizationId)?.viewer();
+    r.check("and the API it builds from that token works, as the app user", viewer?.isApp === true && viewer.appUserId === appUser?.id);
+
+    // Refused, each for its own reason, and nothing is installed.
+    await rm(file);
+    const none = await later();
+    const gone = await reuseSavedToken(none, file);
+    r.check("no file: not reused, and it says there is no saved token", gone.kind === "not-reused" && gone.why.includes("no token is saved") && nothing(none), why(gone));
+    for (const [name, text] of [
+      ["not JSON", "{ this is not json"],
+      ["one with a field it does not know (the format is ostra's own, so it is closed)", JSON.stringify({ ...saved, extra: true })],
+      ["one with an empty token", JSON.stringify({ ...saved, accessToken: "" })],
+      ["of another version", JSON.stringify({ ...saved, version: 2 })],
+    ] as const) {
+      await writeFile(file, text);
+      const server = await later();
+      const outcome = await reuseSavedToken(server, file);
+      r.check(`a file that is ${name}: not reused`, outcome.kind === "not-reused" && outcome.why.includes("not in the expected format") && nothing(server), why(outcome));
+    }
+    const refused = await tryWith({ ...saved, accessToken: `lin_oauth_${"0".repeat(48)}` });
+    r.check("a token Linear does not know (an expired or revoked one): refused, and the install flow is what is left", refused.outcome.kind === "not-reused" && refused.outcome.why.includes("refused") && nothing(refused.server), why(refused.outcome));
+    const person = await tryWith({ ...saved, accessToken: rig.fake.mintToken("person") });
+    r.check("a token that is a person's, not the app's: refused", person.outcome.kind === "not-reused" && person.outcome.why.includes("person") && nothing(person.server), why(person.outcome));
+    const viewerCallsBefore = rig.fake.apiCalls()["viewer"] ?? 0;
+    const narrow = await tryWith({ ...saved, scopes: ["read", "write"] });
+    r.check(
+      "a token issued without the agent scopes: refused, before any request is made with it",
+      narrow.outcome.kind === "not-reused" && narrow.outcome.why.includes("scopes") && nothing(narrow.server) && (rig.fake.apiCalls()["viewer"] ?? 0) === viewerCallsBefore,
+      why(narrow.outcome),
+    );
+    const other = await tryWith({ ...saved, appUserId: AppUserId.parse("some-other-app-user") });
+    r.check("an app user that is not the one the token was saved for: refused", other.outcome.kind === "not-reused" && other.outcome.why.includes("another user") && nothing(other.server), why(other.outcome));
+    const dead = await bareServer({ publicUrl: DEFAULT_PUBLIC_URL });
+    servers.push(dead.server);
+    await saveToken(file, saved);
+    const unreachable = await reuseSavedToken(dead.server, file);
+    r.check("Linear unreachable: not reused, and said apart from a refusal", unreachable.kind === "not-reused" && unreachable.why.includes("could not be reached") && nothing(dead.server), why(unreachable));
+    r.check("the token reached no log line of the server that installed, after all of that", !logText(rig.logs).includes(saved.accessToken));
+  } finally {
+    for (const server of servers) await server.close();
+    await rig.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 };
 
 const checkAgainstPublishedSchema = async (r: Recorder): Promise<void> => {
@@ -257,6 +369,9 @@ export const runInstallScenario = (): Promise<ScenarioReport> =>
     } finally {
       await open.server.close();
     }
+
+    // 10. The token an install leaves behind, and its reuse
+    await checkSavedToken(r);
 
     r.note("A person has not clicked Create or Authorize here: the fake plays both. Linear's real manifest handling is untested. The Zod copy was compared with a snapshot of Linear's published schema (snapshots/), which shows the copy matches the document, not that Linear's server enforces it.");
   });

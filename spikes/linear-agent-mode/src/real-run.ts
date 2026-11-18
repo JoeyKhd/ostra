@@ -16,6 +16,8 @@ import type { Recorder, Rig } from "./scenarios/common.ts";
 import { createRecorder } from "./scenarios/common.ts";
 import { evaluateKeepAlive, evaluateLatency, firstActivitySamples } from "./scenarios/evaluate.ts";
 import { HEARTBEAT_MINUTES, SILENT_TURN_MINUTES } from "./scenarios/keep-alive.ts";
+import { postThreadReply } from "./thread-reply.ts";
+import { DEFAULT_TOKEN_PATH, reuseSavedToken, saveToken } from "./token-store.ts";
 import { createSilentDriver } from "./turn-driver.ts";
 import { formatMs, summarize, until } from "./util.ts";
 
@@ -24,8 +26,10 @@ import { formatMs, summarize, until } from "./util.ts";
 // What it needs and what it cannot do alone:
 //   - OSTRA_DEV_PUBLIC_URL: a public https address forwarding to SPIKE_PORT (a tunnel or reverse proxy).
 //   - LINEAR_CLIENT_ID / LINEAR_CLIENT_SECRET / LINEAR_WEBHOOK_SECRET: from clicking Create on the manifest link.
-//   - A person to click Create, then Authorize; and, unless LINEAR_API_KEY is set, to delegate the tickets by hand;
-//     and to press Send stop request on one session and post a follow-up on another.
+//   - A person to click Create, then Authorize (once: the app's token is kept in ~/.config/ostra-dev/linear-app-token.json,
+//     outside the repo, and reused while Linear still accepts it); to press Send stop request on one session, because a
+//     stop cannot be sent through the API with a key; and, unless LINEAR_API_KEY is set, to delegate the tickets by hand
+//     and to post a follow-up in the thread of another session (with the key, the run posts that reply itself).
 //   - 35 minutes of wall-clock time for the keep-alive.
 //
 // SPIKE_REHEARSAL=1 runs the same phases against the local fake Linear, with a script standing in for the person, on a
@@ -42,6 +46,8 @@ const env = z
     LINEAR_TEST_TEAM_KEY: z.string().optional(),
     SPIKE_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
     SPIKE_DELEGATIONS: z.coerce.number().int().min(3).max(200).default(50),
+    /** How long the run waits for a person (Authorize, Send stop request, and a follow-up when there is no key), in minutes. */
+    SPIKE_HUMAN_WAIT_MIN: z.coerce.number().int().min(1).max(240).default(30),
     SPIKE_REHEARSAL: z.literal("1").optional(),
     /** Rehearsal only: the fake Linear's clock runs this many ms ahead of this machine's, to see the run call itself inconclusive. */
     SPIKE_REHEARSAL_SKEW_MS: z.coerce.number().int().min(0).max(30_000).default(0),
@@ -51,6 +57,10 @@ const env = z
 
 const rehearsal = env.SPIKE_REHEARSAL === "1";
 const label = rehearsal ? "rehearsal" : "real";
+const humanWaitMs = env.SPIKE_HUMAN_WAIT_MIN * 60_000;
+/** Where the saved token is, as it is shown to a person. The code's path is `DEFAULT_TOKEN_PATH`. */
+const TOKEN_FILE_SHOWN = "~/.config/ostra-dev/linear-app-token.json";
+const FOLLOW_UP_TEXT = "Please also add a regression test for the retry path. (ostra spike 5, follow-up)";
 
 /** A stale episode can last less than a minute, so the last stretch of the watch polls every 10 s instead of every 60 s. */
 const FAST_POLL_FROM_MINUTE = 28;
@@ -86,6 +96,13 @@ const openAdmin = async (apiKey: string, installedIn: OrganizationId, teamKey: s
 
 const say = (text: string): void => {
   console.log(`  > ${text}`);
+};
+
+/** Posts the follow-up as a reply in the session's thread, as the key's user. Falls back to asking a person. */
+const replyInThread = async (access: { readonly apiUrl: string; readonly apiKey: string }, sessionId: AgentSessionId, issue: TicketKey | null): Promise<void> => {
+  const result = await postThreadReply({ ...access, sessionId, body: FOLLOW_UP_TEXT });
+  if (result.ok) say(`posted the follow-up as a reply in the thread of the session on ${issue ?? "that ticket"}, as the key's user`);
+  else say(`could not post the follow-up through the API (${result.reason}). In Linear, open the session on ${issue ?? "that ticket"} and reply in its thread.`);
 };
 
 const printRecorder = (title: string, recorder: Recorder, criterion: "install" | "latency" | "stop-follow-up" | "keep-alive"): number => {
@@ -126,8 +143,9 @@ const main = async (): Promise<number> => {
           await Promise.all(Array.from({ length: Math.min(5, count - i) }, () => fake.delegate()));
         }
       },
-      followUp: async (sessionId) => {
-        await fake.prompt(sessionId, "Please also add a test.");
+      // The same thread reply the real run posts, through the same code, as the fake's admin key.
+      followUp: async (sessionId, issue) => {
+        await replyInThread({ apiUrl: fake.apiUrl, apiKey: fake.adminApiKey }, sessionId, issue);
       },
       stop: async (sessionId) => {
         await fake.prompt(sessionId, "stop", { stop: true });
@@ -167,6 +185,8 @@ const main = async (): Promise<number> => {
       clock,
       driver,
       log: createStderrLogger(),
+      // Kept for the next run; the secret goes to the file and nowhere else.
+      onInstalled: (token) => saveToken(DEFAULT_TOKEN_PATH, token),
     });
     await server.listen(env.SPIKE_PORT, "127.0.0.1");
     say(`listening on 127.0.0.1:${String(env.SPIKE_PORT)}; the public address must forward to it`);
@@ -200,12 +220,16 @@ const main = async (): Promise<number> => {
           await delay(250);
         }
       },
-      followUp: (_id, issue) => {
-        say(`In Linear, open the session on ${issue ?? "that ticket"} and post a follow-up message.`);
-        return Promise.resolve();
+      followUp: async (sessionId, issue) => {
+        if (apiKey === undefined) {
+          say(`In Linear, open the session on ${issue ?? "that ticket"} and reply in its thread with a follow-up message.`);
+          return;
+        }
+        await replyInThread({ apiUrl: linearEndpoints(process.env).apiUrl, apiKey }, sessionId, issue);
       },
       stop: (_id, issue) => {
-        say(`In Linear, open the session on ${issue ?? "that ticket"} and press Send stop request.`);
+        say(`A stop cannot be automated. Linear refuses an agent activity from a personal API key, for a prompt and for signal: stop alike: 403 FORBIDDEN, "Using an unexpected authentication method (apiKey) for an operation".`);
+        say(`So you do it: in Linear, open the session on ${issue ?? "that ticket"} and press Send stop request (waiting up to ${String(env.SPIKE_HUMAN_WAIT_MIN)} minutes).`);
         return Promise.resolve();
       },
       cleanup: async () => {
@@ -230,17 +254,29 @@ const main = async (): Promise<number> => {
   try {
     // 1. install --------------------------------------------------------------------------------
     const install = createRecorder();
+    let tokenReused = false;
     if (rig !== undefined) {
       await rig.install();
     } else {
-      say(`Now install it: open ${publicUrl}${INSTALL_PATH} as a workspace admin and click Authorize (15 minutes).`);
-      await until(() => server.installations().length > 0, { timeoutMs: 15 * 60_000, pollMs: 500 });
+      // A token from an earlier run is used only if Linear confirms it is the app user, and its scopes are the right ones.
+      const reused = await reuseSavedToken(server, DEFAULT_TOKEN_PATH);
+      if (reused.kind === "reused") {
+        tokenReused = true;
+        say(`no install needed: reusing the app token saved in ${TOKEN_FILE_SHOWN} (Linear confirmed it is the app user)`);
+      } else {
+        say(`no saved token used: ${reused.why}.`);
+        say(`Now install it: open ${publicUrl}${INSTALL_PATH} as a workspace admin and click Authorize (waiting up to ${String(env.SPIKE_HUMAN_WAIT_MIN)} minutes).`);
+        await until(() => server.installations().length > 0, { timeoutMs: humanWaitMs, pollMs: 500 });
+      }
     }
     const installed = server.installations()[0];
     install.check("the app installed, and the token it got is the app's own user (the server refuses a token that is not)", installed !== undefined);
     if (installed !== undefined) {
       appUserName = installed.appUserName;
       install.check("it has the agent scopes", installed.scopes.includes("app:assignable") && installed.scopes.includes("app:mentionable"), installed.scopes.join(","));
+      if (tokenReused) {
+        install.note(`Not a fresh install: the token saved by an earlier run was reused. Linear confirmed it (viewer.app is true, and it is the user and workspace it was saved for). The scopes are the ones Linear returned when the token was issued, not read again.`);
+      }
       if (env.LINEAR_API_KEY !== undefined && !rehearsal) {
         const adminId = (await new LinearClient({ apiKey: env.LINEAR_API_KEY }).viewer).id;
         install.check("and it is a different user from the admin who authorised it", adminId !== installed.appUserId);
@@ -313,7 +349,7 @@ const main = async (): Promise<number> => {
       const m = server.service.metrics().find((x) => x.sessionId === id);
       return { followUps: m?.followUpsSeen ?? 0, stops: m?.stopsSeen ?? 0 };
     };
-    await until(() => seen(followTarget.sessionId).followUps >= 1 && seen(stopTarget.sessionId).stops >= 1, { timeoutMs: rehearsal ? 30_000 : 15 * 60_000, pollMs: 250 });
+    await until(() => seen(followTarget.sessionId).followUps >= 1 && seen(stopTarget.sessionId).stops >= 1, { timeoutMs: rehearsal ? 30_000 : humanWaitMs, pollMs: 250 });
     await server.service.idle();
     const stopFollow = createRecorder();
     stopFollow.check("a follow-up webhook arrived", seen(followTarget.sessionId).followUps >= 1);

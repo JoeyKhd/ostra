@@ -123,6 +123,8 @@ const failureForType = (type: LinearErrorType | undefined, status: number | unde
   }
 };
 
+const rawResponseSchema = z.object({ response: z.object({ status: z.number().int() }) });
+
 /** What to do about an error from the SDK: wait and retry, retry soon, or stop trying. */
 export const classifyFailure = (error: unknown): Failure => {
   if (error instanceof RatelimitedLinearError) {
@@ -131,6 +133,10 @@ export const classifyFailure = (error: unknown): Failure => {
   if (error instanceof LinearError) {
     return { kind: failureForType(error.type, error.status), retryAfterMs: null };
   }
+  // A request made through the SDK's raw client (`client.request`) throws a plain error carrying the HTTP response, not a
+  // LinearError. Its status says whether trying again could help.
+  const raw = rawResponseSchema.safeParse(error);
+  if (raw.success) return { kind: failureForType(undefined, raw.data.response.status), retryAfterMs: null };
   // A dropped connection or a timeout: nothing says the request is wrong.
   return { kind: "transient", retryAfterMs: null };
 };

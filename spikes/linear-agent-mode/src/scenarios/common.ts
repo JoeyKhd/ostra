@@ -11,6 +11,7 @@ import type { LogLine } from "../log.ts";
 import { buildManifest, WEBHOOK_PATH } from "../manifest.ts";
 import { createOstraServer, INSTALL_PATH } from "../server.ts";
 import type { OstraServer } from "../server.ts";
+import type { StoredToken } from "../token-store.ts";
 import type { TurnDriver } from "../turn-driver.ts";
 
 export type CheckStatus = "PASS" | "FAIL";
@@ -77,6 +78,8 @@ export type RigOptions = {
   readonly inboxDelayMs?: number;
   /** The fake Linear's clock minus this machine's, in ms (see `FakeLinearOptions`). */
   readonly clockSkewMs?: number;
+  /** Called with the app's token after the install, as `OstraServerConfig.onInstalled`. */
+  readonly onInstalled?: (token: StoredToken) => Promise<void>;
 };
 
 export type Rig = {
@@ -158,6 +161,7 @@ export const createRig = async (options: RigOptions): Promise<Rig> => {
       log: logger,
       ...(options.maxBodyBytes === undefined ? {} : { maxBodyBytes: options.maxBodyBytes }),
       ...(options.inboxDelayMs === undefined ? {} : { inboxDelayMs: options.inboxDelayMs }),
+      ...(options.onInstalled === undefined ? {} : { onInstalled: options.onInstalled }),
     });
     const { port } = await server.listen();
     const localOrigin = `http://127.0.0.1:${String(port)}`;

@@ -1,12 +1,26 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { AgentActivitySignal, LinearClient } from "@linear/sdk";
 import { realClock } from "../clock.ts";
-import type { AgentSessionId } from "../ids.ts";
+import { AgentSessionId } from "../ids.ts";
+import { postThreadReply } from "../thread-reply.ts";
 import { createSilentDriver } from "../turn-driver.ts";
 import { formatMs, until } from "../util.ts";
-import { createRig, guarded } from "./common.ts";
+import { createRig, guarded, logText } from "./common.ts";
 import type { Rig, ScenarioReport } from "./common.ts";
 
 const FOLLOW_UP_TEXT = "Please also add a regression test for the retry path.";
+const THREAD_REPLY_TEXT = "Also, please keep the change small.";
+
+/** Whether a personal API key's attempt to post an activity was refused, and with what. */
+const tryActivityWithKey = async (rig: Rig, sessionId: AgentSessionId, signal: AgentActivitySignal | undefined): Promise<{ readonly refused: boolean; readonly message: string }> => {
+  const client = new LinearClient({ apiKey: rig.fake.adminApiKey, apiUrl: rig.fake.apiUrl });
+  try {
+    await client.createAgentActivity({ agentSessionId: sessionId, content: { type: "thought", body: "stop" }, ...(signal === undefined ? {} : { signal }) });
+    return { refused: false, message: "" };
+  } catch (error: unknown) {
+    return { refused: true, message: error instanceof Error ? error.message : "" };
+  }
+};
 
 const agentActivities = (rig: Rig, id: AgentSessionId) =>
   (rig.fake.session(id)?.activities ?? []).filter((a) => a.type !== "prompt");
@@ -32,6 +46,28 @@ export const runStopFollowUpScenario = (): Promise<ScenarioReport> =>
       const thoughtAfter = await until(() => agentActivities(rig, sessionId).some((a) => a.type === "thought" && a.body?.includes("follow-up") === true), { timeoutMs: 5_000 });
       r.check("and was answered in the session with a thought", thoughtAfter, `${formatMs(performance.now() - followUpSentAt)} after it was sent`);
       r.check("the turn kept running", rig.server.service.stateOf(sessionId)?.kind === "working");
+
+      // --- the follow-up as the real run sends it: a reply in the session's thread, by a personal API key -----
+      const replySentAt = performance.now();
+      const reply = await postThreadReply({ apiUrl: rig.fake.apiUrl, apiKey: rig.fake.adminApiKey, sessionId, body: THREAD_REPLY_TEXT });
+      r.check("a thread reply is posted through the API (look up the session's comment, then commentCreate with it as parent)", reply.ok, reply.ok ? "" : reply.reason);
+      const replyArrived = await until(() => driver.followUps.length === 2, { timeoutMs: 5_000 });
+      r.check("Linear turns it into a prompted event, and it reached the running turn word for word", replyArrived && driver.followUps[1]?.text === THREAD_REPLY_TEXT, `${formatMs(performance.now() - replySentAt)} after it was posted`);
+      r.check("and it went to the same session, whose turn kept running", driver.followUps[1]?.sessionId === sessionId && rig.server.service.stateOf(sessionId)?.kind === "working");
+      const strangerSession = AgentSessionId.parse("session-nobody-has");
+      const noSuch = await postThreadReply({ apiUrl: rig.fake.apiUrl, apiKey: rig.fake.adminApiKey, sessionId: strangerSession, body: THREAD_REPLY_TEXT });
+      r.check("a reply for a session Linear does not have is refused, and reaches no turn", !noSuch.ok && driver.followUps.length === 2, noSuch.ok ? "" : noSuch.reason);
+      const wrongKey = await postThreadReply({ apiUrl: rig.fake.apiUrl, apiKey: "lin_api_not_a_key", sessionId, body: THREAD_REPLY_TEXT });
+      r.check("a key Linear does not know posts nothing", !wrongKey.ok && driver.followUps.length === 2, wrongKey.ok ? "" : wrongKey.reason);
+      const withKey = await tryActivityWithKey(rig, sessionId, undefined);
+      const stopWithKey = await tryActivityWithKey(rig, sessionId, AgentActivitySignal.Stop);
+      r.check(
+        "a personal key cannot post an activity, with or without signal stop (403, unexpected authentication method), so a stop cannot be sent by script",
+        withKey.refused && stopWithKey.refused && withKey.message.includes("unexpected authentication method (apiKey)") && stopWithKey.message.includes("unexpected authentication method (apiKey)"),
+        withKey.message,
+      );
+      r.check("and that left no trace in the session: still no stop, the turn still running", driver.stops.length === 0 && rig.server.service.stateOf(sessionId)?.kind === "working" && rig.fake.session(sessionId)?.violations.length === 0);
+      r.check("the personal key is in no log line", !logText(rig.logs).includes(rig.fake.adminApiKey));
 
       // --- the heartbeat is alive before the stop ---------------------------------------------
       await delay(400);

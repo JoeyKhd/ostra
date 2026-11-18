@@ -100,7 +100,7 @@ export const CRITERIA = [
     n: 3,
     passBar: "Stop and follow-up arrive.",
     realInputs: APP_INPUTS,
-    realNeeds: "a person pressing Send stop request and posting a follow-up in a Linear session",
+    realNeeds: "a person pressing Send stop request in a Linear session (a stop cannot be sent with an API key); the follow-up is posted by script when LINEAR_API_KEY is set, by a person otherwise",
   },
   {
     id: "keep-alive",

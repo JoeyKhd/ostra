@@ -6,12 +6,14 @@ import { isAbortError, realClock } from "./clock.ts";
 import type { Clock } from "./clock.ts";
 import type { LinearEndpoints } from "./env.ts";
 import type { AgentSessionId, AppUserId, OrganizationId } from "./ids.ts";
-import { createLinearApi } from "./linear-api.ts";
+import { classifyFailure, createLinearApi } from "./linear-api.ts";
 import type { LinearApi } from "./linear-api.ts";
 import type { Logger } from "./log.ts";
 import { buildManifest, CALLBACK_PATH, WEBHOOK_PATH } from "./manifest.ts";
 import type { ManifestResult } from "./manifest.ts";
 import { buildAuthorizeUrl, createPkce, exchangeCode, randomState, scopesOf } from "./oauth.ts";
+import { hasRequiredScopes } from "./token-store.ts";
+import type { StoredToken } from "./token-store.ts";
 import type { TurnDriver } from "./turn-driver.ts";
 import { errorName } from "./util.ts";
 import { createDeliveryLedger, createWebhookVerifier } from "./webhook-verify.ts";
@@ -45,6 +47,11 @@ export type OstraServerConfig = {
   readonly inboxDelayMs?: number;
   /** Limits on installs that are started and not yet finished (the OAuth `state` table). */
   readonly pendingInstalls?: PendingInstallLimits;
+  /**
+   * Called with the app's token after a finished install, so a caller can keep it for the next run. It gets the secret,
+   * so it must not log it. A failure here is logged by name and does not undo the install.
+   */
+  readonly onInstalled?: (token: StoredToken) => Promise<void>;
 };
 
 export type PendingInstallLimits = {
@@ -65,6 +72,18 @@ export type InstallationSummary = {
 };
 
 type Installation = InstallationSummary & { readonly accessToken: string };
+
+/** Why a saved token was not taken as the install. */
+export type AdoptFailure =
+  | "missing-scopes" // the token was not issued with the scopes agent mode needs
+  | "rejected" // Linear refused the token: expired, revoked, or from another app
+  | "unreachable" // Linear could not be asked, so the token is neither confirmed nor refused
+  | "not-an-app-user" // the token is a person's
+  | "different-user"; // the token is an app user, but not the one that was saved with it
+
+export type AdoptResult =
+  | { readonly ok: true; readonly installation: InstallationSummary }
+  | { readonly ok: false; readonly reason: AdoptFailure };
 
 /** One accepted webhook. Kept per session, so a reader joins on `sessionId` and never on array position. */
 export type WebhookTiming = {
@@ -101,6 +120,12 @@ export type OstraServer = {
   /** Install starts held for a callback that has not come (the OAuth `state` table). */
   pendingInstallCount: () => number;
   manifest: () => ManifestResult;
+  /**
+   * Takes a token saved by an earlier install as this run's install, but only after asking Linear who it belongs to:
+   * the viewer must be an app user, the same one the token was saved with, and the scopes it was issued with must
+   * include ostra's. Nothing is stored unless all of that holds.
+   */
+  adoptToken: (saved: StoredToken) => Promise<AdoptResult>;
 };
 
 const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -336,6 +361,25 @@ export const createOstraServer = (config: OstraServerConfig): OstraServer => {
     installations.set(viewer.organizationId, installation);
     apis.delete(viewer.organizationId);
     log.info("installed", { org: viewer.organizationId, appUser: viewer.appUserId, scopes: scopes.join(",") });
+    if (config.onInstalled !== undefined) {
+      const kept = await config
+        .onInstalled({
+          version: 1,
+          accessToken: token.access_token,
+          scopes: [...scopes],
+          organizationId: viewer.organizationId,
+          appUserId: viewer.appUserId,
+          savedAt: new Date().toISOString(),
+        })
+        .then(
+          () => true,
+          (error: unknown) => {
+            log.error("token_save_failed", { error: errorName(error) });
+            return false;
+          },
+        );
+      log.info("token_kept", { org: viewer.organizationId, kept });
+    }
     sendJson(res, 200, {
       installed: true,
       organizationId: viewer.organizationId,
@@ -343,6 +387,42 @@ export const createOstraServer = (config: OstraServerConfig): OstraServer => {
       appUserName: viewer.name,
       scopes,
     });
+  };
+
+  const adoptToken = async (saved: StoredToken): Promise<AdoptResult> => {
+    // Cheapest refusal first: no request is made for a token that could not work anyway.
+    if (!hasRequiredScopes(saved.scopes)) return { ok: false, reason: "missing-scopes" };
+    let viewer: Awaited<ReturnType<LinearApi["viewer"]>>;
+    try {
+      viewer = await createLinearApi({ apiUrl: linear.endpoints.apiUrl, accessToken: saved.accessToken }).viewer();
+    } catch (error: unknown) {
+      const reason = classifyFailure(error).kind === "permanent" ? "rejected" : "unreachable";
+      log.warn("token_not_adopted", { reason });
+      return { ok: false, reason };
+    }
+    if (!viewer.isApp) return { ok: false, reason: "not-an-app-user" };
+    if (viewer.appUserId !== saved.appUserId || viewer.organizationId !== saved.organizationId) return { ok: false, reason: "different-user" };
+    const installation: Installation = {
+      organizationId: viewer.organizationId,
+      appUserId: viewer.appUserId,
+      appUserName: viewer.name,
+      scopes: saved.scopes,
+      hasRefreshToken: false,
+      accessToken: saved.accessToken,
+    };
+    installations.set(viewer.organizationId, installation);
+    apis.delete(viewer.organizationId);
+    log.info("installed", { org: viewer.organizationId, appUser: viewer.appUserId, scopes: saved.scopes.join(","), source: "saved-token" });
+    return {
+      ok: true,
+      installation: {
+        organizationId: installation.organizationId,
+        appUserId: installation.appUserId,
+        appUserName: installation.appUserName,
+        scopes: installation.scopes,
+        hasRefreshToken: false,
+      },
+    };
   };
 
   const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -433,5 +513,6 @@ export const createOstraServer = (config: OstraServerConfig): OstraServer => {
     stats: () => stats,
     pendingInstallCount: () => pendingInstalls.size,
     manifest: () => buildManifest({ publicUrl: config.publicUrl, developerName: "ostra" }),
+    adoptToken,
   };
 };
