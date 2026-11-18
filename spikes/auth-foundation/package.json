@@ -1,0 +1,33 @@
+{
+  "name": "ostra-spike-auth-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Spike 9: does better-auth give ostra organizations, usernames and runner sign-in on Prisma 7 + Postgres?",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check:inputs": "node src/check-inputs.ts",
+    "db:generate": "node src/db/generate-cli.ts",
+    "typecheck": "node src/db/generate-cli.ts && tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "spike": "node src/spike.ts",
+    "mutation-check": "node src/mutation-check.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "better-auth": "1.7.25",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "embedded-postgres": "18.6.0-beta.19",
+    "prisma": "7.10.1",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

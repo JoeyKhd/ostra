@@ -1,0 +1,8 @@
+# This spike is a standalone package: its own workspace root, so the repo's
+# root workspace never captures it.
+packages:
+  - "."
+allowBuilds:
+  '@embedded-postgres/windows-x64': true
+  '@prisma/engines': true
+  prisma: true
