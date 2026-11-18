@@ -84,3 +84,10 @@ export const envNameSchema = z
   .min(1)
   .max(256)
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "a variable name");
+
+/**
+ * A box's states (domain-model.md, "A box's lifecycle"). A `host` worktree goes through the same
+ * ones, so a task behaves the same on every executor (ADR 0029).
+ */
+export const boxStateSchema = z.enum(["creating", "preparing", "ready", "idle", "stopped", "released", "failed"]);
+export type BoxState = z.infer<typeof boxStateSchema>;
