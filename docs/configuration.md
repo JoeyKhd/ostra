@@ -44,6 +44,14 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 | `OSTRA_RUNNER_NAME` | `--name` | the machine's host name | The runner's name in the panel. |
 | `OSTRA_JOIN_TOKEN` | `--join-token` | (none) | A pool runner's join token, used once to register. A personal runner signs in with a device code instead. |
 | `OSTRA_RUNNER_SHELL` | `--shell` | `bash` | The shell the `host` executor runs setup scripts with, from `PATH` (Git Bash on Windows). |
+| `OSTRA_JOIN_TOKEN_FILE` | `--join-token-file` | (none) | A file holding a pool runner's join token, such as the bootstrap token core writes to `OSTRA_DATA_DIR` at first start (the compose file's runner reads it). `--join-token` wins. |
+| `OSTRA_BOX_BASE_IMAGE` | `--box-base-image` | `ostra/base:<the runner's version>` | The `docker` executor's base image, for an environment that names none. |
+| `OSTRA_BOX_RUNNER_IMAGE` | `--box-runner-image` | `ostra/runner:<the runner's version>` | The image each `docker` box's sidecar runs: the `ostra` CLI. |
+| `OSTRA_BOX_SERVER_URL` | `--box-server-url` | the `--server` address | Core's address as a `docker` box's sidecar reaches it, when that differs from `--server`. |
+
+The `docker` executor finds the Docker Engine as Docker's own tools do: `DOCKER_HOST` (`unix://`, `npipe://` or `tcp://host:port`), or the platform's default socket. The socket is root on the host, so pool runners belong on dedicated hosts (Q97).
+
+**The sidecar.** The runner sets a `docker` box's sidecar's environment itself, so none of it is an admin's setting: the server's address, the path of the task's token file (`/run/ostra/token`, which the runner rewrites every few minutes), the task, session, box and lease epoch, the bridge's nonce and port (7101), the sidecar's name on the box network (`sidecar`) and the task volume (`/task`). `ostra sidecar` refuses to start without them. OpenCode is the base image's `/opt/opencode/bin/opencode`, checked against its SHA-256 when the image is built.
 
 ## Development and tests only
 

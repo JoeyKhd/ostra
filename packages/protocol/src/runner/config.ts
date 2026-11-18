@@ -64,6 +64,30 @@ export const runnerConfigFields = {
     default: "bash",
     description: "The shell the host executor runs setup scripts with, from PATH (Git Bash on Windows).",
   },
+  joinTokenFile: {
+    flag: "join-token-file",
+    env: "OSTRA_JOIN_TOKEN_FILE",
+    default: "(none)",
+    description: "A file holding a pool runner's join token, such as the bootstrap token core writes at first start. --join-token wins.",
+  },
+  boxBaseImage: {
+    flag: "box-base-image",
+    env: "OSTRA_BOX_BASE_IMAGE",
+    default: "ostra/base:<the runner's version>",
+    description: "The docker executor's base image, for an environment that names none.",
+  },
+  boxRunnerImage: {
+    flag: "box-runner-image",
+    env: "OSTRA_BOX_RUNNER_IMAGE",
+    default: "ostra/runner:<the runner's version>",
+    description: "The image each docker box's sidecar runs: the ostra CLI.",
+  },
+  boxServerUrl: {
+    flag: "box-server-url",
+    env: "OSTRA_BOX_SERVER_URL",
+    default: "the --server address",
+    description: "Core's address as a docker box's sidecar reaches it, when that differs from --server.",
+  },
 } as const;
 
 export type RunnerConfigKey = keyof typeof runnerConfigFields;
@@ -82,6 +106,10 @@ export const runnerConfigSchema = z.strictObject({
   name: z.string().min(1).max(128).optional().describe(describe("name")),
   joinToken: z.string().min(1).max(512).optional().describe(describe("joinToken")),
   shell: z.string().min(1).default("bash").describe(describe("shell")),
+  joinTokenFile: z.string().min(1).max(4096).optional().describe(describe("joinTokenFile")),
+  boxBaseImage: z.string().min(1).max(512).optional().describe(describe("boxBaseImage")),
+  boxRunnerImage: z.string().min(1).max(512).optional().describe(describe("boxRunnerImage")),
+  boxServerUrl: httpUrlSchema.optional().describe(describe("boxServerUrl")),
 });
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
 
