@@ -101,7 +101,7 @@ const runPnpmDev = (label: string, dir: string): Piece => {
   const entry = pnpmEntry(process.env);
   return entry === null
     ? // Fixed arguments only: nothing here comes from outside the repo.
-      start(label, "pnpm", ["run", "dev"], { cwd: dir, env: process.env, shell: windows })
+      start(label, windows ? "pnpm run dev" : "pnpm", windows ? [] : ["run", "dev"], { cwd: dir, env: process.env, shell: windows })
     : start(label, process.execPath, [entry, "run", "dev"], { cwd: dir, env: process.env });
 };
 

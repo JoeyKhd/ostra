@@ -1,6 +1,6 @@
 # 24: The runner gateway
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 01, 08
 Features: F-013, F-014 (registration), F-061 (the version window)
@@ -35,3 +35,5 @@ Spec: `../spec.md`, sections 4 and 5.1
 - [ ] Committed as `✨ add the runner gateway`.
 
 ## Comments
+
+- 2026-11-18, core: done in the commit that carries this line (`✨ add the runner gateway`). `apps/core` is a Node server (`src/main.ts`, `startCore` in `src/core.ts`; `pnpm dev` runs it) with the gateway in `src/gateway/`: `info`, `register` (a device session checked against better-auth's session table and deleted in the same transaction as the runner's creation; or the bootstrap join token), `token` (Ed25519 over ticket 01's canonical string, a skew check, single-use nonces per process, an HMAC access token under `runner-token.key` in `OSTRA_DATA_DIR`), and the WebSocket (hello/welcome with the minor negotiated, presence with a connection epoch and a `connected` NOTIFY that evicts an older connection on any replica with 4409, commands from the outbox on NOTIFY and on a 2 s sweep, acks scoped to the calling runner, status stored only when it changes, ping 20 s, dead 45 s, revoke → `evict` and 4403). Ingest, live text and command results are hooks; the test double acks and stores nothing until ticket 25. Additive contract changes in `packages/domain`: `registerPersonalRunner`'s body, and `postgres-outbox.ts` (`postgresCommandOutbox`, `runnerNotificationSchema`, `notifyRunnerInTx`), which the panel's Stop can use too. 19 tests against a fake peer, each with another organization's runner kept out. Whole-repo typecheck, lint and tests green except `@ostra/web`'s own uncommitted test, which is the web builder's.

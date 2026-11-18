@@ -90,7 +90,6 @@ describe("the use-case seams", () => {
   const useCases = {
     createProject: "32",
     saveEnvironment: "32",
-    registerPersonalRunner: "24",
     createPromptTask: "33",
     dispatchTask: "26",
     acceptOffer: "26",

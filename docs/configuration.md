@@ -27,6 +27,8 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 
+**What core keeps in `OSTRA_DATA_DIR`.** Besides the keys above, core makes two files there at first start, each readable by its owner only: `runner-token.key`, the key runners' 10-minute access tokens are signed with (deleting it makes every runner get a new token, nothing more), and `bootstrap-join-token`, the default pool's bootstrap join token for the compose file's pool runner. The bootstrap token is stored hashed in the database and shown nowhere else; core writes it once the first organization exists.
+
 ## The runner
 
 Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runner/config.ts`). Each setting is also a flag; a flag wins over its variable.

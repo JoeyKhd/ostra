@@ -17,6 +17,7 @@ export * from "./jobs.ts";
 export * from "./access.ts";
 export * from "./settings.ts";
 export * from "./postgres-ports.ts";
+export * from "./postgres-outbox.ts";
 
 export * from "./use-cases/common.ts";
 export * from "./use-cases/accept-offer.ts";

@@ -1,0 +1,227 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+import { registerPersonalRunner } from "@ostra/domain";
+import {
+  infoResponseSchema,
+  minorWindow,
+  organizationIdSchema,
+  poolIdSchema,
+  PROTOCOL_MAJOR,
+  registerRequestSchema,
+  runnerIdSchema,
+  runnerPaths,
+  tokenAssertionSchema,
+} from "@ostra/protocol";
+import type { RegisterRequest, RegisterResponse } from "@ostra/protocol";
+
+import { readJsonBody, sendError, sendJson } from "../http.ts";
+import { bearerToken } from "./access-token.ts";
+import { assertionFresh, verifyAssertionSignature } from "./assertion.ts";
+import { hashJoinToken } from "./bootstrap-join-token.ts";
+import type { GatewayContext } from "./context.ts";
+
+// The runner's HTTP endpoints beside the WebSocket (ADR 0034): `info`, `register` and `token`.
+// Ported from spikes/runner-transport/src/server/replica.ts (`onHttp`), with ADR 0034's Ed25519
+// identity in place of the spike's shared secret.
+
+const info = (context: GatewayContext, response: ServerResponse): void => {
+  sendJson(
+    response,
+    200,
+    infoResponseSchema.parse({
+      protocolMajor: PROTOCOL_MAJOR,
+      serverMinor: context.serverMinor,
+      supported: minorWindow(context.serverMinor),
+      serverVersion: context.serverVersion,
+      panelUrl: context.panelUrl,
+      deviceClientId: context.deviceClientId,
+    }),
+  );
+};
+
+/** A pool runner's join, with the bootstrap join token (milestone 1's only kind). */
+const registerPoolRunner = async (
+  context: GatewayContext,
+  request: RegisterRequest,
+  joinToken: string,
+): Promise<{ readonly status: number; readonly body: RegisterResponse } | { readonly status: number; readonly code: "unauthorized" | "conflict" | "bad-request"; readonly message: string }> => {
+  const now = new Date(context.ports.clock.now());
+  return context.db.$transaction(async (tx) => {
+    const token = await tx.joinToken.findUnique({ where: { tokenHash: hashJoinToken(joinToken) } });
+    if (
+      token === null ||
+      !token.bootstrap ||
+      token.revokedAt !== null ||
+      (token.expiresAt !== null && token.expiresAt <= now)
+    ) {
+      return { status: 401, code: "unauthorized", message: "the join token is not valid" };
+    }
+    if (request.executor === "host") {
+      return { status: 400, code: "bad-request", message: "a pool runner uses the docker or kubernetes executor" };
+    }
+    const sameName = await tx.runner.findFirst({
+      where: { organizationId: token.organizationId, poolId: token.poolId, name: request.name, revokedAt: null },
+      select: { id: true },
+    });
+    if (sameName !== null) {
+      return { status: 409, code: "conflict", message: "a runner of this name already joined this pool" };
+    }
+    if ((await tx.runner.findUnique({ where: { publicKey: request.publicKey }, select: { id: true } })) !== null) {
+      return { status: 409, code: "conflict", message: "a runner with this key exists; make a new key pair" };
+    }
+    const runner = await tx.runner.create({
+      data: {
+        organizationId: token.organizationId,
+        kind: "pool",
+        poolId: token.poolId,
+        name: request.name,
+        publicKey: request.publicKey,
+        executor: request.executor,
+        capacity: request.capacity,
+        labels: [...request.labels],
+        version: request.version,
+        os: { platform: request.os.platform, arch: request.os.arch, release: request.os.release },
+        state: "joining",
+      },
+      select: { id: true },
+    });
+    const runnerId = runnerIdSchema.parse(runner.id);
+    await tx.joinToken.update({ where: { id: token.id }, data: { lastUsedAt: now } });
+    const organizationId = organizationIdSchema.parse(token.organizationId);
+    await context.ports.audit.recordInTx(tx, {
+      organizationId: organizationId,
+      projectId: null,
+      actor: { kind: "runner", id: runnerId },
+      action: "runner.registered",
+      entity: "runner",
+      entityId: runnerId,
+      data: { kind: "pool", executor: request.executor, capacity: request.capacity, bootstrap: true },
+    });
+    await context.ports.notices.emitInTx(tx, {
+      organizationId: organizationId,
+      projectId: null,
+      entity: "runner",
+      entityId: runnerId,
+    });
+    return { status: 201, body: { runnerId, kind: "pool", poolId: poolIdSchema.parse(token.poolId) } };
+  });
+};
+
+const register = async (context: GatewayContext, http: IncomingMessage, response: ServerResponse): Promise<void> => {
+  const body = await readJsonBody(http);
+  if (!body.ok) {
+    sendError(response, 400, "bad-request", "the body is not JSON of at most 64 KiB");
+    return;
+  }
+  const parsed = registerRequestSchema.safeParse(body.value);
+  if (!parsed.success) {
+    sendError(response, 400, "bad-request", "the body is not a register request");
+    return;
+  }
+  const request = parsed.data;
+  const session = bearerToken(http.headers.authorization);
+  if (request.joinToken !== undefined) {
+    if (session !== null) {
+      sendError(response, 400, "bad-request", "send a device session or a join token, not both");
+      return;
+    }
+    const result = await registerPoolRunner(context, request, request.joinToken);
+    if ("body" in result) {
+      context.logger.info("runner.registered", { runnerId: result.body.runnerId, kind: "pool" });
+      sendJson(response, result.status, result.body);
+    } else {
+      sendError(response, result.status, result.code, result.message);
+    }
+    return;
+  }
+  if (session === null) {
+    sendError(response, 401, "unauthorized", "a personal runner sends the member's device session as a bearer token");
+    return;
+  }
+  const owner = await context.deviceSessions.verify(session);
+  if (owner === null) {
+    sendError(response, 401, "unauthorized", "the device session is not valid; sign in again");
+    return;
+  }
+  const result = await context.db.$transaction((tx) =>
+    registerPersonalRunner(
+      {
+        tx,
+        owner,
+        notices: context.ports.notices,
+        audit: context.ports.audit,
+        clock: context.ports.clock,
+        revokeSession: (sessionId) => context.deviceSessions.revokeInTx(tx, sessionId),
+      },
+      request,
+    ),
+  );
+  if (!result.ok) {
+    const status = result.error === "public-key-taken" ? 409 : result.error === "no-session" ? 401 : 400;
+    sendError(response, status, status === 409 ? "conflict" : status === 401 ? "unauthorized" : "bad-request", result.message);
+    return;
+  }
+  context.logger.info("runner.registered", { runnerId: result.runnerId, kind: "personal", organizationId: owner.organizationId });
+  sendJson(response, 201, { runnerId: result.runnerId, kind: result.kind, poolId: result.poolId });
+};
+
+const token = async (context: GatewayContext, http: IncomingMessage, response: ServerResponse): Promise<void> => {
+  const body = await readJsonBody(http, 4 * 1024);
+  const parsed = body.ok ? tokenAssertionSchema.safeParse(body.value) : undefined;
+  if (parsed?.success !== true) {
+    sendError(response, 400, "bad-request", "the body is not a signed assertion");
+    return;
+  }
+  const assertion = parsed.data;
+  const now = context.ports.clock.now();
+  if (!assertionFresh(assertion.issuedAt, now)) {
+    sendError(response, 401, "unauthorized", "the assertion's issuedAt is too far from the server's clock; check this machine's time");
+    return;
+  }
+  const runner = await context.db.runner.findUnique({
+    where: { id: assertion.runnerId },
+    select: { id: true, organizationId: true, publicKey: true, state: true, revokedAt: true },
+  });
+  // The same answer for an unknown runner and a bad signature: nothing about which runners exist leaks.
+  if (runner === null || !verifyAssertionSignature(assertion, runner.publicKey)) {
+    sendError(response, 401, "unauthorized", "the assertion is not signed by a known runner");
+    return;
+  }
+  if (runner.state === "revoked" || runner.revokedAt !== null) {
+    sendError(response, 403, "unauthorized", "this runner is revoked; register it again");
+    return;
+  }
+  if (!context.nonces.firstUse(assertion.runnerId, assertion.nonce, now)) {
+    sendError(response, 401, "unauthorized", "the assertion was already used");
+    return;
+  }
+  const issued = context.tokens.issue(assertion.runnerId, organizationIdSchema.parse(runner.organizationId), now);
+  sendJson(response, 200, issued);
+};
+
+/** Handles a runner HTTP endpoint; `false` when the path isn't one of them. */
+export const handleRunnerEndpoint = async (
+  context: GatewayContext,
+  http: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+): Promise<boolean> => {
+  const route = `${http.method ?? "GET"} ${url.pathname}`;
+  switch (route) {
+    case `GET ${runnerPaths.info}`:
+      info(context, response);
+      return true;
+    case `POST ${runnerPaths.register}`:
+      await register(context, http, response);
+      return true;
+    case `POST ${runnerPaths.token}`:
+      await token(context, http, response);
+      return true;
+    case `GET ${runnerPaths.connect}`:
+      // Reached without an upgrade: something on the path stripped it (nginx's defaults do).
+      sendError(response, 426, "protocol-violation", "a WebSocket upgrade is required on this path");
+      return true;
+    default:
+      return false;
+  }
+};
