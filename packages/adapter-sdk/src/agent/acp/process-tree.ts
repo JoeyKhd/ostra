@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { z } from "zod";
@@ -22,7 +22,11 @@ export type ProcessInfo = {
   readonly pid: number;
   readonly ppid: number;
   readonly name: string;
-  /** Creation time, ms since the epoch (second precision on POSIX); 0 when the OS gave none. */
+  /**
+   * Creation time, ms since the epoch; 0 when the OS gave none. Second precision on macOS and the
+   * BSDs. On Linux it is counted from the kernel's boot time, which /proc/stat gives in whole seconds:
+   * stable for one process, so it identifies it, but up to a second early (`bootSkewMs` corrects it).
+   */
   readonly startedAt: number;
 };
 
@@ -77,8 +81,77 @@ const listPosix = async (): Promise<ProcessInfo[]> => {
   return out;
 };
 
+// Linux: /proc itself. `ps` reads the same start time, in clock ticks since boot, but adds it to the
+// boot time in whole seconds and rounds the sum down to a second again: up to two seconds early. A
+// child born just after a turn started then reads as older than the turn, and a cancel spares it.
+const isLinux = process.platform === "linux";
+
+let clockTicks: Promise<number> | undefined;
+/** Clock ticks per second (USER_HZ), the unit of /proc's start times. 100 on every common build. */
+const ticksPerSecond = async (): Promise<number> => {
+  clockTicks ??= run("getconf", ["CLK_TCK"], { env: { PATH: process.env["PATH"] ?? "", LC_ALL: "C" } })
+    .then(({ stdout }) => {
+      const ticks = Number(stdout.trim());
+      return Number.isInteger(ticks) && ticks > 0 ? ticks : 100;
+    })
+    .catch(() => 100);
+  return clockTicks;
+};
+
+/** The boot time /proc/stat gives, in whole seconds since the epoch. */
+const bootSeconds = async (): Promise<number> => {
+  const match = /^btime (\d+)$/m.exec(await readFile("/proc/stat", "utf8"));
+  if (match?.[1] === undefined) {
+    throw new Error("/proc/stat has no btime");
+  }
+  return Number(match[1]);
+};
+
+const readStat = async (pid: string): Promise<string | undefined> => {
+  try {
+    return await readFile(`/proc/${pid}/stat`, "utf8");
+  } catch {
+    return undefined; // It exited since the listing.
+  }
+};
+
+const listLinux = async (): Promise<ProcessInfo[]> => {
+  const [entries, boot, hz] = await Promise.all([readdir("/proc"), bootSeconds(), ticksPerSecond()]);
+  const stats = await Promise.all(entries.filter((entry) => /^\d+$/.test(entry)).map(readStat));
+  const out: ProcessInfo[] = [];
+  for (const stat of stats) {
+    // "pid (comm) state ppid ... starttime ...": comm may itself hold spaces and ")".
+    const open = stat?.indexOf(" (") ?? -1;
+    const close = stat?.lastIndexOf(")") ?? -1;
+    if (stat === undefined || open < 0 || close < open) {
+      continue;
+    }
+    const fields = stat.slice(close + 2).split(" ");
+    // After the name: state is field 3 of proc(5), ppid field 4, starttime field 22.
+    const ppid = Number(fields[1]);
+    const ticks = Number(fields[19]);
+    out.push({
+      pid: Number(stat.slice(0, open)),
+      ppid: Number.isInteger(ppid) ? ppid : 0,
+      name: stat.slice(open + 2, close),
+      startedAt: Number.isInteger(ticks) ? boot * 1000 + Math.floor((ticks * 1000) / hz) : 0,
+    });
+  }
+  return out;
+};
+
+/**
+ * How far Linux's `startedAt` runs early: the fraction of a second the boot time in /proc/stat drops.
+ * The precise boot time is now minus /proc/uptime, both on the same clock as the start times.
+ */
+const bootSkewMs = async (): Promise<number> => {
+  const [boot, uptime] = await Promise.all([bootSeconds(), readFile("/proc/uptime", "utf8")]);
+  const up = Number(uptime.split(" ")[0]);
+  return Number.isFinite(up) ? Math.max(0, Date.now() - up * 1000 - boot * 1000) : 0;
+};
+
 /** Every process on the machine. Throws when the platform's tool can't run. */
-export const listProcesses = async (): Promise<ProcessInfo[]> => (isWindows ? listWindows() : listPosix());
+export const listProcesses = async (): Promise<ProcessInfo[]> => (isWindows ? listWindows() : isLinux ? listLinux() : listPosix());
 
 export const descendantsOf = (rootPid: number, processes: readonly ProcessInfo[]): ProcessInfo[] => {
   const byParent = new Map<number, ProcessInfo[]>();
@@ -192,9 +265,13 @@ export type TreeWatch = {
   readonly killAll: () => Promise<void>;
 };
 
-/** Creation times on POSIX have second precision: compare from the start of that second. */
-const bornSince = (p: ProcessInfo, since: number): boolean =>
-  p.startedAt !== 0 && p.startedAt >= (isWindows ? since - 50 : Math.floor(since / 1000) * 1000);
+/**
+ * Whether a process was born at or after `since`. Windows and Linux (given its skew) know the start
+ * to a few ms, so the window opens 50 ms early; macOS and the BSDs round it down to a second, so it
+ * opens at the start of that second.
+ */
+const bornSince = (p: ProcessInfo, since: number, skewMs: number): boolean =>
+  p.startedAt !== 0 && (isWindows || isLinux ? p.startedAt + skewMs >= since - 50 : p.startedAt >= Math.floor(since / 1000) * 1000);
 
 export const watchProcessTree = (rootPid: number): TreeWatch => {
   const known = new Map<number, ProcessKey>();
@@ -226,15 +303,16 @@ export const watchProcessTree = (rootPid: number): TreeWatch => {
     },
     reapBornSince: async (since) => {
       const alive = await list();
+      const skew = isLinux ? await bootSkewMs().catch(() => 0) : 0;
       const targets = new Map<number, ProcessInfo>();
       for (const p of remember(alive)) {
-        if (bornSince(p, since)) {
+        if (bornSince(p, since, skew)) {
           targets.set(p.pid, p);
         }
       }
       for (const p of alive) {
         const seen = known.get(p.pid);
-        if (seen !== undefined && sameProcess(seen, p) && bornSince(p, since)) {
+        if (seen !== undefined && sameProcess(seen, p) && bornSince(p, since, skew)) {
           targets.set(p.pid, p);
         }
       }
