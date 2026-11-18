@@ -1,6 +1,6 @@
 # 32: Routers: projects, environments and detection
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 13, 30
 Features: F-086, F-050, F-112
@@ -28,3 +28,8 @@ Spec: `../spec.md`, sections 2 and 3 (step 5)
 - [ ] Committed as `✨ add projects, environments and detection`.
 
 ## Comments
+
+- 2026-11-18 (api): done in `552563b` (`✨ add projects, environments and detection`). Detection is `detectEnvironment` in `packages/domain/src/environment/detect.ts`, pure, with 30 tests (one per file type, a fixture repo with several, and checks that no `.env.example` value or compose `environment` entry reaches the draft). It reads the repo's root only. With a host that lists files (`listTree`, added to the base by the adapters builder) it reads just the content files and takes lockfiles from the list; without one it asks for every well-known path.
+- Additive changes to the contracts: `createProject`'s success result carries `detection` (the panel shows the reasons while the admin reviews), and `saveEnvironment` has one more error, `secret-without-value` (a secret row can't exist without a stored value, by the table's own check). Detected variables and secrets are listed in the detection and are not stored as rows: a secret can't be stored without a value, and a variable with an empty value would write an empty line into the checkout. What the draft stores is the setup script and the base image; core should treat only a `saved` environment as the one to run.
+- Services are detected and marked "not run on `host`", and not saved: the environment config has no field for them until milestone 3 (F-094), so the "saved with a warning" clause of the ticket has no row to attach to yet. The save does warn when a base image is set and none of the project's runners uses `docker`.
+- The gated live case: `projects.create` on `ostra-test/test1` (the real adapter) drafts an environment whose every reason names a file detection knows to read.

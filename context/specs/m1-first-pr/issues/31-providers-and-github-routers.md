@@ -1,6 +1,6 @@
 # 31: Routers: model providers and the GitHub connection
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 12, 13, 14, 30
 Features: F-088, F-006, F-014 (allow on personal runners)
@@ -26,3 +26,8 @@ All admin-only, organization-scoped, with audit entries for each change.
 - [ ] Committed as `✨ add provider and GitHub routers`.
 
 ## Comments
+
+- 2026-11-18 (api): done in `be27ef8` (`✨ add provider and GitHub routers`). `providers.testConnection` returns a result (`ok: false` with the adapter's reason) rather than an error, so the form can show it; `providers.create` tests the endpoint with the settings the form holds (the admin's correction of the detected format included) inside the transaction, so that transaction has a 60 s timeout. The models the endpoint lists are rows at once, and `syncProviderModels` (new, in `packages/domain`) matches them to the catalog; core's `provider.refresh-models` job (ticket 28) and `providers.refresh` should both call it, so they can't disagree. It never overwrites what an admin entered for a custom model.
+- The catalog: `CatalogSource` is the routers' read-through cache, with a daily fetch, the last good copy kept on a failure, the bundled copy when the fetch is off or never worked, and `createModelsDevCatalogSource` wiring ticket 12's loaders. It sends a bare GET with an `accept` header and nothing else (tested).
+- The manifest flow: `github.startManifest` keeps the `state` hashed in better-auth's `verification` table, bound to the admin's session, member and organization, expiring in 10 minutes. `github.completeManifest` is what the web callback calls: a state from another session (even the same admin's) is refused without using it up, and a used or expired one is refused. The webhook is in the manifest only for a public `OSTRA_CORE_PUBLIC_URL` (the GitHub adapter decides; the result says so). The webhook path in it, `/webhooks/github`, is a placeholder core hasn't routed yet.
+- A sweep test (`secrets.test.ts`) calls every router that could show a secret and searches the outputs, the log, the audit trail and the change notices for each stored value and reference. The gated live case (`github.live.test.ts`) passed with App 5821041: `connectExisting` lists the `ostra-test` installation and `test1`.

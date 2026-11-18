@@ -1,6 +1,6 @@
 # 30: Auth, the first admin and organization scope
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 08
 Features: F-002 (the first admin), F-001 (the setup token), F-076 (the checklist's state), F-014 (device approval)
@@ -35,3 +35,8 @@ Spec: `../spec.md`, sections 2, 3 (step 2) and 4
 - [ ] Committed as `✨ add auth and the first admin`.
 
 ## Comments
+
+- 2026-11-18 (api): done in `72731e0` (`✨ add auth and the first admin`), with the setup-time hooks finished in `be27ef8` and `552563b`. better-auth 1.7.25 on Prisma 7.10.1, configured in `packages/api/src/auth/` and exported as `@ostra/api/auth`; `createApiRuntime` is what `apps/web` builds once per process. The contract test (`auth.contract.test.ts`) is the upgrade gate: the pin is exact and the installed version equals it, sign-in by username and by email, the device flow to a bearer session in the approving member's organization, the `owner` role refused. A race of six first sign-ups gives one admin and one organization.
+- Two choices differ from the ticket's wording. (1) The better-auth sign-up route stays closed even for the first account: the first admin is made by `setup.createFirstAdmin`, which checks the token in constant time and then creates the account, its organization, its admin membership, the built-in OpenCode profile and the default pool in one transaction under the advisory lock. Letting the route make the account would leave an admin with no organization if the process died between the two writes. (2) `CreateFirstAdminDeps` gained `hashPassword` (better-auth's, passed in) so `packages/domain` doesn't import the auth library; the stub had no caller, so the change breaks nothing.
+- `BETTER_AUTH_SECRET` and the setup token are generated on first start and kept in `OSTRA_DATA_DIR` (mode 0600), so a restart and a second web process agree. The setup line goes through its own writer, not the structured logger, whose guard redacts the `ostra-setup-` prefix on purpose; a test checks that the token and a password reach no log line.
+- Whole-repo checks: typecheck, lint and tests of `packages/api` and `packages/domain` pass, and `pnpm check:licenses` holds. At the time of the commit `apps/web` and `apps/runner` were other builders' work in progress.

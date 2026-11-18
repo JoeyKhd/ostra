@@ -1,6 +1,6 @@
 # 33: Routers: tasks and the live stream
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 23, 30
 Features: F-097, F-023, F-025, F-014 (picking the runner)
@@ -31,3 +31,8 @@ Spec: `../spec.md`, sections 3 (steps 7 and 8) and 4
 - [ ] Committed as `✨ add the tasks router and live stream`.
 
 ## Comments
+
+- 2026-11-18 (api): done in `75874fd` (`✨ add the tasks router and live stream`) and `71e9a59` (`✅ test the stream over HTTP and the runtime`). `createPromptTask` and `stopTask` are written in `packages/domain`: ticket 27 names `stopTask`, but the router needed the panel's half (the task to stopped, a `stop` command for the runner holding the lease, a session that never had a runner ended, a notice), so it is here and ticket 27 keeps what happens on the runner's side. `tasks.send`, `tasks.interrupt`, `tasks.takeOver` and `approvals.answer` are in too, with the one-driver rule enforced under the task's row lock; a race test of a take-over against a send shows the send committing first or being refused. A watcher can't send by the API.
+- The stream (`packages/api/src/stream/`): one hub per web process with one `LISTEN` connection and a 250 ms poll, one query for `seq > cursor` across the watched tasks, and a subscription that registers with the hub before it catches up. Tests: resume with `Last-Event-ID` (no gap, no duplicate, also while events commit during the catch-up), live text snapshot then deltas then replaced by its message, a revoked membership and a lost project role closing the stream, change notices filtered by organization and project, two hubs on one database with polling nearly off (the second hub woken by `NOTIFY` only), and 40 watchers costing a handful of queries.
+- Closes ADR 0035's open item about tRPC: its SSE keeps `Last-Event-ID` across untracked frames. The server sends an empty `id:` with an untracked event, which would clear a browser's id, and then a `restore-id` event that sets it back; `stream.http.test.ts` reads the real `text/event-stream` bytes and checks that a browser's last id is still the last committed seq. The client link also keeps its own `lastEventId` and sends it as input on reconnect. A viewer that falls 50,000 messages behind gets `SERVICE_UNAVAILABLE`, which tRPC's client retries from its last id; losing membership is `FORBIDDEN`, which it doesn't retry.
+- Findings for the maintainer: (1) the branch name's first 8 characters of a UUIDv7 are a millisecond timestamp prefix that changes only every 65 s, so two prompt tasks with the same title within a minute get the same branch name (spec section 11, item 10); the slug differs in practice. (2) `approval.closed` is a runner-written kind, so a deny doesn't close the session's other open approvals in the panel's transaction: the runner reports each, and the other approvals close when core saves them. (3) Core's `register` accepts only `bootstrap` join tokens in milestone 1, so the join tokens `pools.createJoinToken` makes (stored with the same SHA-256 hash) don't register a runner until core relaxes that (F-091, milestone 5). (4) A runner can be revoked only from `draining` in the lifecycle, so there is no `runners.revoke` yet.
