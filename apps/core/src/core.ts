@@ -14,6 +14,7 @@ import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { replicaIdSchema } from "@ostra/protocol";
 
+import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
 import { applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
 import type { DispatcherDeps } from "./dispatch/dispatcher.ts";
 import { handleTaskEndpoint } from "./dispatch/endpoints.ts";
@@ -129,6 +130,13 @@ export const startCore = async (
   await jobs.work("task.offer-timeout", offerTimeoutHandler(dispatcherDeps));
   await jobs.work("task.session-ended", sessionEndedHandler(reactionDeps));
   await jobs.work("task.open-pull-requests", openPullRequestsHandler(reactionDeps));
+  const catalogDeps = { db, dataDir: settings.dataDir, catalogFetch: settings.catalogFetch, logger };
+  await jobs.work("catalog.refresh", catalogRefreshHandler(catalogDeps), { localConcurrency: 1 });
+  await jobs.work(
+    "provider.refresh-models",
+    providerRefreshHandler({ db, jobs, notices, clock: systemClock, adapters, catalog: catalogSource(catalogDeps) }),
+    { localConcurrency: 2 },
+  );
   liveText.start();
   const taskEndpoints = handleTaskEndpoint({
     db,
@@ -157,6 +165,16 @@ export const startCore = async (
   };
   await bootstrap();
 
+  // The daily catalog and model-list schedules; a provider added in the panel gets its own within 10 minutes.
+  const schedules = async (): Promise<void> => {
+    await ensureSchedules({ db, jobs, catalogFetch: settings.catalogFetch }).catch((error: unknown) => {
+      logger.warn("schedules.failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
+  };
+  await schedules();
+  const scheduleTimer = setInterval(() => void schedules(), 10 * 60_000);
+  scheduleTimer.unref();
+
   // Queued tasks with no offer out try again: a runner came online, a slot freed, a hold ended.
   const requeue = setInterval(() => {
     requeueQueuedTasks(dispatcherDeps).catch((error: unknown) => {
@@ -174,6 +192,7 @@ export const startCore = async (
     stop: async () => {
       clearTimeout(bootstrapTimer);
       clearInterval(requeue);
+      clearInterval(scheduleTimer);
       await gateway.stop();
       await server.close();
       await liveText.stop();
