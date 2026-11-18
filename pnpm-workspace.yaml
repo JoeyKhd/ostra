@@ -14,10 +14,26 @@ minimumReleaseAgeExclude:
   - "@vitest/spy@5.1.1"
   - turbo@2.11.13
   - vitest@5.1.1
+  - '@opencode/cli-darwin-arm64@2.3.2'
+  - '@opencode/cli-darwin-x64-baseline@2.3.2'
+  - '@opencode/cli-darwin-x64@2.3.2'
+  - '@opencode/cli-linux-arm64-musl@2.3.2'
+  - '@opencode/cli-linux-arm64@2.3.2'
+  - '@opencode/cli-linux-x64-baseline-musl@2.3.2'
+  - '@opencode/cli-linux-x64-baseline@2.3.2'
+  - '@opencode/cli-linux-x64-musl@2.3.2'
+  - '@opencode/cli-linux-x64@2.3.2'
+  - '@opencode/cli-windows-arm64@2.3.2'
+  - '@opencode/cli-windows-x64-baseline@2.3.2'
+  - '@opencode/cli-windows-x64@2.3.2'
+  - '@opencode/cli@2.3.2'
 
 # Install scripts we allow: embedded-postgres's platform binaries (a dev dependency of packages/db,
 # ADR 0007) and Prisma's engines download.
 allowBuilds:
+  # The OpenCode agent: its postinstall is never run. The adapter resolves the platform binary
+  # itself and checks its SHA-256 (ticket 11).
+  "@opencode/cli": false
   "@embedded-postgres/windows-x64": true
   "@embedded-postgres/linux-x64": true
   "@embedded-postgres/linux-arm64": true

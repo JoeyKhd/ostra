@@ -1,5 +1,5 @@
 import { turnIdSchema } from "@ostra/protocol";
-import type { TaskEvent } from "@ostra/protocol";
+import type { TaskEvent, ToolKind } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import { isAlive } from "../agent/acp/process-tree.ts";
@@ -31,8 +31,19 @@ export type StartedAgent = {
 
 /** Prompts that make an agent do one particular thing. Each is optional. */
 export type AgentProbes = {
-  /** The agent calls a tool of each ACP kind, one of them failing. */
-  readonly tools?: string;
+  /**
+   * The agent calls tools. A prompt alone means a tool of each ACP kind, one of them failing, and
+   * one with progress (the fake agent). The object says which kinds this agent's turn calls, and
+   * what else to expect.
+   */
+  readonly tools?:
+    | string
+    | {
+        readonly prompt: string;
+        readonly kinds: readonly ToolKind[];
+        readonly expectFailure?: boolean;
+        readonly expectProgress?: boolean;
+      };
   /** The agent asks for permission to edit a file, and carries on when it's allowed. */
   readonly permission?: string;
   /** The agent asks a question through `elicitation.form`, with a text and a select field. */
@@ -43,15 +54,25 @@ export type AgentProbes = {
   readonly environment?: { readonly prompt: string; readonly allowedNames: readonly string[] };
   /** The agent says the model base URL and key it was given, as `endpoint: <url> <key>`. */
   readonly endpoint?: string;
-  /** The agent updates its plan. */
-  readonly plan?: string;
+  /**
+   * The agent updates its plan. A prompt alone expects `plan.updated` exactly when the adapter
+   * declares `nativePlan`; the object says whether this agent's turn plans (OpenCode plans
+   * through its todo tool without declaring `nativePlan`).
+   */
+  readonly plan?: string | { readonly prompt: string; readonly expectPlan: boolean };
   /**
    * The agent runs until cancelled and leaves a process behind it, saying `spawned <pid>`. After
    * the cancel the suite checks that the process is gone.
    */
   readonly leftoverProcess?: string;
-  /** The agent runs until a member steers it, and says what the steer was. */
-  readonly steerable?: string;
+  /**
+   * The agent runs a long step, and a steer sent during it reaches its next model call. A prompt
+   * alone is the fake's: it says `Steered: <text>`. The object names what to wait for before
+   * steering, the text to steer with, and the message that proves it arrived.
+   */
+  readonly steerable?:
+    | string
+    | { readonly prompt: string; readonly waitFor: string; readonly steerText: string; readonly expectMessage: string };
 };
 
 export type AgentFixture = {
@@ -214,19 +235,30 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
     }, 30_000);
 
     it("F-023: tool calls render by ACP kind, and a failing one is reported", async (context) => {
-      const prompt = probe(context, "tools");
-      if (prompt === undefined) {
+      const tools = probe(context, "tools");
+      if (tools === undefined) {
         return;
       }
-      const { events, stopReason } = await runTurn(prompt);
+      const spec =
+        typeof tools === "string"
+          ? {
+              prompt: tools,
+              kinds: ["read", "edit", "execute", "delete", "move", "search", "think", "fetch", "switch_mode", "other"] as const,
+              expectFailure: true,
+              expectProgress: true,
+            }
+          : tools;
+      const { events, stopReason } = await runTurn(spec.prompt);
       expect(stopReason).toBe("end_turn");
       const kinds = new Set(events.flatMap((event) => (event.kind === "tool.called" ? [event.toolKind] : [])));
-      for (const kind of ["read", "edit", "execute", "delete", "move", "search", "think", "fetch", "switch_mode", "other"] as const) {
+      for (const kind of spec.kinds) {
         expect(kinds.has(kind), `a ${kind} tool call`).toBe(true);
       }
-      expect(events.filter((event) => event.kind === "tool.completed").length).toBeGreaterThanOrEqual(10);
-      expect(events.some((event) => event.kind === "tool.failed")).toBe(true);
-      expect(events.some((event) => event.kind === "tool.progress")).toBe(true);
+      expect(events.filter((event) => event.kind === "tool.completed").length).toBeGreaterThanOrEqual(spec.kinds.length);
+      expect(events.some((event) => event.kind === "tool.failed")).toBe(spec.expectFailure ?? false);
+      if (spec.expectProgress === true) {
+        expect(events.some((event) => event.kind === "tool.progress")).toBe(true);
+      }
     });
 
     it("F-019: the agent's environment holds only the allowlist", async (context) => {
@@ -319,14 +351,14 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
     });
 
     it("F-019: a plan reaches ostra as plan.updated when the agent declares nativePlan", async (context) => {
-      const prompt = probe(context, "plan");
-      if (prompt === undefined) {
+      const plan = probe(context, "plan");
+      if (plan === undefined) {
         return;
       }
       const { adapter } = subject();
-      const { events } = await runTurn(prompt);
-      const planned = events.some((event) => event.kind === "plan.updated");
-      expect(planned).toBe(adapter.capabilities.nativePlan);
+      const spec = typeof plan === "string" ? { prompt: plan, expectPlan: adapter.capabilities.nativePlan } : plan;
+      const { events } = await runTurn(spec.prompt);
+      expect(events.some((event) => event.kind === "plan.updated")).toBe(spec.expectPlan);
     });
 
     it("ADR 0018: an unknown update becomes agent.unknown, and nothing around it is dropped", async (context) => {
@@ -359,10 +391,14 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
     });
 
     it("ADR 0032: a steer during a turn reaches the agent, when steering is declared", async (context) => {
-      const prompt = probe(context, "steerable");
-      if (prompt === undefined) {
+      const steerable = probe(context, "steerable");
+      if (steerable === undefined) {
         return;
       }
+      const spec =
+        typeof steerable === "string"
+          ? { prompt: steerable, waitFor: "open to a steer", steerText: "use tabs", expectMessage: "Steered: use tabs" }
+          : steerable;
       const { adapter } = subject();
       const events: TaskEvent[] = [];
       const { session: running, started } = await session(events);
@@ -371,18 +407,18 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
           context.skip();
           return;
         }
-        const turnResult = adapter.prompt(running, turn(6), prompt);
-        await waitFor(() => (textOf(events).includes("open to a steer") ? true : undefined), 10_000);
-        // The first message is the agent's own: the turn is in its long step.
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        expect(await adapter.steer(running, "use tabs")).toEqual({ ok: true, value: undefined });
+        const turnResult = adapter.prompt(running, turn(6), spec.prompt);
+        await waitFor(() => (events.some((event) => event.kind === "tool.called") || textOf(events).includes(spec.waitFor) ? true : undefined), 60_000);
+        // The turn is in its long step.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(await adapter.steer(running, spec.steerText)).toEqual({ ok: true, value: undefined });
         expect(await turnResult).toEqual({ ok: true, value: { stopReason: "end_turn" } });
-        expect(textOf(events)).toContain("Steered: use tabs");
+        expect(textOf(events)).toContain(spec.expectMessage);
       } finally {
         await adapter.close(running);
         await started.stop();
       }
-    }, 30_000);
+    }, 120_000);
 
     it("refuses to resume a session when it doesn't declare sessionLoad", async (context) => {
       const { adapter, fixture } = subject();
