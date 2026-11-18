@@ -109,3 +109,17 @@ The maintainer: "you are taking this project from being an actual full-fledged f
 | Q35 | Enterprise depth in v1 | SSO (OIDC/SAML), roles per project, and the audit log in v1. Budgets and quotas soon after |
 | Q36 | Elastic runners, from `research/elastic-sandboxes.md` | **First hosted provider: E2B.** Firecracker microVMs, per-project templates that boot from snapshots in about 80 ms, sandboxes that stay paused indefinitely, egress rules, and a mature TS SDK; about $16.56 for 100 one-hour tasks. **Self-hosters:** Kubernetes `agent-sandbox` with gVisor or Kata, plus Cilium; Docker plus gVisor for small installs. Daytona self-hosted (now closed source) and Runloop (shutting down) are out |
 | Q37 | Tasks that outlive a sandbox (no provider runs more than 24 h continuously) | When a task waits a long time on a person or hits a sandbox's limit, the runner pushes its uncommitted work to a hidden ref on the task's branch, releases the sandbox, and reopens on a fresh one later (ADR 0006). Nothing is lost, and nobody pays for idle sandboxes |
+
+## Round 9 (asked 2026-11-18): the runner
+
+The maintainer: "So what exactly will be executing the code? How will all of that work?" The answer given: the agent (Claude Code or OpenCode) runs inside an isolated box, a microVM, container or laptop. The ostra runner inside the box prepares it, starts the agent, streams every event to the server, commits, pushes and cleans up. The box is disposable, and the server holds all state (`research/runner-transport.md`, `research/elastic-sandboxes.md`, `research/credential-proxy.md`).
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q38 | One box per task | Yes: a fresh microVM, pod or gVisor container per task. Fixed VMs and laptops can run several tasks in worktrees as a lighter mode with less isolation |
+| Q39 | The project's snapshot | Built per project and repo: base image, checkout and installed dependencies, never secrets. Rebuilt when the environment changes, when a lockfile changes on the default branch, and nightly |
+| Q40 | Services for tests | In v1: an environment declares services (a compose file or a list), started inside the box (Docker inside the box on E2B, extra containers on Kubernetes) |
+| Q41 | Who commits | The agent may commit locally. The runner commits whatever is left and pushes after every turn. The agent never holds git credentials |
+| Q42 | After a turn | Warm for 15 minutes *(working value)*, then paused or released, with unfinished work saved to a hidden ref |
+| Q43 | Box sizes | Per project (small, medium, large). Pools cap totals and per-project use |
+| Q44 | Laptop runners | The same runner program. Worktrees on the host, your own login, only your own tasks, labelled "personal, not isolated" |
