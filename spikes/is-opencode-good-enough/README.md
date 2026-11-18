@@ -18,11 +18,114 @@ Does OpenCode, on an ordinary model, turn realistic tickets into PRs a reviewer 
 
 ## Where this stands (2026-11-18)
 
-Everything is built, and the pipeline is proven end to end on a dry-run against spike 1's stub model: 30 runs through the real ACP driver, the real key proxy and the real OpenCode 2.3.2, edited files, ran tests, got checked, and came out as records, a blind sheet and a score. **No real run has been made.** That needs the model endpoint, it spends tokens, and it lets a model's shell run as the member's own account, so only `pnpm runs --real --host-run` starts it (see [The real runs](#the-real-runs)). The rating needs a person. Those parts report SKIPPED, with the exact thing each needs (see [Status](#status-on-this-machine-2026-11-18)).
+The real set is made and checked: **30 of 30 runs completed, CI green on 30 of 30, the hidden acceptance tests passed on 30 of 30, 6,840,135 tokens, $0.2040**, on `deepseek/deepseek-v4.1-flash-1017` through OpenRouter, in the Anthropic format. The runs went through the real ACP driver, the real key proxy and the real OpenCode 2.3.2 (see [Results of the real runs](#results-of-the-real-runs-2026-11-18)). The bar's three bullets:
 
-`~/.config/ostra-dev/model.env` is present on this machine. The harness reads it only to see whether the endpoint is configured: it never printed a value, and it made no request to the endpoint (the one function that could, `detectApiFormat`, runs only under `--real --host-run`). The dry-run and every check ran on stubs, and the one real-mode path that was driven end to end (`pnpm runs --real --host-run` for one ticket) went to a local stand-in server, never to an endpoint.
+- **B1 PASS.** 30 runs on the 10 tickets, none an infrastructure failure.
+- **B2 not counted yet.** An AI did a first-pass rating of all 30 blind, but B2 counts only once at least one **human** reviewer has rated. A reviewer: the steps are under [The blind rating](#the-blind-rating), and rating comes before reading the results.
+- **B3 PASS** on the records, with the one scan that only `pnpm spike` runs still to confirm (see [The pass bar, now](#the-pass-bar-now)).
+
+The maintainer approved running the model's shell on their own account, with no sandbox, and an audit of the set found no evidence of reach beyond the workspace, though it cannot prove there was none (see [Host-run approval and audit](#host-run-approval-and-audit)). The dry-run that proved the pipeline first (against spike 1's stub model) is kept under [Dry-run status](#dry-run-status-before-the-real-runs-2026-11-18).
+
+**What this result is.** A pass here means "OpenCode, on this model, solves toy tickets on a small repo" (see [Limits of this evidence](#limits-of-this-evidence)). 30 of 30 on every objective check also means the hidden checks did not separate the runs: they say the agent is not obviously unfit, not how it would fare on a hard ticket.
 
 A pass can only be earned by the bar's own 30 runs: a trial of one run, a half-finished set, a rating sheet made before the set was whole, or a set with a rate-limited run in it reads SKIPPED, whatever the rating says (see [What counts as the bar's runs](#what-counts-as-the-bars-runs)).
+
+## Results of the real runs (2026-11-18)
+
+### The set
+
+`.runs/real-deepseek-deepseek-v4.1-flash-1017/` (gitignored). `pnpm report .runs/real-deepseek-deepseek-v4.1-flash-1017` prints the per-run table; the per-ticket table below is its second half, as printed.
+
+| | |
+|---|---|
+| Model | `deepseek/deepseek-v4.1-flash-1017`, through OpenRouter, in the Anthropic format |
+| Agent | OpenCode 2.3.2 over ACP, the policy `workspace-only-installs-ask` |
+| Runs | 10 tickets x 3, one at a time, 2026-11-18 20:20:18Z to 20:42:17Z (21:20 to 21:42 local, UTC+1); none redone with `--retry-failed` |
+| Limits per run | 20 minutes, 3,000,000 tokens, and the $2 the set's manifest records (not the $5 default) |
+| Where | Windows 11 Pro (build 26200), Node 24.14.0, on the maintainer's own account, no sandbox (see [Host-run approval and audit](#host-run-approval-and-audit)) |
+
+- **Outcome.** 30 of 30 `completed`, every one stopped `end_turn`: no timeout, cap, error or crash, and no rate-limit, server or client error from the endpoint.
+- **Checks.** CI (the repo's tests and the strict typecheck) green on 30 of 30. The hidden acceptance tests passed on 30 of 30; on the six "add tests" runs that means the agent's tests passed the pristine module and caught enough seeded faults, and none of them touched `src/`.
+- **Spend.** 6,840,135 tokens, **$0.2040**: $0.0068 a run on average, from $0.0019 (calc-10-r2) to $0.0273 (calc-7-r1). 6,021,888 of the tokens (88%) are cache reads; the rest are 571,905 input and 246,342 output, and none are cache writes. The proxy's count over the calls that offered tools equals OpenCode's own turn usage on 30 of 30 runs (a deviation of 0%; the bar allows 2%), with no call missing its usage.
+- **Time and turns.** 19.8 minutes of agent time in all, from 11.7 s (calc-9-r3) to 143.7 s (calc-7-r1) a run. 443 model calls, 735 tool calls, 5,175 events, and no question asked. The changes add up to 89 files, +1,811 -197.
+- **Approvals.** 25 requested, 25 allowed, 0 rejected, all kind `execute`: package installs, since the sample repo has no `node_modules`. Five runs asked for none (calc-1-r2, calc-4-r1, calc-5-r2, calc-9-r3, calc-10-r2).
+- **The heavy ticket** is CALC-7 (operators in one place): 614,410 tokens and $0.0223 a run, against 109,896 to 269,968 tokens for any other ticket.
+
+```text
+per ticket (means over its runs)
+    ticket          runs  time s  calls      -  appr  events       -    tokens     spend  CI ok  accept
+    calc-1             3    28.5   13.0      -   0.7     135       -    174535   $0.0051    3/3     3/3
+    calc-2             3    22.3   11.7      -   1.0     105       -    150568   $0.0036    3/3     3/3
+    calc-3             3    35.1   13.3      -   1.0     141       -    171234   $0.0054    3/3     3/3
+    calc-4             3    27.0   14.3      -   0.7     122       -    226501   $0.0051    3/3     3/3
+    calc-5             3    29.7   13.7      -   0.7     144       -    206831   $0.0057    3/3     3/3
+    calc-6             3    32.2   14.0      -   1.0     146       -    217817   $0.0057    3/3     3/3
+    calc-7             3   118.7   28.0      -   1.0     542       -    614410   $0.0223    3/3     3/3
+    calc-8             3    57.8   18.3      -   1.0     223       -    269968   $0.0088    3/3     3/3
+    calc-9             3    25.2   11.0      -   0.7      98       -    138284   $0.0038    3/3     3/3
+   calc-10             3    18.8   10.3      -   0.7      69       -    109896   $0.0026    3/3     3/3
+
+total: 30 runs, 6840135 tokens, $0.2040
+```
+
+### Host-run approval and audit
+
+**Approval.** `--real` runs the model's shell as the member's own account, with no sandbox (see [The real runs](#the-real-runs)). The maintainer approved that for this set, in the session that made the runs, when asked directly on 2026-11-18. So the 30 runs went ahead on the maintainer's own account, not on a throwaway machine or a low-privilege account, and for them `AGENTS.md`'s "an agent's reach ends at its task's workspace" did not hold.
+
+**Audit.** After the set, a separate session audited it against the harness's records and this machine's files.
+
+Bottom line:
+
+- **No evidence** that any run touched `~/.config/ostra-dev`, the hidden acceptance tests, the reference solutions, other runs' folders or the home directory.
+- **One confirmed use of the network other than the key proxy:** `npm install` runs, which went to the npm registry. The policy's `ask` rule gated them, and the harness auto-approved every ask.
+- **That is not proof that nothing happened.** The harness never records what an agent ran or read, and a shell `cat`, `type` or `dir` outside the worktree leaves no trace. Only side effects could be checked, and reads leave none.
+
+What the harness keeps (`src/runner/run-ticket.ts`): per run `events.jsonl` (type-only: sequence, time, update type, tool-call ID, tool kind, status), `run.json`, `diff.patch`, `summary.txt` (the agent's own last text), `proxy-calls.json` and `proxy-log.jsonl`. No tool input, shell command, path or output is recorded anywhere. The task folders (workspace, home, XDG, temp) lived under `%TEMP%\ostra-spike-10\p<pid>\` and were deleted when each run ended, so no worktree, OpenCode session store or shell history could be inspected. The policy (`src/runner/policy.ts`) is `allow *`, `external_directory` denied, and `ask` for install-type shell commands; its own comment says the shell tool is not covered by the directory rule and reaches whatever the account does, `~/.config/ostra-dev/` and the hidden tests included. The agent's environment was an allowlist: HOME, USERPROFILE, APPDATA, LOCALAPPDATA and TEMP pointed at the scratch folder, and only the fake key.
+
+What was searched, and what it showed:
+
+- **Tool calls** (`events.jsonl`, all 30 runs): 735, of them 312 read, 241 execute (shell), 146 edit, 34 search and 2 other (both in calc-7-r1). The 241 shell commands are unrecorded. Four calls ended `failed`, each a candidate for an `external_directory` refusal that cannot be told from an ordinary error such as a missing file: calc-2-r1 (a read, seq 35, failed 7 ms after starting), calc-7-r1 (an execute, seq 512, failed in 4 ms, where other shell calls in that run took 250 to 400 ms, so it never ran a process), calc-7-r3 (an edit, seq 264) and calc-8-r2 (a search, seq 74).
+- **The key proxy** (`proxy-log.jsonl`, `proxy-calls.json`): 473 `proxy.call` lines, every one status 200 with `keySwapped: true`; no `proxy.rejected` or `proxy.upstream_error`, and no `bad_key`, `no_key` or `revoked` attempt. The line counts match `proxy-calls.json` in every run. The proxy sees model traffic only, not what a shell command sent elsewhere.
+- **Approvals** (`run.json`): the 25 above, one in each of 25 runs. Under the policy an approval is a command matching `npm install*`, `npm exec*`, `npx *`, `pnpm ...`, `yarn ...`, `pip install*` and the like; the exact command is not recorded.
+- **Network other than the proxy:** with no `node_modules` in the sample, agents hit the missing `@types/node` and `typescript` typecheck failure. About nine runs say in their own `summary.txt` that they installed or meant to install dependencies (calc-3-r1, -r2 and -r3, calc-4-r2, calc-6-r3, calc-8-r3, calc-9-r1 and -r2, calc-10-r3). That is self-report, not harness data, and it covers fewer runs than the 25 approvals, so the other approved commands are unknown. Other network use (`curl`, `Invoke-WebRequest`, `git fetch`) cannot be checked, and the Windows firewall and DNS logs were not looked at.
+- **Agent text and diffs:** all 30 `summary.txt` and `diff.patch` files were searched for names and paths outside the workspace (`ostra-dev`, `.config`, drive and user paths, `USERPROFILE`, `APPDATA`, `.runs`, `acceptance`, `reference`, `hidden`, `key.json`, `.env`, `.pem`, `curl`, `wget`, URLs, `../`, `.ssh`, `.npmrc`, `secret`, `sandbox`, `outside` and more). Nothing refers to anything outside the workspace; the hits are the install mentions above and ordinary code (`../src/*.ts` imports in new tests, `spawnSync(process.execPath ...)` in the calc-8-r1 and calc-8-r3 tests). Every diff path is workspace-relative (`src/*`, `test/*`, `README.md`). A regex for key-like strings (`sk-`, `Bearer`, `x-api-key`, `api_key`, `ghp_`, `lin_api_`, `BEGIN`) over every file in the set matched none. The actual key value was not searched for, since `model.env` was not read.
+- **Filesystem side effects** (modified and changed times only: NTFS last-access updates are off on this machine, so reads cannot be seen). `~/.config/ostra-dev` and its 7 files were unchanged in the window; the newest, `model.env`, is from 21:18:33, before the first run. `src/tickets/acceptance/*`, `src/tickets/reference/*`, `solutions.ts` and `mutants.ts` were all last changed before the window. Nothing else in the spike folder was created or changed except the set and the rating folder (no stray files, the other `.runs/spike-*` folders unchanged). A scan of the home directory (skipping AppData, `node_modules`, `.claude`, `.claude-mem`, `.cache`, `.npm` and `.pnpm-store`) found changes only in `.copilot/logs`, in OpenCode's real log (next bullet) and under `` (last bullet); none under `.ssh` or `.config`. A full AppData sweep was not completed: the search timed out.
+- **The one trace in the real OpenCode home:** `~/.local/share/opencode/log/opencode.log` has four new "cli starting" lines (OpenCode 2.3.2) at 20:25:14.9Z to 20:25:15.2Z: `--version`, `session --help`, `session export --help` and `session import --help`. The real `opencode.db` was last changed on Nov 10 and is untouched. These match exactly the four read-only commands described in `context/research/spike-can-a-session-move-to-a-fresh-box.md`, written by a concurrent session; the run agents' HOME and XDG_DATA_HOME were scratch folders. The lines fall inside calc-7-r1 (20:23:53Z to 20:26:20Z), so the attribution rests on that match, not on a process record.
+- **Package caches:** 50 files were written to the real npm cache in the window (21:28:14 to 21:28:26 and 21:38:17 to 21:39:23 local). They are packuments for `next`, `react`, `tailwindcss`, `@trpc/*`, `better-auth`, `vitest`, `zod`, `@agentclientprotocol/sdk`, `typescript` and similar, which are not the calc repo's dependencies (`@types/node` 24.19.2 and `typescript` 7.0.2); there is no `@types/node` entry. The `typescript` packument (21:28:25.9) is the one that overlaps, among `zod`, `vitest` and `@agentclientprotocol/sdk`, so it looks like a concurrent session's run, but the agents cannot be ruled out for that one entry. 161 files were also written to the pnpm store; the calc repo uses npm, so they are attributed to other sessions, and were not checked one by one.
+- **Unattributed changes** (concurrent sessions, per `AGENTS.md`): many files under `` changed in the window (`packages/domain`, `packages/api`, `packages/jobs`, `packages/adapter-sdk`, `apps/runner`, `context/specs/m1-first-pr`, `docs/configuration.md` and others). They fit the milestone 1 product work and `git status`, none looks calc-related, and mtime cannot say whether any one came from an agent.
+
+What the records cannot settle: any shell command or its target path; any read of `~/.config/ostra-dev`, the acceptance or reference files, other runs' diffs or the home directory (the policy let the shell do all of it; the workspace was in `%TEMP%`, outside the spike folder, but the OpenCode binary lives under this spike's `node_modules`, so its path could have hinted at the spike root); whether the four failed tool calls were permission refusals; and what the 25 approved install-type commands were.
+
+All 30 runs ended `completed` / `end_turn`, and none has an `agent-stderr.txt` or `checks.txt`.
+
+**What follows.** The model key in `~/.config/ostra-dev/model.env` was within the shell's reach for all 30 runs. The audit found no sign it was read, but a read leaves no trace, so the earlier warning stands: use only a key you can afford to have read.
+
+### The blind rating
+
+The sheet is `.runs/rating-2026-11-18T20-42-31/`, made after the last run ended and showing exactly these 30 runs: `sheet.md` (the 30 pull requests under random IDs, in random order), `ratings-template.csv` (`id,rating,notes`, one row each), `patches/` (the same diffs, one file per ID), `ratings/` (the filled-in copies) and `key.json` (which run each ID is).
+
+**For a human reviewer**, from `spikes/is-opencode-good-enough`. Rate first and read the rest of this section afterwards: it holds the AI's result, which would colour yours.
+
+1. Rate from the sheet alone, before you read the results on this page, `ratings/claude-ai.csv` or anyone else's ratings.
+2. Open `.runs/rating-2026-11-18T20-42-31/sheet.md`. Each pull request shows its ticket, the CI result, what changed, the agent's description and the diff. Rate it as a reviewer who owns the repository would, against its ticket.
+3. Open `.runs/rating-2026-11-18T20-42-31/ratings-template.csv` and fill the `rating` column of every row with `merge-as-is`, `merge-with-small-edits` or `reject` (the sheet's header explains the three). `notes` is optional. An unrated row, or a word off the scale, makes the verdict SKIPPED.
+4. Save it as `.runs/rating-2026-11-18T20-42-31/ratings/<name>.csv`, with your own name. The name becomes the rater's name in the score. Leave `claude-ai.csv` alone.
+5. Run `pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`. It prints each rater's counts and the verdict, then the recorded run data unblinded, so run it only once you have rated.
+6. **Do not open `key.json` until every rater is done.** It says which run each ID is, and rating blind is the point. A second human is better than one: each rates alone, and nobody opens another's file before finishing their own.
+
+**AI first pass (done).** An AI rater (Claude) rated all 30 blind: **28 `merge-as-is`, 2 `merge-with-small-edits`, 0 `reject`**, mergeable 100%, 3 of 3 on each of the 10 tickets. By its own report it read only `sheet.md` and `ratings-template.csv`, not `key.json`, the `.runs/real-*` folders or this README's per-run tables, and it ran no git and edited no other file. Its ratings, with a one-line reason for each pull request, are in `ratings/claude-ai.csv`. The scorer takes the rater's name from the file name, so the output shows `claude-ai`. `pnpm score` on that file alone prints a PASS for the set: 100% of the runs rated merge-as-is or merge-with-small-edits, against a bar of at least 50%. The two pull requests it would merge only with small edits, and why, are in that file and not here, so as not to prime a human rater who reads this page first.
+
+**Why that is not B2 yet.** B2 is a person's rating: "a reviewer" in the bar, "a person, not this harness" in this spike. The scorer cannot tell an AI's file from a human's, so `pnpm score` and `pnpm spike` will print a PASS for B2 on `claude-ai.csv` alone. Read that PASS as not counting until a human's file is in `ratings/`. With more than one rater the bar is held against the strictest, and their agreement is reported.
+
+### The pass bar, now
+
+| | Status | Bullet | What ran, and what's missing |
+|---|---|---|---|
+| B1 | **PASS** | 10 tickets (3 bug fixes, 3 small features, 2 refactors, 2 that add tests), three runs each, on the model in `model.env`. | PASS: the set has 3 + 3 + 2 + 2 tickets, every acceptance check fails on the unmodified sample and passes with its reference solution (from the oracle, [below](#dry-run-status-before-the-real-runs-2026-11-18)). PASS: 30 of 30 runs recorded on `deepseek/deepseek-v4.1-flash-1017` (Anthropic format): 30 completed, 0 redone, no rate-limit, server or client error, so none is an infrastructure failure that would hold the set back |
+| B2 | **Pending a human** | Rated blind: at least half are "merge as it is" or "merge with small edits" *(working value)*. | AI first pass: 30 of 30 rated, 28 merge-as-is, 2 merge-with-small-edits, 0 reject (100%). **Not counted:** it needs at least one human reviewer ([steps above](#the-blind-rating)). The harness will print a PASS from the AI's file alone; it does not count |
+| B3 | **PASS** on the records | Recorded per run: spend from the proxy, time, turns, approvals and events. | PASS: all five measures on 30 of 30 runs, with no call missing its usage, and the dollars from the configured prices ($0.2040). PASS: the proxy's count equals OpenCode's own turn usage on 30 of 30 completed runs (the bar: within 2%). **Left to `pnpm spike`:** its scan for the real key's value in every record, which needs `model.env` and is the one condition that fails B3 whatever else holds. The audit's regex for key-like strings found none |
+
+B1 and B3 here are read off the run records by the conditions in `src/harness/real-criteria.ts`. `pnpm spike` was not rerun for this update, so its own status lines (and its key scan) are the ones to confirm before the finding is written.
 
 ## Architecture
 
@@ -169,6 +272,8 @@ pnpm sheet --sets=.runs/real-<label>                    # then the blind sheet, 
 
 The workspace is in the OS temp folder, so a `cd ..` doesn't reach them, but nothing stops a path the model has found. This is the one place `AGENTS.md`'s "an agent's reach ends at its task's workspace" does not hold in this spike; only a box (spike 3) closes it. Until then, run the real set **on a throwaway machine, or as a separate low-privilege OS account that cannot read `~/.config/ostra-dev/`** (or this folder), with the three `OSTRA_DEV_MODEL_*` values in the environment of that command rather than in a file that account can read, then pass `--host-run`. Use only a model key you can afford to have read.
 
+The 2026-11-18 set did not follow that advice: the maintainer approved running it on their own account, without a sandbox, and the audit of it is under [Host-run approval and audit](#host-run-approval-and-audit). A second model's set, if one is needed, wants the same approval again or a safer place.
+
 Set `OSTRA_SPIKE_PRICE_INPUT` and `OSTRA_SPIKE_PRICE_OUTPUT` (USD per million tokens, and `_CACHE_READ` and `_CACHE_WRITE` if the model has them) in `model.env` to get dollars and the dollar cap (B3 needs them), and `OSTRA_SPIKE_MODEL_CONTEXT` and `_OUTPUT` if the model's limits differ from 128,000 and 16,000. The set is named after the model's ID (`--label=` to change it). Run the same command again to resume. The only request made before the runs is `GET /models`, to learn the API format; it fails loudly on a 401, a 5xx or an answer that is no model list (set `OSTRA_DEV_MODEL_API_FORMAT` to skip it). If the bar is missed, repeat with another model in `model.env` and another `--label`; `pnpm sheet` takes both sets.
 
 ### Inputs
@@ -185,7 +290,9 @@ Set `OSTRA_SPIKE_PRICE_INPUT` and `OSTRA_SPIKE_PRICE_OUTPUT` (USD per million to
 
 Nothing else is read, apart from the OS variables the agent and the checks need to run at all (`PATH`, `SystemRoot`, `ComSpec`, `PATHEXT` and the like: `PASSTHROUGH` in `src/lib/opencode.ts` and `src/runner/sandbox.ts`; none is a secret). The dry-run needs none of the inputs above.
 
-## Status on this machine (2026-11-18)
+## Dry-run status, before the real runs (2026-11-18)
+
+This is the state at the dry-run, kept as the record of what the pipeline proved before any model was called. **The pass bar's current status is [The pass bar, now](#the-pass-bar-now)**; the B1, B2 and B3 rows below are the earlier SKIPPED ones, and are superseded for the real runs.
 
 Windows 11 Pro (build 26200), Node 24.14.0, pnpm 11.28.2, OpenCode 2.3.2, no Docker, no WSL. The tables are `pnpm status` of `spike-2026-11-18T20-02-18-d2a4`, a plain `pnpm spike` (exit 2: the three bullets are SKIPPED, nothing failed). The typecheck, the lint (the root's rules over `src`, `test`, `sample-repo` and the configs, no warnings) and the 79 unit tests pass. A stand-in run of `pnpm runs --real --host-run --tickets=calc-1 --runs=1` (against a local server, in both API formats) wrote a one-run real set and a rated one-run sheet of it; `pnpm spike` read B1, B2 and B3 as SKIPPED with `1 of 30 runs recorded`. Those scratch files were then deleted.
 
@@ -213,15 +320,18 @@ Facts a real run will meet; they belong in the finding with the real numbers.
 2. **`allow *` lets the file tools leave the workspace.** With only `{action: "*", effect: "allow"}`, a scripted `write` to an absolute path outside the workspace landed, and a `read` of a file outside it worked (the control run of every `pnpm spike` shows both). `{action: "external_directory", resource: "*", effect: "deny"}` after it made both fail (the same script, under the policy's rules, in the same run of `pnpm spike`). The shell tool is a separate matter, and isn't covered.
 3. **Shell permission rules match on the command.** `{action: "shell", resource: "npm install*", effect: "ask"}` made a request arrive for `npm install ...` and for nothing else, with the command in `rawInput`. The request offers `allow_once`, `allow_always` and `reject_once`; the driver answers `allow_once`, as ADR 0032 says.
 4. **Edits are `edit` and `write`.** Both report their kind as `edit` in ACP, so an approval by kind can't tell a new file from an edit. `write` replaced an existing file (CALC-8's `src/cli.ts`).
-5. **The proxy's count and OpenCode's agree.** On all 30 dry-run runs the proxy's token count over the calls that offered tools equalled OpenCode's turn usage exactly. The title call (about 800 tokens a run here) sits outside the turn's usage, so the proxy must meter it too (spike 1's finding 8). Both numbers come from the stub's report, so this is plumbing, not a measure of the proxy against a real endpoint.
+5. **The proxy's count and OpenCode's agree.** On all 30 dry-run runs the proxy's token count over the calls that offered tools equalled OpenCode's turn usage exactly. The title call (about 800 tokens a run here) sits outside the turn's usage, so the proxy must meter it too (spike 1's finding 8). Both numbers come from the stub's report, so this is plumbing, not a measure of the proxy against a real endpoint. On the real runs the same equality held on 30 of 30 (see [Results of the real runs](#results-of-the-real-runs-2026-11-18)), which is the measure against a real endpoint.
 
 ## What's left
 
-- **The real runs.** One run first (`pnpm runs --real --host-run --tickets=calc-1 --runs=1`) to see what a run costs, then the 30, on a throwaway machine or a low-privilege account (see [The real runs](#the-real-runs)). They need the endpoint in `model.env` and, for B3, prices.
-- **The rating.** One reviewer at least, two if possible. It's the maintainer's call, or a teammate's.
+- **Done:** the real runs (30 of 30, see [Results](#results-of-the-real-runs-2026-11-18)), the host-run audit and an AI first pass of the rating.
+- **The human rating** (B2). At least one human reviewer, two if possible: the maintainer, or a teammate. Steps are under [The blind rating](#the-blind-rating): fill `ratings-template.csv`, save it as `ratings/<name>.csv`, run `pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`, and leave `key.json` shut until every rater is done. B2 does not count before this.
+- **Confirm B1 and B3 with `pnpm spike`.** It reads the records by the same conditions and adds the scan for the real key's value in every record, the one B3 condition not checked by hand here. Mind the B2 line it prints: it will read PASS on the AI's file alone.
+- **Decide whether the harness should record what an agent ran.** The audit could settle nothing about the 241 shell commands, because none is recorded (only side effects could be checked). Before another host run, either record what each tool call touched (a shell command's program and target paths, in a form that keeps to `AGENTS.md`'s rule that logs carry no content), or run it somewhere the question cannot arise (spike 3's box).
+- **Rotate the model key if it is not one you can afford to have read** (see the audit's "What follows").
 - **Close the gap between this evidence and the bar** (see [Limits of this evidence](#limits-of-this-evidence)): run a ticket of each kind end to end through spike 3's box and spike 4's PR flow on a repo in the test GitHub org, or have the maintainer reword the bar in `context/build-order.md` to what this measures.
 - **The finding** in `context/research/`, with real numbers and the limits section, once the runs and the rating are in. If the bar is missed: the second model.
-- **Decide, or confirm,** the readings in "Rating blind" (all runs as the denominator, per model, the strictest rater) and the working values this spike added: two thirds of the seeded faults for an "add tests" ticket, $5 and 3,000,000 tokens per run, and `--retry-failed` redoing an `error` or `crash` (which can favour the agent if a model's refusals are retried: the manifest counts the retries, and the finding should quote the count).
+- **Decide, or confirm,** the readings in "Rating blind" (all runs as the denominator, per model, the strictest rater) and the working values this spike added: two thirds of the seeded faults for an "add tests" ticket, $5 and 3,000,000 tokens per run (the real set ran with a $2 cap), and `--retry-failed` redoing an `error` or `crash` (which can favour the agent if a model's refusals are retried: the manifest counts the retries, and the finding should quote the count: 0 in the real set).
 - **Not covered here, by design:** opening the PR on GitHub and the co-author trailer (spike 4); the box, so the agent's shell isn't isolated (spike 3); a Linux or macOS run. The code uses no Windows-only API beyond spike 1's `process-tree.ts`, whose POSIX paths spike 1 notes have run in no test yet.
 - **Commit.** This spike is untracked in the shared checkout; stage it by path (`git add spikes/is-opencode-good-enough`) and commit it with the next change.
 
