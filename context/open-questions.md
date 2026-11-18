@@ -251,4 +251,11 @@ Most open questions in rounds 7–12 are engineering choices with a safe default
 | Q103 | Rivet | **Drop it** (Q51). The runner drives agents directly over ACP with the official SDK |
 | Q104 | Jira | **The first adapter after v1.** The `TrackerAdapter` and its contract tests are written against both Linear's and Jira's models from day one, so adding Jira doesn't force a redesign |
 | Q105 | Spend limits | A monthly budget per organization and per project. At 80%, the admins are told. At 100%, new tasks wait, and running tasks finish their current turn. Home shows it, as in the concept |
-| Q106 | Test accounts for the spikes | <ul><li>a GitHub org for ostra's tests</li><li>a Linear workspace for its tests</li><li>a model key. OpenRouter is recommended: one key reaches every model</li></ul>They're kept in `~/.config/ostra-dev/`, never in chat. Which accounts, and when? |
+| Q106 | Test accounts for the spikes | <ul><li>a GitHub org for ostra's tests</li><li>a Linear workspace for its tests</li><li>a model endpoint: any API base URL, bearer token and model ID</li></ul>They're kept in `~/.config/ostra-dev/`, never in chat. Which accounts, and when? |
+
+**Answers on 2026-11-18, from chat:**
+- **Q101:** the maintainer's own team uses ostra first. They added that it doesn't matter much for the plan: "We're just building it out."
+- **Q106:**
+  - The maintainer will set up a Linear workspace for the tests.
+  - The model endpoint for development must be provider-neutral, like the product: "any base URL works". Nothing in the plan or the dev setup may favour one provider.
+  - The GitHub org's purpose was unclear to the maintainer. It's a sandbox for test repos and the test GitHub App, so no real repo is ever touched.
