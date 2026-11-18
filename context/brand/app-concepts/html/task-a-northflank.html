@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ostra · task · direction A (console, navy)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  :root {
+    --bg: #0B1220; --surface: #0F1829; --raise: #131F35; --line: #1C2A44; --line-2: #24344F;
+    --text: #E4E9F2; --muted: #8E9AB2; --faint: #5E6B84;
+    --sel: #17243C; --green: #4FB286; --red: #E5675C; --amber: #FFB224; --shell: #F3F0E8; --ink: #0C1D21;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font: 400 13px/1.5 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  svg.lucide { width: 15px; height: 15px; stroke-width: 1.75; flex: none; }
+  .app { width: 1440px; height: 900px; display: grid; grid-template-rows: 48px 40px auto 44px 1fr; overflow: hidden; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .top img { width: 22px; height: 22px; }
+  .crumb { display: flex; align-items: center; gap: 6px; color: var(--text); font-weight: 500; padding: 4px 8px; border-radius: 6px; }
+  .crumb .lucide { width: 13px; height: 13px; color: var(--muted); }
+  .sep { color: var(--line-2); font-size: 16px; }
+  .top .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .search { display: flex; align-items: center; gap: 8px; width: 260px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--faint); background: var(--surface); }
+  .search kbd { margin-left: auto; font: 500 11px 'IBM Plex Mono'; color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 5px; }
+  .iconbtn { position: relative; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
+  .badge { position: absolute; top: 3px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--amber); color: var(--ink); font: 700 10px/15px 'IBM Plex Sans'; text-align: center; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 7px; font: 500 13px 'IBM Plex Sans'; border: 1px solid var(--line-2); color: var(--text); background: transparent; }
+  .btn.primary { background: var(--shell); color: var(--ink); border-color: var(--shell); font-weight: 600; }
+  .btn.amber { background: var(--amber); color: var(--ink); border-color: var(--amber); font-weight: 600; }
+  .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #22324F; color: var(--text); display: grid; place-items: center; font: 600 11px 'IBM Plex Sans'; }
+
+  /* tabs */
+  .tabs { display: flex; align-items: stretch; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+  .tab { display: flex; align-items: center; gap: 7px; padding: 0 12px; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; }
+  .tab.on { color: var(--text); border-bottom-color: var(--shell); }
+
+  /* resource header */
+  .head { display: flex; align-items: center; gap: 14px; padding: 16px 20px 14px; }
+  .tile { width: 40px; height: 40px; border-radius: 9px; background: var(--raise); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--text); }
+  .tile .lucide { width: 18px; height: 18px; }
+  .title { font: 700 19px/1.2 Manrope, sans-serif; letter-spacing: -0.01em; }
+  .title .key { color: var(--muted); font-weight: 600; margin-right: 8px; }
+  .meta { display: flex; align-items: center; gap: 10px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+  .meta .lucide { width: 13px; height: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 5px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font: 500 11.5px 'IBM Plex Mono'; }
+  .head .right { margin-left: auto; display: flex; gap: 8px; }
+
+  /* status strip */
+  .strip { display: flex; align-items: center; padding: 0 20px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12.5px; }
+  .strip > div { display: flex; align-items: center; gap: 7px; padding: 0 16px; height: 22px; border-left: 1px solid var(--line-2); }
+  .strip > div:first-child { padding-left: 0; border-left: 0; }
+  .strip b { color: var(--text); font-weight: 500; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11.5px; font-weight: 500; }
+  .pill.green { color: var(--green); background: rgba(79,178,134,0.12); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .meter { width: 90px; height: 4px; border-radius: 2px; background: var(--line-2); overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 58%; background: var(--green); }
+  .link { color: var(--text); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+
+  /* body */
+  .body { display: grid; grid-template-columns: 208px 1fr 340px; min-height: 0; }
+  .sub { border-right: 1px solid var(--line); padding: 14px 10px; }
+  .grp { font: 500 10.5px 'IBM Plex Mono'; letter-spacing: 0.08em; color: var(--faint); padding: 10px 10px 6px; }
+  .item { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 10px; border-radius: 6px; color: var(--muted); font-weight: 500; }
+  .item.on { background: var(--sel); color: var(--text); box-shadow: inset 2px 0 0 var(--shell); }
+  .item .n { margin-left: auto; font: 500 11px 'IBM Plex Mono'; color: var(--faint); }
+
+  .main { display: flex; flex-direction: column; min-height: 0; }
+  .thread { flex: 1; overflow: hidden; padding: 18px 28px 8px; }
+  .msg { display: flex; gap: 12px; margin-bottom: 14px; }
+  .who { width: 22px; height: 22px; border-radius: 6px; background: var(--raise); border: 1px solid var(--line-2); display: grid; place-items: center; flex: none; }
+  .who .lucide { width: 12px; height: 12px; }
+  .msg p { color: var(--text); font-size: 13.5px; }
+  .msg .time { color: var(--faint); font: 400 11px 'IBM Plex Mono'; margin-bottom: 2px; }
+  .tools { margin: 2px 0 16px 34px; border-left: 1px solid var(--line-2); }
+  .tool { display: flex; align-items: center; gap: 10px; height: 30px; padding-left: 14px; color: var(--muted); }
+  .tool .verb { color: var(--text); width: 46px; font-weight: 500; }
+  .tool .mono { font-size: 12.5px; color: var(--text); }
+  .add { color: var(--green); font: 500 12px 'IBM Plex Mono'; }
+  .del { color: var(--red); font: 500 12px 'IBM Plex Mono'; }
+  .ok { color: var(--green); display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+  .approval { margin: 4px 0 0 34px; border: 1px solid rgba(255,178,36,0.55); border-radius: 9px; background: rgba(255,178,36,0.05); padding: 14px 16px; }
+  .approval .label { display: flex; align-items: center; gap: 6px; color: var(--amber); font: 600 12px 'IBM Plex Sans'; letter-spacing: 0.02em; }
+  .approval .q { margin: 8px 0; color: var(--text); }
+  .code { font: 400 13px 'IBM Plex Mono'; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; color: var(--text); }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .composer { margin: 0 28px 18px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); padding: 10px 12px; }
+  .composer .ph { color: var(--faint); height: 34px; }
+  .composer .row { display: flex; align-items: center; gap: 8px; }
+  .composer .hint { color: var(--faint); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .composer .hint { margin-right: auto; }
+
+  .side { border-left: 1px solid var(--line); padding: 18px 20px; overflow: hidden; }
+  .side h4 { display: flex; align-items: center; gap: 8px; font: 600 13px 'IBM Plex Sans'; color: var(--text); margin-bottom: 10px; }
+  .side h4 .right { margin-left: auto; color: var(--muted); }
+  .kv { display: grid; grid-template-columns: 92px 1fr; row-gap: 8px; font-size: 12.5px; margin-bottom: 18px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .hr { height: 1px; background: var(--line); margin: 4px 0 16px; }
+  .file { display: flex; align-items: center; gap: 8px; height: 28px; font: 400 12.5px 'IBM Plex Mono'; color: var(--text); }
+  .file .lucide { color: var(--muted); width: 13px; height: 13px; }
+  .file .stat { margin-left: auto; display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <img src="../../kit/logo/export/ostra-hinge-single-color.svg" alt="ostra">
+    <span class="sep">/</span>
+    <span class="crumb">Acme Corp <i data-lucide="chevrons-up-down"></i></span>
+    <span class="sep">/</span>
+    <span class="crumb"><i data-lucide="box"></i> calculator <i data-lucide="chevrons-up-down"></i></span>
+    <div class="right">
+      <div class="search"><i data-lucide="search"></i> Search <kbd>⌘K</kbd></div>
+      <div class="iconbtn"><i data-lucide="bell"></i><span class="badge">5</span></div>
+      <div class="iconbtn"><i data-lucide="circle-help"></i></div>
+      <span class="btn primary"><i data-lucide="plus"></i> Create new</span>
+      <div class="avatar">AK</div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <span class="tab"><i data-lucide="layout-dashboard"></i> Dashboard</span>
+    <span class="tab on"><i data-lucide="list-checks"></i> Tasks</span>
+    <span class="tab"><i data-lucide="inbox"></i> Inbox</span>
+    <span class="tab"><i data-lucide="cpu"></i> Environment</span>
+    <span class="tab"><i data-lucide="zap"></i> Automations</span>
+    <span class="tab"><i data-lucide="git-branch"></i> Repos</span>
+    <span class="tab"><i data-lucide="settings"></i> Settings</span>
+  </nav>
+
+  <section class="head">
+    <div class="tile"><i data-lucide="sparkle"></i></div>
+    <div>
+      <div class="title"><span class="key">CALC-161</span>Add history panel</div>
+      <div class="meta">
+        <span class="mono">task t_8f2k1</span><i data-lucide="copy"></i>
+        <span class="chip"><i data-lucide="square-arrow-out-up-right"></i> Linear CALC-161</span>
+        <span class="chip"><i data-lucide="git-branch"></i> calc-161-add-history-panel</span>
+      </div>
+    </div>
+    <div class="right">
+      <span class="btn"><i data-lucide="git-pull-request"></i> Open PR #483</span>
+      <span class="btn"><i data-lucide="square"></i> Stop</span>
+    </div>
+  </section>
+
+  <div class="strip">
+    <div><span class="pill green"><span class="dot"></span>Running</span></div>
+    <div><i data-lucide="box"></i> <b>e2b-elastic</b> · <span class="mono">e2b-7f3a</span></div>
+    <div><i data-lucide="bot"></i> <b>OpenCode</b> · Claude Sonnet 5.5</div>
+    <div><i data-lucide="user"></i> <b>Sam Rivera</b> is driving · <span class="link">Take over</span></div>
+    <div><span class="mono">214k tokens · $1.82 · 14 min</span></div>
+    <div><span class="mono">4 vCPU / 8 GB</span> <span class="meter"><i></i></span></div>
+  </div>
+
+  <div class="body">
+    <aside class="sub">
+      <div class="grp">SESSION</div>
+      <div class="item on"><i data-lucide="activity"></i> Activity</div>
+      <div class="item"><i data-lucide="file-diff"></i> Changes <span class="n">3</span></div>
+      <div class="item"><i data-lucide="circle-check"></i> Checks <span class="n">1/2</span></div>
+      <div class="grp">CONTEXT</div>
+      <div class="item"><i data-lucide="ticket"></i> Ticket</div>
+      <div class="item"><i data-lucide="cpu"></i> Environment</div>
+      <div class="grp">OBSERVE</div>
+      <div class="item"><i data-lucide="list"></i> Events</div>
+      <div class="item"><i data-lucide="scroll-text"></i> Logs</div>
+      <div class="item"><i data-lucide="chart-no-axes-column"></i> Usage</div>
+      <div class="item"><i data-lucide="shield-check"></i> Audit log</div>
+    </aside>
+
+    <main class="main">
+      <div class="thread">
+        <div class="msg">
+          <div class="who"><i data-lucide="user"></i></div>
+          <div><div class="time">Sam Rivera · 14:02</div><p>Pick up CALC-161. Keep the last 50 results; clicking one should load it back into the input.</p></div>
+        </div>
+        <div class="msg">
+          <div class="who"><i data-lucide="bot"></i></div>
+          <div><div class="time">OpenCode · 14:02</div><p>I'll add a history panel that stores the last 50 results in the calculator state and lets you click one to reuse it.</p></div>
+        </div>
+        <div class="tools">
+          <div class="tool"><span class="verb">Read</span><span class="mono">src/calculator/state.ts</span></div>
+          <div class="tool"><span class="verb">Edited</span><span class="mono">src/history/panel.tsx</span><span class="add">+118</span></div>
+          <div class="tool"><span class="verb">Edited</span><span class="mono">src/calculator/state.ts</span><span class="add">+24</span><span class="del">−6</span></div>
+          <div class="tool"><span class="verb">Ran</span><span class="mono">pnpm test history</span><span class="ok"><i data-lucide="check"></i>12 passed</span></div>
+        </div>
+        <div class="approval">
+          <div class="label"><i data-lucide="hand"></i> NEEDS YOU · APPROVAL</div>
+          <div class="q">OpenCode wants to run a command that changes the database:</div>
+          <div class="code">pnpm db:migrate</div>
+          <div class="actions">
+            <span class="btn sm">Deny</span>
+            <span class="btn sm amber">Approve once</span>
+            <span class="btn sm">Approve for this task</span>
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="ph">Message the agent…</div>
+        <div class="row">
+          <span class="hint"><i data-lucide="info"></i> Sending interrupts the current turn (OpenCode)</span>
+          <span class="btn sm"><i data-lucide="pause"></i> Interrupt</span>
+          <span class="btn sm primary"><i data-lucide="arrow-up"></i> Send</span>
+        </div>
+      </div>
+    </main>
+
+    <aside class="side">
+      <h4><i data-lucide="git-pull-request"></i> Pull request <span class="right"><i data-lucide="square-arrow-out-up-right"></i></span></h4>
+      <dl class="kv">
+        <dt>Number</dt><dd class="mono">#483 · draft</dd>
+        <dt>Author</dt><dd>ostra-acme[bot] · Sam Rivera</dd>
+        <dt>Checks</dt><dd><span class="ok"><i data-lucide="check"></i>lint</span> <span style="color:var(--muted)">· test running</span></dd>
+        <dt>Base</dt><dd class="mono">main</dd>
+      </dl>
+      <div class="hr"></div>
+      <h4><i data-lucide="file-diff"></i> Changes <span class="right mono" style="font-size:12px">+203 −6</span></h4>
+      <div class="file"><i data-lucide="file-code"></i> src/history/panel.tsx <span class="stat"><span class="add">+118</span></span></div>
+      <div class="file"><i data-lucide="file-code"></i> src/calculator/state.ts <span class="stat"><span class="add">+24</span><span class="del">−6</span></span></div>
+      <div class="file"><i data-lucide="file-code"></i> src/history/panel.test.tsx <span class="stat"><span class="add">+61</span></span></div>
+      <div class="hr" style="margin-top:14px"></div>
+      <h4><i data-lucide="ticket"></i> Ticket</h4>
+      <p style="color:var(--muted);font-size:12.5px;line-height:1.55">Users want to reuse earlier results. Show the last 50 in a side panel; clicking one loads it into the input. Must work with keyboard only.</p>
+    </aside>
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>
