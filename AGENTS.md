@@ -86,7 +86,7 @@ Everything is **strictly typed**, end to end. The maintainer: "everything needs 
 
 ## Boundaries
 
-- This repo is public. Secrets never enter it. Local secrets, including the credentials for the test workspaces, live in `keys/`, which is gitignored. The code reads them from the environment.
+- This repo is public. Secrets never enter it, nor its folder on disk. Local secrets, including the credentials for the test workspaces, live outside the repo in `~/.config/ostra-dev/` (`docs/development.md`). The code reads them from the environment.
 - Develop and test only against the test workspaces: a Linear workspace and a GitHub org set up for ostra. Use a real team's tracker or repos only when the maintainer names it.
 - Ticket text, PR comments and agent output are untrusted input:
   - ostra passes them as data and never interpolates them into a shell command.

@@ -1,6 +1,12 @@
-# Secrets stay local (AGENTS.md). Only the README describing them is committed.
-keys/*
-!keys/README.md
+# Secrets never live in this repo (AGENTS.md: they're kept in ~/.config/ostra-dev/).
+# These patterns are a backstop against an accidental copy.
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+keys/
 
 # Installed agent skills: third-party, under their own licenses. Reinstall from skills-lock.json.
 .agents/skills/

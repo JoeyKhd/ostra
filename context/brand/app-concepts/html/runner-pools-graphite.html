@@ -34,14 +34,14 @@
     <div class="content">
       <div class="page">
         <h1>Runner pools</h1>
-        <p class="lede">Where tasks run. 238 boxes busy and 41 tasks queued, across 4 pools and 3 providers.</p>
+        <p class="lede">Where tasks run. 238 boxes busy and 41 tasks queued, across 4 pools, all on your own machines.</p>
 
         <div class="section">
           <table class="t">
             <tr><th>Pool</th><th>Kind</th><th>Provider</th><th>Busy</th><th class="num">Queued</th><th>Last 24 hours</th><th>Version</th></tr>
             <tr class="sel"><td>build-fleet</td><td class="muted">Fixed</td><td class="muted">Docker + gVisor · 50 hosts</td><td><span class="busy"><span class="meter"><i style="width:71%"></i></span><span class="mono">142 / 200</span></span></td><td class="num">12</td><td><svg class="spark" data-pool="0" width="120" height="24"></svg></td><td class="mono muted" style="font-size:12px">v0.4.2</td></tr>
-            <tr><td>e2b-elastic</td><td class="muted">Elastic</td><td class="muted">E2B microVMs</td><td><span class="busy"><span class="meter"><i style="width:14.5%"></i></span><span class="mono">58 · max 400</span></span></td><td class="num faint">0</td><td><svg class="spark" data-pool="1" width="120" height="24"></svg></td><td class="mono muted" style="font-size:12px">v0.4.2</td></tr>
-            <tr><td>k8s-gvisor</td><td class="muted">Elastic</td><td class="muted">Kubernetes agent-sandbox</td><td><span class="busy"><span class="meter"><i style="width:15.5%"></i></span><span class="mono">31 / 200</span></span></td><td class="num">29</td><td><svg class="spark" data-pool="2" width="120" height="24"></svg></td><td class="mono muted" style="font-size:12px">v0.4.2</td></tr>
+            <tr><td>k8s-autoscale</td><td class="muted">Autoscaled</td><td class="muted">Kubernetes · a pod per task</td><td><span class="busy"><span class="meter"><i style="width:14.5%"></i></span><span class="mono">58 · max 400</span></span></td><td class="num">29</td><td><svg class="spark" data-pool="1" width="120" height="24"></svg></td><td class="mono muted" style="font-size:12px">v0.4.2</td></tr>
+            <tr><td>mac-minis</td><td class="muted">Fixed</td><td class="muted">macOS · 10 hosts</td><td><span class="busy"><span class="meter"><i style="width:77.5%"></i></span><span class="mono">31 / 40</span></span></td><td class="num faint">0</td><td><svg class="spark" data-pool="2" width="120" height="24"></svg></td><td class="mono muted" style="font-size:12px">v0.4.2</td></tr>
             <tr><td>laptops</td><td class="muted">Personal</td><td class="muted">Members' machines</td><td><span class="busy"><span class="meter"><i style="width:58%"></i></span><span class="mono">7 / 12 online</span></span></td><td class="num faint">—</td><td><svg class="spark" data-pool="3" width="120" height="24"></svg></td><td class="mono muted" style="font-size:12px">v0.4.1–0.4.2</td></tr>
           </table>
         </div>
@@ -54,7 +54,7 @@
         <div class="section">
           <div class="shead"><h2>Events</h2><span class="more">Audit log <i data-lucide="arrow-right"></i></span></div>
           <div class="rows">
-            <div class="r"><i data-lucide="hourglass"></i><span class="grow"><span class="mono">k8s-gvisor</span> has 29 tasks queued while the cluster adds nodes</span><span class="age">2m</span></div>
+            <div class="r"><i data-lucide="hourglass"></i><span class="grow"><span class="mono">k8s-autoscale</span> is starting runner pods for 29 queued tasks</span><span class="age">2m</span></div>
             <div class="r"><i data-lucide="unplug"></i><span class="grow"><span class="mono">build-23</span> went offline. Its 4 tasks resume on other runners from their last checkpoint</span><span class="age">3m</span></div>
             <div class="r"><i data-lucide="plug"></i><span class="grow"><span class="mono">build-17</span> joined <span class="mono">build-fleet</span></span><span class="age">20m</span></div>
           </div>

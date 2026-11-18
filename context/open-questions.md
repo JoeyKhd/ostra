@@ -209,3 +209,30 @@ Agents' own memory features are tied to one person or one machine. ostra can hol
 | Q90 | Where it shows | <ul><li>A **Memory** page in each project (and one for the organization), with search, kinds and the proposals.</li><li>The task page lists the notes a session used, and the notes it proposed.</li><li>Every change goes to the audit log</li></ul> |
 | Q91 🔬 | Prior art | Research before building: how Devin Knowledge, Cursor Memories, GitHub Copilot Memory, Windsurf Memories and Claude Code's memory files capture, approve, retrieve and expire memory. The findings go in `research/project-memory.md` |
 | Q92 | What ships in v1 | **v1:**<ul><li>organization and project notes</li><li>written by members</li><li>delivered as an index plus MCP search</li><li>proposals from agents, with approval</li></ul>**Later:**<ul><li>staleness checks</li><li>"Promote to repo"</li><li>vector search</li><li>personal notes</li></ul> |
+
+## Answers on 2026-11-18, from chat
+
+These are recorded here until the plan's rework moves them into ADRs and the ledger.
+
+- **Q36: no E2B, and no hosted sandbox vendor.** The maintainer: "People should be able to run their runners wherever they want and just host it, and then it should have like an authentication key." So runners are self-hosted anywhere, and round 14 below works out how.
+- **Q45: yes, OpenCode is the default agent.**
+- **Q48, confirmed without Rivet:** a runner joins with a key, a join token per pool. The details are Q94.
+- **Models: list them from the endpoint itself.** When a member adds a provider (an API base URL and a bearer token), ostra calls the endpoint's own model list, the way the New API gateway fetches a channel's models:
+  - `GET /v1/models` on OpenAI-compatible APIs and on Anthropic's API
+  - OpenRouter's model list, which also includes prices
+  ostra then matches the IDs against models.dev for names, logos, limits and prices. IDs without a match, such as self-hosted or fine-tuned models, are custom models with editable fields. The list refreshes daily. Endpoints with no model list let the member type model IDs. "Test connection" is the same call.
+- **Local secrets live outside the repo,** in `~/.config/ostra-dev/` (`docs/development.md`). The `keys/` folder is gone.
+
+## Round 14 (asked 2026-11-18): runners without a sandbox vendor
+
+The runner becomes a small controller that people run on their own machines. Its **executor** creates each task's box. GitLab Runner's executors and Buildkite's Kubernetes stack work this way.
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q93 | Executors | Three executors, built in this order:<ul><li>**`host`:** laptops. Worktrees, not isolated, only the member's own tasks (Q44)</li><li>**`docker`:** a container per task, with gVisor as an optional runtime</li><li>**`kubernetes`:** a pod per task. The cluster's own autoscaler supplies the elasticity, with no vendor</li></ul>All three in v1 |
+| Q94 | How a runner joins | **A personal runner:** `ostra runner`, signed in with a device code that the member approves in the browser. It runs only that member's tasks.<br>**A pool runner:**<ul><li>It starts with the pool's join token, `OSTRA_JOIN_TOKEN`.</li><li>On first contact it trades the token for its own identity, a key pair whose private half never leaves the runner.</li><li>After that, it uses short-lived access tokens.</li></ul>Each runner can be revoked on its own. Rotating a join token doesn't disconnect runners that already joined. Join tokens are per pool, revocable, and can expire. GitHub Actions and Buildkite runners register this way |
+| Q95 | The snapshot as an image | A runner builds the project's OCI image (base image, checkout and dependencies, never secrets) and pushes it to the team's own registry, such as GHCR, ECR or Harbor.<ul><li>Docker hosts pull it, or build and cache it themselves when no registry is set.</li><li>Kubernetes pulls it.</li><li>Laptops use a worktree and a dependency cache instead.</li></ul>The registry is an optional setting |
+| Q96 | Services (Q40, without E2B) | <ul><li>**`docker`:** sidecar containers on a private network per task.</li><li>**`kubernetes`:** sidecar containers in the task's pod</li></ul> |
+| Q97 | The Docker socket | The `docker` executor needs the Docker socket, which means root on that host. So:<ul><li>it runs on dedicated runner hosts</li><li>the docs recommend rootless Docker or the gVisor runtime</li><li>the `kubernetes` executor needs only its own namespace and a service account scoped to it</li></ul> |
+| Q98 | Hosted sandboxes later | ADR 0025's `RunnerProviderAdapter` becomes an **`ExecutorAdapter`**. Hosted sandboxes (E2B, Daytona, Modal) can be community executors later. None in v1 |
+| Q99 | Q37, revisited | Without a provider's time limits, the rule stays: after 15 idle minutes (Q42), the runner pushes unfinished work to a hidden ref, releases the box, and the task reopens on a fresh one later |

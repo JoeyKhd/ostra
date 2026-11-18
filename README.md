@@ -19,7 +19,7 @@ ostra is an open-source, self-hosted control panel that turns the coding agents 
 A ticket from your tracker, or a plain prompt, becomes a **task**. An agent works on it on its own branch, in an isolated box prepared from your project's environment. Your team can watch it live, steer it, approve risky steps, and reopen it months later. It ships a GitHub pull request.
 
 - **Your agents.** Any coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com), starting with OpenCode and Claude Code.
-- **Your machines.** Runners on a laptop, on your servers, or on elastic sandboxes. Each task gets its own box.
+- **Your machines.** Run runners wherever you like: a laptop, your servers, your Kubernetes cluster. They connect out to your ostra with a join token, and each task gets its own box.
 - **Your models.** Any provider with an API base URL and a bearer token. Names, prices and logos come from [models.dev](https://models.dev).
 - **Your tracker.** Linear first, then Jira. The tracker stays the source of truth.
 
@@ -55,7 +55,7 @@ These are design concepts built in HTML, not screenshots of shipped software.
   </tr>
   <tr>
     <td width="50%"><img src="context/brand/app-concepts/html/environment-graphite.png" alt="A project's environment"><br><sub><b>The environment:</b> repos, services, setup script, secrets per repo.</sub></td>
-    <td width="50%"><img src="context/brand/app-concepts/html/runner-pools-graphite.png" alt="Runner pools"><br><sub><b>Runner pools:</b> fixed hosts, elastic sandboxes and members' laptops.</sub></td>
+    <td width="50%"><img src="context/brand/app-concepts/html/runner-pools-graphite.png" alt="Runner pools"><br><sub><b>Runner pools:</b> your servers, your Kubernetes cluster and members' laptops.</sub></td>
   </tr>
 </table>
 
