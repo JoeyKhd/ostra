@@ -121,7 +121,8 @@ afterAll(async () => {
     await proxy.close();
   }
   await upstream.close();
-  await rm(root, { recursive: true, force: true });
+  // On Windows a git process can hold the folder for a moment after it exits.
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 });
 
 describe("the git proxy with stock git", () => {
