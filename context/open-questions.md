@@ -75,3 +75,10 @@ The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be ab
 | Q18 | Scale target | 1,000 tasks at once per install *(working value)*, the core service running as several copies |
 | Q19 | Subscriptions versus scale | Subscriptions only on members' own laptops; pools and automation on team API keys, Bedrock or Vertex |
 | Q20 | Rate limits | Tracked per provider and key; tasks wait instead of failing |
+
+**Not reinventing the wheel**
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q21 | Copy specific Apache/MIT modules (Cyrus's Linear agent handling, Vibe Kanban's agent drivers, Cezar's variants and workflows) with attribution and a `NOTICE` file, instead of rewriting them | Yes, one module at a time, each in an ADR. The product as a whole stays our own (ADR 0015) |
+| Q22 | Run the Tier 1 research | **Settled 2026-11-18: yes.** Running: `research/durable-execution.md`, `elastic-sandboxes.md`, `live-sync.md`, `integrations-platform.md`, `credential-proxy.md`, `runner-transport.md` |
