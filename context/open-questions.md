@@ -188,6 +188,8 @@ ADR 0007 already chose a pnpm + Turborepo monorepo. Three earlier decisions shap
 
 ## Round 13 (asked 2026-11-18): project memory
 
+**Answered "yes" to all on 2026-11-18.** These questions leave this file when the plan's rework (Organization → Project → Task) writes their ledger rows and the glossary term "memory note". The research in Q91 comes first.
+
 The maintainer asked how each project gets its own memory, shared across the project. Each task starts in a fresh box, so whatever one task learns is lost unless ostra keeps it. Examples:
 - "regenerate the Prisma client before the API tests"
 - "percent math uses decimal.js, never floats"
