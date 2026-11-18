@@ -43,7 +43,8 @@
     "runners": "Runners",
     "models": "Models",
     "github": "GitHub",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "needsYouHere": "{n} waiting on you"
   },
   "signIn": {
     "title": "Sign in",
@@ -75,7 +76,9 @@
     "lede": "Your organization's projects and what waits on you.",
     "projects": "Projects",
     "noProjects": "No projects yet. An admin creates the first one.",
-    "noProjectsAdmin": "No projects yet. Create one from the checklist."
+    "noProjectsAdmin": "No projects yet. Create one from the checklist.",
+    "needsYou": "{n} need you",
+    "running": "{n} running"
   },
   "checklist": {
     "title": "Set up ostra",
@@ -208,5 +211,75 @@
     "secrets": "Secrets",
     "secretsStored": "In the secret store",
     "permissions": "Permissions"
+  },
+  "projects": {
+    "title": "Project",
+    "newTitle": "Create a project",
+    "newLede": "A project is one repo and its environment. Tasks run against it and open their pull requests there.",
+    "needsGitHub": "Connect GitHub first",
+    "needsGitHubBody": "A project's repo comes from the GitHub App's installation.",
+    "name": "Name",
+    "nameHelp": "Lowercase letters, digits and hyphens make its slug.",
+    "slug": "Slug: {slug}",
+    "installation": "Installation",
+    "repo": "Repository",
+    "noRepos": "The App sees no repository in this installation. Add one on GitHub.",
+    "private": "Private",
+    "create": "Create the project",
+    "creating": "Reading the repo…",
+    "createHelp": "ostra reads the repo's files and drafts its environment. Nothing runs yet.",
+    "access": "Access",
+    "open": "Every member",
+    "restricted": "Restricted",
+    "yourRole": "Your role",
+    "admin": "Admin",
+    "member": "Member",
+    "repos": "Repositories",
+    "runs": "Runs",
+    "envSaved": "Saved",
+    "envDraft": "Draft: review it",
+    "pools": "Pools",
+    "agent": "Agent"
+  },
+  "environment": {
+    "title": "Environment",
+    "lede": "What every task of this project gets before its agent starts: the setup script, and each repo's variables, secrets and files.",
+    "createdLede": "The project exists. ostra drafted its environment from the repo's files: check it, fill in the secrets, and save.",
+    "draft": "Draft",
+    "savedAgo": "Saved {age} ago",
+    "save": "Save environment",
+    "saved": "Saved.",
+    "setupScript": "Setup script",
+    "setupScriptHelp": "Runs with bash in the task's workspace, before the agent starts. Its output shows on the task page.",
+    "envFile": "Variables and secrets go to",
+    "entries": "Entries of {repo}",
+    "name": "Name",
+    "value": "Value",
+    "secretValue": "Secret value",
+    "secretSet": "Set: type to replace it",
+    "secretEmpty": "No value yet",
+    "path": "Path in the repo",
+    "content": "Content",
+    "duringSetup": "during setup",
+    "duringSetupHelp": "Also available while the setup script runs.",
+    "kind": {
+      "variable": "Variable",
+      "secret": "Secret",
+      "file": "File"
+    },
+    "add": {
+      "variable": "Variable",
+      "secret": "Secret",
+      "file": "File"
+    },
+    "baseImage": "Base image",
+    "baseImageHelp": "Applies on the docker executor only. Tasks on a personal runner (host) use the machine as it is.",
+    "baseImageDefault": "ostra's base image",
+    "foundIn": "Found in {repo}",
+    "nothingFound": "Nothing to go on: the repo has no lockfile or setup file ostra knows.",
+    "tools": "Tools",
+    "services": "Services",
+    "notOnHost": "not on host",
+    "servicesHelp": "A service needs a container runtime, so a personal runner (host) doesn't start it. Services come with milestone 3."
   }
 }
