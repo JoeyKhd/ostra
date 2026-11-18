@@ -261,12 +261,15 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     };
   };
 
+  // Order matters: forget the session in the saved state, then delete its spool, and only then drop it
+  // from the live map that report() reads. Otherwise report() says the session is gone while its spool
+  // is still on disk, and a crash in that window leaves an orphan spool (seen on Linux CI, 2026-11-18).
   const dropSession = async (session: Session): Promise<void> => {
-    sessions.delete(session.sessionId);
     liveText.endSession(session.sessionId);
     state = { ...state, sessions: state.sessions.filter((entry) => entry.sessionId !== session.sessionId) };
     await persist();
     await session.spool.destroy();
+    sessions.delete(session.sessionId);
     for (const resolve of session.drainWaiters.splice(0)) {
       resolve();
     }
