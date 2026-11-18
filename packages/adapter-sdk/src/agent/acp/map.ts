@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { optionIdSchema, segmentIdSchema, toolCallIdSchema } from "@ostra/protocol";
 import type { ApprovalOption, ContentBlock, PlanEntry, SegmentId, TaskEvent, ToolKind } from "@ostra/protocol";
 import { z } from "zod";
@@ -145,24 +147,39 @@ const firstString = (...values: unknown[]): string | undefined => {
   return undefined;
 };
 
+/**
+ * A path inside the session's folder, as the panel shows it: relative to that folder, with forward
+ * slashes. Other paths stay as they are. A runner's own folders never need to reach the panel.
+ */
+const shownPath = (value: string, sessionCwd: string | undefined): string => {
+  if (sessionCwd === undefined || !path.isAbsolute(value)) {
+    return value;
+  }
+  const relative = path.relative(sessionCwd, value);
+  if (relative === "") {
+    return ".";
+  }
+  return relative.startsWith("..") || path.isAbsolute(relative) ? value : relative.split(path.sep).join("/");
+};
+
 /** Normalises a tool call's input for the kinds the panel draws itself (`typedToolSchemas`). */
-const normalizeInput = (kind: ToolKind, call: ToolCallFields): z.infer<ReturnType<typeof z.json>> => {
+const normalizeInput = (kind: ToolKind, call: ToolCallFields, sessionCwd: string | undefined): z.infer<ReturnType<typeof z.json>> => {
   const raw = recordOf(call.rawInput);
-  const path = call.locations?.[0]?.path ?? firstString(raw["filePath"], raw["path"], raw["file_path"]);
+  const first = call.locations?.[0]?.path ?? firstString(raw["filePath"], raw["path"], raw["file_path"]);
   switch (kind) {
     case "read":
-      return path === undefined ? toJson(call.rawInput) : { path };
+      return first === undefined ? toJson(call.rawInput) : { path: shownPath(first, sessionCwd) };
     case "edit": {
-      const paths = (call.locations ?? []).map((entry) => entry.path);
-      if (paths.length === 0 && path !== undefined) {
-        paths.push(path);
+      const paths = (call.locations ?? []).map((entry) => shownPath(entry.path, sessionCwd));
+      if (paths.length === 0 && first !== undefined) {
+        paths.push(shownPath(first, sessionCwd));
       }
       return paths.length === 0 ? toJson(call.rawInput) : { paths };
     }
     case "execute": {
       const command = firstString(raw["command"], raw["cmd"]);
       const cwd = firstString(raw["cwd"], raw["workdir"]);
-      return command === undefined ? toJson(call.rawInput) : { command, ...(cwd === undefined ? {} : { cwd }) };
+      return command === undefined ? toJson(call.rawInput) : { command, ...(cwd === undefined ? {} : { cwd: shownPath(cwd, sessionCwd) }) };
     }
     case "delete":
     case "move":
@@ -178,13 +195,13 @@ const normalizeInput = (kind: ToolKind, call: ToolCallFields): z.infer<ReturnTyp
 };
 
 /** Normalises a finished (or progressing) tool call's output for the kinds the panel draws itself. */
-const normalizeOutput = (kind: ToolKind, call: ToolCallFields, exitCode: number | null): z.infer<ReturnType<typeof z.json>> => {
+const normalizeOutput = (kind: ToolKind, call: ToolCallFields, exitCode: number | null, sessionCwd: string | undefined): z.infer<ReturnType<typeof z.json>> => {
   switch (kind) {
     case "edit": {
       const files = (call.content ?? [])
         .filter((entry) => entry.type === "diff" && entry.path !== undefined)
         .map((entry) => ({
-          path: entry.path ?? "",
+          path: shownPath(entry.path ?? "", sessionCwd),
           added: countLines(entry.newText),
           removed: countLines(entry.oldText),
           patch: `${(entry.oldText ?? "").split("\n").map((line) => `-${line}`).join("\n")}\n${(entry.newText ?? "")
@@ -275,17 +292,17 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
   const kindsById = new Map<string, ToolKind>();
   const config = new Map<string, string>();
   /** Calls waiting for their input: emitted with the next update, whichever it is. */
-  const held = new Map<string, { readonly turnId: MapContext["turnId"]; readonly fields: ToolCallFields }>();
+  const held = new Map<string, { readonly context: MapContext; readonly fields: ToolCallFields }>();
 
-  const calledEvent = (turnId: MapContext["turnId"], toolCallId: z.infer<typeof toolCallIdSchema>, fields: ToolCallFields): TaskEvent => {
+  const calledEvent = (context: MapContext, toolCallId: z.infer<typeof toolCallIdSchema>, fields: ToolCallFields): TaskEvent => {
     const toolKind = kindsById.get(toolCallId) ?? toToolKind(fields.kind);
     return {
       kind: "tool.called",
-      turnId,
+      turnId: context.turnId,
       toolCallId,
       toolKind,
       title: (fields.title ?? toolKind).slice(0, 2000),
-      input: normalizeInput(toolKind, fields),
+      input: normalizeInput(toolKind, fields, context.cwd),
     };
   };
 
@@ -295,7 +312,7 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
       held.delete(id);
       const toolCallId = toolCallIdSchema.safeParse(id);
       if (toolCallId.success) {
-        out.push(calledEvent(call.turnId, toolCallId.data, call.fields));
+        out.push(calledEvent(call.context, toolCallId.data, call.fields));
       }
     }
   };
@@ -396,10 +413,10 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
         const toolKind = toToolKind(call.data.kind);
         kindsById.set(toolCallId.data, toolKind);
         if (stillWaiting(call.data)) {
-          held.set(toolCallId.data, { turnId: context.turnId, fields: call.data });
+          held.set(toolCallId.data, { context, fields: call.data });
           return out;
         }
-        out.push(calledEvent(context.turnId, toolCallId.data, call.data));
+        out.push(calledEvent(context, toolCallId.data, call.data));
         return out;
       }
       case "tool_call_update": {
@@ -414,18 +431,18 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
           held.delete(toolCallId.data);
           const merged = mergeCallFields(waiting.fields, call.data);
           if (stillWaiting(merged)) {
-            held.set(toolCallId.data, { turnId: waiting.turnId, fields: merged });
+            held.set(toolCallId.data, { context: waiting.context, fields: merged });
             return out;
           }
-          out.push(calledEvent(waiting.turnId, toolCallId.data, merged));
+          out.push(calledEvent(waiting.context, toolCallId.data, merged));
         }
         const toolKind = kindsById.get(toolCallId.data) ?? toToolKind(call.data.kind);
         if (call.data.status === "completed") {
-          out.push({ kind: "tool.completed", toolCallId: toolCallId.data, output: normalizeOutput(toolKind, call.data, 0) });
+          out.push({ kind: "tool.completed", toolCallId: toolCallId.data, output: normalizeOutput(toolKind, call.data, 0, context.cwd) });
         } else if (call.data.status === "failed") {
           out.push({ kind: "tool.failed", toolCallId: toolCallId.data, error: (textOf(call.data) || "tool failed").slice(0, 4000) });
         } else if (call.data.status === "in_progress" && (call.data.content?.length ?? 0) > 0) {
-          out.push({ kind: "tool.progress", toolCallId: toolCallId.data, output: normalizeOutput(toolKind, call.data, null) });
+          out.push({ kind: "tool.progress", toolCallId: toolCallId.data, output: normalizeOutput(toolKind, call.data, null, context.cwd) });
         }
         // `pending`, and `in_progress` with nothing new to show: a status change, not an event.
         return out;

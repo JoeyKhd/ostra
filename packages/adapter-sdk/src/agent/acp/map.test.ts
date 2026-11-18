@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
@@ -107,6 +109,26 @@ describe("the ACP mapping", () => {
     expect(events).toMatchObject([
       { kind: "tool.called", toolCallId: "x", toolKind: "execute", title: "git status", input: { command: "git status", cwd: "/w" } },
       { kind: "tool.completed", toolCallId: "x" },
+    ]);
+  });
+
+  it("row 6: shows paths inside the session's folder relative to it, and others as they are", () => {
+    const cwd = path.resolve("work", "task-1");
+    const inside = path.join(cwd, "test1", "README.md");
+    const outside = path.resolve("elsewhere", "notes.md");
+    const mapper = createAcpMapper();
+    const withCwd = { ...context(), cwd };
+    const events = [
+      ...mapper.map({ sessionUpdate: "tool_call", toolCallId: "r", title: "read", kind: "read", locations: [{ path: inside }] }, withCwd),
+      ...mapper.map({ sessionUpdate: "tool_call", toolCallId: "o", title: "read", kind: "read", locations: [{ path: outside }] }, withCwd),
+      ...mapper.map({ sessionUpdate: "tool_call", toolCallId: "x", title: "ls", kind: "execute", rawInput: { command: "ls", cwd } }, withCwd),
+      ...mapper.map({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "completed", kind: "edit", content: [{ type: "diff", path: inside, newText: "a" }] }, withCwd),
+    ];
+    expect(events).toMatchObject([
+      { kind: "tool.called", input: { path: "test1/README.md" } },
+      { kind: "tool.called", input: { path: outside } },
+      { kind: "tool.called", input: { command: "ls", cwd: "." } },
+      { kind: "tool.completed", output: { files: [{ path: "test1/README.md" }] } },
     ]);
   });
 

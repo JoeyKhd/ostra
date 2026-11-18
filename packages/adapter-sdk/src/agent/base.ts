@@ -147,6 +147,8 @@ export type MapContext = {
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  /** The session's working folder: paths inside it are shown relative to it. */
+  readonly cwd?: string;
 };
 
 /** ostra's ACP driver, as the base class uses it (ticket 09 provides the real one). */
@@ -242,7 +244,7 @@ export abstract class AgentAdapter {
         if (turnId === undefined) {
           return;
         }
-        const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId };
+        const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId, cwd: input.cwd };
         const own = this.mapUpdate(update, context);
         const events = own.handled ? own.events : this.#driver.mapUpdate(own.update ?? update, context);
         if (events.length > 0) {
