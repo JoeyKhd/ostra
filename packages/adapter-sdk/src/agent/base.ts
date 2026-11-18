@@ -56,7 +56,14 @@ export type PrepareLaunchInput = {
     readonly placeholderKey: string;
   };
   /** ostra's MCP tools for this task (ticket 20). */
-  readonly mcp: { readonly url: string };
+  readonly mcp: {
+    readonly url: string;
+    /**
+     * The task's bearer token for ostra's MCP tools (ticket 20): task-scoped, good at ostra's tool
+     * server only. Absent: the server takes no token.
+     */
+    readonly bearer?: string;
+  };
   readonly instructions: string | null;
   /** The variables the environment allows through to the agent (non-secret, per repo). */
   readonly extraEnv: Readonly<Record<string, string>>;
@@ -184,8 +191,12 @@ export type AgentSession = {
 export type MappedUpdate =
   /** The adapter mapped it itself. */
   | { readonly handled: true; readonly events: readonly TaskEvent[] }
-  /** Use the shared mapping. */
-  | { readonly handled: false };
+  /**
+   * Use the shared mapping. `update` replaces the agent's update for it, so an agent that says a
+   * thing its own way (OpenCode's todo list, as a tool call) can have it said as ACP says it, and
+   * keep the shared mapping's ordering (the open text segment closes first).
+   */
+  | { readonly handled: false; readonly update?: AcpUpdate };
 
 export abstract class AgentAdapter {
   readonly kind = "agent" as const;
@@ -233,7 +244,7 @@ export abstract class AgentAdapter {
         }
         const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId };
         const own = this.mapUpdate(update, context);
-        const events = own.handled ? own.events : this.#driver.mapUpdate(update, context);
+        const events = own.handled ? own.events : this.#driver.mapUpdate(own.update ?? update, context);
         if (events.length > 0) {
           input.onEvents(events);
         }
