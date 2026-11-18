@@ -50,7 +50,8 @@ Every install registers its own Linear app and GitHub App (ADR 0001), so ostra s
 |---|---|---|---|---|---|
 | B-020 | GitHub org avatar | `files/github/avatar-500.png` 500×500 | script | v1 | done |
 | B-021 | GitHub social preview | `files/github/social-preview.png` 1280×640, dark | script | v1 | done |
-| B-022 | README header | `files/readme/header-dark.png` and `header-light.png` 1600×560, for a `<picture>` that follows the reader's GitHub theme | script | v1 | done |
+| B-022 | README header | `files/readme/header-dark.png` and `header-light.png` 1600×560, for a `<picture>` that follows the reader's GitHub theme | script | v1 | superseded by B-025 |
+| B-025 | README banner | `files/readme/banner.png` 2400×1040, rounded and transparent at the corners, so it reads on GitHub's light and dark themes. Logo, tagline and the real graphite task screen, embedded live from `app-concepts/html/task-b-graphite.html`. Source: `scripts/readme-banner.html`, rendered at 1200×520, 2× | HTML + browser render | v1 | done |
 | B-023 | Container image icon | `files/registry/icon-512.png` for the server and runner images on GHCR and Docker Hub | script | v1 | done |
 | B-024 | Terminal look | The runner and `ostra attach` CLI's colours and banner, from the palette's ANSI-safe values | script | later | planned |
 

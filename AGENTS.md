@@ -31,6 +31,7 @@ A change is done, and ready to commit, when every line that applies holds in tha
 - **Glossary:** a new domain term, or a changed meaning, is in `context/GLOSSARY.md`.
 - **Open questions:** a question the change settles leaves `context/open-questions.md` and lives on in the ADR or ledger row that settles it.
 - **Research:** findings are in `context/research/<kebab-topic>.md`, every claim cited.
+- **README:** `README.md` always describes ostra as it is now, since it's the first thing people read. A change that makes any part of it wrong (status, milestones, features, install steps, stack, links, screenshots) updates it in the same commit.
 
 | Change | Run before the commit | Look at it running |
 |---|---|---|

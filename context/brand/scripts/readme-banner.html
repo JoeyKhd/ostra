@@ -1,0 +1,45 @@
+<!doctype html>
+<!--
+  The README banner (B-032). Render at a 1200×520 viewport, device scale 2, with a transparent
+  background, to files/readme/banner.png. The product shot is the real concept page
+  app-concepts/html/task-b-graphite.html, embedded live, so it always matches the design.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ostra · README banner</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: transparent; }
+  .card {
+    position: relative; width: 1200px; height: 520px; border-radius: 18px; overflow: hidden;
+    background: radial-gradient(760px 420px at 88% 64%, rgba(207, 216, 212, 0.07), transparent 70%), #0C1D21;
+    font-family: 'IBM Plex Sans', sans-serif; color: #F3F0E8; -webkit-font-smoothing: antialiased;
+  }
+  .copy { position: absolute; left: 64px; top: 0; bottom: 0; width: 430px; display: flex; flex-direction: column; justify-content: center; }
+  .copy img { height: 34px; align-self: flex-start; }
+  h1 { font: 800 46px/1.06 Manrope, sans-serif; letter-spacing: -0.025em; margin: 44px 0 18px; }
+  p { font-size: 16.5px; line-height: 1.55; color: #CFD8D4; margin: 0; max-width: 410px; }
+  .tags { margin-top: 26px; font: 500 12.5px 'IBM Plex Mono', monospace; color: #7E908C; letter-spacing: 0.01em; }
+  .tags b { color: #4FB286; font-weight: 500; }
+  .window {
+    position: absolute; left: 536px; top: 62px; width: 893px; height: 558px; border-radius: 12px; overflow: hidden;
+    border: 1px solid rgba(243, 240, 232, 0.13); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 0 6px rgba(243, 240, 232, 0.025);
+  }
+  .window iframe { width: 1440px; height: 900px; border: 0; transform: scale(0.62); transform-origin: 0 0; display: block; }
+  .fade { position: absolute; left: 0; right: 0; bottom: 0; height: 110px; background: linear-gradient(to bottom, rgba(12, 29, 33, 0), #0C1D21 92%); pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="copy">
+    <img src="../files/logo/lockup-horizontal-shell.svg" alt="ostra">
+    <h1>Self-hosted<br>cloud agents<br>for your team.</h1>
+    <p>Linear and Jira tickets become agent tasks on your own runners, with any model. Your team steps in, steers, and ships reviewed pull requests.</p>
+    <div class="tags"><b>●</b> open source · self-hosted · any agent · any model</div>
+  </div>
+  <div class="window"><iframe src="../app-concepts/html/task-b-graphite.html" title="ostra task screen" scrolling="no"></iframe></div>
+  <div class="fade"></div>
+</div>
+</body>
+</html>
