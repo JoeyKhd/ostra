@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Runs the Prisma CLI of this package as a child process, with an argument array (never a shell)
 // and with telemetry and update checks off (ADR 0021). Ported from
 // spikes/auth-foundation/src/db/migrate.ts and src/proc.ts.
 
-const packageRoot = path.resolve(import.meta.dirname, "..", "..");
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const prismaEntry = path.join(packageRoot, "node_modules", "prisma", "build", "index.js");
 
 export type PrismaRun = {

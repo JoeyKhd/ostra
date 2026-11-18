@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Where the development database lives and how to reach it (ticket 05, docs/development.md).
 // `pnpm db:dev` starts an embedded Postgres here unless DATABASE_URL names another server.
@@ -7,7 +8,7 @@ import path from "node:path";
 // development convenience, not a credential: nothing outside this machine can reach it.
 
 /** The repo's root folder. */
-export const repoRoot: string = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+export const repoRoot: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 
 /** Everything the dev stack keeps on disk, gitignored. `pnpm dev:reset --yes` deletes it. */
 export const devDataDir: string = path.join(repoRoot, ".ostra-dev");
