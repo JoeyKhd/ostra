@@ -88,3 +88,4 @@ The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be ab
 | # | Question | Recommendation |
 |---|---|---|
 | Q23 | Token-level text deltas versus "saved before acted on" (ADR 0011), raised by `research/live-sync.md` | Stream deltas to the browser without saving them. Save each completed message and every event ostra acts on (tool calls, approvals, state changes). Deltas are display only, and nothing acts on them |
+| Q24 | The durable queue (ADR 0017), from `research/durable-execution.md` | Adopt the MIT core of **DBOS Transact**, pending spike 6 (its nine pass/fail scenarios), with pg-boss as the fallback. Keep every DBOS import in one package, so swapping it out stays possible if DBOS drifts toward open core |
