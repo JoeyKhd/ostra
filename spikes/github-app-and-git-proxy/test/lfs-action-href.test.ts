@@ -9,6 +9,21 @@ void test("allows the upstream's origin and GitHub's LFS storage hosts", () => {
   assert.equal(allowed('https://github.com/o/r.git/info/lfs/objects/abc'), true);
   assert.equal(allowed('https://github-cloud.githubusercontent.com/alambic/media/1'), true);
   assert.equal(allowed('https://media.githubusercontent.com/x'), true);
+  // An upload's actions, as github.com answered on 2026-11-18.
+  assert.equal(allowed('https://github-cloud.s3.amazonaws.com/alambic/media/1'), true);
+  assert.equal(allowed('https://lfs.github.com/o/r/objects/abc/verify'), true);
+});
+
+void test("allows only GitHub's own S3 bucket, not any bucket", () => {
+  for (const href of [
+    'https://evil.s3.amazonaws.com/x',
+    'https://s3.amazonaws.com/evil/x',
+    'https://github-cloud.s3.amazonaws.com.evil.example/x',
+    'https://evil.lfs.github.com/x',
+    'https://lfs.github.com.evil.example/x',
+  ]) {
+    assert.equal(allowed(href), false, href);
+  }
 });
 
 void test('refuses IP literals, localhost, other schemes, ports and look-alikes', () => {

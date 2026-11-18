@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { finished } from 'node:stream/promises';
 import { z } from 'zod';
-import { CREDENTIAL_REFUSED_PREFIX, OTHER_REPO_MESSAGE, type GitProxy } from '../git-proxy.ts';
+import { CREDENTIAL_REFUSED_PREFIX, LFS_ACTION_REFUSED_MESSAGE, OTHER_REPO_MESSAGE, type GitProxy } from '../git-proxy.ts';
 import { makeAgentWorld, runGit, scanForSecrets, secretVariants, type AgentWorld, type GitResult } from '../git.ts';
 import { TaskIdSchema, type RepoSlug, type TaskId } from '../ids.ts';
 import type { Logger } from '../log.ts';
@@ -100,7 +100,14 @@ type Refusal =
 
 const LfsBatchAnswerSchema = z
   .object({
-    objects: z.array(z.object({ actions: z.record(z.string(), z.object({ href: z.string() }).loose()).optional() }).loose()),
+    objects: z.array(
+      z
+        .object({
+          actions: z.record(z.string(), z.object({ href: z.string() }).loose()).optional(),
+          error: z.object({ code: z.number(), message: z.string() }).loose().optional(),
+        })
+        .loose(),
+    ),
   })
   .loose();
 
@@ -465,15 +472,42 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
     );
 
     // ---- shallow and partial clones
+    // Of the task's branch, which has history by now: the sandbox repos'
+    // default branch can be a single commit, and a --depth 1 clone of that is
+    // complete, not shallow.
     const sh: Check[] = [];
     const shallow = path.join(ws, 'shallow');
-    const sc = await git(['clone', '--depth', '1', remote, shallow], ws);
-    const depth = sc.code === 0 ? (await git(['rev-list', '--count', 'HEAD'], shallow)).stdout.trim() : '?';
-    sh.push({ name: 'shallow clone --depth 1 (protocol v2)', ok: sc.code === 0 && depth === '1', detail: sc.code === 0 ? `${depth} commit` : brief(sc) });
-    const sc0 = await git(['-c', 'protocol.version=0', 'clone', '--depth', '1', remote, path.join(ws, 'shallow-v0')], ws);
-    sh.push({ name: 'shallow clone --depth 1 (protocol v0)', ok: sc0.code === 0, detail: sc0.code === 0 ? 'cloned' : brief(sc0) });
+    const isShallow = async (cwd: string): Promise<string> => (await git(['rev-parse', '--is-shallow-repository'], cwd)).stdout.trim();
+    const count = async (cwd: string, rev = 'HEAD'): Promise<string> => (await git(['rev-list', '--count', rev], cwd)).stdout.trim();
+    // The full clone has every commit, so it can count the shallow clone's
+    // history in full.
+    await git(['fetch', '-q', 'origin'], work);
+    const sc =await git(['clone', '--depth', '1', '--branch', branch, remote, shallow], ws);
+    const scHead = sc.code === 0 ? await head(shallow) : '?';
+    const scFull = sc.code === 0 ? await count(work, scHead) : '?';
+    const depth = sc.code === 0 ? await count(shallow) : '?';
+    const scShallow = sc.code === 0 ? await isShallow(shallow) : '?';
+    sh.push({
+      name: 'shallow clone --depth 1 (protocol v2)',
+      ok: sc.code === 0 && depth === '1' && scShallow === 'true' && Number(scFull) > 1,
+      detail: sc.code === 0 ? `${depth} of ${scFull} commits, shallow: ${scShallow}` : brief(sc),
+    });
+    const shallowV0 = path.join(ws, 'shallow-v0');
+    const sc0 = await git(['-c', 'protocol.version=0', 'clone', '--depth', '1', '--branch', branch, remote, shallowV0], ws);
+    const depth0 = sc0.code === 0 ? await count(shallowV0) : '?';
+    const sc0Shallow = sc0.code === 0 ? await isShallow(shallowV0) : '?';
+    sh.push({
+      name: 'shallow clone --depth 1 (protocol v0)',
+      ok: sc0.code === 0 && depth0 === '1' && sc0Shallow === 'true',
+      detail: sc0.code === 0 ? `${depth0} commit, shallow: ${sc0Shallow}` : brief(sc0),
+    });
     const deepen = await git(['fetch', '--deepen', '1'], shallow);
-    sh.push({ name: 'fetch --deepen 1', ok: deepen.code === 0, detail: deepen.code === 0 ? 'deepened' : brief(deepen) });
+    const deepened = deepen.code === 0 ? await count(shallow) : '?';
+    sh.push({
+      name: 'fetch --deepen 1',
+      ok: deepen.code === 0 && deepened === '2',
+      detail: deepen.code === 0 ? `${deepened} commits, shallow: ${await isShallow(shallow)}` : brief(deepen),
+    });
     const shBranch = path.join(ws, 'shallow-branch');
     const scb = await git(['clone', '--depth', '1', '--branch', branch, remote, shBranch], ws);
     await commitFile(shBranch, `spike-4/${taskId}-shallow.txt`, 'from a shallow clone\n', 'spike 4: push from a shallow clone');
@@ -486,7 +520,13 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
       detail: shPush.code === 0 ? 'pushed' : brief(shPush),
     });
     const unshallow = await git(['fetch', '--unshallow'], shallow);
-    sh.push({ name: 'fetch --unshallow', ok: unshallow.code === 0, detail: unshallow.code === 0 ? 'full history' : brief(unshallow) });
+    const unCount = unshallow.code === 0 ? await count(shallow) : '?';
+    const unShallow = unshallow.code === 0 ? await isShallow(shallow) : '?';
+    sh.push({
+      name: 'fetch --unshallow',
+      ok: unshallow.code === 0 && unShallow === 'false' && unCount === scFull,
+      detail: unshallow.code === 0 ? `${unCount} of ${scFull} commits, shallow: ${unShallow}` : brief(unshallow),
+    });
     const partial = await git(['clone', '--filter=blob:none', remote, path.join(ws, 'partial')], ws);
     sh.push({ name: 'partial clone --filter=blob:none (recorded, not in the pass bar)', ok: partial.code === 0, detail: partial.code === 0 ? 'cloned' : brief(partial) });
 
@@ -581,11 +621,22 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
       const allowedIndex = LFS_REDIRECT_PROBE_HREFS.findIndex((h) => h.startsWith('https://github-cloud.githubusercontent.com/'));
       const keptRightOne = answer.success && Object.keys(answer.data.objects[allowedIndex]?.actions ?? {}).length === 1;
       const allViaProxy = kept.every((a) => a.href.startsWith(`${proxy.url}/_ostra/lfs/`));
+      // Every object that lost its action carries the proxy's error, so
+      // git-lfs fails rather than reading "no actions" as "already there".
+      const refusedWithError = answer.success
+        ? answer.data.objects.filter((o, i) => i !== allowedIndex && o.error?.message === LFS_ACTION_REFUSED_MESSAGE).length
+        : 0;
       const actionsAfter = proxy.stats().upstreamRequests['lfs-action'];
       lfs.push({
-        name: 'an LFS action that points at an IP, localhost, plain http, an odd port or a look-alike host is dropped',
-        ok: res.status === 200 && kept.length === 1 && keptRightOne && allViaProxy && actionsAfter === actionsBefore,
-        detail: `${n(LFS_REDIRECT_PROBE_HREFS.length)} actions offered, ${n(kept.length)} kept (want 1: GitHub's storage host), ${n(actionsAfter - actionsBefore)} called`,
+        name: "an LFS action that points at an IP, localhost, plain http, an odd port or a look-alike host is dropped, and its object gets the proxy's error",
+        ok:
+          res.status === 200 &&
+          kept.length === 1 &&
+          keptRightOne &&
+          allViaProxy &&
+          refusedWithError === LFS_REDIRECT_PROBE_HREFS.length - 1 &&
+          actionsAfter === actionsBefore,
+        detail: `${n(LFS_REDIRECT_PROBE_HREFS.length)} actions offered, ${n(kept.length)} kept (want 1: GitHub's storage host), ${n(refusedWithError)} objects refused with the proxy's error, ${n(actionsAfter - actionsBefore)} called`,
       });
     }
 

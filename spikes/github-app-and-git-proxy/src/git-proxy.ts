@@ -31,9 +31,22 @@ export type UpstreamConfig = {
   readonly lfsActionHosts?: readonly string[];
 };
 
-// GitHub's LFS batch answers point at its storage hosts. For GitHub
-// Enterprise Server, list its own storage host in lfsActionHosts.
-export const DEFAULT_LFS_ACTION_HOSTS = ['github-cloud.githubusercontent.com', '*.githubusercontent.com'] as const;
+// GitHub's LFS batch answers point at its storage hosts. As github.com
+// answered on 2026-11-18: an upload's `upload` action goes to its S3 bucket,
+// and its `verify` action to lfs.github.com. The S3 bucket is named exactly,
+// since anyone can own a bucket under s3.amazonaws.com. For GitHub Enterprise
+// Server, list its own storage host in lfsActionHosts.
+export const DEFAULT_LFS_ACTION_HOSTS = [
+  'github-cloud.githubusercontent.com',
+  '*.githubusercontent.com',
+  'github-cloud.s3.amazonaws.com',
+  'lfs.github.com',
+] as const;
+
+// An object with an action the proxy won't call gets this per-object error
+// instead of its actions. An object with no actions tells git-lfs the server
+// already has it, so an upload would "succeed" with nothing uploaded.
+export const LFS_ACTION_REFUSED_MESSAGE = "ostra: the LFS server sent this object's transfer to a host the proxy doesn't allow";
 
 // What the proxy answers, word for word, so a test can tell the proxy's own
 // refusal from any other failure.
@@ -137,6 +150,13 @@ const pickClientHeaders = (req: IncomingMessage, keepLength: boolean, keepEncodi
   }
   return out;
 };
+
+// GitHub refuses a request with no User-Agent: lfs.github.com answers an LFS
+// verify without one with a 403, "Request forbidden by administrative rules"
+// (seen 2026-11-18). git-lfs always sends one, so pass it on, with a fallback.
+const userAgentOf = (req: IncomingMessage): { readonly 'user-agent': string } => ({
+  'user-agent': headerOne(req, 'user-agent') ?? 'ostra-git-proxy',
+});
 
 const basicAuth = (token: string): string => `Basic ${Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64')}`;
 
@@ -456,6 +476,7 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       return;
     }
     const headers = await withToken({
+      ...userAgentOf(req),
       accept: 'application/vnd.git-lfs+json',
       'content-type': 'application/vnd.git-lfs+json',
     });
@@ -492,15 +513,23 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
     for (const [nonce, action] of lfsActions) if (action.expiresAt < now) lfsActions.delete(nonce);
     let rewritten = 0;
     let dropped = 0;
+    let refusedObjects = 0;
+    // Host names only: an action's path and query carry its signature.
+    const droppedHosts = new Set<string>();
     const objects = answer.data.objects.map((object) => {
       if (object.actions === undefined) return object;
+      const entries = Object.entries(object.actions).map(([name, action]) => ({ name, action, href: new URL(action.href) }));
+      const refused = entries.filter((e) => !isAllowedLfsActionHref(e.href, upstreamOrigin, lfsHosts));
+      if (refused.length > 0) {
+        // All or nothing per object: an upload without its verify, or an
+        // object with no actions left, would read to git-lfs as done.
+        dropped += entries.length;
+        refusedObjects += 1;
+        for (const e of refused) droppedHosts.add(e.href.host.toLowerCase());
+        return { oid: object.oid, size: object.size, error: { code: 403, message: LFS_ACTION_REFUSED_MESSAGE } };
+      }
       const actions: Record<string, { href: string; expires_in: number }> = {};
-      for (const [name, action] of Object.entries(object.actions)) {
-        const href = new URL(action.href);
-        if (!isAllowedLfsActionHref(href, upstreamOrigin, lfsHosts)) {
-          dropped += 1;
-          continue;
-        }
+      for (const { name, action, href } of entries) {
         const ttl = Math.min(action.expires_in ?? LFS_ACTION_MAX_TTL_S, LFS_ACTION_MAX_TTL_S);
         const nonce = randomBytes(24).toString('base64url');
         const actionHeaders = action.header ?? {};
@@ -523,6 +552,8 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       objects: objects.length,
       actions: rewritten,
       dropped,
+      refusedObjects,
+      droppedHosts: [...droppedHosts],
     });
     res.writeHead(200, { 'content-type': 'application/vnd.git-lfs+json' });
     res.end(JSON.stringify({ ...answer.data, objects }));
@@ -539,6 +570,7 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       return;
     }
     const headers = await withToken({
+      ...userAgentOf(req),
       accept: 'application/vnd.git-lfs+json',
       'content-type': 'application/vnd.git-lfs+json',
     });
@@ -561,7 +593,7 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       lfsError(res, 403, 'read-only', describeRefusal('read-only'));
       return;
     }
-    const base: Record<string, string> = { ...action.headers };
+    const base: Record<string, string> = { ...action.headers, ...userAgentOf(req) };
     for (const name of ['content-type', 'content-length', 'accept'] as const) {
       const v = headerOne(req, name);
       if (v !== undefined) base[name] = v;

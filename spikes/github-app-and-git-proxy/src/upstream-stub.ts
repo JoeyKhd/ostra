@@ -345,6 +345,14 @@ export const startUpstreamStub = async (config: StubConfig): Promise<{ port: num
         res.end(JSON.stringify(stats));
         return;
       }
+      // As GitHub does (lfs.github.com, seen 2026-11-18): no User-Agent, no
+      // answer.
+      if (req.headers['user-agent'] === undefined || req.headers['user-agent'] === '') {
+        req.resume();
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end('stub: Request forbidden by administrative rules. Please make sure your request has a User-Agent header\n');
+        return;
+      }
       const git = GIT_ROUTE.exec(url.pathname);
       if (git !== null) return handleGit(req, res, url, git);
       const lfs = LFS_OBJECT.exec(url.pathname);
