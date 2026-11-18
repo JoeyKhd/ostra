@@ -82,3 +82,9 @@ The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be ab
 |---|---|---|
 | Q21 | Copy specific Apache/MIT modules (Cyrus's Linear agent handling, Vibe Kanban's agent drivers, Cezar's variants and workflows) with attribution and a `NOTICE` file, instead of rewriting them | Yes, one module at a time, each in an ADR. The product as a whole stays our own (ADR 0015) |
 | Q22 | Run the Tier 1 research | **Settled 2026-11-18: yes.** Running: `research/durable-execution.md`, `elastic-sandboxes.md`, `live-sync.md`, `integrations-platform.md`, `credential-proxy.md`, `runner-transport.md` |
+
+**From the Tier 1 research**
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q23 | Token-level text deltas versus "saved before acted on" (ADR 0011), raised by `research/live-sync.md` | Stream deltas to the browser without saving them. Save each completed message and every event ostra acts on (tool calls, approvals, state changes). Deltas are display only, and nothing acts on them |
