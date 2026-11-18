@@ -1,0 +1,83 @@
+import type { ApiFormat, AuthScheme } from "@ostra/protocol";
+
+import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
+import type { AdapterContext, Plumbing } from "../common/context.ts";
+import type { AdapterResult, HealthReport } from "../common/result.ts";
+import type { ModelProviderCapabilities } from "./capabilities.ts";
+
+// The model provider kind (ADR 0025, ADR 0033): any base URL and token, in one of two formats,
+// with the models.dev catalog for names, limits and prices. No test, default or spike assumes a
+// provider (Q106).
+
+/** An endpoint and its token. The token is never logged. */
+export type ModelEndpoint = {
+  readonly baseUrl: string;
+  readonly token: string;
+  /** Unset: "Test connection" tries both. */
+  readonly authScheme?: AuthScheme;
+  /** Unset: "Test connection" detects it. */
+  readonly apiFormat?: ApiFormat;
+};
+
+/** A model as the endpoint lists it. */
+export type EndpointModel = {
+  readonly endpointModelId: string;
+  readonly displayName: string | null;
+  readonly contextWindow: number | null;
+};
+
+/** What "Test connection" found (F-088). */
+export type ConnectionTest = {
+  readonly apiFormat: ApiFormat;
+  readonly authScheme: AuthScheme;
+  readonly models: readonly EndpointModel[];
+};
+
+/** One models.dev catalog entry (vendor-owned, parsed loosely by the adapter). */
+export type CatalogEntry = {
+  readonly catalogId: string;
+  readonly name: string;
+  /** The IDs and aliases endpoints list it under. */
+  readonly aliases: readonly string[];
+  readonly contextWindow: number | null;
+  readonly maxOutputTokens: number | null;
+  /** US dollars per million tokens. */
+  readonly inputPricePerMTok: number | null;
+  readonly outputPricePerMTok: number | null;
+  /** The logo's path on ostra's own server, never the vendor's (F-088). */
+  readonly logoPath: string | null;
+};
+
+export type CatalogMatch = {
+  readonly endpointModelId: string;
+  readonly match: { readonly kind: "catalog"; readonly entry: CatalogEntry } | { readonly kind: "custom" };
+};
+
+export abstract class ModelProviderAdapter {
+  readonly kind = "model-provider" as const;
+  abstract readonly name: string;
+  abstract readonly capabilities: ModelProviderCapabilities;
+
+  readonly #context: AdapterContext;
+  #plumbing: Plumbing | undefined;
+
+  constructor(context: AdapterContext = defaultAdapterContext) {
+    this.#context = context;
+  }
+
+  /** Retries, rate budgets, idempotency and the logger, shared by every adapter (ADR 0025). */
+  protected get plumbing(): Plumbing {
+    this.#plumbing ??= createPlumbing(this.#context, { kind: this.kind, name: this.name });
+    return this.#plumbing;
+  }
+
+  abstract health(): Promise<HealthReport>;
+
+  /** Lists the endpoint's models and detects its API format and auth scheme. */
+  abstract testConnection(endpoint: ModelEndpoint): Promise<AdapterResult<ConnectionTest>>;
+
+  abstract listModels(endpoint: ModelEndpoint & { readonly apiFormat: ApiFormat }): Promise<AdapterResult<readonly EndpointModel[]>>;
+
+  /** Matches each model to a catalog entry, or marks it custom. Pure: no call. */
+  abstract matchCatalog(models: readonly EndpointModel[], catalog: readonly CatalogEntry[]): readonly CatalogMatch[];
+}

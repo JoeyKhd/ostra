@@ -1,0 +1,90 @@
+import type { ApiFormat, AuthScheme } from "@ostra/protocol";
+import { describe, expect, it } from "vitest";
+
+import type { CatalogEntry, ModelProviderAdapter } from "../model-provider/base.ts";
+import { defineCommonCases, useSubject } from "./common-cases.ts";
+import type { ContractSuiteOptions } from "./common-cases.ts";
+
+// The cases every model provider adapter passes (ADR 0033): against stub endpoints in both API
+// formats (ticket 12), and, gated on `model.env`, against the real endpoint. No case assumes a
+// particular provider (Q106).
+
+export type StubEndpoint = {
+  readonly baseUrl: string;
+  readonly token: string;
+  readonly apiFormat: ApiFormat;
+  readonly authScheme: AuthScheme;
+  /** The model IDs the endpoint lists. */
+  readonly models: readonly string[];
+};
+
+export type ModelProviderFixture = {
+  /** One endpoint per API format the adapter declares. */
+  readonly endpoints: readonly StubEndpoint[];
+  /** A token every endpoint refuses. */
+  readonly wrongToken: string;
+  readonly catalog: readonly CatalogEntry[];
+  /** A model ID the catalog knows, and one it doesn't. */
+  readonly knownModelId: string;
+  readonly unknownModelId: string;
+};
+
+export const defineModelProviderContractSuite = (
+  options: ContractSuiteOptions<ModelProviderAdapter, ModelProviderFixture>,
+): void => {
+  describe(`model provider contract: ${options.name}`, () => {
+    const subject = useSubject(options);
+
+    defineCommonCases(subject, "model-provider", { apiFormats: "array", modelList: "boolean", usageInStream: "boolean" });
+
+    it("has an endpoint fixture for every format it declares", () => {
+      const { adapter, fixture } = subject();
+      const formats = new Set(fixture.endpoints.map((endpoint) => endpoint.apiFormat));
+      for (const format of adapter.capabilities.apiFormats) {
+        expect(formats.has(format), `an endpoint in ${format}`).toBe(true);
+      }
+    });
+
+    it("detects each endpoint's format and auth scheme, and lists its models", async () => {
+      const { adapter, fixture } = subject();
+      for (const endpoint of fixture.endpoints) {
+        const tested = await adapter.testConnection({ baseUrl: endpoint.baseUrl, token: endpoint.token });
+        expect(tested).toMatchObject({ ok: true, value: { apiFormat: endpoint.apiFormat, authScheme: endpoint.authScheme } });
+        if (tested.ok) {
+          expect(tested.value.models.map((model) => model.endpointModelId).sort()).toEqual([...endpoint.models].sort());
+        }
+      }
+    });
+
+    it("refuses a wrong token as unauthorized", async () => {
+      const { adapter, fixture } = subject();
+      for (const endpoint of fixture.endpoints) {
+        const tested = await adapter.testConnection({ baseUrl: endpoint.baseUrl, token: fixture.wrongToken });
+        expect(tested).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+      }
+    });
+
+    it("lists models in the given format", async () => {
+      const { adapter, fixture } = subject();
+      for (const endpoint of fixture.endpoints) {
+        const listed = await adapter.listModels(endpoint);
+        expect(listed.ok && listed.value.length).toBe(endpoint.models.length);
+      }
+    });
+
+    it("matches a known model to the catalog and marks an unknown one custom", () => {
+      const { adapter, fixture } = subject();
+      const matches = adapter.matchCatalog(
+        [
+          { endpointModelId: fixture.knownModelId, displayName: null, contextWindow: null },
+          { endpointModelId: fixture.unknownModelId, displayName: null, contextWindow: null },
+        ],
+        fixture.catalog,
+      );
+      expect(matches.map((match) => [match.endpointModelId, match.match.kind])).toEqual([
+        [fixture.knownModelId, "catalog"],
+        [fixture.unknownModelId, "custom"],
+      ]);
+    });
+  });
+};
