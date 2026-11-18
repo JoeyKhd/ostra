@@ -2,6 +2,7 @@ import type { GitPerson, RepoFullName } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
+import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { CodeHostCapabilities } from "./capabilities.ts";
 
@@ -161,6 +162,16 @@ export abstract class CodeHostAdapter {
 
   /** Reads files at a ref, for environment detection (F-112). Missing paths are listed, not errors. */
   abstract readFiles(access: RepoAccess, ref: string, paths: readonly string[]): Promise<AdapterResult<ReadFilesResult>>;
+
+  /**
+   * Every file path in the repo at a ref, for environment detection (F-112, ticket 32). Additive
+   * to the first contract: a host that can't list answers `unsupported`, and detection then reads
+   * only the well-known paths.
+   */
+  listTree(access: RepoAccess, ref: string): Promise<AdapterResult<readonly string[]>> {
+    this.plumbing.logger.debug('listTree is not supported', { repo: access.repo, ref });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't list a repo's files`));
+  }
 
   abstract getDefaultBranch(access: RepoAccess): Promise<AdapterResult<string>>;
 
