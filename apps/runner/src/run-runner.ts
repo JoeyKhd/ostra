@@ -1,111 +1,167 @@
 import path from "node:path";
+import { createDockerBoxes, createEngine, engineAddressFrom } from "@ostra/adapter-executor-docker";
 import { HostExecutor } from "@ostra/adapter-executor-host";
-import type { ExecutorAdapter } from "@ostra/adapter-sdk";
 import type { RunnerConfig } from "@ostra/protocol";
 import type { RunSignedIn } from "./cli/cli.ts";
 import { exitCodes } from "./cli/cli.ts";
-import type { Terminal } from "./cli/terminal.ts";
+import { createBoxDispatcher } from "./box-dispatcher.ts";
 import { startConnection } from "./connection/peer.ts";
-import type { RunnerConnection } from "./connection/peer.ts";
+import type { CommandHandlers, ConnectionHooks, PeerStatus, RunnerConnection } from "./connection/peer.ts";
 import { updateStatus } from "./identity/store.ts";
 import { defaultAgents } from "./task-host/agents.ts";
 import { runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
+import { RUNNER_VERSION } from "./version.ts";
 
-// `ostra runner` once it's signed in: the connection to the server, and the task host that runs
-// what it's dispatched, until Ctrl-C or a revocation.
+// `ostra runner` once it's signed in: the connection to the server, and what runs the tasks it's
+// dispatched, until Ctrl-C or a revocation.
+// - `host`: the task host, in this process, on a worktree per task ("personal, not isolated").
+// - `docker`: a box per task on this machine's Docker Engine; each box's sidecar runs its task.
 
 /** How long a stopping agent has to exit on its own before its tree is killed. */
 const STOP_GRACE_MS = 5_000;
 
-const executorFor = async (config: RunnerConfig, dataDir: string, terminal: Terminal): Promise<ExecutorAdapter | null> => {
-  switch (config.executor) {
-    case "host":
-      return HostExecutor.start({ dataDir, shell: config.shell }, { logger: terminal.logger, clock: { now: () => Date.now() } });
-    case "docker":
-      terminal.warn("The docker executor runs on a Linux machine with Docker (ticket 22); start this runner with --executor host.");
-      return null;
-    default:
-      return config.executor satisfies never;
-  }
+/** The images a box is made of, unless the settings name others (`docs/configuration.md`). */
+const imagesOf = (config: RunnerConfig): { readonly base: string; readonly runner: string } => ({
+  base: config.boxBaseImage ?? `ostra/base:${RUNNER_VERSION}`,
+  runner: config.boxRunnerImage ?? `ostra/runner:${RUNNER_VERSION}`,
+});
+
+type Work = {
+  readonly handlers: CommandHandlers;
+  readonly status: () => PeerStatus;
+  readonly hooks: Pick<ConnectionHooks, "onSelfFence" | "onStaleLease">;
+  readonly started: (connection: RunnerConnection) => void;
+  readonly shutdown: () => Promise<void>;
+  readonly describe: string;
 };
 
 export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir, terminal, signal }) => {
   const { record } = signedIn.identity;
   const logger = terminal.logger.child({ runnerId: record.runnerId });
-  const executor = await executorFor(config, path.resolve(dataDir), terminal);
-  if (executor === null) {
-    return exitCodes.usage;
-  }
-  const health = await executor.health();
-  if (health.status !== "ok") {
-    terminal.warn(`The ${executor.name} executor can't run tasks here: ${health.reason}.`);
-    return exitCodes.failed;
-  }
   // The task host and the connection need each other: the host reaches the connection through this.
   const holder: { connection: RunnerConnection | undefined } = { connection: undefined };
-  const connected = (): RunnerConnection => {
-    if (holder.connection === undefined) {
-      throw new Error("the connection isn't started yet");
-    }
-    return holder.connection;
-  };
-  const host = createTaskHost({
-    link: runnerServerLink({
-      serverUrl: config.serverUrl,
-      tokens: signedIn.tokens,
-      connection: {
-        openSession: (ref) => connected().openSession(ref),
-        statusChanged: () => {
-          holder.connection?.statusChanged();
-        },
+  const link = runnerServerLink({
+    serverUrl: config.serverUrl,
+    tokens: signedIn.tokens,
+    connection: {
+      openSession: (ref) => {
+        if (holder.connection === undefined) {
+          throw new Error("the connection isn't started yet");
+        }
+        return holder.connection.openSession(ref);
       },
-    }),
-    executor,
-    agents: defaultAgents(),
-    logger,
-    listenHost: "127.0.0.1",
-    stopGraceMs: STOP_GRACE_MS,
-    capacity: config.capacity,
-    executorKind: config.executor,
-    labels: config.labels,
+      statusChanged: () => {
+        holder.connection?.statusChanged();
+      },
+    },
   });
+
+  let work: Work;
+  switch (config.executor) {
+    case "host": {
+      const executor = await HostExecutor.start({ dataDir: path.resolve(dataDir), shell: config.shell }, { logger, clock: { now: () => Date.now() } });
+      const health = await executor.health();
+      if (health.status !== "ok") {
+        terminal.warn(`The host executor can't run tasks here: ${health.reason}.`);
+        return exitCodes.failed;
+      }
+      const host = createTaskHost({
+        link,
+        executor,
+        agents: defaultAgents(),
+        logger,
+        listenHost: "127.0.0.1",
+        stopGraceMs: STOP_GRACE_MS,
+        capacity: config.capacity,
+        executorKind: "host",
+        labels: config.labels,
+      });
+      work = {
+        handlers: host.handlers,
+        status: host.status,
+        hooks: {
+          onSelfFence: (sessions) => {
+            host.fence(sessions);
+          },
+          onStaleLease: (sessionId) => {
+            host.abandon(sessionId);
+          },
+        },
+        started: (connection) => {
+          const restored = connection.restoredSessions();
+          if (restored.length > 0) {
+            void host.restored(restored);
+          }
+        },
+        shutdown: host.shutdown,
+        describe: `host, not isolated, ${executor.capabilities.processContainment} containment`,
+      };
+      break;
+    }
+    case "docker": {
+      let address;
+      try {
+        address = engineAddressFrom(process.env["DOCKER_HOST"]);
+      } catch {
+        terminal.warn("DOCKER_HOST isn't unix://, npipe:// or tcp://host:port.");
+        return exitCodes.usage;
+      }
+      const boxes = createDockerBoxes(createEngine(address), { images: imagesOf(config) });
+      if (!(await boxes.ping())) {
+        terminal.warn("The docker executor needs a Docker Engine, and none answers here (DOCKER_HOST, or the default socket).");
+        return exitCodes.failed;
+      }
+      const dispatcher = createBoxDispatcher({
+        boxes,
+        link,
+        tokens: signedIn.tokens,
+        dataDir: path.resolve(dataDir),
+        serverUrl: config.boxServerUrl ?? config.serverUrl,
+        capacity: config.capacity,
+        labels: config.labels,
+        logger,
+      });
+      work = {
+        handlers: dispatcher.handlers,
+        status: dispatcher.status,
+        hooks: {},
+        started: () => undefined,
+        shutdown: () => Promise.resolve(),
+        describe: "docker, a box per task",
+      };
+      break;
+    }
+    default:
+      return config.executor satisfies never;
+  }
+
   const live = await startConnection({
     serverUrl: config.serverUrl,
     peer: { kind: "runner", runnerId: record.runnerId },
     tokens: signedIn.tokens,
     dataDir,
-    handlers: host.handlers,
-    status: host.status,
+    handlers: work.handlers,
+    status: work.status,
     logger,
     hooks: {
+      ...work.hooks,
       onConnected: (at) => {
         updateStatus(dataDir, { lastConnectedAt: at }).catch(() => undefined);
       },
       onRefused: (reason, message) => {
         updateStatus(dataDir, { lastRefusal: { at: Date.now(), reason, message } }).catch(() => undefined);
       },
-      onSelfFence: (sessions) => {
-        host.fence(sessions);
-      },
-      onStaleLease: (sessionId) => {
-        host.abandon(sessionId);
-      },
     },
   });
   holder.connection = live;
-  const restored = live.restoredSessions();
-  if (restored.length > 0) {
-    void host.restored(restored);
-  }
-  terminal.say(
-    `Runner ${record.runnerId} (${record.kind}, ${config.executor}${executor.capabilities.isolation === "none" ? ", not isolated" : ""}) is connecting to ${config.serverUrl}. Press Ctrl-C to stop.`,
-  );
+  work.started(live);
+  terminal.say(`Runner ${record.runnerId} (${record.kind}, ${work.describe}) is connecting to ${config.serverUrl}. Press Ctrl-C to stop.`);
   signal.addEventListener("abort", () => {
-    void host.shutdown().then(() => live.stop());
+    void work.shutdown().then(() => live.stop());
   });
   const end = await live.done;
-  await host.shutdown();
+  await work.shutdown();
   await live.stop();
   if (end.kind === "revoked") {
     terminal.warn(`${end.message}. To sign in again, delete the identity folder in ${dataDir} and start the runner again.`);

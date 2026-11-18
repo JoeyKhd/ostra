@@ -1,0 +1,93 @@
+# ostra on one machine (F-001): `docker compose -f deploy/compose.yaml up` from a clone.
+#
+# The server (the panel and core), Postgres, and one pool runner on the `docker` executor. Only the
+# required settings, each with a working default (docs/configuration.md). The first account needs
+# the setup token the server prints in its log at first start (Q117).
+#
+# Written for milestone 1 and run on Linux only: the machine milestone 1 was built on has no
+# Docker (ticket 22). Until `docker compose up` runs there, F-001 stays `building`.
+
+name: ostra
+
+services:
+  postgres:
+    image: postgres:18.6-bookworm
+    environment:
+      POSTGRES_USER: ostra
+      POSTGRES_DB: ostra
+      # Reached only by the server, on this compose network: no port is published.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "ostra", "-d", "ostra"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server
+    image: ostra/server:0.0.0
+    command: ["all"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://ostra@postgres:5432/ostra
+      OSTRA_PUBLIC_URL: ${OSTRA_PUBLIC_URL:-http://localhost:3000}
+      OSTRA_CORE_PUBLIC_URL: ${OSTRA_CORE_PUBLIC_URL:-http://localhost:8787}
+      # Holds the generated keys and the bootstrap join token. Back it up (docs/configuration.md).
+      OSTRA_DATA_DIR: /var/lib/ostra
+    ports:
+      - "3000:3000"
+      - "8787:8787"
+    volumes:
+      - server-data:/var/lib/ostra
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  runner:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.runner
+    image: ostra/runner:0.0.0
+    command: ["runner"]
+    # The runner creates the boxes, which run as Docker's own containers, beside this one. The Docker
+    # socket below is root on this host (Q97): pool runners belong on dedicated hosts, and the docs
+    # recommend rootless Docker or the gVisor runtime.
+    user: root
+    environment:
+      OSTRA_SERVER_URL: http://server:8787
+      OSTRA_RUNNER_EXECUTOR: docker
+      OSTRA_RUNNER_NAME: compose-pool
+      # The default pool's bootstrap join token, which core writes at first start (ticket 24).
+      OSTRA_JOIN_TOKEN_FILE: /var/lib/ostra-server/bootstrap-join-token
+      # A box's sidecar reaches core through its published port on this host.
+      OSTRA_BOX_SERVER_URL: http://host.docker.internal:8787
+      # The same path on the host and here: the boxes' token folders are mounted from it.
+      OSTRA_RUNNER_DATA_DIR: /var/lib/ostra-runner
+      OSTRA_BOX_BASE_IMAGE: ostra/base:0.0.0
+      OSTRA_BOX_RUNNER_IMAGE: ostra/runner:0.0.0
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/ostra-runner:/var/lib/ostra-runner
+      - server-data:/var/lib/ostra-server:ro
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  # Built so the runner can start boxes from it; it runs nothing itself.
+  base:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.base
+    image: ostra/base:0.0.0
+    profiles: ["images"]
+
+volumes:
+  postgres-data:
+  server-data:

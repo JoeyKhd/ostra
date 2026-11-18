@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { adapterError, ExecutorAdapter, ok } from "@ostra/adapter-sdk";
@@ -23,6 +22,8 @@ import type {
 import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxState, GitPerson, RepoSecret, TaskSpec } from "@ostra/protocol";
 import { detectContainment, processTreeContainment } from "./containment.ts";
+import { localProcesses } from "./task-processes.ts";
+import type { TaskProcesses } from "./task-processes.ts";
 import type { Containment, ContainmentUnit } from "./containment.ts";
 import { excludeFromGit, insideCheckout, renderEnvFile, writeCheckoutFile } from "./env-file.ts";
 import { baseEnv, ostraLines, runProgram } from "./process.ts";
@@ -53,6 +54,10 @@ export type HostExecutorOptions = {
   readonly shell?: string;
   /** How a task's processes end together. Default: detected (a cgroup on Linux when allowed). */
   readonly containment?: Containment;
+  /** Where the agent and the setup script run (spike 3's `AgentHost` seam). Default: this machine. */
+  readonly processes?: TaskProcesses;
+  /** What the executor declares about containment, when `processes` isn't this machine's. */
+  readonly processContainment?: ExecutorCapabilities["processContainment"];
   /** Where the base environment's variables come from. Default: this process's. */
   readonly env?: NodeJS.ProcessEnv;
 };
@@ -120,6 +125,7 @@ export class HostExecutor extends ExecutorAdapter {
   readonly #env: NodeJS.ProcessEnv;
   readonly #boxes = new Map<string, BoxRecord>();
   #containment: Containment | undefined;
+  readonly #processes: TaskProcesses;
   #lfs: boolean | undefined;
 
   /** Use `HostExecutor.start` to get the containment this machine allows; this constructor uses the one given. */
@@ -129,7 +135,13 @@ export class HostExecutor extends ExecutorAdapter {
     this.#shell = options.shell ?? "bash";
     this.#env = options.env ?? process.env;
     this.#containment = options.containment;
-    const kind = options.containment?.kind ?? "process-tree";
+    this.#processes =
+      options.processes ??
+      localProcesses(() => {
+        this.#containment ??= processTreeContainment();
+        return this.#containment;
+      });
+    const kind = options.processContainment ?? options.containment?.kind ?? "process-tree";
     this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: false, processContainment: kind };
   }
 
@@ -234,47 +246,21 @@ export class HostExecutor extends ExecutorAdapter {
       await mkdir(path.dirname(file.path), { recursive: true });
       await writeFile(file.path, file.content, { mode: 0o600 });
     }
-    // Exactly the launch's environment: nothing of the runner's is inherited (ADR 0030).
-    const child = spawn(launch.command, [...launch.args], {
-      cwd: launch.cwd,
-      env: { ...launch.env },
-      stdio: ["pipe", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-      windowsHide: true,
-    });
-    const started = await new Promise<{ readonly ok: true } | { readonly ok: false; readonly code: string }>((resolve) => {
-      child.once("spawn", () => {
-        resolve({ ok: true });
-      });
-      child.once("error", (error) => {
-        resolve({ ok: false, code: "code" in error && typeof error.code === "string" ? error.code : error.name });
-      });
-    });
-    if (!started.ok || child.pid === undefined) {
-      return adapterError("unavailable", `the agent's process didn't start (${started.ok ? "no pid" : started.code})`);
+    const started = await this.#processes.startAgent(launch, `${record.ref.taskId}-${record.ref.boxId}`);
+    if (!started.ok) {
+      return adapterError("unavailable", `the agent's process didn't start (${started.reason})`);
     }
-    const pid = child.pid;
-    const unit = await this.#unitFor(record, pid);
-    const exited = new Promise<ProcessExit>((resolve) => {
-      child.once("exit", (code, signal) => {
-        resolve({ code, signal });
-      });
-    });
-    record.agent = {
-      pid,
-      exited,
-      unit,
-      stdinEnd: () => {
-        child.stdin.end();
-      },
-    };
+    const { process: agentProcess, unit, stdinEnd } = started.value;
+    const pid = agentProcess.pid;
+    const exited = agentProcess.exited;
+    record.agent = { pid, exited, unit, stdinEnd };
     void exited.then(() => {
       if (record.agent?.pid === pid && record.state !== "stopped" && record.state !== "released") {
         record.state = "idle";
       }
     });
     this.plumbing.logger.info("agent started", { taskId: box.taskId, boxId: box.boxId, pid, containment: unit.kind });
-    return ok({ stdin: child.stdin, stdout: child.stdout, stderr: child.stderr, pid, exited });
+    return ok(agentProcess);
   }
 
   async commitAndPush(input: CommitAndPushInput): Promise<AdapterResult<readonly RepoPushResult[]>> {
@@ -383,21 +369,6 @@ export class HostExecutor extends ExecutorAdapter {
     }
     await agent.unit.dispose();
     this.plumbing.logger.info("agent ended", { taskId: record.ref.taskId, boxId: record.ref.boxId, exitedInGrace: quit });
-  }
-
-  async #unitFor(record: BoxRecord, pid: number): Promise<ContainmentUnit> {
-    const containment = this.#containment ?? processTreeContainment();
-    this.#containment = containment;
-    try {
-      const unit = await containment.create(`${record.ref.taskId}-${record.ref.boxId}`);
-      await unit.adopt(pid);
-      return unit;
-    } catch {
-      // The cgroup refused the process (a controller in the way): the tree still ends it.
-      const unit = await processTreeContainment().create(record.ref.taskId);
-      await unit.adopt(pid);
-      return unit;
-    }
   }
 
   #reason(result: RunResult): string {
@@ -565,7 +536,7 @@ export class HostExecutor extends ExecutorAdapter {
         }
       }
       // The script as a file, run by the shell with an argument array: never a command string.
-      const result = await runProgram(this.#shell, [file.split(path.sep).join("/")], {
+      const result = await this.#processes.run(this.#shell, [file.split(path.sep).join("/")], {
         cwd: path.join(record.workspaceDir, repo.checkoutDir),
         env,
         ...(input.signal === undefined ? {} : { signal: input.signal }),

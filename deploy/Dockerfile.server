@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+# The server image, `ostra-server` (ADR 0046): the panel (`web`), core (`core`), or both (`all`,
+# the compose file's default). Built from source with `turbo prune --docker`, so the install layer
+# changes only when a package.json or the lockfile does.
+#
+#   docker build -f deploy/Dockerfile.server -t ostra/server:0.0.0 .
+#
+# Written for milestone 1 and built on Linux only: the machine milestone 1 was built on has no
+# Docker (ticket 22). F-001 stays `building` until `docker compose up` runs there.
+
+FROM node:24.14.0-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable
+
+FROM base AS prune
+WORKDIR /src
+COPY . .
+RUN pnpm dlx turbo@2.11.13 prune @ostra/core @ostra/web --docker
+
+FROM base AS build
+WORKDIR /app
+COPY --from=prune /src/out/json/ ./
+RUN pnpm install --frozen-lockfile
+COPY --from=prune /src/out/full/ ./
+RUN pnpm --filter @ostra/db generate && pnpm --filter @ostra/web build
+
+FROM base AS runtime
+WORKDIR /app
+ENV NODE_ENV=production OSTRA_DATA_DIR=/var/lib/ostra
+COPY --from=build --chown=node:node /app /app
+COPY --chmod=0755 deploy/server-entrypoint.sh /usr/local/bin/ostra-server
+RUN mkdir -p /var/lib/ostra && chown node:node /var/lib/ostra
+USER node
+EXPOSE 3000 8787
+ENTRYPOINT ["ostra-server"]
+CMD ["all"]

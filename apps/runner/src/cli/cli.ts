@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { parseRunnerConfig, runnerConfigFields } from "@ostra/protocol";
 import type { RunnerConfig } from "@ostra/protocol";
 import { checkOwnerOnly } from "../identity/owner-only.ts";
@@ -92,6 +93,22 @@ const runnerStatus = async (dataDir: string, terminal: Terminal): Promise<number
   return exitCodes.ok;
 };
 
+/**
+ * A pool runner's join token from a file (`OSTRA_JOIN_TOKEN_FILE`), as the compose file's runner
+ * reads the bootstrap token core writes at first start. `--join-token` wins.
+ */
+const withJoinTokenFile = async (config: RunnerConfig): Promise<RunnerConfig | string> => {
+  if (config.joinToken !== undefined || config.joinTokenFile === undefined) {
+    return config;
+  }
+  try {
+    const token = (await readFile(config.joinTokenFile, "utf8")).trim();
+    return token.length > 0 ? { ...config, joinToken: token } : `OSTRA_JOIN_TOKEN_FILE (${config.joinTokenFile}) is empty`;
+  } catch {
+    return `can't read OSTRA_JOIN_TOKEN_FILE (${config.joinTokenFile})`;
+  }
+};
+
 const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDeps): Promise<number> => {
   const parsed = parseRunnerConfig({ flags, env: deps.env });
   if (!parsed.ok) {
@@ -100,7 +117,12 @@ const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDep
     }
     return exitCodes.usage;
   }
-  const config = parsed.config;
+  const withToken = await withJoinTokenFile(parsed.config);
+  if (typeof withToken === "string") {
+    deps.terminal.warn(`ostra runner: ${withToken}`);
+    return exitCodes.usage;
+  }
+  const config = withToken;
   const dataDir = config.dataDir ?? defaultDataDir();
   const signedIn = await signIn({
     config,

@@ -87,6 +87,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
         version: 1.32.2(zod@4.6.7)
+      '@ostra/adapter-executor-docker':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-executor-docker
       '@ostra/adapter-executor-host':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-executor-host
@@ -247,6 +250,28 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
     devDependencies:
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/adapters/adapter-executor-docker:
+    dependencies:
+      '@ostra/adapter-executor-host':
+        specifier: workspace:*
+        version: link:../adapter-executor-host
+      '@ostra/adapter-sdk':
+        specifier: workspace:*
+        version: link:../../adapter-sdk
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@ostra/adapter-opencode':
+        specifier: workspace:*
+        version: link:../adapter-opencode
       vitest:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))

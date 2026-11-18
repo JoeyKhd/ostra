@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1.7
+# ostra's base image (ADR 0046, ADR 0038): the agent's container for an environment that names no
+# image of its own. The tools, OpenCode pinned and checked, the models.dev catalog as a file, and
+# the box's small init under tini. It holds no credential and no ostra server code.
+#
+#   docker build -f deploy/Dockerfile.base -t ostra/base:0.0.0 .
+#
+# Written for milestone 1, built on Linux only (ticket 22). F-019's "base image pin" waits for it.
+
+FROM node:24.14.0-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable
+
+# The box's init needs the adapter SDK's process helpers and zod: the docker executor package,
+# pruned with its workspace dependencies.
+FROM base AS prune
+WORKDIR /src
+COPY . .
+RUN pnpm dlx turbo@2.11.13 prune @ostra/adapter-executor-docker --docker
+
+FROM base AS init
+WORKDIR /app
+COPY --from=prune /src/out/json/ ./
+RUN pnpm install --frozen-lockfile --prod
+COPY --from=prune /src/out/full/ ./
+
+# OpenCode 2.3.2, installed with its scripts off, and its platform binary checked against the
+# SHA-256 that @ostra/adapter-opencode pins (`pinnedChecksums`): a mismatch fails the build.
+FROM node:24.14.0-bookworm-slim AS opencode
+ARG TARGETARCH
+WORKDIR /opt/opencode
+RUN npm install --ignore-scripts --no-audit --no-fund --prefix /opt/opencode @opencode/cli@2.3.2
+RUN set -eu; \
+  case "$TARGETARCH" in \
+    amd64) pkg=cli-linux-x64; sum=e6543f6e5c39c40971ba38afd1819ac852c29ac735b5a89065d3d148d47f27ad ;; \
+    arm64) pkg=cli-linux-arm64; sum=fc1ad8f2dffed8494e31265837f78d1e6ce5200f5c1c50e953cd9b63e607efdb ;; \
+    *) echo "no pinned OpenCode for $TARGETARCH" >&2; exit 1 ;; \
+  esac; \
+  bin="/opt/opencode/node_modules/@opencode/$pkg/bin/opencode"; \
+  echo "$sum  $bin" | sha256sum -c -; \
+  mkdir -p /opt/opencode/bin; \
+  ln -s "$bin" /opt/opencode/bin/opencode
+
+FROM node:24.14.0-bookworm-slim AS runtime
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends \
+     tini bash git git-lfs ca-certificates curl ripgrep python3 build-essential procps \
+  && rm -rf /var/lib/apt/lists/*
+RUN corepack enable
+COPY --from=opencode /opt/opencode /opt/opencode
+COPY --from=init /app /opt/ostra/app
+COPY packages/adapters/adapter-model-endpoint/catalog/models-dev.json /opt/ostra/catalog/models-dev.json
+# The init's fixed path, which the box's create body names (`boxes.ts`).
+RUN mkdir -p /opt/ostra/init \
+  && printf 'import "/opt/ostra/app/packages/adapters/adapter-executor-docker/src/init/main.ts";\n' > /opt/ostra/init/main.ts \
+  && mkdir -p /task && chown node:node /task
+ENV PATH=/opt/opencode/bin:$PATH
+WORKDIR /task
+# tini is PID 1 and reaps zombies; the init runs under it as root and starts every process of the
+# task as the agent's user (uid 1000, `node`).
+ENTRYPOINT ["tini", "--"]
+CMD ["node", "/opt/ostra/init/main.ts"]
