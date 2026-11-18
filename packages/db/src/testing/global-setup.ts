@@ -7,7 +7,7 @@ import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
 import type { TestProject } from "vitest/node";
 
-import { devDataDir, migrateDeploy } from "../dev/index.ts";
+import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "../dev/index.ts";
 import "./provided-context.ts";
 
 // Vitest global setup (ticket 05): one Postgres server per test run, and one migrated template
@@ -98,6 +98,7 @@ export const setup = async (project: TestProject): Promise<void> => {
       user: "ostra",
       password,
       authMethod: "scram-sha-256",
+      initdbFlags: [...embeddedInitdbFlags],
       // Kept on stop, and removed below with retries: on Windows the files can stay busy for a moment.
       persistent: true,
       onLog: () => undefined,

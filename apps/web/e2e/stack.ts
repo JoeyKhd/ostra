@@ -10,7 +10,7 @@ import net from "node:net";
 import path from "node:path";
 
 import { createScenarioBrain, startAnthropicStub } from "@ostra/adapter-sdk/testing";
-import { devDataDir, migrateDeploy } from "@ostra/db/dev";
+import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "@ostra/db/dev";
 import { createJobs } from "@ostra/jobs";
 import EmbeddedPostgres from "embedded-postgres";
 
@@ -64,6 +64,7 @@ const main = async (): Promise<void> => {
     port,
     user: "ostra",
     password,
+    initdbFlags: [...embeddedInitdbFlags],
     persistent: false,
     onLog: () => undefined,
     onError: () => undefined,

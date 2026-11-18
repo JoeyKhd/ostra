@@ -40,6 +40,13 @@ export const devPgPort = (env: Readonly<Record<string, string | undefined>>): nu
 
 export const devPgCredentials = { user: DEV_PG_USER, password: DEV_PG_PASSWORD } as const;
 
+/**
+ * initdb's flags for every embedded cluster: UTF-8, whatever the machine's locale. Without them
+ * Windows makes a WIN1252 cluster, which refuses any character outside that code page, such as an
+ * emoji in an agent's message (SQLSTATE 22P05).
+ */
+export const embeddedInitdbFlags: readonly string[] = ["--encoding=UTF8", "--locale=C"];
+
 /** The URL of a database in the dev cluster. */
 export const devDatabaseUrl = (port: number, database: string = DEV_DATABASE_NAME): string =>
   `postgresql://${DEV_PG_USER}:${DEV_PG_PASSWORD}@127.0.0.1:${String(port)}/${database}`;

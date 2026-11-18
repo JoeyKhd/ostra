@@ -16,6 +16,7 @@ import {
   devPgCredentials,
   devPgDir,
   devPgPort,
+  embeddedInitdbFlags,
 } from "@ostra/db/dev";
 
 const exists = async (file: string): Promise<boolean> => {
@@ -34,6 +35,12 @@ const ensureDatabase = async (port: number): Promise<void> => {
     const found = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [DEV_DATABASE_NAME]);
     if (found.rowCount === 0) {
       await client.query(`CREATE DATABASE ${client.escapeIdentifier(DEV_DATABASE_NAME)}`);
+    }
+    // A cluster made before initdb was given UTF-8 (on Windows, WIN1252) refuses emoji and more.
+    const encoding = await client.query("SELECT pg_encoding_to_char(encoding) AS name FROM pg_database WHERE datname = $1", [DEV_DATABASE_NAME]);
+    const name: unknown = Reflect.get(Object(encoding.rows[0]), "name");
+    if (name !== "UTF8") {
+      console.warn(`The dev database is ${String(name)}, not UTF8: text outside that code page fails. Run \`pnpm dev:reset --yes\` to start again with UTF-8.`);
     }
   } finally {
     await client.end();
@@ -59,6 +66,7 @@ const main = async (): Promise<void> => {
     user: devPgCredentials.user,
     password: devPgCredentials.password,
     authMethod: "scram-sha-256",
+    initdbFlags: [...embeddedInitdbFlags],
     persistent: true,
     onLog: remember,
     onError: remember,
