@@ -12,5 +12,17 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/domain": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "pg-boss": "12.38.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
   }
 }
