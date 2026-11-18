@@ -20,6 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/protocol": "workspace:*",
     "ws": "8.23.0",
