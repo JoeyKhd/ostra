@@ -115,6 +115,17 @@ const main = async (): Promise<void> => {
   process.on("SIGHUP", () => {
     stop("SIGHUP");
   });
+  // `pnpm dev` runs this with an IPC channel and asks it to stop with a message, since Windows has
+  // no signal one process can send another (scripts/dev.ts).
+  process.on("message", (message: unknown) => {
+    if (Reflect.get(Object(message), "type") === "stop") {
+      stop("stop");
+    }
+  });
+  // And if `pnpm dev` itself goes away without a word, Postgres doesn't outlive it.
+  process.on("disconnect", () => {
+    stop("pnpm dev went away");
+  });
   // Stay alive until a signal arrives, and leave if Postgres went away on its own (killed, or
   // stopped by `pnpm dev:reset`): its lock file goes with it.
   setInterval(() => {

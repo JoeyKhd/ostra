@@ -1,6 +1,6 @@
 # 23: The jobs package on pg-boss
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 08
 Features: the durable queue, built in from milestone 1 (ADR 0037)
@@ -27,3 +27,5 @@ Spec: `../spec.md`, sections 4 and 5.4
 - [ ] Committed as `✨ add the jobs package on pg-boss`.
 
 ## Comments
+
+- 2026-11-18, core: done in 822283e (`✨ add the jobs package on pg-boss`). `packages/jobs`: `createJobs({ databaseUrl, role })` (`enqueue-only` never migrates, supervises, schedules or works; `worker` installs the schema and one exclusive queue per job name, with heartbeats, exponential retries and the `ostra.dead-letter` queue), `enqueueInTx`/`sendInTx` through `fromPrisma(tx)` (a duplicate key returns the existing job), `work`, `schedule`/`unschedule` by cron, `cancelInTx` by key, `find`. `onCurrentTask(db, { isCurrent, act })` is rule 1's shape: it locks the task row `FOR UPDATE`, scoped by organization, and skips a task that moved on. The ESLint rule already existed; `lint-rule.test.ts` runs the repo's config on a test file of another package. `createJobs` takes `databaseUrl` rather than a Prisma client: pg-boss needs its own pool for the worker, and enqueues go through the caller's transaction. Package checks and the license check green.

@@ -38,6 +38,25 @@ Every package is `private: true` for now, including the ones ADR 0045 lists as p
 
 **The license check.** `pnpm check:licenses` reads every workspace package's `package.json`. It fails when a package declares no license, or when an Apache-2.0 package depends on a restricted one, today one under the Sustainable Use License, directly or through another package (ADR 0048, ADR 0045). CI runs it with the other checks, so run it before you push a new dependency between packages.
 
+## Run it
+
+```
+pnpm dev                 # the whole dev stack: the dev database, the migrations, core and the panel
+pnpm dev:reset           # says what it would delete; `pnpm dev:reset --yes` deletes .ostra-dev/
+```
+
+`pnpm dev` starts the dev database (below) unless `DATABASE_URL` is set, applies the migrations, then starts `apps/core` and `apps/web` in watch mode. Each line of output carries its piece's label (`[db  ]`, `[core]`, `[web ]`), and the terminal shows the panel's address (`http://localhost:3000`, `OSTRA_WEB_PORT`) and core's (`http://localhost:8787`, `OSTRA_CORE_PORT`). While there's no account yet, the server prints the setup token for the first admin, and `pnpm dev` repeats that line in a box. A server whose package has no `dev` script yet isn't started, and `pnpm dev` says so.
+
+Ctrl-C stops everything: the servers' process trees first, then the dev database, which stops Postgres. No `node` or `postgres` process of the stack is left. If one is (after a crash of the terminal, say), `pnpm dev:reset --yes` stops the dev cluster.
+
+**A runner, from source.** With the stack running, start a personal runner on the same machine in another terminal:
+
+```
+pnpm ostra runner --server http://localhost:8787
+```
+
+It prints a code and the panel's `/device` address. Approve the code in the panel, and the runner shows up online. Once `ostra` is published, `ostra runner` does the same (ADR 0046).
+
 ## Database
 
 ostra keeps everything in Postgres. In development you don't need to install one: `packages/db` starts an embedded Postgres (the `embedded-postgres` package, a development dependency only, ADR 0007).

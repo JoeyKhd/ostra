@@ -1,6 +1,6 @@
 # 29: `pnpm dev`: one command for the whole dev stack
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 05
 Features: F-001 (the dev path on this machine)
@@ -21,3 +21,5 @@ Spec: `../spec.md`, section 3, step 1
 - [ ] Committed as `🔧 add pnpm dev for the whole stack`.
 
 ## Comments
+
+- 2026-11-18, core: done in the commit that carries this line (`🔧 add pnpm dev for the whole stack`). `scripts/dev.ts` with its pure helpers in `scripts/dev-stack.ts` (tested). Stopping: the servers' process trees first (`taskkill /T` on Windows, the process group elsewhere), then a `stop` message to the dev database over IPC, since Windows has no signal one process can send another; `packages/db/scripts/dev-postgres.ts` gained that listener and stops when `pnpm dev` goes away (additive). Checked on this machine by starting the script with an IPC channel and stopping it: every PID it started is gone, a second start works, and with `DATABASE_URL` set no embedded Postgres starts. Core and web aren't started yet (no `dev` script); core's comes with ticket 24. embedded-postgres leaves a stale `postmaster.pid` on Windows after its own stop; the process is gone and the next start is fine.

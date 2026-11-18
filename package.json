@@ -13,6 +13,7 @@
     "lint": "turbo run lint && eslint eslint.config.js prettier.config.js vitest.config.ts scripts --max-warnings 0",
     "test": "turbo run test && vitest run",
     "build": "turbo run build",
+    "dev": "node scripts/dev.ts",
     "check:licenses": "node scripts/check-licenses.ts",
     "format": "prettier --write .",
     "db:dev": "node packages/db/scripts/dev-postgres.ts",
