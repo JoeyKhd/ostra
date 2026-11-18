@@ -28,7 +28,7 @@ export const SignInForm = () => {
       : await authClient.signIn.username({ username: name.toLowerCase(), password });
     setBusy(false);
     if (result.error !== null) {
-      setError(t("signIn.failed"));
+      setError(result.error.status === 429 ? t("signIn.tooMany") : t("signIn.failed"));
       return;
     }
     router.replace("/");

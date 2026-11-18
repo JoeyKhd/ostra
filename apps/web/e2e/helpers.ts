@@ -21,10 +21,19 @@ export const expectNoHorizontalScroll = async (page: Page): Promise<void> => {
   expect(overflow).toBeLessThanOrEqual(0);
 };
 
+/** Signs in, waiting out better-auth's sign-in rate limit (a few tries per 10 s) when a test hits it. */
 export const signIn = async (page: Page, identifier: string = e2eAdmin.username): Promise<void> => {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username or email").fill(identifier);
-  await page.getByLabel("Password").fill(e2eAdmin.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL((url) => url.pathname === "/");
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.goto("/sign-in");
+    await page.getByLabel("Username or email").fill(identifier);
+    await page.getByLabel("Password").fill(e2eAdmin.password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    const outcome = await Promise.race([
+      page.waitForURL((url) => url.pathname === "/").then(() => "in" as const),
+      page.getByText("Too many sign-in attempts").waitFor().then(() => "limited" as const),
+    ]);
+    if (outcome === "in") return;
+    await page.waitForTimeout(11_000);
+  }
+  throw new Error("signing in kept being rate limited");
 };

@@ -4,11 +4,12 @@ import path from "node:path";
 import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, LogRecord, SecretRowStore } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
-import { loadBundledCatalog, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
+import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
 import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import { createApiRuntime, createCatalogSource } from "@ostra/api";
 import type { ApiDeps, ApiRuntime } from "@ostra/api";
 import { createDb } from "@ostra/db";
+import { repoRoot } from "@ostra/db/dev";
 import type { Db } from "@ostra/db";
 import { parseServerSettings, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import type { JobQueue, ServerSettings } from "@ostra/domain";
@@ -86,6 +87,16 @@ const prismaSecretRows = (db: Db): SecretRowStore => ({
   },
 });
 
+/**
+ * The catalog copy that ships with ostra. Read by path: the adapter's own loader resolves it from
+ * `import.meta.url`, which a Turbopack bundle rewrites to an asset URL.
+ */
+const loadBundledCatalog = async () => {
+  const file = path.join(repoRoot, "packages", "adapters", "adapter-model-endpoint", "catalog", "models-dev.json");
+  const bundled = bundledCatalogSchema.parse(JSON.parse(await readFile(file, "utf8")));
+  return catalogEntries(bundled.providers);
+};
+
 const MODELS_DEV_URL = "https://models.dev/api.json";
 
 const fetchLatestCatalog = async () => {
@@ -145,7 +156,7 @@ const build = async (): Promise<ApiRuntime> => {
     outbox: postgresCommandOutbox,
     catalog: createCatalogSource({
       fetchEnabled: settings.catalogFetch,
-      loadBundled: async () => (await loadBundledCatalog()).entries,
+      loadBundled: loadBundledCatalog,
       fetchLatest: fetchLatestCatalog,
       clock: systemClock,
       logger,

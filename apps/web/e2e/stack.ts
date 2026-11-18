@@ -9,10 +9,12 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
+import { createScenarioBrain, startAnthropicStub } from "@ostra/adapter-sdk/testing";
 import { devDataDir, migrateDeploy } from "@ostra/db/dev";
+import { createJobs } from "@ostra/jobs";
 import EmbeddedPostgres from "embedded-postgres";
 
-import { e2ePort, e2eSetupToken } from "./settings.ts";
+import { e2eModelToken, e2ePort, e2eStubModels, e2eStubPort, e2eSetupToken } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 const webDir = path.resolve(import.meta.dirname, "..");
@@ -73,6 +75,20 @@ const main = async (): Promise<void> => {
   const migrated = await migrateDeploy(databaseUrl);
   if (!migrated.ok) throw new Error(`the migrations failed:\n${migrated.output}`);
 
+  // Core installs pg-boss's schema and its queues at start (ADR 0037); core doesn't run here.
+  const jobs = createJobs({ databaseUrl, role: "worker" });
+  await jobs.start();
+  await jobs.stop();
+
+  // A stub model endpoint in Anthropic's format, for "Add a model provider" (spec section 8).
+  const stub = await startAnthropicStub({
+    realKey: e2eModelToken,
+    models: e2eStubModels,
+    brain: createScenarioBrain({}),
+    host: "127.0.0.1",
+    port: e2eStubPort,
+  });
+
   const panelUrl = `http://localhost:${String(e2ePort)}`;
   const nextBin = path.join(webDir, "node_modules", "next", "dist", "bin", "next");
   const panel = spawn(process.execPath, [nextBin, "start", "--port", String(e2ePort)], {
@@ -95,6 +111,7 @@ const main = async (): Promise<void> => {
     if (stopping) return;
     stopping = true;
     panel.kill();
+    await stub.close().catch(() => undefined);
     await server.stop().catch(() => undefined);
     await rm(clusterDir, { recursive: true, force: true }).catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
