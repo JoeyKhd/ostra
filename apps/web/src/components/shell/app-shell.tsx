@@ -4,6 +4,7 @@ import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { StreamProvider } from "@/task/stream-provider";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
@@ -23,6 +24,7 @@ export const useShell = (): ShellContext => useContext(ShellContextValue);
 export const AppShell = ({ me, children }: { readonly me: RouterOutputs["me"]["get"]; readonly children: ReactNode }) => {
   const [open, setOpen] = useState(false);
   return (
+    <StreamProvider>
     <ShellContextValue.Provider value={{ openNavigation: () => { setOpen(true); } }}>
       <div className="min-h-dvh lg:grid lg:h-dvh lg:grid-cols-[232px_minmax(0,1fr)] lg:overflow-hidden">
         <aside className="hidden border-r border-line lg:block lg:min-h-0 lg:overflow-y-auto">
@@ -36,5 +38,6 @@ export const AppShell = ({ me, children }: { readonly me: RouterOutputs["me"]["g
         <div className="flex min-h-dvh min-w-0 flex-col lg:min-h-0">{children}</div>
       </div>
     </ShellContextValue.Provider>
+    </StreamProvider>
   );
 };

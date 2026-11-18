@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { AuthCard } from "@/components/auth/auth-card";
 import { SignInForm } from "@/components/auth/sign-in-form";
@@ -14,7 +15,9 @@ const SignInPage = async () => {
   if (signedIn) redirect("/");
   return (
     <AuthCard title={t("signIn.title")} lede={t("signIn.lede")}>
-      <SignInForm />
+      <Suspense>
+        <SignInForm />
+      </Suspense>
     </AuthCard>
   );
 };

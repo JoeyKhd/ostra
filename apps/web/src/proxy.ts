@@ -27,6 +27,8 @@ export const proxy = (request: NextRequest): NextResponse => {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
+  // Where the member was going, so sign-in can bring them back (the device page's code, a task link).
+  requestHeaders.set("x-ostra-path", `${request.nextUrl.pathname}${request.nextUrl.search}`);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", csp);
   return response;

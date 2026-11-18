@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -9,7 +10,8 @@ const PanelLayout = async ({ children }: { readonly children: ReactNode }) => {
   const { caller, signedIn } = await getServerApi();
   if (!signedIn) {
     const state = await caller.setup.state();
-    redirect(state.needsFirstAdmin ? "/setup" : "/sign-in");
+    const path = (await headers()).get("x-ostra-path") ?? "/";
+    redirect(state.needsFirstAdmin ? "/setup" : path === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(path)}`);
   }
   const me = await caller.me.get();
   return <AppShell me={me}>{children}</AppShell>;

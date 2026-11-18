@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { SubmitEvent } from "react";
 
@@ -10,9 +10,14 @@ import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { t } from "@/lib/messages";
 
+/** A same-site path to return to after sign-in; anything else goes Home. */
+export const safeNext = (next: string | null): string =>
+  next !== null && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/";
+
 /** Sign-in by username or email, and a password (F-002). */
 export const SignInForm = () => {
   const router = useRouter();
+  const next = safeNext(useSearchParams().get("next"));
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +36,7 @@ export const SignInForm = () => {
       setError(result.error.status === 429 ? t("signIn.tooMany") : t("signIn.failed"));
       return;
     }
-    router.replace("/");
+    router.replace(next);
     router.refresh();
   };
 

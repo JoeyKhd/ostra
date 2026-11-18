@@ -1,7 +1,14 @@
+import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { e2eAdmin, e2eBaseUrl } from "./settings.ts";
+
+const run = promisify(execFile);
 
 /** Records every request whose origin isn't the panel's: the page must call no third party. */
 export const watchOrigins = (page: Page): { readonly foreign: () => readonly string[] } => {
@@ -36,4 +43,17 @@ export const signIn = async (page: Page, identifier: string = e2eAdmin.username)
     await page.waitForTimeout(11_000);
   }
   throw new Error("signing in kept being rate limited");
+};
+
+/** Seeds a task with a replayed log in the e2e database (`seed-task.ts`) and returns its ID. */
+export const seedTask = async (scenario: "mid-turn" | "rest" | "without-changes" | "long", taskId?: string): Promise<string> => {
+  const stack: unknown = JSON.parse(await readFile(path.join(import.meta.dirname, ".stack.json"), "utf8"));
+  const databaseUrl: unknown = typeof stack === "object" && stack !== null ? Reflect.get(stack, "databaseUrl") : undefined;
+  if (typeof databaseUrl !== "string") throw new Error("the e2e stack isn't running");
+  const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-task.ts"), JSON.stringify({ databaseUrl, scenario, ...(taskId === undefined ? {} : { taskId }) })], {
+    cwd: path.resolve(import.meta.dirname, ".."),
+  });
+  const id: unknown = Reflect.get(Object(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}")), "taskId");
+  if (typeof id !== "string") throw new Error("seeding the task failed");
+  return id;
 };

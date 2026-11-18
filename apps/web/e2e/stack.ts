@@ -5,7 +5,7 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
@@ -88,6 +88,9 @@ const main = async (): Promise<void> => {
     host: "127.0.0.1",
     port: e2eStubPort,
   });
+
+  // The specs that seed a task read the database's address from here (gitignored).
+  await writeFile(path.join(webDir, "e2e", ".stack.json"), JSON.stringify({ databaseUrl }));
 
   const panelUrl = `http://localhost:${String(e2ePort)}`;
   const nextBin = path.join(webDir, "node_modules", "next", "dist", "bin", "next");
