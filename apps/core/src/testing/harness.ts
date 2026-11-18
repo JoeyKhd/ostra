@@ -11,6 +11,7 @@ import { postgresDeviceSessions } from "../gateway/device-sessions.ts";
 import { createGateway } from "../gateway/gateway.ts";
 import type { Gateway, GatewayOptions } from "../gateway/gateway.ts";
 import { createCoreServer } from "../server.ts";
+import type { RouteHandler } from "../server.ts";
 import { connectPeer, makeRunnerKey, signAssertion } from "./fake-peer.ts";
 import type { ConnectOptions, FakePeer, RunnerKey } from "./fake-peer.ts";
 
@@ -26,6 +27,7 @@ export const startGateway = async (
   db: Db,
   databaseUrl: string,
   options: Partial<GatewayOptions> = {},
+  extraRoutes: (gateway: Gateway) => readonly RouteHandler[] = () => [],
 ): Promise<GatewayHarness> => {
   const gateway = createGateway({
     db,
@@ -39,7 +41,7 @@ export const startGateway = async (
     logger: silentLogger,
     ...options,
   });
-  const server = createCoreServer({ routes: [gateway.handleRequest], upgrade: gateway.handleUpgrade, logger: silentLogger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, ...extraRoutes(gateway)], upgrade: gateway.handleUpgrade, logger: silentLogger });
   await gateway.start();
   const port = await server.listen(0, "127.0.0.1");
   return {

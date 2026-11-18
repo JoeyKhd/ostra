@@ -209,7 +209,11 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         sessionIds.length === 0
           ? []
           : await tx.session.findMany({
-              where: { id: { in: sessionIds }, organizationId: runner.organizationId, task: { runnerId: runner.runnerId } },
+              where: {
+                id: { in: sessionIds },
+                organizationId: runner.organizationId,
+                task: { leases: { some: { runnerId: runner.runnerId, state: "active" } } },
+              },
               select: { id: true, ingestedSeq: true },
             });
       const acks = cursors.map((cursor): Ack => ({ type: "ack", sessionId: sessionIdSchema.parse(cursor.id), upTo: cursor.ingestedSeq }));

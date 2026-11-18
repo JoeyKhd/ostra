@@ -269,8 +269,14 @@ describe("the WebSocket", () => {
         leaseEpoch: 1,
       },
     });
+    const box = await test.db.box.create({
+      data: { organizationId: task.organizationId, projectId: task.projectId, taskId: task.id, runnerId: runner.runnerId, executor: "host" },
+    });
+    await test.db.lease.create({
+      data: { organizationId: task.organizationId, projectId: task.projectId, taskId: task.id, epoch: 1, runnerId: runner.runnerId, boxId: box.id },
+    });
     const session = await test.db.session.create({
-      data: { organizationId: task.organizationId, projectId: task.projectId, taskId: task.id, origin: "new", state: "running", ingestedSeq: 5 },
+      data: { organizationId: task.organizationId, projectId: task.projectId, taskId: task.id, boxId: box.id, origin: "new", state: "running", ingestedSeq: 5 },
     });
     const otherTask = await test.db.task.create({
       data: { organizationId: fixture.b.organization.id, projectId: fixture.b.project.id, kind: "code", source: "prompt", title: "t", prompt: "p", branchName: "ostra/other" },

@@ -1,6 +1,6 @@
 # 26: Dispatch, leases and task credentials
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 13, 14, 25
 Features: F-013, F-014 (choosing the personal runner), F-089 and F-090 (credentials), F-088 (allow on personal runners, the sessions cap)
@@ -25,3 +25,5 @@ Spec: `../spec.md`, sections 3 and 4
 - [ ] Committed as `✨ add dispatch, leases and task credentials`.
 
 ## Comments
+
+- 2026-11-18, core: done in the commit that carries this line (`✨ add dispatch, leases and task credentials`), on top of 778ecc3 (`✨ add dispatch notes and provider holds to the db`: two nullable columns, `Task.dispatchNote` and `ModelProvider.dispatchHeldUntil`, additive). Domain: `dispatchTask` (the task row `FOR UPDATE SKIP LOCKED`, a busy one retried by the queue; the member's own personal runner when one was picked, else a pool runner of the project's pools or the default pool; online, present and with a free slot; the provider allowed on personal runners, under its sessions-at-once cap and not held; then box, lease, epoch, the `dispatch` command and the offer timer in one transaction; no runner → stays queued with `dispatchNote`), `acceptOffer`, `issueTaskCredentials` (the provider's token, a git token per repo narrowed to it with `contents: write` and `metadata: read`, the environment's secrets per repo, an MCP token core signs; audited, never logged). Core: `src/dispatch/` (the workers, the offer timeout, a 5 s requeue sweep, the spec and credentials endpoints), `src/secrets.ts` (the `Secret` rows and the key in `OSTRA_DATA_DIR/secrets-key`, the same file the panel uses), the server's adapters. **Two choices to confirm:** the task stays `queued` while the offer is out and moves to `preparing` on the runner's acceptance, as the domain's lifecycle and `acceptOffer`'s seam say (the ticket says preparing at dispatch); and the rate-limit hold is stored and enforced, but no protocol event carries the key proxy's report from the runner yet: its `onRateLimited` needs a `provider.rate_limited` event kind (a protocol change that touches the task-view's exhaustive switches), to schedule with the runner and web builders. 9 tests with fake adapters plus the gated live one, run here with `github.env`: the minted token reads `test1` and not `test2`. Whole-repo checks green.
