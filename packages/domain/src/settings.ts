@@ -68,7 +68,17 @@ export const settingFields = {
 export type SettingName = keyof typeof settingFields;
 
 /** Variables ostra's development setup reads, which the settings don't refuse (docs/development.md). */
-export const devOnlyEnvNames = ["OSTRA_DEV_MODEL_BASE_URL", "OSTRA_DEV_MODEL_API_KEY", "OSTRA_DEV_MODEL_ID"] as const;
+export const devOnlyEnvNames = [
+  "OSTRA_DEV_MODEL_BASE_URL",
+  "OSTRA_DEV_MODEL_API_KEY",
+  "OSTRA_DEV_MODEL_ID",
+  "OSTRA_DEV_GITHUB_ORG",
+  "OSTRA_DEV_GITHUB_REPOS",
+  "OSTRA_DEV_PUBLIC_URL",
+] as const;
+
+/** Spikes' own variables (`spikes/`), which share the dev env files: never read, never refused. */
+const SPIKE_PREFIX = "OSTRA_SPIKE_";
 
 export const settingNames: readonly SettingName[] = Object.keys(settingFields).filter(
   (name): name is SettingName => name in settingFields,
@@ -137,7 +147,7 @@ const knownOstraNames: ReadonlySet<string> = new Set<string>([
 
 /** Reads the server's settings from the environment. Never throws; the errors name variables, never values. */
 export const parseServerSettings = (env: Readonly<Record<string, string | undefined>>): SettingsResult => {
-  const unknown = Object.keys(env).filter((name) => name.startsWith("OSTRA_") && !knownOstraNames.has(name));
+  const unknown = Object.keys(env).filter((name) => name.startsWith("OSTRA_") && !name.startsWith(SPIKE_PREFIX) && !knownOstraNames.has(name));
   if (unknown.length > 0) {
     const known = [...knownOstraNames].filter((name) => name.startsWith("OSTRA_")).sort();
     return {

@@ -44,6 +44,10 @@ describe("the server's settings", () => {
       parseServerSettings({
         OSTRA_SERVER_URL: "http://localhost:8787",
         OSTRA_DEV_MODEL_ID: "test-model",
+        // The dev env files hold these too (github-test.env, tunnel.env, model.env's spike prices).
+        OSTRA_DEV_GITHUB_ORG: "ostra-test",
+        OSTRA_DEV_PUBLIC_URL: "https://tunnel.example",
+        OSTRA_SPIKE_PRICE_INPUT: "0.1",
         PATH: "/usr/bin",
         HOME: "/home/dev",
       }).ok,

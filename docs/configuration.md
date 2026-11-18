@@ -62,3 +62,8 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 | `OSTRA_DEV_MODEL_BASE_URL` | (none: live model cases are skipped) | The model endpoint the live cases use, from `~/.config/ostra-dev/model.env`. |
 | `OSTRA_DEV_MODEL_API_KEY` | (none) | Its token. Never printed or logged. |
 | `OSTRA_DEV_MODEL_ID` | (none) | The model the live cases ask for. |
+| `OSTRA_DEV_GITHUB_ORG` | (none) | The test GitHub org, from `~/.config/ostra-dev/github-test.env`. |
+| `OSTRA_DEV_GITHUB_REPOS` | (none) | Its test repos, comma-separated. |
+| `OSTRA_DEV_PUBLIC_URL` | (none) | A public address that reaches core's port, from `~/.config/ostra-dev/tunnel.env`, for webhook tests. |
+
+Variables named `OSTRA_SPIKE_*` belong to the spikes in `spikes/`. The server neither reads nor refuses them, so the dev env files can be loaded before `pnpm dev`.
