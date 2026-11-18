@@ -7,7 +7,8 @@
 //             ref, download, import, session/load, the five questions, and
 //             the interrupted edit finished
 //   template  a fresh box, no import: a new session from the rebuild
-//             template alone, the same five questions (and the edit, recorded)
+//             template alone, the same five questions (and the edit, recorded);
+//             then, recorded, two other forms of it, each on its own fresh box
 //   elsewhere a fresh box at another path, imported with --directory: does
 //             session/load work there (recorded)
 //
@@ -20,11 +21,11 @@ import { textPrompt } from "../lib/acp-driver.ts";
 import { gitOut } from "../lib/git.ts";
 import { taskId as toTaskId, type TaskId } from "../lib/ids.ts";
 import type { OpenCodeVersion } from "../lib/opencode.ts";
-import { buildRebuildPrompt } from "../lib/rebuild-template.ts";
+import { buildRebuildPrompt, type RebuildInput } from "../lib/rebuild-template.ts";
 import { stubMarker } from "../lib/stub-models/scenario.ts";
 import { createBox, createLocalRemote, createTaskBranch, errorMessage, randomWord, withTimeout, type Box, type BoxOptions, type Executor, type Remote, type RunContext, type Upstream } from "../harness/fixture.ts";
 import type { ScopeTally } from "../lib/deciders.ts";
-import { buildHistory, lastAgentMessage, type History } from "../harness/history.ts";
+import { buildHistory, interruptedTurn, lastFinishedReply, lastTextOfAnyTurn, type History } from "../harness/history.ts";
 import { askQuestions, finishEdit, type Finish, type Score } from "../harness/questions.ts";
 import { freshBoxWithWork, importAndLoad, sumTimings, type Timings } from "../harness/restore.ts";
 
@@ -36,7 +37,7 @@ export type MoveOptions = {
   readonly control: boolean;
   readonly template: boolean;
   readonly elsewhere: boolean;
-  /** Stub only: the interrupted turn says a sentence before its first step. */
+  /** The interrupted turn says a sentence before its first step (the stub's script does; a real model is asked to). */
   readonly chatty?: boolean;
   /** Default `directory`. */
   readonly executor?: Executor;
@@ -78,7 +79,9 @@ export type MoveResult = {
   readonly restoreError: string | undefined;
   readonly template: { readonly score: Score; readonly finish: Finish; readonly promptChars: number } | undefined;
   readonly templateError: string | undefined;
-  /** Recorded only: the template with every agent message, not only the last. */
+  /** Recorded only: ADR 0039's wording read literally, the last turn with any text as the last message (the spike's first form). */
+  readonly templateLiteral: Score | undefined;
+  /** The template with every agent message, not only the last. */
   readonly templateEveryAgentMessage: Score | undefined;
   readonly elsewhere: { readonly loaded: boolean; readonly recalled: boolean; readonly note: string } | undefined;
   /** What the workspace-bound decider approved and rejected, on box A and box B. */
@@ -116,12 +119,36 @@ const hiddenRefFindings = async (box: Box, history: History, statusAfter: readon
   };
 };
 
-type TemplateInput = { readonly id: TaskId; readonly remote: Remote; readonly branch: string; readonly history: History; readonly everyAgentMessage: boolean };
+/**
+ * Which form of the template a run builds:
+ *   fixed      ADR 0039's parts; the last message is the last finished turn's
+ *              reply, and an interrupted turn's fragment has its own section
+ *   literal    ADR 0039's parts, the last message being the last turn with
+ *              any text (the spike's first form, before finding 7's fix)
+ *   every      every agent message, oldest first (the proposed variant)
+ */
+export type TemplateForm = "fixed" | "literal" | "every";
+
+type TemplateInput = { readonly id: TaskId; readonly remote: Remote; readonly branch: string; readonly history: History; readonly form: TemplateForm };
+
+const templateParts = (history: History, form: TemplateForm): Pick<RebuildInput, "lastAgentMessage" | "interruptedTurn" | "earlierAgentMessages"> => {
+  switch (form) {
+    case "fixed":
+      return { lastAgentMessage: lastFinishedReply(history), interruptedTurn: interruptedTurn(history) };
+    case "literal":
+      return { lastAgentMessage: lastTextOfAnyTurn(history), interruptedTurn: undefined };
+    case "every":
+      // Unchanged from the runs before the fix, so its scores compare.
+      return { lastAgentMessage: lastTextOfAnyTurn(history), interruptedTurn: undefined, earlierAgentMessages: history.agentTexts.slice(0, -1) };
+    default:
+      return form satisfies never;
+  }
+};
 
 const runTemplate = async (ctx: RunContext, options: MoveOptions, input: TemplateInput): Promise<{ score: Score; finish: Finish; promptChars: number }> => {
   const { id, remote, branch, history } = input;
   const stub = options.upstream.kind === "stub";
-  const name = input.everyAgentMessage ? "template-all" : "template";
+  const name = `template-${input.form}`;
   const fresh = await freshBoxWithWork(ctx, boxOptions(ctx, `${id}-${name}`, path.join(ctx.runRoot, id, name), id, options.to, options, remote, branch));
   try {
     const branchLog = await gitOut(["log", "--stat", "--format=%h %s", `origin/${remote.defaultBranch}..HEAD`], { cwd: fresh.box.dirs.workspace });
@@ -129,8 +156,7 @@ const runTemplate = async (ctx: RunContext, options: MoveOptions, input: Templat
       ticket: { key: "TEST-2", title: "Small changes across the repo", body: "Make the small changes the team asks for in the task thread." },
       pullRequest: { title: "Small changes across the repo", body: "Work in progress: changes asked for in the task thread." },
       memberMessages: history.memberMessages,
-      lastAgentMessage: lastAgentMessage(history),
-      ...(input.everyAgentMessage ? { earlierAgentMessages: history.agentTexts.slice(0, -1) } : {}),
+      ...templateParts(history, input.form),
       branchLog,
       restoredWork: fresh.work !== undefined && fresh.work.status.length > 0,
     });
@@ -166,6 +192,7 @@ export const runMove = async (ctx: RunContext, options: MoveOptions): Promise<Mo
     restoreError: undefined,
     template: undefined,
     templateError: undefined,
+    templateLiteral: undefined,
     templateEveryAgentMessage: undefined,
     elsewhere: undefined,
     toolScope: { boxA: undefined, boxB: undefined },
@@ -233,19 +260,22 @@ export const runMove = async (ctx: RunContext, options: MoveOptions): Promise<Mo
     result.restoreError = errorMessage(error);
   }
 
-  // The rebuild template alone, in a new session on a fresh box; and, recorded
-  // only, the same with every agent message instead of the last one.
+  // The rebuild template alone, in a new session on a fresh box; then its
+  // other two forms, each in a new session on a fresh box of its own.
   if (options.template) {
     try {
-      result.template = await runTemplate(ctx, options, { id, remote, branch, history, everyAgentMessage: false });
+      result.template = await runTemplate(ctx, options, { id, remote, branch, history, form: "fixed" });
     } catch (error) {
       result.templateError = errorMessage(error);
     }
-    try {
-      const variant = await runTemplate(ctx, options, { id, remote, branch, history, everyAgentMessage: true });
-      result.templateEveryAgentMessage = variant.score;
-    } catch (error) {
-      result.templateError = `${result.templateError ?? ""} (variant: ${errorMessage(error)})`;
+    for (const form of ["literal", "every"] as const) {
+      try {
+        const variant = await runTemplate(ctx, options, { id, remote, branch, history, form });
+        if (form === "literal") result.templateLiteral = variant.score;
+        else result.templateEveryAgentMessage = variant.score;
+      } catch (error) {
+        result.templateError = `${result.templateError ?? ""} (${form}: ${errorMessage(error)})`;
+      }
     }
   }
 

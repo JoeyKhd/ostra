@@ -4,6 +4,11 @@
 // message and the branch's log. ostra makes no model call of its own: this is
 // string assembly and nothing else.
 //
+// "The agent's last message" is its reply in the last turn that finished. A
+// turn that was interrupted never replied: what it said before it stopped is
+// a fragment ("I'll start with step 1."), so it gets its own section and
+// never takes the last message's place (spike 2, finding 7).
+//
 // Every part is data. It's fenced, so text inside it can't close the section
 // it sits in, and it's never interpolated into a shell command.
 
@@ -12,8 +17,13 @@ export type RebuildInput = {
   readonly pullRequest: { readonly title: string; readonly body: string } | undefined;
   /** Every member message, oldest first, as ostra stored it. */
   readonly memberMessages: readonly { readonly author: string; readonly text: string }[];
-  /** The agent's last message, as ostra's event log holds it. */
+  /** The agent's last message: its reply in the last turn that finished, as ostra's event log holds it. */
   readonly lastAgentMessage: string | undefined;
+  /**
+   * Set when the task's last turn didn't finish (cancelled, or its box went
+   * away): what the agent had written in it before it stopped, maybe nothing.
+   */
+  readonly interruptedTurn: { readonly partialText: string } | undefined;
   /**
    * Not part of the fixed template ADR 0039 names: the agent's earlier
    * messages, oldest first. Spike 2 measures a variant with them.
@@ -55,6 +65,15 @@ export const buildRebuildPrompt = (input: RebuildInput): string => {
   const earlier = (input.earlierAgentMessages ?? []).filter((text) => text.trim() !== "");
   if (earlier.length > 0) parts.push("## Your earlier messages, oldest first", earlier.map((text, index) => `${String(index + 1)}.\n${block(text)}`).join("\n\n"));
   parts.push("## Your last message", input.lastAgentMessage === undefined || input.lastAgentMessage === "" ? "(None.)" : block(input.lastAgentMessage));
+  if (input.interruptedTurn !== undefined) {
+    const partial = input.interruptedTurn.partialText.trim();
+    parts.push(
+      "## The turn that was interrupted",
+      `Your last turn was stopped before it finished, so it has no reply: it was working on the team's last message above. ${partial === "" ? "You had written nothing in it yet." : `What you had written in it before it stopped:
+
+${block(partial)}`}`,
+    );
+  }
   parts.push("## The branch's log", input.branchLog.trim() === "" ? "(No commits yet.)" : block(input.branchLog.trim()));
   parts.push(
     "## The workspace",

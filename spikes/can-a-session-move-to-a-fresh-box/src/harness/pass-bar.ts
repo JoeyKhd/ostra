@@ -29,6 +29,8 @@ export type Results = {
   /** The stub run whose interrupted turn says a sentence first. */
   readonly stubChatty: MoveResult | undefined;
   readonly model: MoveResult | undefined;
+  /** The endpoint run whose interrupted turn is asked to say a sentence first. */
+  readonly modelChatty: MoveResult | undefined;
   readonly patchFar: MoveResult | undefined;
   readonly patchUp: MoveResult | undefined;
   readonly patchDown: MoveResult | undefined;
@@ -135,6 +137,7 @@ const b1 = (results: Results): Criterion => {
     recorded["after-turn work per turn, ms (commit, hidden ref, export, upload)"] = stub.history.turns.map((t) => t.afterTurnMs).join(", ");
   }
   if (stub?.elsewhere !== undefined) recorded["import --directory into another path, then session/load there"] = `${stub.elsewhere.loaded ? "loaded" : "FAILED"}; ${stub.elsewhere.note}`;
+  if (results.modelChatty?.restored !== undefined) recorded["model.env, chatty run: after the move"] = `${scoreNote(results.modelChatty)}; edit finished: ${String(results.modelChatty.restored.finish.finished)}`;
   for (const [label, result] of [["stub", stub], ["model.env", model], ["containers", container]] as const) {
     if (result === undefined) continue;
     recorded[`${label}: tool calls outside the workspace (the decider)`] = scopeNote(result);
@@ -226,7 +229,7 @@ const b4 = (results: Results): Criterion => {
 };
 
 const templateCheck = (result: MoveResult | undefined, what: string, missing: string): Check => {
-  const name = `${what}: the rebuild template alone (ADR 0039: the agent's last message) gets at least 4 of 5`;
+  const name = `${what}: the rebuild template alone (ADR 0039's parts; the last message is the last finished turn's reply) gets at least 4 of 5`;
   if (result === undefined) return skip(name, missing);
   if (result.error !== undefined) return fail(name, result.error);
   if (result.template === undefined) return fail(name, result.templateError ?? "the template run did not run");
@@ -248,10 +251,14 @@ const b5 = (results: Results): Criterion => {
     [results.stub, "through the stub model, quiet interrupted turn", missingReason(results, "stub", "the stub run did not run")],
     [results.stubChatty, "through the stub model, chatty interrupted turn", missingReason(results, "stub", "the chatty run did not run")],
     [results.model, "with the model.env endpoint", modelMissing],
+    [results.modelChatty, "with the model.env endpoint, asked to say a sentence before the interrupted turn's tools", modelMissing],
   ] as const;
   const checks = [...runs.map(([result, what, missing]) => templateCheck(result, what, missing)), ...runs.map(([result, what, missing]) => everyMessageCheck(result, what, missing))];
   const recorded: Record<string, string | number | boolean> = {};
   for (const [result, label] of runs) {
+    const said = result?.history?.agentTexts.at(-1);
+    if (said !== undefined) recorded[`${label}: the interrupted turn's text before the cancel, chars`] = said.trim().length;
+    if (result?.templateLiteral !== undefined) recorded[`${label}: ADR 0039 read literally (the last turn with any text, a fragment included), recorded only`] = scoreText(result.templateLiteral);
     if (result?.template === undefined) continue;
     recorded[`${label}: template prompt, chars`] = result.template.promptChars;
     recorded[`${label}: the template's session finishes the interrupted edit`] = result.template.finish.finished;

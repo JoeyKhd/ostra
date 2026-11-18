@@ -1,7 +1,7 @@
 // `pnpm spike`: runs every pass-bar criterion it can on this machine and
 // prints PASS, FAIL or SKIPPED per bullet, with the checks under each.
 //   --only=stub,model,patch,long,container,github   a subset of the runs
-//                                                   (stub:chatty and patch:far|up|down name their group)
+//                                                   (stub:chatty, model:chatty and patch:far|up|down name their group)
 //   --turns=N                                       the long sessions' length (default 200)
 //   --allow-skipped                                 exit 0 when nothing failed, even if a bullet was skipped
 // Exit codes: 1 when a bullet failed or the process check failed, 2 when none
@@ -42,7 +42,7 @@ const OnlySchema = z.array(RunNameSchema).min(1);
 const onlyArg = process.argv.find((arg) => arg.startsWith("--only="))?.slice("--only=".length);
 const onlyParsed = onlyArg === undefined ? undefined : OnlySchema.safeParse(onlyArg.split(","));
 if (onlyParsed?.success === false) {
-  console.error(`--only: each name must be one of ${RUN_GROUPS.join(", ")} (or stub:chatty, patch:far, patch:up, patch:down)`);
+  console.error(`--only: each name must be one of ${RUN_GROUPS.join(", ")} (or stub:chatty, model:chatty, patch:far, patch:up, patch:down)`);
   process.exit(64);
 }
 const only: ReadonlySet<RunGroup> | undefined = onlyParsed?.success === true ? new Set(onlyParsed.data) : undefined;
@@ -156,6 +156,13 @@ const model =
     ? undefined
     : await timed("model", "model", async () => runMove(ctx, { label: "model", from: "2.3.2", to: "2.3.2", upstream: { kind: "endpoint", endpoint, format: await detectApiFormat(endpoint) }, control: false, template: true, elsewhere: false }));
 if (endpoint !== undefined && wants("model")) console.log(`  ${brief(model)}`);
+const modelChatty =
+  endpoint === undefined
+    ? undefined
+    : await timed("model:chatty", "model", async () =>
+        runMove(ctx, { label: "mchatty", from: "2.3.2", to: "2.3.2", upstream: { kind: "endpoint", endpoint, format: await detectApiFormat(endpoint) }, control: false, template: true, elsewhere: false, chatty: true }),
+      );
+if (endpoint !== undefined && wants("model")) console.log(`  ${brief(modelChatty)}`);
 const patchFar = await timed("patch:far", "patch", async () => runMove(ctx, { label: "far", from: "2.3.0", to: "2.3.2", upstream: { kind: "stub" }, control: false, template: false, elsewhere: false }));
 console.log(`  ${brief(patchFar)}`);
 const patchUp = await timed("patch:up", "patch", async () => runMove(ctx, { label: "up", from: "2.3.1", to: "2.3.2", upstream: { kind: "stub" }, control: false, template: false, elsewhere: false }));
@@ -178,7 +185,7 @@ const swept: SweepResult = await sweep(ctx);
 const processesOk = sweepClean(swept);
 
 const notSelected = new Set(RUN_GROUPS.filter((group) => !wants(group)));
-const results: Results = { inputs, stub, stubChatty, model, patchFar, patchUp, patchDown, container, long, longCompacted, github, notSelected };
+const results: Results = { inputs, stub, stubChatty, model, modelChatty, patchFar, patchUp, patchDown, container, long, longCompacted, github, notSelected };
 const bar = passBar(results);
 console.log("pass bar (context/build-order.md, spike 2)\n");
 for (const criterion of bar) console.log(`${formatCriterion(criterion)}\n`);
@@ -192,7 +199,7 @@ console.log(`  ${(processesOk ? "PASS" : "FAIL").padEnd(7)} no process left behi
 if (uncaught.length > 0) console.log(`uncaught errors during the run: ${String(uncaught.length)}`);
 
 // The run folder is gitignored. It holds the answers and agent text: session content, never printed above.
-const details = { stub, stubChatty, model, patchFar, patchUp, patchDown, container, long, longCompacted, github };
+const details = { stub, stubChatty, model, modelChatty, patchFar, patchUp, patchDown, container, long, longCompacted, github };
 const report = { platform: process.platform, arch: process.arch, node: process.version, at: new Date().toISOString(), run: path.basename(runRoot), passBar: bar, sweep: swept, processesOk, uncaught, details };
 await writeFile(path.join(runRoot, "report.json"), JSON.stringify(report, null, 2));
 await writeFile(path.join(runRoot, "status.md"), `${statusTable(report.run, bar)}\nNo process left behind: ${processesOk ? "PASS" : "FAIL"} (${sweepNote}).\n`);

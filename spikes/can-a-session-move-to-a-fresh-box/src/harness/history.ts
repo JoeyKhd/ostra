@@ -54,6 +54,17 @@ export const newFacts = (): Facts => ({
   port: undefined,
 });
 
+const lastMatch = (pattern: RegExp, text: string): string | undefined => [...text.matchAll(pattern)].at(-1)?.[1];
+
+/**
+ * The port turn 5 settled on: the last one the agent stated ("I will use port
+ * N"), not the first it named. A real model sometimes thinks aloud in its
+ * reply ("port 4173 is outside range... Let's choose 4500"), and its decision
+ * is the one it ends on.
+ */
+export const statedPort = (said: string): string | undefined =>
+  lastMatch(/\buse port (4\d{3})\b/gi, said) ?? lastMatch(/\bport (4\d{3})\b/gi, said) ?? lastMatch(/\b(4\d{3})\b/g, said);
+
 export type ArchiveUpload = {
   readonly key: BlobKey;
   readonly summary: ArchiveSummary;
@@ -130,6 +141,7 @@ const PROMPTS = (facts: Facts, marker: string, chatty: boolean): readonly { read
       `5) Write your plan for the rest of the work to scratch/${facts.module}-plan.md, and write the word debug to debug.log.`,
       `6) Run the slow check, with a timeout of 600000 ms: ${slowCheckCommand(marker)}`,
       `7) After the check, add a second line to src/${facts.module}.ts: export const ${facts.constName}Done = true;`,
+      ...(chatty ? ["Before your first tool call, tell me in one short sentence what you are about to do."] : []),
     ].join("\n"),
   },
 ];
@@ -147,8 +159,8 @@ const isSlowCheckRunning = (driver: AcpDriver, sinceSeq: number, marker: string)
 
 /**
  * Runs the six turns on box A and the after-turn work after each. `chatty`
- * (stub only) makes the stub say a sentence before the interrupted turn's
- * first step.
+ * makes the interrupted turn say a sentence before its first step: the stub's
+ * script does, and a real model is asked to.
  */
 export const buildHistory = async (ctx: RunContext, box: Box, stub: boolean, chatty = false): Promise<History> => {
   const driver = await box.start();
@@ -197,7 +209,7 @@ export const buildHistory = async (ctx: RunContext, box: Box, stub: boolean, cha
       const raw = driver.events.filter((e) => e.seq > sinceSeq && e.kind === "session_update").map((e) => JSON.stringify(e)).join("\n");
       facts.printed = RESULT_PATTERN.exec(raw)?.[1];
     }
-    if (n === 5) facts.port = /\bport (4\d{3})\b/i.exec(said)?.[1] ?? /\b(4\d{3})\b/.exec(said)?.[1];
+    if (n === 5) facts.port = statedPort(said);
     // The interrupted turn's last edit must not have happened, or finishing it proves nothing.
     if (interrupted) leftLineAbsent = (await finishedOnDisk(box.dirs.workspace, facts))[LEFT_LINE(facts)] === false;
 
@@ -212,5 +224,23 @@ export const buildHistory = async (ctx: RunContext, box: Box, stub: boolean, cha
   return { sessionId, facts, memberMessages, agentTexts, turns, wip, archive, branchHead, interruptedInSlowCheck, leftLineAbsent };
 };
 
-/** The agent's last message, as ostra's event log has it: the last turn with any text. */
-export const lastAgentMessage = (history: History): string | undefined => [...history.agentTexts].reverse().find((text) => text.trim() !== "");
+/**
+ * ADR 0039's "the agent's last message" read literally, as the spike first
+ * did: the last turn with any text, an interrupted turn's fragment included.
+ * Recorded only, so the runs before the fix can be compared.
+ */
+export const lastTextOfAnyTurn = (history: Pick<History, "agentTexts">): string | undefined => [...history.agentTexts].reverse().find((text) => text.trim() !== "");
+
+/** The agent's last message, as the template takes it: its reply in the last turn that finished (`end_turn`) with any text. */
+export const lastFinishedReply = (history: Pick<History, "turns" | "agentTexts">): string | undefined =>
+  [...history.turns].reverse().flatMap((turn) => {
+    const text = history.agentTexts[turn.n - 1] ?? "";
+    return turn.stopReason === "end_turn" && text.trim() !== "" ? [text] : [];
+  })[0];
+
+/** What the agent had written in the task's last turn, when that turn didn't finish. */
+export const interruptedTurn = (history: Pick<History, "turns" | "agentTexts">): { readonly partialText: string } | undefined => {
+  const last = history.turns.at(-1);
+  if (last === undefined || last.stopReason === "end_turn") return undefined;
+  return { partialText: history.agentTexts[last.n - 1] ?? "" };
+};
