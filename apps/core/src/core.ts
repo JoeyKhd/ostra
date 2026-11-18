@@ -4,7 +4,7 @@ import { hostname } from "node:os";
 import type { Logger } from "@ostra/adapter-sdk";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import type { ServerSettings } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
@@ -15,6 +15,10 @@ import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
 import type { Gateway } from "./gateway/gateway.ts";
 import { loadOrCreateKey } from "./gateway/keys.ts";
+import { cancelGraceInTx, graceHandler, startGraceInTx } from "./ingest/grace.ts";
+import type { GraceDeps } from "./ingest/grace.ts";
+import { createIngest } from "./ingest/ingest.ts";
+import { createLiveTextWriter } from "./ingest/live-text.ts";
 import { createCoreServer } from "./server.ts";
 
 // Core (ADR 0016): one process that holds runner connections, runs the queue's workers and serves
@@ -45,6 +49,16 @@ export const startCore = async (settings: ServerSettings, logger: Logger, option
   await jobs.start();
   // A colon, not a dash: the log guard reads a long dashed run as a token.
   const replicaId = replicaIdSchema.parse(`core:${randomUUID()}`);
+  const notices = postgresChangeNotices;
+  const liveText = createLiveTextWriter({ db, logger });
+  const graceDeps: GraceDeps = {
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    logger,
+  };
   const gateway = createGateway({
     db,
     databaseUrl: settings.databaseUrl,
@@ -53,9 +67,17 @@ export const startCore = async (settings: ServerSettings, logger: Logger, option
     panelUrl: settings.publicUrl,
     signingKey: await loadOrCreateKey(settings.dataDir, RUNNER_TOKEN_KEY_FILE),
     deviceSessions: postgresDeviceSessions(db),
-    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
+    ports: { notices, audit: postgresAuditLog, clock: systemClock },
+    hooks: {
+      ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger }),
+      liveText: liveText.write,
+      onConnectedInTx: (tx, runner) => cancelGraceInTx(graceDeps, tx, runner),
+      onDisconnectedInTx: (tx, runner) => startGraceInTx(graceDeps, tx, runner),
+    },
     logger,
   });
+  await jobs.work("task.grace", graceHandler(db, graceDeps));
+  liveText.start();
   const server = createCoreServer({ routes: [gateway.handleRequest], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
@@ -84,6 +106,7 @@ export const startCore = async (settings: ServerSettings, logger: Logger, option
       clearTimeout(bootstrapTimer);
       await gateway.stop();
       await server.close();
+      await liveText.stop();
       await jobs.stop({ graceful: true, timeoutMs: 10_000 });
       await db.$disconnect();
     },

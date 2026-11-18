@@ -92,7 +92,6 @@ describe("the use-case seams", () => {
     dispatchTask: "26",
     acceptOffer: "26",
     issueTaskCredentials: "26",
-    ingestEvents: "25",
     recordSessionEnd: "27",
     openPullRequests: "27",
     stopTask: "27",

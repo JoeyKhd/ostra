@@ -1,6 +1,6 @@
 # 25: Event ingest, fencing and the task grace
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 23, 24
 Features: F-023 (saving), F-045 (the fence, built in from milestone 1)
@@ -30,3 +30,5 @@ The body of `ingestEvents` (ticket 08's signature), and core's wiring.
 - [ ] Committed as `✨ add event ingest and fencing`.
 
 ## Comments
+
+- 2026-11-18, core: done in the commit that carries this line (`✨ add event ingest and fencing`). `ingestEvents` in `packages/domain`: one transaction per frame, the session's lease looked up for the calling runner (another runner's or organization's session is `unknown-session`), the epoch checked against the task's (stale → `stale-lease` with the current epoch, nothing kept), duplicates skipped by the session cursor, a gap saved up to it and answered with `resendFrom`, numbers taken from the task's counter, then the effects: a turn row and running on `turn.started`, idle on `turn.ended`, token counts from `usage.recorded`, head SHA and PR text on the task repo, the live-text row deleted on a completed message, a `task.session-ended` job on `session.ended`, needs you (driver) and a failed box on `session.crashed`. Refused transitions are stored and logged with IDs only (`moves.ts`). One wake NOTIFY per task per frame. **The lock differs from the ticket's wording**: the task row is taken `FOR NO KEY UPDATE`, not `FOR SHARE`, because ingest also takes the event counter on that row and upgrading a share lock deadlocks two writers to one task; the grace's `FOR UPDATE` waits on it the same way. Core: `src/ingest/` (the hook, the live-text writer with 250 ms flushes and no resurrection of a completed segment, and the grace: started on disconnect with a `runner.lost` event, cancelled on reconnect, and at its end the lease ends, the epoch goes up, the task stops (`runner_lost`) and a `stop` command waits). 12 tests, including F-045's grace-and-ingest race. Whole-repo checks green.
