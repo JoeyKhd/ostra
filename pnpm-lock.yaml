@@ -89,7 +89,21 @@ importers:
         specifier: 18.6.0-beta.19
         version: 18.6.0-beta.19
 
-  packages/domain: {}
+  packages/domain:
+    dependencies:
+      '@ostra/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/jobs: {}
 
