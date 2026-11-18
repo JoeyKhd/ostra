@@ -13,7 +13,7 @@
         { "hex": "#FFB224", "name": "Buoy Amber" }
       ],
       "logo_ideas": [],
-      "logo_svg": "C:/Users/santi/ostra/context/brand/kit/logo/export/ostra-hinge-single-color.svg",
+      "logo_svg": "context/brand/kit/logo/export/ostra-hinge-single-color.svg",
       "display_font": { "family": "Manrope", "source": "google:Manrope", "weight": 800 },
       "body_font": { "family": "IBM Plex Sans", "source": "google:IBM Plex Sans", "weight": 400 },
       "headline": "ostra",
