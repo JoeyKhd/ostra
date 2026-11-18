@@ -1,0 +1,14 @@
+# This spike is a standalone package. Its own workspace file keeps the repo's
+# root workspace from capturing it.
+packages:
+  - "."
+
+# Install scripts we allow: embedded-postgres's platform package and Prisma's engines download.
+allowBuilds:
+  "@embedded-postgres/windows-x64": true
+  "@embedded-postgres/linux-x64": true
+  "@embedded-postgres/linux-arm64": true
+  "@embedded-postgres/darwin-arm64": true
+  "@embedded-postgres/darwin-x64": true
+  "@prisma/engines": true
+  prisma: true

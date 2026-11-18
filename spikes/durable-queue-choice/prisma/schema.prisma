@@ -1,0 +1,65 @@
+// Spike 8 (durable-queue-choice). ostra's own tables, owned by Prisma Migrate.
+// pg-boss keeps its tables in its own `pgboss` schema and migrates them itself.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  importFileExtension = "ts"
+  moduleFormat        = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// A stand-in for ostra's task row: written in the same transaction as the job it causes.
+model Task {
+  id        String   @id
+  title     String
+  state     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("task")
+}
+
+// One row per handler attempt, written by the replica that ran it. The harness reads these.
+model JobRun {
+  id        Int      @id @default(autoincrement())
+  queue     String
+  jobId     String   @map("job_id")
+  attempt   Int
+  replicaId String   @map("replica_id")
+  phase     String
+  detail    String   @default("")
+  at        DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+
+  @@index([queue, jobId])
+  @@map("job_run")
+}
+
+// Handler-side view of concurrency per group key (the per-key limit scenario).
+model GroupEvent {
+  id        Int      @id @default(autoincrement())
+  groupKey  String   @map("group_key")
+  jobId     String   @map("job_id")
+  kind      String
+  replicaId String   @map("replica_id")
+  at        DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+
+  @@index([groupKey])
+  @@map("group_event")
+}
+
+// One row per scheduled job a handler ran. Not unique on purpose: a duplicate must show up.
+model ScheduleFire {
+  id          Int      @id @default(autoincrement())
+  scheduleKey String   @map("schedule_key")
+  variant     String
+  jobId       String   @map("job_id")
+  replicaId   String   @map("replica_id")
+  jobCreated  DateTime @map("job_created") @db.Timestamptz(6)
+  at          DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+
+  @@index([scheduleKey])
+  @@map("schedule_fire")
+}

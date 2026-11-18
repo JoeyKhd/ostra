@@ -1,0 +1,11 @@
+node_modules/
+# embedded-postgres data directory, per-run logs, results and the generated Prisma client
+.data/
+.data-external/
+.runs/
+src/generated/
+*.log
+.env
+.env.*
+*.pem
+*.key
