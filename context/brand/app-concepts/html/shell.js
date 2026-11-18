@@ -20,6 +20,7 @@
     ["inbox", "inbox", "Inbox", '<span class="n">4</span>'],
     ["environment", "box", "Environment", ""],
     ["automations", "zap", "Automations", ""],
+    ["memory", "book-open", "Memory", '<span class="n">2</span>'],
     ["repos", "git-branch", "Repos", ""],
     ["settings", "settings-2", "Settings", ""],
   ];
@@ -45,9 +46,12 @@
     <div class="sec">Organization</div>
     ${nav("runner-pools", "server", "Runner pools", '<span class="n">238</span>')}
     ${nav("models", "cpu", "Models")}
+    ${nav("agent-profiles", "sliders-horizontal", "Agent profiles")}
     ${nav("insights", "chart-no-axes-column", "Insights")}
+    ${nav("org-memory", "book-open", "Memory")}
     ${nav("members", "users", "Members")}
     ${nav("audit-log", "scroll-text", "Audit log")}
+    ${nav("background-work", "list-restart", "Background work")}
     ${nav("org-settings", "settings", "Settings")}
     <div class="bottom"><span class="avatar">AK</span> Alex Kim</div>`;
 

@@ -13,7 +13,7 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
    - body text 13px
    - secondary text 12–12.5px
    - page titles 24px
-   - nav rows 28px
+   - nav rows 26px
    - list and table rows 38–40px
 3. **Few boxes.**
    - A section is a title line and rows separated by hairlines.
@@ -28,8 +28,9 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 1. **Sidebar, 232px, always there:**
    - The organization switcher, then search (⌘K) and a "+" for a new task.
    - Personal views: **Home**, **Needs you** (an amber count) and **My tasks**.
-   - **Projects:** the member's pinned projects, each with an 8px colour square. An amber dot marks a project where something waits on them. The open project expands into Tasks, Inbox, Environment, Automations, Repos and Settings. "N more" opens the full list.
-   - **Organization:** Runner pools (busy count), Models, Insights, Members, Audit log, Settings.
+   - **Projects:** the member's pinned projects, each with an 8px colour square. An amber dot marks a project where something waits on them. The open project expands into Tasks, Inbox, Environment, Automations, Memory, Repos and Settings. "N more" opens the full list.
+   - **Organization:** Runner pools (busy count), Models, Agent profiles, Insights, Memory, Members, Audit log, Background work and Settings. Agent profiles are F-021. Background work lists queues and stuck jobs, with retry and cancel (ADR 0037).
+   - **Memory** is a page for the project and another for the organization (F-109, ADR 0044). Each carries a count of its proposals (F-111), in the plain count style, never amber.
    - The signed-in member at the bottom.
 2. **Top bar, 44px:** breadcrumbs on the left (`calculator › Tasks › CALC-161`), the page's actions on the right. At most one primary (Shell) button per page.
 3. **The page:** a title (Manrope 700, 24px), a one-line lede in muted text, optional underline tabs, then sections.
@@ -42,7 +43,7 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 
 ## Colours
 
-The values live in `app-concepts/html/graphite.css` until milestone 1 turns them into the panel's real tokens. `files/tokens.css` still holds the brand tokens (Abyss-based) for the docs, README and social images.
+The values live in `app-concepts/html/graphite.css` until milestone 1 turns them into the panel's real tokens. `files/tokens/tokens.css` (with `tokens.json` beside it) still holds the brand tokens (Abyss-based) for the docs, README and social images.
 
 | Role | Colour |
 |---|---|
@@ -73,14 +74,19 @@ In `app-concepts/html/`, each as `.html` and `.png` (1440×900 at 2×). They sha
 
 | Screen | File | Features it shows |
 |---|---|---|
-| Home (the organization) | `home-graphite` | F-062, F-036 |
-| A project's tasks | `project-tasks-graphite` | F-026, F-063 |
+| Home (the organization) | `home-graphite` | F-062, F-036, F-108, F-037, F-086 |
+| A project's tasks | `project-tasks-graphite` | F-026, F-063, F-086 |
 | A task waiting on an approval | `task-b-graphite` | F-023, F-024, F-025, F-026, F-027, F-084 |
-| A project's environment | `environment-graphite` | F-050, F-051, F-052, F-054 |
-| Runner pools | `runner-pools-graphite` | none yet |
-| Models and providers | `models-graphite` | none yet (ADR 0025's ModelProvider adapter) |
+| A project's environment | `environment-graphite` | F-050, F-051, F-054, F-094, F-095, F-116 |
+| Runner pools | `runner-pools-graphite` | F-091, F-092, F-015, F-014, F-093, F-067 |
+| Models and providers | `models-graphite` | F-088, F-089, F-037 |
 
-Projects, runner pools and model providers get their ledger rows in the Stage 2 rework (Organization → Project → Task).
+The decisions behind the screens:
+
+- Projects and access: ADR 0026.
+- Runner pools, executors and boxes: ADR 0029. The egress baseline the environment screen shows: ADR 0031. Network allowlists (F-052) come after v1.
+- Environments, snapshots and services: ADR 0038.
+- Model providers: ADR 0033. Metering and budgets: ADR 0042.
 
 ## History
 

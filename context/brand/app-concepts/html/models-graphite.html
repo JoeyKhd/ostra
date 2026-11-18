@@ -69,7 +69,7 @@
       <aside class="props drawer">
         <h5>Provider</h5>
         <h3><i data-lucide="server" style="width:16px;height:16px;color:var(--muted)"></i> internal-vllm</h3>
-        <p class="lede">Any server that speaks the OpenAI or Anthropic API. Agents reach it through ostra's key proxy, so the token never enters a box.</p>
+        <p class="lede">Any server that speaks the OpenAI or Anthropic API. Agents reach it through ostra's key proxy, so the token never enters the agent's container.</p>
         <div class="field"><label>Name</label><div class="input">internal-vllm</div></div>
         <div class="field"><label>API base URL</label><div class="input mono" style="font-size:12.5px">https://llm.acme.internal/v1</div></div>
         <div class="field"><label>Bearer token</label><div class="input"><span class="faint" style="letter-spacing:1px">••••••••••••••••••••</span><i data-lucide="eye-off"></i></div><div class="help">Stored in the secret store. Only admins can replace it.</div></div>
