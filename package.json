@@ -19,7 +19,8 @@
     "db:dev": "node packages/db/scripts/dev-postgres.ts",
     "db:migrate": "node packages/db/scripts/migrate.ts",
     "db:generate": "node packages/db/scripts/generate.ts",
-    "dev:reset": "node packages/db/scripts/reset.ts"
+    "dev:reset": "node packages/db/scripts/reset.ts",
+    "ostra": "node apps/runner/src/main.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

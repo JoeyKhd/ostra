@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    // `ostra` runs this source with Node's type stripping (ADR 0046, from source until v1), so only
+    // erasable syntax: no enums, no parameter properties, no namespaces.
+    "erasableSyntaxOnly": true
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }
