@@ -44,7 +44,7 @@ Every install registers its own Linear app and GitHub App (ADR 0001), so ostra s
 |---|---|---|---|---|---|
 | B-016 | Integration app icon | `files/integrations/app-icon-512.png` 512×512, the Shell mark on Abyss, no transparency. Used for the Linear app, its agent avatar on tickets, and the GitHub App, whose commits and PRs show it | script | v1 | done |
 
-## Open source
+## Repository and listing
 
 | ID | Asset | Format and sizes | Made by | Priority | Status |
 |---|---|---|---|---|---|

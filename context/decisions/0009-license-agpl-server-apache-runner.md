@@ -1,6 +1,8 @@
 # License: AGPL-3.0 for the server, Apache-2.0 for the runner and adapter SDK
 
-**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: the decision stands, and every package now declares its license, with a CI check on the line between the two (Q79, ADR 0045). Chosen on 2026-11-17 in grilling round 2.
+**Status:** superseded by ADR 0048 (2026-11-18). It was accepted when the plan was signed off on 2026-11-17, and chosen that day in grilling round 2. On 2026-11-18 it was amended: every package declares its license, with a CI check on the line between the two (Q79, ADR 0045).
+
+ADR 0048 replaces this decision: the server and the web panel move from AGPL-3.0 to the Sustainable Use License, the DCO rule gives way to a CLA, and the Apache-2.0 packages stay as they are. The text below is kept as the record.
 
 - **The server and web app** are AGPL-3.0, so nobody can offer a closed hosted copy of ostra. That protects the paid hosted version (ADR 0001).
 - **The runner and the adapter SDK** are Apache-2.0, so companies can install runners on their machines and write their own adapters without a legal review.

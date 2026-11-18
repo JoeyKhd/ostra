@@ -43,7 +43,7 @@ PALETTE = {
 ABYSS, SHELL, KELP, MIST = (PALETTE[k] for k in ("abyss", "shell", "kelp", "mist"))
 
 WORDMARK = "ostra"
-HEADLINE = ("The open-source, self-hosted", "control plane for coding agents.")
+HEADLINE = ("The source-available, self-hosted", "control plane for coding agents.")
 SUBLINE = "Your agents. Your machines. Your tracker."
 
 # Lockup proportions, in units of the wordmark's ascender height.

@@ -4,11 +4,13 @@
 
 ## One-liner
 
-ostra is an open-source, self-hostable control panel that connects a team's tracker to its coding agents. You pick a ticket, an agent works it on its own branch, you step in whenever you want, and it ships a PR. You can come back later and keep going.
+ostra is a source-available, self-hostable control panel that connects a team's tracker to its coding agents. You pick a ticket, an agent works it on its own branch, you step in whenever you want, and it ships a PR. You can come back later and keep going.
 
 **Tagline:** Self-hosted cloud agents for your team. The maintainer's framing: ostra turns the coding agents you already use into cloud agents, with the control plane as the one place everyone works from, and your own machines doing the work.
 
-**Positioning:** the open-source, self-hosted control plane for coding agents, where your tracker stays the source of truth when you use one. The proof points: your agents, your models, your machines, your tracker, and tasks you can reopen months later. It contrasts with Linear's Coding Sessions (Linear's cloud), Multica (not open source, its own board) and Cyrus (one machine, paid team panel) (`research/landscape.md`).
+**Positioning:** the source-available, self-hosted control plane for coding agents, where your tracker stays the source of truth when you use one. The proof points: your agents, your models, your machines, your tracker, and tasks you can reopen months later. It contrasts with Linear's Coding Sessions (Linear's cloud), Multica (its own board) and Cyrus (one machine, paid team panel) (`research/landscape.md`).
+
+**License:** the code is public and anyone can self-host it for their own team, but nobody else may sell it or offer it as a service. The server and the panel are under the Sustainable Use License, and the runner, protocol and adapters are Apache-2.0 (ADR 0048). ostra isn't "open source", an OSI term it no longer meets, so we say "source-available".
 
 ## The job
 
@@ -31,7 +33,7 @@ Today the maintainer's team runs several agents by hand in terminals and worktre
 
 ## Who it's for
 
-Software teams of any size, each set up in ostra as an **organization**. They keep their tickets in a tracker (Linear first, later Jira) or work from prompts alone, keep their code on GitHub, and use or want to use coding agents. An organization deploys ostra itself, or shares an install with others, and connects its own tracker and GitHub org (each organization registers its own GitHub App and Linear app), its model providers and its compute (ADR 0001, ADR 0026). A paid hosted version comes later.
+Software teams of any size, each set up in ostra as an **organization**. They keep their tickets in a tracker (Linear first, later Jira) or work from prompts alone, keep their code on GitHub, and use or want to use coding agents. An organization deploys ostra itself, or shares an install with others, and connects its own tracker and GitHub org (each organization registers its own GitHub App and Linear app), its model providers and its compute (ADR 0001, ADR 0026). A paid hosted version comes later, and it stays the maintainer's alone: the license doesn't let anyone else sell ostra or offer it as a service (ADR 0048).
 
 **First users:** the maintainer and their team.
 

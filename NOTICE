@@ -1,0 +1,51 @@
+ostra
+Copyright (c) 2026 JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra
+
+ostra is source-available. The code is public, and anyone can self-host it for
+their own team.
+
+Which license applies where
+---------------------------
+
+Apache-2.0. Each of these directories has its own LICENSE file:
+
+  apps/runner
+  packages/protocol
+  packages/adapter-sdk
+  packages/adapters/*
+  packages/tooling
+
+Sustainable Use License, version 1.0. The full text is in the LICENSE file at
+the root of this repository. It applies to everything else, including:
+
+  apps/web
+  apps/core
+  packages/db
+  packages/domain
+  packages/api
+  packages/jobs
+  packages/task-view
+
+If a package has no LICENSE file of its own and is not in the Apache-2.0 list,
+the Sustainable Use License applies to it.
+
+The server and the web panel (Sustainable Use License): nobody else may sell
+them, and they may be shared only free of charge, for non-commercial purposes.
+
+Earlier versions
+----------------
+
+Versions of ostra published before the change of 2026-11-18 were under
+AGPL-3.0. They stay under AGPL-3.0 for those who obtained them. Every version
+from that change on is under the terms above.
+
+Third-party components
+----------------------
+
+Third-party components, such as dependencies, keep the licenses of their
+owners.
+
+The text of the "Sustainable Use License" section, version 1.0, was written by
+n8n and is reproduced unchanged from
+https://github.com/n8n-io/n8n/blob/master/LICENSE.md. n8n's own preamble about
+`.ee.` files does not apply to ostra and is not included.

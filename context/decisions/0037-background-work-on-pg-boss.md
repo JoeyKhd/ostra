@@ -40,7 +40,7 @@ pg-boss runs ostra's background work: webhooks, retries, timers, schedules and r
   - DBOS keeps those same pieces, along with automatic upgrades of running workflows, in its proprietary Conductor or its paid extension. It moved the Conductor client out of the open package in October 2026. Its open-source upgrade route pins an application version and branches with patches, and its drift toward open core would land on self-hosters.
   - It stays the fallback.
 - **graphile-worker.** Rejected: no rate limits and no concurrency per key above one, a static cron, and a crashed worker's jobs stay locked for four hours unless ostra builds its own heartbeat or buys Worker Pro.
-- **Hatchet, Trigger.dev, Inngest, Restate and Temporal.** Rejected: each takes jobs over an API into a separate engine, so none can join ostra's transactions. Each also adds services, and two have licenses that don't fit an open-source install: Inngest's server is SSPL, and Restate's is BSL 1.1.
+- **Hatchet, Trigger.dev, Inngest, Restate and Temporal.** Rejected: each takes jobs over an API into a separate engine, so none can join ostra's transactions. Each also adds services, and two have licenses that don't fit a self-hosted install: Inngest's server is SSPL, and Restate's is BSL 1.1.
 - **pgmq, Absurd and OpenWorkflow.** Rejected: each leaves more for ostra to build than pg-boss does.
 - **Redis or a hosted queue.** Rejected: Postgres is the only store an install needs (ADR 0017).
 

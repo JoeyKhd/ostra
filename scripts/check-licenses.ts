@@ -1,7 +1,14 @@
-// The license line of ADR 0009 and ADR 0045, checked by a machine.
+// The license line, checked by a machine.
 //
 // - Every workspace package declares its license in the `license` field of its package.json.
-// - An Apache-2.0 package never depends on an AGPL-3.0 package, directly or through another one.
+// - That license is on one of two lists: permissive (Apache-2.0 and its kin) or restricted (today
+//   only the Sustainable Use License, written as LicenseRef-Sustainable-Use-1.0). Any other string
+//   is an unknown-license violation, so a typo such as "Apache2.0" or a stale id can't quietly move
+//   a package to the other side of the line.
+// - A package under a permissive license never depends on a restricted package, directly or
+//   through another one. In this walk an unlisted license counts as restricted too, so a later
+//   license change can't open a hole by accident.
+// - A package under a permissive license has a LICENSE file in its folder, with the license text.
 //
 // Run with `pnpm check:licenses`.
 
@@ -9,8 +16,24 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
-export const knownLicenses = ["AGPL-3.0-only", "Apache-2.0"] as const;
-export type KnownLicense = (typeof knownLicenses)[number];
+/** The SPDX id of the Sustainable Use License, version 1.0. It has no SPDX entry, so it is a custom reference. */
+export const sustainableUseLicense = "LicenseRef-Sustainable-Use-1.0";
+
+/** Licenses that put no limit on who may run, change or share the code. */
+export const permissiveLicenses = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "0BSD",
+] as const;
+export type PermissiveLicense = (typeof permissiveLicenses)[number];
+
+/** Licenses that limit who may run or share the code. Today that is only the Sustainable Use License. */
+export const restrictedLicenses = [sustainableUseLicense] as const;
+
+export type LicenseClass = "permissive" | "restricted";
 
 export type WorkspacePackage = {
   name: string;
@@ -20,21 +43,55 @@ export type WorkspacePackage = {
   license: string | undefined;
   /** Every dependency name, of any kind: dependencies, dev, peer and optional. */
   dependencies: readonly string[];
+  /** Whether the package's folder has a LICENSE file with text in it. */
+  hasLicenseFile: boolean;
 };
 
 export type Violation =
   | { kind: "missing-license"; name: string; dir: string }
-  | { kind: "unknown-license"; name: string; dir: string; license: string }
   | {
-      kind: "apache-depends-on-agpl";
+      kind: "unknown-license";
       name: string;
       dir: string;
-      /** From the Apache-2.0 package to the AGPL-3.0 one it reaches, both ends included. */
+      /** The `license` field as written: on neither the permissive nor the restricted list. */
+      license: string;
+    }
+  | {
+      kind: "permissive-package-missing-license-file";
+      name: string;
+      dir: string;
+      /** The package's own license, as written. */
+      license: string;
+    }
+  | {
+      kind: "permissive-depends-on-restricted";
+      name: string;
+      dir: string;
+      /** The permissive package's own license, as written. */
+      license: string;
+      /** The restricted package that the chain ends at, and its license as written. */
+      reachedLicense: string;
+      /** From the permissive package to the restricted one it reaches, both ends included. */
       path: readonly string[];
     };
 
-const isKnownLicense = (license: string): license is KnownLicense =>
-  knownLicenses.some((known) => known === license);
+const isPermissiveLicense = (license: string): license is PermissiveLicense =>
+  permissiveLicenses.some(
+    (permissive) => permissive.toLowerCase() === license.trim().toLowerCase(),
+  );
+
+const isRestrictedLicense = (license: string): boolean =>
+  restrictedLicenses.some(
+    (restricted) => restricted.toLowerCase() === license.trim().toLowerCase(),
+  );
+
+/**
+ * SPDX ids are case-insensitive. A missing license, an expression such as "MIT OR GPL-3.0-only"
+ * and an id that is not listed all count as restricted, so the dependency walk never lets one
+ * through. `findViolations` reports an unlisted id by itself, as `unknown-license`.
+ */
+export const classifyLicense = (license: string | undefined): LicenseClass =>
+  license !== undefined && isPermissiveLicense(license) ? "permissive" : "restricted";
 
 const dependencyMapSchema = z.record(z.string(), z.string()).optional();
 
@@ -98,6 +155,10 @@ const readPackage = async (root: string, dir: string): Promise<WorkspacePackage 
     return undefined;
   }
   const parsed = packageJsonSchema.parse(JSON.parse(text));
+  const hasLicenseFile = await readFile(path.join(root, dir, "LICENSE"), "utf8").then(
+    (licenseText) => licenseText.trim() !== "",
+    () => false,
+  );
   return {
     name: parsed.name,
     dir,
@@ -108,6 +169,7 @@ const readPackage = async (root: string, dir: string): Promise<WorkspacePackage 
       ...Object.keys(parsed.peerDependencies ?? {}),
       ...Object.keys(parsed.optionalDependencies ?? {}),
     ],
+    hasLicenseFile,
   };
 };
 
@@ -157,8 +219,8 @@ const shortestPathTo = (
         if (isTarget(dependency)) {
           found.push(extended);
         }
-        // An AGPL package ends the chain: what it depends on is not ours to report.
-        if (dependency.license !== "AGPL-3.0-only") {
+        // A restricted package ends the chain: what it depends on is not ours to report.
+        if (classifyLicense(dependency.license) === "permissive") {
           next.push(extended);
         }
       }
@@ -175,29 +237,42 @@ export const findViolations = (packages: readonly WorkspacePackage[]): Violation
   const violations: Violation[] = [];
 
   for (const workspacePackage of packages) {
-    const { name, dir, license } = workspacePackage;
+    const { name, dir, license, hasLicenseFile } = workspacePackage;
     if (license === undefined || license.trim() === "") {
       violations.push({ kind: "missing-license", name, dir });
       continue;
     }
-    if (!isKnownLicense(license)) {
+    if (!isPermissiveLicense(license) && !isRestrictedLicense(license)) {
+      // Not walked: an unlisted license counts as restricted, so it has no side to check from.
       violations.push({ kind: "unknown-license", name, dir, license });
       continue;
     }
-    switch (license) {
-      case "AGPL-3.0-only":
+    const licenseClass = classifyLicense(license);
+    switch (licenseClass) {
+      case "restricted":
         break;
-      case "Apache-2.0":
+      case "permissive":
+        if (!hasLicenseFile) {
+          violations.push({ kind: "permissive-package-missing-license-file", name, dir, license });
+        }
         for (const chain of shortestPathTo(
           workspacePackage,
           byName,
-          (candidate) => candidate.license === "AGPL-3.0-only",
+          (candidate) => classifyLicense(candidate.license) === "restricted",
         )) {
-          violations.push({ kind: "apache-depends-on-agpl", name, dir, path: chain });
+          const reached = byName.get(chain.at(-1) ?? "");
+          violations.push({
+            kind: "permissive-depends-on-restricted",
+            name,
+            dir,
+            license,
+            reachedLicense: reached?.license ?? "(none)",
+            path: chain,
+          });
         }
         break;
       default:
-        license satisfies never;
+        licenseClass satisfies never;
     }
   }
   return violations;
@@ -208,9 +283,11 @@ export const describeViolation = (violation: Violation): string => {
     case "missing-license":
       return `${violation.name} (${violation.dir}) has no "license" field in its package.json`;
     case "unknown-license":
-      return `${violation.name} (${violation.dir}) declares "${violation.license}", expected ${knownLicenses.join(" or ")}`;
-    case "apache-depends-on-agpl":
-      return `${violation.name} (${violation.dir}) is Apache-2.0 but reaches an AGPL-3.0 package: ${violation.path.join(" -> ")}`;
+      return `${violation.name} (${violation.dir}) declares "${violation.license}", which is on neither license list in scripts/check-licenses.ts: check the spelling, or add the license to a list`;
+    case "permissive-package-missing-license-file":
+      return `${violation.name} (${violation.dir}) is ${violation.license} but has no LICENSE file with text in its folder`;
+    case "permissive-depends-on-restricted":
+      return `${violation.name} (${violation.dir}) is ${violation.license} but reaches a restricted package (${violation.reachedLicense}): ${violation.path.join(" -> ")}`;
     default:
       return violation satisfies never;
   }
@@ -225,7 +302,7 @@ const main = async (): Promise<void> => {
       console.error(`license check: ${describeViolation(violation)}`);
     }
     console.error(
-      `license check: ${String(violations.length)} problem(s), see ADR 0009 and ADR 0045`,
+      `license check: ${String(violations.length)} problem(s), see the license section of README.md`,
     );
     process.exitCode = 1;
     return;

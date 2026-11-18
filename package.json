@@ -2,7 +2,7 @@
   "name": "ostra",
   "version": "0.0.0",
   "private": true,
-  "license": "AGPL-3.0-only",
+  "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "packageManager": "pnpm@11.28.2",
   "engines": {

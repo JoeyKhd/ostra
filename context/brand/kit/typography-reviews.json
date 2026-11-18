@@ -1,4 +1,5 @@
 {
+  "superseded": "Dated record of the typography review made on 2026-11-17, and the input for the boards in reviews/. Its body copy was written under the old AGPL-3.0 licence and no longer describes ostra, which is source-available since ADR 0048 (2026-11-18). Kept as it was reviewed: the headline to use is in context/brand/brief.md.",
   "reviews": [
     {
       "stage": "typography",

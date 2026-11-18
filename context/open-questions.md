@@ -2,14 +2,14 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q106). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q110). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
 | Question | Settled in |
 |---|---|
 | Q-01 name | "ostra" |
-| Q-02 | ADR 0009 |
+| Q-02 | ADR 0009, superseded by ADR 0048 |
 | Q-03 | ADR 0010, superseded by ADR 0026 |
 | Q-04, Q-18 | ADR 0008 |
 | Q-05 | ADR 0012, superseded by ADR 0029 |
@@ -151,7 +151,7 @@ Two adjustments the maintainer made afterwards apply to every row below:
 | Question | Settled in |
 |---|---|
 | Q78 the layout | ADR 0045: `packages/jobs` and `packages/task-view` are added, and the adapter SDK takes its stores as interfaces |
-| Q79 enforcing the license line | ADR 0045, ADR 0009: every package declares its license, and CI fails on an Apache-2.0 package that depends on an AGPL-3.0 one |
+| Q79 enforcing the license line | ADR 0045, ADR 0048: every package declares its license, and CI fails on an Apache-2.0 package that depends on one under the Sustainable Use License |
 | Q80 one CLI | ADR 0046: one Apache-2.0 `ostra` CLI. A free npm name is a maintainer check, in the "Outside the code" table of `build-order.md` |
 | Q81 publishing to npm | ADR 0045: Changesets and one version line, publishing from the v1 launch |
 | Q82 the server image | ADR 0046, F-039: one server image with `web`, `core` and `all`, beside the runner image and the base image |
@@ -212,3 +212,7 @@ Answered "yes" on 2026-11-18.
 **Q107 👤 A code task whose PRs end mixed** (`domain-model.md`, ADR 0027). Some of a task's PRs merge and its last open PR closes unmerged. Is the task merged or stopped? *Recommendation:* merged when at least one PR merged and none is still open. The repo whose PR closed shows as "closed unmerged" on the task, and reopening can open a new PR for it.
 
 **Q108 👤 Can a drained runner come back?** (`domain-model.md`, ADR 0029). The runner lifecycle goes draining → revoked, but an upgrade usually drains a runner and restarts it. *Recommendation:* allow draining → offline for a planned restart, keeping the runner's identity. Only an admin's revoke is final.
+
+**Q109 👤 Which CLA, and how contributors sign it** (ADR 0048). Due before the first outside contribution is accepted. The CLA must let the maintainer offer the hosted version and commercial licenses with contributed code in them. Until it is chosen, the project takes no outside code. *Recommendation:* one standard CLA for individuals and another for companies, signed once per contributor through a check on the pull request. A lawyer reviews it with the license (Q110).
+
+**Q110 👤 Who is the licensor?** (ADR 0048). For now the licensor and copyright holder is "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra". Does that line stay, or does it become a legal name or a company? The license, the CLA and the commercial licenses all name the licensor. *Recommendation:* keep the line through milestones 1 to 6. Settle it with the legal review of the license and the CLA before the milestone 7 launch (`build-order.md`, "Outside the code").

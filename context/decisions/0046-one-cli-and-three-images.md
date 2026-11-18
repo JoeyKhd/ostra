@@ -17,7 +17,7 @@ One Apache-2.0 program, `ostra`, built from `apps/runner` (ADR 0045). It runs on
 - **The sidecar is the same binary, in an internal mode.** It isn't a command for people. One binary is one thing to version and document, and the same task code runs in every executor (ADR 0029).
 - **The name `ostra-runner` is retired: as a command, as a docs name and as a package name.** F-013 now says `ostra runner`.
 - **The command is always `ostra`.** The npm package's name depends on which names are free. npm's `ostra` is taken and abandoned since 2023 (`build-order.md`), so the maintainer checks and registers a name before milestone 7. The package's `bin` is `ostra` whatever the package is called.
-- **It talks to the server only through the schemas in `protocol`,** which keeps it clear of the AGPL code (ADR 0045).
+- **It talks to the server only through the schemas in `protocol`,** which keeps it clear of the Sustainable Use code (ADR 0045).
 - **Its version is ostra's release version.** A runner is pinned to its server's version when it joins, and the server accepts one minor version older or newer (ADR 0022, F-061).
 
 ## The images

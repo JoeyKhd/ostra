@@ -14,7 +14,7 @@
 
 ## What ostra is
 
-ostra is an open-source, self-hosted control panel that turns the coding agents your team already uses into **cloud agents**.
+ostra is a source-available, self-hosted control panel that turns the coding agents your team already uses into **cloud agents**. The code is public, and you can self-host it for your own team ([License](#license)).
 
 A ticket from your tracker, or a plain prompt, becomes a **task**. An agent works on it on its own branch, in an isolated box prepared from your project's environment. Your team can watch it live, steer it, approve risky steps, and reopen it months later. It ships a GitHub pull request for each repo it changes.
 
@@ -102,12 +102,20 @@ Every integration is an adapter with a shared contract: trackers, code hosts, ag
 
 ## Contributing
 
-The project isn't taking code yet. Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues). Contributions will use a DCO sign-off (`Signed-off-by`), not a CLA. Coding agents working in this repo follow [`AGENTS.md`](AGENTS.md).
+The project isn't taking code yet. Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues).
+
+Outside contributions will need a contributor license agreement (CLA). It lets the maintainer keep offering the hosted version and commercial licenses with contributed code in them. The CLA is chosen before the first outside contribution is accepted.
+
+Coding agents working in this repo follow [`AGENTS.md`](AGENTS.md).
 
 ## License
 
-Two licenses (ADR 0009):
-- **AGPL-3.0** for the server and the web app: [`LICENSE`](LICENSE)
+ostra is source-available, not open source. The code is public, and anyone can self-host it for their own team. Two licenses apply ([ADR 0048](context/decisions/0048-license-sustainable-use-and-apache.md)):
+- **The Sustainable Use License, version 1.0**, for the server, the web app and every package that isn't Apache-2.0: [`LICENSE`](LICENSE)
 - **Apache-2.0** for the runner, the protocol, the adapter SDK and the adapters, so companies can run runners and write adapters freely. Each of those packages carries its own `LICENSE`.
 
-A check in CI keeps an Apache-2.0 package from depending on an AGPL-3.0 one.
+In short, you may self-host ostra for your own team, or use it for personal and non-commercial purposes, for free. Nobody else may sell the server or the panel, or offer them as a paid service; sharing is allowed only free of charge, for non-commercial purposes. The Apache-2.0 packages carry no such limit. The paid hosted version stays the maintainer's alone, and the license is what protects it. Read the license itself for the exact terms.
+
+A check in CI keeps an Apache-2.0 package from depending on one that isn't. The copyright holder, and the notices that go with the code, are in [`NOTICE`](NOTICE).
+
+The copies published under AGPL-3.0 on 2026-11-18, before this change, stay AGPL-3.0 for anyone who already has them. Every version from this change on is under the terms above.

@@ -211,6 +211,7 @@ Secrets for development live in `~/.config/ostra-dev/`, never in the repo.
 | A free name for the CLI's npm package, and a namespace for the images (Q80, Q82) | Milestone 7 | For the maintainer to check and register |
 | The name check of 2026-11-17. **Taken:** npm `ostra` (abandoned since 2023), GitHub `ostra` (a personal account), ostra.dev, ostra.ai, ostra.app (a board game) and ostrahq.com. **Free:** GitHub `ostrahq` and `getostra`, and getostra.com. npm `ostra-runner` was free too, but ADR 0046 retired that name, so it isn't a candidate for the CLI's package. **To confirm at a registrar:** ostra.sh, ostra.so and ostra.io showed no record | Milestone 7 | Recorded; confirm before registering |
 | Signing certificates for runner binaries: an Apple Developer Program membership and a Windows code-signing certificate (F-085) | After v1 | Not needed for v1: signed binaries are dropped from the v1 list |
+| Legal review of the license, the licensor line and the CLA (ADR 0048, Q109, Q110) | Milestone 7 launch | For the maintainer |
 
 ## How each milestone runs
 

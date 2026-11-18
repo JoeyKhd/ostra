@@ -14,16 +14,16 @@ What we decided about the ostra brand, and why. The identity itself (palette, lo
 
 - **Engineers and engineering leads** at software teams that use a tracker (Linear, later Jira), GitHub and CLI coding agents. They choose ostra, deploy it and live in its panel.
 - **Everyone else in the tracker** (product, design, support). They meet ostra as an agent on their tickets in Linear, and through its PRs on GitHub.
-- **Open-source contributors and self-hosters.** They meet ostra on GitHub, in its docs and in its Docker images.
+- **Self-hosters and contributors.** They meet ostra on GitHub, in its docs and in its Docker images.
 
 ## Positioning
 
 From `context/project.md`:
 - **Tagline:** Self-hosted cloud agents for your team. It's the category word people already know.
-- **Headline:** the open-source, self-hosted control plane for coding agents, where your tracker stays the source of truth. It explains the tagline.
+- **Headline:** the source-available, self-hosted control plane for coding agents, where your tracker stays the source of truth. It explains the tagline.
 - **Words:** "cloud agents" is for describing ostra from outside (the site, the README, launch posts). Inside the product, the words are task, session and runner (`GLOSSARY.md`).
 - **Proof points:** your agents, your machines, your tracker, and tasks you can reopen months later.
-- **Character the brand must carry:** robust above all (ADR 0011), and open (ADR 0001, ADR 0009).
+- **Character the brand must carry:** robust above all (ADR 0011), and open (ADR 0001, ADR 0048). "Open" is about the code being public, and about anyone being able to self-host it. It doesn't mean "open source", which ostra isn't.
 
 ## Voice
 
@@ -93,6 +93,7 @@ Chosen by the maintainer on 2026-11-17 ("ROUNDED GEOMETRY"), from three pairs.
 
 ## Avoid
 
+- Calling ostra "open source" or "open-source". It's source-available (ADR 0048).
 - AI clichés: robots, sparkles, brains and neural networks, chat bubbles, purple-to-blue gradients.
 - Octopuses and krakens: the "many arms" image every orchestration tool uses.
 - Literal oysters or seafood.

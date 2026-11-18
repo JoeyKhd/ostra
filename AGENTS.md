@@ -1,6 +1,6 @@
 # ostra
 
-Open-source, self-hostable control panel that connects an organization's tracker (Linear, later Jira) to its coding agents (OpenCode first, Claude Code before launch, more later through the same interface). A ticket or a prompt becomes a task, and an agent works it on its own branch on a runner. Members can steer it and reopen it at any time, and it ships a GitHub PR for each repo it changes. The brief: `context/project.md`.
+Source-available, self-hostable control panel that connects an organization's tracker (Linear, later Jira) to its coding agents (OpenCode first, Claude Code before launch, more later through the same interface). A ticket or a prompt becomes a task, and an agent works it on its own branch on a runner. Members can steer it and reopen it at any time, and it ships a GitHub PR for each repo it changes. The brief: `context/project.md`.
 
 **Phase: milestone 0, spikes** (`context/build-order.md`). The plan was signed off on 2026-11-17 and reworked on 2026-11-18, and product code starts with milestone 1. The repo's skeleton is already in place (ADR 0045): the workspace, the strict tooling, CI, the license check and the branded IDs in `packages/protocol`. Every other piece of code until milestone 1 is a spike: throwaway code that answers one question. It lives in `spikes/<kebab-question>/`, and its finding goes into `context/research/`.
 

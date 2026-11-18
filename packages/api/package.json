@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "The tRPC routers",
   "private": true,
-  "license": "AGPL-3.0-only",
+  "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
