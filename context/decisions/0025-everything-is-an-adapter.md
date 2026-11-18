@@ -17,7 +17,7 @@ This extends ADR 0013 ("each tracker is an adapter") to every kind of integratio
 
 **Each base class:**
 - declares the abstract operations every adapter of its kind must implement, typed with branded IDs and Zod-checked results
-- declares **capabilities** as a typed object (e.g. `agentSessions`, `steerMidTurn`, `services`). Optional abilities are declared, never assumed (adapter parity, `AGENTS.md`)
+- declares **capabilities** as a typed object (e.g. `agentSessions`, `steerMidTurn`, `services`). Optional abilities are declared, never assumed (adapter parity, `AGENTS.md`). Two declarations came from the spikes: an agent declares `steerMidTurn` (OpenCode does, ADR 0032), and a code host declares the hosts its LFS actions may call, `lfsActionHosts` (ADR 0030)
 - holds the shared plumbing, written once:
   - rate limits per credential (Q20)
   - retries with backoff

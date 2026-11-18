@@ -70,7 +70,7 @@ Choosing where a task runs, on a runner in one of its project's pools or on its 
 _Avoid_: schedule (a schedule is a kind of automation), assign (assigning is something done in the tracker)
 
 **Driver**:
-The one member who steers a task right now. Any member who can open the project can take over as driver, so two people never prompt the same agent at once.
+The one member who steers a task right now. Any member who can open the project can take over as driver, so two people never prompt the same agent at once. The independent-review check (F-104) means something wider by "someone who didn't drive the task": it excludes every member credited with a co-author trailer on the task.
 _Avoid_: owner (the project owns every task), assignee (assigning is something done in the tracker)
 
 **Steer**:
@@ -105,6 +105,10 @@ _Avoid_: cluster, queue
 **Personal runner**:
 A runner on a member's own machine that runs only that member's tasks.
 _Avoid_: local runner
+
+**Runner key**:
+The credential a runner holds: an Ed25519 key pair whose private half never leaves its machine. A pool runner gets it by trading its join token, and a personal runner by trading its device-code session, which the server then revokes. It lets a runner connect and receive its dispatches, and does nothing a member can.
+_Avoid_: runner token, API key
 
 **Join token**:
 The key a runner uses to join a pool. It is shown once, stored hashed and set to expire.
@@ -207,6 +211,10 @@ _Avoid_: team (a Linear team is something else), tenant, workspace
 A person who belongs to an organization, and may belong to several. A restricted project lists the members who can open it.
 _Avoid_: user, seat
 
+**Setup token**:
+A one-time secret that the server prints in its log at first start. Creating the first account needs it, so a fresh install belongs to whoever can read the log. It stops working once that account exists.
+_Avoid_: install key, license key
+
 **Admin**:
 A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is also its instance admin, who can create more organizations.
 _Avoid_: owner, operator
@@ -225,6 +233,10 @@ _Avoid_: VCS, forge, git provider
 ostra's connection to one specific tracker, code host, agent, model provider, executor, notification channel, secret store or blob store, behind the interface all of its kind share.
 _Avoid_: plugin, connector, driver
 
+**Heartbeat**:
+A small post to a Linear agent session during a long silent turn, so Linear doesn't mark the session stale. ostra sends one after 20 minutes without a post to that session. It is an ephemeral thought, and a plain thought if Linear doesn't count an ephemeral one as activity.
+_Avoid_: ping, keepalive (a keepalive is the browser stream's own message, ADR 0035)
+
 **Capability**:
-Something an adapter may or may not support, which it declares, for example Linear's native agent sessions, an agent taking a message mid-turn, or an executor that starts services.
+Something an adapter may or may not support, which it declares, for example Linear's native agent sessions, an agent taking a message mid-turn, a code host's list of LFS hosts, or an executor that starts services.
 _Avoid_: feature (that word belongs to the ledger), flag

@@ -20,7 +20,7 @@ ostra never assumes a model provider. A **model provider** is an API base URL an
 **The catalog:**
 - The server fetches the models.dev catalog daily and serves the logos itself, so browsers never call a third party.
 - Each release bundles a copy of the catalog, and one setting turns the fetch off. A closed network keeps working (ADR 0001, ADR 0021).
-- The agent never fetches the catalog. ostra writes the provider config for each task, and a models.dev ID passes through to the agent as it is.
+- The agent never fetches the catalog. ostra writes the provider config for each task, and a models.dev ID passes through to the agent as it is. For OpenCode the catalog goes in as a file the agent reads (`OPENCODE_MODELS_PATH`, with `OPENCODE_DISABLE_MODELS_FETCH=1`), which spike 1 used with no outbound call. Those switches aren't in OpenCode's docs, so the adapter's contract suite covers them (ADR 0032).
 
 **Keys:**
 - The token is stored encrypted, through the secret store adapter (ADR 0025). It reaches only the box's sidecar. The agent holds a fake key, and the key proxy swaps the real one in and counts every call in both API formats (ADR 0030, F-089).

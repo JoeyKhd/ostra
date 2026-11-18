@@ -6,7 +6,7 @@ ostra ships as one command-line program and three Docker images.
 
 ## The CLI
 
-One Apache-2.0 program, `ostra`, built from `apps/runner` (ADR 0045). It runs on Node LTS and is published to npm.
+One Apache-2.0 program, `ostra`, built from `apps/runner` (ADR 0045). It runs on Node LTS and is published to npm. **Its minimum Node is 24.5 or later (22.21 or later on the 22 line)**, set in the CLI's `engines`, because the runner gets through a CONNECT proxy with Node's own `https.Agent` and `proxyEnv` option, which spike 6 showed is enough and which arrived in those releases (ADR 0034). The repo root's `>=24.2` is lower and doesn't bind the CLI.
 
 | Command | What it does |
 |---|---|
@@ -28,7 +28,7 @@ One Apache-2.0 program, `ostra`, built from `apps/runner` (ADR 0045). It runs on
 | **Runner** | The `ostra` CLI: the pool runner and the sidecar | Pool hosts, and the sidecar container of every box |
 | **Base** | The tools, every v1 agent (pinned) and a small init program | The agent's container in every box, and the default base image of an environment (Q33) |
 
-- **The base image pins every v1 agent.** OpenCode's version is fixed there and its checksum is verified, as `research/rivet.md` asks. From milestone 7, Claude Code's ACP adapter is pinned the same way, once its redistribution terms are checked (ADR 0032). Nothing is downloaded when a box starts.
+- **The base image pins every v1 agent.** OpenCode's version is fixed there and its checksum is verified, as `research/rivet.md` asks. The mechanism, from spike 1: the image installs `@opencode/cli` (the V2 line, not the `opencode-ai` package, whose default is the 1.x line that tried the network during a turn) at an exact version with install scripts off, and checks the SHA-256 of the platform binary. The model catalog goes in as a file, with the fetch off (ADR 0032, ADR 0033). From milestone 7, Claude Code's ACP adapter is pinned the same way, once its redistribution terms are checked (ADR 0032). Nothing is downloaded when a box starts.
 - **The runner image and the base image are separate** because a box splits the sidecar, which holds the credentials, from the agent's container, which never does (ADR 0029, ADR 0030).
 - **Tags follow the release.** Images are tagged per release (ADR 0022).
 - **Where they're published** is the maintainer's choice of registry and namespace, made before milestone 7.
@@ -55,6 +55,7 @@ ADR 0023 planned signed native binaries, compiled with Bun, before launch. That 
 ## Consequences
 
 - ADR 0008 is amended: the runner ships as an npm CLI and in images, and Bun is not required in v1. Spikes 3 and 6 run on Node only.
+- The self-hosting docs say that `NODE_EXTRA_CA_CERTS` is read when the runner starts and not later (ADR 0034).
 - A fresh install works with the compose file and the images alone. It needs no download of a binary (F-001, F-039).
 - If no reasonable npm name is free, the CLI ships in the runner image and as a download.
 - If the base image grows too large, it splits by language.

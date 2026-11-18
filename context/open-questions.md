@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q110). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q127). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -115,14 +115,14 @@ Two adjustments the maintainer made afterwards apply to every row below:
 | Q49 onboarding a new project | F-113, in milestone 6, built on F-112. The onboarding task is a code task from a built-in template. ADR 0038 |
 | Q50 the live agent UI | ADR 0036: the AI SDK's message types, rendered with assistant-ui. ADR 0007, amended |
 | Q51 keep Rivet Sandbox Agent | ADR 0032: no. The runner drives agents with the official ACP SDK. ADR 0024 is superseded and ADR 0018 amended |
-| Q52 steering with OpenCode | ADR 0032, F-024: steering mid-turn is a declared agent capability. Send queues the message, and "Interrupt and send" is a separate action |
+| Q52 steering with OpenCode | ADR 0032, F-024: steering mid-turn is a declared agent capability. Send steers where the agent declares it and queues otherwise, and "Interrupt and send" is a separate action. Spike 1 found that OpenCode declares it (Q114) |
 | Q53 reopening on another runner | ADR 0039, F-033: the agent's session archive and the hidden ref, then a fixed rebuild template. ADR 0006, amended |
 
 #### Asked in chat, Q54 to Q59
 
 | Question | Settled in |
 |---|---|
-| Q54 the sign-in name | F-002, F-115: a unique username and an email, either one plus a password, invite and reset links. ADR 0003, amended. Spike 9 confirms the username plugin |
+| Q54 the sign-in name | F-002, F-115: a unique username and an email, either one plus a password, invite and reset links. ADR 0003, amended. Spike 9 confirmed the username plugin on better-auth 1.7.25, so the email-only fallback is dropped |
 | Q55 who authors PRs | ADR 0040: the GitHub App opens every PR, with co-author trailers and the `ostra/independent-review` check. F-104, F-119, F-030, F-078 |
 | Q56 test accounts | The same as Q106 |
 | Q57–Q59 the rejected UI direction | Superseded by the graphite direction (Q60–Q63). Nothing to decide |
@@ -198,6 +198,28 @@ Answered "yes" on 2026-11-18.
 | Q105 spend limits | ADR 0042, F-037, F-068: a monthly budget per organization and per project, counted at the key proxy, and a spend cap per task |
 | Q106 test accounts for the spikes | `docs/development.md`: the maintainer sets up a Linear workspace. The spikes read one neutral file, `~/.config/ostra-dev/model.env` (a base URL, a token and a model ID), and a GitHub org is a sandbox for test repos and the test GitHub App. The three things only the maintainer can provide are tracked under "Outside the code" in `build-order.md` |
 
+#### Settled from the spikes' findings (2026-11-18)
+
+The maintainer delegated these calls. Each spike's finding (`research/spike-*.md`, section 4, "What this changes in the plan") proposed a decision or asked a question. Where it recommended one, the recommendation was applied, and the row says what was decided. The numbers are new. Spikes 6 and 7 each proposed their own "Q111", and spike 6's kept the number.
+
+| Question | Settled in |
+|---|---|
+| Q111 Events produced under a valid lease but delivered after the grace (spike 6): refused, or kept in a quarantine table? | ADR 0034, F-045: refused. Every event received before the grace is stored exactly once, and later ones are refused. A quarantine would keep a transcript nothing reads. The work is on the branch and the hidden ref. The build-order wording of spike 6 is changed to match |
+| Q112 On which device, and for which view, must 5,000 events render in 1.5 s? (spike 7) | ADR 0036, `build-order.md` spike 7: the default view on a mid laptop, measured unthrottled in a production build, with list virtualization for long tasks. The library for virtualization needs a yes (Q127) |
+| Q113 What to do about the partial-text cost, and its fallback (spike 7) | ADR 0035: first a cheaper table (upsert at most once a second, deltas, nothing written for a task nobody watches). The fallback of riding the notification is a redesign, because a notification must be under 8,000 bytes: bounded pieces of at most 6,000 bytes, with each replica holding open segments in memory. Untested. Measured on Linux |
+| Q114 OpenCode's gaps (spike 1): steering, plans, deny, and whether the default agent is reopened | ADR 0032, ADR 0018, F-019, F-024, F-026, F-063: OpenCode declares `steerMidTurn` over ACP and Send steers; the plan is mapped from `todowrite`; a deny ends the turn and the runner re-prompts; the default agent is not reopened, because every other check passed, the HTTP API rescued the reject, and the plan has an answer on ostra's side |
+| Q115 A personal runner's credential (spike 9) | ADR 0029, ADR 0034, F-013, F-103: the runner trades the device session for its own runner key at once, and the server revokes the session. `ostra login` is a separate member session |
+| Q116 Who may create a reset link (spike 9) | F-002: the instance admin only, because an account belongs to every organization its owner joined |
+| Q117 A fresh install belongs to whoever reaches it first (spike 9) | F-001, ADR 0026: a setup token printed in the server log at first start is needed to create the first account, and the first organization is created with it |
+| Q118 An invite link is a bearer secret, and a mailbox is never verified (spike 9) | F-002: the invitation is bound to an address and the link's ID is the secret, used once, valid 7 days. With a mail server, the address must match and be verified. The docs say to send the link privately |
+| Q119 Does the default LFS host list keep `*.githubusercontent.com`? (spike 4) | ADR 0030, F-090: no. Exactly the three names the run saw. A GitHub Enterprise Server install lists its own |
+| Q120 How ostra treats the LFS storage a cleaned-up task leaves behind (spike 4) | ADR 0039, F-079: cleanup deletes refs, never LFS objects, and the docs say that the code host's storage keeps them and counts them against its quota |
+| Q121 Who counts as the driver when several members prompted a task (spike 4) | ADR 0040, F-104: every member credited with a trailer on the task |
+| Q122 Does v1 ask for `workflows: write`? (spike 4) | ADR 0040, F-006: no. A push that touches `.github/workflows/` fails on GitHub and the task says why. A later release can ask |
+| Q123 Is a refused push answered before its body is read, and what is the cap on the drained body? (spike 4) | ADR 0030, F-090: answered after the body is read, so git reads the answer. The cap is 1 GiB *(working value)*. Answering early was not tried |
+| Q124 May the mapper hide usage, mode and tool-progress updates? (spike 7) | ADR 0036: no. Mode and config become `session.config_changed`, in-progress tool updates with content become `tool.progress`, and `usage_update` gets a `session.usage` kind that feeds only the context meter. Spend comes from the key proxy |
+| Q125 Linear: who sends a stop, and the heartbeat's values (spike 5) | ADR 0013, F-012: a stop always comes from a signed-in user, never from an API key. The heartbeat is every 20 minutes of silence, reset by any post, with retries for at most 5 minutes, ephemeral by default and a plain thought if Linear doesn't count it |
+
 #### Chat answers with no question number
 
 | Answer | Settled in |
@@ -216,3 +238,7 @@ Answered "yes" on 2026-11-18.
 **Q109 👤 Which CLA, and how contributors sign it** (ADR 0048). Due before the first outside contribution is accepted. The CLA must let the maintainer offer the hosted version and commercial licenses with contributed code in them. Until it is chosen, the project takes no outside code. *Recommendation:* one standard CLA for individuals and another for companies, signed once per contributor through a check on the pull request. A lawyer reviews it with the license (Q110).
 
 **Q110 👤 Who is the licensor?** (ADR 0048). For now the licensor and copyright holder is "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra". Does that line stay, or does it become a legal name or a company? The license, the CLA and the commercial licenses all name the licensor. *Recommendation:* keep the line through milestones 1 to 6. Settle it with the legal review of the license and the CLA before the milestone 7 launch (`build-order.md`, "Outside the code").
+
+**Q126 👤 Containing a task's processes on the `host` executor** (ADR 0029, `research/spike-how-should-the-runner-drive-opencode.md`, item 6). The decision is made: a Windows job object, a Linux cgroup. Two things aren't. How does a Node runner create a Windows job object (a native addon or a small helper program, either of which is a new dependency)? And what does macOS use, which has neither? Until it is settled, milestone 1's `host` executor on Windows ends the agent's process tree and says so in the panel, and `host` on macOS reaps a process group and walks the tree, recorded as the third allowed difference in ADR 0029. *Recommendation:* a small helper program for Windows, so the runner needs no native addon on a laptop, and for macOS test a process group plus a sweep for orphans against a detached helper, and record the result.
+
+**Q127 👤 Dependencies waiting for a yes** (ADR 0007, "pending the maintainer"). `@tanstack/react-virtual` for the task page's long lists (Q112), `dockerode`, `@kubernetes/client-node`, `nodemailer`, and whatever Q126 picks. Each is added only when the feature that needs it is built, and only after the maintainer confirms it and its license. *Recommendation:* yes to all four named ones, since each has no standard-library or already-listed alternative.

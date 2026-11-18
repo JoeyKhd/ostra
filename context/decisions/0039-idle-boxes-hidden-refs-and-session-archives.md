@@ -35,11 +35,13 @@ A session records how it began: resumed in the same box, restored from an archiv
 
 ## Consequences
 
+- Spike 4 checked the hidden ref on GitHub: GitHub accepts a push to `refs/ostra/wip/<task>` through the git proxy. That no CI starts for it is still for spike 2 to check, so this ADR stands as written.
 - Almost every reopen lands on a fresh box, so step 2 is routine, and spike 2 (`can-a-session-move-to-a-fresh-box`) gates the choice of agent as much as spike 1 does. It passes when a restored agent answers 5 of 5 questions about earlier turns, the hidden ref brings back uncommitted and untracked files, GitHub accepts the ref and starts no CI for it, a 200-turn session restores in under 30 s *(working value)*, and the template alone gets 4 of 5.
 - OpenCode's export and import have failed a round trip before (`research/rivet.md` §5). So the agent's version is pinned in the base image, and step 3 must be good on its own. If spike 2 fails, the template becomes the normal path, and F-033 says so.
 - Archives are several megabytes each, every few minutes, at 1,000 tasks. That's why files go through the blob store, with an S3-compatible store recommended above a few hundred tasks a day (ADR 0043).
 - An archive never holds a real credential, because the agent never had one (ADR 0030). It holds the session's content, so it's stored and checked for access like the task's history, and never logged.
 - A push after every turn may cost a project too much CI time. If it does, the project can choose to push only when the box goes idle.
 - If members dislike the wait after a pause, the warm time becomes a project setting.
-- Cleanup (F-079) covers stopped boxes and blobs.
+- Cleanup (F-079) covers stopped boxes and blobs. **It deletes refs, never LFS objects, and ostra can't give a task's LFS storage back.** Spike 4's cleanup deleted its test refs and the LFS objects stayed in the repo's storage. GitHub says the same: the objects "continue to count toward your Git LFS storage quota" until the repository is deleted and recreated. So a task's LFS objects count against the organization's quota on the code host's side, and the docs and the configuration reference say so and promise nothing else (Q120). The test repo `test1` has to be recreated now and then, or LFS tests use a throwaway repo.
+- The wait for a person is the idle timer, **15 minutes** (above). Spike 1's test list said 10 minutes for a held request. They are aligned to 15, so one timer governs both.
 - Ledger rows: F-033, F-045, F-047 and F-096.

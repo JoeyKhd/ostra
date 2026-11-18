@@ -1,6 +1,6 @@
 # The GitHub App opens every PR
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122).
 
 The organization's GitHub App opens every PR and authors every commit.
 
@@ -8,7 +8,9 @@ The organization's GitHub App opens every PR and authors every commit.
 - **One PR per changed repo** (ADR 0027).
 - **A verified GitHub link.** Each member links their GitHub account once, through the App's own OAuth (F-119). It proves the identity and keeps no token. It serves three things: co-author credit, `@ostra` comments (F-053) and reviewers (ADR 0028).
 - **The `ostra/independent-review` check.** ostra publishes it on each PR. It passes when someone who didn't drive the task approves. An organization can make it required in branch protection (F-104).
-- **The App's permissions** include `checks: write` and `actions: read` from the first day (F-006).
+- **The App's permissions** include `checks: write` and `actions: read` from the first day (F-006). Spike 4 settled their spelling: GitHub accepts `contents`, `pull_requests`, `checks`, `actions`, `issues`, `statuses` and `metadata` as the manifest writes them and returns the same seven. `email_addresses` is refused, so the verified link takes only the member's login and ID from the App's OAuth (`GET /user`, which needs no permission, so the code's comment says; the spike got the ID another way, so the OAuth route itself is unverified and is F-119's own test). **`workflows: write` is not asked for in v1 (Q122):** it would let an agent change CI, and a permission added later has to be approved again by every install, so the choice is real. A push that touches `.github/workflows/` is therefore expected to fail on GitHub, and the task says why. The spike left it out and did not try such a push; F-006's test does. If a team needs it, a later release asks for it and every install approves once.
+- **How the check behaves** (F-104). The approver rule is the evaluator's: for each reviewer, their latest approval, change request or dismissal counts and a comment doesn't, bots and drivers don't count, and the approval must be of the PR's current head. **The driver is every member credited with a trailer on the task (Q121),** because ADR 0040 credits everyone whose prompt led to a commit, so "someone who didn't drive the task" means none of them. The check moves both ways: a new push gives the PR a new head and the check is published for it as pending; a dismissal or a withdrawn approval sets a green check back to pending. An unapproved PR shows the check as `in_progress`, titled "Waiting for an independent reviewer". Whether a required check that is `in_progress` blocks a merge the way a failing one does is unverified, and F-104's test on a real repo with branch protection settles it. If it doesn't block, the check reports `action_required` instead. GitHub's rule that an author can't approve their own PR doesn't cover a human approving a bot's PR, which is why the check exists.
+- **With no public URL there is no webhook.** GitHub refuses a webhook URL on a loopback host even when the hook is inactive, so the setup flow creates the App with no events, and adds the webhook and its events once a public address exists. F-006 says so, and the `setup_url` is left out until the panel has a post-install page.
 
 ## Considered options
 
@@ -20,7 +22,7 @@ The organization's GitHub App opens every PR and authors every commit.
 ## Consequences
 
 - Linking GitHub is part of a member's setup, not a way to sign in. It ships in milestone 3, with `@ostra`.
-- Spike 4 proves the flow: the manifest flow creates the App with `checks: write`, a PR the App opened shows the member as co-author, and the check run flips when someone approves.
+- Spike 4 proves the flow: the manifest flow creates the App with `checks: write`, a PR the App opened shows the member as co-author, and the check run flips when someone approves. On GitHub, the manifest flow and the co-author trailer passed (GraphQL `Commit.authors` resolved the no-reply address to the member). The check's flip from a real `pull_request_review` webhook hasn't been seen: only polling and the local signature check ran, and it needs a token for a second sandbox user who can approve.
 - Bots aren't code owners, so a repo with CODEOWNERS still needs a human code owner to approve ostra's PRs (`research/platform-auth-github.md` §2.5).
 - Commits pushed with `git push` aren't signed by GitHub. A repo that requires signed commits can't take ostra's pushes until signed commits (F-056) ship after v1.
 - Ledger: F-030 and F-078 open one PR per changed repo with co-author trailers. F-104 and F-119 are new v1 rows.

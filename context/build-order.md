@@ -1,6 +1,6 @@
 # v1 build order
 
-**Status:** agreed (2026-11-18, from the delegated answers in `history/answers-2026-11-18.md`). It replaces the order agreed on 2026-11-17, which assumed Claude Code on a subscription login and one repo per task. Each milestone ends in something people could actually use, and builds only on what's already done. Feature IDs come from `features.md`, and every v1 row appears below exactly once, or once per milestone that grows it.
+**Status:** agreed (2026-11-18, from the delegated answers in `history/answers-2026-11-18.md`). It replaces the order agreed on 2026-11-17, which assumed Claude Code on a subscription login and one repo per task. **Amended 2026-11-18, once the first spikes had run:** the spikes' findings are folded in (the pass bars of spikes 1, 3, 6 and 7 are reworded below, a status table is added, and milestone 1 runs its demo on the `host` executor). Each milestone ends in something people could actually use, and builds only on what's already done. Feature IDs come from `features.md`, and every v1 row appears below exactly once, or once per milestone that grows it.
 
 ## Built in from the first milestone
 
@@ -29,6 +29,7 @@ These aren't a milestone of their own. Every milestone is built on them, and the
 
 Notes on the order:
 
+- **Milestone 1 on a machine with no Docker.** The plan's author works on a Windows machine with no Docker, so milestone 1's end-to-end demo runs on the `host` executor: a personal runner with a worktree, which holds no credential. The key proxy and the git proxy still run, as the work of the runner's own process, which is how ADR 0029 and ADR 0030 say the `host` executor works. The `docker` executor is written in full with unit tests, and its live test, F-017's "done when" and spike 3 wait for a Linux machine with Docker. Until it runs, F-017 stays `planned` and the milestone's "a box" reads as "a worktree". The development database is an `embedded-postgres` dev dependency started by a dev script, and `DATABASE_URL` overrides it (ADR 0007).
 - **Two agents at launch.** OpenCode is the default and the only agent from milestone 1 to milestone 6 (ADR 0032). Claude Code ships in milestone 7, before launch, to prove the agent interface with two real agents. It goes through the same ACP driver, on keys through the key proxy, against an endpoint that speaks Anthropic's Messages API. No subscription login is used anywhere (Q45, Q47). Adapter parity (`AGENTS.md`) applies at launch: every feature that touches agents works for both, or the interface declares it an optional capability and each adapter says whether it has it. The scripted fake agent stays in the contract suite. Codex stays after v1 (F-038).
 - **Money before loops.** Budgets and Insights (F-037, F-108) are built in milestone 4, before any loop that spends without a person: the CI loop and the review rounds (F-035, F-101) in milestone 6 (Q105).
 - **Jira is checked from milestone 2.** The tracker contract suite runs against a Jira fake as well as Linear, so the interface isn't shaped only for Linear. The fake models a status graph with transitions, rich text that isn't markdown (ADF) and issue keys that change. Jira itself is the first tracker after v1 (Q104, F-008).
@@ -86,11 +87,11 @@ Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes in
    - **Question:** can ostra's own driver, on the official ACP SDK, run OpenCode for real work through the key proxy, on any endpoint?
    - **Tests the decisions:** Q11, Q45, Q51, Q52, Q103.
    - **Passes when:**
-     - Cases T1, T3–T11, T13, T14 and T16 of the test list in `research/rivet.md` pass on Linux in a container, on Windows 11 without WSL, and on macOS.
+     - Cases T1, T3–T11, T13, T14 and T16 of the test list in `research/rivet.md` pass on Linux in a container, on Windows 11 without WSL, and on macOS. **Three cases are reworded after the Windows run** (ADR 0032): T5's plan passes with "a plan, or a todo list ostra maps"; T7's reject passes with "a reject ends the turn, and the agent can be re-prompted to continue"; T13's reap passes with "the runner's reap works from the agent's tree, and a box or a job object closes the rest". T7's held-request wait is 15 minutes, matching ADR 0039, not the 10 in the test list.
      - A 20-minute turn ends cleanly. A question reaches the driver, and its answer reaches the model. A cancel returns within 5 s and leaves no process behind.
      - A turn completes against the endpoint in `model.env`, and against a local stub in each of the two API formats.
      - The agent's environment holds only the fake key, and the proxy's token count is within 2% of what the endpoint reports.
-     - Recorded: events per minute, and whether OpenCode's own HTTP API can steer mid-turn.
+     - Recorded: events per minute (448 in one small turn, on one model), and whether OpenCode's own HTTP API can steer mid-turn (it can, and so can ACP, through `_session/steering`: ADR 0032).
    - **If it fails:** try OpenCode's HTTP API for the capability that failed. If that fails too, the choice of default agent is reopened.
 
 2. **`can-a-session-move-to-a-fresh-box`** (4 days)
@@ -108,9 +109,9 @@ Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes in
    - **Question:** does the box (agent container, sidecar, services) hold on Docker and on Kubernetes?
    - **Tests the decisions:** Q26, Q27, Q38, Q95, Q96.
    - **Passes when:**
-     - From a shell in the agent's container, none of these works: reading a model key or a GitHub token from the environment, the process list, files or the network; answering its own approval; reaching a private address, the metadata address or another box.
+     - From a shell in the agent's container, none of these works: reading a model key or a GitHub token from the environment, the process list, files or the network; answering its own approval; reaching a private address, the metadata address or another box, another box's git proxy port included (the proxy has no per-task secret in its URL, ADR 0030). The shell also can't use OpenCode's loopback port: it calls the port with no password and fails, and the password can't be read from the process list, `/proc/<pid>/environ` or `/proc/<pid>/cmdline` (spike 1, item 5).
      - The bridge between sidecar and agent carries a 20-minute turn, and stopping a task leaves no process.
-     - A box is ready in under 10 s on Docker with the image present, and under 60 s on a warm Kubernetes node *(working values)*. 50 boxes run on one host. The sidecar stays under 100 MB.
+     - A box is ready in under 10 s on Docker with the image present, and under 60 s on a warm Kubernetes node *(working values)*. 50 boxes run on one host. The sidecar stays under 100 MB, a number to set after measuring the driver alone on Linux first: it was 83 to 88 MB on Windows in spike 1.
      - A snapshot builds from a generated Dockerfile on both. A setup secret isn't found in any layer. A database service is reachable from the agent's container.
      - The same checks pass with gVisor as the runtime.
    - **If it fails:** one container per box, with the runner as a separate OS user (Q27 as first written).
@@ -132,7 +133,7 @@ Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes in
    - **Passes when:**
      - The app installs from a manifest link, as its own workspace user.
      - Across 50 delegations, the webhook is answered in under 5 s and the first activity lands in under 10 s, with no runner involved.
-     - Stop and follow-up arrive. A silent turn of 35 minutes stays alive.
+     - Stop and follow-up arrive. A silent turn of 35 minutes stays alive. A stop always comes from a signed-in user pressing Send stop request, since an API key can't post an agent activity, so a person does that step in the real run (ADR 0013, Q125).
      - `@linear/sdk` typechecks under ostra's strict flags and adds under 20 s to `tsc` *(working value)*.
    - **If it fails:** agent mode (F-012) moves after v1. The plain API stays.
 
@@ -141,7 +142,7 @@ Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes in
    - **Tests the decisions:** ADR 0034 and `research/runner-transport.md`, Q18. F-045 and F-061 rest on it.
    - **Passes when** (on Node only, on Windows, macOS and Linux):
      - Through a CONNECT proxy, a TLS-inspecting proxy and nginx's defaults, the runner connects, or falls back to HTTP by itself within 30 s.
-     - After `kill -9`, and after network cuts of 30 s, 5 min and 11 min, every event is stored exactly once. After 11 min the task stops cleanly and stale writes are refused.
+     - After `kill -9`, and after network cuts of 30 s, 5 min and 11 min, every event the server received before the grace ran out is stored exactly once. After the grace the task stops cleanly and stale writes are refused, events that arrive late included (ADR 0034, Q111). (The earlier wording, "every event is stored exactly once", contradicted its own ADR and could never pass.)
      - With two core replicas, a steer reaches the runner in under 500 ms at p99, and in under 2.5 s with notifications off.
      - One replica holds 2,000 connections. Three replicas and one Postgres carry 1,000 sessions at the event rates spike 1 recorded.
      - A runner one minor older or newer works, or is refused with a clear message.
@@ -152,11 +153,11 @@ Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes in
    - **Question:** can a task page on the AI SDK's types and assistant-ui show a real session live to two viewers, from ostra's own stream?
    - **Tests the decisions:** Q23, Q50, Q18.
    - **Passes when:**
-     - 5,000 events a second sustained and a burst of 10,000, at p99 under 500 ms from runner to browser, with Postgres under 50% of 4 vCPU.
+     - Two legs, both with partial text on for some tasks (1 task in 4 in the spike): runner to the stream's viewer, at 5,000 events a second sustained and a burst of 10,000, at p99 under 500 ms with Postgres under 50% of 4 vCPU, partial text counted; and runner to a row in the DOM, for a sample of real browsers. The Postgres line counts the partial-text table (ADR 0035, Q113).
      - Every kind of event in the recorded sessions renders, and nothing is dropped silently.
      - A reload shows the partial text again within 1 s. A 10 s network drop leaves no gap and no duplicate.
      - A watcher can't send, in the UI or by calling the API. When two members answer one approval, one wins.
-     - 5,000 events render in under 1.5 s.
+     - The default view of a 5,000-event task renders in under 1.5 s on a mid laptop, measured unthrottled in a production build, with list virtualization for long tasks (ADR 0036, Q112).
      - Strict typecheck and lint pass with only documented suppressions. The page calls no third party.
    - **If it fails:** if assistant-ui fails, render with AI Elements. If live text fails, carry it in the notification. If fan-out fails, evaluate Centrifugo, as `research/live-sync.md` suggests.
 
@@ -191,6 +192,25 @@ Throwaway code in `spikes/<kebab-question>/` (`AGENTS.md`). Each finding goes in
       - Recorded per run: spend from the proxy, time, turns, approvals and events.
     - **If it fails:** repeat on a second model. If both miss the bar, compare agents before milestone 1 builds further on OpenCode.
 
+### Where the spikes stand (2026-11-18)
+
+Six spikes have a finding in `research/`. None sets a ledger row to `done`, because a spike is throwaway code (`AGENTS.md`). Milestone 1 starts on what these six found, with the decisions they changed already in the ADRs.
+
+| Spike | Finding | State | Waiting on |
+|---|---|---|---|
+| 1 `how-should-the-runner-drive-opencode` | `research/spike-how-should-the-runner-drive-opencode.md` | Windows 11 only. B3 and B5 pass. B1 fails as written on plan, reject and reap, and the bar is reworded (above, ADR 0032) and the default agent is not reopened. B2 and B4 skipped | A Linux container with `NET_ADMIN` and `NET_RAW` (T1's packet capture, T3's `/proc` check, the POSIX paths), a Mac, one `SPIKE_LONG=1` run (about 25 minutes), a steer on a real model, the deny re-prompt end to end |
+| 2 `can-a-session-move-to-a-fresh-box` | none yet | Code in `spikes/`, no finding | Its finding |
+| 3 `what-is-inside-a-box` | none yet | Code in `spikes/`, no finding | Docker on Linux, and its finding |
+| 4 `github-app-and-git-proxy` | `research/spike-github-app-and-git-proxy.md` | Mostly done on real GitHub: bullet 1 is met and nothing failed. Four rows skipped | The token in the agent's container (spike 3's box), the 500 MiB pack, a token for a second sandbox user who can approve (the check flip), Linear's GitHub app on `ostra-test` (the Linear link) |
+| 5 `linear-agent-mode` | `research/spike-linear-agent-mode.md`, written before the real run, and the spike's README, which records it | Real run of 2026-11-18: the install and the keep-alive pass, the 50 delegations pass server-side (end to end inconclusive: clock skew), the SDK bullet passes, the stop and follow-up bullet is not verified. A personal API key can't post an activity | A second real run with a person pressing Send stop request, after a clock resync |
+| 6 `runner-transport` | `research/spike-runner-transport.md` | Windows only. No check failed. Criteria 3 and 5 pass on Windows, most of 2 passes, 5 checks skipped. The 11-minute line is reworded (above) | macOS and Linux, real nginx, 2,000 connections and 1,000 sessions on Linux, a real laptop sleep, a runner built one minor apart |
+| 7 `live-stream-and-task-view` | `research/spike-live-stream-and-task-view.md` | Windows, headless Edge. Two checks fail (the render bar, now decided, and the recorded sessions) and two are skipped. The bar isn't met | The load bar's shape on a Linux host, spike 1's recordings, a render measurement on the reference laptop |
+| 8 `durable-queue-choice` | none yet | Code in `spikes/`, no finding | Its finding |
+| 9 `auth-foundation` | `research/spike-auth-foundation.md` | Every row passes on embedded Postgres 18.6, on Windows. Neither fallback is needed | A Postgres of its own, Linux and macOS, the browser side, rate limits, the upgrade path |
+| 10 `is-opencode-good-enough` | none yet | Code in `spikes/`, no finding | Its finding |
+
+**What milestone 1 can build on now:** the ACP driver, the key proxy and the stub models (spike 1); the git proxy, App authentication and the PR flow (spike 4); the runner protocol (spike 6); the event stream, the fold and the task page (spike 7); better-auth (spike 9). Product code ports these and never imports from `spikes/`.
+
 **Order.** Spikes 1, 2 and 3 run in sequence, because each builds on the one before. Spikes 4 to 9 are independent and can run beside them. Spike 10 runs last, on what 1 to 4 built. That's about 47 working days in a row, and fewer in parallel.
 
 **What happened to the first six.** The old spike 1 (Claude Code through ACP, on a subscription login) is spike 1 with OpenCode, on keys. Claude Code on keys moves to milestone 7 and isn't spiked. The old 2 is spike 2. The old 3 is spike 5. The old 4 is spike 4, with the git proxy in place of a credential helper. The old 5 (the runner on Node and Bun) is spikes 3 and 6, without Bun. The old 6 is spike 8, with the order of the two libraries reversed. Spikes 7, 9 and 10 are new. The sync-engine spike, the hosted-sandbox spike and the Rivet arm are dropped.
@@ -201,12 +221,13 @@ Secrets for development live in `~/.config/ostra-dev/`, never in the repo.
 
 | What | Needed for | Status |
 |---|---|---|
-| A GitHub org used only as a sandbox. It holds the test repos and the test GitHub App, so no real repo is ever touched. The public ostra repo is separate | Spikes 2, 3, 4 and 10, and every end-to-end test after them | **Done 2026-11-18:** `ostra-test`, with two private test repos. The test GitHub App is created by spike 4's manifest flow |
+| A GitHub org used only as a sandbox. It holds the test repos and the test GitHub App, so no real repo is ever touched. The public ostra repo is separate | Spikes 2, 3, 4 and 10, and every end-to-end test after them | **Done 2026-11-18:** `ostra-test`, with two private test repos, and the test GitHub App, created by spike 4's manifest flow |
 | A Linear workspace for tests | Spikes 5 and 10 | **Done 2026-11-18:** the maintainer named a workspace for tests, and its key is in `linear.env` |
 | `~/.config/ostra-dev/model.env`: any base URL, token and model ID | Spikes 1, 2, 3, 7 and 10 | **Done 2026-11-18:** filled in and checked: the endpoint lists the model, and a request succeeds |
 | An endpoint that speaks Anthropic's Messages API, from any provider or gateway that serves it, for Claude Code (F-018). `model.env` may already serve it. If its endpoint speaks only the other API format, a second endpoint is needed | Milestone 7 | Not needed yet |
 | A public HTTPS address for the dev server (any tunnel or reverse proxy) | Spike 5, and the webhooks in spike 4 | A Cloudflare quick tunnel (`cloudflared`, free, no account), started when spikes 4 and 5 need it. Installing it asks the maintainer first |
-| A Linux machine with Docker, for gVisor and a small Kubernetes cluster | Spikes 3 and 6 | Later, by the maintainer's choice. Until then, spikes 3 and 6 run only their parts that work without it |
+| A Linux machine with Docker, for gVisor and a small Kubernetes cluster | Spikes 1, 3, 6 and 7, and the `docker` executor's live test (F-017) | Later, by the maintainer's choice. Until then, those spikes run only their parts that work without it, and milestone 1 demos on the `host` executor |
+| A second sandbox GitHub user who isn't the driver and can approve, with a token in `GITHUB_TEST_REVIEWER_TOKEN` | Spike 4's check flip, and F-104's test | For the maintainer |
 | Any container registry the test cluster can pull from | Spike 3 | Any registry will do |
 | A free name for the CLI's npm package, and a namespace for the images (Q80, Q82) | Milestone 7 | For the maintainer to check and register |
 | The name check of 2026-11-17. **Taken:** npm `ostra` (abandoned since 2023), GitHub `ostra` (a personal account), ostra.dev, ostra.ai, ostra.app (a board game) and ostrahq.com. **Free:** GitHub `ostrahq` and `getostra`, and getostra.com. npm `ostra-runner` was free too, but ADR 0046 retired that name, so it isn't a candidate for the CLI's package. **To confirm at a registrar:** ostra.sh, ostra.so and ostra.io showed no record | Milestone 7 | Recorded; confirm before registering |

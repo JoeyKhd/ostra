@@ -1,6 +1,6 @@
 # The runner protocol: one session over WebSocket with an HTTP fallback, routed through Postgres
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Records the outcome of the Q22 study (`research/runner-transport.md`), and settles the HTTP fallback, the version window and the dependencies that the answers took from it. Covers F-013, F-045 and F-061. It carries the transport and wording parts of ADR 0012, which ADR 0029 supersedes, and amends ADR 0022.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Records the outcome of the Q22 study (`research/runner-transport.md`), and settles the HTTP fallback, the version window and the dependencies that the answers took from it. Covers F-013, F-045 and F-061. It carries the transport and wording parts of ADR 0012, which ADR 0029 supersedes, and amends ADR 0022. **Amended 2026-11-18 after spikes 6 and 9** (`research/spike-runner-transport.md`, `research/spike-auth-foundation.md`): events that arrive after the grace are refused (Q111), the ingest transaction locks the task row, the HTTP carrier's extra calls are listed, the fallback triggers are reworded, and a personal runner's device session is traded for a runner key at once (Q115).
 
 The protocol is ostra's own: a session of numbered, acknowledged messages between the server and one peer, defined once as Zod schemas in the shared `protocol` package (ADR 0008). Messages are strict objects, discriminated on `type`, with branded IDs (`RunnerId`, `TaskId`, `SessionId`, `CommandId`). The server routes through Postgres. There's no broker and no Redis.
 
@@ -8,7 +8,7 @@ The protocol is ostra's own: a session of numbered, acknowledged messages betwee
 
 **One session, two carriers:**
 - **WebSocket**, the main carrier: one connection on port 443, through `ws`, with text frames, one JSON envelope per frame, and compression off. It's built in milestone 1.
-- **HTTP**, the fallback: the same envelopes. `POST /runner/v1/up` takes a batch and returns acks. `GET /runner/v1/down?after=<seq>` holds for up to 25 s and returns commands, or 204. It's built with the fleet in milestone 5, and it's part of v1 (F-013).
+- **HTTP**, the fallback: the same envelopes. `POST /runner/v1/up` takes a batch and returns acks. `GET /runner/v1/down?after=<seq>` holds for up to 25 s and returns commands, or 204. It's built with the fleet in milestone 5, and it's part of v1 (F-013). Spike 6 needed three more things, which belong to the carrier: `POST /runner/v1/hello` (the handshake that `hello` and `welcome` do on a WebSocket), the connection epoch on every request, with a `409` answer when a newer connection holds the runner, and a header that carries the runner's minor version (`x-ostra-minor`). The 25 s hold worked behind a proxy that buffers whole responses.
 - **Bulk data** stays off the session: session archives and files go over chunked, resumable HTTPS with a digest, through the server, so a runner needs one address only (ADR 0043). Frames are capped at 1 MiB *(working value)*.
 - Any replica serves any request on either carrier. State lives in Postgres, so the load balancer needs no sticky sessions.
 
@@ -47,8 +47,12 @@ The protocol is ostra's own: a session of numbered, acknowledged messages betwee
 
 Each dispatch raises the task's lease epoch, and the peer sends the epoch with every event, result and token request. After the task grace, the epoch it holds is stale: the server refuses its writes and won't mint it a token. So a laptop that sleeps through the grace period can't write afterwards. The server's refusal is the guarantee. The self-fence is a courtesy.
 
+**Events that arrive after the grace are refused, not kept (Q111).** Spike 6 asked whether an event produced under a still-valid lease but delivered after the grace should be refused or kept in an inert quarantine table. Refused. The guarantee is: every event the server received before the grace ran out is stored exactly once, and after it the task stops cleanly and stale writes are refused. An event the agent produced during the cut and the peer could only deliver afterwards is lost from the log. What it did isn't lost: the work is on the task's branch and its hidden ref (ADR 0039), and the task reopens on a fresh box. A quarantine table would keep a transcript that nothing reads, and every reader of the log would have to learn to skip it. The spooled events of a refused peer are discarded once the server tells the peer its task was stopped. The build-order's wording for spike 6 is changed to this (`build-order.md`).
+
+**The ingest transaction holds a share lock on the task row** (spike 6, gotcha 9). The grace sweep that stops a task and bumps its epoch, and a batch that is being stored, must not interleave, or a row could be written with an epoch behind its task's. F-045's contract test runs a grace sweep and an ingest at the same moment and checks that no stored row has an epoch behind its task's.
+
 **Auth (Q48, Q94):**
-- A personal runner signs in with a device code that the member approves in the browser (RFC 8628, through better-auth).
+- A personal runner signs in with a device code that the member approves in the browser (RFC 8628, through better-auth). The session that flow returns is a full member session, so the runner trades it for its own runner key at once and the server revokes the session (ADR 0029, Q115).
 - A pool runner starts with its pool's join token and trades it for an identity: an Ed25519 key pair whose private half never leaves the runner.
 - To connect, the runner posts a signed assertion and receives a 10-minute access token *(working value)*, which it sends at the WebSocket upgrade. The server caps a connection's age instead of re-checking the token. Revoking a runner sends `evict`, closes the socket with `4403`, and reconnecting fails.
 - **A runner holds no long-lived credential for code or models.** Its identity key is long-lived, but it grants only the right to connect and receive what's dispatched to it. This replaces ADR 0012's "a runner holds no long-lived secrets".
@@ -62,7 +66,7 @@ Each dispatch raises the task's lease epoch, and the peer sends the epoch with e
 **Networks:**
 - All traffic goes to `https://<server>/runner/v1/*` on 443, so one host is allow-listed.
 - The runner honours `HTTPS_PROXY`, `NO_PROXY` and `NODE_EXTRA_CA_CERTS`. An answer that isn't an ostra envelope, such as a proxy's HTML page, is a network failure, and the runner says so.
-- It falls back to HTTP when the upgrade gets a non-101 answer after TLS succeeded, when the socket dies within 10 s three times in a row, or when two heartbeat periods pass with no frames. It tries WebSocket again every 10 minutes. `--transport auto|websocket|http` overrides it.
+- It falls back to HTTP when the upgrade gets a non-101 answer after TLS succeeded, when the socket dies within 10 s three times in a row, or when the upgrade succeeds but no `welcome` arrives within the 10 s handshake timeout. Once a connection has had its `welcome`, silence is a network failure: the runner reconnects over WebSocket, and doesn't fall back. (Spike 6: "two heartbeat periods with no frames" was replaced because a connection that has worked can go quiet for ordinary reasons.) It tries WebSocket again every 10 minutes. `--transport auto|websocket|http` overrides it.
 
 ## Considered options
 
@@ -78,10 +82,11 @@ Each dispatch raises the task's lease epoch, and the peer sends the epoch with e
 
 ## Consequences
 
-- `ws` and `@types/ws` join the server and the runner, and `pg` is used directly for the listen connection. `https-proxy-agent` is added only if spike 6 needs it.
-- Spike 6 (`runner-transport`) gates this, on Node only, on Windows, macOS and Linux. Its bars are in the build order: a connection or an automatic fallback through a CONNECT proxy, a TLS-inspecting proxy and nginx's defaults; every event stored once after `kill -9` and network cuts of 30 s, 5 min and 11 min; a steer in under 500 ms at p99 with two replicas; 2,000 connections on one replica; and 1,000 sessions on three replicas. If it fails, batch harder first, then weigh another WebSocket server.
+- `ws` and `@types/ws` join the server and the runner, and `pg` is used directly for the listen connection. `https-proxy-agent` is not needed: spike 6's runner got through a CONNECT proxy with Node's own `https.Agent` and its `proxyEnv` option. That feature is documented as "active development", so the runner's minimum Node is 24.5 or later (22.21 or later on the 22 line), set in the `ostra` CLI's `engines` and in ADR 0046 (the repo root's `>=24.2` is lower), and the contract suite includes a proxy case that runs on each Node version the CLI supports. If a supported Node can't do it, `https-proxy-agent` is added then, with the maintainer's yes.
+- The self-hosting docs say that `NODE_EXTRA_CA_CERTS` is read once, when the runner starts, so a changed certificate needs a restart.
+- Spike 6 (`runner-transport`) gates this, on Node only, on Windows, macOS and Linux, and it is still open: its Windows run closed half of criteria 3 and 5 and most of criterion 2, and macOS, Linux and real nginx remain (`build-order.md`). Its bars are there: a connection or an automatic fallback through a CONNECT proxy, a TLS-inspecting proxy and nginx's defaults; every event stored once after `kill -9` and network cuts of 30 s, 5 min and 11 min, and after the 11 minutes the task stops cleanly and stale writes are refused; a steer in under 500 ms at p99 with two replicas; 2,000 connections on one replica; and 1,000 sessions on three replicas. If it fails, batch harder first, then weigh another WebSocket server. That fallback wasn't triggered, because no check failed, and isn't ruled out, because the 2,000-connection check hasn't run on Linux.
 - A compatibility matrix of runner N-1, N and N+1 against server N runs in CI, over recorded fixtures.
-- Credit-based backpressure keeps server memory flat: a window of 256 frames or 4 MiB *(working value)*. Reconnects use full jitter from 1 s to 60 s.
+- Credit-based backpressure keeps server memory flat: a window of 256 frames or 4 MiB, whichever is reached first, with frames of at most 1 MiB *(working values)*. The runner counts both (spike 6 found a runner that counted frames only, which would let up to 128 MiB be in flight). Reconnects use full jitter from 1 s to 60 s.
 - F-045 and F-047 apply to a box's sidecar as well as to a runner. A lost box is one more case of reopening on a fresh one.
 - The self-hosting docs say to pass the WebSocket upgrade through, and to raise the idle timeout on a load balancer that closes WebSockets on its own schedule.
 - The glossary gains **lease** (with its epoch) and **command**.

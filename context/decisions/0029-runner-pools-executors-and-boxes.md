@@ -1,6 +1,6 @@
 # Runner pools, executors and boxes
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0012. Settles Q9, Q32, Q38, Q43, Q44, Q48, Q93, Q94, Q97 and Q98 (Q95 and Q96 are in ADR 0038), and round 14's problems 1–10.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0012. Settles Q9, Q32, Q38, Q43, Q44, Q48, Q93, Q94, Q97 and Q98 (Q95 and Q96 are in ADR 0038), and round 14's problems 1–10. **Amended 2026-11-18 after spikes 1 and 9:** the `host` executor contains a task's processes with a Windows job object or a Linux cgroup, and a personal runner trades its device-code session for a runner-only key at once.
 
 The server is the control plane and never runs an agent itself, as ADR 0012 said. A runner is the `ostra` CLI running `ostra runner` on a machine that someone hosts anywhere. It connects out to the server, so it works behind NAT.
 
@@ -8,6 +8,7 @@ The server is the control plane and never runs an agent itself, as ADR 0012 said
 - A runner pool is a named set of runners in one organization. Each project lists the pools it may use (Q9).
 - A pool runner starts with the pool's join token in `OSTRA_JOIN_TOKEN`. On first contact it trades the token for its own identity, an Ed25519 key pair whose private half never leaves the runner. After that it uses short-lived access tokens (Q94, `research/runner-transport.md` §8).
 - A personal runner signs in with a device code that its member approves in the browser. It runs only that member's tasks, on the `host` executor (Q44, Q94).
+- **The device code's credential is narrowed at once.** better-auth's device flow hands out a full member session, good for about a week, and its `scope` narrows nothing (spike 9, `research/spike-auth-foundation.md`, surprise 5). So `ostra runner` uses that session once, to register: it presents the session, receives its own runner identity (the same Ed25519 key pair as a pool runner, whose private half never leaves the machine), and the server revokes the session straight away. The runner can then do what a runner does (connect, receive dispatches, fetch a task's leased credentials) and nothing a member can. The code that remains on disk is the runner key, not a login. The spike showed that the revoke call works. `ostra login` (F-103) is a different credential, a member's CLI session, and the runner never uses it.
 - Each runner can be revoked on its own. Rotating a join token doesn't disconnect runners that already joined.
 - A runner reports its executor, capacity, labels and version (F-013).
 
@@ -32,9 +33,16 @@ The server is the control plane and never runs an agent itself, as ADR 0012 said
 
 **Box sizes** (Q43). The organization names the sizes: small (2 vCPU, 4 GB), medium (4, 8) and large (8, 16) *(working values)*. A project picks its default. A pool caps its total and each project's share.
 
-**The two allowed differences of the `host` executor.** `AGENTS.md` requires that every difference between runners is recorded in an ADR. These are the only two:
+**Process containment on `host`.** A box ends every process of its task when its container ends. A worktree has no container, so processes a tool detached from the agent's tree could outlive a crash or a stop. Spike 1 saw that the runner's reap works from the agent's tree, and that a detached helper isn't reached by it. A difference like that is a runner-parity bug unless it's closed or recorded, so the `host` executor puts each task's processes in one containment unit and ends the unit when the task ends:
+- **Windows:** a job object per task, set to kill its processes when it closes.
+- **Linux:** a cgroup per task, killed as a unit.
+- **macOS has neither**, and what to use there is unverified (Q126, `research/spike-how-should-the-runner-drive-opencode.md`, item 6). Until it is settled, `host` on macOS reaps the agent's process group and walks its tree, which can miss a process that detached itself. That is the third allowed difference below, and it ends when Q126 does.
+- How a Node runner creates a Windows job object isn't shown by any spike, and may need a native addon or a helper program, both of which need the maintainer's yes before a dependency is added (Q126). Until then, milestone 1's `host` executor on Windows ends the agent's whole process tree on stop and says in the panel that detached processes aren't contained.
+
+**The allowed differences of the `host` executor.** `AGENTS.md` requires that every difference between runners is recorded in an ADR. These are the only ones:
 1. **No services.** The `host` executor doesn't start an environment's services. The scheduler never sends it a task whose environment declares them (Q40, ADR 0038).
 2. **No box sizes.** It counts slots only (Q43).
+3. **On macOS, weaker process containment,** as above, until Q126 is settled.
 
 **Autoscaled pools.** A pool runner accepts a dispatch at once and reports "waiting for a node" while its box is pending. Otherwise the two-minute offer timeout (`research/runner-transport.md` §4) would fire while the cluster is still adding a node (round 14, problem 10).
 
@@ -62,11 +70,12 @@ The server is the control plane and never runs an agent itself, as ADR 0012 said
 
 ## Consequences
 
-- Runner parity holds by construction: the same task code runs in every sidecar. The two `host` differences above are the only allowed ones, and any other is a bug.
+- Runner parity holds by construction: the same task code runs in every sidecar. The `host` differences above are the only allowed ones, and any other is a bug. The contract suite for executors includes a case that starts a detached helper and checks that stopping the task leaves nothing behind, on `docker`, `kubernetes` and `host` on Windows and Linux.
 - A pool runner that crashes or upgrades doesn't interrupt its tasks, because each box talks to the server itself.
 - New lifecycles, each a discriminated union. A runner is joining (possibly waiting for approval), then online ⇄ offline, then draining, then revoked. A box is creating, preparing, ready ⇄ idle, stopped and released, or failed (ADR 0039).
-- Spike 3 (`what-is-inside-a-box`) proves the layout. A box is ready in under 10 s on Docker with the image present, and in under 60 s on a warm Kubernetes node. 50 boxes run on one host, and the sidecar stays under 100 MB *(working values)*. If it fails, the fallback is one container per box, with the runner as a separate OS user (Q27 as first written).
+- Spike 3 (`what-is-inside-a-box`) proves the layout. A box is ready in under 10 s on Docker with the image present, and in under 60 s on a warm Kubernetes node. 50 boxes run on one host, and the sidecar stays under 100 MB *(working values)*. The sidecar's bar is checked against a Linux measurement of the driver alone first: it was 83 to 88 MB on Windows (spike 1). If it fails, the fallback is one container per box, with the runner as a separate OS user (Q27 as first written).
 - The `kubernetes` executor builds snapshots with a rootless BuildKit pod, which spike 3 also checks.
 - If expiry gets in the way of autoscaled pools, join tokens can be bound to a cluster's identity instead.
 - Pools shared between organizations aren't possible. The hosted version may revisit that.
+- **Milestone 1 runs its end-to-end demo on the `host` executor,** because the machine the plan is built on has no Docker. The runner is a personal one with a worktree, and it holds no credential: the key proxy and the git proxy run in the runner's own process, as the sidecar's work (ADR 0030). The `docker` executor is written in full, with unit tests, and its live test and spike 3 wait for a Linux machine with Docker. Until then F-017 stays `planned`.
 - Ledger rows: F-013, F-014, F-015, F-017, F-067, F-069, F-091, F-092, F-093, F-095, F-116 and F-118. The fleet view (Q5) ships with them in milestone 5.

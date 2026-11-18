@@ -64,8 +64,8 @@ These are design concepts built in HTML, not screenshots of shipped software.
 
 | Milestone | What it delivers | |
 |---|---|---|
-| 0 · Spikes | Ten short experiments that test the plan's riskiest assumptions | **next** |
-| 1 · First PR, from a prompt | Install ostra, add a model provider and the GitHub App, create a project and type a prompt. OpenCode works in a box and opens a pull request | |
+| 0 · Spikes | Ten short experiments that test the plan's riskiest assumptions | **in progress**: six findings are in |
+| 1 · First PR, from a prompt | Install ostra, add a model provider and the GitHub App, create a project and type a prompt. OpenCode works in a box and opens a pull request | **next** |
 | 2 · Tickets in, nothing lost | A Linear ticket becomes a PR linked back on the ticket. Restarts, dropped runners and duplicate events lose nothing, and a task reopens on a fresh box a day later | |
 | 3 · Step in and come back | Agent profiles, steering, approvals, plan first, comments on the diff, and boxes that start from a snapshot with their services | |
 | 4 · The organization | Several projects with their own access, two roles at each level, spend and budgets, and project memory | |

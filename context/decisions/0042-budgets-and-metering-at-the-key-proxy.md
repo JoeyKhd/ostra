@@ -7,6 +7,7 @@ Spend is counted where every model call passes: the **key proxy** in the box's s
 ## Metering
 
 - The proxy passes the stream through untouched and reads the usage from it, in both API formats the provider form offers. It logs IDs and counts only, never content.
+- **It meters every call, whatever the call offers.** Title generation and other calls without tools sit outside every turn's usage figure (554 of 38,741 tokens in spike 1's run, 1.4%), so a count built from the agent's turn reports would undercount. The proxy is the only place that sees all of them.
 - Each call is priced from, in order:
   1. the endpoint's own model list, where it carries prices
   2. the models.dev catalog (ADR 0033)
@@ -35,7 +36,7 @@ Budgets per member and per agent profile come after v1 (F-131).
 
 ## Consequences
 
-- Budgets are only as good as the count. Spike 1 passes only when the proxy's token count is within 2% of what the endpoint reports. Spike 10 records spend per run from the proxy.
+- Budgets are only as good as the count. Spike 1 passes only when the proxy's token count is within 2% of what the endpoint reports. Its 2% bar compares the proxy's count with the agent's turn usage for the same response bytes, and the independent check is the provider's own usage figure for the session, which spike 1's run didn't use. Spike 10 records spend per run from the proxy.
 - Every agent is metered by the same proxy. The second agent in milestone 7 (F-018) adds no metering of its own.
 - On a personal runner the proxy runs on the member's machine, so an admin allows each provider there knowingly (Q47). Its spend counts the same way.
 - Insights (F-108) read tokens and spend from the same records, computed by a scheduled job, not live.

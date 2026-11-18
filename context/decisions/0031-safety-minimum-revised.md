@@ -33,5 +33,5 @@ Ticket text, PR comments and agent output are untrusted input. They come from an
 - The `host` executor is weaker than a box. A member's personal runner can read an organization key only when an admin has allowed that provider on personal runners (ADR 0030).
 - The `docker` executor needs the Docker socket, which is root on that host. Pool runners belong on dedicated hosts (ADR 0029).
 - A join token is worth every secret of every project that may use its pool. Its rules are in ADR 0029.
-- Spike 3 tests lines 1, 2, 4 and the approval rule from a shell in the agent's container. Spike 4 tests line 3.
+- Spike 3 tests lines 1, 2, 4 and the approval rule from a shell in the agent's container. Spike 4 tests line 3, and has its GitHub evidence: the default branch, a delete and another repo were refused on real GitHub, with git's own `remote rejected` line (ADR 0030).
 - Milestone 7 includes a security review of the box before launch.
