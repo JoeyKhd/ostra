@@ -13,12 +13,13 @@ import { promisify } from "node:util";
 import { createGunzip } from "node:zlib";
 import { z } from "zod";
 
-// A stand-in for github.com, for the git proxy's and the host executor's tests (spec section 8):
+// A stand-in for github.com, for the git proxy's and the executors' tests (spec section 8):
 // git's smart HTTP protocol over local bare repos (the answers git-http-backend gives), and a
 // small LFS server whose object URLs need their own credential, like GitHub's signed ones. It
 // takes `Authorization: Basic x-access-token:<token>` with a token it knows and that hasn't
 // expired, refuses a request with no User-Agent as GitHub does, and records every request, so a
-// test can prove a refused push sent nothing.
+// test can prove a refused push sent nothing. An executor's tests, which run without the git proxy,
+// start it with `requireToken: false`.
 //
 // Ported from spikes/github-app-and-git-proxy/src/upstream-stub.ts.
 
@@ -105,7 +106,13 @@ const git = async (args: readonly string[], cwd?: string): Promise<string> => {
   return stdout;
 };
 
-export const startGitUpstream = async (root: string): Promise<GitUpstream> => {
+export type GitUpstreamOptions = {
+  /** Take requests with no token: for an executor's tests, which run without the git proxy. Default true. */
+  readonly requireToken?: boolean;
+};
+
+export const startGitUpstream = async (root: string, options: GitUpstreamOptions = {}): Promise<GitUpstream> => {
+  const requireToken = options.requireToken ?? true;
   const reposDir = path.join(root, "repos");
   const lfsDir = path.join(root, "lfs");
   await mkdir(reposDir, { recursive: true });
@@ -116,6 +123,9 @@ export const startGitUpstream = async (root: string): Promise<GitUpstream> => {
   let origin = "";
 
   const checkAuth = (header: string | undefined): boolean => {
+    if (!requireToken) {
+      return true;
+    }
     if (header?.startsWith("Basic ") !== true) {
       return false;
     }
