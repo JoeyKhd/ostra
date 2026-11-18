@@ -11,6 +11,7 @@
   .h1 { font: 800 40px Manrope, sans-serif; fill: #F3F0E8; }
   .h2 { font: 800 26px Manrope, sans-serif; fill: #F3F0E8; }
   .h3 { font: 700 20px Manrope, sans-serif; fill: #F3F0E8; }
+  .mh { font: 500 20px 'IBM Plex Mono', monospace; fill: #F3F0E8; }
   .lead { font: 400 18px 'IBM Plex Sans', sans-serif; fill: #CFD8D4; }
   .b { font: 400 16px 'IBM Plex Sans', sans-serif; fill: #CFD8D4; }
   .b15 { font: 400 15px 'IBM Plex Sans', sans-serif; fill: #CFD8D4; }
@@ -40,9 +41,9 @@
 
   <!-- Title and legend -->
   <text class="h1" x="40" y="72">ostra · system overview</text>
-  <text class="lead" x="40" y="108">Self-hosted cloud agents for your team: one control plane, any number of runners, any model.</text>
+  <text class="lead" x="40" y="108">Self-hosted cloud agents for your organization: one server, any number of runners, any model.</text>
   <rect x="1640" y="52" width="26" height="18" rx="4" class="box"/><text class="sm" x="1676" y="66">Decided</text>
-  <rect x="1770" y="52" width="26" height="18" rx="4" class="pend"/><text class="sm" x="1806" y="66">Waiting on your decision (Q…)</text>
+  <rect x="1770" y="52" width="26" height="18" rx="4" class="pend"/><text class="sm" x="1806" y="66">Needs you, or still open (Q…)</text>
   <rect x="2060" y="52" width="26" height="18" rx="4" class="later"/><text class="sm" x="2096" y="66">After v1</text>
   <text class="sm" x="1640" y="104">Numbers on arrows are the steps in "The life of a task" at the bottom.</text>
 
@@ -51,153 +52,180 @@
   <text class="h2" x="64" y="196">People and tools</text>
   <rect class="box" x="64" y="220" width="312" height="140" rx="10"/>
   <text class="h3" x="84" y="254">Members</text>
-  <text class="b" x="84" y="284">Dashboard in the browser</text>
+  <text class="b" x="84" y="284">The panel in the browser</text>
   <text class="b" x="84" y="310">Phone: approve, answer, reopen</text>
   <text class="b" x="84" y="336">Steer and review any task</text>
   <rect class="box" x="64" y="380" width="312" height="120" rx="10"/>
   <text class="h3" x="84" y="414">Admins</text>
   <text class="b" x="84" y="444">Projects, runner pools, models</text>
-  <text class="b" x="84" y="470">SSO, roles, audit log</text>
-  <rect class="box" x="64" y="520" width="312" height="140" rx="10"/>
-  <text class="h3" x="84" y="554">Terminal</text>
-  <text class="m" x="84" y="586">npx ostra-runner join</text>
-  <text class="m" x="84" y="614">ostra attach &lt;task&gt;</text>
-  <text class="sm" x="84" y="642">start a runner · work hands-on</text>
-  <rect class="box" x="64" y="680" width="312" height="130" rx="10"/>
-  <text class="h3" x="84" y="714">Anyone in Linear</text>
-  <text class="b" x="84" y="744">Hands a ticket to ostra</text>
-  <text class="b" x="84" y="770">Follows it on the ticket</text>
-  <rect class="box" x="64" y="830" width="312" height="130" rx="10"/>
-  <text class="h3" x="84" y="864">GitHub reviewers</text>
-  <text class="b" x="84" y="894">Review the PR as usual</text>
-  <text class="m" x="84" y="922">@ostra &lt;prompt&gt;</text>
-  <text class="sm" x="84" y="946">reopens the task from the PR</text>
+  <text class="b" x="84" y="470">Roles, budgets, audit log</text>
+  <rect class="box" x="64" y="520" width="312" height="160" rx="10"/>
+  <text class="h3" x="84" y="554">Terminal · the ostra CLI</text>
+  <text class="m" x="84" y="586">ostra runner</text>
+  <text class="m" x="84" y="612">ostra login</text>
+  <text class="m" x="84" y="638">ostra checkout &lt;task&gt;</text>
+  <text class="sm" x="84" y="664">run a runner · edit a task by hand</text>
+  <rect class="box" x="64" y="700" width="312" height="130" rx="10"/>
+  <text class="h3" x="84" y="734">Anyone in Linear</text>
+  <text class="b" x="84" y="764">Hands a ticket to ostra</text>
+  <text class="b" x="84" y="790">Follows it on the ticket</text>
+  <rect class="box" x="64" y="850" width="312" height="160" rx="10"/>
+  <text class="h3" x="84" y="884">GitHub reviewers</text>
+  <text class="b" x="84" y="914">Review the PR as usual</text>
+  <text class="m" x="84" y="942">@ostra &lt;prompt&gt;</text>
+  <text class="sm" x="84" y="966">reopens the task from the PR,</text>
+  <text class="sm" x="84" y="988">and so does "changes requested"</text>
 
-  <!-- Column B: control plane -->
+  <!-- Column B: the server -->
   <rect class="panel" x="440" y="150" width="980" height="930" rx="14"/>
-  <text class="h2" x="464" y="196">ostra control plane</text>
-  <text class="sm" x="742" y="196">one Docker image · N replicas · on your servers</text>
+  <text class="h2" x="464" y="196">ostra server</text>
+  <text class="sm" x="640" y="196">one image: web, core or all · any number of replicas · on your machines</text>
 
-  <rect class="box" x="464" y="220" width="440" height="345" rx="10"/>
-  <text class="h3" x="484" y="254">Web panel</text>
+  <rect class="box" x="464" y="220" width="440" height="300" rx="10"/>
+  <text class="h3" x="484" y="254">web · the panel</text>
   <text class="sm" x="484" y="278">Next.js 16 · shadcn/ui · tRPC</text>
-  <text class="b" x="484" y="312">Dashboard, projects, inbox</text>
-  <text class="b" x="484" y="338">Task page: live activity, diff,</text>
-  <text class="b" x="484" y="362">approvals, steering</text>
-  <text class="b" x="484" y="394">better-auth: organizations,</text>
-  <text class="b" x="484" y="418">SSO, project roles</text>
-  <rect class="pend" x="484" y="440" width="400" height="60" rx="8"/>
-  <text class="bs" x="500" y="466" style="fill:#FFB224">Live chat: AI SDK + assistant-ui</text>
-  <text class="sm amb" x="500" y="489">being researched · Q50</text>
-  <text class="b" x="484" y="540">Responsive: works on a phone</text>
+  <text class="b" x="484" y="312">Home, projects, inbox, fleet</text>
+  <text class="b" x="484" y="338">Task page: AI SDK message types,</text>
+  <text class="b" x="484" y="362">rendered with assistant-ui · Q50</text>
+  <text class="b" x="484" y="394">Live stream: one per tab, over SSE</text>
+  <text class="b" x="484" y="426">better-auth: organizations,</text>
+  <text class="b" x="484" y="450">username or email and a password</text>
+  <text class="b" x="484" y="490">Responsive: works on a phone</text>
 
-  <rect class="box" x="944" y="220" width="452" height="560" rx="10"/>
-  <text class="h3" x="964" y="254">Core service</text>
+  <rect class="box" x="944" y="220" width="452" height="580" rx="10"/>
+  <text class="h3" x="964" y="254">core</text>
   <text class="sm" x="964" y="278">Node · TypeScript · runs beside the panel</text>
-  <text class="bs" x="964" y="312">Runner gateway</text>
-  <text class="b" x="964" y="336">WebSocket, HTTP fallback · acks · leases</text>
-  <text class="bs" x="964" y="372">Webhook inbox</text>
-  <text class="b" x="964" y="396">Linear, GitHub · verified · no duplicates</text>
-  <text class="bs" x="964" y="432">Scheduler + durable workflows</text>
-  <rect class="pend" x="1276" y="416" width="104" height="24" rx="6"/>
-  <text class="sm amb" x="1290" y="433">DBOS · Q24</text>
-  <text class="b" x="964" y="456">queue, retries, timers, schedules</text>
-  <text class="bs" x="964" y="492">Credentials</text>
-  <text class="b" x="964" y="516">GitHub App tokens (1 h) · model keys</text>
-  <text class="b" x="964" y="540">encrypted secrets per repo</text>
-  <text class="bs" x="964" y="576">Rate limits</text>
-  <text class="b" x="964" y="600">per provider and per key</text>
-  <rect class="box2" x="964" y="620" width="412" height="145" rx="8"/>
-  <text class="bs" x="980" y="646">Adapters · one base class per kind (ADR 0025)</text>
-  <rect class="chip" x="980" y="660" width="80" height="30" rx="6"/><text class="chip-t" x="1020" y="680" text-anchor="middle">Tracker</text>
-  <rect class="chip" x="1068" y="660" width="96" height="30" rx="6"/><text class="chip-t" x="1116" y="680" text-anchor="middle">Code host</text>
-  <rect class="chip" x="1172" y="660" width="64" height="30" rx="6"/><text class="chip-t" x="1204" y="680" text-anchor="middle">Agent</text>
-  <rect class="chip" x="1244" y="660" width="120" height="30" rx="6"/><text class="chip-t" x="1304" y="680" text-anchor="middle">Runner provider</text>
-  <rect class="chip" x="980" y="700" width="124" height="30" rx="6"/><text class="chip-t" x="1042" y="720" text-anchor="middle">Model provider</text>
-  <rect class="chip" x="1112" y="700" width="108" height="30" rx="6"/><text class="chip-t" x="1166" y="720" text-anchor="middle">Notification</text>
-  <rect class="chip" x="1228" y="700" width="104" height="30" rx="6"/><text class="chip-t" x="1280" y="720" text-anchor="middle">Secret store</text>
-  <text class="sm" x="980" y="752">official SDKs inside: @linear/sdk, Octokit, …</text>
+  <text class="bs" x="964" y="310">Runner gateway</text>
+  <text class="b" x="964" y="334">WebSocket, HTTP fallback · commands · leases</text>
+  <text class="bs" x="964" y="366">Webhook inbox</text>
+  <text class="b" x="964" y="390">per connection · verified · no duplicates</text>
+  <text class="bs" x="964" y="422">Background work</text>
+  <text class="b" x="964" y="446">pg-boss: queue, retries, timers, schedules</text>
+  <text class="bs" x="964" y="478">Scheduler</text>
+  <text class="b" x="964" y="502">a pool by labels and capacity · cap per project</text>
+  <text class="bs" x="964" y="534">Credentials and budgets</text>
+  <text class="b" x="964" y="558">App tokens (1 h) · provider tokens · secrets</text>
+  <text class="b" x="964" y="582">go to a task's sidecar, never its agent</text>
+  <rect class="box2" x="964" y="600" width="412" height="186" rx="8"/>
+  <text class="bs" x="980" y="626">Adapters · eight kinds, one base class each</text>
+  <rect class="chip" x="980" y="640" width="80" height="30" rx="6"/><text class="chip-t" x="1020" y="660" text-anchor="middle">Tracker</text>
+  <rect class="chip" x="1068" y="640" width="96" height="30" rx="6"/><text class="chip-t" x="1116" y="660" text-anchor="middle">Code host</text>
+  <rect class="chip" x="1172" y="640" width="64" height="30" rx="6"/><text class="chip-t" x="1204" y="660" text-anchor="middle">Agent</text>
+  <rect class="chip" x="1244" y="640" width="88" height="30" rx="6"/><text class="chip-t" x="1288" y="660" text-anchor="middle">Executor</text>
+  <rect class="chip" x="980" y="678" width="124" height="30" rx="6"/><text class="chip-t" x="1042" y="698" text-anchor="middle">Model provider</text>
+  <rect class="chip" x="1112" y="678" width="108" height="30" rx="6"/><text class="chip-t" x="1166" y="698" text-anchor="middle">Notification</text>
+  <rect class="chip" x="1228" y="678" width="104" height="30" rx="6"/><text class="chip-t" x="1280" y="698" text-anchor="middle">Secret store</text>
+  <rect class="chip" x="980" y="716" width="96" height="30" rx="6"/><text class="chip-t" x="1028" y="736" text-anchor="middle">Blob store</text>
+  <text class="sm" x="980" y="772">official SDKs inside: @linear/sdk, Octokit, …</text>
 
-  <rect class="box" x="464" y="585" width="440" height="195" rx="10"/>
-  <text class="h3" x="484" y="619">Postgres · the only database</text>
-  <text class="b" x="484" y="652">organizations · projects · members</text>
-  <text class="b" x="484" y="678">tasks · sessions · event log</text>
-  <text class="b" x="484" y="704">queue · encrypted secrets · audit log</text>
-  <text class="sm" x="484" y="744">Saved first, then acted on (ADR 0011)</text>
+  <rect class="box" x="464" y="540" width="440" height="260" rx="10"/>
+  <text class="h3" x="484" y="574">Postgres · the only store needed</text>
+  <text class="b" x="484" y="606">organizations · projects · tasks</text>
+  <text class="b" x="484" y="632">event log: saved, then acted on</text>
+  <text class="b" x="484" y="658">pg-boss queue · secrets · audit log</text>
+  <rect class="box2" x="484" y="676" width="400" height="108" rx="8"/>
+  <text class="bs" x="500" y="702">Blob store</text>
+  <text class="b15" x="500" y="726">files and session archives</text>
+  <text class="b15" x="500" y="750">kept in Postgres by default</text>
+  <text class="sm" x="500" y="772">any S3-compatible store as an option · Q76</text>
 
-  <rect class="box" x="464" y="800" width="932" height="260" rx="10"/>
-  <text class="h3" x="484" y="834">What an organization holds</text>
-  <text class="m" x="484" y="870">Organization ─ members · SSO · roles</text>
-  <text class="m" x="484" y="898">├ Model providers ─ any base URL + key · catalog from models.dev</text>
-  <text class="m" x="484" y="926">├ Runner pools ─ fixed · elastic · personal</text>
-  <text class="m" x="484" y="954">└ Projects</text>
-  <text class="m" x="520" y="982">└ calculator ─ repos · tracker (Linear team CALC)</text>
-  <text class="m" x="664" y="1010">environment = its computer · agent defaults</text>
-  <text class="m" x="664" y="1038">automations · tasks (from tickets or prompts)</text>
+  <rect class="box" x="464" y="820" width="932" height="240" rx="10"/>
+  <text class="h3" x="484" y="854">What an organization holds</text>
+  <rect class="pend" x="1100" y="834" width="276" height="28" rx="6"/>
+  <text class="sm amb" x="1114" y="853">memory search: research due · Q91</text>
+  <text class="m" x="484" y="890">Organization ─ members · GitHub App · Linear app</text>
+  <text class="m" x="484" y="916">├ Model providers ─ base URL + token</text>
+  <text class="m" x="484" y="942">├ Runner pools ─ runners with a join token</text>
+  <text class="m" x="484" y="968">├ Agent profiles · memory notes · budgets</text>
+  <text class="m" x="484" y="994">└ Projects ─ open or restricted</text>
+  <text class="m" x="520" y="1020">└ calculator ─ repos · boards · environment</text>
+  <text class="m" x="664" y="1046">automations · tasks: refine, code, review</text>
+  <text class="bs" x="1100" y="896">A task</text>
+  <text class="b15" x="1100" y="920">belongs to one project and may</text>
+  <text class="b15" x="1100" y="944">change any of its repos: one</text>
+  <text class="b15" x="1100" y="968">branch, one PR per repo · Q29</text>
+  <text class="bs" x="1100" y="1000">Access</text>
+  <text class="b15" x="1100" y="1024">admin and member, for the</text>
+  <text class="b15" x="1100" y="1048">organization and each project</text>
 
   <!-- Column C: runner pools -->
   <rect class="panel" x="1500" y="150" width="860" height="930" rx="14"/>
   <text class="h2" x="1524" y="196">Runner pools</text>
-  <text class="sm" x="1714" y="196">set up once by admins · each project chooses which it uses</text>
+  <text class="sm" x="1714" y="196">hosted anywhere · each project picks the pools it may use · Q32</text>
 
-  <rect class="box" x="1524" y="220" width="262" height="170" rx="10"/>
-  <text class="h3" x="1542" y="252">Fixed</text>
-  <text class="b" x="1542" y="280">Docker or VMs, N slots each</text>
-  <text class="m" x="1542" y="308">--scale runner=50</text>
-  <text class="b" x="1542" y="334">start as many as you like</text>
-  <text class="sm amb" x="1542" y="362">one join token per pool · Q48</text>
+  <rect class="box" x="1524" y="220" width="812" height="100" rx="10"/>
+  <text class="bs" x="1542" y="250">ostra runner · the same program on every machine</text>
+  <text class="b" x="1542" y="276">joins a pool with a join token: shown once, stored hashed, expires · Q48</text>
+  <text class="sm" x="1542" y="302">or runs as a member's personal runner, after a device-code sign-in · it creates and removes boxes, nothing more</text>
 
-  <rect class="box" x="1798" y="220" width="262" height="170" rx="10"/>
-  <text class="h3" x="1816" y="252">Elastic</text>
-  <text class="b" x="1816" y="280">a fresh box per task</text>
-  <text class="sm amb" x="1816" y="306">E2B first · Q36</text>
-  <text class="b" x="1816" y="332">Kubernetes + gVisor</text>
-  <text class="b" x="1816" y="358">Docker + gVisor</text>
+  <rect class="box" x="1524" y="336" width="262" height="150" rx="10"/>
+  <text class="mh" x="1542" y="368">docker</text>
+  <text class="b" x="1542" y="396">a box of containers</text>
+  <text class="b" x="1542" y="422">on a private network</text>
+  <text class="sm" x="1542" y="452">built first · F-017</text>
 
-  <rect class="box" x="2072" y="220" width="264" height="170" rx="10"/>
-  <text class="h3" x="2090" y="252">Personal</text>
-  <text class="b" x="2090" y="280">a member's laptop</text>
-  <text class="b" x="2090" y="306">their own key</text>
-  <text class="b" x="2090" y="332">not isolated</text>
-  <text class="sm" x="2090" y="358">worktrees, no box · Q44</text>
+  <rect class="box" x="1798" y="336" width="262" height="150" rx="10"/>
+  <text class="mh" x="1816" y="368">kubernetes</text>
+  <text class="b" x="1816" y="396">a box is one pod</text>
+  <text class="b" x="1816" y="422">needs a registry</text>
+  <text class="sm" x="1816" y="452">Helm chart · F-093, F-118</text>
 
-  <rect class="box" x="1524" y="410" width="812" height="650" rx="12"/>
-  <text class="h3" x="1544" y="446">One box = one task's computer</text>
-  <text class="sm amb" x="1544" y="470">microVM, pod or container, one per task · Q38</text>
+  <rect class="box" x="2072" y="336" width="264" height="150" rx="10"/>
+  <text class="mh" x="2090" y="368">host</text>
+  <text class="b" x="2090" y="396">a worktree, no box</text>
+  <text class="b" x="2090" y="422">not isolated, no services</text>
+  <text class="sm" x="2090" y="452">personal runners, opt-in pools</text>
 
-  <rect class="box2" x="1544" y="490" width="772" height="74" rx="8"/>
-  <text class="bs" x="1562" y="520">Project snapshot</text>
-  <text class="b" x="1562" y="546">base image · checkout · dependencies installed · never secrets</text>
+  <rect class="box" x="1524" y="500" width="812" height="560" rx="12"/>
+  <text class="h3" x="1544" y="536">One box = one task's computer</text>
+  <text class="sm" x="1544" y="560">never reused · stops after 15 idle minutes · a reopened task starts a fresh box from its archive · Q38, Q42</text>
 
-  <rect class="box2" x="1544" y="578" width="772" height="64" rx="8"/>
-  <text class="bs" x="1562" y="604">Services</text>
-  <text class="b" x="1562" y="628">Postgres, Redis, … from the project's environment</text>
+  <rect class="box2" x="1544" y="576" width="772" height="52" rx="8"/>
+  <text class="bs" x="1562" y="608">Snapshot</text>
+  <text class="b" x="1652" y="608">base image · the project's repos · dependencies installed · never a secret</text>
 
-  <rect class="box2" x="1544" y="656" width="772" height="226" rx="8"/>
-  <text class="bs" x="1562" y="686">ostra runner</text>
-  <text class="sm" x="1562" y="708">dials OUT to the control plane · the same program on every kind of box</text>
-  <rect class="chip" x="1562" y="722" width="360" height="64" rx="8"/>
-  <text class="bs" x="1578" y="748">Spool</text>
-  <text class="b15" x="1578" y="772">no event lost when the link drops</text>
-  <rect class="chip" x="1938" y="722" width="360" height="64" rx="8"/>
-  <text class="bs" x="1954" y="748">Key proxy</text>
-  <text class="b15" x="1954" y="772">the agent only ever sees a fake key</text>
-  <rect class="chip" x="1562" y="800" width="360" height="64" rx="8"/>
-  <text class="bs" x="1578" y="826">Git</text>
-  <text class="b15" x="1578" y="850">fetch, commit, push (agent has no token)</text>
-  <rect class="chip" x="1938" y="800" width="360" height="64" rx="8"/>
-  <text class="bs" x="1954" y="826">ACP driver</text>
-  <text class="b15" x="1954" y="850">official SDK 2.x · one adapter per agent</text>
+  <rect class="box2" x="1544" y="644" width="288" height="290" rx="8"/>
+  <text class="bs" x="1562" y="672">Agent's container</text>
+  <text class="sm" x="1562" y="694">repos side by side · no credentials</text>
+  <text class="b" x="1562" y="728">OpenCode over ACP</text>
+  <text class="b15" x="1562" y="752">reads, edits, runs the checks</text>
+  <text class="b15" x="1562" y="776">holds only a fake key</text>
+  <rect class="chip" x="1560" y="794" width="256" height="58" rx="8"/>
+  <text class="bs" x="1576" y="818">Claude Code, on keys</text>
+  <text class="sm" x="1576" y="840">second agent · milestone 7 · F-018</text>
+  <rect class="later" x="1560" y="866" width="256" height="34" rx="6"/>
+  <text class="sm" x="1576" y="888">Codex: after v1 · F-038</text>
 
-  <rect class="box2" x="1544" y="896" width="772" height="104" rx="8"/>
-  <text class="bs" x="1562" y="926">Agent · its own OS user</text>
-  <text class="b" x="1562" y="952">OpenCode reads, edits, runs the tests and builds</text>
-  <text class="sm amb" x="1562" y="982">OpenCode as the default agent · Q45</text>
-  <rect class="later" x="2040" y="910" width="256" height="36" rx="6"/>
-  <text class="sm" x="2054" y="933">Claude Code, Codex, Pi: later</text>
+  <rect class="box2" x="1880" y="644" width="436" height="290" rx="8"/>
+  <text class="bs" x="1896" y="672">ostra sidecar</text>
+  <text class="sm" x="1896" y="694">holds the task's keys · a token for this task only</text>
+  <rect class="chip" x="1896" y="708" width="196" height="54" rx="8"/>
+  <text class="bs" x="1910" y="730">Git proxy</text>
+  <text class="sm" x="1910" y="751">only the task's refs</text>
+  <rect class="chip" x="2104" y="708" width="196" height="54" rx="8"/>
+  <text class="bs" x="2118" y="730">Key proxy</text>
+  <text class="sm" x="2118" y="751">counts every call</text>
+  <rect class="chip" x="1896" y="772" width="196" height="54" rx="8"/>
+  <text class="bs" x="1910" y="794">ACP driver</text>
+  <text class="sm" x="1910" y="815">official SDK 2.x</text>
+  <rect class="chip" x="2104" y="772" width="196" height="54" rx="8"/>
+  <text class="bs" x="2118" y="794">MCP tools</text>
+  <text class="sm" x="2118" y="815">drafts, findings, notes</text>
+  <rect class="chip" x="1896" y="836" width="196" height="54" rx="8"/>
+  <text class="bs" x="1910" y="858">Spool</text>
+  <text class="sm" x="1910" y="879">no event lost</text>
+  <rect class="chip" x="2104" y="836" width="196" height="54" rx="8"/>
+  <text class="bs" x="2118" y="858">Archive</text>
+  <text class="sm" x="2118" y="879">after every turn</text>
+  <text class="sm" x="1896" y="918">the same ostra binary, in sidecar mode</text>
 
-  <rect class="pend" x="1544" y="1012" width="772" height="38" rx="8"/>
-  <text class="sm amb" x="1560" y="1036">Rivet Sandbox Agent: research says drop it, the runner speaks ACP directly · Q51</text>
+  <line class="ar" x1="1834" y1="772" x2="1878" y2="772" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="sm" x="1856" y="760" text-anchor="middle">ACP</text>
+
+  <rect class="box2" x="1544" y="948" width="772" height="48" rx="8"/>
+  <text class="bs" x="1562" y="978">Services</text>
+  <text class="b" x="1652" y="978">a database, a cache, … from the project's environment, beside the agent</text>
+  <text class="sm" x="1544" y="1030">docker: one private network · kubernetes: one pod · host: no box, the runner does the sidecar's work</text>
 
   <!-- Outside services -->
   <rect class="panel" x="40" y="1120" width="2320" height="210" rx="14"/>
@@ -205,54 +233,58 @@
 
   <rect class="box" x="64" y="1180" width="436" height="130" rx="10"/>
   <text class="h3" x="84" y="1212">Linear</text>
+  <rect class="later" x="330" y="1192" width="152" height="30" rx="6"/>
+  <text class="sm" x="344" y="1212">Jira: after v1</text>
   <text class="b" x="84" y="1240">tickets · statuses · agent sessions</text>
-  <rect class="later" x="84" y="1258" width="300" height="34" rx="6"/>
-  <text class="sm" x="98" y="1280">Jira, GitHub Issues: later</text>
+  <text class="b" x="84" y="1266">one Linear app per organization</text>
 
   <rect class="box" x="520" y="1180" width="436" height="130" rx="10"/>
   <text class="h3" x="540" y="1212">GitHub</text>
   <text class="b" x="540" y="1240">repos · PRs · CI · reviews</text>
-  <text class="b" x="540" y="1266">one GitHub App per install</text>
+  <text class="b" x="540" y="1266">one GitHub App per organization</text>
+  <text class="sm" x="540" y="1292">the App opens one PR per changed repo</text>
 
   <rect class="box" x="976" y="1180" width="436" height="130" rx="10"/>
   <text class="h3" x="996" y="1212">models.dev</text>
   <text class="b" x="996" y="1240">model catalog: names, prices,</text>
   <text class="b" x="996" y="1266">context limits, logos</text>
-  <text class="sm" x="996" y="1292">read by the control plane</text>
+  <text class="sm" x="996" y="1292">fetched daily by the server · a copy ships in each release</text>
 
   <rect class="box" x="1432" y="1180" width="436" height="130" rx="10"/>
-  <text class="h3" x="1452" y="1212">Model providers</text>
-  <text class="b" x="1452" y="1240">Anthropic · OpenAI · OpenRouter</text>
-  <text class="b" x="1452" y="1266">Bedrock · Vertex · any base URL + key</text>
-  <text class="sm" x="1452" y="1292">reached only through the runner's key proxy</text>
+  <text class="h3" x="1452" y="1212">Container registry</text>
+  <text class="b" x="1452" y="1240">holds the snapshot images</text>
+  <text class="b" x="1452" y="1266">required for a kubernetes pool</text>
+  <text class="sm" x="1452" y="1292">optional for docker and host · F-120</text>
 
   <rect class="box" x="1888" y="1180" width="448" height="130" rx="10"/>
-  <text class="h3" x="1908" y="1212">Sandbox providers</text>
-  <text class="b" x="1908" y="1240">E2B · your Kubernetes · Docker</text>
-  <text class="sm" x="1908" y="1266">boxes created, paused and released</text>
-  <text class="sm" x="1908" y="1288">by the control plane</text>
+  <text class="h3" x="1908" y="1212">Model providers</text>
+  <text class="b" x="1908" y="1240">any API base URL + token</text>
+  <text class="b" x="1908" y="1266">in either API format</text>
+  <text class="sm" x="1908" y="1292">reached only through the key proxy</text>
 
   <!-- Arrows -->
   <line class="ar" x1="378" y1="290" x2="462" y2="290" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <text class="sm" x="388" y="280">browser</text>
+  <text class="sm" x="420" y="310" text-anchor="middle">6 · live</text>
   <line class="ar" x1="378" y1="440" x2="462" y2="440" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <line class="ar" x1="906" y1="330" x2="942" y2="330" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-  <line class="ar" x1="906" y1="680" x2="942" y2="680" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <line class="ar" x1="906" y1="690" x2="942" y2="690" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
 
-  <line class="ar" x1="1522" y1="300" x2="1398" y2="300" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-  <text class="sm" x="1460" y="288" text-anchor="middle">4 · 6 · 7</text>
-  <text class="sm" x="1460" y="326" text-anchor="middle">runners</text>
-  <text class="sm" x="1460" y="344" text-anchor="middle">dial out</text>
+  <line class="ar" x1="1398" y1="270" x2="1522" y2="270" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="sm" x="1460" y="258" text-anchor="middle">4 · 6 · 7</text>
+  <text class="sm" x="1460" y="296" text-anchor="middle">runners and</text>
+  <text class="sm" x="1460" y="314" text-anchor="middle">sidecars</text>
+  <text class="sm" x="1460" y="332" text-anchor="middle">dial out</text>
 
-  <path class="ar" d="M420,1178 V1094 H1440 V386 H1398" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path class="ar" d="M420,1178 V1094 H1440 V380 H1398" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <path class="ar" d="M680,1178 V1094" marker-start="url(#arrow)"/>
   <text class="sm" x="436" y="1109">1 · 9 · webhooks in, API calls out</text>
 
-  <path class="ar" d="M1560,1062 V1112 H800 V1178" marker-end="url(#arrow)"/>
-  <text class="sm" x="1010" y="1134">8 · the runner pushes the task's branch</text>
+  <path class="ar" d="M1994,1062 V1112 H800 V1178" marker-end="url(#arrow)"/>
+  <text class="sm" x="1010" y="1134">8 · the git proxy pushes the task's branches</text>
 
-  <line class="ar" x1="1650" y1="1062" x2="1650" y2="1178" marker-end="url(#arrow)"/>
-  <text class="sm" x="1662" y="1100">5 · model calls via the key proxy</text>
+  <line class="ar" x1="2200" y1="1062" x2="2200" y2="1178" marker-end="url(#arrow)"/>
+  <text class="sm" x="2212" y="1100">5 · model calls</text>
 
   <!-- The life of a task -->
   <rect class="panel" x="40" y="1360" width="2320" height="250" rx="14"/>
@@ -262,35 +294,36 @@
     <rect class="box" x="64" y="1424" width="238" height="160" rx="10"/>
     <circle cx="94" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="94" y="1464" text-anchor="middle">1</text>
     <text class="bs" x="120" y="1464">Ticket or prompt</text>
-    <text class="b15" x="84" y="1504">From Linear, a rule,</text>
+    <text class="b15" x="84" y="1504">From Linear, an automation,</text>
     <text class="b15" x="84" y="1528">or typed in a project</text>
   </g>
   <g>
     <rect class="box" x="318" y="1424" width="238" height="160" rx="10"/>
     <circle cx="348" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="348" y="1464" text-anchor="middle">2</text>
-    <text class="bs" x="374" y="1464">Scheduled</text>
-    <text class="b15" x="338" y="1504">The queue picks a pool</text>
-    <text class="b15" x="338" y="1528">the project may use</text>
+    <text class="bs" x="374" y="1464">Queued</text>
+    <text class="b15" x="338" y="1504">ostra's scheduler holds it</text>
+    <text class="b15" x="338" y="1528">until a pool the project</text>
+    <text class="b15" x="338" y="1552">may use has room</text>
   </g>
   <g>
     <rect class="box" x="572" y="1424" width="238" height="160" rx="10"/>
     <circle cx="602" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="602" y="1464" text-anchor="middle">3</text>
-    <text class="bs" x="628" y="1464">Box boots</text>
+    <text class="bs" x="628" y="1464">Box starts</text>
     <text class="b15" x="592" y="1504">From the project's</text>
     <text class="b15" x="592" y="1528">snapshot, in seconds</text>
   </g>
   <g>
     <rect class="box" x="826" y="1424" width="238" height="160" rx="10"/>
     <circle cx="856" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="856" y="1464" text-anchor="middle">4</text>
-    <text class="bs" x="882" y="1464">Runner checks in</text>
-    <text class="b15" x="846" y="1504">Dials out, takes the task,</text>
-    <text class="b15" x="846" y="1528">fetches its secrets</text>
+    <text class="bs" x="882" y="1464">Sidecar checks in</text>
+    <text class="b15" x="846" y="1504">Dials out with a one-task</text>
+    <text class="b15" x="846" y="1528">token, takes the task's keys</text>
   </g>
   <g>
     <rect class="box" x="1080" y="1424" width="238" height="160" rx="10"/>
     <circle cx="1110" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="1110" y="1464" text-anchor="middle">5</text>
     <text class="bs" x="1136" y="1464">Agent works</text>
-    <text class="b15" x="1100" y="1504">Edits, runs the tests;</text>
+    <text class="b15" x="1100" y="1504">OpenCode edits, runs checks;</text>
     <text class="b15" x="1100" y="1528">models via the key proxy</text>
   </g>
   <g>
@@ -304,22 +337,24 @@
     <rect class="box" x="1588" y="1424" width="238" height="160" rx="10" style="stroke:#FFB224"/>
     <circle cx="1618" cy="1458" r="16" fill="#FFB224"/><text class="num" x="1618" y="1464" text-anchor="middle">7</text>
     <text class="bs" x="1644" y="1464">You step in</text>
-    <text class="b15" x="1608" y="1504">Steer, approve, comment,</text>
+    <text class="b15" x="1608" y="1504">Steer, approve, answer,</text>
     <text class="b15" x="1608" y="1528">from browser or phone</text>
   </g>
   <g>
     <rect class="box" x="1842" y="1424" width="238" height="160" rx="10"/>
     <circle cx="1872" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="1872" y="1464" text-anchor="middle">8</text>
-    <text class="bs" x="1898" y="1464">PR opens</text>
-    <text class="b15" x="1862" y="1504">The runner pushes; ostra</text>
-    <text class="b15" x="1862" y="1528">opens the PR, moves the ticket</text>
+    <text class="bs" x="1898" y="1464">PRs open</text>
+    <text class="b15" x="1862" y="1504">The git proxy pushes; the</text>
+    <text class="b15" x="1862" y="1528">App opens one PR per changed</text>
+    <text class="b15" x="1862" y="1552">repo and moves the ticket</text>
   </g>
   <g>
     <rect class="box" x="2096" y="1424" width="240" height="160" rx="10"/>
     <circle cx="2126" cy="1458" r="16" fill="#F3F0E8"/><text class="num" x="2126" y="1464" text-anchor="middle">9</text>
     <text class="bs" x="2152" y="1464">Feedback loops</text>
-    <text class="b15" x="2116" y="1504">CI failures and reviews</text>
-    <text class="b15" x="2116" y="1528">go back to the agent</text>
+    <text class="b15" x="2116" y="1504">Failing CI and review</text>
+    <text class="b15" x="2116" y="1528">findings go back to the</text>
+    <text class="b15" x="2116" y="1552">agent, in capped rounds</text>
   </g>
 </svg>
 </body>
