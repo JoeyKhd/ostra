@@ -70,7 +70,7 @@ The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be ab
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q16 | Secrets | One team secret store, referenced by name, injected per task |
+| Q16 | Secrets (revised 2026-11-18) | The maintainer rejected secrets shared across many repos ("STRIPE_TEST_KEY serving 30 repos doesnt sound like a good idea") and asked for secrets "per project". Open: does "project" mean (a) one repo, or (b) a named group of repos that make up one product? Recommendation: (b), repo-level by default, with optional explicit groups, named "product" to avoid clashing with Linear projects. Templates stay shareable because they hold no secrets. Model keys and GitHub tokens are separate (Q17) |
 | Q17 | Keys the agent can see | Model keys and GitHub tokens added by a proxy on the runner, never visible to the agent, in v1 |
 | Q18 | Scale target | 1,000 tasks at once per install *(working value)*, the core service running as several copies |
 | Q19 | Subscriptions versus scale | Subscriptions only on members' own laptops; pools and automation on team API keys, Bedrock or Vertex |
