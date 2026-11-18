@@ -177,7 +177,8 @@ export async function* openStream(ctx: OpenContext, input: StreamInput, signal: 
       const result = await queue.next(abort, Math.max(1, nextCheck - Date.now()));
       if (queue.overflowed()) {
         // A viewer that can't keep up reconnects and resumes by seq (ADR 0035).
-        throw new TRPCError({ code: "TIMEOUT", message: "The stream fell behind: reconnect to resume" });
+        // A retryable code: tRPC's client reconnects on it, and resumes from the last tracked id.
+        throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "The stream fell behind: reconnecting to resume" });
       }
       if (result.kind === "aborted") {
         return;
