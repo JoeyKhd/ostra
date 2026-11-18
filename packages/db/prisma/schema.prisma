@@ -307,6 +307,8 @@ model ModelProvider {
   /// Usable on personal runners only when an admin allows it (Q47). Off by default.
   allowOnPersonalRunners Boolean      @default(false)
   modelsRefreshedAt      DateTime?
+  /// New dispatches on this provider wait until then: it answered with a rate limit (F-088, ticket 26).
+  dispatchHeldUntil      DateTime?
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
@@ -790,6 +792,8 @@ model Task {
   eventSeq        Int             @default(0)
   /// Raised by every dispatch; writes from an older epoch are refused (ADR 0034, F-045).
   leaseEpoch      Int             @default(0)
+  /// Why a queued task is still waiting for a runner, for the panel: words and IDs, never content (ticket 26).
+  dispatchNote    String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
