@@ -27,4 +27,8 @@ export * from "./secret-store/base.ts";
 export * from "./blob-store/capabilities.ts";
 export * from "./blob-store/base.ts";
 
+export * from "./model/sse.ts";
+export * from "./model/usage.ts";
+export * from "./model/auth.ts";
+
 export * from "./registry.ts";
