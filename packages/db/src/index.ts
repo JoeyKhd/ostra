@@ -1,7 +1,57 @@
-// @ostra/db: the Prisma schema's client and its types. Prisma's types are the source: nothing
-// here is typed again by hand.
+// @ostra/db: the Prisma schema's client, its types and the row mappers. Prisma's types are the
+// source: nothing here is typed again by hand.
 export * from "./client.ts";
+export * from "./channels.ts";
+export * from "./enums.ts";
+export * from "./mappers.ts";
 export * from "./dev/dev-database.ts";
 export { migrateDeploy } from "./dev/prisma-cli.ts";
 
 export { Prisma } from "./generated/prisma/client.ts";
+/** The database's enums, by Prisma's names (underscores where the protocol has hyphens). */
+export * as DbEnum from "./generated/prisma/enums.ts";
+export type {
+  User,
+  AuthSession,
+  Account,
+  Verification,
+  Organization,
+  Member,
+  Invitation,
+  DeviceCode,
+  InstanceSetting,
+  AuditEntry,
+  ChangeNotice,
+  Connection,
+  ModelProvider,
+  Model,
+  RunnerPool,
+  JoinToken,
+  Runner,
+  RunnerPresence,
+  AgentProfile,
+  Secret,
+  Project,
+  ProjectMember,
+  ProjectPool,
+  Repo,
+  Board,
+  Environment,
+  EnvironmentEntry,
+  Service,
+  Check,
+  Snapshot,
+  Automation,
+  Task,
+  TaskRepo,
+  TaskCoAuthor,
+  Box,
+  Lease,
+  Session,
+  Turn,
+  Event,
+  Command,
+  Approval,
+  NeedsYouItem,
+  WebhookDelivery,
+} from "./generated/prisma/client.ts";
