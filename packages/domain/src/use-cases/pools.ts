@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from "node:crypto";
+
 import type { Tx } from "@ostra/db";
 import { poolIdSchema } from "@ostra/protocol";
 import type { OrganizationId, PoolId } from "@ostra/protocol";
@@ -22,3 +24,11 @@ export const ensureDefaultPool = async (tx: Tx, organizationId: OrganizationId):
   });
   return poolIdSchema.parse(created.id);
 };
+
+// ---------- join tokens (Q48, Q94, F-013) ----------
+
+/** A join token's stored form: SHA-256, hex. The token itself is never stored (core checks the same hash). */
+export const hashJoinToken = (token: string): string => createHash("sha256").update(token, "utf8").digest("hex");
+
+/** A new join token: `ostra-join-` and 32 random bytes. The log guard redacts the prefix's tokens. */
+export const generateJoinToken = (): string => `ostra-join-${randomBytes(32).toString("base64url")}`;

@@ -4,3 +4,4 @@ export * from "./fake-adapters.ts";
 export * from "./memory-ports.ts";
 export * from "./harness.ts";
 export * from "./auth-helpers.ts";
+export * from "./world.ts";

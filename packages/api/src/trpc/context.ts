@@ -29,6 +29,8 @@ export type ApiDeps = {
   readonly catalog: CatalogSource;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
+  /** How often an open stream looks at its member's session and access again. Default 30 s. */
+  readonly streamRecheckMs?: number;
 };
 
 /** What each request resolves once: the session, and the member it is acting as. */
@@ -40,6 +42,11 @@ export type Context = {
   readonly resHeaders: Headers;
   readonly user: SessionUser | null;
   readonly member: MemberContext | null;
+  /**
+   * Looks at who this request is now: its session and membership again, from the database. An open
+   * stream calls it on a timer, so a revoked session or membership ends it (ADR 0035).
+   */
+  readonly revalidate: () => Promise<MemberContext | null>;
 };
 
 export type CreateContextInput = {
@@ -50,7 +57,11 @@ export type CreateContextInput = {
 export const createContext = async (deps: ApiDeps, input: CreateContextInput): Promise<Context> => {
   const user = await resolveSession(deps.auth, input.headers);
   const member = user === null ? null : await loadMemberContext(deps.db, user);
-  return { deps, headers: input.headers, resHeaders: input.resHeaders, user, member };
+  const revalidate = async (): Promise<MemberContext | null> => {
+    const now = await resolveSession(deps.auth, input.headers);
+    return now === null ? null : loadMemberContext(deps.db, now);
+  };
+  return { deps, headers: input.headers, resHeaders: input.resHeaders, user, member, revalidate };
 };
 
 export type { MemberScope };

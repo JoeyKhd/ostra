@@ -38,7 +38,7 @@ type Member = ApiHarness["fixture"]["a"]["member"];
 
 const asMember = async (member: Member) => callerFactory(await harness.contextOf(member));
 
-const signedOut = () => callerFactory({ deps: harness.deps, headers: new Headers(), resHeaders: new Headers(), user: null, member: null });
+const signedOut = () => callerFactory({ deps: harness.deps, headers: new Headers(), resHeaders: new Headers(), user: null, member: null, revalidate: () => Promise.resolve(null) });
 
 /** An account that is signed in but belongs to no organization. */
 const withoutOrganization = async () => {
@@ -59,6 +59,7 @@ const withoutOrganization = async () => {
       sessionOrganizationId: null,
     },
     member: null,
+    revalidate: () => Promise.resolve(null),
   });
 };
 

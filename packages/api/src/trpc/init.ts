@@ -3,8 +3,8 @@ import type { MemberScope, ProjectNeed, ProjectRole } from "@ostra/domain";
 import type { DbOrTx } from "@ostra/db";
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { TRPC_ERROR_CODE_KEY } from "@trpc/server";
-import { projectIdSchema } from "@ostra/protocol";
-import type { OrganizationId, ProjectId } from "@ostra/protocol";
+import { projectIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import type { z } from "zod";
 
 import type { Context } from "./context.ts";
@@ -22,6 +22,12 @@ import type { Context } from "./context.ts";
 const t = initTRPC.context<Context>().create({
   // A stack trace never goes to a browser.
   isDev: false,
+  // ADR 0035: the stream sends a named ping every 15 s, and the client reconnects (from the last
+  // committed seq) after 20 s without a frame of any kind.
+  sse: {
+    ping: { enabled: true, intervalMs: 15_000 },
+    client: { reconnectAfterInactivityMs: 20_000 },
+  },
 });
 
 export const router = t.router;
@@ -106,6 +112,36 @@ export const loadProjectAccess = async (
   }
   return { projectId: checked.value.project.id, organizationId: scope.organizationId, role: checked.value.role };
 };
+
+/** What a task procedure's handler gets: the task, inside a project the member may use. */
+export type TaskAccess = { readonly taskId: TaskId; readonly projectId: ProjectId };
+
+/**
+ * A procedure on one task: the input schema must hold `taskId`. The task is read inside the
+ * member's organization only, then its project is checked like `projectProcedure` does. Another
+ * organization's task, and one in a restricted project the member isn't on, are `NOT_FOUND`.
+ */
+export const taskProcedure = <S extends z.ZodType<{ readonly taskId: TaskId }>>(need: ProjectNeed, schema: S) =>
+  memberProcedure.input(schema).use(async ({ ctx, input, next }) => {
+    const row = await ctx.deps.db.task.findFirst({
+      where: { id: input.taskId, organizationId: ctx.scope.organizationId },
+      select: { id: true, projectId: true },
+    });
+    if (row === null) {
+      throw denied("not-found", "task");
+    }
+    let access: ProjectAccess;
+    try {
+      access = await loadProjectAccess(ctx.deps.db, ctx.scope, projectIdSchema.parse(row.projectId), need);
+    } catch (error) {
+      // The caller asked about a task, not a project: say so.
+      if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+        throw denied("not-found", "task");
+      }
+      throw error;
+    }
+    return next({ ctx: { ...ctx, project: access, task: { taskId: taskIdSchema.parse(row.id), projectId: access.projectId } } });
+  });
 
 type Failure<E extends string> = { readonly ok: false; readonly error: E; readonly message: string };
 

@@ -51,6 +51,7 @@ export type RecordedCommand = {
 
 export type MemoryOutbox = CommandOutbox & {
   readonly commands: readonly RecordedCommand[];
+  readonly clear: () => void;
 };
 
 /** Numbers commands per runner from 1, gap-free, like the real outbox. */
@@ -59,6 +60,10 @@ export const memoryOutbox = (): MemoryOutbox => {
   const counters = new Map<RunnerId, number>();
   return {
     commands,
+    clear: () => {
+      commands.length = 0;
+      counters.clear();
+    },
     enqueueInTx: <K extends CommandKind>(_tx: unknown, organizationId: OrganizationId, runnerId: RunnerId, command: OutboxCommand<K>) => {
       const next = (counters.get(runnerId) ?? 0) + 1;
       counters.set(runnerId, next);

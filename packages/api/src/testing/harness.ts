@@ -124,7 +124,15 @@ export const createBareHarness = async (): Promise<BareHarness> => {
       instanceAdmin: account.role === "admin",
       sessionOrganizationId: member.organizationId,
     };
-    return { deps, headers: new Headers(), resHeaders: new Headers(), user, member: await loadMemberContext(test.db, user) };
+    // A revoked membership shows here as it does in production: the member row is read again.
+    return {
+      deps,
+      headers: new Headers(),
+      resHeaders: new Headers(),
+      user,
+      member: await loadMemberContext(test.db, user),
+      revalidate: () => loadMemberContext(test.db, user),
+    };
   };
 
   return {
@@ -137,7 +145,7 @@ export const createBareHarness = async (): Promise<BareHarness> => {
     setupToken,
     catalogEntries,
     callerFor: (context) => callerFactory(context),
-    anonymous: (resHeaders = new Headers()) => callerFactory({ deps, headers: new Headers(), resHeaders, user: null, member: null }),
+    anonymous: (resHeaders = new Headers()) => callerFactory({ deps, headers: new Headers(), resHeaders, user: null, member: null, revalidate: () => Promise.resolve(null) }),
     as: async (member) => callerFactory(await contextOf(member)),
     contextOf,
     dispose: async () => {

@@ -3,6 +3,9 @@ import { environmentsRouter } from "./environments.ts";
 import { githubRouter } from "./github.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
+import { poolsRouter, runnersRouter } from "./runners.ts";
+import { streamRouter } from "./stream.ts";
+import { approvalsRouter, tasksRouter } from "./tasks.ts";
 import { agentProfilesRouter, providersRouter } from "./providers.ts";
 import { setupRouter } from "./setup.ts";
 
@@ -16,6 +19,11 @@ export const appRouter = router({
   github: githubRouter,
   projects: projectsRouter,
   environments: environmentsRouter,
+  tasks: tasksRouter,
+  approvals: approvalsRouter,
+  runners: runnersRouter,
+  pools: poolsRouter,
+  stream: streamRouter,
 });
 
 export type AppRouter = typeof appRouter;

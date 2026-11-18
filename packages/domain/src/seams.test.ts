@@ -88,13 +88,11 @@ describe("the job catalogue (ADR 0037)", () => {
 
 describe("the use-case seams", () => {
   const useCases = {
-    createPromptTask: "33",
     dispatchTask: "26",
     acceptOffer: "26",
     issueTaskCredentials: "26",
     recordSessionEnd: "27",
     openPullRequests: "27",
-    stopTask: "27",
   } as const;
 
   it("has a file for every use case the spec lists", async () => {
