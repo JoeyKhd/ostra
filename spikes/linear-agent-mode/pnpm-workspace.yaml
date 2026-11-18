@@ -1,0 +1,3 @@
+# Standalone package: this file keeps the repo's root workspace from capturing the spike.
+packages:
+  - "."
