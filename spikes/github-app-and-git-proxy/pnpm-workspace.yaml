@@ -1,0 +1,4 @@
+# This spike is a standalone package: its own workspace root, so the repo's
+# root workspace never captures it.
+packages:
+  - "."

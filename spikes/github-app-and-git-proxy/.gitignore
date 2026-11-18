@@ -1,0 +1,10 @@
+node_modules/
+# Run state: proxy logs, last results, scratch repos. Local, possibly large, never committed.
+.data/
+*.log
+# Secrets never live here (they're kept in ~/.config/ostra-dev/). A backstop only.
+.env
+.env.*
+*.env
+*.pem
+*.key
