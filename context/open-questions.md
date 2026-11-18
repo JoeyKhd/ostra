@@ -36,3 +36,42 @@ A settled question leaves this file. Its answer lives on in the ADR (`decisions/
 ## Open
 
 **Q-20 🔬 Jira's sign-in model** (F-008, ADR 0001). Atlassian says integrations that have each customer create their own OAuth app don't comply with its rules. How that applies to self-hosted tools is unverified. The safer route is a service account the team owns, plus webhooks an admin registers. Settle before Jira work starts.
+
+## Round 7 (asked 2026-11-18, waiting for the maintainer)
+
+The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be able to scale infinitely". Each line below is followed by my recommendation.
+
+**Making it a big tool**
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | What "huge" means | Scale and autonomy in v1; enterprise depth later |
+| Q2 | Environments at scale | Team templates plus auto-detection from every repo the App sees (lockfiles, tool versions, `.env.example`, `devcontainer.json`), reviewed in bulk |
+| Q3 | Setup step 5 | Renamed "Prepare your repos" |
+| Q4 | Starting many tickets at once | From the Inbox and from a rule's dry run, in v1 |
+| Q5 | Runners page | A fleet view: slots, queue, versions, labels |
+| Q6 | Insights | In v1: throughput, time to PR, time waiting on people, merge rate, tokens |
+| Q7 | Tickets spanning several repos | Their tasks shown as one group |
+
+**After looking at Omnara and its alternatives**
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q8 | Elastic runners | Design for them in v1, ship the first provider right after |
+| Q9 | Runner pools | In v1 |
+| Q10 | Schedules on intake rules | In v1 |
+| Q11 | Spike 1 | Claude Code through ACP versus through Rivet Sandbox Agent; adopt Sandbox Agent if it passes |
+| Q12 | CI failures and review comments sent to the owning agent | Move F-035 into v1 |
+| Q13 | Reviewer agent as a profile option | In v1 |
+| Q14 | Variants ×2/×3 | Soon after v1 |
+| Q15 | YAML workflows | After v1 |
+
+**Scaling without limits**
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q16 | Secrets | One team secret store, referenced by name, injected per task |
+| Q17 | Keys the agent can see | Model keys and GitHub tokens added by a proxy on the runner, never visible to the agent, in v1 |
+| Q18 | Scale target | 1,000 tasks at once per install *(working value)*, the core service running as several copies |
+| Q19 | Subscriptions versus scale | Subscriptions only on members' own laptops; pools and automation on team API keys, Bedrock or Vertex |
+| Q20 | Rate limits | Tracked per provider and key; tasks wait instead of failing |
