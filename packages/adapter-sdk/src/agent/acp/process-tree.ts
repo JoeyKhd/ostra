@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { z } from "zod";
@@ -109,6 +110,40 @@ export const isAlive = (pid: number): boolean => {
   } catch (error) {
     // EPERM: it exists but belongs to someone else.
     return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+};
+
+/**
+ * Whether a process is really running. Unlike `isAlive`, a zombie counts as gone: on POSIX a killed
+ * child stays in the process table until its parent collects it, and `kill(pid, 0)` still succeeds
+ * for it. Linux reads the state from /proc; other POSIX systems ask `ps`; Windows has no zombies.
+ */
+export const isRunning = async (pid: number): Promise<boolean> => {
+  if (!isAlive(pid)) {
+    return false;
+  }
+  if (isWindows) {
+    return true;
+  }
+  const state = await processState(pid);
+  return state !== "Z" && state !== "X";
+};
+
+const processState = async (pid: number): Promise<string | undefined> => {
+  if (process.platform === "linux") {
+    try {
+      const stat = await readFile(`/proc/${String(pid)}/stat`, "utf8");
+      // The state follows the last ")": the command name may itself contain ")".
+      return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
+    } catch {
+      return "X";
+    }
+  }
+  try {
+    const { stdout } = await run("ps", ["-o", "stat=", "-p", String(pid)], { env: { PATH: process.env["PATH"] ?? "", LC_ALL: "C" } });
+    return stdout.trim().slice(0, 1) || "X";
+  } catch {
+    return "X";
   }
 };
 

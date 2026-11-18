@@ -2,7 +2,7 @@ import { turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent, ToolKind } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { isAlive } from "../agent/acp/process-tree.ts";
+import { isRunning } from "../agent/acp/process-tree.ts";
 import type {
   AgentAdapter,
   AgentIo,
@@ -223,11 +223,15 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         const spawned = await waitFor(() => /spawned (\d+)/.exec(textOf(events))?.[1], 15_000);
         expect(spawned, "the agent says which process it left").toBeDefined();
         const pid = Number(spawned);
-        expect(isAlive(pid)).toBe(true);
+        expect(await isRunning(pid)).toBe(true);
         await subject().adapter.cancel(running);
         expect(await turnResult).toMatchObject({ ok: true, value: { stopReason: "cancelled" } });
-        await waitFor(() => (isAlive(pid) ? undefined : true), 5000);
-        expect(isAlive(pid), "the process the agent left behind").toBe(false);
+        // A killed child can linger as a zombie until its parent collects it: that counts as gone.
+        const deadline = Date.now() + 5000;
+        while ((await isRunning(pid)) && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(await isRunning(pid), "the process the agent left behind").toBe(false);
       } finally {
         await subject().adapter.close(running);
         await started.stop();
