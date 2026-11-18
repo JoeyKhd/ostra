@@ -45,6 +45,7 @@ A change is done, and ready to commit, when every line that applies holds in tha
 
 - Commit and push to `origin main` after every fix or change, once it's done (above). One logical change per commit.
 - Other sessions work in this checkout at the same time: stage your own files by path, and leave changes you didn't make as they are.
+- A change to any `package.json` goes in the same commit as the updated `pnpm-lock.yaml` (run `pnpm install` first). CI installs with `--frozen-lockfile`, and a stale lockfile fails every later build.
 - Message: `<gitmoji> <imperative summary, ≤50 chars>`, e.g. `🐛 fix runner reconnect loop`
 - ✨ feature · 🐛 fix · ♻️ refactor · 📝 docs · ✅ tests · 🔧 config · ⬆️ deps · 🔥 remove · 🎨 formatting
 - No `Co-Authored-By` lines or other AI attribution in commits or PRs.
