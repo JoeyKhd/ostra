@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 
 import * as acp from "@agentclientprotocol/sdk/unstable";
@@ -55,6 +57,7 @@ export const fakeScripts = [
   "usage",
   "compaction",
   "content",
+  "write",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -72,6 +75,8 @@ const promptText = (blocks: readonly { readonly type: string; readonly text?: st
 
 type Session = {
   readonly id: string;
+  /** The session's folder, from `session/new`: where the `write` script writes. */
+  readonly cwd: string | null;
   /** What the agent said, so `session/load` can replay it. */
   readonly history: string[];
   cancel: AbortController;
@@ -125,15 +130,17 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       agentCapabilities: { loadSession: capabilities.sessionLoad, promptCapabilities: {} },
       ...(capabilities.steerMidTurn ? { _meta: { steering: { supported: true } } } : {}),
     }))
-    .onRequest(acp.methods.agent.session.new, () => {
+    .onRequest(acp.methods.agent.session.new, (ctx) => {
       counter += 1;
       const id = `fake-session-${String(counter)}`;
-      sessions.set(id, { id, history: [], cancel: new AbortController(), steer: undefined, running: false });
+      const cwd: unknown = Reflect.get(Object(ctx.params), "cwd");
+      sessions.set(id, { id, cwd: typeof cwd === "string" ? cwd : null, history: [], cancel: new AbortController(), steer: undefined, running: false });
       return { sessionId: id };
     })
     .onRequest(acp.methods.agent.session.load, async (ctx) => {
       const id = ctx.params.sessionId;
-      const session = sessions.get(id) ?? { id, history: ["(an earlier turn)"], cancel: new AbortController(), steer: undefined, running: false };
+      const cwd: unknown = Reflect.get(Object(ctx.params), "cwd");
+      const session = sessions.get(id) ?? { id, cwd: typeof cwd === "string" ? cwd : null, history: ["(an earlier turn)"], cancel: new AbortController(), steer: undefined, running: false };
       sessions.set(id, session);
       // A real agent replays the session's history as updates, before it answers.
       for (const line of session.history) {
@@ -362,6 +369,28 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         await update({ sessionUpdate: "compaction_summary_chunk", compactionId: "c-1", content: { type: "text", text: "The summary." } });
         await update({ sessionUpdate: "compaction_update", compactionId: "c-1", status: "completed" });
         return "end_turn";
+
+      case "write": {
+        // An edit the agent really makes: a file in the session's folder, as `[[fake:write <path>]]`
+        // names it (default `fake-change.txt`), so a runner test gets a branch with a change.
+        const relative = args === "" ? "fake-change.txt" : args;
+        const root = session.cwd;
+        if (root === null) {
+          await say("No folder to write in.");
+          return "end_turn";
+        }
+        const target = path.resolve(root, relative);
+        if (!target.startsWith(`${path.resolve(root)}${path.sep}`)) {
+          await say("That path leaves the session's folder.");
+          return "end_turn";
+        }
+        await update({ sessionUpdate: "tool_call", toolCallId: "t-write", title: `Write ${relative}`, kind: "edit", status: "in_progress", rawInput: { filePath: relative }, locations: [{ path: relative }] });
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, "Written by the fake agent.\n");
+        await update({ sessionUpdate: "tool_call_update", toolCallId: "t-write", status: "completed" });
+        await say(`Wrote ${relative}.`);
+        return "end_turn";
+      }
 
       case "content":
         await update({
