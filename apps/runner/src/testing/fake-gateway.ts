@@ -44,6 +44,11 @@ export type FakeGateway = {
   /** Frames seen per connection: the highest number of events frames in flight unacked. */
   readonly maxUnackedFrames: () => number;
   readonly connections: () => number;
+  /**
+   * The current connection is open and the peer has acted on its welcome: its first status arrived.
+   * An open socket alone is not enough: a command sent before the welcome lands would be judged
+   * without the server's clock.
+   */
   readonly connected: () => boolean;
   /** Store but don't ack (a server that commits and then loses the connection). */
   holdAcks: boolean;
@@ -84,6 +89,8 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
   const hellos: Extract<UpFrame, { type: "hello" }>[] = [];
   const protocolErrors: string[] = [];
   let current: WebSocket | undefined;
+  // The connection whose peer has sent its first status, which it does once it has the welcome.
+  let welcomed: WebSocket | undefined;
   let connectionCount = 0;
   let unacked = 0;
   let maxUnacked = 0;
@@ -113,7 +120,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
     protocolErrors,
     maxUnackedFrames: () => maxUnacked,
     connections: () => connectionCount,
-    connected: () => current?.readyState === 1,
+    connected: () => current?.readyState === 1 && welcomed === current,
     holdAcks: false,
     loseNextFrame: false,
     staleSessions: new Set(),
@@ -223,6 +230,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
         return;
       case "status":
         statuses.push(frame);
+        welcomed = socket;
         return;
       case "live-text":
         liveText.push(...frame.frames);
