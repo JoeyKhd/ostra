@@ -792,3 +792,41 @@ Checked on 2026-11-18 against the repo, its README and https://docs.omnara.com/l
     - schedules
     - moving work from an offline laptop to a sandbox
   - A possible later agent adapter, for teams that want any-model agents on API keys.
+
+
+## Addendum 2026-11-18: alternatives to Omnara (Tavily search)
+
+The maintainer asked for a better choice than Omnara. Repo facts come from the GitHub API on 2026-11-18. Product claims come from each README or the linked docs.
+
+### Building blocks for the runner and agent layer
+
+- **Rivet Sandbox Agent** (`rivet-dev/agents`, `sandbox-agent/`; formerly `rivet-dev/sandbox-agent`). Apache-2.0, about 1.65k stars, pushed 2026-11-17. https://sandboxagent.dev/docs, https://rivet.dev/changelog/2026-01-28-sandbox-agent-sdk, https://www.infoq.com/news/2026/02/rivet-agent-sandbox-sdk
+  - What it is: a static Rust binary that runs inside a sandbox, or locally. It gives one HTTP/SSE API, plus a TypeScript SDK and an OpenAPI spec, for **Claude Code, Codex, OpenCode, Cursor, Amp and Pi**.
+  - Every agent's events come out in one universal session schema: tool calls, permission requests, file edits, questions and errors. Persisting the events is left to the caller, and its docs show Postgres.
+  - It deploys to E2B, Daytona, Modal, Cloudflare Containers, Vercel Sandboxes or Docker, or runs locally. It has a server mode and an embedded mode.
+  - Unlike Omnara, **it drives the real agents**. That makes it a candidate for ostra's runner-side agent layer (alongside or instead of the ACP driver, ADR 0018), and for elastic sandbox runners.
+  - **Unverified:** how it runs Claude Code (CLI or Agent SDK), so whether subscription logins work within Anthropic's terms; steering mid-turn; and resume.
+- **Coder** (`coder/coder`). AGPL-3.0, Go, about 17.4k stars. Self-hosted workspaces (Terraform templates) where Claude Code and other agents run, plus "Coder Agents", its own loop, and "Agent Relay". https://coder.com/docs/ai-coder
+  - An enterprise infrastructure layer. It could become a runner backend later, but it isn't a base for ostra.
+
+### Products close to ostra
+
+| Tool | Facts | Why it isn't ostra's base |
+|---|---|---|
+| **Agent Orchestrator / Orchestrator.inc** (`OrchestratorInc/agent-orchestrator`, formerly Composio's) | Apache-2.0, TypeScript, about 14.9k stars, pushed 2026-11-18. A local desktop app with a daemon, a board with lanes, an orchestrator agent that plans and starts workers in worktrees, CI failures and review comments sent back to the worker that owns the branch, an optional reviewer agent, 35+ agents, mobile apps, and their own hosted "Cloud Agents" | Desktop-first, one person per machine, no team server or web control plane |
+| **Cezar** (`open-mercato/cezar`) | MIT, TypeScript, about 1.1k stars. A web cockpit run locally or on a VPS. Uses your own CLI logins (no API key), Jira and Linear, a queue of worktrees, run a task ×2/×3 and keep the best diff, YAML workflows, automations, usage and cost. "No database: plain files" | Single user, files instead of a database, one machine |
+| **Symphony** (`openai/symphony`) | Apache-2.0, Elixir, about 28k stars, last push 2026-09-15. Turns Linear work into isolated autonomous runs | Elixir, built around Codex |
+| **OpenHands** (`OpenHands/OpenHands`) | MIT core, about 94k stars. Per an awesome-list summary, it now drives Claude Code, Codex and ACP agents on schedules and webhooks (**unverified** in its docs) | Multi-user, roles and Jira are in the paid Enterprise edition; Python backend |
+| **Cyrus** | Already covered above | Already covered above |
+
+### Conclusion
+
+No project combines what ostra does:
+- a team web control plane over Postgres
+- a fleet of runners, local and elastic
+- the tracker as the source of truth
+- the team's own Claude Code
+
+ADR 0015 holds. **Rivet Sandbox Agent is the one worth building on**, for the runner's agent layer and elastic sandboxes, subject to a spike. Ideas worth borrowing:
+- from Agent Orchestrator: CI failures sent to the owning agent, a reviewer agent, a board with lanes
+- from Cezar: variants ×2/×3, YAML workflows, autonomous mode
