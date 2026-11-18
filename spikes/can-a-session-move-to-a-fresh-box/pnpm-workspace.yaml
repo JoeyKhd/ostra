@@ -1,0 +1,45 @@
+packages:
+  - "."
+
+# pnpm 11 holds back releases younger than its minimum age. The OpenCode
+# patch versions were pinned on purpose: 2.3.2 is the one spike 1 and
+# research/rivet.md pin; 2.3.1 and 2.3.0 are the patches before it, for the
+# patch-version-change check. 2.3.1 and 2.3.2 came out on 2026-11-18.
+minimumReleaseAgeExclude:
+  - '@opencode/cli@2.3.1'
+  - '@opencode/cli-darwin-arm64@2.3.1'
+  - '@opencode/cli-darwin-x64-baseline@2.3.1'
+  - '@opencode/cli-darwin-x64@2.3.1'
+  - '@opencode/cli-linux-arm64-musl@2.3.1'
+  - '@opencode/cli-linux-arm64@2.3.1'
+  - '@opencode/cli-linux-x64-baseline-musl@2.3.1'
+  - '@opencode/cli-linux-x64-baseline@2.3.1'
+  - '@opencode/cli-linux-x64-musl@2.3.1'
+  - '@opencode/cli-linux-x64@2.3.1'
+  - '@opencode/cli-windows-arm64@2.3.1'
+  - '@opencode/cli-windows-x64-baseline@2.3.1'
+  - '@opencode/cli-windows-x64@2.3.1'
+  - '@opencode/cli@2.3.2'
+  - '@opencode/cli-darwin-arm64@2.3.2'
+  - '@opencode/cli-darwin-x64-baseline@2.3.2'
+  - '@opencode/cli-darwin-x64@2.3.2'
+  - '@opencode/cli-linux-arm64-musl@2.3.2'
+  - '@opencode/cli-linux-arm64@2.3.2'
+  - '@opencode/cli-linux-x64-baseline-musl@2.3.2'
+  - '@opencode/cli-linux-x64-baseline@2.3.2'
+  - '@opencode/cli-linux-x64-musl@2.3.2'
+  - '@opencode/cli-linux-x64@2.3.2'
+  - '@opencode/cli-windows-arm64@2.3.2'
+  - '@opencode/cli-windows-x64-baseline@2.3.2'
+  - '@opencode/cli-windows-x64@2.3.2'
+  - '@vitest/mocker@5.1.1'
+  - '@vitest/spy@5.1.1'
+  - vitest@5.1.1
+
+# The OpenCode wrapper's postinstall only copies the platform binary over a
+# stub. The harness resolves the binary from the platform package itself,
+# so no install script runs.
+allowBuilds:
+  '@opencode/cli': false
+  opencode-cli-2-3-0: false
+  opencode-cli-2-3-1: false

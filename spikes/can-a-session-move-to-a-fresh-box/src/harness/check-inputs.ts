@@ -1,0 +1,21 @@
+// `pnpm check:inputs`: which inputs are present. Never prints a value.
+
+import { DOCKER_INPUT_HINT, GITHUB_VARS, MODEL_ENV_FILE, loadInputs } from "./inputs.ts";
+
+const inputs = await loadInputs();
+const mark = (present: boolean): string => (present ? "present" : "missing");
+
+const lines: [string, string][] = [
+  ["Model endpoint (OSTRA_DEV_MODEL_BASE_URL, _API_KEY, _ID)", inputs.model === undefined ? `missing: ${inputs.modelMissing.join(", ")}` : `present (from ${inputs.modelSource})`],
+  ["OSTRA_DEV_MODEL_API_FORMAT (optional; detected when unset)", inputs.model?.apiFormat ?? "unset"],
+  ["model.env file", `${MODEL_ENV_FILE}: ${inputs.modelSource === "model.env" ? "read" : "not used"}`],
+  ["GitHub test App and repo (environment only)", inputs.githubMissing.length === 0 ? "present" : `missing: ${inputs.githubMissing.join(", ")}`],
+  ...GITHUB_VARS.map((name): [string, string] => [`  ${name}`, mark((process.env[name] ?? "") !== "")]),
+  ["  GITHUB_APP_INSTALLATION_ID (optional)", mark((process.env["GITHUB_APP_INSTALLATION_ID"] ?? "") !== "")],
+  ["Docker (a fresh container per box)", inputs.docker ? "answers" : `missing: ${DOCKER_INPUT_HINT}`],
+  ["Platform", `${process.platform} ${process.arch}`],
+  ["LINEAR_*, DATABASE_URL", `not used by spike 2 (LINEAR_API_KEY ${mark((process.env["LINEAR_API_KEY"] ?? "") !== "")}, DATABASE_URL ${mark((process.env["DATABASE_URL"] ?? "") !== "")})`],
+];
+
+const width = Math.max(...lines.map(([name]) => name.length));
+for (const [name, value] of lines) console.log(`${name.padEnd(width)}  ${value}`);
