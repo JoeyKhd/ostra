@@ -49,6 +49,8 @@ export type FakeServer = {
   /** The access tokens issued, so a gateway can check them. */
   readonly accessTokens: Map<string, RunnerId>;
   readonly requests: string[];
+  /** The HTTP server, so the fake gateway can take its WebSocket upgrades. */
+  readonly httpServer: Server;
   readonly setInfo: (info: Partial<InfoResponse>) => void;
   readonly close: () => Promise<void>;
 };
@@ -238,6 +240,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     tokensIssued,
     accessTokens,
     requests,
+    httpServer: server,
     setInfo: (next) => {
       infoOverride = next;
     },
