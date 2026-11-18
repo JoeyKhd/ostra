@@ -18,7 +18,10 @@ import type { AcpUpdate, MapContext, PermissionRequest } from "../base.ts";
 //   3   agent_message_chunk, text      buffered into one segment, `agent.message` when it closes
 //   4   agent_message_chunk, non-text  `agent.content`
 //   5   agent_thought_chunk            as 3, `agent.thought`
-//   6   tool_call                      `tool.called`
+//   6   tool_call                      `tool.called`. A call that comes without its input (OpenCode
+//                                      sends a command or a path in the call's first update) is held
+//                                      until that update, and no longer than the next update that
+//                                      isn't about a tool call, or the turn's end
 //   7   tool_call_update in_progress   `tool.progress`, for any tool with content
 //   8   tool_call_update completed     `tool.completed`
 //   9   tool_call_update failed        `tool.failed`
@@ -212,6 +215,35 @@ const normalizeOutput = (kind: ToolKind, call: ToolCallFields, exitCode: number 
   }
 };
 
+/**
+ * A call that came without its input: nothing but a working folder, and no location. OpenCode sends
+ * a shell call's command, and a read's path, in the call's first update.
+ */
+const lacksInput = (call: ToolCallFields): boolean => {
+  const raw = recordOf(call.rawInput);
+  if (toToolKind(call.kind) === "execute") {
+    // A shell call's location is the folder it runs in, not what it runs.
+    return firstString(raw["command"], raw["cmd"]) === undefined;
+  }
+  return (call.locations ?? []).length === 0 && Object.keys(raw).every((key) => key === "cwd");
+};
+
+/** Held while it lacks its input and nothing has happened yet that the panel must show. */
+const stillWaiting = (call: ToolCallFields): boolean =>
+  lacksInput(call) && call.status !== "completed" && call.status !== "failed" && (call.content ?? []).length === 0;
+
+/** A held call with what its update added: later fields win, and the input's keys are merged. */
+const mergeCallFields = (first: ToolCallFields, next: ToolCallFields): ToolCallFields => ({
+  ...first,
+  title: next.title ?? first.title,
+  kind: next.kind ?? first.kind,
+  status: next.status ?? first.status,
+  rawInput: { ...recordOf(first.rawInput), ...recordOf(next.rawInput) },
+  rawOutput: next.rawOutput ?? first.rawOutput,
+  locations: next.locations ?? first.locations,
+  content: next.content ?? first.content,
+});
+
 // ---------- the mapper ----------
 
 type Open = { readonly part: "message" | "thought"; readonly messageId: string | null; readonly segmentId: SegmentId; text: string };
@@ -242,6 +274,31 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
   let compactionSummary = "";
   const kindsById = new Map<string, ToolKind>();
   const config = new Map<string, string>();
+  /** Calls waiting for their input: emitted with the next update, whichever it is. */
+  const held = new Map<string, { readonly turnId: MapContext["turnId"]; readonly fields: ToolCallFields }>();
+
+  const calledEvent = (turnId: MapContext["turnId"], toolCallId: z.infer<typeof toolCallIdSchema>, fields: ToolCallFields): TaskEvent => {
+    const toolKind = kindsById.get(toolCallId) ?? toToolKind(fields.kind);
+    return {
+      kind: "tool.called",
+      turnId,
+      toolCallId,
+      toolKind,
+      title: (fields.title ?? toolKind).slice(0, 2000),
+      input: normalizeInput(toolKind, fields),
+    };
+  };
+
+  /** Emits every held call as it stands. */
+  const releaseHeld = (out: TaskEvent[]): void => {
+    for (const [id, call] of held) {
+      held.delete(id);
+      const toolCallId = toolCallIdSchema.safeParse(id);
+      if (toolCallId.success) {
+        out.push(calledEvent(call.turnId, toolCallId.data, call.fields));
+      }
+    }
+  };
 
   const startTurnIfNew = (context: MapContext): void => {
     if (turnKey !== context.turnId) {
@@ -317,6 +374,10 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
   const map = (update: AcpUpdate, context: MapContext): readonly TaskEvent[] => {
     const out: TaskEvent[] = [];
     const kind = update.sessionUpdate;
+    // Tool calls run in parallel: only an update that isn't about tools releases the held ones.
+    if (kind !== "tool_call" && kind !== "tool_call_update") {
+      releaseHeld(out);
+    }
     switch (kind) {
       case "agent_message_chunk":
         text("message", update, context, out);
@@ -334,14 +395,11 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
         flush(context, out);
         const toolKind = toToolKind(call.data.kind);
         kindsById.set(toolCallId.data, toolKind);
-        out.push({
-          kind: "tool.called",
-          turnId: context.turnId,
-          toolCallId: toolCallId.data,
-          toolKind,
-          title: (call.data.title ?? toolKind).slice(0, 2000),
-          input: normalizeInput(toolKind, call.data),
-        });
+        if (stillWaiting(call.data)) {
+          held.set(toolCallId.data, { turnId: context.turnId, fields: call.data });
+          return out;
+        }
+        out.push(calledEvent(context.turnId, toolCallId.data, call.data));
         return out;
       }
       case "tool_call_update": {
@@ -350,6 +408,16 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
         if (!call.success || !toolCallId.success) {
           unknown(context, out, kind, update);
           return out;
+        }
+        const waiting = held.get(toolCallId.data);
+        if (waiting !== undefined) {
+          held.delete(toolCallId.data);
+          const merged = mergeCallFields(waiting.fields, call.data);
+          if (stillWaiting(merged)) {
+            held.set(toolCallId.data, { turnId: waiting.turnId, fields: merged });
+            return out;
+          }
+          out.push(calledEvent(waiting.turnId, toolCallId.data, merged));
         }
         const toolKind = kindsById.get(toolCallId.data) ?? toToolKind(call.data.kind);
         if (call.data.status === "completed") {
@@ -455,6 +523,7 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
 
   const finishTurn = (context: MapContext): readonly TaskEvent[] => {
     const out: TaskEvent[] = [];
+    releaseHeld(out);
     flush(context, out);
     if (usage !== undefined) {
       out.push({

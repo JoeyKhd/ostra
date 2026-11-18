@@ -98,6 +98,41 @@ describe("the ACP mapping", () => {
     ]);
   });
 
+  it("row 6: holds a pending shell call without its command until the update that brings it", () => {
+    const events = run([
+      { sessionUpdate: "tool_call", toolCallId: "x", title: "shell", kind: "execute", status: "pending", rawInput: {} },
+      { sessionUpdate: "tool_call_update", toolCallId: "x", status: "in_progress", title: "git status", rawInput: { command: "git status", workdir: "/w" } },
+      { sessionUpdate: "tool_call_update", toolCallId: "x", status: "completed", rawOutput: { output: "clean", metadata: { exit: 0 } } },
+    ]);
+    expect(events).toMatchObject([
+      { kind: "tool.called", toolCallId: "x", toolKind: "execute", title: "git status", input: { command: "git status", cwd: "/w" } },
+      { kind: "tool.completed", toolCallId: "x" },
+    ]);
+  });
+
+  it("row 6: keeps two parallel shell calls held until each one's own update", () => {
+    const events = run([
+      { sessionUpdate: "tool_call", toolCallId: "a", title: "shell", kind: "execute", status: "pending", rawInput: {} },
+      { sessionUpdate: "tool_call", toolCallId: "b", title: "shell", kind: "execute", status: "pending", rawInput: {} },
+      { sessionUpdate: "tool_call_update", toolCallId: "b", status: "in_progress", rawInput: { command: "ls" } },
+      { sessionUpdate: "tool_call_update", toolCallId: "a", status: "in_progress", rawInput: { command: "pwd" } },
+    ]);
+    expect(events).toMatchObject([
+      { kind: "tool.called", toolCallId: "b", input: { command: "ls" } },
+      { kind: "tool.called", toolCallId: "a", input: { command: "pwd" } },
+    ]);
+  });
+
+  it("row 6: releases a held call as it stands at the next other update, or at the turn's end, never dropping it", () => {
+    const released = run([
+      { sessionUpdate: "tool_call", toolCallId: "x", title: "shell", kind: "execute", status: "pending", rawInput: {} },
+      text("agent_message_chunk", "meanwhile"),
+    ]);
+    expect(released.map((event) => event.kind)).toEqual(["tool.called", "agent.message"]);
+    const atEnd = run([{ sessionUpdate: "tool_call", toolCallId: "y", title: "shell", kind: "execute", status: "pending" }]);
+    expect(atEnd).toMatchObject([{ kind: "tool.called", toolCallId: "y", title: "shell" }]);
+  });
+
   it("row 7: maps an in_progress update with content to tool.progress, and one with none to nothing", () => {
     const events = run([
       { sessionUpdate: "tool_call", toolCallId: "x", title: "Run", kind: "execute", rawInput: { command: "ls" } },
