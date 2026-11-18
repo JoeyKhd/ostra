@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "title": "ostra",
+    "titleTemplate": "%s · ostra",
+    "description": "ostra connects your tracker to your coding agents."
+  },
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "copy": "Copy",
+    "copied": "Copied",
+    "edit": "Edit",
+    "remove": "Remove",
+    "loading": "Loading…",
+    "none": "None",
+    "yes": "Yes",
+    "no": "No",
+    "unknown": "Unknown"
+  },
+  "errors": {
+    "signedOut": "You're signed out. Sign in again.",
+    "server": "Something went wrong on the server. The log has the details.",
+    "unknown": "That didn't work. Try again.",
+    "notFound": "There's nothing here, or you can't see it."
+  },
+  "shell": {
+    "navigation": "Navigation",
+    "openNavigation": "Open navigation",
+    "breadcrumbs": "Breadcrumbs",
+    "properties": "Properties",
+    "noOrganization": "No organization",
+    "newTask": "New task",
+    "newProject": "New project",
+    "home": "Home",
+    "projects": "Projects",
+    "tasks": "Tasks",
+    "environment": "Environment",
+    "organization": "Organization",
+    "runners": "Runners",
+    "models": "Models",
+    "github": "GitHub",
+    "signOut": "Sign out"
+  },
+  "signIn": {
+    "title": "Sign in",
+    "lede": "Sign in with your username or email.",
+    "identifier": "Username or email",
+    "password": "Password",
+    "submit": "Sign in",
+    "busy": "Signing in…",
+    "failed": "That username or email and password don't match."
+  },
+  "firstAdmin": {
+    "title": "Create the first admin",
+    "lede": "This install has no account yet. The first one becomes the admin of the instance and of your organization.",
+    "setupToken": "Setup token",
+    "setupTokenHelp": "Printed in the server's log at its first start. It works once.",
+    "organizationName": "Organization name",
+    "username": "Username",
+    "usernameHelp": "Lowercase letters, digits and hyphens.",
+    "email": "Email",
+    "password": "Password",
+    "passwordHelp": "At least {n} characters.",
+    "submit": "Create the admin",
+    "busy": "Creating…",
+    "wrongToken": "That setup token isn't right. Copy it again from the server's log."
+  },
+  "home": {
+    "title": "Home",
+    "lede": "Your organization's projects and what waits on you.",
+    "projects": "Projects",
+    "noProjects": "No projects yet. An admin creates the first one.",
+    "noProjectsAdmin": "No projects yet. Create one from the checklist."
+  },
+  "checklist": {
+    "title": "Set up ostra",
+    "progress": "{done} of {total}",
+    "done": "Done",
+    "admin": {
+      "title": "Create the first admin",
+      "body": "You're signed in as the admin.",
+      "action": "Done"
+    },
+    "model": {
+      "title": "Add a model provider",
+      "body": "A base URL and a token. ostra lists the models and tests the connection.",
+      "action": "Add a provider"
+    },
+    "github": {
+      "title": "Connect GitHub",
+      "body": "A GitHub App opens every pull request. Use an existing App or create one.",
+      "action": "Connect GitHub"
+    },
+    "project": {
+      "title": "Create a project",
+      "body": "Pick a repo. ostra drafts its environment from the repo's files.",
+      "action": "Create a project"
+    },
+    "runner": {
+      "title": "Connect a runner",
+      "body": "Run one command on a machine. Tasks run there.",
+      "action": "Connect a runner"
+    },
+    "task": {
+      "title": "Start the first task",
+      "body": "Type a prompt and watch the agent work, then review its pull request.",
+      "action": "New task"
+    },
+    "linear": {
+      "title": "Connect Linear",
+      "body": "Tickets become tasks.",
+      "later": "milestone 2"
+    }
+  }
+}

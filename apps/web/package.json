@@ -5,12 +5,51 @@
   "private": true,
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 0",
-    "test": "vitest run --passWithNoTests"
+    "lint": "eslint . --max-warnings 0 --ignore-pattern next-env.d.ts",
+    "test": "vitest run",
+    "test:e2e": "next build && playwright test"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "0.15.36",
+    "@assistant-ui/react-markdown": "0.14.26",
+    "@ostra/adapter-github": "workspace:*",
+    "@ostra/adapter-model-endpoint": "workspace:*",
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/adapter-secret-store-builtin": "workspace:*",
+    "@ostra/api": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/domain": "workspace:*",
+    "@ostra/jobs": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "@ostra/task-view": "workspace:*",
+    "@tanstack/react-query": "5.107.1",
+    "@trpc/client": "11.28.6",
+    "@trpc/server": "11.28.6",
+    "@trpc/tanstack-react-query": "11.28.6",
+    "ai": "7.0.173",
+    "better-auth": "1.7.25",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.73.0",
+    "next": "16.4.6",
+    "radix-ui": "1.8.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "embedded-postgres": "18.6.0-beta.19",
+    "tailwindcss": "4.3.5",
+    "vitest": "5.1.1"
   }
 }

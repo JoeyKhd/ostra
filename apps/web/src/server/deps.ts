@@ -1,0 +1,173 @@
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
+import type { AdapterContext, LogRecord, SecretRowStore } from "@ostra/adapter-sdk";
+import { GitHubAdapter } from "@ostra/adapter-github";
+import { loadBundledCatalog, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
+import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
+import { createApiRuntime, createCatalogSource } from "@ostra/api";
+import type { ApiDeps, ApiRuntime } from "@ostra/api";
+import { createDb } from "@ostra/db";
+import type { Db } from "@ostra/db";
+import { parseServerSettings, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import type { JobQueue, ServerSettings } from "@ostra/domain";
+import { createJobs } from "@ostra/jobs";
+import { organizationIdSchema } from "@ostra/protocol";
+
+// The panel's composition root (ADR 0016): one per web process. It builds what only the web app
+// makes (the database client, the adapters, the enqueue-only job queue and the outbox) and hands
+// them to `createApiRuntime`, which prints the setup token while no account exists.
+
+const sink = (record: LogRecord): void => {
+  // One JSON line per record: IDs and fields only, never content (AGENTS.md, Code).
+  const line = JSON.stringify({ at: new Date().toISOString(), level: record.level, msg: record.message, ...record.fields });
+  if (record.level === "error" || record.level === "warn") process.stderr.write(`${line}\n`);
+  else process.stdout.write(`${line}\n`);
+};
+
+const logger = createLogger(sink, { service: "web" });
+
+const isMissing = (error: unknown): boolean => Reflect.get(Object(error), "code") === "ENOENT";
+
+/**
+ * The built-in secret store's key (spec section 11, item 1): `OSTRA_SECRETS_KEY`, or one generated
+ * at first start and kept in `OSTRA_DATA_DIR/secrets-key` (mode 0600), which core reads too.
+ */
+const loadSecretsKey = async (settings: ServerSettings): Promise<string> => {
+  if (settings.secretsKey !== null) return settings.secretsKey;
+  const file = path.join(settings.dataDir, "secrets-key");
+  try {
+    const kept = (await readFile(file, "utf8")).trim();
+    if (kept !== "") return kept;
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
+  await mkdir(path.dirname(file), { recursive: true });
+  try {
+    await writeFile(file, `${generateSecretsKey()}\n`, { mode: 0o600, flag: "wx" });
+  } catch (error) {
+    // Another process wrote it first: its key wins.
+    if (Reflect.get(Object(error), "code") !== "EEXIST") throw error;
+  }
+  await chmod(file, 0o600).catch(() => undefined);
+  return (await readFile(file, "utf8")).trim();
+};
+
+/** The `Secret` table as the built-in store's rows. */
+const prismaSecretRows = (db: Db): SecretRowStore => ({
+  insert: async (row) => {
+    await db.secret.create({
+      data: {
+        id: row.id,
+        organizationId: row.organizationId,
+        purpose: row.purpose,
+        ciphertext: Uint8Array.from(row.ciphertext),
+        nonce: Uint8Array.from(row.nonce),
+        keyVersion: row.keyVersion,
+      },
+    });
+  },
+  get: async (id) => {
+    const row = await db.secret.findUnique({ where: { id } });
+    if (row === null) return undefined;
+    return {
+      id: row.id,
+      organizationId: organizationIdSchema.parse(row.organizationId),
+      purpose: row.purpose,
+      ciphertext: row.ciphertext,
+      nonce: row.nonce,
+      keyVersion: row.keyVersion,
+    };
+  },
+  delete: async (id) => {
+    const { count } = await db.secret.deleteMany({ where: { id } });
+    return count > 0;
+  },
+});
+
+const MODELS_DEV_URL = "https://models.dev/api.json";
+
+const fetchLatestCatalog = async () => {
+  // A plain GET that carries no install data (ADR 0021).
+  const response = await fetch(MODELS_DEV_URL, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`models.dev answered ${String(response.status)}`);
+  const parsed = parseModelsDevCatalog(await response.json());
+  if (!parsed.ok) throw new Error("models.dev's catalog didn't parse");
+  return parsed.value;
+};
+
+const build = async (): Promise<ApiRuntime> => {
+  const parsed = parseServerSettings(process.env);
+  if (!parsed.ok) {
+    throw new Error(`ostra's settings are invalid:\n${parsed.errors.join("\n")}`);
+  }
+  const settings = parsed.settings;
+  const db = createDb(settings.databaseUrl);
+  const context: AdapterContext = { logger, clock: adapterClock };
+
+  const key = parseSecretsKey(await loadSecretsKey(settings));
+  if (!key.ok) throw new Error("OSTRA_SECRETS_KEY is not a 32-byte key (64 hex characters or base64)");
+
+  const jobs = createJobs({
+    databaseUrl: settings.databaseUrl,
+    role: "enqueue-only",
+    instanceName: `web-${String(process.pid)}`,
+    logger,
+  });
+  // Core installs pg-boss's schema (ADR 0037). The panel starts without it and connects the queue
+  // when it first enqueues, so the panel's pages never wait on core.
+  let started: Promise<void> | undefined;
+  const ensureStarted = (): Promise<void> => {
+    started ??= jobs.start().catch((error: unknown) => {
+      started = undefined;
+      logger.warn("web.jobs_unavailable", { name: error instanceof Error ? error.name : "unknown" });
+      throw error;
+    });
+    return started;
+  };
+  const queue: JobQueue = {
+    enqueueInTx: async (tx, job, payload, options) => {
+      await ensureStarted();
+      await jobs.enqueueInTx(tx, job, payload, options);
+    },
+  };
+
+  const runtime = await createApiRuntime({
+    settings,
+    db,
+    adapters: {
+      codeHost: new GitHubAdapter({ userAgent: "ostra-panel" }, context),
+      modelProvider: new ModelEndpointAdapter({}, context),
+      secretStore: new BuiltinSecretStore({ rows: prismaSecretRows(db), key: key.value }, context),
+    },
+    jobs: queue,
+    outbox: postgresCommandOutbox,
+    catalog: createCatalogSource({
+      fetchEnabled: settings.catalogFetch,
+      loadBundled: async () => (await loadBundledCatalog()).entries,
+      fetchLatest: fetchLatestCatalog,
+      clock: systemClock,
+      logger,
+    }),
+    logger,
+  });
+  logger.info("web.started", { mode: settings.mode, publicUrl: settings.publicUrl });
+  return runtime;
+};
+
+// One runtime per process. Next's dev server reloads modules, so it's kept on `globalThis`.
+declare global {
+  var ostraRuntime: Promise<ApiRuntime> | undefined;
+}
+
+/** The API's runtime: built on first use, then shared by every request of this process. */
+export const getRuntime = (): Promise<ApiRuntime> => {
+  globalThis.ostraRuntime ??= build().catch((error: unknown) => {
+    globalThis.ostraRuntime = undefined;
+    throw error;
+  });
+  return globalThis.ostraRuntime;
+};
+
+export const getApiDeps = async (): Promise<ApiDeps> => (await getRuntime()).deps;
