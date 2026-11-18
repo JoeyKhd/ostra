@@ -166,7 +166,9 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
         </Line>
       );
     case "tool-edit": {
-      const files = part.state === "output-available" ? part.output.files : null;
+      const done = part.state === "output-available";
+      // An edit whose output names no file (a new file its tool reported no diff for) still shows its paths.
+      const files = done && part.output.files.length > 0 ? part.output.files : null;
       const patch = files?.map((file) => file.patch ?? "").join("\n").trim() ?? "";
       return (
         <div>
@@ -176,7 +178,7 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
               icon={<PencilIcon />}
               end={<ToolStatus part={part} />}
             >
-              <span className="text-muted">{files === null ? t("task.tool.editing") : t("task.tool.edited")}</span>
+              <span className="text-muted">{done ? t("task.tool.edited") : t("task.tool.editing")}</span>
               <Mono>{file.path}</Mono>
               {file.added === null ? null : <span className="font-mono text-sm text-green">+{file.added}</span>}
               {file.removed === null || file.removed === 0 ? null : <span className="font-mono text-sm text-red">−{file.removed}</span>}
