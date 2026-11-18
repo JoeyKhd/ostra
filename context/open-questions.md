@@ -170,3 +170,18 @@ The maintainer wants ostra to serve "the entire team", not only the coders.
 | Q75 | Reviewing PRs that people wrote | A review task can start for any PR opened in a linked repo, opt-in per repo, so human code gets the same AI review. After v1 |
 | Q76 🔬 | Where screenshots and files live | Research first:<ul><li>ADR 0017 keeps ostra on Postgres only. Small files under a size cap could live there, with S3-compatible storage optional</li><li>Copies go to the tracker as attachments; Linear and Jira both take uploads</li><li>As far as I know, GitHub has no API for uploading images into PR comments, so reviews would link to images that ostra serves. To verify</li></ul> |
 | Q77 | What ships in v1 | **v1:**<ul><li>the task kind in the data model</li><li>AI review (Q71–Q72) and the review screen (Q73)</li><li>hand edits (Q74)</li><li>refine without screenshots (Q64–Q67)</li></ul>**After v1:**<ul><li>seeing the running app (Q68)</li><li>prototype mockups (Q69)</li><li>reviewing people's PRs (Q75)</li></ul> |
+
+## Round 12 (asked 2026-11-18): the repo's layout
+
+ADR 0007 already chose a pnpm + Turborepo monorepo. Three earlier decisions shape its layout:
+- **ADR 0016:** two processes, the panel and the core service, share domain packages.
+- **ADR 0009:** the runner and the adapter SDK are Apache-2.0, and the server is AGPL-3.0.
+- **ADR 0023:** the runner runs on Node and compiles with Bun.
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q78 | The layout | **Apps:**<ul><li>`web`: Next.js, the panel, better-auth</li><li>`core`: runner gateway, webhooks, queue</li><li>`runner`: the `ostra` CLI</li><li>`docs`: later</li></ul>**Packages:**<ul><li>`db`: Prisma</li><li>`domain`: lifecycles and use cases</li><li>`api`: tRPC routers</li><li>`protocol`: Zod schemas for the runner protocol, agent events and config</li><li>`adapter-sdk`: the seven base classes and contract tests</li><li>`adapters/*`: one package per adapter</li><li>`tooling`</li></ul>**Outside the packages:** `e2e/` runs ticket → task → PR against the test workspaces, and `spikes/` stays outside the workspace. Start with few packages: no `ui` package until a second app needs shadcn components, and one `domain` package split only when it hurts |
+| Q79 | Enforcing the license line | Every package declares its license in `package.json`. A CI check fails when an Apache-2.0 package depends on an AGPL-3.0 one. So `protocol`, `adapter-sdk`, `adapters/*` and `runner` never import `db`, `domain` or `api` |
+| Q80 | One CLI | `apps/runner` builds one Apache-2.0 `ostra` CLI with three commands: `ostra runner` (a local runner), `ostra login` and `ostra checkout CALC-161` (Q74). It talks to the server only through schemas in `protocol`, never through the AGPL tRPC types |
+| Q81 | Publishing to npm | Publish the CLI, `protocol`, `adapter-sdk` and the adapters, so others can write adapters. Version them with Changesets, which is **a new dev dependency, your call**. The server is never published to npm; it ships as the Docker image |
+| Q82 | The server image | One image with one entrypoint: `ostra-server web`, `core` or `all`. Docker Compose installs run `all` in one container, and Kubernetes runs `web` and `core` as separate deployments of the same image. Built with `turbo prune --docker` |
