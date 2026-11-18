@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { Ports } from "../ports.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 
 // ADR 0034, ADR 0035, F-045: one `events` frame, saved in one transaction. Idempotent on
@@ -310,7 +311,7 @@ const ingestSession = async (
         sessionSeq: item.sessionSeq,
         leaseEpoch: item.leaseEpoch,
         kind: item.event.kind,
-        payload: item.event,
+        payload: storableEvent(item.event),
         occurredAt: new Date(item.at),
       })),
     });

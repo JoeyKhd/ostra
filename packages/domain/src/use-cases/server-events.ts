@@ -3,6 +3,8 @@ import { notifyChannels } from "@ostra/db";
 import type { OrganizationId, ProjectId, SessionId, TaskEvent, TaskId, TaskSeq } from "@ostra/protocol";
 import { serverOnlyKinds, taskEventSchema, taskSeqSchema } from "@ostra/protocol";
 
+import { storableEvent } from "./storable-event.ts";
+
 // The server's own events (ADR 0035, ADR 0036): a member's message, an answer, a take-over, a PR.
 // They go through the same log as the agent's, numbered per task under a lock on the task row, but
 // no peer numbered them, so their session number is `null`. The panel's transactions write them
@@ -46,7 +48,7 @@ export const appendServerEvent = async (tx: Tx, input: AppendServerEventInput): 
       sessionSeq: null,
       leaseEpoch: null,
       kind: event.kind,
-      payload: event,
+      payload: storableEvent(event),
       occurredAt: new Date(input.at),
     },
   });
