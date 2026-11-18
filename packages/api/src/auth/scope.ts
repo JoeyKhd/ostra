@@ -1,0 +1,82 @@
+import type { MemberScope, ProjectRole } from "@ostra/domain";
+import type { Db } from "@ostra/db";
+import { memberIdSchema, organizationIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
+import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
+
+import type { OstraAuth } from "./create-auth.ts";
+import { highestRole } from "./roles.ts";
+
+// Ported from spikes/auth-foundation/src/ostra/organization-scope.ts (ADR 0026).
+//
+// "Every row carries its organization. No query crosses organizations." The way that holds in code:
+// no ostra query takes an organization ID from the caller. It takes a `MemberScope`, and the only
+// things that make one are the functions here, which prove from the session and the member table
+// that the caller belongs to that organization.
+
+/** Who is signed in, as better-auth resolved their session. */
+export type SessionUser = {
+  readonly userId: UserId;
+  readonly name: string;
+  readonly username: string | null;
+  readonly email: string;
+  /** The instance admin (Q102), apart from an organization role. */
+  readonly instanceAdmin: boolean;
+  /** The organization the session says it is in, if any. Untrusted until `loadMemberScope`. */
+  readonly sessionOrganizationId: string | null;
+};
+
+/** A signed-in account's membership of one organization, with the scope every query takes. */
+export type MemberContext = {
+  readonly scope: MemberScope;
+  readonly userId: UserId;
+};
+
+/** The session behind a request's cookie or bearer token, or `null`. */
+export const resolveSession = async (auth: OstraAuth, headers: Headers): Promise<SessionUser | null> => {
+  const found = await auth.api.getSession({ headers });
+  if (found === null) {
+    return null;
+  }
+  const { user, session } = found;
+  const active: unknown = Reflect.get(session, "activeOrganizationId");
+  const role: unknown = Reflect.get(user, "role");
+  const username: unknown = Reflect.get(user, "username");
+  return {
+    userId: userIdSchema.parse(user.id),
+    name: user.name,
+    username: typeof username === "string" ? username : null,
+    email: user.email,
+    instanceAdmin: role === "admin",
+    sessionOrganizationId: typeof active === "string" && active !== "" ? active : null,
+  };
+};
+
+/**
+ * The member this account is in the session's organization (or, when the session names none, its
+ * oldest organization), with their project roles. `null` when the account belongs to no
+ * organization. The organization ID is read from the member row, never from the caller.
+ */
+export const loadMemberContext = async (db: Db, user: SessionUser): Promise<MemberContext | null> => {
+  const member =
+    (user.sessionOrganizationId === null
+      ? null
+      : await db.member.findUnique({
+          where: { organizationId_userId: { organizationId: user.sessionOrganizationId, userId: user.userId } },
+        })) ?? (await db.member.findFirst({ where: { userId: user.userId }, orderBy: { createdAt: "asc" } }));
+  if (member === null) {
+    return null;
+  }
+  const organizationId: OrganizationId = organizationIdSchema.parse(member.organizationId);
+  const memberId: MemberId = memberIdSchema.parse(member.id);
+  const listed = await db.projectMember.findMany({
+    where: { organizationId, memberId },
+    select: { projectId: true, role: true },
+  });
+  const projectRoles = new Map<ProjectId, ProjectRole>(
+    listed.map((row) => [projectIdSchema.parse(row.projectId), row.role] as const),
+  );
+  return {
+    userId: user.userId,
+    scope: { organizationId, memberId, role: highestRole(member.role), projectRoles },
+  };
+};

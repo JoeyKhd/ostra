@@ -88,7 +88,6 @@ describe("the job catalogue (ADR 0037)", () => {
 
 describe("the use-case seams", () => {
   const useCases = {
-    createFirstAdmin: "30",
     addModelProvider: "31",
     connectGitHubApp: "31",
     createProject: "32",

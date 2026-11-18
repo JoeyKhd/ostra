@@ -1,0 +1,145 @@
+import { randomBytes } from "node:crypto";
+
+import { createLogger, silentLogger } from "@ostra/adapter-sdk";
+import type { LogRecord } from "@ostra/adapter-sdk";
+import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
+import { hashPassword } from "better-auth/crypto";
+
+import { createAuth } from "../auth/create-auth.ts";
+import type { OstraAuth } from "../auth/create-auth.ts";
+import { loadMemberContext } from "../auth/scope.ts";
+import type { SessionUser } from "../auth/scope.ts";
+import { createCatalogSource } from "../catalog/catalog-source.ts";
+import { appRouter } from "../routers/app-router.ts";
+import { createStreamHub } from "../stream/hub.ts";
+import type { StreamHub } from "../stream/hub.ts";
+import type { ApiDeps, Context } from "../trpc/context.ts";
+import { createCallerFactory } from "../trpc/init.ts";
+import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "./fake-adapters.ts";
+import { memoryJobQueue, memoryOutbox } from "./memory-ports.ts";
+import type { MemoryJobQueue, MemoryOutbox } from "./memory-ports.ts";
+
+// The API's test harness (spec section 8): a migrated test database, the isolation fixture (two
+// organizations and a restricted project), fake adapters, in-memory job and outbox ports, and a
+// caller for each kind of actor. A router test calls `harness.as(member)` and uses it like the
+// panel does, through the same procedures, middleware and access checks.
+
+const callerFactory = createCallerFactory(appRouter);
+
+/** A router caller: what a test calls procedures on. */
+export type AppCaller = ReturnType<typeof callerFactory>;
+
+export type BareHarness = {
+  readonly test: TestDatabase;
+  readonly deps: ApiDeps;
+  readonly auth: OstraAuth;
+  readonly hub: StreamHub;
+  readonly fakes: {
+    readonly secretStore: FakeSecretStore;
+    readonly modelProvider: FakeModelProvider;
+    readonly codeHost: FakeCodeHost;
+    readonly jobs: MemoryJobQueue;
+    readonly outbox: MemoryOutbox;
+  };
+  /** Every line the API logged, to check that nothing sensitive reached one. */
+  readonly logs: readonly LogRecord[];
+  readonly setupToken: string;
+  /** A caller with no session. */
+  readonly anonymous: (resHeaders?: Headers) => AppCaller;
+  /** A caller signed in as this member of an organization. */
+  readonly as: (member: SeededMember) => Promise<AppCaller>;
+  /** The context a member's request would resolve, for tests that call a helper directly. */
+  readonly contextOf: (member: SeededMember) => Promise<Context>;
+  readonly dispose: () => Promise<void>;
+};
+
+/** The harness with the two organizations of `seedIsolationFixture` seeded. */
+export type ApiHarness = BareHarness & { readonly fixture: IsolationFixture };
+
+/** A harness on an empty install: no account, no organization (the first-run tests). */
+export const createBareHarness = async (): Promise<BareHarness> => {
+  const test = await createTestDatabase();
+  const baseUrl = "http://localhost:3000";
+  const auth = createAuth({ db: test.db, baseUrl, secret: randomBytes(32).toString("hex"), logLevel: "error" });
+
+  const logs: LogRecord[] = [];
+  const logger = createLogger((record) => {
+    logs.push(record);
+  });
+  const secretStore = new FakeSecretStore();
+  const modelProvider = new FakeModelProvider();
+  const codeHost = new FakeCodeHost();
+  const jobs = memoryJobQueue();
+  const outbox = memoryOutbox();
+  const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
+  const setupToken = `ostra-setup-${randomBytes(24).toString("hex")}`;
+
+  const deps: ApiDeps = {
+    db: test.db,
+    auth,
+    settings: {
+      mode: "test",
+      publicUrl: baseUrl,
+      corePublicUrl: "http://localhost:8787",
+      catalogFetch: false,
+      openSignupAccounts: false,
+      openSignupOrganizations: false,
+    },
+    ports: {
+      jobs,
+      outbox,
+      notices: postgresChangeNotices,
+      audit: postgresAuditLog,
+      clock: systemClock,
+      adapters: { codeHost, modelProvider, secretStore },
+    },
+    logger,
+    setupToken,
+    hashPassword,
+    catalog: createCatalogSource({
+      fetchEnabled: false,
+      loadBundled: () => Promise.resolve([]),
+      fetchLatest: () => Promise.resolve([]),
+      clock: systemClock,
+      logger: silentLogger,
+    }),
+    stream: hub,
+  };
+
+  const contextOf = async (member: SeededMember): Promise<Context> => {
+    const account = await test.db.user.findUniqueOrThrow({ where: { id: member.userId } });
+    const user: SessionUser = {
+      userId: member.userId,
+      name: account.name,
+      username: account.username,
+      email: account.email,
+      instanceAdmin: account.role === "admin",
+      sessionOrganizationId: member.organizationId,
+    };
+    return { deps, headers: new Headers(), resHeaders: new Headers(), user, member: await loadMemberContext(test.db, user) };
+  };
+
+  return {
+    test,
+    deps,
+    auth,
+    hub,
+    fakes: { secretStore, modelProvider, codeHost, jobs, outbox },
+    logs,
+    setupToken,
+    anonymous: (resHeaders = new Headers()) => callerFactory({ deps, headers: new Headers(), resHeaders, user: null, member: null }),
+    as: async (member) => callerFactory(await contextOf(member)),
+    contextOf,
+    dispose: async () => {
+      await hub.stop();
+      await test.dispose();
+    },
+  };
+};
+
+export const createApiHarness = async (): Promise<ApiHarness> => {
+  const bare = await createBareHarness();
+  return { ...bare, fixture: await seedIsolationFixture(bare.test.db) };
+};

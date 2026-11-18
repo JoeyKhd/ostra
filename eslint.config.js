@@ -149,6 +149,11 @@ export default defineConfig(
     files: ["packages/adapters/**/*.ts", "packages/adapter-sdk/**/*.ts"],
     rules: { "no-restricted-syntax": ["error", ...serverSyntax] },
   },
+  // The fake adapters the API's tests run against are adapters, so they are classes too (ADR 0025).
+  {
+    files: ["packages/api/src/testing/**/*.ts"],
+    rules: { "no-restricted-syntax": ["error", ...serverSyntax] },
+  },
 
   // Files and folders are kebab-case.
   {

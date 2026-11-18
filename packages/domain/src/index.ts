@@ -16,6 +16,7 @@ export * from "./ports.ts";
 export * from "./jobs.ts";
 export * from "./access.ts";
 export * from "./settings.ts";
+export * from "./postgres-ports.ts";
 
 export * from "./use-cases/common.ts";
 export * from "./use-cases/accept-offer.ts";
@@ -32,3 +33,4 @@ export * from "./use-cases/record-session-end.ts";
 export * from "./use-cases/register-personal-runner.ts";
 export * from "./use-cases/save-environment.ts";
 export * from "./use-cases/stop-task.ts";
+export * from "./use-cases/server-events.ts";
