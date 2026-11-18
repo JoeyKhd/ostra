@@ -360,8 +360,12 @@ export class GitHubAdapter extends CodeHostAdapter {
         return info;
       }
       const login = `${info.value.slug}[bot]`;
-      // A public profile: no token needed, so an App with no install yet can still name its bot.
-      const response = await this.#anonymous().request("GET /users/{username}", { username: login });
+      // A public profile. It's read as an installation when the App has one, since anonymous calls
+      // share 60 an hour per address; an App with no install yet can still name its bot.
+      const installations = await this.listInstallations(app);
+      const first = installations.ok ? installations.value[0] : undefined;
+      const reader = first === undefined ? this.#anonymous() : this.#asInstallation(app, first.installationId);
+      const response = await reader.request("GET /users/{username}", { username: login });
       const parsed = parseVendor(userSchema, response.data, "GitHub's bot user");
       if (!parsed.ok) {
         return parsed;
