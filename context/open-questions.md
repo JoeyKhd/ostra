@@ -185,3 +185,25 @@ ADR 0007 already chose a pnpm + Turborepo monorepo. Three earlier decisions shap
 | Q80 | One CLI | `apps/runner` builds one Apache-2.0 `ostra` CLI with three commands: `ostra runner` (a local runner), `ostra login` and `ostra checkout CALC-161` (Q74). It talks to the server only through schemas in `protocol`, never through the AGPL tRPC types |
 | Q81 | Publishing to npm | Publish the CLI, `protocol`, `adapter-sdk` and the adapters, so others can write adapters. Version them with Changesets, which is **a new dev dependency, your call**. The server is never published to npm; it ships as the Docker image |
 | Q82 | The server image | One image with one entrypoint: `ostra-server web`, `core` or `all`. Docker Compose installs run `all` in one container, and Kubernetes runs `web` and `core` as separate deployments of the same image. Built with `turbo prune --docker` |
+
+## Round 13 (asked 2026-11-18): project memory
+
+The maintainer asked how each project gets its own memory, shared across the project. Each task starts in a fresh box, so whatever one task learns is lost unless ostra keeps it. Examples:
+- "regenerate the Prisma client before the API tests"
+- "percent math uses decimal.js, never floats"
+- "Sam wants PRs under 400 lines"
+
+Agents' own memory features are tied to one person or one machine. ostra can hold memory once per project, for every member, every runner and every agent.
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q83 | Scopes | **Organization → project → repo (or a path in it).** A task sees the notes from its organization, its project and its repo, and the most specific note wins. Personal notes come later |
+| Q84 | What a note is | **One fact per note.** A note has:<ul><li>a title and a short body</li><li>a kind: convention, command, gotcha, decision, preference or term</li><li>a scope</li><li>its source (a task, a review comment or a member)</li><li>its author and status</li></ul>Notes are versioned and stored in Postgres (ADR 0017), with Postgres full-text search. Vector search (pgvector, still Postgres) only if full-text proves too weak |
+| Q85 | How agents receive it | It works the same for every agent:<ul><li>At session start, the runner gives the agent **a short index** (each note's title and one line) plus the notes marked "always", as extra instructions. They're never written into the repo or committed</li><li>An **ostra MCP server in the box** lets the agent search and read the rest, and propose new notes</li></ul>Memory is a declared agent capability (ADR 0025): an agent without MCP gets the index only. This is the same pattern Claude Code's file memory uses |
+| Q86 | Who writes | Members write and edit notes directly. Agents and the AI review only **propose**, and a member approves a proposal before any agent sees it. Ticket text and agent output are untrusted (AGENTS.md), and an unchecked note would steer every future task in the project. Proposals show as a count on the project's Memory page, not as amber "needs you" |
+| Q87 | Where proposals come from | <ul><li>At the end of each task, the agent is asked what the next task should know</li><li>A **"Remember this"** action on any review comment or AI review finding, so a correction made twice becomes a rule</li><li>Decisions made in refine conversations (Q64)</li></ul> |
+| Q88 | Keeping it true | <ul><li>Every note links to its source and shows when it was last used.</li><li>When the snapshot rebuilds, notes that name files, commands or packages that no longer exist get flagged.</li><li>A proposal that contradicts an existing note is shown beside it, to merge or replace.</li><li>Every note is scanned for secrets. Memory never holds credentials, and logs carry note IDs only</li></ul> |
+| Q89 | Memory, repo files and the environment | <ul><li>The repo's `AGENTS.md` and `CLAUDE.md` stay the repo's own, and agents read them natively.</li><li>The environment holds the machine's setup. Memory holds the team's knowledge.</li><li>**"Promote to repo"** turns a note into a PR to `AGENTS.md`, so it helps people and tools outside ostra too.</li><li>A note that's really setup gets **"Move to setup script"**</li></ul> |
+| Q90 | Where it shows | <ul><li>A **Memory** page in each project (and one for the organization), with search, kinds and the proposals.</li><li>The task page lists the notes a session used, and the notes it proposed.</li><li>Every change goes to the audit log</li></ul> |
+| Q91 🔬 | Prior art | Research before building: how Devin Knowledge, Cursor Memories, GitHub Copilot Memory, Windsurf Memories and Claude Code's memory files capture, approve, retrieve and expire memory. The findings go in `research/project-memory.md` |
+| Q92 | What ships in v1 | **v1:**<ul><li>organization and project notes</li><li>written by members</li><li>delivered as an index plus MCP search</li><li>proposals from agents, with approval</li></ul>**Later:**<ul><li>staleness checks</li><li>"Promote to repo"</li><li>vector search</li><li>personal notes</li></ul> |
