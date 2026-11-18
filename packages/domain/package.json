@@ -1,0 +1,16 @@
+{
+  "name": "@ostra/domain",
+  "version": "0.0.0",
+  "description": "Lifecycles and use cases",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  }
+}

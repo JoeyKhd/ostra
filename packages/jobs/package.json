@@ -1,0 +1,16 @@
+{
+  "name": "@ostra/jobs",
+  "version": "0.0.0",
+  "description": "The only package that imports pg-boss (ADR 0037)",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  }
+}

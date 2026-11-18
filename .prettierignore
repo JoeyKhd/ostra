@@ -1,0 +1,14 @@
+node_modules
+.turbo
+.next
+dist
+coverage
+pnpm-lock.yaml
+.agents
+.claude
+context
+docs
+spikes
+e2e/fixtures
+*.md
+skills-lock.json

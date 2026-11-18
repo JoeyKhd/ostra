@@ -1,0 +1,16 @@
+{
+  "name": "@ostra/tooling",
+  "version": "0.0.0",
+  "description": "Shared TypeScript and lint config, never published",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  }
+}

@@ -10,7 +10,7 @@
   <a href="#the-plan-lives-here">The plan</a>
 </p>
 
-> **ostra is being planned in the open.** The plan was signed off on 2026-11-17 and reworked on 2026-11-18. The first code, ten short experiments, comes next. There's nothing to install yet. Star or watch the repo to follow along.
+> **ostra is being planned in the open.** The plan was signed off on 2026-11-17 and reworked on 2026-11-18. The repo's skeleton is in place, and the first code, ten short experiments, is being built. There's nothing to install yet. Star or watch the repo to follow along.
 
 ## What ostra is
 
@@ -106,8 +106,8 @@ The project isn't taking code yet. Ideas and questions are welcome in [issues](h
 
 ## License
 
-The planned licenses (ADR 0009):
-- **AGPL-3.0** for the server and the web app
-- **Apache-2.0** for the runner and the adapter SDK, so companies can run runners and write adapters freely
+Two licenses (ADR 0009):
+- **AGPL-3.0** for the server and the web app: [`LICENSE`](LICENSE)
+- **Apache-2.0** for the runner, the protocol, the adapter SDK and the adapters, so companies can run runners and write adapters freely. Each of those packages carries its own `LICENSE`.
 
-The license files arrive with the first code.
+A check in CI keeps an Apache-2.0 package from depending on an AGPL-3.0 one.

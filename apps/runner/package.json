@@ -1,0 +1,16 @@
+{
+  "name": "@ostra/runner",
+  "version": "0.0.0",
+  "description": "The ostra CLI: the pool runner, the sidecar, login and checkout (ADR 0046)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@ostra/web",
+  "version": "0.0.0",
+  "description": "The Next.js panel: better-auth, tRPC (ADR 0045)",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  }
+}

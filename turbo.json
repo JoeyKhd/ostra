@@ -1,0 +1,13 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsconfig.base.json", "eslint.config.js"],
+  "tasks": {
+    "typecheck": {},
+    "lint": {},
+    "test": {},
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@ostra/protocol",
+  "version": "0.0.0",
+  "description": "Zod schemas for the runner protocol, agent events and config",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
+}
