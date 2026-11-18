@@ -1,6 +1,6 @@
 # 11: The OpenCode adapter
 
-Status: ready-for-agent
+Status: resolved
 Builder: adapters
 Blocked by: 10, 12
 Features: F-019
@@ -25,14 +25,18 @@ Spec: `../spec.md`, sections 2 and 11 (item 6)
 
 ## Done when
 
-- [ ] The agent contract suite passes against both stub formats on this machine.
-- [ ] With `model.env` loaded, one real turn completes on the endpoint through a key proxy stand-in, and the suite's environment check passes.
-- [ ] A test proves the checksum check refuses a changed binary.
-- [ ] Package checks pass, and `pnpm check:licenses` shows the package as Apache-2.0 with no restricted dependency.
-- [ ] Committed as `✨ add the OpenCode adapter`.
+- [x] The agent contract suite passes against both stub formats on this machine.
+- [x] With `model.env` loaded, one real turn completes on the endpoint through a key proxy stand-in, and the suite's environment check passes.
+- [x] A test proves the checksum check refuses a changed binary.
+- [x] Package checks pass, and `pnpm check:licenses` shows the package as Apache-2.0 with no restricted dependency.
+- [x] Committed as `✨ add the OpenCode adapter`.
 
 ## Not in this ticket
 
 The base image's pin (ticket 22).
 
 ## Comments
+
+- 2026-11-18, adapters: done in 376a4ce (`✨ add the OpenCode adapter`), package `packages/adapters/adapter-opencode`. `@opencode/cli` 2.3.2 is pinned with its install script off (`allowBuilds` says false). The binary's SHA-256 is pinned for all 12 platform packages (computed from the registry's tarballs; the Windows one equals spike 1's). A changed binary, a platform with no pin and another version are refused (tested with a temp install, and against this machine's real binary).
+  - The config is V2's (`providers`, `permissions`, `mcp.servers`, `experimental.todo`), checked against `opencode.ai/config.json`; the real binary runs on it. `todowrite` becomes an ACP `plan` update, so `plan.updated` keeps its place. The agent contract suite passes against the real OpenCode on a stub of each API format (steer probe included, as the suite's steerable case); the live turn through a key-proxy stand-in completes on the dev endpoint and the agent only ever presents the fake key.
+  - **Not run here:** the Linux and macOS binaries (only their checksums are pinned), and the `permission`, `question`, `environment` and `leftoverProcess` probes against OpenCode (its config allows the worktree, so no permission request comes; the agent's shell holds variables the allowlist didn't pass, spike 1 finding 7). The launch's own environment is checked instead.

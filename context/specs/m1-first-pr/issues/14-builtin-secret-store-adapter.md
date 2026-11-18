@@ -1,6 +1,6 @@
 # 14: The built-in secret store adapter
 
-Status: ready-for-agent
+Status: resolved
 Builder: adapters
 Blocked by: 04
 Features: F-088, F-006, F-050 (where their secrets live); ADR 0030
@@ -18,9 +18,11 @@ Spec: `../spec.md`, section 11 (item 1)
 
 ## Done when
 
-- [ ] The suite passes; a row moved to another organization, or with one changed byte, fails to decrypt with a typed failure.
-- [ ] A test proves no value reaches a log line on any path.
-- [ ] Package checks and `pnpm check:licenses` pass.
-- [ ] Committed as `✨ add the built-in secret store`.
+- [x] The suite passes; a row moved to another organization, or with one changed byte, fails to decrypt with a typed failure.
+- [x] A test proves no value reaches a log line on any path.
+- [x] Package checks and `pnpm check:licenses` pass.
+- [x] Committed as `✨ add the built-in secret store`.
 
 ## Comments
+
+- 2026-11-18, adapters: done in c92c576 (`✨ add the built-in secret store`), package `packages/adapters/adapter-secret-store-builtin`. AES-256-GCM with a fresh nonce per value; the associated data is the organization ID, the purpose and the row ID, so a moved row, a changed purpose and a changed byte all fail with `invalid-response` (a typed failure). `parseSecretsKey` takes 64 hex characters or 32 bytes of base64, and `generateSecretsKey` makes the one the server writes to its data folder. The key version is in each row; `rotation` is false. A test walks every path and finds no value in a log line.

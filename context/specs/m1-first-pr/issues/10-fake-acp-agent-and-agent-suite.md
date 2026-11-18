@@ -1,6 +1,6 @@
 # 10: Scripted fake ACP agent and the agent contract suite
 
-Status: ready-for-agent
+Status: resolved
 Builder: adapters
 Blocked by: 04, 09
 Features: F-019 (the contract suite), adapter parity (`AGENTS.md`)
@@ -17,9 +17,13 @@ Spec: `../spec.md`, section 8
 
 ## Done when
 
-- [ ] Both fake profiles pass the suite on this machine.
-- [ ] The suite's cases are named after the ADR line or ledger row each one checks.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✅ add the fake ACP agent and agent suite`.
+- [x] Both fake profiles pass the suite on this machine.
+- [x] The suite's cases are named after the ADR line or ledger row each one checks.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✅ add the fake ACP agent and agent suite`.
 
 ## Comments
+
+- 2026-11-18, adapters: done in df09e04 and a9c6027 (`✅ add the fake ACP agent and agent suite`). The fake is `packages/adapter-sdk/src/testing/fake-acp-agent/`: `agent.ts` (the scripts: say, tools of every ACP kind, plan, permission, elicit, silent, silent-deaf, steerable, spawn, crash, env, endpoint, unknown, config, usage, compaction, content), `main.ts` (a program, `node main.ts --profile=rich|plain`) and `FakeAgentAdapter`. `rich` has native plan updates, reject-and-continue and steering; `plain` has none. `defineAgentContractSuite` has 15 cases named after their ADR line or ledger row, and `probes` (optional prompts) let an adapter whose agent can't be scripted skip a case; `spawnAgentProcess` starts a launch as an executor would.
+  - Both profiles pass as real child processes through the driver on this machine (Windows 11), including "a cancel leaves no process of the agent's behind" (the fake leaves a grandchild, and the driver reaps it).
+  - The environment case lists the names Windows adds to every process it starts (`HOMEDRIVE`, `USERNAME`, ...) beside the allowlist.
