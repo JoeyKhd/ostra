@@ -47,7 +47,15 @@ let shot = 0;
 const screenshot = async (page: Page, settings: DemoSettings, name: string): Promise<void> => {
   shot += 1;
   const file = path.join(settings.screenshotDir, `${String(shot).padStart(2, "0")}-${name}.png`);
-  await page.screenshot({ path: file, fullPage: false });
+  // The screenshots are committed: the dev endpoint's address and this machine's folders are masked.
+  const mask = [
+    page.locator("#setupToken"),
+    page.locator("#email"),
+    page.getByLabel("API base URL"),
+    page.getByText(settings.modelBaseUrl),
+    page.getByText(/[A-Za-z]:\\Users\\|\/home\/|\/Users\//),
+  ];
+  await page.screenshot({ path: file, fullPage: false, mask });
   say(`screenshot ${path.relative(repoRoot, file)}`);
 };
 
@@ -142,7 +150,8 @@ const connectGitHub = async (page: Page, settings: DemoSettings): Promise<void> 
   await page.locator("#webhook-secret").fill(settings.githubWebhookSecret);
   await page.getByRole("button", { name: "Connect the App" }).click();
   await page.getByTestId("github-connection").waitFor({ timeout: 60_000 });
-  await page.getByText(settings.githubOrg).first().waitFor({ timeout: 30_000 });
+  // The installations load after the connection: the test org's row, not the sidebar's org name.
+  await page.locator("ul.rows li", { hasText: settings.githubOrg }).first().waitFor({ timeout: 30_000 });
   await screenshot(page, settings, "github-connected");
 };
 
