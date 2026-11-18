@@ -123,3 +123,20 @@ The maintainer: "So what exactly will be executing the code? How will all of tha
 | Q42 | After a turn | Warm for 15 minutes *(working value)*, then paused or released, with unfinished work saved to a hidden ref |
 | Q43 | Box sizes | Per project (small, medium, large). Pools cap totals and per-project use |
 | Q44 | Laptop runners | The same runner program. Worktrees on the host, your own login, only your own tasks, labelled "personal, not isolated" |
+
+## Round 10 (asked 2026-11-18): the agent, and Omnara again
+
+The maintainer: "why aren't we using that library [Omnara]? Is it because of Claude Code? ... we can just skip Claude Code because all the other models will be provided by a base URL ... it's illegal to use the Claude Code subscription anyways."
+
+- **Correction given:** Anthropic's terms allow a member's own subscription in the real Claude Code on their own machine. They forbid third-party tools routing, storing or sharing subscription logins (`research/agent-harnesses.md` §1.4). The conclusion still stands: a shared platform runs on provider keys.
+- **What still rules Omnara out as the foundation:**
+  - Its general-purpose agent loop is unproven for coding against dedicated coding agents.
+  - It's Go with Redis, blob storage and a memory filesystem, against ADR 0008 and ADR 0017.
+  - Its product overlaps ostra's, and the company has already pivoted once.
+  - ostra would give up its own robustness core (ADR 0011).
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q45 | Default agent | **OpenCode** in v1: any model via API base, key and model ID, with its catalog from models.dev. Claude Code becomes a later, optional harness on keys. This replaces ADR 0004's "Claude Code only" and ADR 0018's "Claude Code through ACP" |
+| Q46 | Omnara bake-off | In milestone 0: the same 10 real tickets and the same model through Omnara's loop, OpenCode and Claude Code. Compare mergeable PRs, cost and time, and revisit Omnara only if its loop clearly wins |
+| Q47 | Keys everywhere | v1 runs only on provider keys and base URLs, including personal laptop runners. No subscription logins anywhere |
