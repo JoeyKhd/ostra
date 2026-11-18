@@ -10,10 +10,11 @@ import {
   registerRequestSchema,
   runnerIdSchema,
   runnerPaths,
+  taskCredentialsRequestSchema,
   tokenAssertionCanonicalString,
   tokenAssertionSchema,
 } from "@ostra/protocol";
-import type { InfoResponse, RegisterRequest, RunnerId } from "@ostra/protocol";
+import type { InfoResponse, RegisterRequest, RunnerId, TaskCredentials, TaskSpec } from "@ostra/protocol";
 
 // A fake ostra server for the runner's tests (spec section 8: the runner's tests run against a
 // fake built from the protocol's schemas). It plays core's `/runner/v1/*` HTTP endpoints and the
@@ -49,6 +50,10 @@ export type FakeServer = {
   /** The access tokens issued, so a gateway can check them. */
   readonly accessTokens: Map<string, RunnerId>;
   readonly requests: string[];
+  /** Tasks the server can hand out: their spec, and the credentials issued after the lease check. */
+  readonly tasks: Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>;
+  /** How many times each task's credentials were issued. */
+  readonly credentialsIssued: Map<string, number>;
   /** The HTTP server, so the fake gateway can take its WebSocket upgrades. */
   readonly httpServer: Server;
   readonly setInfo: (info: Partial<InfoResponse>) => void;
@@ -84,6 +89,8 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const tokensIssued = new Map<RunnerId, number>();
   const accessTokens = new Map<string, RunnerId>();
   const requests: string[] = [];
+  const tasks = new Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>();
+  const credentialsIssued = new Map<string, number>();
   const devices = new Map<string, { polls: number }>();
   const seenNonces = new Set<string>();
   let counter = 0;
@@ -217,6 +224,39 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       send(response, 200, { accessToken, expiresAt: Date.now() + 600_000 });
       return;
     }
+    const taskMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/(spec|credentials)(?:\?(.*))?$/.exec(path);
+    if (taskMatch !== null) {
+      const bearer = bearerOf(request);
+      if (bearer === undefined || !accessTokens.has(bearer)) {
+        ostraError(response, 401, "unauthorized", "a valid access token is required");
+        return;
+      }
+      const taskId = decodeURIComponent(taskMatch[1] ?? "");
+      const task = tasks.get(taskId);
+      if (task === undefined) {
+        ostraError(response, 404, "not-found", "no such task");
+        return;
+      }
+      if (taskMatch[2] === "spec" && request.method === "GET") {
+        const epoch = Number(new URLSearchParams(taskMatch[3] ?? "").get("leaseEpoch"));
+        if (epoch !== task.spec.leaseEpoch) {
+          send(response, 409, { error: { code: "stale-lease", message: "stale", currentEpoch: task.spec.leaseEpoch } });
+          return;
+        }
+        send(response, 200, task.spec);
+        return;
+      }
+      if (taskMatch[2] === "credentials" && request.method === "POST") {
+        const parsed = taskCredentialsRequestSchema.safeParse(await readBody(request));
+        if (!parsed.success || parsed.data.taskId !== taskId || parsed.data.leaseEpoch !== task.spec.leaseEpoch) {
+          send(response, 409, { error: { code: "stale-lease", message: "stale", currentEpoch: task.spec.leaseEpoch } });
+          return;
+        }
+        credentialsIssued.set(taskId, (credentialsIssued.get(taskId) ?? 0) + 1);
+        send(response, 200, task.credentials);
+        return;
+      }
+    }
     ostraError(response, 404, "not-found", "no such endpoint");
   };
 
@@ -240,6 +280,8 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     tokensIssued,
     accessTokens,
     requests,
+    tasks,
+    credentialsIssued,
     httpServer: server,
     setInfo: (next) => {
       infoOverride = next;

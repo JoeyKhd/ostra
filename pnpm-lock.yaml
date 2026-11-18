@@ -87,6 +87,12 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
         version: 1.32.2(zod@4.6.7)
+      '@ostra/adapter-executor-host':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-executor-host
+      '@ostra/adapter-opencode':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-opencode
       '@ostra/adapter-sdk':
         specifier: workspace:*
         version: link:../../packages/adapter-sdk

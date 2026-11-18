@@ -1,0 +1,329 @@
+import { readdir, readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { HostExecutor } from "@ostra/adapter-executor-host";
+import { createLogger, silentLogger } from "@ostra/adapter-sdk";
+import type { LogRecord } from "@ostra/adapter-sdk";
+import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import type { GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
+import {
+  boxIdSchema,
+  runnerIdSchema,
+  sessionIdSchema,
+  taskCredentialsSchema,
+  taskIdSchema,
+} from "@ostra/protocol";
+import type { RunnerEvent, TaskCredentials, TaskEvent, TaskSpec } from "@ostra/protocol";
+import { taskSpecFixture } from "@ostra/protocol/testing";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { startConnection } from "../connection/peer.ts";
+import type { RunnerConnection } from "../connection/peer.ts";
+import { makeCommand, startFakeGateway } from "../testing/fake-gateway.ts";
+import type { FakeGateway } from "../testing/fake-gateway.ts";
+import { startFakeServer } from "../testing/fake-server.ts";
+import type { FakeServer } from "../testing/fake-server.ts";
+import { createAgentRegistry } from "./agents.ts";
+import type { AgentFactory } from "./agents.ts";
+import { runnerServerLink } from "./server-link.ts";
+import { createTaskHost } from "./task-host.ts";
+import type { TaskHost } from "./task-host.ts";
+
+// Ticket 21's "done when": dispatch → a PR-ready branch, stop → the hidden ref, crash → the hidden
+// ref, every event stored once; and a search for the real credentials that finds none. In one
+// process: the fake gateway, the scripted fake agent, the stub models, the real git proxy and key
+// proxy, the host executor and the git upstream stub.
+
+const runnerId = runnerIdSchema.parse("runner-task-host");
+const ACCESS_TOKEN = "ostra-runner-task-host-access-token";
+const MODEL_TOKEN = "sk-real-model-token-for-the-task-host-test";
+const GIT_TOKEN = "ghs_realGitTokenForTheTaskHostTest0123456789";
+const MCP_TOKEN = "ostra-mcp-real-runner-mcp-token-0123456789";
+
+let root = "";
+let upstream: GitUpstream;
+let models: StubServer;
+let server: FakeServer;
+let gateway: FakeGateway;
+let connection: RunnerConnection | undefined;
+let host: TaskHost | undefined;
+const logs: LogRecord[] = [];
+let counter = 0;
+
+const agents: Readonly<Record<string, AgentFactory>> = {
+  "fake-acp-agent-rich": (driver) => new FakeAgentAdapter("rich", driver),
+};
+
+beforeAll(async () => {
+  root = await mkdtemp(path.join(os.tmpdir(), "ostra-task-host-"));
+  upstream = await startGitUpstream(path.join(root, "upstream"));
+  await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n" });
+  upstream.tokens.set(GIT_TOKEN, Date.now() + 3_600_000);
+  models = await startAnthropicStub({ realKey: MODEL_TOKEN, models: ["stub-model"], brain: () => ({ text: "ok" }) });
+}, 60_000);
+
+afterAll(async () => {
+  await models.close();
+  await upstream.close();
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+});
+
+afterEach(async () => {
+  await host?.shutdown();
+  await connection?.stop();
+  await gateway.close();
+  await server.close();
+  host = undefined;
+  connection = undefined;
+});
+
+type Setup = { readonly dataDir: string; readonly dispatch: (spec: TaskSpec) => void };
+
+const start = async (): Promise<Setup> => {
+  counter += 1;
+  const dataDir = path.join(root, `runner-${String(counter)}`);
+  server = await startFakeServer();
+  server.accessTokens.set(ACCESS_TOKEN, runnerId);
+  gateway = startFakeGateway(server);
+  const tokens = { get: () => Promise.resolve({ ok: true as const, token: ACCESS_TOKEN, expiresAt: Date.now() + 600_000 }), invalidate: () => undefined };
+  const holder: { connection: RunnerConnection | undefined } = { connection: undefined };
+  const logger = createLogger((record) => logs.push(record));
+  const taskHost = createTaskHost({
+    link: runnerServerLink({
+      serverUrl: server.url,
+      tokens,
+      connection: {
+        openSession: (ref) => {
+          if (holder.connection === undefined) {
+            throw new Error("not connected");
+          }
+          return holder.connection.openSession(ref);
+        },
+        statusChanged: () => {
+          holder.connection?.statusChanged();
+        },
+      },
+    }),
+    executor: new HostExecutor({ dataDir }, { logger, clock: { now: () => Date.now() } }),
+    agents: createAgentRegistry(agents),
+    logger,
+    listenHost: "127.0.0.1",
+    stopGraceMs: 1_000,
+    capacity: 1,
+    executorKind: "host",
+    labels: [],
+    gitUpstreamUrl: (cloneUrl) => cloneUrl.replace("https://github.com", upstream.origin),
+  });
+  host = taskHost;
+  holder.connection = await startConnection({
+    serverUrl: server.url,
+    peer: { kind: "runner", runnerId },
+    tokens,
+    dataDir,
+    handlers: taskHost.handlers,
+    status: taskHost.status,
+    logger: silentLogger,
+    timers: { backoffMinMs: 5, backoffMaxMs: 20, checkMs: 10, liveTextIntervalMs: 20 },
+    hooks: {
+      onStaleLease: (sessionId) => {
+        taskHost.abandon(sessionId);
+      },
+    },
+  });
+  connection = holder.connection;
+  await gateway.waitFor(() => gateway.connected());
+  return {
+    dataDir,
+    dispatch: (spec) => {
+      gateway.sendCommand(
+        makeCommand({
+          seq: counter * 10,
+          id: `dispatch-${String(counter)}`,
+          notAfter: Date.now() + 120_000,
+          kind: "dispatch",
+          body: { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(`box-${String(counter)}`), leaseEpoch: spec.leaseEpoch },
+        }),
+      );
+    },
+  };
+};
+
+const taskFor = (prompt: string, setupScript: string | null = null): { readonly spec: TaskSpec; readonly credentials: TaskCredentials } => {
+  const taskId = taskIdSchema.parse(`0196f1a0-task-${String(counter)}-${String(Date.now())}`);
+  const spec: TaskSpec = {
+    ...taskSpecFixture,
+    taskId,
+    sessionId: sessionIdSchema.parse(`session-${String(counter)}-${String(Date.now())}`),
+    branchName: `ostra/task-${String(counter)}-add-a-file`,
+    prompt,
+    title: "Add a file",
+    agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages" },
+    environment: { ...taskSpecFixture.environment, setupScript },
+  };
+  const credentials = taskCredentialsSchema.parse({
+    taskId,
+    leaseEpoch: spec.leaseEpoch,
+    model: { baseUrl: models.baseUrl, apiFormat: "anthropic-messages", authScheme: "x-api-key", token: MODEL_TOKEN },
+    repos: spec.repos.map((repo) => ({ repoId: repo.repoId, gitToken: GIT_TOKEN, expiresAt: Date.now() + 3_600_000 })),
+    secrets: [],
+    mcpToken: MCP_TOKEN,
+  });
+  server.tasks.set(taskId, { spec, credentials });
+  return { spec, credentials };
+};
+
+const eventsOf = (spec: TaskSpec): readonly RunnerEvent[] =>
+  [...(gateway.stored.get(spec.sessionId)?.values() ?? [])].sort((a, b) => a.sessionSeq - b.sessionSeq);
+
+const kinds = (spec: TaskSpec): readonly TaskEvent["kind"][] => eventsOf(spec).map((item) => item.event.kind);
+
+const waitForKind = (spec: TaskSpec, kind: TaskEvent["kind"], timeoutMs = 60_000): Promise<void> =>
+  gateway.waitFor(() => kinds(spec).includes(kind), timeoutMs);
+
+const everyEventOnce = (): boolean => [...gateway.received.values()].every((count) => count === 1);
+
+describe("the task host", () => {
+  it("runs a dispatch to a PR-ready branch, and every event is stored once", async () => {
+    const { dataDir, dispatch } = await start();
+    // The agent's folder is the workspace: the repos are side by side in it (F-016).
+    const { spec } = taskFor("[[fake:write test1/CONTRIBUTING.md]]", "echo setting up\n");
+    dispatch(spec);
+    await waitForKind(spec, "session.ended");
+    await gateway.waitFor(() => host?.running().length === 0);
+    const events = eventsOf(spec).map((item) => item.event);
+    expect(kinds(spec)).toEqual(
+      expect.arrayContaining([
+        "environment.setup_started",
+        "environment.setup_output",
+        "environment.setup_finished",
+        "turn.started",
+        "tool.called",
+        "agent.message",
+        "turn.ended",
+        "git.pushed",
+        "session.ended",
+      ]),
+    );
+    expect(kinds(spec).indexOf("turn.started")).toBeLessThan(kinds(spec).indexOf("turn.ended"));
+    expect(kinds(spec).at(-1)).toBe("session.ended");
+    const ended = events.find((event) => event.kind === "session.ended");
+    expect(ended).toEqual({ kind: "session.ended", outcome: "with-changes", repos: [{ repoId: spec.repos[0]?.repoId, ahead: true }] });
+    const pushes = events.flatMap((event) => (event.kind === "git.pushed" ? [event.ref] : []));
+    expect(pushes).toEqual([`refs/heads/${spec.branchName}`, `refs/ostra/wip/${spec.taskId}`]);
+    expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("CONTRIBUTING.md");
+    expect(await upstream.commitMessage("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("Co-authored-by: Admin <admin@example.com>");
+    expect(gateway.acks.flatMap((ack) => ack.results)).toEqual(expect.arrayContaining([expect.objectContaining({ result: "accepted" })]));
+    expect(everyEventOnce()).toBe(true);
+    // The workspace is released.
+    expect(await readdir(path.join(dataDir, "tasks"))).toEqual([]);
+  }, 120_000);
+
+  it("ends a session with no changes as without-changes, pushing nothing", async () => {
+    const { dispatch } = await start();
+    const { spec } = taskFor("[[fake:say]]");
+    dispatch(spec);
+    await waitForKind(spec, "session.ended");
+    const ended = eventsOf(spec).find((item) => item.event.kind === "session.ended")?.event;
+    expect(ended).toMatchObject({ outcome: "without-changes" });
+    expect(kinds(spec)).not.toContain("git.pushed");
+    expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBeNull();
+  }, 120_000);
+
+  it("stops a running turn: pushes the hidden ref with the unfinished work, and sends no session.ended", async () => {
+    const { dataDir, dispatch } = await start();
+    const { spec } = taskFor("[[fake:silent]]");
+    dispatch(spec);
+    await waitForKind(spec, "turn.started");
+    await writeFile(path.join(dataDir, "tasks", spec.taskId, "workspace", "test1", "half-done.txt"), "unfinished\n");
+    gateway.sendCommand(
+      makeCommand({
+        seq: counter * 10 + 1,
+        id: `stop-${String(counter)}`,
+        notAfter: Date.now() + 120_000,
+        kind: "stop",
+        body: { taskId: spec.taskId, sessionId: spec.sessionId, leaseEpoch: spec.leaseEpoch, reason: "requested" },
+      }),
+    );
+    await gateway.waitFor(() => gateway.acks.some((ack) => ack.results.some((item) => item.id === `stop-${String(counter)}`)), 60_000);
+    const stopAck = gateway.acks.flatMap((ack) => ack.results).find((item) => item.id === `stop-${String(counter)}`);
+    expect(stopAck?.result).toBe("done");
+    await gateway.waitFor(() => kinds(spec).includes("git.pushed"));
+    expect(await upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toContain("half-done.txt");
+    expect(kinds(spec)).not.toContain("session.ended");
+    const ended = eventsOf(spec).find((item) => item.event.kind === "turn.ended")?.event;
+    expect(ended).toMatchObject({ stopReason: "cancelled" });
+    expect(everyEventOnce()).toBe(true);
+  }, 120_000);
+
+  it("pushes the hidden ref and sends session.crashed when the agent crashes mid-turn", async () => {
+    const { dispatch } = await start();
+    // The setup leaves an untracked file: work the crash must not lose.
+    const { spec } = taskFor("[[fake:crash]]", "echo 'set up' > setup-output.txt\n");
+    dispatch(spec);
+    await waitForKind(spec, "session.crashed");
+    const crashed = eventsOf(spec).find((item) => item.event.kind === "session.crashed")?.event;
+    expect(crashed?.kind === "session.crashed" ? crashed.error : "").toMatch(/exited mid-turn/);
+    expect(kinds(spec)).toContain("turn.failed");
+    expect(kinds(spec)).not.toContain("session.ended");
+    expect(await upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toContain("setup-output.txt");
+    expect(everyEventOnce()).toBe(true);
+  }, 120_000);
+
+  it("refuses to start an agent whose environment would hold a real credential", async () => {
+    const { dispatch } = await start();
+    const { spec } = taskFor("[[fake:say]]");
+    const [repo] = spec.repos;
+    if (repo === undefined) {
+      throw new Error("the spec has a repo");
+    }
+    // A variable whose value is the model's real token: the agent would get it in its environment.
+    const leaky: TaskSpec = {
+      ...spec,
+      environment: {
+        ...spec.environment,
+        repos: [{ repoId: repo.repoId, variables: [{ name: "LEAKED", value: MODEL_TOKEN, availableDuringSetup: false }], files: [], envFile: ".env" }],
+      },
+    };
+    const credentials = server.tasks.get(spec.taskId)?.credentials;
+    if (credentials === undefined) {
+      throw new Error("no credentials");
+    }
+    server.tasks.set(spec.taskId, { spec: leaky, credentials });
+    dispatch(leaky);
+    await waitForKind(leaky, "session.crashed");
+    const crashed = eventsOf(leaky).find((item) => item.event.kind === "session.crashed")?.event;
+    expect(crashed?.kind === "session.crashed" ? crashed.error : "").toContain("the model provider's token");
+    expect(kinds(leaky)).not.toContain("turn.started");
+  }, 120_000);
+
+  it("keeps every real credential out of the task root, the event stream and the logs", async () => {
+    const { dataDir, dispatch } = await start();
+    const { spec } = taskFor("[[fake:silent]]");
+    dispatch(spec);
+    await waitForKind(spec, "turn.started");
+    // While the agent runs: every file the runner wrote, the task root included.
+    const files: string[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else {
+          files.push(full);
+        }
+      }
+    };
+    await walk(dataDir);
+    expect(files.some((file) => file.includes(`${path.sep}tasks${path.sep}`))).toBe(true);
+    for (const file of files) {
+      const content = await readFile(file, "utf8").catch(() => "");
+      for (const secret of [MODEL_TOKEN, GIT_TOKEN, MCP_TOKEN]) {
+        expect(content.includes(secret), `${secret.slice(0, 6)}… in ${file}`).toBe(false);
+      }
+    }
+    await host?.shutdown();
+    const everything = JSON.stringify([eventsOf(spec), gateway.liveText, logs]);
+    for (const secret of [MODEL_TOKEN, GIT_TOKEN, MCP_TOKEN, ACCESS_TOKEN]) {
+      expect(everything.includes(secret)).toBe(false);
+    }
+  }, 120_000);
+});

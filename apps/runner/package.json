@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
+    "@ostra/adapter-executor-host": "workspace:*",
+    "@ostra/adapter-opencode": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/protocol": "workspace:*",
     "ws": "8.23.0",
