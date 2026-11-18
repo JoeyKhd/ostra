@@ -19,9 +19,9 @@ Every feature we've decided on, with a checkable "done when". It is the source o
 |---|---|---|---|---|
 | F-001 | One-command install | `docker compose up` with only the required settings brings up a working server with a built-in runner. The first person to sign up on a fresh install becomes its admin. | v1 | planned |
 | F-076 | Setup in the panel | After `docker compose up`, everything else happens in the panel: a first-run checklist covering the admin account, the GitHub App, Linear, boards and repos, an environment, a runner and the first task. A new team gets from `docker compose up` to its first agent-made PR in under 30 minutes *(working value)*. | v1 | planned |
-| F-002 | Team accounts | Members sign up and sign in with email and password or with GitHub (better-auth, ADR 0003). An admin invites people by email link and removes them. | v1 | planned |
+| F-002 | Team accounts | Members sign up and sign in with a username (or email) and password through better-auth (ADR 0003). An admin invites people and removes them, and can reset a password when no mail server is configured. Other sign-in methods (GitHub, SSO) come later (F-004). The maintainer, 2026-11-18: "better-auth is enough for now with username and password, we can enable more sign in methods later". | v1 | planned |
 | F-003 | Roles | Admins manage integrations, boards, runners, intake rules, agent profiles and members. Members pick tickets, drive and reopen, and see every task of their team, conversations included. There are no private tasks in v1. | v1 | planned |
-| F-004 | Enterprise sign-in | An admin connects the team's identity provider (OIDC or SAML), and members sign in through it. | later | planned |
+| F-004 | More sign-in methods | Members can also sign in with GitHub, or through the organization's identity provider (OIDC or SAML), as better-auth plugins an admin switches on. | later | planned |
 | F-049 | Several teams | An install holds more than one team. A member of one team never sees another team's tasks, boards, runners, profiles or credentials, and a test proves it for every kind of record (ADR 0010). | v1 | planned |
 
 ## Connecting the stack

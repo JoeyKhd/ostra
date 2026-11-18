@@ -6,6 +6,8 @@ The control panel is a web app. Members sign up, are invited and sign in through
 
 ## Consequences
 
-- The server is TypeScript (ADR 0008), so better-auth runs inside it. Its organization plugin, device authorization plugin (for runners signing in from a terminal) and GitHub sign-in are the parts ostra uses first (`research/platform-auth-github.md`).
+- The server is TypeScript (ADR 0008), so better-auth runs inside it.
+- **v1 sign-in is username (or email) and password only** (the maintainer, 2026-11-18). GitHub sign-in and SSO come later as plugins (F-004).
+- The first plugins ostra uses are the organization plugin and the device authorization plugin, for runners signing in from a terminal (`research/platform-auth-github.md`).
 - better-auth ships breaking changes in minor versions, so its version is pinned exactly.
 - better-auth's tables and ostra's share one Postgres database (ADR 0017).
