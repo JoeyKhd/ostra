@@ -15,7 +15,7 @@ Open-source, self-hostable control panel that connects a team's tracker (Linear,
 | Touching architecture, stack, data model or an adapter's design | `context/decisions/` |
 | Meeting something undecided | `context/open-questions.md`: add it there and settle it with the maintainer |
 | Researching an agent, tracker, vendor or similar tool | `context/research/` first: it may be answered there |
-| Building or restyling anything visual (a screen, a component, the docs site, a launch image) | `context/brand/brief.md` (palette, logo, type, voice), then the `ui-taste` skill, image first |
+| Building or restyling anything visual (a screen, a component, the docs site, a launch image) | `context/brand/brief.md` (palette, logo, type, voice) and `context/brand/app-design.md` (the console layout), then the `ui-taste` skill, image first |
 | Making or changing a brand file (logo, icon, social image) | `context/brand/assets.md`; made with the `higgsfield-brandkit` skill, whose state lives in `context/brand/kit/` |
 
 ## Definition of done

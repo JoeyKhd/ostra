@@ -1,0 +1,15 @@
+A desktop screen of ostra showing the organization's model providers and models. A straight-on, full-screen screenshot of a real production web app called ostra. No device frame, no browser chrome, no perspective, no shadows on the page. A dense, calm, professional infrastructure-console layout. Dark mode. Colors: page background deep blue-green near-black #0C1D21; cards #10262A with 1px borders #2F4A47; text warm off-white #F3F0E8; secondary text #CFD8D4. The selected tab and the selected left-menu item have a tinted background #1B3A39 with a thin off-white marker. Healthy and success statuses use a muted green #4FB286 with a small icon. Amber #FFB224 is used ONLY for things that need a person. The primary button is filled #F3F0E8 with dark #0C1D21 text. No gradients, no glow, no purple, no blue accents, no emoji. Type: headings in Manrope ExtraBold; interface text in IBM Plex Sans; IDs, branch names, commit hashes, times, model IDs, code and small uppercase section labels in IBM Plex Mono. Thin line icons. Every word perfectly legible and spelled exactly as given.
+Top bar 56px high: at the far left the attached logo mark (a light rounded square with one diagonal channel), then breadcrumb switchers separated by thin slashes: "Acme Corp ▾". On the right: a search field "Search  ⌘K", a bell icon with a small amber badge "5", a help icon, a filled off-white button "+ Create new", and a round avatar "AK".
+Below it a tab bar with small icons: Dashboard, Projects, Runner pools, Models, Insights, Members, Audit log, Settings. The tab "Models" is selected (tinted background).
+Resource header: a square icon tile with a sparkle-free chip icon, the title "Models" in Manrope, and at the right a filled off-white button "+ Add provider".
+A thin status strip with separated items: "5 providers"; "14 models enabled"; "catalog from models.dev · updated 1h ago".
+Left column 360px: a card "Providers" with rows, each with a small provider logo, a name and a small green pill "Connected": "Anthropic"; "OpenAI"; "Google"; "OpenRouter"; and "internal-vllm" with a server icon and mono "https://llm.acme.internal/v1".
+Main: a card "Enabled models" with a table, columns Model, Provider, Context, Input $/M, Output $/M, Tools, Used by. Rows:
+"Claude Sonnet 5.5 | Anthropic | 1M | $2.00 | $10.00 | yes | default · 9 projects";
+"Claude Opus 5.5 | Anthropic | 1M | $4.00 | $20.00 | yes | 3 projects";
+"GPT-6.2 Sol | OpenAI | 1.05M | $2.00 | $10.00 | yes | 4 projects";
+"Gemini 4 Carbon | Google | 1M | $2.00 | $10.00 | yes | 1 project";
+"Kimi K3.1 Pro | OpenRouter | 1M | $2.00 | $10.00 | yes | 2 projects";
+"DeepSeek V4 Flash | OpenRouter | 1M | $0.15 | $0.60 | yes | reviews";
+"qwen-coder | internal-vllm | 256k | — | — | yes | data-pipeline".
+A right-side drawer 420px wide is open, titled "Add provider", with labelled fields: "Name" showing "internal-vllm"; "API base URL" showing mono "https://llm.acme.internal/v1"; "Bearer token" masked with dots; "Model catalog" select showing "Custom (no models.dev entry)"; buttons "Test connection" (outline) and "Save provider" (filled off-white).
