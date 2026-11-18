@@ -1,0 +1,108 @@
+# The `kubernetes` executor needs only its own namespaces and a service account
+# scoped to them (ADR 0029). The cluster's autoscaler supplies elasticity.
+#
+# Pod Security levels:
+#   - ostra-boxes enforces `baseline`, not `restricted`: a box's init runs as
+#     root with SETUID/SETGID/KILL to start the agent as uid 1000, and the
+#     Postgres service needs CHOWN/SETUID/SETGID/DAC_OVERRIDE/FOWNER. Both are
+#     allowed by `baseline` and forbidden by `restricted`. `warn: restricted`
+#     keeps every gap visible on apply.
+#   - ostra-build enforces `privileged`: rootless BuildKit needs Unconfined
+#     seccomp and AppArmor for nested user namespaces, which `baseline`
+#     forbids. Only snapshot builds run there; never agent code.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ostra-boxes
+  labels:
+    app.kubernetes.io/part-of: ostra
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ostra-build
+  labels:
+    app.kubernetes.io/part-of: ostra
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ostra-box
+  namespace: ostra-boxes
+automountServiceAccountToken: false
+---
+# The pool runner's identity. It runs outside the boxes and creates and
+# removes box pods and snapshot Jobs, with only these rights.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ostra-box-runner
+  namespace: ostra-boxes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ostra-box-runner
+  namespace: ostra-boxes
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ostra-box-runner
+  namespace: ostra-boxes
+subjects:
+  - kind: ServiceAccount
+    name: ostra-box-runner
+    namespace: ostra-boxes
+roleRef:
+  kind: Role
+  name: ostra-box-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ostra-snapshot-builder
+  namespace: ostra-build
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ostra-snapshot-builder
+  namespace: ostra-build
+subjects:
+  - kind: ServiceAccount
+    name: ostra-box-runner
+    namespace: ostra-boxes
+roleRef:
+  kind: Role
+  name: ostra-snapshot-builder
+  apiGroup: rbac.authorization.k8s.io

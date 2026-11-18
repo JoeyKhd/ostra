@@ -1,0 +1,152 @@
+# A box as one pod (ADR 0029): the agent container, the sidecar container and a
+# service sidecar (Postgres), sharing one network namespace. The runner creates
+# this pod per task and deletes it when the task ends.
+#
+# The nonces and the box id are templated per task by the runner. Here they are
+# placeholders (${...}); the harness (src/harness/real-box.ts) or `envsubst`
+# fills them. The credentials are NOT in the pod spec.
+#
+# The handoff and the control API: the agent shares this pod's network
+# namespace, so loopback is the agent's too, and `kubectl port-forward` and
+# `kubectl exec` arrive from loopback as well. No address can tell the runner
+# from the agent. So the sidecar listens on Unix sockets in /run/ostra, an
+# emptyDir that ONLY the sidecar container mounts, and the runner delivers
+# with:
+#   kubectl exec -i -c sidecar <pod> -- node src/sidecar/handoff-client.ts < handoff.json
+#   kubectl exec -i -c sidecar <pod> -- node src/sidecar/control-client.ts < request.json
+#
+# Runtime: OSTRA_RUNTIME_CLASS=gvisor selects gVisor (deploy/gvisor/
+# runtimeclass.yaml); the docs recommend it. Empty runs on the node's default
+# runtime: the harness then drops the `runtimeClassName:` line (by hand:
+# envsubst < box-pod.yaml | sed '/runtimeClassName: *$/d').
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ostra-box-${OSTRA_BOX_ID}
+  namespace: ostra-boxes
+  labels:
+    app.kubernetes.io/part-of: ostra
+    ostra.dev/box: "${OSTRA_BOX_ID}"
+    ostra.dev/role: box
+spec:
+  runtimeClassName: ${OSTRA_RUNTIME_CLASS}
+  serviceAccountName: ostra-box
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  enableServiceLinks: false
+  # No pod DNS to other services; the agent resolves only what it needs through
+  # the sidecar. ClusterFirst is kept so the sidecar can resolve the provider.
+  shareProcessNamespace: false
+  securityContext:
+    runAsNonRoot: false # the init needs root to drop to the agent user; see each container
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    # ---- the agent's container: no credential, no capability ----
+    - name: agent
+      image: ostra/base:spike3
+      env:
+        - name: OSTRA_BOX_ID
+          value: "${OSTRA_BOX_ID}"
+        - name: OSTRA_BRIDGE_NONCE
+          valueFrom:
+            secretKeyRef:
+              name: ostra-box-${OSTRA_BOX_ID}
+              key: bridgeNonce
+        - name: OSTRA_BRIDGE_ADDR
+          value: "127.0.0.1:7101" # same pod, shared loopback
+        - name: OSTRA_AGENT_UID
+          value: "1000"
+        - name: OSTRA_AGENT_GID
+          value: "1000"
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+          # The init drops from root to uid 1000 to spawn the agent.
+          add: ["SETUID", "SETGID", "KILL"]
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      volumeMounts:
+        - { name: task, mountPath: /task }
+        - { name: tmp-agent, mountPath: /tmp }
+    # ---- the sidecar: holds the credentials, runs the proxies and the driver ----
+    - name: sidecar
+      image: ostra/runner:spike3
+      env:
+        - name: OSTRA_BOX_ID
+          value: "${OSTRA_BOX_ID}"
+        - name: OSTRA_HANDOFF_NONCE
+          valueFrom:
+            secretKeyRef:
+              name: ostra-box-${OSTRA_BOX_ID}
+              key: handoffNonce
+        - { name: OSTRA_SIDECAR_LISTEN, value: "0.0.0.0" }
+        - { name: OSTRA_HANDOFF_PORT, value: "7100" }
+        - { name: OSTRA_BRIDGE_PORT, value: "7101" }
+        - { name: OSTRA_CONTROL_PORT, value: "7102" }
+        - { name: OSTRA_KEY_PROXY_PORT, value: "7200" }
+        - { name: OSTRA_GIT_PROXY_PORT, value: "7201" }
+        # One pod, one network namespace: the agent shares loopback. The
+        # handoff and control API are on Unix sockets the agent can't reach;
+        # the TCP listeners left (bridge, proxies) refuse by address as well.
+        - { name: OSTRA_SHARED_NETNS, value: "1" }
+        - { name: OSTRA_HANDOFF_SOCKET, value: "/run/ostra/handoff.sock" }
+        - { name: OSTRA_CONTROL_SOCKET, value: "/run/ostra/control.sock" }
+        - { name: OSTRA_AGENT_NODE, value: "/usr/local/bin/node" }
+        - { name: OSTRA_ATTACK_CLI, value: "/opt/ostra/attack/cli.ts" }
+        - { name: OSTRA_SIDECAR_HOST_FOR_AGENT, value: "127.0.0.1" }
+        - { name: OSTRA_AGENT_TASK_ROOT, value: "/task" }
+        - { name: OSTRA_OPENCODE_COMMAND, value: "/opt/ostra/bin/opencode" }
+        - { name: OSTRA_AGENT_PATH_STYLE, value: "posix" }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests: { cpu: "250m", memory: 128Mi }
+        limits: { cpu: "1", memory: 256Mi }
+      volumeMounts:
+        - { name: task, mountPath: /task }
+        - { name: tmp-sidecar, mountPath: /tmp }
+        # The handoff and control sockets. Not mounted in the agent container.
+        - { name: sidecar-run, mountPath: /run/ostra }
+  # ---- the service sidecar: Postgres, reachable from the agent at 127.0.0.1 ----
+  initContainers:
+    - name: postgres
+      image: postgres:18.6-bookworm
+      restartPolicy: Always # a native sidecar (starts before the main containers, runs alongside)
+      env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ostra-box-${OSTRA_BOX_ID}
+              key: pgPassword
+        - { name: POSTGRES_DB, value: "app" }
+        - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"]
+      resources:
+        requests: { cpu: "250m", memory: 256Mi }
+        limits: { cpu: "1", memory: 512Mi }
+      volumeMounts:
+        - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumes:
+    - { name: task, emptyDir: {} }
+    - { name: pgdata, emptyDir: {} }
+    - { name: tmp-agent, emptyDir: { medium: Memory } }
+    - { name: tmp-sidecar, emptyDir: { medium: Memory } }
+    - { name: sidecar-run, emptyDir: { medium: Memory } }

@@ -1,0 +1,138 @@
+# One box on Docker (ADR 0029): the agent's container, the sidecar, a Postgres
+# service, on a private network. The pool runner builds this per task; here it
+# is a compose file so the box's shape can be read and run by hand, and so the
+# harness (`pnpm spike --real=docker`, src/harness/real-box.ts) can start many.
+#
+# Networks:
+#   - box-internal: `internal: true`, so the agent and the service have NO
+#     route off the host (the egress baseline's layer-3 half on Docker). The
+#     sidecar sits on it to reach the agent and Postgres.
+#   - box-egress: only the sidecar joins it, so only the sidecar reaches the
+#     model provider and GitHub. On Docker the agent's only exit is the
+#     sidecar's proxies. (In a Kubernetes pod it is not: see
+#     deploy/k8s/egress-baseline.networkpolicy.yaml.)
+#
+# Many boxes on one host: no fixed project name, subnet or host port. Each box
+# gets its own project (-p), its own /24, and ephemeral host ports on loopback
+# (find them with `docker compose -p <project> port sidecar 7100`).
+#
+# The handoff (the credentials) is delivered to the sidecar from OUTSIDE the
+# box by the runner, over the published handoff port; it is never in this
+# file. By hand:
+#
+#   export OSTRA_BOX_ID=box-demo OSTRA_BOX_SUBNET=10.89.0.0/24
+#   export OSTRA_HANDOFF_NONCE=$(openssl rand -base64 32) OSTRA_BRIDGE_NONCE=$(openssl rand -base64 32)
+#   export OSTRA_PGPASSWORD=$(openssl rand -hex 16)
+#   docker compose -p ostra-box-$OSTRA_BOX_ID -f deploy/docker/compose.box.yaml up -d
+#
+# then send the handoff to the handoff port (src/harness/real-box.ts does it).
+# gVisor: OSTRA_AGENT_RUNTIME=runsc (deploy/gvisor/daemon.json).
+
+services:
+  sidecar:
+    image: ostra/runner:spike3
+    init: false # tini is the image's entrypoint
+    networks:
+      - box-internal
+      - box-egress
+    environment:
+      OSTRA_BOX_ID: ${OSTRA_BOX_ID:?set OSTRA_BOX_ID}
+      OSTRA_HANDOFF_NONCE: ${OSTRA_HANDOFF_NONCE:?set OSTRA_HANDOFF_NONCE}
+      OSTRA_SIDECAR_LISTEN: 0.0.0.0
+      OSTRA_HANDOFF_PORT: "7100"
+      OSTRA_BRIDGE_PORT: "7101"
+      OSTRA_CONTROL_PORT: "7102"
+      OSTRA_KEY_PROXY_PORT: "7200"
+      OSTRA_GIT_PROXY_PORT: "7201"
+      # The agent and Postgres share this network; refuse handoff/control from it.
+      OSTRA_BOX_CIDRS: ${OSTRA_BOX_SUBNET:?set OSTRA_BOX_SUBNET}
+      OSTRA_SHARED_NETNS: "0"
+      OSTRA_SIDECAR_HOST_FOR_AGENT: sidecar
+      OSTRA_AGENT_TASK_ROOT: /task
+      OSTRA_OPENCODE_COMMAND: /opt/ostra/bin/opencode
+      OSTRA_AGENT_PATH_STYLE: posix
+      OSTRA_AGENT_NODE: /usr/local/bin/node
+      OSTRA_ATTACK_CLI: /opt/ostra/attack/cli.ts
+    # The handoff and control ports are published to the runner only, on the
+    # host loopback, on ephemeral host ports; never to the box networks.
+    ports:
+      - "127.0.0.1::7100" # handoff (runner -> sidecar)
+      - "127.0.0.1::7102" # control (runner -> sidecar)
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: "no"
+
+  agent:
+    image: ostra/base:spike3
+    # runc by default; runsc for the gVisor run (deploy/gvisor/daemon.json).
+    runtime: ${OSTRA_AGENT_RUNTIME:-runc}
+    networks:
+      - box-internal
+    environment:
+      OSTRA_BOX_ID: ${OSTRA_BOX_ID:?set OSTRA_BOX_ID}
+      # The init's one secret. The agent's user cannot read root's environ.
+      OSTRA_BRIDGE_NONCE: ${OSTRA_BRIDGE_NONCE:?set OSTRA_BRIDGE_NONCE}
+      OSTRA_BRIDGE_ADDR: sidecar:7101
+      OSTRA_AGENT_UID: "1000"
+      OSTRA_AGENT_GID: "1000"
+    depends_on:
+      sidecar:
+        condition: service_started
+    # The agent runs untrusted input: drop every capability, no privilege
+    # gain. The init (root, under tini) keeps only what it needs to start the
+    # agent as uid 1000 and to kill the agent's processes.
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /task:uid=1000,gid=1000,mode=0700
+    restart: "no"
+
+  postgres:
+    image: postgres:18.6-bookworm
+    networks:
+      - box-internal
+    environment:
+      POSTGRES_PASSWORD: ${OSTRA_PGPASSWORD:?set OSTRA_PGPASSWORD}
+      POSTGRES_DB: app
+    # A throwaway service for the task; its data never outlives the box.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+networks:
+  box-internal:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${OSTRA_BOX_SUBNET:?set OSTRA_BOX_SUBNET}
+  box-egress:
+    driver: bridge

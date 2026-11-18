@@ -1,0 +1,33 @@
+packages:
+  - "."
+
+# pnpm 11 holds back releases younger than its minimum age. These were pinned
+# on purpose, as in spike 1: OpenCode 2.3.2 is the version research/rivet.md
+# pins. It is a dev dependency here, for the loopback rehearsal only: the base
+# image fetches the Linux binary itself and checks its integrity.
+# vitest 5.1.1 (and the two @vitest packages it pins exactly) is the version
+# the root workspace and the other spikes use; it is excluded here for the
+# same reason the root's pnpm-workspace.yaml excludes it, so every package in
+# the repo tests with one vitest. Dev dependency only; never in an image.
+minimumReleaseAgeExclude:
+  - '@opencode/cli-darwin-arm64@2.3.2'
+  - '@opencode/cli-darwin-x64-baseline@2.3.2'
+  - '@opencode/cli-darwin-x64@2.3.2'
+  - '@opencode/cli-linux-arm64-musl@2.3.2'
+  - '@opencode/cli-linux-arm64@2.3.2'
+  - '@opencode/cli-linux-x64-baseline-musl@2.3.2'
+  - '@opencode/cli-linux-x64-baseline@2.3.2'
+  - '@opencode/cli-linux-x64-musl@2.3.2'
+  - '@opencode/cli-linux-x64@2.3.2'
+  - '@opencode/cli-windows-arm64@2.3.2'
+  - '@opencode/cli-windows-x64-baseline@2.3.2'
+  - '@opencode/cli-windows-x64@2.3.2'
+  - '@opencode/cli@2.3.2'
+  - '@vitest/mocker@5.1.1'
+  - '@vitest/spy@5.1.1'
+  - vitest@5.1.1
+
+# The OpenCode wrapper's postinstall only copies the platform binary over a
+# stub. The rehearsal resolves the binary from the platform package itself.
+allowBuilds:
+  '@opencode/cli': false

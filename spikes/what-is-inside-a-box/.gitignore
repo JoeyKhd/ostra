@@ -1,0 +1,12 @@
+node_modules/
+# Run records, temporary workspaces, image tarballs, snapshot contexts, logs
+.runs/
+*.tar
+*.tar.gz
+*.log
+# Secrets never live here, but block the usual files anyway
+.env
+.env.*
+*.pem
+*.key
+kubeconfig*

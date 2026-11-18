@@ -1,0 +1,87 @@
+# The base image (ADR 0046): the agent's container in every box, and the
+# default base image of an environment. It holds the tools, every v1 agent
+# pinned and checksum-verified, and a small init program. It holds NO
+# credential, and it never downloads an agent when a box starts.
+#
+# This spike pins OpenCode 2.3.2 (research/rivet.md). Its Linux x64 binary
+# ships in the npm platform package @opencode/cli-linux-x64@2.3.2; the package
+# tarball's sha512 is the one pnpm pinned in the lockfile, so the download is
+# verified against a value fixed at build time, not "latest" (R8 in rivet.md).
+#
+#   docker build -f deploy/docker/Dockerfile.base -t ostra/base:spike3 .
+
+# ---- stage 1: fetch and verify the pinned OpenCode binary ----
+FROM node:24.14.0-bookworm-slim AS opencode
+
+ARG OPENCODE_VERSION=2.3.2
+ARG OPENCODE_PKG=cli-linux-x64
+# sha512 of @opencode/cli-linux-x64@2.3.2's npm tarball (from pnpm-lock.yaml).
+ARG OPENCODE_TARBALL_SHA512=13db7151ce1f36dbee110522131f38878fdb77f2c965c007748bb4c9f6513fc28354fefd5a1ce111dec14dc909532bd651ce7c64ffe8fa77e07274d09ef7c983
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opencode
+RUN set -eu; \
+  url="https://registry.npmjs.org/@opencode/${OPENCODE_PKG}/-/${OPENCODE_PKG}-${OPENCODE_VERSION}.tgz"; \
+  curl -fsSL "$url" -o opencode.tgz; \
+  echo "${OPENCODE_TARBALL_SHA512}  opencode.tgz" | sha512sum -c -; \
+  tar -xzf opencode.tgz; \
+  install -m 0755 "package/bin/opencode" /opencode/opencode; \
+  /opencode/opencode --version; \
+  sha256sum /opencode/opencode | cut -d' ' -f1 > /opencode/opencode.sha256
+
+# ---- stage 2: the base image ----
+FROM node:24.14.0-bookworm-slim
+
+# tini is PID 1 and reaps the agent's orphans. git for the agent's own clones
+# through the git proxy. procps/lsof only for the attack checklist's probes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tini git ca-certificates procps lsof iproute2 \
+  && rm -rf /var/lib/apt/lists/*
+
+# The agent's user. No shell login, no sudo. The init (running as root under
+# tini) spawns the agent as this user. The node image already has a `node`
+# user at uid/gid 1000; it is removed so uid 1000 is `agent` everywhere
+# (compose, the pod, the snapshot's secret mount).
+RUN userdel -r node \
+  && groupadd --gid 1000 agent \
+  && useradd --create-home --uid 1000 --gid 1000 --shell /usr/sbin/nologin agent
+
+# The init and the attack checklist are TypeScript run by Node's type
+# stripping; their one runtime dependency is zod. Pin it into /opt/ostra so
+# Node resolves it from the init's and attack's parent directory. No other
+# dependency, and nothing is installed when a box starts.
+WORKDIR /opt/ostra
+# type: module, so Node runs the init's ESM TypeScript (top-level await) by
+# type stripping, with .ts import specifiers.
+RUN printf '{"name":"ostra-box","private":true,"type":"module"}\n' > package.json \
+  && npm install --no-audit --no-fund zod@4.6.7 \
+  && npm cache clean --force
+
+RUN install -d -o root -g root -m 0755 /opt/ostra/bin
+COPY --from=opencode /opencode/opencode /opt/ostra/bin/opencode
+COPY --from=opencode /opencode/opencode.sha256 /opt/ostra/opencode.sha256
+# Verify the binary again in the final image. The stage-1 digest is taken
+# right after the tarball's sha512 check; OPENCODE_BIN_SHA256, when given,
+# pins it from outside the build as well (the runner records it per release).
+ARG OPENCODE_BIN_SHA256=""
+RUN set -eu; \
+  expected="${OPENCODE_BIN_SHA256:-$(cat /opt/ostra/opencode.sha256)}"; \
+  echo "${expected}  /opt/ostra/bin/opencode" | sha256sum -c -; \
+  /opt/ostra/bin/opencode --version
+
+# The box's init program and the attack checklist, as source run by Node's
+# built-in type stripping (no build step, no tsx).
+COPY src/init /opt/ostra/init
+COPY src/bridge /opt/ostra/bridge
+COPY src/lib/process-tree.ts /opt/ostra/lib/process-tree.ts
+COPY src/attack /opt/ostra/attack
+RUN printf '#!/bin/sh\nexec node /opt/ostra/attack/cli.ts "$@"\n' > /opt/ostra/bin/attack \
+  && chmod 0755 /opt/ostra/bin/attack
+
+ENV PATH="/opt/ostra/bin:${PATH}"
+ENV OSTRA_AGENT_UID=1000 OSTRA_AGENT_GID=1000
+USER root
+# PID 1 is tini; it runs the init, which drops to the agent user to spawn work.
+ENTRYPOINT ["/usr/bin/tini", "--", "node", "/opt/ostra/init/main.ts"]

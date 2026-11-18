@@ -1,0 +1,79 @@
+# The snapshot build on Kubernetes (ADR 0038, ADR 0029): a rootless BuildKit
+# pod builds the snapshot image and pushes it to the project's registry. A
+# `kubernetes` pool requires a registry, because a cluster can only pull from
+# one. The runner creates this Job per snapshot build.
+#
+# Rootless: no privileged container, no host Docker socket. BuildKit runs as an
+# unprivileged user with user-namespace isolation; the only extra bits are the
+# seccomp/apparmor "unconfined" needed for nested user namespaces, as the
+# upstream rootless manifest documents. Those are forbidden by Pod Security
+# `baseline`, so the Job runs in its own namespace, ostra-build (enforce
+# `privileged`), never next to the boxes (namespace.yaml).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ostra-snapshot-${OSTRA_SNAPSHOT_ID}
+  namespace: ostra-build
+  labels:
+    app.kubernetes.io/part-of: ostra
+    ostra.dev/role: snapshot-build
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        ostra.dev/role: snapshot-build
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: buildkit
+          image: moby/buildkit:v0.35.0-rootless
+          # A daemon for this one build, then the build (the upstream Job form).
+          command: ["buildctl-daemonless.sh"]
+          args:
+            - build
+            - --frontend=dockerfile.v0
+            - --local=context=/context
+            - --local=dockerfile=/context
+            - --secret=id=npm_token,src=/run/ostra-secrets/npm_token
+            - --output=type=image,name=${OSTRA_REGISTRY}/${OSTRA_PROJECT}/snapshot:${OSTRA_SNAPSHOT_ID},push=true
+          env:
+            - name: BUILDKITD_FLAGS
+              value: --oci-worker-no-process-sandbox
+          securityContext:
+            # Rootless: NOT privileged. Runs as uid 1000 inside the image, as
+            # the upstream rootless Job does. allowPrivilegeEscalation and a
+            # capability drop are left at their defaults: rootlesskit maps its
+            # user namespace with the setuid newuidmap/newgidmap helpers, which
+            # no_new_privs would disable (to confirm on the first cluster run).
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: Unconfined # required for nested user namespaces
+            appArmorProfile:
+              type: Unconfined # the field form; the beta annotation is deprecated
+          resources:
+            requests: { cpu: "1", memory: 1Gi }
+            limits: { cpu: "4", memory: 4Gi }
+          volumeMounts:
+            - { name: context, mountPath: /context, readOnly: true }
+            - { name: buildkitd, mountPath: /home/user/.local/share/buildkit }
+            - { name: secrets, mountPath: /run/ostra-secrets, readOnly: true }
+            - { name: registry-auth, mountPath: /home/user/.docker, readOnly: true }
+      volumes:
+        # The runner stages the generated Dockerfile and the repo checkouts here.
+        - name: context
+          emptyDir: {}
+        - name: buildkitd
+          emptyDir: {}
+        # Setup secrets, mounted for the build only; never baked into a layer.
+        - name: secrets
+          secret:
+            secretName: ostra-snapshot-${OSTRA_SNAPSHOT_ID}-secrets
+            optional: true
+        - name: registry-auth
+          secret:
+            secretName: ostra-registry-auth

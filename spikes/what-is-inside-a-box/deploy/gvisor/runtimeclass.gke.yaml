@@ -1,0 +1,16 @@
+# The gVisor RuntimeClass for GKE Sandbox only: it schedules gVisor pods onto
+# the node pool GKE labels and taints for the sandbox runtime. Elsewhere (k3s,
+# kind, any containerd node with runsc) use runtimeclass.yaml.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+scheduling:
+  nodeSelector:
+    sandbox.gke.io/runtime: gvisor
+  tolerations:
+    - key: sandbox.gke.io/runtime
+      operator: Equal
+      value: gvisor
+      effect: NoSchedule

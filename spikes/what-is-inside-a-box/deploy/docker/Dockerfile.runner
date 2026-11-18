@@ -1,0 +1,36 @@
+# The runner image (ADR 0046): the `ostra` CLI, as the pool runner and as the
+# sidecar of every box. It holds the credentials for a task in memory and runs
+# the proxies and the ACP driver. It never carries the agent's tools, and the
+# agent's container never carries a credential (ADR 0029, ADR 0030).
+#
+# This spike builds only the sidecar mode (`ostra --sidecar`, here
+# `node src/sidecar/cli.ts`). The pool runner that creates and removes boxes
+# is milestone 1/5 product code; the compose file and the k8s manifests stand
+# in for it by starting the sidecar directly.
+#
+#   docker build -f deploy/docker/Dockerfile.runner -t ostra/runner:spike3 .
+
+FROM node:24.14.0-bookworm-slim
+
+# git serves the stub upstream in this spike (git http-backend) and the real
+# sidecar runs the git proxy; curl is for health checks only.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tini git ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin sidecar
+WORKDIR /opt/ostra
+
+# Exact, pinned dependencies only. The sidecar depends on @agentclientprotocol
+# and zod; OpenCode is NOT installed here (it belongs to the base image).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable \
+  && corepack prepare pnpm@11.28.2 --activate \
+  && pnpm install --frozen-lockfile --prod --ignore-scripts
+
+COPY src ./src
+
+ENV NODE_ENV=production
+# The sidecar listens inside the box network only; it drops to a non-root user.
+USER sidecar
+ENTRYPOINT ["/usr/bin/tini", "--", "node", "src/sidecar/cli.ts"]

@@ -1,0 +1,70 @@
+# The egress baseline on Kubernetes (ADR 0031, F-116): a box can't reach
+# private address ranges, the cloud metadata address, or another box. This is
+# the standard-NetworkPolicy half (layer 3/4): it understands CIDRs, so it
+# blocks ranges and allows the public internet. Name-based allowlists per
+# environment (F-052) need Cilium `toFQDNs` and come later.
+#
+# Standard NetworkPolicy has no "deny" rule; it is allow-list only. So the
+# egress rule allows all public IPv4/IPv6 EXCEPT the blocked ranges, carved out
+# with `except`. Default-deny for everything not matched is implied once any
+# egress rule exists for the pod.
+#
+# KNOWN DIFFERENCE FROM DOCKER (runner parity, to record in ADR 0031): a
+# NetworkPolicy selects pods, not containers. The agent shares the pod's
+# network namespace with the sidecar, so these rules are the agent's rules
+# too: in a pod the agent has DIRECT egress to the public internet, while on
+# Docker its only exit is the sidecar (an `internal: true` network). Standard
+# NetworkPolicy can't express per-container egress. What closes the gap is the
+# per-environment allowlist (F-052, Cilium `toFQDNs`), or a pod design where
+# the agent's container has its own network namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ostra-egress-baseline
+  namespace: ostra-boxes
+spec:
+  podSelector:
+    matchLabels:
+      ostra.dev/role: box
+  policyTypes:
+    - Egress
+    - Ingress
+  egress:
+    # DNS to the cluster resolver only (kube-dns / CoreDNS in kube-system).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # The public internet, with every private/special range carved out. The
+    # sidecar needs it for the model provider and GitHub; the agent, in the
+    # same network namespace, gets it too (see the known difference above).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8          # private
+              - 172.16.0.0/12       # private
+              - 192.168.0.0/16      # private
+              - 169.254.0.0/16      # link-local, incl. 169.254.169.254 metadata
+              - 100.64.0.0/10       # carrier-grade NAT
+              - 127.0.0.0/8         # loopback
+              - 192.0.0.0/24
+              - 198.18.0.0/15
+              - 224.0.0.0/4         # multicast
+        - ipBlock:
+            cidr: "::/0"
+            except:
+              - "fc00::/7"          # unique-local
+              - "fe80::/10"         # link-local
+              - "::1/128"           # loopback
+              - "ff00::/8"          # multicast
+  # No ingress rules with Ingress in policyTypes means default-deny ingress:
+  # no pod may open a connection to a box (box-to-box is denied both ways).
+  # The runner doesn't use the pod network at all: it delivers the handoff and
+  # drives the control API with `kubectl exec -c sidecar` over the sidecar's
+  # Unix sockets (box-pod.yaml). Those sockets are what keep the agent out;
+  # this policy keeps other pods out.
+  ingress: []
