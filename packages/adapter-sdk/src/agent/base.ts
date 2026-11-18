@@ -69,6 +69,12 @@ export type AgentIo = {
   readonly stdin: Writable;
   readonly stdout: Readable;
   readonly stderr: Readable;
+  /**
+   * The agent's PID in the executor's own process namespace, when it has one. With it the driver
+   * ends the agent's process tree itself when a cancel goes unanswered, and on close. An executor's
+   * `AgentProcess` fits this type as it is.
+   */
+  readonly pid?: number | null;
 };
 
 /** An ACP `session/update`'s update, as the agent sent it: vendor-owned, so loose. */
@@ -117,7 +123,15 @@ export type DriverConnection = {
   readonly prompt: (agentSessionId: string, text: string) => Promise<AdapterResult<{ readonly stopReason: StopReason }>>;
   readonly cancel: (agentSessionId: string) => Promise<void>;
   readonly steer: (agentSessionId: string, text: string) => Promise<AdapterResult<void>>;
-  /** Ends the connection; the executor ends the process. */
+  /**
+   * Sets a session config option (the model, for one) and returns the `session.config_changed`
+   * event for the caller to number and spool: the driver emits it itself, because an agent sends no
+   * update for a change ostra made.
+   */
+  readonly setConfigOption?: (agentSessionId: string, configId: string, value: string) => Promise<AdapterResult<readonly TaskEvent[]>>;
+  /** Sets the session's mode, with the same event. */
+  readonly setMode?: (agentSessionId: string, modeId: string) => Promise<AdapterResult<readonly TaskEvent[]>>;
+  /** Ends the connection, and the agent's process tree when the driver knows its PID. */
   readonly close: () => Promise<void>;
 };
 
@@ -133,6 +147,13 @@ export type DriverPort = {
   readonly connect: (io: AgentIo, handlers: DriverHandlers) => Promise<AdapterResult<DriverConnection>>;
   /** The ACP-to-ostra mapping every agent shares (ADR 0018). */
   readonly mapUpdate: (update: AcpUpdate, context: MapContext) => readonly TaskEvent[];
+  /**
+   * The turn ended: the events the mapping held back until now (the open text segment, the turn's
+   * context usage). A driver whose mapping holds nothing back omits it.
+   */
+  readonly finishTurn?: (context: MapContext) => readonly TaskEvent[];
+  /** The session is over: drops what the mapping kept for it. */
+  readonly closeSession?: (sessionId: SessionId) => void;
 };
 
 // ---------- sessions ----------
@@ -175,6 +196,7 @@ export abstract class AgentAdapter {
   readonly #driver: DriverPort;
   #plumbing: Plumbing | undefined;
   readonly #turns = new Map<string, TurnId>();
+  readonly #emitters = new Map<string, (events: readonly TaskEvent[]) => void>();
 
   constructor(driver: DriverPort, context: AdapterContext = defaultAdapterContext) {
     this.#driver = driver;
@@ -202,6 +224,7 @@ export abstract class AgentAdapter {
       return adapterError("unsupported", `${this.name} can't resume its own sessions`);
     }
     const sessionKey = String(input.sessionId);
+    this.#emitters.set(sessionKey, input.onEvents);
     const connected = await this.#driver.connect(input.io, {
       onUpdate: (_agentSessionId, update) => {
         const turnId = this.#turns.get(sessionKey);
@@ -219,6 +242,7 @@ export abstract class AgentAdapter {
       onQuestion: input.onQuestion,
     });
     if (!connected.ok) {
+      this.#emitters.delete(sessionKey);
       return connected;
     }
     const connection = connected.value;
@@ -238,10 +262,27 @@ export abstract class AgentAdapter {
       : created;
   }
 
-  /** Runs one turn: the member's prompt, until the agent's stop reason. */
+  /**
+   * Runs one turn: the member's prompt, until the agent's stop reason. The turn's own events go out
+   * through `onEvents` with the agent's: `turn.started` first, then what the mapping held back
+   * (the open text segment, the context usage), then `turn.ended` with the stop reason, or
+   * `turn.failed` when the agent couldn't finish. The caller writes `user.message` and numbers
+   * the events; it doesn't write these (F-023).
+   */
   async prompt(session: AgentSession, turnId: TurnId, text: string): Promise<AdapterResult<{ readonly stopReason: StopReason }>> {
-    this.#turns.set(String(session.sessionId), turnId);
-    return session.connection.prompt(session.agentSessionId, text);
+    const key = String(session.sessionId);
+    const emit = this.#emitters.get(key);
+    this.#turns.set(key, turnId);
+    emit?.([{ kind: "turn.started", turnId }]);
+    const result = await session.connection.prompt(session.agentSessionId, text);
+    const held = this.#driver.finishTurn?.({ taskId: session.taskId, sessionId: session.sessionId, turnId }) ?? [];
+    emit?.([
+      ...held,
+      result.ok
+        ? { kind: "turn.ended", turnId, stopReason: result.value.stopReason }
+        : { kind: "turn.failed", turnId, error: result.error.message.slice(0, 4000) },
+    ]);
+    return result;
   }
 
   /** Cancels the running turn; the prompt then resolves with `cancelled`. */
@@ -259,7 +300,10 @@ export abstract class AgentAdapter {
 
   /** Ends the session's connection. */
   async close(session: AgentSession): Promise<void> {
-    this.#turns.delete(String(session.sessionId));
+    const key = String(session.sessionId);
+    this.#turns.delete(key);
+    this.#emitters.delete(key);
+    this.#driver.closeSession?.(session.sessionId);
     await session.connection.close();
   }
 }

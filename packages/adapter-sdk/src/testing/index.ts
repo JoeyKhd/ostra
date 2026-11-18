@@ -11,3 +11,6 @@ export * from "./first-case-suites.ts";
 export * from "./stub-models/types.ts";
 export * from "./stub-models/scenario.ts";
 export * from "./stub-models/server.ts";
+export * from "./spawn-agent.ts";
+export * from "./fake-acp-agent/agent.ts";
+export * from "./fake-acp-agent/fake-agent-adapter.ts";
