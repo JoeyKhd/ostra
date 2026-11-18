@@ -45,6 +45,12 @@ export const LFS_REDIRECT_PROBE_HREFS = [
   // The one that is allowed: GitHub's own LFS storage host.
   'https://github-cloud.githubusercontent.com/alambic/media/objects',
 ] as const;
+// A batch for this ref answers one object whose upload is on an allowed host
+// and whose verify is on a hostile one: the proxy must refuse the whole
+// object, not keep the upload without its verify.
+export const LFS_MIXED_PROBE_REF = 'refs/heads/ostra-spike4-lfs-mixed-probe';
+export const LFS_MIXED_PROBE_UPLOAD = 'https://github-cloud.s3.amazonaws.com/github-cloud/releases/objects';
+export const LFS_MIXED_PROBE_VERIFY = 'https://169.254.169.254/verify';
 export type StubConfig = z.infer<typeof StubConfigSchema>;
 
 export type StubRequestRecord = {
@@ -230,6 +236,23 @@ export const startUpstreamStub = async (config: StubConfig): Promise<{ port: num
     if (!parsed.success) {
       res.writeHead(422, { 'content-type': 'application/vnd.git-lfs+json' });
       res.end(JSON.stringify({ message: 'bad batch' }));
+      return;
+    }
+    if (parsed.data.ref?.name === LFS_MIXED_PROBE_REF) {
+      res.writeHead(200, { 'content-type': 'application/vnd.git-lfs+json' });
+      res.end(
+        JSON.stringify({
+          transfer: 'basic',
+          objects: parsed.data.objects.map(({ oid, size }) => ({
+            oid,
+            size,
+            actions: {
+              upload: { href: LFS_MIXED_PROBE_UPLOAD, header: { Authorization: expectedLfsAuth }, expires_in: 900 },
+              verify: { href: LFS_MIXED_PROBE_VERIFY, header: { Authorization: expectedLfsAuth }, expires_in: 900 },
+            },
+          })),
+        }),
+      );
       return;
     }
     if (parsed.data.ref?.name === LFS_REDIRECT_PROBE_REF) {

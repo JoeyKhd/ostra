@@ -90,7 +90,7 @@ const PARTS: Readonly<Record<Part, { readonly bullet: BulletId | null; readonly 
   },
   linear: { bullet: 5, text: "Linear's GitHub integration links a PR the App opened." },
   processes: { bullet: null, text: 'No process or server is left running after the run.' },
-  'left-behind': { bullet: null, text: 'Nothing the run made on GitHub or Linear is left behind.' },
+  'left-behind': { bullet: null, text: 'No ref, PR or issue the run made on GitHub or Linear is left behind (LFS objects stay in the sandbox repo, which the run cannot remove).' },
 };
 
 // What a bullet needs to be met: each part, on GitHub (the container for the
@@ -122,9 +122,26 @@ type Row = {
   readonly status: Status;
   readonly note: string;
   readonly checks: readonly Check[];
+  // The large pack's size as pushed, in MiB: set on the 'large' row only.
+  readonly packMb?: number;
 };
 
-const passStatus = (where: Where): Status => (where === 'local stand-in' ? 'LOCAL-ONLY' : 'PASS');
+// The pass bar names a 500 MB pack. A shorter one is evidence of something
+// else, so it never counts toward bullet 3.
+const PASS_BAR_PACK_MB = 500;
+const isShortPack = (row: Row): boolean => row.packMb !== undefined && row.packMb > 0 && row.packMb < PASS_BAR_PACK_MB;
+
+// The wording of a row: the part's, reworded for the stand-in, and for the
+// large pack, with the size actually pushed.
+const rowText = (row: Row): string => {
+  const spec = PARTS[row.part];
+  if (isShortPack(row) && row.packMb !== undefined) {
+    return `LFS, a shallow clone and a 500 MB pack work, or their limits are written down: a ${String(row.packMb)} MiB pack (short of the ${String(PASS_BAR_PACK_MB)} MiB the bar names, so no evidence for it).`;
+  }
+  return row.where === 'local stand-in' && spec.local !== undefined ? spec.local : spec.text;
+};
+
+const passStatus =(where: Where): Status => (where === 'local stand-in' ? 'LOCAL-ONLY' : 'PASS');
 
 const fromChecks = (part: Part, where: Where, checks: readonly Check[], note = ''): Row => ({
   part,
@@ -153,7 +170,7 @@ const failed = (part: Part, where: Where, err: unknown): Row => ({
   checks: [],
 });
 
-const gitRows = (report: ScenarioReport, where: Where): Row[] => {
+const gitRows = (report: ScenarioReport, where: Where, largePackMb: number): Row[] => {
   const g = (k: ScenarioGroup): GroupResult => report.groups[k];
   const readOnly = g('read-only');
   const refusalsGroup = g('refusals');
@@ -167,7 +184,7 @@ const gitRows = (report: ScenarioReport, where: Where): Row[] => {
     fromGroup('token-renewal', where, g('token-renewal')),
     fromGroup('lfs', where, g('lfs')),
     fromGroup('shallow', where, g('shallow')),
-    fromGroup('large', where, g('large-pack')),
+    { ...fromGroup('large', where, g('large-pack')), packMb: largePackMb },
   ];
 };
 
@@ -236,7 +253,7 @@ const main = async (): Promise<number> => {
         largePackSkipReason: 'SPIKE_LARGE_PACK_MB=0',
         keep,
       });
-      rows.push(...gitRows(report, 'local stand-in'));
+      rows.push(...gitRows(report, 'local stand-in', env.SPIKE_LARGE_PACK_MB));
       metrics['local'] = report.metrics;
     } catch (err: unknown) {
       rows.push(failed('git', 'local stand-in', err));
@@ -273,7 +290,7 @@ const main = async (): Promise<number> => {
             largePackSkipReason: 'needs SPIKE_GITHUB_LARGE_PACK=1 (pushes the large pack to the sandbox repo)',
             keep,
           });
-          rows.push(...gitRows(report, 'GitHub'));
+          rows.push(...gitRows(report, 'GitHub', env.SPIKE_GITHUB_LARGE_PACK === '1' ? env.SPIKE_LARGE_PACK_MB : 0));
           metrics['github'] = report.metrics;
         } finally {
           await gh.close();
@@ -335,8 +352,7 @@ const main = async (): Promise<number> => {
 
   console.log('');
   for (const row of rows) {
-    const spec = PARTS[row.part];
-    const text = row.where === 'local stand-in' && spec.local !== undefined ? spec.local : spec.text;
+    const text = rowText(row);
     console.log(`${row.status.padEnd(10)} [${row.where}] ${text}${row.note === '' ? '' : `\n           ${row.note}`}`);
     for (const c of row.checks) console.log(`           ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
   }
@@ -351,9 +367,10 @@ const main = async (): Promise<number> => {
     const needs = REQUIRED[bullet.id];
     const unmet = needs.flatMap(({ part, where }) => {
       const row = rows.find((r) => r.part === part && r.where === where);
+      if (row?.status === 'PASS' && isShortPack(row)) return [`${part} on ${where}: PASS at ${String(row.packMb)} MiB, short of ${String(PASS_BAR_PACK_MB)} MiB`];
       return row?.status === 'PASS' ? [] : [`${part} on ${where}: ${row?.status ?? 'not run'}`];
     });
-    const localOnly = needs.flatMap(({ part }) => (rows.some((r) => r.part === part && r.status === 'LOCAL-ONLY') ? [part] : []));
+    const localOnly = needs.flatMap(({ part }) => (rows.some((r) => r.part === part && r.status === 'LOCAL-ONLY' && !isShortPack(r)) ? [part] : []));
     if (unmet.length === 0) met += 1;
     if (localOnly.length > 0) withLocal += 1;
     verdicts.push({ bullet: bullet.id, met: unmet.length === 0, missing: unmet, localOnly });
@@ -364,7 +381,9 @@ const main = async (): Promise<number> => {
   const counts: Record<Status, number> = { PASS: 0, 'LOCAL-ONLY': 0, FAIL: 0, SKIPPED: 0 };
   for (const row of rows) counts[row.status] += 1;
   console.log(`\npass bar: ${String(met)} of ${String(PASS_BAR.length)} bullets met on GitHub (${String(withLocal)} with local-only evidence)`);
-  console.log(`left behind on GitHub or Linear: ${leftBehind.length === 0 ? 'nothing' : leftBehind.join('; ')}`);
+  console.log(
+    `left behind on GitHub or Linear: ${leftBehind.length === 0 ? 'no refs, PRs or issues' : leftBehind.join('; ')}. Not removed: LFS objects pushed to the sandbox repo stay in its LFS storage.`,
+  );
   console.log(
     `${String(counts.PASS)} PASS, ${String(counts['LOCAL-ONLY'])} LOCAL-ONLY, ${String(counts.FAIL)} FAIL, ${String(counts.SKIPPED)} SKIPPED in ${((Date.now() - started) / 1000).toFixed(0)} s`,
   );

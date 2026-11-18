@@ -10,7 +10,7 @@ import { makeAgentWorld, runGit, scanForSecrets, secretVariants, type AgentWorld
 import { TaskIdSchema, type RepoSlug, type TaskId } from '../ids.ts';
 import type { Logger } from '../log.ts';
 import { describeRefusal, hiddenRefFor, type TaskGitPolicy } from '../policy.ts';
-import { LFS_REDIRECT_PROBE_HREFS, LFS_REDIRECT_PROBE_REF } from '../upstream-stub.ts';
+import { LFS_MIXED_PROBE_REF, LFS_REDIRECT_PROBE_HREFS, LFS_REDIRECT_PROBE_REF } from '../upstream-stub.ts';
 import type { GitTarget, TargetLabel } from './target.ts';
 
 export type Check = { readonly name: string; readonly ok: boolean; readonly detail: string };
@@ -482,7 +482,7 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
     // The full clone has every commit, so it can count the shallow clone's
     // history in full.
     await git(['fetch', '-q', 'origin'], work);
-    const sc =await git(['clone', '--depth', '1', '--branch', branch, remote, shallow], ws);
+    const sc = await git(['clone', '--depth', '1', '--branch', branch, remote, shallow], ws);
     const scHead = sc.code === 0 ? await head(shallow) : '?';
     const scFull = sc.code === 0 ? await count(work, scHead) : '?';
     const depth = sc.code === 0 ? await count(shallow) : '?';
@@ -583,6 +583,7 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
     await git(['add', '.gitattributes', path.join('assets', `${taskId}.bin`)], work);
     await git(['commit', '-q', '-m', 'spike 4: an LFS object'], work);
     const lfsBefore = proxy.stats().upstreamRequests;
+    const lfsLogFrom = logger.records().length;
     const lfsPush = await git(['push', 'origin', `HEAD:${branchRef}`], work);
     const lfsMid = proxy.stats().upstreamRequests;
     lfs.push({
@@ -605,6 +606,21 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
       name: 'clone downloads the LFS object through the proxy',
       ok: lfsc.code === 0 && lfsHash === blobHash,
       detail: lfsc.code === 0 ? (lfsHash === blobHash ? 'content matches' : `content ${lfsHash === 'missing' ? 'missing' : 'differs (pointer only?)'}`) : brief(lfsc),
+    });
+    // Recorded for the finding: where the upstream sent each LFS action and
+    // its expires_in. Host names only: a URL's path and query are a signature.
+    const lfsBatches = logger
+      .records()
+      .slice(lfsLogFrom)
+      .filter((r) => r.event === 'proxy.lfs.batch');
+    const lfsOffered = lfsBatches.flatMap((r) => {
+      const kept = r['keptActions'];
+      return Array.isArray(kept) ? [`${String(r['operation'])}: ${kept.join(', ')}`] : [];
+    });
+    lfs.push({
+      name: 'the LFS actions the upstream offered: operation, action, host and expires_in (recorded)',
+      ok: true,
+      detail: lfsOffered.length === 0 ? 'none logged' : lfsOffered.join('; '),
     });
     if (target.lfsRedirectProbe) {
       // A batch answer whose actions point outside the upstream: the proxy
@@ -637,6 +653,23 @@ export const runGitScenarios = async (target: GitTarget, options: ScenarioOption
           refusedWithError === LFS_REDIRECT_PROBE_HREFS.length - 1 &&
           actionsAfter === actionsBefore,
         detail: `${n(LFS_REDIRECT_PROBE_HREFS.length)} actions offered, ${n(kept.length)} kept (want 1: GitHub's storage host), ${n(refusedWithError)} objects refused with the proxy's error, ${n(actionsAfter - actionsBefore)} called`,
+      });
+      // All or nothing per object: an upload on an allowed host with its
+      // verify on a hostile one must come back as an error with no actions.
+      const mixedBefore = proxy.stats().upstreamRequests['lfs-action'];
+      const mixedRes = await fetch(`${proxy.url}/${target.repo}.git/info/lfs/objects/batch`, {
+        method: 'POST',
+        headers: { accept: 'application/vnd.git-lfs+json', 'content-type': 'application/vnd.git-lfs+json' },
+        body: JSON.stringify({ operation: 'upload', ref: { name: LFS_MIXED_PROBE_REF }, objects: [{ oid: randomBytes(32).toString('hex'), size: 1 }] }),
+      });
+      const mixed = LfsBatchAnswerSchema.safeParse(await mixedRes.json().catch(() => null));
+      const mixedObject = mixed.success && mixed.data.objects.length === 1 ? mixed.data.objects[0] : undefined;
+      const mixedActions = Object.keys(mixedObject?.actions ?? {}).length;
+      const mixedAfter = proxy.stats().upstreamRequests['lfs-action'];
+      lfs.push({
+        name: "an object whose upload is on an allowed host and whose verify is on a hostile one gets the proxy's error and no actions (all or nothing per object)",
+        ok: mixedRes.status === 200 && mixedObject?.error?.message === LFS_ACTION_REFUSED_MESSAGE && mixedActions === 0 && mixedAfter === mixedBefore,
+        detail: `status ${String(mixedRes.status)}, ${mixedObject === undefined ? 'no single object' : `error ${mixedObject.error === undefined ? 'absent' : String(mixedObject.error.code)}`}, ${n(mixedActions)} actions kept (want 0), ${n(mixedAfter - mixedBefore)} called`,
       });
     }
 

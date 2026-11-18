@@ -516,6 +516,9 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
     let refusedObjects = 0;
     // Host names only: an action's path and query carry its signature.
     const droppedHosts = new Set<string>();
+    // What the upstream offered and the proxy kept: the action, its host and
+    // its expires_in, never the URL.
+    const keptActions: string[] = [];
     const objects = answer.data.objects.map((object) => {
       if (object.actions === undefined) return object;
       const entries = Object.entries(object.actions).map(([name, action]) => ({ name, action, href: new URL(action.href) }));
@@ -530,6 +533,7 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       }
       const actions: Record<string, { href: string; expires_in: number }> = {};
       for (const { name, action, href } of entries) {
+        keptActions.push(`${name} ${href.host.toLowerCase()} expires_in=${action.expires_in === undefined ? 'none' : String(action.expires_in)}`);
         const ttl = Math.min(action.expires_in ?? LFS_ACTION_MAX_TTL_S, LFS_ACTION_MAX_TTL_S);
         const nonce = randomBytes(24).toString('base64url');
         const actionHeaders = action.header ?? {};
@@ -554,6 +558,7 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       dropped,
       refusedObjects,
       droppedHosts: [...droppedHosts],
+      keptActions,
     });
     res.writeHead(200, { 'content-type': 'application/vnd.git-lfs+json' });
     res.end(JSON.stringify({ ...answer.data, objects }));
@@ -593,7 +598,9 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       lfsError(res, 403, 'read-only', describeRefusal('read-only'));
       return;
     }
-    const base: Record<string, string> = { ...action.headers, ...userAgentOf(req) };
+    const base: Record<string, string> = { ...action.headers };
+    // The action's own User-Agent, in whatever case, wins over the client's.
+    if (!Object.keys(base).some((k) => k.toLowerCase() === 'user-agent')) base['user-agent'] = userAgentOf(req)['user-agent'];
     for (const name of ['content-type', 'content-length', 'accept'] as const) {
       const v = headerOne(req, name);
       if (v !== undefined) base[name] = v;
