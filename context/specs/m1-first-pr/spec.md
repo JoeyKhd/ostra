@@ -361,4 +361,4 @@ Each is the smallest choice that unblocks milestone 1. If the maintainer disagre
 7. **Variables and secrets on `host`.** Each repo's variables and secrets are written to that repo's checkout, as the environment says (a `.env` file by default, or the file path given), and its setup script runs with them in its environment. Nothing is shared across repos.
 8. **One session is one turn,** and a task in review stays there until milestone 2's ticket sync (section 4).
 9. **The setup shell on Windows.** The `host` executor runs a setup script with `bash` from `PATH` (Git Bash on Windows), set by `OSTRA_RUNNER_SHELL`.
-10. **Branch names.** `ostra/<first 8 characters of the task ID>-<slug of the title>`, the same in every repo of the task.
+10. **Branch names.** `ostra/<last 8 hex digits of the task ID>-<slug of the title>`, the same in every repo of the task. (Changed by ticket 39 from the first 8 characters: a UUIDv7 starts with its timestamp, so tasks made within about a minute shared them, and the same prompt twice got the same branch.)

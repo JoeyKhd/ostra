@@ -33,7 +33,8 @@ describe("tasks.create (F-097)", () => {
     const created = await (await harness.as(a.member)).tasks.create({ projectId, prompt });
 
     expect(created.branchName).toMatch(/^ostra\/[0-9a-f]{8}-add-a-short-contributing-md-that-explain$/);
-    expect(created.branchName.startsWith(`ostra/${created.taskId.slice(0, 8)}-`)).toBe(true);
+    // The ID part is the UUID's random tail: two tasks made in the same minute get different branches.
+    expect(created.branchName.startsWith(`ostra/${created.taskId.replaceAll("-", "").slice(-8)}-`)).toBe(true);
 
     const task = await harness.test.db.task.findUniqueOrThrow({ where: { id: created.taskId }, include: { repos: true, coAuthors: true, sessions: true } });
     expect(task).toMatchObject({

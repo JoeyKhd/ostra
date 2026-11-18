@@ -60,10 +60,14 @@ export const titleFromPrompt = (prompt: string): string => {
   return trimmed.length <= 120 ? trimmed : `${trimmed.slice(0, 117).trimEnd()}...`;
 };
 
-/** The same branch name in every repo of the task (spec section 11, item 10). */
+/**
+ * The same branch name in every repo of the task (spec section 11, item 10). The ID part is the
+ * last 8 hex digits: a UUIDv7 starts with its timestamp, so its first 8 are the same for every task
+ * made within about a minute, and the same prompt twice would get the same branch.
+ */
 export const branchNameFor = (taskId: string, title: string): string => {
   const slug = slugify(title, "task").slice(0, 40).replace(/-+$/g, "");
-  return `ostra/${taskId.slice(0, 8)}-${slug === "" ? "task" : slug}`;
+  return `ostra/${taskId.replaceAll("-", "").slice(-8)}-${slug === "" ? "task" : slug}`;
 };
 
 export const createPromptTask: CreatePromptTask = async (deps, input) => {
