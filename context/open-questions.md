@@ -225,6 +225,8 @@ These are recorded here until the plan's rework moves them into ADRs and the led
 
 ## Round 14 (asked 2026-11-18): runners without a sandbox vendor
 
+**Answered yes to all on 2026-11-18** ("Sure, I guess"). These leave this file when the plan's rework writes them into ADRs and the ledger.
+
 The runner becomes a small controller that people run on their own machines. Its **executor** creates each task's box. GitLab Runner's executors and Buildkite's Kubernetes stack work this way.
 
 | # | Question | Recommendation |
@@ -236,3 +238,17 @@ The runner becomes a small controller that people run on their own machines. Its
 | Q97 | The Docker socket | The `docker` executor needs the Docker socket, which means root on that host. So:<ul><li>it runs on dedicated runner hosts</li><li>the docs recommend rootless Docker or the gVisor runtime</li><li>the `kubernetes` executor needs only its own namespace and a service account scoped to it</li></ul> |
 | Q98 | Hosted sandboxes later | ADR 0025's `RunnerProviderAdapter` becomes an **`ExecutorAdapter`**. Hosted sandboxes (E2B, Daytona, Modal) can be community executors later. None in v1 |
 | Q99 | Q37, revisited | Without a provider's time limits, the rule stays: after 15 idle minutes (Q42), the runner pushes unfinished work to a hidden ref, releases the box, and the task reopens on a fresh one later |
+
+## Round 15 (asked 2026-11-18): what really needs the maintainer
+
+Most open questions in rounds 7–12 are engineering choices with a safe default, or later answers have already replaced them. These are the ones that need the maintainer.
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q100 | Defaults for the rest | Every open recommendation in rounds 7–12 that this round doesn't name is accepted as written, except where a later answer replaced it (E2B, Rivet). Any of them can be reopened at any time |
+| Q101 | The first users | Who uses ostra first? Is it the maintainer's own team, and if so, how many people, which tracker, which code host, and which stacks? **v1 is done when that team runs its daily work through ostra**: "ostra builds ostra", plus the team's own product |
+| Q102 | Organizations per install | **Many organizations in the data model from day one.** Every row carries its organization (ADR 0010). A self-hosted install has one organization by default, and the hosted version turns on sign-up for new ones. Retrofitting this later is a rewrite |
+| Q103 | Rivet | **Drop it** (Q51). The runner drives agents directly over ACP with the official SDK |
+| Q104 | Jira | **The first adapter after v1.** The `TrackerAdapter` and its contract tests are written against both Linear's and Jira's models from day one, so adding Jira doesn't force a redesign |
+| Q105 | Spend limits | A monthly budget per organization and per project. At 80%, the admins are told. At 100%, new tasks wait, and running tasks finish their current turn. Home shows it, as in the concept |
+| Q106 | Test accounts for the spikes | <ul><li>a GitHub org for ostra's tests</li><li>a Linear workspace for its tests</li><li>a model key. OpenRouter is recommended: one key reaches every model</li></ul>They're kept in `~/.config/ostra-dev/`, never in chat. Which accounts, and when? |
