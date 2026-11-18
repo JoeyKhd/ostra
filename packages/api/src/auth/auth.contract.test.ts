@@ -110,7 +110,8 @@ describe("the first account", () => {
     expect(member).toMatchObject({ organizationId: created.organizationId, role: "admin" });
     const setting = await harness.test.db.instanceSetting.findUniqueOrThrow({ where: { id: "instance" } });
     expect(setting.firstAdminCreatedAt).not.toBeNull();
-    // The organization has its built-in OpenCode profile, with no model until the admin picks one.
+    // The organization has its default runner pool, and its built-in OpenCode profile with no model until the admin picks one.
+    expect(await harness.test.db.runnerPool.findMany({ where: { organizationId: created.organizationId } })).toMatchObject([{ isDefault: true }]);
     expect(await harness.test.db.agentProfile.findMany({ where: { organizationId: created.organizationId } })).toMatchObject([
       { name: "OpenCode", adapter: "opencode", builtIn: true, modelId: null },
     ]);
@@ -183,6 +184,7 @@ describe("the organization roles (ADR 0026)", () => {
     const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
     const created = await harness.auth.api.createOrganization({ body: { name: "Second Org", slug: "second-org" }, headers: cookieHeaderFrom(headers) });
     expect(await harness.test.db.agentProfile.count({ where: { organizationId: created.id, builtIn: true } })).toBe(1);
+    expect(await harness.test.db.runnerPool.count({ where: { organizationId: created.id, isDefault: true } })).toBe(1);
   });
 
   it("accept admin and member, and refuse owner", async () => {

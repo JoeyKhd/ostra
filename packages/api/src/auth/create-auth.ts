@@ -1,5 +1,5 @@
 import type { Db } from "@ostra/db";
-import { ensureBuiltInAgentProfile } from "@ostra/domain";
+import { ensureBuiltInAgentProfile, ensureDefaultPool } from "@ostra/domain";
 import { organizationIdSchema } from "@ostra/protocol";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -170,10 +170,15 @@ export const createAuth = (input: CreateAuthInput) => {
         },
         // ADR 0026: exactly two roles, one per member. better-auth would also accept "owner".
         organizationHooks: {
-          // Every organization has its built-in OpenCode profile (F-086), also one an instance admin
-          // makes later. The first organization gets its own in `createFirstAdmin`.
+          // Every organization has its built-in OpenCode profile and its default runner pool (F-086),
+          // also one an instance admin makes later. The first organization gets its own in
+          // `createFirstAdmin`.
           afterCreateOrganization: async ({ organization: created }) => {
-            await db.$transaction((tx) => ensureBuiltInAgentProfile(tx, organizationIdSchema.parse(created.id)));
+            const organizationId = organizationIdSchema.parse(created.id);
+            await db.$transaction(async (tx) => {
+              await ensureBuiltInAgentProfile(tx, organizationId);
+              await ensureDefaultPool(tx, organizationId);
+            });
           },
           beforeCreateInvitation: ({ invitation }) => {
             assertOrganizationRole(invitation.role);

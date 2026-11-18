@@ -1,6 +1,8 @@
 import { router } from "../trpc/init.ts";
+import { environmentsRouter } from "./environments.ts";
 import { githubRouter } from "./github.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
+import { projectsRouter } from "./projects.ts";
 import { agentProfilesRouter, providersRouter } from "./providers.ts";
 import { setupRouter } from "./setup.ts";
 
@@ -12,6 +14,8 @@ export const appRouter = router({
   providers: providersRouter,
   agentProfiles: agentProfilesRouter,
   github: githubRouter,
+  projects: projectsRouter,
+  environments: environmentsRouter,
 });
 
 export type AppRouter = typeof appRouter;

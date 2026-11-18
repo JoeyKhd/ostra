@@ -150,6 +150,8 @@ export class FakeCodeHost extends CodeHostAdapter {
   readonly apps = new Map<string, FakeApp>();
   /** File contents by `owner/name`, then path. */
   readonly files = new Map<string, ReadonlyMap<string, string>>();
+  /** When true, `listTree` lists a repo's files; otherwise it answers `unsupported` like a host that can't. */
+  treeEnabled = false;
   /** What `convertManifestCode` returns for a code. */
   readonly manifestCodes = new Map<string, CreatedApp>();
   /** The manifests `appManifest` produced. */
@@ -223,6 +225,14 @@ export class FakeCodeHost extends CodeHostAdapter {
       }
     }
     return Promise.resolve(ok({ files, missing }));
+  }
+
+  override listTree(access: RepoAccess, ref: string): Promise<AdapterResult<readonly string[]>> {
+    const repoFiles = this.files.get(access.repo);
+    if (!this.treeEnabled || repoFiles === undefined) {
+      return super.listTree(access, ref);
+    }
+    return Promise.resolve(ok([...repoFiles.keys()]));
   }
 
   getDefaultBranch(access: RepoAccess): Promise<AdapterResult<string>> {

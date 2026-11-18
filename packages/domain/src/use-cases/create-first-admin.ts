@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { AuditLog, ChangeNotices, Clock } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
+import { ensureDefaultPool } from "./pools.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-001, F-002, Q117: the first account becomes the instance admin and the admin of the first
@@ -130,6 +131,8 @@ export const createFirstAdmin: CreateFirstAdmin = async (deps, input) => {
     });
     // Every organization has its built-in OpenCode profile (F-086); the admin picks its model later.
     await ensureBuiltInAgentProfile(tx, organizationId);
+    // And its default runner pool, which a new project links to.
+    await ensureDefaultPool(tx, organizationId);
     const memberId = memberIdSchema.parse(randomUUID());
     await tx.member.create({ data: { id: memberId, organizationId, userId, role: "admin", createdAt: now } });
     await tx.instanceSetting.upsert({

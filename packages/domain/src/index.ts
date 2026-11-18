@@ -20,6 +20,7 @@ export * from "./postgres-ports.ts";
 export * from "./postgres-outbox.ts";
 
 export * from "./use-cases/common.ts";
+export * from "./use-cases/moves.ts";
 export * from "./use-cases/accept-offer.ts";
 export * from "./use-cases/add-model-provider.ts";
 export * from "./use-cases/connect-github-app.ts";
@@ -36,4 +37,6 @@ export * from "./use-cases/save-environment.ts";
 export * from "./use-cases/stop-task.ts";
 export * from "./use-cases/server-events.ts";
 export * from "./use-cases/agent-profiles.ts";
+export * from "./use-cases/pools.ts";
 export * from "./use-cases/sync-provider-models.ts";
+export * from "./environment/detect.ts";

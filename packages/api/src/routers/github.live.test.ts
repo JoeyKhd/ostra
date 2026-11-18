@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { GitHubAdapter } from "@ostra/adapter-github";
+import { contentPaths, lockfilePaths } from "@ostra/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -53,5 +54,21 @@ describe.skipIf(!env.success)("the GitHub routers, live on the test App", () => 
     const repos = await admin.github.repos({ installationId: installation.installationId });
     expect(repos.map((repo) => repo.fullName)).toContain(`${env.data.GITHUB_TEST_ORG}/${env.data.GITHUB_TEST_REPO}`);
     expect(JSON.stringify([connected, installations, repos])).not.toContain("PRIVATE KEY");
+
+    // Ticket 32's live case: a project on the test repo, with its environment drafted from the files
+    // GitHub holds. Every reason names a file detection knows to read; what test1 holds is its own.
+    const created = await admin.projects.create({
+      name: "Live test",
+      slug: "live-test",
+      access: "open",
+      repo: { connectionId: connected.connectionId, installationId: installation.installationId, fullName: `${env.data.GITHUB_TEST_ORG}/${env.data.GITHUB_TEST_REPO}` },
+    });
+    const known = new Set<string>([...contentPaths, ...lockfilePaths, "(the repo)"]);
+    for (const reason of created.detection.reasons) {
+      expect(known.has(reason.file), reason.file).toBe(true);
+    }
+    expect(created.detection.reasons.map((reason) => reason.file)).not.toContain("(the repo)");
+    const environment = await admin.environments.get({ projectId: created.projectId });
+    expect(environment.status).toBe("draft");
   });
 });
