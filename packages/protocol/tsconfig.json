@@ -3,7 +3,10 @@
   "compilerOptions": {
     // Node's types are for the tests (node:crypto test vectors). The source itself uses no Node
     // API, so the panel can import it in a browser.
-    "types": ["node"]
+    "types": ["node"],
+    // The runner runs this source with Node's type stripping, so only erasable syntax: no enums,
+    // no parameter properties, no namespaces.
+    "erasableSyntaxOnly": true
   },
   "include": ["src"]
 }
