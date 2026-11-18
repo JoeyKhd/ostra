@@ -454,9 +454,10 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     });
     session.state = "stale";
     freeInflight((item) => item.sessionId !== session.sessionId);
-    hooks.onStaleLease?.(session.sessionId);
-    // ADR 0034, Q111: late events are refused, never kept. The spool is discarded.
+    // ADR 0034, Q111: late events are refused, never kept. The spool is discarded first, so the hook's
+    // promise holds: when the task host hears of the stale lease, the session and its spool are gone.
     await dropSession(session);
+    hooks.onStaleLease?.(session.sessionId);
   };
 
   const applyCommand = async (command: Command): Promise<void> => {
