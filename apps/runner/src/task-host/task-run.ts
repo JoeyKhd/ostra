@@ -105,6 +105,12 @@ const agentVariables = (spec: TaskSpec): Record<string, string> => {
       out[variable.name] = variable.value;
     }
   }
+  // The agent's own commits are the App's bot's too (F-078). These outrank any user.name an agent
+  // passes with `git -c`. The checkout's commit-msg hook adds the member's Co-authored-by trailer.
+  out["GIT_AUTHOR_NAME"] = spec.gitIdentity.name;
+  out["GIT_AUTHOR_EMAIL"] = spec.gitIdentity.email;
+  out["GIT_COMMITTER_NAME"] = spec.gitIdentity.name;
+  out["GIT_COMMITTER_EMAIL"] = spec.gitIdentity.email;
   return out;
 };
 
