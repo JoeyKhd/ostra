@@ -1,6 +1,6 @@
 # 07: Domain: the lifecycle unions and transitions
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: 02, 06
 Features: F-097, F-025, F-065 (task states); `context/domain-model.md`
@@ -18,10 +18,12 @@ Each lifecycle in `context/domain-model.md` as a discriminated union, a pure tra
 
 ## Done when
 
-- [ ] Every state and every arrow in `domain-model.md` is a test case. A transition the model doesn't draw is refused, with a test per state for at least one refused input.
-- [ ] Every union round-trips through the column mapping.
-- [ ] No `as` except `as const`, no `!`, every `switch` exhaustive.
-- [ ] Package checks pass.
-- [ ] Committed as `✨ add the domain lifecycles`.
+- [x] Every state and every arrow in `domain-model.md` is a test case. A transition the model doesn't draw is refused, with a test per state for at least one refused input.
+- [x] Every union round-trips through the column mapping.
+- [x] No `as` except `as const`, no `!`, every `switch` exhaustive.
+- [x] Package checks pass.
+- [x] Committed as `✨ add the domain lifecycles`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in 8ddb044 (`✨ add the domain lifecycles`). Task (per kind), session, box, runner, approval, needs-you item, task repo, snapshot and lease, each a union with a pure transition function; every drawn arrow is a case, every state refuses at least one input, and every union round-trips through `mapping.ts`. Reasons and sub-states come from the schema's enums. A session's `stopped` and `crashed` carry no detail, because the schema has no column for it: the events say why.

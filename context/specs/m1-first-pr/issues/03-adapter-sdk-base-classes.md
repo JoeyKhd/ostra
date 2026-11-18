@@ -1,6 +1,6 @@
 # 03: Adapter SDK: the eight base classes and capabilities
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: 01, 02
 Features: ADR 0025 (every kind); F-006, F-019, F-088, F-017, F-016 depend on it
@@ -20,10 +20,12 @@ One abstract class per kind (ADR 0025): `TrackerAdapter`, `CodeHostAdapter`, `Ag
 
 ## Done when
 
-- [ ] All eight classes exist. The four kinds milestone 1 doesn't implement (tracker, notification, blob store, and the parts of the others marked "declared" in the spec) carry their operations with doc comments naming their milestone.
-- [ ] A test per kind defines a minimal subclass in the test file and checks that the registry returns it typed, and that a missing operation is a type error (`@ts-expect-error` with a reason).
-- [ ] `pnpm check:licenses` shows `adapter-sdk` depends on nothing restricted.
-- [ ] Package checks pass.
-- [ ] Committed as `✨ add the adapter base classes`.
+- [x] All eight classes exist. The four kinds milestone 1 doesn't implement (tracker, notification, blob store, and the parts of the others marked "declared" in the spec) carry their operations with doc comments naming their milestone.
+- [x] A test per kind defines a minimal subclass in the test file and checks that the registry returns it typed, and that a missing operation is a type error (`@ts-expect-error` with a reason).
+- [x] `pnpm check:licenses` shows `adapter-sdk` depends on nothing restricted.
+- [x] Package checks pass.
+- [x] Committed as `✨ add the adapter base classes`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in 05e6824 (`✨ add the adapter base classes and plumbing`, one commit with ticket 04, because every base class composes the plumbing). Eight classes, one level deep, each with `kind`, `name`, `capabilities`, `health()` and a lazy `plumbing`. `AgentAdapter` takes a `DriverPort` in its constructor and implements `startSession`/`prompt`/`cancel`/`steer`/`close` over it; adapters write `prepareLaunch` and the protected `mapUpdate`. `ExecutorAdapter.startAgent` returns stdio plus a handle (spike 3's `AgentHost` seam); `capabilities.processContainment` declares ADR 0029's containment. The registry is `createAdapterRegistry()` (functions: only adapters are classes). `check:licenses` green: `adapter-sdk` depends on `protocol` and `zod` only.

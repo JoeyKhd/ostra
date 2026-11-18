@@ -1,6 +1,6 @@
 # 01: Protocol: the runner protocol
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: none
 Features: F-013, F-045, F-061 (schemas only)
@@ -29,14 +29,16 @@ The Zod schemas every peer of the runner protocol imports (ADR 0034). Strict obj
 
 ## Done when
 
-- [ ] Every message, command and endpoint above has a schema and an inferred type, and nothing is typed by hand.
-- [ ] Tests: each message round-trips; an unknown field is refused everywhere except `hello`; a bad frame gives an error result, not a throw; `negotiate` accepts N-1, N, N+1 and refuses N±2 with the window in the result; a down-encoded frame parses under the older minor.
-- [ ] The signed assertion's canonical string is documented in its schema's description, with a test vector (a fixed key pair, made in the test with `node:crypto`).
-- [ ] The whole-repo checks pass (spec section 9: this is the runner protocol).
-- [ ] Committed as `✨ add the runner protocol schemas`.
+- [x] Every message, command and endpoint above has a schema and an inferred type, and nothing is typed by hand.
+- [x] Tests: each message round-trips; an unknown field is refused everywhere except `hello`; a bad frame gives an error result, not a throw; `negotiate` accepts N-1, N, N+1 and refuses N±2 with the window in the result; a down-encoded frame parses under the older minor.
+- [x] The signed assertion's canonical string is documented in its schema's description, with a test vector (a fixed key pair, made in the test with `node:crypto`).
+- [x] The whole-repo checks pass (spec section 9: this is the runner protocol).
+- [x] Committed as `✨ add the runner protocol schemas`.
 
 ## Not in this ticket
 
 Agent events and the task spec (02). The WebSocket and HTTP code (16, 24).
 
 ## Comments
+
+- 2026-11-18, contracts: done in 35f9b43 (`✨ add the runner protocol schemas`), on top of d749e21. `packages/protocol/src/runner/`: `version.ts` (major 1, minor 0, `negotiate`, `createVersionedCodec`), `peer.ts`, `commands.ts` (each command's body under `body`, `commandBodySchemas` for the outbox), `messages.ts` (`parseUpFrame`/`parseDownFrame` never throw; errors name paths, never values; close codes add `4408` for a missed handshake), `http.ts` (the five endpoints, the HTTP fallback's bodies and headers, and the signed assertion's canonical string with a test vector), `limits.ts`. Minor 0 is the only shape, so the down-encoding test runs the codec machinery with two made-up minors. Whole-repo checks green.

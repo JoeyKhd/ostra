@@ -1,6 +1,6 @@
 # 05: DB: dev Postgres, Prisma 7 and the test helper
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: none
 Features: F-001 (the dev path on this machine)
@@ -25,10 +25,12 @@ Spec: `../spec.md`, section 5.3
 ## Done when
 
 - [ ] On this machine, from a clean clone: `pnpm db:dev` starts Postgres, `pnpm db:migrate` runs against it, Ctrl-C leaves no process (checked with the process list).
-- [ ] With `DATABASE_URL` set to another server, the dev script doesn't start one.
-- [ ] A sample test in `packages/db` gets its own database and sees it empty.
-- [ ] `.ostra-dev/` is ignored and nothing under it is staged.
-- [ ] The whole-repo checks pass (spec section 9: the schema's tooling).
-- [ ] Committed as `🔧 add the dev database and Prisma setup`.
+- [x] With `DATABASE_URL` set to another server, the dev script doesn't start one.
+- [x] A sample test in `packages/db` gets its own database and sees it empty.
+- [x] `.ostra-dev/` is ignored and nothing under it is staged.
+- [x] The whole-repo checks pass (spec section 9: the schema's tooling).
+- [x] Committed as `🔧 add the dev database and Prisma setup`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in ed2cf94 (`🔧 add the dev database and Prisma setup`). Checked on this machine: `pnpm db:dev` starts Postgres 18 in `.ostra-dev/pg` and prints its URL; `pnpm db:migrate` runs twice; a second `db:dev` refuses with a hint; with `DATABASE_URL` set it does nothing; `pnpm dev:reset --yes` stops the cluster (only after the server confirms its data folder) and leaves no `postgres` or `db:dev` process (process list checked). Not checked: a real Ctrl-C in a terminal, which this session can't send to a Windows console process; the script stops Postgres on SIGINT, SIGTERM and SIGHUP, and exits when its cluster goes away. Dev helpers are at `@ostra/db/dev`; Turborepo runs `generate` before typecheck, lint and test. The test helper gives each file a copy of a migrated template database.

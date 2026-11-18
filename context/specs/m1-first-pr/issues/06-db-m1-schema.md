@@ -1,6 +1,6 @@
 # 06: DB: the milestone 1 schema and first migration
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: 05
 Features: F-002, F-086, F-088, F-013, F-050, F-097, F-023, F-030 (their data); ADR 0026 (organization scope), ADR 0027, ADR 0028
@@ -24,10 +24,12 @@ Spec: `../spec.md`, section 5.3
 
 ## Done when
 
-- [ ] `pnpm db:migrate` on a fresh database creates every table, the `UNLOGGED` table included (checked through `pg_class.relpersistence`).
-- [ ] Tests: a project record pointing at another organization's project is refused by the database; event `(sessionId, sessionSeq)` duplicates are refused; the isolation helper seeds and reads back.
-- [ ] Every model in the spec's table exists, including those milestone 1 doesn't write (`Board`, `Service`, `Check`, `Snapshot`, `Automation`, `JoinToken`, `WebhookDelivery`).
-- [ ] The whole-repo checks pass (spec section 9: the schema).
-- [ ] Committed as `✨ add the milestone 1 schema`.
+- [x] `pnpm db:migrate` on a fresh database creates every table, the `UNLOGGED` table included (checked through `pg_class.relpersistence`).
+- [x] Tests: a project record pointing at another organization's project is refused by the database; event `(sessionId, sessionSeq)` duplicates are refused; the isolation helper seeds and reads back.
+- [x] Every model in the spec's table exists, including those milestone 1 doesn't write (`Board`, `Service`, `Check`, `Snapshot`, `Automation`, `JoinToken`, `WebhookDelivery`).
+- [x] The whole-repo checks pass (spec section 9: the schema).
+- [x] Committed as `✨ add the milestone 1 schema`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in 2d74d1a (`✨ add the milestone 1 schema`). Every model in the spec's table, with composite keys `(projectId, organizationId)` to the project and `(taskId, projectId)` to the task. To know: better-auth's `Session` is `AuthSession` (`auth_session`), so ticket 30 sets `session: { modelName: "authSession" }`; the live-text table is UNLOGGED in its own `ostra_live` schema, so Prisma Migrate never drops it; partial unique indexes (one default pool, one active lease, one active session per task) use Prisma 7's `partialIndexes` preview feature; check constraints keep the task's state columns, runner kinds, environment entries and approvals consistent. `Event` is keyed `(taskId, seq)`, with `sessionSeq` unique per session and `null` for the server's own events. `seedIsolationFixture` is in `@ostra/db/testing`.

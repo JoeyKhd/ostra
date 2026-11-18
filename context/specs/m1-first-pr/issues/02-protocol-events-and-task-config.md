@@ -1,6 +1,6 @@
 # 02: Protocol: agent events, live text, task spec and config
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: none
 Features: F-023, F-019, F-030, F-050, F-089 (schemas only)
@@ -23,11 +23,13 @@ Spec: `../spec.md`, section 5.1
 
 ## Done when
 
-- [ ] Every kind has a schema and a test fixture; the fixtures double as the fold's test data (ticket 36).
-- [ ] An unknown kind reads as `unsupported`; an unknown field in a known kind is refused.
-- [ ] `TaskSpec` and `TaskCredentials` parse a full example and refuse an unknown field.
-- [ ] The runner config parses flags and environment variables with the same names `docs/configuration.md` will list (ticket 08 creates the file; add the runner lines there or in a comment ticket 08 picks up).
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add agent events and task spec schemas`.
+- [x] Every kind has a schema and a test fixture; the fixtures double as the fold's test data (ticket 36).
+- [x] An unknown kind reads as `unsupported`; an unknown field in a known kind is refused.
+- [x] `TaskSpec` and `TaskCredentials` parse a full example and refuse an unknown field.
+- [x] The runner config parses flags and environment variables with the same names `docs/configuration.md` will list (ticket 08 creates the file; add the runner lines there or in a comment ticket 08 picks up).
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add agent events and task spec schemas`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in d749e21 (`✨ add agent events and task spec schemas`), plus 0a057a4 (`boxStateSchema`) and the runner's lines in `docs/configuration.md` (0933c51). Choices to know: a stored event's `sessionSeq` is `null` for the server's own events (no peer numbered them); `pr.opened` carries `repoId` (one PR per repo); a runner event carries `at`; the server-only kinds also include `runner.connected`, `runner.lost` and `pr.opened`, and `runnerEventSchema` refuses them. Fixtures for every kind, the task spec and the credentials are in `@ostra/protocol/testing`. Git identities refuse `<`, `>` and line breaks, so a name can't forge a trailer. Whole-repo checks green.

@@ -1,6 +1,6 @@
 # 04: Adapter SDK: shared plumbing and contract-test helpers
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: 03
 Features: ADR 0025 (plumbing, contract suites), ADR 0045 (injected stores)
@@ -22,9 +22,11 @@ Spec: `../spec.md`, sections 5.2 and 8
 
 ## Done when
 
-- [ ] The plumbing has unit tests, including the logger guard.
-- [ ] Each `define*ContractSuite` runs against a tiny test adapter in this package and passes.
-- [ ] Package checks and `pnpm check:licenses` pass.
-- [ ] Committed as `✨ add adapter plumbing and contract suites`.
+- [x] The plumbing has unit tests, including the logger guard.
+- [x] Each `define*ContractSuite` runs against a tiny test adapter in this package and passes.
+- [x] Package checks and `pnpm check:licenses` pass.
+- [x] Committed as `✨ add adapter plumbing and contract suites`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in 05e6824 with ticket 03 (see there). Plumbing: stores as interfaces with in-memory versions, retry with full jitter and `Retry-After`, rate budgets, idempotency (`ran`, `replayed`, `in-doubt`), `parseVendor`, and the logger (a field is a primitive, so a `TaskCredentials` is a type error; strings that look like tokens are redacted). `@ostra/adapter-sdk/testing` has every `define*ContractSuite`, all passing against tiny adapters in `src/test-adapters/`. The executor suite's detached-helper case takes `knownGaps` (expected to fail, and fails when the gap closes). Its git cases (`commitAndPush`) come with ticket 18's upstream stub and ticket 19.

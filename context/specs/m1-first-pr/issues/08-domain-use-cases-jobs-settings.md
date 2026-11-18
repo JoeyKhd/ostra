@@ -1,6 +1,6 @@
 # 08: Domain: use-case signatures, jobs catalogue, settings
 
-Status: ready-for-agent
+Status: resolved
 Builder: contracts
 Blocked by: 07
 Features: the seams core and api build against; the self-hosting rule (`AGENTS.md`)
@@ -18,10 +18,12 @@ Spec: `../spec.md`, section 5.4
 
 ## Done when
 
-- [ ] Every use case the spec lists has its file, schema, result union and signature, and the "not implemented" body names its ticket.
-- [ ] The settings schema parses an empty environment in development with every default, and refuses an unknown `OSTRA_*` variable with the list of known ones.
-- [ ] `docs/configuration.md` lists every setting the schema knows. A test reads both and fails when one is missing.
-- [ ] Package checks pass.
-- [ ] Committed as `✨ add use-case seams and server settings`.
+- [x] Every use case the spec lists has its file, schema, result union and signature, and the "not implemented" body names its ticket.
+- [x] The settings schema parses an empty environment in development with every default, and refuses an unknown `OSTRA_*` variable with the list of known ones.
+- [x] `docs/configuration.md` lists every setting the schema knows. A test reads both and fails when one is missing.
+- [x] Package checks pass.
+- [x] Committed as `✨ add use-case seams and server settings`.
 
 ## Comments
+
+- 2026-11-18, contracts: done in 0933c51 (`✨ add use-case seams and server settings`). `ports.ts` (`JobQueue`, `CommandOutbox`, `ChangeNotices`, `AuditLog`, `Clock`, `ServerAdapters`), `jobs.ts` (seven jobs, keys like `task:<TaskId>:dispatch:<epoch>`), `access.ts` (another organization and a restricted project read as `not-found`), `settings.ts` and `docs/configuration.md`, kept in step by a test. The 14 use cases each have an input schema (where they take a request), a result union and a signature whose body throws `not implemented: ticket NN`. The settings let the runner's and the dev setup's `OSTRA_*` variables through, and refuse any other unknown one.
