@@ -201,12 +201,12 @@ Secrets for development live in `~/.config/ostra-dev/`, never in the repo.
 
 | What | Needed for | Status |
 |---|---|---|
-| A GitHub org used only as a sandbox. It holds the test repos and the test GitHub App, so no real repo is ever touched. The public ostra repo is separate | Spikes 2, 3, 4 and 10, and every end-to-end test after them | For the maintainer to create |
-| A Linear workspace for tests | Spikes 5 and 10 | The maintainer will set it up |
-| `~/.config/ostra-dev/model.env`: any base URL, token and model ID | Spikes 1, 2, 3, 7 and 10 | For the maintainer to fill in |
+| A GitHub org used only as a sandbox. It holds the test repos and the test GitHub App, so no real repo is ever touched. The public ostra repo is separate | Spikes 2, 3, 4 and 10, and every end-to-end test after them | **Done 2026-11-18:** `ostra-test`, with two private test repos. The test GitHub App is created by spike 4's manifest flow |
+| A Linear workspace for tests | Spikes 5 and 10 | **Done 2026-11-18:** the maintainer named a workspace for tests, and its key is in `linear.env` |
+| `~/.config/ostra-dev/model.env`: any base URL, token and model ID | Spikes 1, 2, 3, 7 and 10 | **Done 2026-11-18:** filled in and checked: the endpoint lists the model, and a request succeeds |
 | An endpoint that speaks Anthropic's Messages API, from any provider or gateway that serves it, for Claude Code (F-018). `model.env` may already serve it. If its endpoint speaks only the other API format, a second endpoint is needed | Milestone 7 | Not needed yet |
-| A public HTTPS address for the dev server (any tunnel or reverse proxy) | Spike 5, and the webhooks in spike 4 | For the maintainer to choose |
-| A Linux machine with Docker, for gVisor and a small Kubernetes cluster | Spikes 3 and 6 | Any machine or VM |
+| A public HTTPS address for the dev server (any tunnel or reverse proxy) | Spike 5, and the webhooks in spike 4 | A Cloudflare quick tunnel (`cloudflared`, free, no account), started when spikes 4 and 5 need it. Installing it asks the maintainer first |
+| A Linux machine with Docker, for gVisor and a small Kubernetes cluster | Spikes 3 and 6 | Later, by the maintainer's choice. Until then, spikes 3 and 6 run only their parts that work without it |
 | Any container registry the test cluster can pull from | Spike 3 | Any registry will do |
 | A free name for the CLI's npm package, and a namespace for the images (Q80, Q82) | Milestone 7 | For the maintainer to check and register |
 | The name check of 2026-11-17. **Taken:** npm `ostra` (abandoned since 2023), GitHub `ostra` (a personal account), ostra.dev, ostra.ai, ostra.app (a board game) and ostrahq.com. **Free:** GitHub `ostrahq` and `getostra`, and getostra.com. npm `ostra-runner` was free too, but ADR 0046 retired that name, so it isn't a candidate for the CLI's package. **To confirm at a registrar:** ostra.sh, ostra.so and ostra.io showed no record | Milestone 7 | Recorded; confirm before registering |
