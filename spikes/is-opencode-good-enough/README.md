@@ -21,7 +21,7 @@ Does OpenCode, on an ordinary model, turn realistic tickets into PRs a reviewer 
 The real set is made and checked: **30 of 30 runs completed, CI green on 30 of 30, the hidden acceptance tests passed on 30 of 30, 6,840,135 tokens, $0.2040**, on `deepseek/deepseek-v4.1-flash-1017` through OpenRouter, in the Anthropic format. The runs went through the real ACP driver, the real key proxy and the real OpenCode 2.3.2 (see [Results of the real runs](#results-of-the-real-runs-2026-11-18)). The bar's three bullets:
 
 - **B1 PASS.** 30 runs on the 10 tickets, none an infrastructure failure.
-- **B2 not counted yet.** An AI did a first-pass rating of all 30 blind, but B2 counts only once at least one **human** reviewer has rated. A reviewer: the steps are under [The blind rating](#the-blind-rating), and rating comes before reading the results.
+- **B2 PASS, on two AI reviewers and no human.** Claude Opus and Claude Fable each rated all 30 blind and alone. Both put 100% of the runs at "merge as it is" or "merge with small edits" (28 + 2 and 27 + 3, no reject) against a bar of 50%, and they give the same rating on 29 of the 30. By the maintainer's decision of 2026-11-18, B2 is judged on those two in place of a human reviewer (see [Decisions](#decisions)). It is **not a human review**, and a human may still add theirs: the steps are under [The blind rating](#the-blind-rating), and rating comes before reading the results.
 - **B3 PASS** on the records, with the one scan that only `pnpm spike` runs still to confirm (see [The pass bar, now](#the-pass-bar-now)).
 
 The maintainer approved running the model's shell on their own account, with no sandbox, and an audit of the set found no evidence of reach beyond the workspace, though it cannot prove there was none (see [Host-run approval and audit](#host-run-approval-and-audit)). The dry-run that proved the pipeline first (against spike 1's stub model) is kept under [Dry-run status](#dry-run-status-before-the-real-runs-2026-11-18).
@@ -104,28 +104,62 @@ All 30 runs ended `completed` / `end_turn`, and none has an `agent-stderr.txt` o
 
 The sheet is `.runs/rating-2026-11-18T20-42-31/`, made after the last run ended and showing exactly these 30 runs: `sheet.md` (the 30 pull requests under random IDs, in random order), `ratings-template.csv` (`id,rating,notes`, one row each), `patches/` (the same diffs, one file per ID), `ratings/` (the filled-in copies) and `key.json` (which run each ID is).
 
-**For a human reviewer**, from `spikes/is-opencode-good-enough`. Rate first and read the rest of this section afterwards: it holds the AI's result, which would colour yours.
+B2 is judged on two AI raters, Claude Opus and Claude Fable, by the maintainer's decision (see [Decisions](#decisions)); no human has rated. A human can still add a rating, and this is how.
 
-1. Rate from the sheet alone, before you read the results on this page, `ratings/claude-ai.csv` or anyone else's ratings.
+**For a human reviewer**, from `spikes/is-opencode-good-enough`. Rate first and read the rest of this section afterwards: it holds the two AI raters' results and names the one pull request they split on, which would colour yours.
+
+1. Rate from the sheet alone, before you read the results on this page, `ratings/claude-ai.csv`, `ratings/fable.csv` or anyone else's ratings.
 2. Open `.runs/rating-2026-11-18T20-42-31/sheet.md`. Each pull request shows its ticket, the CI result, what changed, the agent's description and the diff. Rate it as a reviewer who owns the repository would, against its ticket.
 3. Open `.runs/rating-2026-11-18T20-42-31/ratings-template.csv` and fill the `rating` column of every row with `merge-as-is`, `merge-with-small-edits` or `reject` (the sheet's header explains the three). `notes` is optional. An unrated row, or a word off the scale, makes the verdict SKIPPED.
-4. Save it as `.runs/rating-2026-11-18T20-42-31/ratings/<name>.csv`, with your own name. The name becomes the rater's name in the score. Leave `claude-ai.csv` alone.
-5. Run `pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`. It prints each rater's counts and the verdict, then the recorded run data unblinded, so run it only once you have rated.
+4. Save it as `.runs/rating-2026-11-18T20-42-31/ratings/<name>.csv`, with your own name. The name becomes the rater's name in the score. Leave `claude-ai.csv` and `fable.csv` alone.
+5. Run `pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`. It prints each rater's counts (yours beside the two AI raters') and the verdict, then the recorded run data unblinded, so run it only once you have rated.
 6. **Do not open `key.json` until every rater is done.** It says which run each ID is, and rating blind is the point. A second human is better than one: each rates alone, and nobody opens another's file before finishing their own.
 
-**AI first pass (done).** An AI rater (Claude) rated all 30 blind: **28 `merge-as-is`, 2 `merge-with-small-edits`, 0 `reject`**, mergeable 100%, 3 of 3 on each of the 10 tickets. By its own report it read only `sheet.md` and `ratings-template.csv`, not `key.json`, the `.runs/real-*` folders or this README's per-run tables, and it ran no git and edited no other file. Its ratings, with a one-line reason for each pull request, are in `ratings/claude-ai.csv`. The scorer takes the rater's name from the file name, so the output shows `claude-ai`. `pnpm score` on that file alone prints a PASS for the set: 100% of the runs rated merge-as-is or merge-with-small-edits, against a bar of at least 50%. The two pull requests it would merge only with small edits, and why, are in that file and not here, so as not to prime a human rater who reads this page first.
+**AI first pass, Claude Opus (done).** An AI rater (Claude Opus) rated all 30 blind: **28 `merge-as-is`, 2 `merge-with-small-edits`, 0 `reject`**, mergeable 100%, 3 of 3 on each of the 10 tickets. By its own report it read only `sheet.md` and `ratings-template.csv`, not `key.json`, the `.runs/real-*` folders or this README's per-run tables, and it ran no git and edited no other file. Its ratings, with a one-line reason for each pull request, are in `ratings/claude-ai.csv`. The scorer takes the rater's name from the file name, so the output shows `claude-ai`. The two pull requests it would merge only with small edits, and why, are in that file and not here, so as not to prime a human rater who reads this page first.
 
-**Why that is not B2 yet.** B2 is a person's rating: "a reviewer" in the bar, "a person, not this harness" in this spike. The scorer cannot tell an AI's file from a human's, so `pnpm score` and `pnpm spike` will print a PASS for B2 on `claude-ai.csv` alone. Read that PASS as not counting until a human's file is in `ratings/`. With more than one rater the bar is held against the strictest, and their agreement is reported.
+**Second blind rating, Claude Fable (done).** The maintainer asked for Claude Fable to review the 30 pull requests as the second blind reviewer, instead of rating them themselves. Fable rated all 30: **27 `merge-as-is`, 3 `merge-with-small-edits`, 0 `reject`**, mergeable 100%, 3 of 3 on each of the 10 tickets. By its own report it read only `sheet.md` and `ratings-template.csv`, and did not open `key.json`, the other files in `ratings/` (so not `claude-ai.csv`), the `.runs/real-*` folders or this README, ran no git and edited no other file. So the two ratings are independent of each other. Its file is `ratings/fable.csv` (30 rows, in the template's format, a one-line reason each; the scorer shows the rater as `fable`). It noted two things and did not rate either down: several pull request descriptions carry the agent's narration ("I'll start by reading the README..."), and some say typecheck could not run locally while CI shows the strict typecheck clean on all 30 (the sample has no `node_modules`, see [Host-run approval and audit](#host-run-approval-and-audit)).
+
+**The score with both raters** (`pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`, the rating part; the run data it prints after that is `pnpm report`'s, whose per-ticket half is under [The set](#the-set)):
+
+```text
+rater claude-ai: 30 of 30 rated
+  merge-as-is 28, merge-with-small-edits 2, reject 0; mergeable 100%
+rater fable: 30 of 30 rated
+  merge-as-is 27, merge-with-small-edits 3, reject 0; mergeable 100%
+agreement between claude-ai and fable: same rating on 97% of runs, same side of the bar on 100%
+
+PASS    .runs/real-deepseek-deepseek-v4.1-flash-1017 (30 runs), rated blind, at least half are "merge as it is" or "merge with small edits": claude-ai 100%, fable 100% of the runs rated merge-as-is or merge-with-small-edits; the bar is at least 50%, held against the strictest rater (claude-ai)
+```
+
+| Rater | `merge-as-is` | `merge-with-small-edits` | `reject` | Mergeable | Per ticket |
+|---|---|---|---|---|---|
+| `claude-ai` (Claude Opus) | 28 | 2 | 0 | 100% | 3/3 on all 10 |
+| `fable` (Claude Fable) | 27 | 3 | 0 | 100% | 3/3 on all 10 |
+
+**Where the two disagreed** (compared by pull request ID only, from the two rating files; `key.json` was not opened). They differ on **1 of the 30**, which is the 97%:
+
+- **R-8a538d:** Opus `merge-as-is`, Fable `merge-with-small-edits`. It is a refactor of the command line. Fable held it back because nothing tests the `import.meta.main` path the ticket asks to keep (`node src/cli.ts` unchanged), and wants one spawn smoke test and the usage text asserted exactly instead of by prefix. Opus took the injected-`io` tests, which cover every exit code and message, and the test file's own import showing no side effect, as enough.
+
+Both raters gave `merge-with-small-edits` to the same two other pull requests, so Opus's two are a subset of Fable's three, and the other 27 are `merge-as-is` for both. Neither rejected any. The split is between the two mergeable ratings, so it is on the same side of the bar on 30 of 30 and moves no verdict. The reasons for the shared two are in both files and not here.
+
+**A scorer detail.** The PASS line says the bar is "held against the strictest rater (claude-ai)", though Fable gave fewer `merge-as-is`. "Strictest" in `src/rating/score.ts` is the lowest share rated mergeable (`merge-as-is` and `merge-with-small-edits` counted together), and on a tie it keeps the first rater listed. Both are at 100%, so it names `claude-ai`, which says nothing about which of the two is stricter. The verdict is the same either way. The scorer is unchanged.
+
+**What B2 rests on.** Two AI raters, by the maintainer's decision. The bar says "a reviewer", and this spike had read that as "a person, not this harness", so counting two AI reviewers in place of a person is the maintainer's reading, recorded under [Decisions](#decisions). It is not a human review. Two limits on what it shows. Both raters are Claude models from one vendor, so they can share blind spots; the model under test is DeepSeek, so neither is grading its own work. And both judged from the sheet (the diff, the agent's description and the CI result), not by running the code. The scorer cannot tell an AI's file from a human's, so its PASS reads the same whoever rated; this section is the record of whose files they are. If a human's file is added it joins the score, and the bar is then held against the strictest of the three.
 
 ### The pass bar, now
 
 | | Status | Bullet | What ran, and what's missing |
 |---|---|---|---|
 | B1 | **PASS** | 10 tickets (3 bug fixes, 3 small features, 2 refactors, 2 that add tests), three runs each, on the model in `model.env`. | PASS: the set has 3 + 3 + 2 + 2 tickets, every acceptance check fails on the unmodified sample and passes with its reference solution (from the oracle, [below](#dry-run-status-before-the-real-runs-2026-11-18)). PASS: 30 of 30 runs recorded on `deepseek/deepseek-v4.1-flash-1017` (Anthropic format): 30 completed, 0 redone, no rate-limit, server or client error, so none is an infrastructure failure that would hold the set back |
-| B2 | **Pending a human** | Rated blind: at least half are "merge as it is" or "merge with small edits" *(working value)*. | AI first pass: 30 of 30 rated, 28 merge-as-is, 2 merge-with-small-edits, 0 reject (100%). **Not counted:** it needs at least one human reviewer ([steps above](#the-blind-rating)). The harness will print a PASS from the AI's file alone; it does not count |
+| B2 | **PASS, on two AI raters** | Rated blind: at least half are "merge as it is" or "merge with small edits" *(working value)*. | PASS: 30 of 30 rated blind by each of two AI raters, alone: Claude Opus 28 merge-as-is, 2 merge-with-small-edits, 0 reject (100%); Claude Fable 27, 3, 0 (100%). Against the bar of 50%. They give the same rating on 29 of 30 pull requests (they differ on R-8a538d, [above](#the-blind-rating)) and the same side of the bar on 30 of 30. **Not a human review:** by the maintainer's decision of 2026-11-18, two AI reviewers stand in for a human one ([Decisions](#decisions)). A human may still add theirs ([steps above](#the-blind-rating)). The harness prints a PASS and cannot tell the raters from humans |
 | B3 | **PASS** on the records | Recorded per run: spend from the proxy, time, turns, approvals and events. | PASS: all five measures on 30 of 30 runs, with no call missing its usage, and the dollars from the configured prices ($0.2040). PASS: the proxy's count equals OpenCode's own turn usage on 30 of 30 completed runs (the bar: within 2%). **Left to `pnpm spike`:** its scan for the real key's value in every record, which needs `model.env` and is the one condition that fails B3 whatever else holds. The audit's regex for key-like strings found none |
 
-B1 and B3 here are read off the run records by the conditions in `src/harness/real-criteria.ts`. `pnpm spike` was not rerun for this update, so its own status lines (and its key scan) are the ones to confirm before the finding is written.
+B1 and B3 here are read off the run records by the conditions in `src/harness/real-criteria.ts`; B2 is the verdict of `pnpm score` over both raters' files, as printed. `pnpm spike` was not rerun for this update, so its own status lines (and its key scan) are the ones to confirm before the finding is written.
+
+### Decisions
+
+- **2026-11-18, the maintainer: B2 is judged on two independent AI reviewers, in place of a human reviewer.** Asked to rate the 30 pull requests themselves, they asked for Claude Fable to review them instead, as the second blind reviewer beside Claude Opus's first pass. So B2's PASS rests on two AI ratings, each made alone from the sheet. **It is not a human review.** A human may still add theirs, and the score would then hold the bar against the strictest of three. This replaces the earlier rule on this page that B2 counts only once a human has rated. `context/build-order.md` still says only "rated blind" and names no rater, and this spike does not edit it; the finding in `context/research/` has to say that B2 rested on two AI reviewers.
+- **2026-11-18, the maintainer: the 30 real runs ran on their own account with no sandbox**, in the session that made them: see [Host-run approval and audit](#host-run-approval-and-audit).
 
 ## Architecture
 
@@ -172,6 +206,7 @@ The sample's own tests don't catch any of the seeded faults and pass at the star
 - **The repo is a toy.** About 400 lines, no dependencies, no history, no CI beyond `node:test` and `tsc`, no module a ticket has to find among hundreds, and conventions that fit in a short README.
 - **The tickets, the hidden checks and the reference solutions have one author**, who knew what the fix is. The checks hold an agent to the author's reading of each ticket.
 - **No ticket-to-PR flow is exercised.** No tracker issue, no box, no git proxy, no GitHub PR: the "PR" is a local diff on a branch, and the reviewer reads it on a sheet. A real task has a tracker's wording, a box's limits and a PR's review.
+- **The rating is two AI raters, no human.** Claude Opus and Claude Fable are both Claude models, so they can share blind spots a person would not, and both judged from the sheet, not by running the code. Their 100% mergeable and 97% agreement say the diffs read as mergeable to two independent AI reviewers; they are not a person's judgement of them (see [Decisions](#decisions)).
 - **The agent's shell is not isolated** (host run), and the workspace has no `node_modules`, which a real box would usually have installed.
 - **Approvals are installs only.** The policy asks before a package is installed or a downloaded tool runs (see Permissions below), so "approvals" is a count of those requests, not of everything a member would be asked.
 
@@ -221,7 +256,7 @@ pnpm score --sheet=.runs/rating-<time>
 
 - **The sheet** shows each pull request under a random ID (`R-3fa91c`) in a random order (a seed in `key.json` reproduces it): the ticket, the CI result, what changed, the agent's description and the diff. It says nothing of which run, which model, how long, how much or how many turns. The key is a separate file. The agent's text goes in fenced blocks longer than anything inside them, so it can't alter the sheet. Two sets (two models) can go on one sheet and are shuffled together.
 - **The scale** is the research file's: `merge-as-is`, `merge-with-small-edits`, `reject`. A diff with no changes is a `reject`.
-- **The bar** is counted over **all** runs (30), not only those that finished: a run that left nothing, or timed out, was a run that wasn't mergeable. At least half must be `merge-as-is` or `merge-with-small-edits`. It is held per set of runs (one model), and against the **strictest** of several raters; their agreement is reported. These are readings of "at least half are..." that the build order doesn't spell out. Change them in `src/rating/score.ts` if the maintainer reads it differently.
+- **The bar** is counted over **all** runs (30), not only those that finished: a run that left nothing, or timed out, was a run that wasn't mergeable. At least half must be `merge-as-is` or `merge-with-small-edits`. It is held per set of runs (one model), and against the **strictest** of several raters (the lowest share rated mergeable; on a tie the first rater listed is the one named); their agreement is reported. These are readings of "at least half are..." that the build order doesn't spell out. Change them in `src/rating/score.ts` if the maintainer reads it differently.
 - **If the ratings are incomplete** (an unrated run, a word off the scale) the verdict is SKIPPED, never FAIL.
 
 ### What counts as the bar's runs
@@ -286,7 +321,7 @@ Set `OSTRA_SPIKE_PRICE_INPUT` and `OSTRA_SPIKE_PRICE_OUTPUT` (USD per million to
 | `OSTRA_SPIKE_PRICE_INPUT`, `_OUTPUT`, `_CACHE_READ`, `_CACHE_WRITE` (USD per million tokens), optional | spend in dollars, the dollar cap, and B3's pass | spend in tokens only; no dollar cap (`--max-usd` is refused); B3 SKIPPED |
 | `OSTRA_SPIKE_MODEL_CONTEXT`, `_OUTPUT` (tokens), optional | the model's limits in OpenCode's config | 128,000 and 16,000 |
 | `--host-run`, or `OSTRA_SPIKE_HOST_RUN=1` | `pnpm runs --real` (it refuses without it) | `pnpm runs --real` exits 2 |
-| A reviewer (two are better) | B2's rating | SKIPPED |
+| A rating file per rater in `ratings/` (Opus's and Fable's are in; a human's is optional) | B2's rating | SKIPPED until at least one is in |
 
 Nothing else is read, apart from the OS variables the agent and the checks need to run at all (`PATH`, `SystemRoot`, `ComSpec`, `PATHEXT` and the like: `PASSTHROUGH` in `src/lib/opencode.ts` and `src/runner/sandbox.ts`; none is a secret). The dry-run needs none of the inputs above.
 
@@ -324,14 +359,14 @@ Facts a real run will meet; they belong in the finding with the real numbers.
 
 ## What's left
 
-- **Done:** the real runs (30 of 30, see [Results](#results-of-the-real-runs-2026-11-18)), the host-run audit and an AI first pass of the rating.
-- **The human rating** (B2). At least one human reviewer, two if possible: the maintainer, or a teammate. Steps are under [The blind rating](#the-blind-rating): fill `ratings-template.csv`, save it as `ratings/<name>.csv`, run `pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`, and leave `key.json` shut until every rater is done. B2 does not count before this.
-- **Confirm B1 and B3 with `pnpm spike`.** It reads the records by the same conditions and adds the scan for the real key's value in every record, the one B3 condition not checked by hand here. Mind the B2 line it prints: it will read PASS on the AI's file alone.
+- **Done:** the real runs (30 of 30, see [Results](#results-of-the-real-runs-2026-11-18)), the host-run audit, and the blind rating by two AI reviewers, Claude Opus and Claude Fable (B2 PASS, 100% mergeable from each, 97% agreement; see [The blind rating](#the-blind-rating)).
+- **Optional: a human rating.** B2 already counts on the two AI ratings, by the maintainer's decision (see [Decisions](#decisions)), so nothing waits on this. A person's rating would add what two Claude models cannot say: whether a person reads these pull requests as they did. If the maintainer or a teammate adds one, the steps are under [The blind rating](#the-blind-rating): rate from `sheet.md`, save `ratings/<name>.csv`, run `pnpm score --sheet=.runs/rating-2026-11-18T20-42-31`. Keep `key.json` shut until every rater is done; once it is open, a later rating is no longer blind.
+- **Confirm B1 and B3 with `pnpm spike`.** It reads the records by the same conditions and adds the scan for the real key's value in every record, the one B3 condition not checked by hand here. Its B2 line will read PASS on the two AI files: it cannot tell them from a human's, so the record of whose they are is [The blind rating](#the-blind-rating).
 - **Decide whether the harness should record what an agent ran.** The audit could settle nothing about the 241 shell commands, because none is recorded (only side effects could be checked). Before another host run, either record what each tool call touched (a shell command's program and target paths, in a form that keeps to `AGENTS.md`'s rule that logs carry no content), or run it somewhere the question cannot arise (spike 3's box).
 - **Rotate the model key if it is not one you can afford to have read** (see the audit's "What follows").
 - **Close the gap between this evidence and the bar** (see [Limits of this evidence](#limits-of-this-evidence)): run a ticket of each kind end to end through spike 3's box and spike 4's PR flow on a repo in the test GitHub org, or have the maintainer reword the bar in `context/build-order.md` to what this measures.
-- **The finding** in `context/research/`, with real numbers and the limits section, once the runs and the rating are in. If the bar is missed: the second model.
-- **Decide, or confirm,** the readings in "Rating blind" (all runs as the denominator, per model, the strictest rater) and the working values this spike added: two thirds of the seeded faults for an "add tests" ticket, $5 and 3,000,000 tokens per run (the real set ran with a $2 cap), and `--retry-failed` redoing an `error` or `crash` (which can favour the agent if a model's refusals are retried: the manifest counts the retries, and the finding should quote the count: 0 in the real set).
+- **The finding** in `context/research/`, with real numbers and the limits section, now that the runs and the rating are in. It must say that B2 rested on two AI reviewers, Claude Opus and Claude Fable, and not a human (the maintainer's decision of 2026-11-18), and that they split on 1 pull request of 30. On the records the bar was not missed, so no second model is needed, once `pnpm spike` confirms B1 and B3.
+- **Decide, or confirm,** the readings in "Rating blind" (all runs as the denominator, per model, the strictest rater, which on a tie names the first rater listed) and the working values this spike added: two thirds of the seeded faults for an "add tests" ticket, $5 and 3,000,000 tokens per run (the real set ran with a $2 cap), and `--retry-failed` redoing an `error` or `crash` (which can favour the agent if a model's refusals are retried: the manifest counts the retries, and the finding should quote the count: 0 in the real set).
 - **Not covered here, by design:** opening the PR on GitHub and the co-author trailer (spike 4); the box, so the agent's shell isn't isolated (spike 3); a Linux or macOS run. The code uses no Windows-only API beyond spike 1's `process-tree.ts`, whose POSIX paths spike 1 notes have run in no test yet.
 - **Commit.** This spike is untracked in the shared checkout; stage it by path (`git add spikes/is-opencode-good-enough`) and commit it with the next change.
 
