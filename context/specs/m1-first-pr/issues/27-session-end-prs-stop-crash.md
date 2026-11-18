@@ -1,6 +1,6 @@
 # 27: Session end: PRs, no empty PRs, stop and crash
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 13, 26
 Features: F-030, F-078, F-065, F-025, F-047 (the first case)
@@ -23,3 +23,5 @@ Spec: `../spec.md`, sections 3 and 4
 - [ ] Committed as `✨ add PR opening and session end`.
 
 ## Comments
+
+- 2026-11-18, core: done in the commit that carries this line (`✨ add PR opening and session end`). Domain: `recordSessionEnd` (the event at `eventSeq` must be the session's `session.ended`; the session ends with or without changes, the lease is released and the box stopped; each repo that is ahead is `branch_pushed`; with changes a `task.open-pull-requests` job, without changes needs you (driver) with the agent's last message as the summary; a stopped task gets neither), `openPullRequests` (per changed repo: skip one already `pr_open`, reuse an open PR the host finds for the branch, else open one through the adapter, which narrows its token to `pull_requests: write`; the title from the prompt cut to 256 characters, the body from `pr.text_set` or the agent's last message, then a footer linking `OSTRA_PUBLIC_URL/tasks/<id>` and the task's other PRs; then `pr.opened`, an audit entry, and the task to `in_review`/`waiting_for_reviewer`). `stopTask`'s panel half is the api builder's (ticket 33): it stops the task at once and writes the `stop` command. Core's half, in `src/reactions/session-end.ts`: the two workers, and a runner's `done`/`rejected` answer to a stop, which ends the session and frees the lease. A crash is handled at ingest (ticket 25). 5 tests against the fake code host (a PR once even when the job runs twice and the host fails once; no changes → needs you with the summary, no PR; stop → no PR, the branch kept; crash; another organization's runner can't answer our stop), and the gated live run, done here with `github.env`: a PR on a test branch of `ostra-test/test1`, opened by the App's bot with the expected title and footer, then closed and its branch deleted. The domain's seams test now lists all 14 use cases as written. Whole-repo checks green.

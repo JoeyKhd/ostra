@@ -87,28 +87,34 @@ describe("the job catalogue (ADR 0037)", () => {
 });
 
 describe("the use-case seams", () => {
-  const useCases = {
-    recordSessionEnd: "27",
-    openPullRequests: "27",
-  } as const;
+  // Every use case the spec lists (section 5.4), each in its own file. All are written now.
+  const useCases = [
+    "createFirstAdmin",
+    "addModelProvider",
+    "connectGitHubApp",
+    "createProject",
+    "saveEnvironment",
+    "registerPersonalRunner",
+    "createPromptTask",
+    "dispatchTask",
+    "acceptOffer",
+    "issueTaskCredentials",
+    "ingestEvents",
+    "recordSessionEnd",
+    "openPullRequests",
+    "stopTask",
+  ] as const;
 
   it("has a file for every use case the spec lists", async () => {
     const files = await readdir(path.join(import.meta.dirname, "use-cases"));
     const kebab = (name: string): string => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).replace("git-hub", "github");
-    for (const name of Object.keys(useCases)) {
+    for (const name of useCases) {
       expect(files).toContain(`${kebab(name)}.ts`);
     }
   });
 
-  it.each(Object.entries(useCases))("%s is exported, and its body names ticket %s until it's written", (name, ticket) => {
-    const useCase: unknown = Reflect.get(domain, name);
-    expect(typeof useCase).toBe("function");
-    if (typeof useCase !== "function") {
-      return;
-    }
-    expect(() => {
-      Reflect.apply(useCase, undefined, [{}, {}]);
-    }).toThrow(`not implemented: ticket ${ticket}`);
+  it.each(useCases)("%s is exported as a function", (name) => {
+    expect(typeof Reflect.get(domain, name)).toBe("function");
   });
 
   it("gives every use case that takes a request an input schema", () => {

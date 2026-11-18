@@ -26,6 +26,8 @@ import { cancelGraceInTx, graceHandler, startGraceInTx } from "./ingest/grace.ts
 import type { GraceDeps } from "./ingest/grace.ts";
 import { createIngest } from "./ingest/ingest.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
+import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
+import type { ReactionDeps } from "./reactions/session-end.ts";
 import { loadSecretsKey, postgresSecretRows } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 
@@ -90,6 +92,16 @@ export const startCore = async (
     logger,
   };
   const dispatcherDeps: DispatcherDeps = { db, jobs, outbox: postgresCommandOutbox, notices, clock: systemClock, logger };
+  const reactionDeps: ReactionDeps = {
+    db,
+    jobs,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    adapters,
+    publicUrl: settings.publicUrl,
+    logger,
+  };
   const signingKey = await loadOrCreateKey(settings.dataDir, RUNNER_TOKEN_KEY_FILE);
   const gateway = createGateway({
     db,
@@ -105,13 +117,18 @@ export const startCore = async (
       liveText: liveText.write,
       onConnectedInTx: (tx, runner) => cancelGraceInTx(graceDeps, tx, runner),
       onDisconnectedInTx: (tx, runner) => startGraceInTx(graceDeps, tx, runner),
-      onCommandResultsInTx: (tx, runner, results) => applyOfferResultsInTx(dispatcherDeps, tx, runner, results),
+      onCommandResultsInTx: async (tx, runner, results) => {
+        await applyOfferResultsInTx(dispatcherDeps, tx, runner, results);
+        await applyStopResultsInTx(reactionDeps, tx, runner, results);
+      },
     },
     logger,
   });
   await jobs.work("task.grace", graceHandler(db, graceDeps));
   await jobs.work("task.dispatch", dispatchHandler(dispatcherDeps));
   await jobs.work("task.offer-timeout", offerTimeoutHandler(dispatcherDeps));
+  await jobs.work("task.session-ended", sessionEndedHandler(reactionDeps));
+  await jobs.work("task.open-pull-requests", openPullRequestsHandler(reactionDeps));
   liveText.start();
   const taskEndpoints = handleTaskEndpoint({
     db,
