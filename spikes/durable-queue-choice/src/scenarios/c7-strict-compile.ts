@@ -83,7 +83,10 @@ export const scanSource = (fileName: string, text: string): Finding[] => {
   const add = (node: ts.Node, what: string): void => {
     found.push({ line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, what });
   };
-  const isSeam = basename(fileName) === "jobs.ts";
+  // Two seams: src/jobs.ts for pg-boss, src/dbos/jobs.ts for DBOS (the build order's fallback, C3 and C4 only).
+  const normalized = fileName.replaceAll("\\", "/");
+  const isSeam = basename(fileName) === "jobs.ts" && !normalized.includes("dbos/");
+  const isDbosSeam = normalized.endsWith("dbos/jobs.ts");
 
   const visit = (node: ts.Node): void => {
     if (ts.isAsExpression(node) && !isConstTypeReference(node.type)) {
@@ -114,6 +117,9 @@ export const scanSource = (fileName: string, text: string): Finding[] => {
     } else if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       if (node.moduleSpecifier.text === "pg-boss" && !isSeam) {
         add(node, "an import of pg-boss outside the seam (src/jobs.ts)");
+      }
+      if (node.moduleSpecifier.text.startsWith("@dbos-inc/") && !isDbosSeam) {
+        add(node, "an import of DBOS outside its seam (src/dbos/jobs.ts)");
       }
     }
     ts.forEachChild(node, visit);
@@ -183,7 +189,7 @@ export const run = async (ctx: StaticContext): Promise<CriterionResult> => {
     failures.push(`forbidden constructs: ${offenders.slice(0, 8).join("; ")}`);
   }
   evidence.push(
-    `${String(files.length)} source files scanned on their syntax trees: no \`as\` but \`as const\`, no \`!\`, no any, no enum, interface, class or default export, no sync API, no ts-ignore or ts-nocheck, pg-boss imported only by the seam; ${String(suppressions)} ts-expect-error`,
+    `${String(files.length)} source files scanned on their syntax trees: no \`as\` but \`as const\`, no \`!\`, no any, no enum, interface, class or default export, no sync API, no ts-ignore or ts-nocheck, pg-boss imported only by src/jobs.ts and DBOS only by src/dbos/jobs.ts; ${String(suppressions)} ts-expect-error`,
   );
 
   // The repo's own lint rules, through this directory's config (the root config ignores spikes/**).

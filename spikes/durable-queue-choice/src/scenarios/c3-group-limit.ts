@@ -35,7 +35,8 @@
 import pg from "pg";
 import { z } from "zod";
 import { fmtMs, openScenario } from "../kit.ts";
-import type { CriterionResult, RunContext } from "../kit.ts";
+import type { CriterionResult, RunContext, Scenario } from "../kit.ts";
+import type { Db } from "../cluster.ts";
 import { waitUntil } from "../proc.ts";
 import { GROUP_LIMIT } from "../job-defs.ts";
 
@@ -120,10 +121,14 @@ export type SnapshotStats = {
 
 const groupCountsSchema = z.object({ group_id: z.string(), n: z.number() });
 
-/** Polls the committed count of active jobs per group on its own connection until `stop()` is called. */
+/**
+ * Polls the committed count of running jobs per group on its own connection until `stop()` is called.
+ * `sql` returns one row per group with jobs running: `group_id` and `n`.
+ */
 const startSnapshotSampler = async (
   connectionString: string,
-  queue: string,
+  sql: string,
+  params: readonly unknown[],
   limit: number,
 ): Promise<{ stop: () => Promise<SnapshotStats> }> => {
   const client = new pg.Client({ connectionString });
@@ -145,10 +150,7 @@ const startSnapshotSampler = async (
   const loop = (async () => {
     while (control.running) {
       const before = performance.now();
-      const result = await client.query(
-        "SELECT group_id, count(*)::int AS n FROM pgboss.job WHERE name = $1 AND state = 'active' AND group_id IS NOT NULL GROUP BY group_id",
-        [queue],
-      );
+      const result = await client.query(sql, [...params]);
       const after = performance.now();
       const rows: unknown = result.rows;
       const counts = new Map<string, number>();
@@ -216,7 +218,36 @@ const startSnapshotSampler = async (
   };
 };
 
-const jobRowSchema = z.object({
+/** One job as its library's own table records it. */
+export type GroupJobRow = {
+  readonly groupId: string | null;
+  /** Finished successfully. */
+  readonly finished: boolean;
+  /** Ran more than once (a retry, or a recovery). */
+  readonly retried: boolean;
+  /** When the table says the job started and finished, in microseconds since the epoch. */
+  readonly startUs: number | null;
+  readonly endUs: number | null;
+};
+
+/**
+ * What differs between pg-boss (C3) and DBOS (D3). The passes, the three measures and the judging are
+ * the same for both.
+ */
+export type GroupBackend = {
+  readonly library: string;
+  /** Boots three replicas (16 workers each, a limit of GROUP_LIMIT per key) and returns the producer's enqueue. */
+  readonly boot: (scenario: Scenario, replicas: number) => Promise<(jobs: readonly { readonly key: string; readonly workMs: number }[]) => Promise<void>>;
+  /** Returns `group_id` and `n` per group: the committed count of the jobs the limit counts. */
+  readonly activeSql: string;
+  readonly activeParams: readonly unknown[];
+  readonly completedCount: (db: Db) => Promise<number>;
+  readonly jobRows: (db: Db) => Promise<readonly GroupJobRow[]>;
+  /** Why the job table can show a group above the limit, for the evidence line. */
+  readonly overshootExplanation: string;
+};
+
+const pgBossJobRowSchema = z.object({
   id: z.string(),
   group_id: z.string().nullable(),
   state: z.string(),
@@ -224,6 +255,56 @@ const jobRowSchema = z.object({
   start_us: z.coerce.number().nullable(),
   end_us: z.coerce.number().nullable(),
 });
+
+const pgBossBackend: GroupBackend = {
+  library: "pg-boss",
+  boot: async (scenario, replicas) => {
+    // A cold database and three replicas booting at once: pg-boss's install and queue creation race.
+    const started = Array.from({ length: replicas }, (_, index) => `replica-${String(index + 1)}`).map((replicaId) =>
+      scenario.spawnReplica(replicaId, ["group"], { localConcurrency: 16, groupConcurrency: GROUP_LIMIT }),
+    );
+    for (const replica of started) {
+      const message = await replica.child.waitForMessage((m) => m.type === "ready" || m.type === "fatal", 90_000, "ready");
+      if (message.type === "fatal") {
+        throw new Error(`${replica.id} failed to start: ${message.error}`);
+      }
+    }
+    const panel = await scenario.startPanel("panel-1");
+    return async (jobs) => {
+      await panel.call({ type: "enqueue-group", jobs: [...jobs], batchSize: 100 }, { timeoutMs: 180_000 });
+    };
+  },
+  activeSql:
+    "SELECT group_id, count(*)::int AS n FROM pgboss.job WHERE name = $1 AND state = 'active' AND group_id IS NOT NULL GROUP BY group_id",
+  activeParams: ["group-work"],
+  completedCount: async (db) => {
+    const rows = await db.query(
+      "SELECT count(*)::int AS n FROM pgboss.job WHERE name = 'group-work' AND state = 'completed'",
+      [],
+      z.object({ n: z.number() }),
+    );
+    return rows[0]?.n ?? 0;
+  },
+  jobRows: async (db) => {
+    const rows = await db.query(
+      `SELECT id, group_id, state, retry_count,
+              (extract(epoch from started_on) * 1000000)::bigint::text AS start_us,
+              (extract(epoch from completed_on) * 1000000)::bigint::text AS end_us
+         FROM pgboss.job WHERE name = 'group-work'`,
+      [],
+      pgBossJobRowSchema,
+    );
+    return rows.map((row) => ({
+      groupId: row.group_id,
+      finished: row.state === "completed",
+      retried: row.retry_count > 0,
+      startUs: row.start_us,
+      endUs: row.end_us,
+    }));
+  },
+  overshootExplanation:
+    "A fetch claims jobs in one statement that cannot see a racing claim (READ COMMITTED, SKIP LOCKED, the group's active count read from the statement's own snapshot), then recounts the group after its own commit and gives the excess back to `created` before any handler starts (pg-boss manager.js, #fetch and #giveBack), so the extra rows are active in the table for milliseconds and are not run",
+};
 
 const eventRowSchema = z.object({
   group_key: z.string(),
@@ -262,22 +343,12 @@ type PassOutcome = {
   readonly handlerPeak: number;
 };
 
-const runPass = async (ctx: RunContext, config: PassConfig): Promise<PassOutcome> => {
+const runPass = async (ctx: RunContext, config: PassConfig, backend: GroupBackend): Promise<PassOutcome> => {
   const { jobCount, keyCount } = config;
   const scenario = await openScenario(ctx, config.scenarioName);
   const { db } = scenario;
   try {
-    // A cold database and three replicas booting at once: pg-boss's install and queue creation race.
-    const replicas = Array.from({ length: REPLICAS }, (_, index) => `replica-${String(index + 1)}`).map((replicaId) =>
-      scenario.spawnReplica(replicaId, ["group"], { localConcurrency: 16, groupConcurrency: GROUP_LIMIT }),
-    );
-    for (const replica of replicas) {
-      const message = await replica.child.waitForMessage((m) => m.type === "ready" || m.type === "fatal", 90_000, "ready");
-      if (message.type === "fatal") {
-        throw new Error(`${replica.id} failed to start: ${message.error}`);
-      }
-    }
-    const panel = await scenario.startPanel("panel-1");
+    const enqueue = await backend.boot(scenario, REPLICAS);
 
     const keys = Array.from({ length: keyCount }, (_, index) => `key-${String(index).padStart(2, "0")}`);
     const jobs = Array.from({ length: jobCount }, (_, index) => ({
@@ -285,34 +356,21 @@ const runPass = async (ctx: RunContext, config: PassConfig): Promise<PassOutcome
       workMs: config.workMs(index),
     }));
 
-    const sampler = await startSnapshotSampler(db.url, "group-work", GROUP_LIMIT);
+    const sampler = await startSnapshotSampler(db.url, backend.activeSql, backend.activeParams, GROUP_LIMIT);
 
     const startedAt = Date.now();
-    await panel.call({ type: "enqueue-group", jobs, batchSize: 100 }, { timeoutMs: 180_000 });
+    await enqueue(jobs);
     ctx.note(`${config.label}: ${String(jobCount)} jobs on ${String(keyCount)} keys enqueued in ${fmtMs(Date.now() - startedAt)}`);
 
-    await waitUntil(
-      async () => {
-        const rows = await db.query(
-          "SELECT count(*)::int AS n FROM pgboss.job WHERE name = 'group-work' AND state = 'completed'",
-          [],
-          z.object({ n: z.number() }),
-        );
-        return (rows[0]?.n ?? 0) === jobCount;
-      },
-      { timeoutMs: 300_000, intervalMs: 500, what: "all group jobs to complete" },
-    );
+    await waitUntil(async () => (await backend.completedCount(db)) === jobCount, {
+      timeoutMs: 300_000,
+      intervalMs: 500,
+      what: "all group jobs to complete",
+    });
     const finishedMs = Date.now() - startedAt;
     const snapshot = await sampler.stop();
 
-    const jobRows = await db.query(
-      `SELECT id, group_id, state, retry_count,
-              (extract(epoch from started_on) * 1000000)::bigint::text AS start_us,
-              (extract(epoch from completed_on) * 1000000)::bigint::text AS end_us
-         FROM pgboss.job WHERE name = 'group-work'`,
-      [],
-      jobRowSchema,
-    );
+    const jobRows = await backend.jobRows(db);
     const eventRows = await db.query(
       `SELECT group_key, job_id, kind, replica_id, (extract(epoch from at) * 1000000)::bigint::text AS at_us
          FROM group_event`,
@@ -322,8 +380,8 @@ const runPass = async (ctx: RunContext, config: PassConfig): Promise<PassOutcome
 
     const tableIntervals: Interval[] = [];
     for (const row of jobRows) {
-      if (row.group_id !== null && row.start_us !== null && row.end_us !== null) {
-        tableIntervals.push({ key: row.group_id, start: row.start_us, end: row.end_us });
+      if (row.groupId !== null && row.startUs !== null && row.endUs !== null) {
+        tableIntervals.push({ key: row.groupId, start: row.startUs, end: row.endUs });
       }
     }
     const starts = new Map<string, number>();
@@ -344,14 +402,14 @@ const runPass = async (ctx: RunContext, config: PassConfig): Promise<PassOutcome
 
     const startEvents = eventRows.filter((event) => event.kind === "start");
     const distinctStarted = new Set(startEvents.map((event) => event.job_id)).size;
-    const retried = jobRows.filter((row) => row.retry_count > 0).length;
+    const retried = jobRows.filter((row) => row.retried).length;
     const perReplica = new Map<string, number>();
     for (const event of startEvents) {
       perReplica.set(event.replica_id, (perReplica.get(event.replica_id) ?? 0) + 1);
     }
 
     const failures: string[] = [];
-    if (jobRows.length !== jobCount || jobRows.some((row) => row.state !== "completed")) {
+    if (jobRows.length !== jobCount || jobRows.some((row) => !row.finished)) {
       failures.push(`${config.label}: not every job completed`);
     }
     if (startEvents.length !== jobCount || distinctStarted !== jobCount || retried > 0) {
@@ -380,13 +438,13 @@ const runPass = async (ctx: RunContext, config: PassConfig): Promise<PassOutcome
       .join("; ");
 
     const evidence = [
-      `${config.label}: ${String(jobCount)} jobs on ${String(keyCount)} keys, ${String(REPLICAS)} replicas x 16 workers, groupConcurrency ${String(GROUP_LIMIT)}: all completed in ${fmtMs(finishedMs)} (${(jobCount / (finishedMs / 1000)).toFixed(1)} jobs/s), each ran once, none retried`,
+      `${config.label}: ${String(jobCount)} jobs on ${String(keyCount)} keys, ${String(REPLICAS)} ${backend.library} replicas x 16 workers, a limit of ${String(GROUP_LIMIT)} per key: all completed in ${fmtMs(finishedMs)} (${(jobCount / (finishedMs / 1000)).toFixed(1)} jobs/s), each ran once, none retried`,
       `${config.label}, committed-state snapshots (primary): ${String(snapshot.snapshots)} back-to-back polls; peak ${String(snapshot.peak)} active jobs in one group; ${String(snapshot.snapshotsAbove)} snapshots (${((snapshot.snapshotsAbove / Math.max(1, snapshot.snapshots)) * 100).toFixed(2)}%) had a group above the limit${histogram === "" ? "" : ` (${histogram})`}; ${String(snapshot.keysAbove)} of ${String(keyCount)} keys ever above; ${String(snapshot.episodes)} overshoot episodes, longest ${snapshot.longestEpisodeMs.toFixed(0)} ms; ${snapshot.timeAboveMs.toFixed(0)} ms above the limit out of ${fmtMs(snapshot.busyMs)} busy key-time (${(share * 100).toFixed(2)}%)`,
       describeSweep(`${config.label}, job table timestamps (statement start times)`, tableView),
       describeSweep(`${config.label}, handlers (start and end events)`, handlerView),
       `${config.label}, jobs started per replica: ${[...perReplica.entries()].map(([replica, count]) => `${replica} ${String(count)}`).join(", ")}`,
       overshoot
-        ? `${config.label}: OVERSHOOT RECORDED in the job table: peak ${String(peak)} active at a limit of ${String(GROUP_LIMIT)}, longest episode ${snapshot.longestEpisodeMs.toFixed(0)} ms; the handlers' own records peaked at ${String(handlerView.peak)}. A fetch claims jobs in one statement that cannot see a racing claim, then recounts the group after its own commit and gives the excess back before any handler starts (pg-boss manager.js, #fetch), so the extra rows are active in the table for milliseconds and are not run`
+        ? `${config.label}: OVERSHOOT RECORDED in the job table: peak ${String(peak)} active at a limit of ${String(GROUP_LIMIT)}, longest episode ${snapshot.longestEpisodeMs.toFixed(0)} ms; the handlers' own records peaked at ${String(handlerView.peak)}. ${backend.overshootExplanation}`
         : `${config.label}: no overshoot observed in any of the three records`,
     ];
     return {
@@ -403,24 +461,37 @@ const runPass = async (ctx: RunContext, config: PassConfig): Promise<PassOutcome
   }
 };
 
-export const run = async (ctx: RunContext): Promise<CriterionResult> => {
+/** Both passes on one library, judged the same way whichever library it is. */
+export const runGroupLimit = async (
+  ctx: RunContext,
+  scenario: { readonly id: string; readonly criterion: string; readonly databasePrefix: string; readonly backend: GroupBackend },
+): Promise<CriterionResult> => {
+  const { id, criterion, backend } = scenario;
   const keyCount = ctx.settings.SPIKE_GROUP_KEYS;
-  const short = await runPass(ctx, {
-    label: "short jobs (40 to 100 ms)",
-    scenarioName: "c3_group_limit",
-    jobCount: ctx.settings.SPIKE_GROUP_JOBS,
-    keyCount,
-    workMs: (index) => 40 + ((index * 37) % 61),
-    judgeBrevity: true,
-  });
-  const long = await runPass(ctx, {
-    label: "long jobs (2 to 4 s)",
-    scenarioName: "c3_group_limit_long",
-    jobCount: ctx.settings.SPIKE_GROUP_LONG_JOBS,
-    keyCount,
-    workMs: (index) => 2_000 + ((index * 37) % 2_001),
-    judgeBrevity: false,
-  });
+  const short = await runPass(
+    ctx,
+    {
+      label: "short jobs (40 to 100 ms)",
+      scenarioName: `${scenario.databasePrefix}_group_limit`,
+      jobCount: ctx.settings.SPIKE_GROUP_JOBS,
+      keyCount,
+      workMs: (index) => 40 + ((index * 37) % 61),
+      judgeBrevity: true,
+    },
+    backend,
+  );
+  const long = await runPass(
+    ctx,
+    {
+      label: "long jobs (2 to 4 s)",
+      scenarioName: `${scenario.databasePrefix}_group_limit_long`,
+      jobCount: ctx.settings.SPIKE_GROUP_LONG_JOBS,
+      keyCount,
+      workMs: (index) => 2_000 + ((index * 37) % 2_001),
+      judgeBrevity: false,
+    },
+    backend,
+  );
 
   const failures = [...short.failures, ...long.failures];
   const peak = Math.max(short.peak, long.peak);
@@ -437,8 +508,8 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
   const evidence = [
     ...short.evidence,
     ...long.evidence,
-    `the two passes side by side: ${passes}. The longest episode in the table did not grow with the job length (${short.longestEpisodeMs.toFixed(0)} ms with 40 to 100 ms jobs, ${long.longestEpisodeMs.toFixed(0)} ms with 2 to 4 s jobs), and the handlers peaked at ${String(short.handlerPeak)} and ${String(long.handlerPeak)}: the over-admitted rows are given back, not run for the length of a job`,
-    `hard cap: no snapshot may show more than ${String(ctx.settings.SPIKE_GROUP_PEAK_CAP)} active jobs in one group (5 x the limit; a working value the spike set for itself, not a pg-boss figure)`,
+    `the two passes side by side (${backend.library}): ${passes}; the longest episode in the table was ${short.longestEpisodeMs.toFixed(0)} ms with 40 to 100 ms jobs and ${long.longestEpisodeMs.toFixed(0)} ms with 2 to 4 s jobs, and the handlers peaked at ${String(short.handlerPeak)} and ${String(long.handlerPeak)}`,
+    `hard cap: no snapshot may show more than ${String(ctx.settings.SPIKE_GROUP_PEAK_CAP)} running jobs in one group (5 x the limit; a working value the spike set for itself, not a library's figure)`,
   ];
 
   return {
@@ -459,3 +530,6 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
     evidence,
   };
 };
+
+export const run = (ctx: RunContext): Promise<CriterionResult> =>
+  runGroupLimit(ctx, { id, criterion, databasePrefix: "c3", backend: pgBossBackend });

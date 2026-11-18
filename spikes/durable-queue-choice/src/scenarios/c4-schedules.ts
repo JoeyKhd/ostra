@@ -27,20 +27,27 @@
 // free it (SPIKE_STRAND_WAIT_MINUTES, 17) and counts what the replay does: occurrences delivered
 // late, and occurrences fired a second time.
 //
-// Judged: every one of the 200 schedules fired exactly once in every tick; before the first tick a
-// schedule fired no more often than it had occurrences (a new schedule fires once for an occurrence
-// up to 60 s old, the warm-up fire); and a replayed batch made no second fire.
+// Judged (schedule-judge.ts, shared with D4 on DBOS): every one of the 200 schedules fired exactly
+// once in every tick; before the first tick a schedule fired no more often than it had occurrences
+// (a new schedule fires once for an occurrence up to 60 s old, the warm-up fire); and a replayed
+// batch made no second fire.
+//
+// The fix under test (both knobs; neither changes what is judged):
+//   SPIKE_SEND_IT_HEARTBEAT_SECONDS=10  every replica puts a heartbeat on the forwarding queue, so a
+//                                       killed holder's batch is retried within seconds, not 15 minutes;
+//   SPIKE_SCHEDULE_GUARD=all            every schedule carries a singleton key and a 60 s slot, so the
+//                                       retried batch cannot create a second job in the same minute.
 
 import pg from "pg";
 import { z } from "zod";
 import { dbNowMs, openScenario } from "../kit.ts";
 import type { CriterionResult, Replica, RunContext, Scenario } from "../kit.ts";
 import { sleep } from "../proc.ts";
+import { MINUTE, judgeFires, percentile } from "./schedule-judge.ts";
 
 export const id = "C4";
 export const criterion = "200 schedules created at runtime each fire once per tick while replicas restart.";
 
-const MINUTE = 60_000;
 const FORWARDING_QUEUE = "__pgboss__send-it";
 /** How long after a kill the batch is read again to tell a stranded batch from one a survivor finished. */
 const STRAND_CHECK_MS = 3_000;
@@ -65,17 +72,11 @@ const forwardedSchema = z.object({
   slot: z.string().nullable(),
 });
 
-const percentile = (sorted: readonly number[], p: number): number => {
-  if (sorted.length === 0) {
-    return 0;
-  }
-  const index = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
-  return sorted[index] ?? 0;
-};
-
 /** One kill issued while a forwarding batch was active. */
 type Strike = {
   readonly label: string;
+  /** The database clock at the kill. */
+  readonly killedAt: number;
   readonly victims: readonly string[];
   readonly survivor: string;
   /** Forwarding jobs in state `active` when the poll saw them. */
@@ -104,7 +105,12 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
 
     // The experiment knob: a shorter expiry on pg-boss's forwarding queue, on every replica. Absent: pg-boss's default.
     const forwardingExpireSeconds = ctx.settings.SPIKE_SEND_IT_EXPIRE_SECONDS;
-    const replicaOverrides = forwardingExpireSeconds === undefined ? {} : { forwardingExpireSeconds };
+    const forwardingHeartbeatSeconds = ctx.settings.SPIKE_SEND_IT_HEARTBEAT_SECONDS;
+    const guard = ctx.settings.SPIKE_SCHEDULE_GUARD;
+    const replicaOverrides = {
+      ...(forwardingExpireSeconds === undefined ? {} : { forwardingExpireSeconds }),
+      ...(forwardingHeartbeatSeconds === undefined ? {} : { forwardingHeartbeatSeconds }),
+    };
     const slots: (Replica | undefined)[] = [undefined, undefined, undefined];
     const generation = [0, 0, 0];
     const startSlot = async (slot: number): Promise<void> => {
@@ -129,7 +135,7 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
 
     const createdAt = Date.now();
     const beforeCreate = await dbNowMs(db);
-    await panel.call({ type: "create-schedules", count: scheduleCount, cron: "* * * * *" }, { timeoutMs: 180_000 });
+    await panel.call({ type: "create-schedules", count: scheduleCount, cron: "* * * * *", guard }, { timeoutMs: 180_000 });
     ctx.note(`${String(scheduleCount)} schedules created at runtime in ${((Date.now() - createdAt) / 1000).toFixed(1)} s`);
 
     const now = await dbNowMs(db);
@@ -211,6 +217,7 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
       const stranded = later.filter((row) => row.state === "active").map((row) => row.id);
       const record: Strike = {
         label: `strike ${String(strikes.length + 1)} at ${rel(killedAt)}`,
+        killedAt,
         victims: victimReplicas.map((replica) => replica.id),
         survivor: survivor.id,
         activeAtKill: activeIds.length,
@@ -298,89 +305,15 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
       [],
       fireSchema,
     );
-    // One fire is one job that pg-boss created for an occurrence. A handler that ran twice for the same job (its
-    // replica was killed mid-job and the job was redelivered) is at-least-once delivery, the case C2 covers, and
-    // not a second fire: runs are counted per job id.
-    const seenJobs = new Set<string>();
-    const fires = handlerRuns.filter((run) => {
-      if (seenJobs.has(run.job_id)) {
-        return false;
-      }
-      seenJobs.add(run.job_id);
-      return true;
+    const judged = judgeFires({
+      handlerRuns: handlerRuns.map((run) => ({ scheduleKey: run.schedule_key, jobId: run.job_id, replicaId: run.replica_id, createdMs: run.created_ms })),
+      t0,
+      ticks,
+      scheduleCount,
+      beforeCreate,
+      variantOf: (index) => (guard === "all" || index % 2 === 1 ? "guarded" : "plain"),
     });
-    const redelivered = handlerRuns.length - fires.length;
-
-    // Bucket each fire: before the first tick (warm-up), into a tick, or after the run (late or replayed).
-    const counts = new Map<string, number>();
-    const preFires = new Map<string, number>();
-    const latencies: number[] = [];
-    const lateFires: { readonly key: string; readonly at: number }[] = [];
-    let warmUp = 0;
-    for (const fire of fires) {
-      if (fire.created_ms < t0) {
-        warmUp += 1;
-        preFires.set(fire.schedule_key, (preFires.get(fire.schedule_key) ?? 0) + 1);
-        continue;
-      }
-      if (fire.created_ms >= runEnd) {
-        lateFires.push({ key: fire.schedule_key, at: fire.created_ms });
-        continue;
-      }
-      const tick = Math.floor((fire.created_ms - t0) / MINUTE);
-      const key = `${fire.schedule_key}|${String(tick)}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      latencies.push(fire.created_ms - tickTime(tick));
-    }
-
-    const stats = { plain: { missed: 0, doubled: 0, exact: 0 }, guarded: { missed: 0, doubled: 0, exact: 0 } };
-    const problems: string[] = [];
-    const firesBy = new Map<string, { readonly afterTickMs: number; readonly replica: string }[]>();
-    for (const fire of fires) {
-      const tick = Math.floor((fire.created_ms - t0) / MINUTE);
-      if (tick >= 0 && tick < ticks) {
-        const list = firesBy.get(`${fire.schedule_key}|${String(tick)}`) ?? [];
-        list.push({ afterTickMs: fire.created_ms - tickTime(tick), replica: fire.replica_id });
-        firesBy.set(`${fire.schedule_key}|${String(tick)}`, list);
-      }
-    }
-    const describeFires = (board: string, tick: number): string =>
-      (firesBy.get(`${board}|${String(tick)}`) ?? [])
-        .map((entry) => `+${(entry.afterTickMs / 1000).toFixed(1)} s on ${entry.replica}`)
-        .join(", ");
-
-    // Before the first tick a schedule may fire once for each occurrence that came due: the warm-up
-    // occurrence (up to 60 s old when it was created) and every whole minute until the first tick.
-    const occurrencesBeforeT0 = Math.max(0, Math.ceil(t0 / MINUTE) - Math.floor((beforeCreate - MINUTE) / MINUTE) - 1);
-    let warmUpOverFires = 0;
-    for (let index = 0; index < scheduleCount; index += 1) {
-      const board = `board-${String(index).padStart(3, "0")}`;
-      const variant = index % 2 === 1 ? "guarded" : "plain";
-      const bucket = stats[variant];
-      for (let tick = 0; tick < ticks; tick += 1) {
-        const count = counts.get(`${board}|${String(tick)}`) ?? 0;
-        if (count === 1) {
-          bucket.exact += 1;
-        } else if (count === 0) {
-          bucket.missed += 1;
-          if (problems.length < 6) {
-            problems.push(`${board} (${variant}) missed tick ${String(tick)}`);
-          }
-        } else {
-          bucket.doubled += 1;
-          if (problems.length < 6) {
-            problems.push(`${board} (${variant}) fired ${String(count)} times in tick ${String(tick)}: ${describeFires(board, tick)}`);
-          }
-        }
-      }
-      const pre = preFires.get(board) ?? 0;
-      if (pre > occurrencesBeforeT0) {
-        warmUpOverFires += 1;
-        if (problems.length < 6) {
-          problems.push(`${board} (${variant}) fired ${String(pre)} times before the first tick, which had only ${String(occurrencesBeforeT0)} occurrences`);
-        }
-      }
-    }
+    const { fires, redelivered, counts, preFires, warmUp, lateFires, latencies, stats, occurrencesBeforeT0, warmUpOverFires, missed, doubled, problems } = judged;
 
     // What the replay of a stranded batch did.
     const strandedRows = strandedIds.length === 0 ? [] : await forwardedJobs(strandedIds);
@@ -413,11 +346,32 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
       [FORWARDING_QUEUE],
       z.object({ total: z.number(), retried: z.number(), open: z.number() }),
     );
-    latencies.sort((a, b) => a - b);
+    // How long each stranded batch stayed out of play: from its strike to the replay's completion.
+    const completions = strandedIds.length === 0
+      ? []
+      : await db.query(
+          "SELECT id::text AS id, (extract(epoch from completed_on) * 1000)::float8 AS completed_ms FROM pgboss.job WHERE name = $1 AND id = ANY($2::uuid[])",
+          [FORWARDING_QUEUE, strandedIds],
+          z.object({ id: z.string(), completed_ms: z.number().nullable() }),
+        );
+    const completedAt = new Map(completions.map((row) => [row.id, row.completed_ms]));
+    const strandDurations = strikes
+      .filter((record) => record.strandedIds.length > 0)
+      .map((record) => {
+        const done = record.strandedIds.flatMap((strandedId) => {
+          const value = completedAt.get(strandedId);
+          return value === undefined || value === null ? [] : [value];
+        });
+        const latest = done.length === record.strandedIds.length ? Math.max(...done) : null;
+        return `${record.label}: ${String(record.strandedIds.length)} stranded, ${latest === null ? "not all completed" : `all replayed and completed ${((latest - record.killedAt) / 1000).toFixed(1)} s after the kill`}`;
+      });
 
-    const expectedPerVariant = (scheduleCount / 2) * ticks;
-    const missed = stats.plain.missed + stats.guarded.missed;
-    const doubled = stats.plain.doubled + stats.guarded.doubled;
+    const plainCount = guard === "all" ? 0 : Math.ceil(scheduleCount / 2);
+    const configLabel = [
+      forwardingHeartbeatSeconds === undefined ? "pg-boss defaults on the forwarding queue" : `forwarding heartbeat ${String(forwardingHeartbeatSeconds)} s`,
+      ...(forwardingExpireSeconds === undefined ? [] : [`forwarding expiry ${String(forwardingExpireSeconds)} s`]),
+      guard === "all" ? "every schedule guarded" : "half the schedules guarded",
+    ].join(", ");
     const attempts = strikes.length;
     const stranded = strikes.filter((record) => record.activeAfter3s > 0);
     const failures: string[] = [];
@@ -442,8 +396,10 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
 
     const evidence = [
       `${String(scheduleCount)} schedules x ${String(ticks)} ticks = ${String(scheduleCount * ticks)} expected fires; ${String(stats.plain.exact + stats.guarded.exact)} fired exactly once, ${String(missed)} missed, ${String(doubled)} fired twice or more`,
-      `plain schedules (default options): ${String(stats.plain.exact)} of about ${String(Math.ceil(expectedPerVariant))} exact, ${String(stats.plain.missed)} missed, ${String(stats.plain.doubled)} doubled; guarded (singleton key + 60 s slot): ${String(stats.guarded.exact)} exact, ${String(stats.guarded.missed)} missed, ${String(stats.guarded.doubled)} doubled`,
+      `configuration: forwarding queue heartbeat ${forwardingHeartbeatSeconds === undefined ? "none (pg-boss's default)" : `${String(forwardingHeartbeatSeconds)} s (SPIKE_SEND_IT_HEARTBEAT_SECONDS)`}, expiry ${forwardingExpireSeconds === undefined ? "900 s (pg-boss's default)" : `${String(forwardingExpireSeconds)} s (SPIKE_SEND_IT_EXPIRE_SECONDS)`}; guarded schedules: ${guard === "all" ? "all 200 (SPIKE_SCHEDULE_GUARD=all)" : "every second one (the default)"}`,
+      `plain schedules (default options): ${String(stats.plain.exact)} of ${String(plainCount * ticks)} exact, ${String(stats.plain.missed)} missed, ${String(stats.plain.doubled)} doubled; guarded (singleton key + 60 s slot): ${String(stats.guarded.exact)} of ${String((scheduleCount - plainCount) * ticks)} exact, ${String(stats.guarded.missed)} missed, ${String(stats.guarded.doubled)} doubled`,
       `kill window: ${hit}`,
+      ...strandDurations,
       ...strikes.map(
         (record) =>
           `${record.label}: killed ${record.victims.join(" and ")}, kept ${record.survivor}; ${String(record.activeAtKill)} forwarding jobs active at the kill, ${String(record.activeAfterKill)} right after, ${String(record.activeAfter3s)} 3 s later`,
@@ -476,8 +432,8 @@ export const run = async (ctx: RunContext): Promise<CriterionResult> => {
       ...(failures.length === 0 && qualifier !== undefined ? { qualifier } : {}),
       summary:
         failures.length === 0
-          ? `Every one of ${String(scheduleCount)} runtime schedules fired exactly once in each of ${String(ticks)} ticks across a graceful restart and ${String(attempts)} SIGKILLs timed to land in an active forwarding batch.`
-          : failures.join("; "),
+          ? `Every one of ${String(scheduleCount)} runtime schedules fired exactly once in each of ${String(ticks)} ticks across a graceful restart and ${String(attempts)} SIGKILLs timed to land in an active forwarding batch (${configLabel}).`
+          : `${failures.join("; ")} (${configLabel})`,
       evidence,
     };
   } finally {

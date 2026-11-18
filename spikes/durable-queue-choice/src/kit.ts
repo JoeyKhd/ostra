@@ -8,6 +8,7 @@ import type { Cluster, Db } from "./cluster.ts";
 import { startFakeGithub, type FakeGithub } from "./fake-github.ts";
 import { panelOutSchema, replicaOutSchema } from "./messages.ts";
 import type { PanelCommandWire, PanelOut, PanelReply, ReplicaConfigInput, ReplicaOut, WorkerName } from "./messages.ts";
+import type { DbosReplicaConfigInput } from "./dbos/messages.ts";
 import { sleep, spawnNode } from "./proc.ts";
 import type { ExitInfo, ManagedChild } from "./proc.ts";
 
@@ -57,6 +58,23 @@ export const settingsSchema = z.object({
    * replica, to see whether a stranded forwarding batch is then freed sooner. Unset: pg-boss's default.
    */
   SPIKE_SEND_IT_EXPIRE_SECONDS: z.coerce.number().int().min(1).optional(),
+  /**
+   * C4 fix, part 1: a heartbeat on pg-boss's forwarding queue (pg-boss creates it with none), set by every
+   * replica with updateQueue. A killed holder's batch is then freed after the heartbeat goes stale, not
+   * after the 15-minute expiry. pg-boss's minimum is 10. Unset: pg-boss's default (no heartbeat).
+   */
+  SPIKE_SEND_IT_HEARTBEAT_SECONDS: z.coerce.number().int().min(10).optional(),
+  /**
+   * C4 fix, part 2: which schedules carry a singleton key and a 60 s slot on the jobs they create.
+   * `alternate` (the default): every second one, so plain and guarded run side by side. `all`: every one.
+   */
+  SPIKE_SCHEDULE_GUARD: z.enum(["alternate", "all"]).default("alternate"),
+  /**
+   * D4: the executor ID a restarted DBOS replica comes back with. `slot` (the default): the same one as
+   * the process it replaces, which DBOS's self-hosting guide requires. `process`: a new one per process,
+   * as a pod with a generated name would get.
+   */
+  SPIKE_DBOS_EXECUTOR_ID: z.enum(["slot", "process"]).default("slot"),
   SPIKE_GROUP_JOBS: z.coerce.number().int().min(1).default(1000),
   SPIKE_GROUP_KEYS: z.coerce.number().int().min(1).default(20),
   /** C3: the second pass, with jobs of 2 to 4 seconds. */
@@ -106,6 +124,8 @@ export type Scenario = {
   startPanel: (id: string) => Promise<Panel>;
   /** Starts a replica without waiting for it, for concurrent boots. */
   spawnReplica: (id: string, workers: readonly WorkerName[], overrides?: Partial<ReplicaConfigInput>) => Replica;
+  /** Starts a DBOS replica (src/dbos/replica.ts) without waiting for it: same IPC messages, same kill. */
+  spawnDbosReplica: (id: string, config: Omit<DbosReplicaConfigInput, "replicaId" | "databaseUrl">) => Replica;
   dispose: () => Promise<void>;
 };
 
@@ -127,19 +147,11 @@ export const openScenario = async (ctx: RunContext, name: string): Promise<Scena
 
   const children: { readonly kill9: () => Promise<ExitInfo> }[] = [];
 
-  const spawnReplica = (id: string, workers: readonly WorkerName[], overrides: Partial<ReplicaConfigInput> = {}): Replica => {
-    const config: ReplicaConfigInput = {
-      replicaId: id,
-      databaseUrl: db.url,
-      fakeGithubUrl: github.url,
-      workers: [...workers],
-      ...REPLICA_DEFAULTS,
-      ...overrides,
-    };
+  const spawnReplicaProcess = (id: string, entry: string, env: Readonly<Record<string, string>>): Replica => {
     const child = spawnNode({
       name: id,
-      entry: join(ctx.projectRoot, "src", "replica.ts"),
-      env: { REPLICA_CONFIG: JSON.stringify(config) },
+      entry,
+      env,
       logPath: join(logDir, `${id}.log`),
       messageSchema: replicaOutSchema,
     });
@@ -165,7 +177,24 @@ export const openScenario = async (ctx: RunContext, name: string): Promise<Scena
     };
   };
 
-  const startReplica = async (id: string, workers: readonly WorkerName[], overrides: Partial<ReplicaConfigInput> = {}): Promise<Replica> => {
+  const spawnReplica = (id: string, workers: readonly WorkerName[], overrides: Partial<ReplicaConfigInput> = {}): Replica => {
+    const config: ReplicaConfigInput = {
+      replicaId: id,
+      databaseUrl: db.url,
+      fakeGithubUrl: github.url,
+      workers: [...workers],
+      ...REPLICA_DEFAULTS,
+      ...overrides,
+    };
+    return spawnReplicaProcess(id, join(ctx.projectRoot, "src", "replica.ts"), { REPLICA_CONFIG: JSON.stringify(config) });
+  };
+
+  const spawnDbosReplica = (id: string, config: Omit<DbosReplicaConfigInput, "replicaId" | "databaseUrl">): Replica => {
+    const full: DbosReplicaConfigInput = { replicaId: id, databaseUrl: db.url, ...config };
+    return spawnReplicaProcess(id, join(ctx.projectRoot, "src", "dbos", "replica.ts"), { DBOS_REPLICA_CONFIG: JSON.stringify(full) });
+  };
+
+  const startReplica =async (id: string, workers: readonly WorkerName[], overrides: Partial<ReplicaConfigInput> = {}): Promise<Replica> => {
     const replica = spawnReplica(id, workers, overrides);
     const message = await replica.child.waitForMessage(
       (candidate) => candidate.type === "ready" || candidate.type === "fatal",
@@ -229,6 +258,7 @@ export const openScenario = async (ctx: RunContext, name: string): Promise<Scena
     db,
     github,
     spawnReplica,
+    spawnDbosReplica,
     startReplica,
     startPanel,
     dispose: async () => {

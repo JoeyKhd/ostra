@@ -97,6 +97,12 @@ export type Jobs = {
    * while it holds a batch leaves those occurrences active until this expiry (15 minutes by default).
    */
   setForwardingExpiry: (seconds: number) => Promise<void>;
+  /**
+   * Core only. Puts a heartbeat on pg-boss's schedule-forwarding queue (12.38 accepts `heartbeatSeconds` in
+   * updateQueue). Forwarding jobs inserted afterwards carry it, so a killed holder's batch goes back to `retry`
+   * once its heartbeat is stale plus one supervise pass, instead of after the expiry.
+   */
+  setForwardingHeartbeat: (seconds: number) => Promise<void>;
   /** Core only: creates every queue (idempotent). The panel never does this. */
   installQueues: (definitions: readonly AnyJobDefinition[]) => Promise<void>;
   enqueueInTx: <S extends z.ZodType<object>>(
@@ -182,6 +188,9 @@ export const createJobs = (options: JobsOptions): Jobs => {
     },
     setForwardingExpiry: async (seconds) => {
       await boss.updateQueue(FORWARDING_QUEUE, { expireInSeconds: seconds });
+    },
+    setForwardingHeartbeat: async (seconds) => {
+      await boss.updateQueue(FORWARDING_QUEUE, { heartbeatSeconds: seconds });
     },
     installQueues: async (definitions) => {
       for (const definition of definitions) {

@@ -49,6 +49,9 @@ const main = async (): Promise<void> => {
   if (config.forwardingExpireSeconds !== undefined) {
     await jobs.setForwardingExpiry(config.forwardingExpireSeconds);
   }
+  if (config.forwardingHeartbeatSeconds !== undefined) {
+    await jobs.setForwardingHeartbeat(config.forwardingHeartbeatSeconds);
+  }
   await registerWorkers({ prisma, jobs, config });
   log({ level: "info", event: "replica.ready", fields: { workers: config.workers.length } });
   emit({ type: "ready", replicaId: config.replicaId, pid: process.pid });

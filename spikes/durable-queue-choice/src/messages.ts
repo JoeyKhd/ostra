@@ -20,6 +20,8 @@ export const replicaConfigSchema = z.strictObject({
   superviseIntervalSeconds: z.number().int().min(1),
   /** An experiment (C4): the expiry to set on pg-boss's internal forwarding queue. Absent: leave pg-boss's default. */
   forwardingExpireSeconds: z.number().int().min(1).optional(),
+  /** The C4 fix: a heartbeat on pg-boss's internal forwarding queue. Absent: pg-boss's default (none). */
+  forwardingHeartbeatSeconds: z.number().int().min(10).optional(),
 });
 /** What a replica trusts after it has parsed its config (IDs branded). */
 export type ReplicaConfig = z.output<typeof replicaConfigSchema>;
@@ -113,6 +115,8 @@ export const panelCommandSchema = z.discriminatedUnion("type", [
     count: z.number().int().min(1),
     /** Every second schedule is "guarded": it also sets a singleton key and a 60 s slot on its jobs. */
     cron: z.string().min(1),
+    /** `alternate`: every second schedule is guarded (the default). `all`: every schedule is (the C4 fix). */
+    guard: z.enum(["alternate", "all"]).default("alternate"),
   }),
   /** Removes the schedules `create-schedules` made, so a late or replayed fire can be told from a regular one. */
   z.strictObject({

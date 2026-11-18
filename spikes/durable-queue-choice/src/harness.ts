@@ -22,6 +22,8 @@ import * as c4 from "./scenarios/c4-schedules.ts";
 import * as c5 from "./scenarios/c5-delayed-jobs.ts";
 import * as c6 from "./scenarios/c6-panel-no-workers.ts";
 import * as c7 from "./scenarios/c7-strict-compile.ts";
+import * as d3 from "./dbos/d3-group-limit.ts";
+import * as d4 from "./dbos/d4-schedules.ts";
 
 type Scenario =
   | {
@@ -45,6 +47,9 @@ const scenarios: readonly Scenario[] = [
   { kind: "cluster", id: c4.id, criterion: c4.criterion, run: c4.run },
   { kind: "cluster", id: c5.id, criterion: c5.criterion, run: c5.run },
   { kind: "cluster", id: c6.id, criterion: c6.criterion, run: c6.run },
+  // The build order's fallback: C3 and C4 on DBOS Transact, in the same harness (src/dbos/).
+  { kind: "cluster", id: d3.id, criterion: d3.criterion, run: d3.run },
+  { kind: "cluster", id: d4.id, criterion: d4.criterion, run: d4.run },
 ];
 
 const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)));

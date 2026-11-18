@@ -22,7 +22,7 @@ Throwaway code for milestone 0 (`context/build-order.md`). Its finding goes into
 
 ## Status, from the run on this machine on 2026-11-18
 
-Machine: Windows 11, Node 24.14.0, pnpm 11.28.2, Postgres 18.6 (embedded-postgres), pg-boss 12.38.2, Prisma 7.10.1. Other spikes were running on the same machine during the runs, so the timings come from a loaded laptop. One consolidated `pnpm spike` run (18:58 to 19:21 UTC, about 23 minutes) gave **6 of 7 PASS and 1 FAIL (C4), nothing skipped; the exit code was 1**. A review of the first version of this spike found that its C4 never hit the window that matters, and its C2 and C3 were weaker than they looked; C2, C3 and C4 were rebuilt, and C4 now fails:
+Machine: Windows 11, Node 24.14.0, pnpm 11.28.2, Postgres 18.6 (embedded-postgres), pg-boss 12.38.2, Prisma 7.10.1. Other spikes were running on the same machine during the runs, so the timings come from a loaded laptop. One consolidated `pnpm spike` run (18:58 to 19:21 UTC, about 23 minutes) gave **6 of 7 PASS and 1 FAIL (C4), nothing skipped; the exit code was 1**. A review of the first version of this spike found that its C4 never hit the window that matters, and its C2 and C3 were weaker than they looked; C2, C3 and C4 were rebuilt, and C4 now fails. The table is that run; the follow-up (the fallback on DBOS, the root causes, a fix, and a recommendation) is below it:
 
 | # | Pass-bar bullet | Status | What the run showed |
 |---|---|---|---|
@@ -34,7 +34,100 @@ Machine: Windows 11, Node 24.14.0, pnpm 11.28.2, Postgres 18.6 (embedded-postgre
 | C6 | The panel process enqueues without running workers. | **PASS** | With no replica alive the panel's job waited 6 s untouched. Registry row: no supervise, no schedule, no migrate, 0 workers. The panel exited by itself 27 ms after `stop()`. New: a panel started against a database with no pgboss schema fails to start (`Error: pg-boss is not installed`) and creates nothing. |
 | C7 | It compiles under ostra's strict flags. | **PASS** | `tsc 5.9.3 --noEmit` exits 0 with all 8 flags set, over pg-boss's types and the generated Prisma 7 client. A syntax-tree scan of the 25 source files finds no `as` but `as const`, no `!`, no `any`, no enum, interface, class, default export or sync API. The repo root's ESLint rules (strict-type-checked, stylistic-type-checked, the repo's own) report 0 problems. |
 
-**C4 failed, so the build order's fallback applies: run C4 on DBOS and compare. That was not done** (it needs DBOS Transact as a new dependency and a second implementation of the scenario; the maintainer should decide). What the spike did try is whether pg-boss's own settings close the gap; see "C4 experiment" below. The failure is in pg-boss's schedule forwarding, not in its job queues: C1, C2, C3 and C5, which cover everything else ADR 0037 puts on pg-boss, passed.
+**C4 failed, so the build order's fallback was run: C4 and C3 on DBOS Transact (D4 and D3), in the same harness, on the same embedded Postgres, with the same kill pattern.** The root cause of C4 was found in pg-boss's source, and a configuration change closes it: with that change C4 passed in every run. See the next section for the side-by-side results, the root causes and the recommendation. Short version: **keep pg-boss** (ADR 0037), and drive schedules from ostra's own table with a key per occurrence; the configuration fix is the stopgap, not the design.
+
+## C4 and C3 on DBOS, and the root causes (2026-11-18, 19:51 to 21:29 UTC)
+
+Same machine and load as above, plus `@dbos-inc/dbos-sdk` 5.6.0 (MIT core only: no Conductor, no Enterprise package). Every run below is a `pnpm spike` run with `SPIKE_ONLY` set; the raw results are in `.runs/<stamp>/results.json` (gitignored). "Fix" means `SPIKE_SEND_IT_HEARTBEAT_SECONDS=10 SPIKE_SCHEDULE_GUARD=all`.
+
+### Results side by side
+
+**C4 / D4: 200 runtime schedules, 4 ticks (800 (schedule, tick) pairs), three replicas, one graceful restart, and the hunt** (kill every replica but one the moment the library's in-flight window is visible; restart them):
+
+| Run (UTC start) | Library and configuration | Verdict | Pairs exact / missed / doubled | Kills in the window, of them stranding | Stranded work came back after | Fire latency after the tick (p50 / max) |
+|---|---|---|---|---|---|---|
+| 18:58 (recorded above) | pg-boss, defaults | **FAIL** | 672 / 128 / 0, plus 22 occurrences fired twice by the replay | 5, 3 | 15.3 to 17.3 min (the 900 s expiry) | 4.3 to 16.9 s / 21.9 s |
+| 19:22 (experiment above) | pg-boss, forwarding expiry 30 s, half guarded | **FAIL** | 800 / 0 / 0, but 5 plain schedules fired 3 times in a 2-occurrence warm-up | 3, 3 | about 1 min | 46.8 s max |
+| 20:52 | pg-boss, defaults (a second run) | **FAIL** | 750 / 50 / 0, plus 62 occurrences fired twice by the replay (guarded ones too: the replay came 15 minutes later, in another slot) | 3, 3 | 902 to 906 s; 88 occurrences delivered 15.1 to 17.1 min late | 8.6 s / 12.9 s |
+| 20:46 | pg-boss, heartbeat 10 s only (half guarded) | **FAIL** | 798 / 0 / 2 (both plain), and 3 plain schedules fired 3 times in a 2-occurrence warm-up; guarded 400 / 400 | 4, 3 | 13.4 to 18.5 s | 19.1 s / 29.1 s |
+| 19:53 (3 ticks) | pg-boss, **fix** | **PASS** (2 of 3 target strands) | 600 / 0 / 0 | 5, 2 | 13.5, 18.4 s | 29.8 s / 44.7 s |
+| 20:04 | pg-boss, **fix** | **PASS** | 800 / 0 / 0 | 5, 3 | 13.5 to 18.5 s | 8.2 s / 21.6 s |
+| 20:18 | pg-boss, **fix** | **PASS** | 800 / 0 / 0 | 4, 3 | 13.4 to 18.6 s | 20.9 s / 35.9 s |
+| 20:32 | pg-boss, **fix** | **PASS** | 800 / 0 / 0 | 3, 3 | 13.4 to 18.5 s | 21.8 s / 36.9 s |
+| 19:53 (3 ticks) | DBOS, stable executor ID per slot | FAIL, harness (see below); 600 / 600 exact | 600 / 0 / 0 | 3, 3 (all 200 fires of a tick each) | on the restart, all 600 | 0.01 s / 0.86 s |
+| 20:04 | DBOS, stable executor ID | FAIL, harness; 800 / 800 exact | 800 / 0 / 0 | 4, 3 | on the restart, all 600 | 0.01 s / 1.85 s |
+| 20:18 | DBOS, stable executor ID | FAIL, harness; 800 / 800 exact | 800 / 0 / 0 | 3, 3 | on the restart, all 600 | 0.01 s / 0.91 s |
+| 20:32 | DBOS, stable executor ID | **PASS** (2 of 3 target strands) | 800 / 0 / 0 | 4, 2 | on the restart, all 400 | 0.01 s / 0.95 s |
+| 21:18 | DBOS, stable executor ID | **PASS** | 800 / 0 / 0 | 4, 3 | on the restart, all 600 | 0.01 s / 1.15 s |
+| 21:24 | DBOS, stable executor ID | **PASS** | 800 / 0 / 0 | 3, 3 | on the restart, all 600 | 0.01 s / 0.81 s |
+| 20:52 | DBOS, **a new executor ID per process** | **FAIL** | 400 / 400 / 0 | 5, 2 (and the tick-edge strike) | **never**: the 400 stayed `PENDING` under the dead executor IDs | 0.85 s / 0.85 s |
+
+The three DBOS "FAIL, harness" runs met the criterion (every pair exactly once) and failed an extra check D4 adds, "no fire created after the run". Each of them had exactly 200 such fires: the tick that came due 10 s after the schedules were deleted. DBOS's scheduler rereads its schedule table only every `schedulerPollingIntervalMs` (30 s by default, `scheduler.js`), so **a deleted DBOS schedule can fire once more for up to 30 s**. The 19:53 run's check counted every fire after the run; the 20:04 and 20:18 runs had a split meant to set that tick apart, but its regex had lost its escapes and matched nothing. The fixed check reads the tick from the workflow ID (`sched-<name>-<tick ISO>`) and fails on any fire of an in-run tick created after the run; it was not loosened in any other way. The 20:32, 21:18 and 21:24 runs used the fixed check, and passed it. The criterion's own numbers above are unaffected.
+
+In every DBOS run one replica claimed a whole tick's 200 fires at once, so each stranding strike stranded 200; the hunt's tick-edge strike (every replica but one killed 5 ms after a tick, while the leader enqueues it) never lost a tick.
+
+**C3 / D3: a limit of 2 per key, three replicas x 16 workers, 1,000 jobs of 40 to 100 ms and 200 of 2 to 4 s on 20 keys.** All passes ran every job once, none retried. Peaks are per group; "committed" is the back-to-back poll of the running count (pg-boss `active`, DBOS `PENDING`), the primary measure:
+
+| Run | Library | Verdict | Committed peak, short / long | Snapshots above 2, short / long | Longest committed episode | Table-timestamp peak | Handler peak | Throughput, short pass |
+|---|---|---|---|---|---|---|---|---|
+| 18:58 (above) | pg-boss | PASS, overshoot | 6 / 7 | 0.68% / 0.35% | 50 ms | (not split) | 2 | 82.6 jobs/s |
+| 20:04 | pg-boss | PASS, overshoot | 4 / 4 | 0.53% / 0.13% | 20 ms | 3 | 2 | 85.9 jobs/s |
+| 20:18 | pg-boss | PASS, overshoot | 6 / 4 | 0.82% / 0.38% | 58 ms | 3 | 2 | 81.6 jobs/s |
+| 20:32 | pg-boss | PASS, overshoot | 7 / 4 | 0.75% / 0.33% | 54 ms | 3 | 2 | 85.7 jobs/s |
+| 20:04 | DBOS | PASS, "overshoot" | **2 / 2** | **0% / 0%** | **0 ms** | 3 (0.0 ms long: a tie, see below) | 2 | 69.1 jobs/s |
+| 20:18 | DBOS | PASS, "overshoot" | **2 / 2** | **0% / 0%** | **0 ms** | 3 (0.0 ms) | 2 | 67.2 jobs/s |
+| 20:32 | DBOS | PASS, "overshoot" | **2 / 2** | **0% / 0%** | **0 ms** | 3 (0.0 ms) | 2 | 71.5 jobs/s |
+
+DBOS's "overshoot" is the harness, not DBOS: its table stores whole milliseconds, a job that starts in the millisecond its predecessor ended ties with it, and the sweep orders a start before an end at the same instant on purpose ("can only overstate"), so the table view reads 3 for 0.0 ms. The committed snapshots (about 42,000 to 52,000 a pass) never saw a third running workflow. The check was left as it is.
+
+### Root cause: C4 on pg-boss
+
+A pg-boss limitation in how it fires schedules, closed by configuration. Two defects together, both in `node_modules/pg-boss/dist/timekeeper.js` and `plans.js` (12.38.2):
+
+1. **A dead holder strands a forwarding batch for 15 minutes.** The cron pass does not create the jobs: it inserts each due occurrence into an internal queue, `__pgboss__send-it`, and every replica works that queue 50 at a time (`timekeeper.start`: `createQueue(QUEUES.SEND_IT)` with no options, `work(..., { batchSize: 50 })`). With no options the queue has no heartbeat and pg-boss's default expiry of 900 s (`QUEUE_DEFAULTS.expire_seconds`, plans.js). A replica killed while it holds a batch leaves 50 occurrences `active`; nothing notices until `failJobsByTimeout` expires them 15 minutes later and they are retried. So the occurrences miss their tick and fire 15 minutes late.
+2. **The replay sends again what was already sent.** `onSendIt` sends the batch's real jobs in parallel (`Promise.allSettled(jobs.map(... this.manager.send(...)))`), each in its own statement, so when the holder dies some of the 50 jobs exist and the forwarding job is still `active`. The retry sends all 50 again. The occurrence's own slot does not reach the real job (`const { key, slot, ...request } = data` strips it), so the only thing that can drop the second send is the schedule's own options: a singleton key with `singletonSeconds: 60` dedupes it against the first (unique index `job_i4` on `(name, singleton_on, singleton_key)`, which counts completed jobs too), **provided the replay lands in the same 60 s slot**, because that slot is computed from the replay's own clock (`insertJobs`, the `singletonSeconds` branch of `singleton_on`). A plain schedule fires twice.
+
+It is not the harness: the hunt kills a replica holding a batch, which is what "while replicas restart" means, and the earlier version that never hit the window passed for that reason. It is not ostra's configuration alone either: the forwarding queue is internal and created by pg-boss without options.
+
+**The configuration fix, shown above (4 of 4 runs PASS, 3,000 of 3,000 pairs, 11 stranded batches):**
+
+- **Part 1: a heartbeat on the forwarding queue.** pg-boss 12.38.2 accepts `heartbeatSeconds` in `updateQueue` (`UpdateQueueOptions` re-adds it; the plan sets `heartbeat_seconds`), and a job takes its queue's heartbeat when inserted (`COALESCE("heartbeatSeconds", q.heartbeat_seconds)`). Each core replica calls `updateQueue("__pgboss__send-it", { heartbeatSeconds: 10 })` after `start()` (`jobs.setForwardingHeartbeat`). A stranded batch then fails on `failJobsByHeartbeat` and is replayed: **13.4 to 18.6 s after the kill in every run** (10 s heartbeat, the 5 s supervise pass, the 5 s forwarding poll), instead of 15 minutes.
+- **Part 2: every schedule carries a singleton key (its own key) and `singletonSeconds: 60`** (`SPIKE_SCHEDULE_GUARD=all`). The replay's second sends are then dropped in the same minute. Part 1 alone is not enough: the 20:46 run had 2 plain pairs fire twice and 3 plain schedules over-fire in the warm-up, while the 400 guarded pairs of the same run were exact.
+
+**What the fix does not guarantee.** Part 2 is a timing argument. A replay dedupes only if it lands in the same minute as the first send; the first send comes up to 30 s after the tick (the cron pass runs every 30 s) plus the 5 s forwarding poll, and the replay adds 13 to 19 s, so the margin is about 10 s. The runs' latest fire was 44.7 s after its tick. A replay that crosses the minute is filed in the next slot, where it either collides with the next tick's fire and drops it, or fires and the next tick's fire is dropped: one tick missed, the next on time. A loaded database that delays the forwarding poll, or a longer heartbeat, eats the margin. And the fix reaches into pg-boss internals (the queue name `__pgboss__send-it` and its options are not a documented API), so a pg-boss upgrade can undo it silently. Occurrences inserted before the first replica's `updateQueue` (the first seconds of a fresh install) carry no heartbeat.
+
+### Root cause: C3's overshoot on pg-boss
+
+A pg-boss design choice, not a failure, and not a harness bug, though it is the harness's primary measure that shows it. `groupConcurrency` is enforced optimistically (`manager.js`, `#fetch` and `#giveBack`; `plans.js`, `fetchNextJob`):
+
+- the claim (`UPDATE ... FROM (SELECT ... FOR UPDATE SKIP LOCKED)`) reads the group's `active` count from a materialized CTE in the statement's own snapshot, under READ COMMITTED. 48 worker loops (3 replicas x 16) claim concurrently, and none sees a racing claim that has not committed, so several can each admit a job into a group that is already at 2;
+- after its own commit, each fetch recounts the group (`getActiveGroupCounts`) and gives its excess back to `created` (`restore`) before any handler starts. Of two racing fetches the later recount always sees both: each commits before it recounts, so if A recounts before B commits, B's recount comes after A's commit;
+- so the committed table shows a group above the limit for the milliseconds between a claim's commit and its give-back, which the back-to-back sampler catches (peaks 4 to 7, episodes up to 58 ms, 0.1 to 0.8% of snapshots), and the handlers never run more than 2 (peak 2 in every pass of every run).
+
+No configuration removes it: `groupConcurrency: 1` uses a `NOT EXISTS` probe in the same snapshot, and fewer worker loops only shrink the race. It costs nothing while handlers never overrun, but it is an argument from statement ordering, not a lock, so a hard budget still lives in ostra's own rows (ADR 0037). DBOS does the opposite (`system_database.js`, `claimStartableWorkflows`): a claim on a partitioned queue takes `pg_try_advisory_xact_lock` on the (queue, partition) pair, counts `PENDING` inside that transaction and claims only the room left, so claims of one partition are serialized and the committed state never exceeded 2. A claimer that misses the lock claims nothing until its next poll, which is part of why DBOS's short pass ran at 67 to 72 jobs/s against pg-boss's 82 to 86.
+
+### What DBOS showed besides
+
+- **Its scheduler is the stronger design.** One replica holds a background lock (a transaction-scoped advisory lock, retaken every 60 s, freed by Postgres when its connection dies) and fires; each tick's workflow ID is fixed (`sched-<schedule>-<tick ISO>`, `enqueueTicks`), inserted with the rest of the tick in one transaction that also stamps `last_fired_at`, and an existing ID is skipped. A standby keeps a tick until a poll shows it fired. So a replay, a second leader or a backfill cannot fire a tick twice, whatever the timing. Fires were created 0.01 s after the tick (p50), against pg-boss's 8 to 30 s.
+- **Recovery hangs on the executor ID.** A killed replica's claimed fires stay `PENDING` until a process launches under the same executor ID (`DBOS.launch` recovers only its own ID, `recoverPendingWorkflows`); there is no heartbeat on a claim in the MIT core. With a stable ID per slot the restarted replica recovered every stranded fire. With a new executor ID per process (the 20:52 run, `SPIKE_DBOS_EXECUTOR_ID=process`, as a pod with a generated name would get) the stranded fires were never recovered: 400 of 800 pairs missed, all 400 still `PENDING` under their dead executors at the end. Without Conductor, ostra would need the sweeper that `research/durable-execution.md` describes (a replica table, a dead-replica check, `DBOS.recoverWorkflows([id])`), and it must never recover a live executor.
+- **Three replicas launching on a cold database deadlock.** The first D3 run failed one replica's `DBOS.launch` with `deadlock detected` in DBOS's migrations. D3 and D4 now run `DBOS.migrate(url)` once before the replicas start (`migrateDbos`), as an install step would. pg-boss's concurrent install never failed in this spike.
+- **A deleted schedule fires for up to 30 s more** (above).
+- The panel side worked as hoped: `DBOSClient` created 200 schedules in 0.2 s and enqueued 1,000 workflows without launching DBOS, and DBOS's schema shared the scenario database with ostra's tables and pg-boss's. Transactional enqueue from Prisma (C1 on DBOS) was not run.
+
+### Recommendation
+
+**Keep pg-boss (ADR 0037). Do not use pg-boss's cron for anything whose duplicate or lateness costs something; drive those schedules from ostra's own table, with a key per occurrence.** Concretely, for automations (F-106) and every other schedule that starts work:
+
+1. ostra's `automation` row holds the cron expression (Q10: schedules stored in the database, created at runtime).
+2. One pg-boss job per minute, the **scheduler tick**, finds the due occurrences. A single scheduler lease (a lease row or `pg_try_advisory_xact_lock`, as DBOS does) keeps the replicas from duplicating the work, but correctness does not rest on it.
+3. Each occurrence is a row, `automation_run (automation_id, occurrence_at)` with a unique key, inserted `ON CONFLICT DO NOTHING` in the same transaction as its job (`enqueueInTx`, C1), and the job's key is `automation:<AutomationId>:<occurrence ISO>`. A replayed tick, a second scheduler or a backfill finds the row and does nothing. This is DBOS's deterministic workflow ID rebuilt on ostra's tables, and it is ADR 0037's rule 1 (the tables are the truth) and rule 2 (fixed keys) applied to schedules; missed occurrences are found from `last_fired_at` the way DBOS's standby finds them.
+4. Keep the configuration fix as defence in depth wherever pg-boss's own `schedule()` stays in use (the scheduler tick itself, reconciliation per board, insights, the model-catalog refresh): heartbeat 10 s on `__pgboss__send-it`, and a singleton key plus `singletonSeconds` equal to the cron's period on every schedule. For those jobs a late or repeated run costs one idempotent pass (rule 1). Pin the pg-boss version, and add a boot check that the forwarding queue carries the heartbeat, since it is an internal queue.
+
+**Weighed against the alternatives and ADR 0037's reasons:**
+
+- **DBOS for schedules only: no.** It would bring a second durable-execution system, a second schema and its migrations, stable executor IDs on every replica (or ostra's own sweeper), and DBOS's lifecycle in every core process, to replace one table and one keyed job. Its scheduler is better than pg-boss's, but the property that makes it better (a fixed ID per tick, inserted atomically) is the part ostra can rebuild in a few dozen lines on the tables it already has.
+- **DBOS for everything: no, and the spike adds to ADR 0037's reasons rather than overturning them.** ADR 0037 said a dead replica needs a sweeper with DBOS and not with pg-boss: D4 confirmed it (a killed replica's fires are recovered only by its own executor ID; pg-boss's heartbeats freed every stranded batch in 13 to 19 s once the queue had one, and C2 already showed it for jobs). ADR 0037 said the three rules leave DBOS's durable workflows little to do: D3 and D4 used DBOS only as a queue and a scheduler, and the one thing it did better in C3 (a limit that never shows in the table) is a guarantee ostra already keeps in its own rows. The open-core concern is unchanged. What DBOS did better (exact partition limits, a scheduler that cannot double-fire, sub-second fires) is real and worth copying, which point 3 does.
+- **Revisit DBOS** if ostra ever needs durable multi-step workflows that its state machine cannot express, or if pg-boss changes its forwarding queue in a way the boot check catches.
 
 ## What was built
 
@@ -64,6 +157,17 @@ eslint.config.mjs      The repo root's lint rules applied to this spike (the roo
 src/harness.ts         `pnpm spike`. src/scenarios/c1 .. c7 are the criteria; src/observations.ts holds
                        side facts that are not criteria.
 prisma/                ostra-style tables owned by Prisma Migrate. pg-boss keeps its own `pgboss` schema.
+
+src/scenarios/schedule-judge.ts  How a schedule run is judged (fires per tick, warm-up, late fires),
+                       shared by C4 and D4 so both libraries meet the same rules.
+src/dbos/              The build order's fallback: C3 and C4 on DBOS Transact, in the same harness.
+  jobs.ts              THE DBOS SEAM. The only file that imports @dbos-inc/dbos-sdk (lint rule and C7 scan).
+                       Two workflows, a partitioned queue, runtime schedules, a producer client.
+  replica.ts           A DBOS core replica, the twin of src/replica.ts: same IPC messages, same rows written.
+  messages.ts          Its config schema (strict).
+  d3-group-limit.ts    D3: C3's two passes and three measures (src/scenarios/c3-group-limit.ts, runGroupLimit),
+                       on a queue with partitionConcurrency 2.
+  d4-schedules.ts      D4: C4's 200 schedules, hunt and judging, on DBOS's scheduler.
 ```
 
 The harness spawns replicas and the panel with `node src/replica.ts` (Node 24 type stripping, no tsx). They talk to the harness over a Zod-validated IPC channel. `kill -9` is `child.kill("SIGKILL")`, which on Windows is `TerminateProcess`: no handler runs and no socket is closed politely.
@@ -82,7 +186,7 @@ harness ──spawn──▶ replica-1 ─┐
 pnpm install
 pnpm check:inputs      # which inputs are present; never prints a value
 pnpm typecheck         # prisma generate, then tsc --noEmit under ostra's strict flags
-pnpm spike             # every criterion: about 9 minutes with no stranded batch, about 25 when C4 strands one (it then waits out pg-boss's 15-minute expiry)
+pnpm spike             # every criterion and D3, D4: about 16 minutes with no stranded batch, about 32 when C4 strands one (it then waits out pg-boss's 15-minute expiry)
 pnpm check:external    # the SPIKE_DATABASE_URL path against a real server, about 40 s
 ```
 
@@ -92,6 +196,7 @@ A subset or a shorter C4, in the two shells this machine has:
 |---|---|---|
 | C1 and C3 only | `SPIKE_ONLY=C1,C3 pnpm spike` | `$env:SPIKE_ONLY="C1,C3"; pnpm spike` |
 | a shorter C4 | `SPIKE_SCHEDULE_TICKS=2 SPIKE_ONLY=C4 pnpm spike` | `$env:SPIKE_SCHEDULE_TICKS="2"; $env:SPIKE_ONLY="C4"; pnpm spike` |
+| C4 with the fix, and D3, D4 | `SPIKE_SEND_IT_HEARTBEAT_SECONDS=10 SPIKE_SCHEDULE_GUARD=all SPIKE_ONLY=C3,D3,C4,D4 pnpm spike` | `$env:SPIKE_SEND_IT_HEARTBEAT_SECONDS="10"; $env:SPIKE_SCHEDULE_GUARD="all"; $env:SPIKE_ONLY="C3,D3,C4,D4"; pnpm spike` |
 | a shared Postgres server | `SPIKE_DATABASE_URL=postgresql://... pnpm spike` | `$env:SPIKE_DATABASE_URL="postgresql://..."; pnpm spike` |
 
 (In PowerShell the variables stay set for the session: `Remove-Item Env:SPIKE_ONLY` clears one.)
@@ -102,13 +207,16 @@ Other knobs (all optional, each with a default):
 
 | Variable | Default | Effect |
 |---|---|---|
-| `SPIKE_ONLY` | all | comma-separated ids: C1 to C7, and O1 for the observation |
+| `SPIKE_ONLY` | all | comma-separated ids: C1 to C7, D3 and D4 (DBOS), and O1 for the observation |
 | `SPIKE_DATABASE_URL` | embedded-postgres | a Postgres server to use instead; needs CREATE and DROP DATABASE. A generic `DATABASE_URL` in your shell is ignored on purpose |
 | `SPIKE_RUN_ID` | random | 8 hex digits suffixed to every database the run creates |
 | `SPIKE_SCHEDULE_COUNT` / `SPIKE_SCHEDULE_TICKS` | 200 / 4 | C4: schedules and whole minutes |
 | `SPIKE_SCHEDULE_HUNT_KILLS` | 3 | C4: strikes that must strand a forwarding batch (the hunt tries at most 3 times that many) |
 | `SPIKE_STRAND_WAIT_MINUTES` | 17 | C4: how long to wait for a stranded forwarding batch (only if one happened) |
 | `SPIKE_SEND_IT_EXPIRE_SECONDS` | unset (pg-boss's 900) | C4 experiment: the expiry set on pg-boss's forwarding queue by every replica |
+| `SPIKE_SEND_IT_HEARTBEAT_SECONDS` | unset (no heartbeat, pg-boss's default) | C4 fix, part 1: the heartbeat every replica sets on pg-boss's forwarding queue (`updateQueue`; at least 10) |
+| `SPIKE_SCHEDULE_GUARD` | `alternate` | C4 fix, part 2: `all` gives every schedule a singleton key and a 60 s slot; `alternate` only every second one |
+| `SPIKE_DBOS_EXECUTOR_ID` | `slot` | D4: `slot` restarts a killed DBOS replica under its slot's executor ID; `process` gives each process a new one |
 | `SPIKE_GROUP_JOBS` / `SPIKE_GROUP_KEYS` | 1000 / 20 | C3: the short pass |
 | `SPIKE_GROUP_LONG_JOBS` | 200 | C3: the pass with 2 to 4 s jobs |
 | `SPIKE_GROUP_PEAK_CAP` | 10 | C3: a peak above this fails |
@@ -187,7 +295,7 @@ The panel creates 200 schedules at runtime (`* * * * *`, one per board). Half us
 
 **Result (the recorded run).** Strikes at -76.5, -48.1, +11.8, +75.2 and +133.6 s from the first tick (the first two found the batch finished by the survivor 3 s later; the last three stranded 50 occurrences each, one batch in each of ticks 0, 1 and 2). Of the 150 stranded occurrences, 128 had not been sent and 22 had. pg-boss freed the batch 15 minutes after the strike and replayed it: the 128 fired 15.3 to 17.3 minutes after their tick (missed in time, delivered late), and the 22 fired a second time. Earlier runs of this scenario agree: with the first version of the hunter, whose strikes all landed in one burst, 100 stranded occurrences were replayed 610 s after the run's end and fired a second time; in a run where all three strikes met a batch a survivor held, nothing was stranded and the scenario passed (800 of 800, 3 kills landed, 0 stranded). So the failure needs the replica that holds a forwarding batch to die, which is exactly the "replicas restart" the pass bar names.
 
-**C4 experiment: a 30 s expiry on the forwarding queue.** `SPIKE_SEND_IT_EXPIRE_SECONDS=30` makes each replica call `updateQueue("__pgboss__send-it", { expireInSeconds: 30 })` once it has started (the queue's `heartbeatSeconds` cannot be changed after creation). One run (`SPIKE_ONLY=C4`): 3 strikes, all three stranded a batch (150 occurrences: 100 from the warm-up, 50 in tick 0). pg-boss freed them within about a minute, replayed them, and **800 of 800 (schedule, tick) pairs fired exactly once, none late**. But **5 plain schedules fired three times in the warm-up window**, which had two occurrences (the replay repeated sends that had already gone through), and none of the 100 guarded schedules (singleton key and 60 s slot) did. The verdict was still FAIL, on those 5. One run is a lead and not a result: a replay that crosses a minute boundary lands in another slot, and the guard would not catch it.
+**C4 experiment: a 30 s expiry on the forwarding queue.** `SPIKE_SEND_IT_EXPIRE_SECONDS=30` makes each replica call `updateQueue("__pgboss__send-it", { expireInSeconds: 30 })` once it has started (this experiment assumed the queue's `heartbeatSeconds` could not be changed after creation; it can, see "C4 on DBOS, and the root causes" below). One run (`SPIKE_ONLY=C4`): 3 strikes, all three stranded a batch (150 occurrences: 100 from the warm-up, 50 in tick 0). pg-boss freed them within about a minute, replayed them, and **800 of 800 (schedule, tick) pairs fired exactly once, none late**. But **5 plain schedules fired three times in the warm-up window**, which had two occurrences (the replay repeated sends that had already gone through), and none of the 100 guarded schedules (singleton key and 60 s slot) did. The verdict was still FAIL, on those 5. One run is a lead and not a result: a replay that crosses a minute boundary lands in another slot, and the guard would not catch it.
 
 Other C4 facts:
 
@@ -215,10 +323,10 @@ Three checks. (1) `tsc --noEmit` over the spike, which pulls in pg-boss's declar
 
 1. **Prisma 7 + `@prisma/adapter-pg` + `timestamptz` + a Postgres session that is not in UTC stores the wrong instant** (observation O1: off by the session's UTC offset, -5.5 h in the probe, and invisible through Prisma because it reads the same way back). pg-boss, SQL and anything else see the wrong time. ostra's database must run in UTC (`ALTER DATABASE ... SET timezone TO 'UTC'`, or `options=-c TimeZone=UTC`), or its columns stay on Prisma's default `timestamp(3)`. This wants a line in the configuration reference and a check at boot. Found because this laptop's zone is Europe/Berlin; the harness now forces UTC on every scenario database.
 2. **Timing settings ostra will need to choose.** `heartbeatSeconds` is at least 10. Recovery of a dead replica's jobs is the heartbeat going stale plus the next monitor pass, so `monitorIntervalSeconds` and `superviseIntervalSeconds` (default 60) decide it. Used here: 10, 5 and 5.
-3. **Queue settings are stored per queue** (`retryLimit`, `heartbeatSeconds`, `expireInSeconds`, `policy`), set at `createQueue`. The limit per group is not. `heartbeatSeconds` and `policy` cannot be changed afterwards (`UpdateQueueOptions` omits them).
+3. **Queue settings are stored per queue** (`retryLimit`, `heartbeatSeconds`, `expireInSeconds`, `policy`), set at `createQueue`. The limit per group is not. `policy` and `partition` cannot be changed afterwards; `heartbeatSeconds` can, in 12.38.2 (`UpdateQueueOptions` re-adds it as `number | null`, types.d.ts; the plan sets `heartbeat_seconds` from it, plans.js `updateQueue`), and a job takes its queue's value when it is inserted. An earlier version of this README said it could not; that was wrong, and it is what the C4 fix uses.
 4. **A panel that starts before the core fails to start** (`pg-boss is not installed`, C6 step 0), so ADR 0016's "the panel may boot before the core" needs a retry or a wait in the panel.
 5. **A fixed job key needs `policy: "exclusive"`** (C1, F to H); `singletonKey` alone does nothing on a standard queue.
-6. **pg-boss's schedule forwarding queue is the weak spot** (C4): it has no heartbeat, so a replica killed while it holds a batch strands those occurrences for the 15-minute expiry, after which the batch is replayed.
+6. **pg-boss's schedule forwarding queue is the weak spot** (C4): pg-boss creates it with no heartbeat, so a replica killed while it holds a batch strands those occurrences for the 15-minute expiry, after which the whole batch is replayed and re-sends what had already gone through. A heartbeat set with `updateQueue` plus a singleton key and 60 s slot on every schedule closed it in 4 of 4 runs; see "C4 and C3 on DBOS, and the root causes".
 7. **embedded-postgres on Windows.** The checkout path must stay short (`postgres.exe` fails at 260 characters). `stop()` with `persistent: false` throws EBUSY while Windows holds files, so the harness deletes the data directory itself, with retries. The test cluster runs with `fsync=off` and `max_connections=400`.
 8. **The harness's own hygiene** (review findings): every child process gets an allowlisted environment, never the developer's shell; the harness exits non-zero unless every selected scenario is PASS; the lock file and, on a shared server, every database the run created are removed on every exit path.
 
@@ -227,6 +335,7 @@ Three checks. (1) `tsc --noEmit` over the spike, which pulls in pg-boss's declar
 | Package | Version | License | Why |
 |---|---|---|---|
 | `pg-boss` | 12.38.2 | MIT | the queue under test (ADR 0037) |
+| `@dbos-inc/dbos-sdk` | 5.6.0 | MIT | the build order's fallback, for D3 and D4 only (the version `research/durable-execution.md` cites). Its MIT core only: no Conductor, no `@dbos-inc/dbos-enterprise`. It brings `superjson` 1.13.3, `serialize-error` 8.1.0, `commander` 12.1.0 and `yaml` 2.9.1 (all MIT, resolved from its ranges). **Spike-only**: ADR 0037 keeps pg-boss, and nothing outside this directory depends on it |
 | `@prisma/client` | 7.10.1 | Apache-2.0 | Prisma 7 client (ADR 0007) |
 | `@prisma/adapter-pg` | 7.10.1 | Apache-2.0 | Prisma 7's driver adapter, which `fromPrisma` needs |
 | `prisma` | 7.10.1 | Apache-2.0 | `prisma generate` and `migrate deploy` |
@@ -237,14 +346,14 @@ Three checks. (1) `tsc --noEmit` over the spike, which pulls in pg-boss's declar
 | `@types/node` | 24.19.2 | MIT | Node 24 types |
 | `@types/pg` | 8.23.1 | MIT | types for `pg` |
 
-No other dependency was added: no tsx (Node 24 strips the types), no vitest (the harness is the test). C7's lint step uses the repo root's `eslint` and `typescript-eslint` from its `node_modules`; this spike does not install them.
+No other dependency was added (DBOS is the one added for the fallback runs): no tsx (Node 24 strips the types), no vitest (the harness is the test). C7's lint step uses the repo root's `eslint` and `typescript-eslint` from its `node_modules`; this spike does not install them.
 
 ## What's left
 
 - **Findings into `context/research/`**: not written, as instructed. After the maintainer has read these runs, write `context/research/spike-durable-queue-choice.md` (same shape as `spike-auth-foundation.md`) from the tables above, with every claim cited, and update Q24 and ADR 0037's status. The DoD "Research" line, ADR 0037's gate and Q24 stay open until then. The numbers come from one Windows laptop.
-- **C4 failed: decide what happens next.** The build order says to run the failed scenario on DBOS and compare; that was not done. Options the runs suggest, none of them applied to ostra yet: (1) the experiment above, a 30 s expiry on pg-boss's forwarding queue plus a singleton key and a 60 s slot on every schedule, which lost nothing and duplicated nothing for the guarded schedules but is one run, still leaves plain schedules open to a duplicate, and dedupes only while the replay lands in the same 60 s slot; (2) keeping schedules out of pg-boss's cron: ostra's own table of automations and a keyed, idempotent per-occurrence job (`task:<AutomationId>:<occurrence>`, on an exclusive queue, as C1 shows) so a replay is a no-op; (3) DBOS for schedules only. A reconciliation pass rebuilds work from ostra's tables (ADR 0037, rule 1), so a late or repeated one costs little; automations (F-106), which start agent work, are the schedules for which a duplicate or a fire 15 minutes late costs something.
+- **C4: decided by the runs, for the maintainer to confirm.** The fallback was run (D3, D4) and the root cause found; the recommendation is in "C4 and C3 on DBOS, and the root causes": keep pg-boss, drive schedules that start work from ostra's own table with a unique row and a fixed job key per occurrence, and keep the forwarding-queue heartbeat and per-schedule singleton as defence in depth. Not built here: the automation table and the scheduler tick; a run of C4 with it, under the same hunt, is the check that it works. Also open: C1 (transactional enqueue from Prisma) on DBOS, a DBOS run on a fresh install without the one-time `DBOS.migrate`, and C4 with the fix at 10 replicas or under a loaded database, where the 10 s dedupe margin is thinnest.
 - **Run it elsewhere**: on Linux, on Postgres 16 and 17 (this was 18.6), and against a real shared server (only `pnpm check:external`'s embedded one was used). LISTEN/NOTIFY was off (`useListenNotify` false), so the polling path is what ran. That is also the supported path behind a pooler in transaction mode, but nothing here tested a pooler.
 - **Not exercised**: dead-letter queues and retention, `@pg-boss/dashboard`, the request budgets ostra will build on top, the 1,000-task load test (F-117), a rolling upgrade with two pg-boss versions on one schema (ADR 0022), a replica that stalls and wakes after losing its jobs (no SIGSTOP on Windows), a real GitHub under the C2 lookup, and a kill inside a forwarding batch with 3 survivors or at 10 replicas.
 - **Timing defaults**: C2's recovery time was measured with 5 s passes only. Measure the defaults, or pick the settings ostra ships with.
 - **C3 under other loads**: more keys, a skewed key distribution, more replicas. The overshoot in the table is probabilistic; the handlers never exceeded the limit in any of the ten passes, which is evidence and not a bound.
-- **For the maintainer, not decided here**: whether `groupConcurrency` may guard anything stronger than a throttle (the runs say it held for running work in every pass; the source's recount-and-give-back is a timing argument, not a transaction around the claim); whether schedules should carry a singleton key and slot by default (the experiment says yes, for the replay case); and whether to hold the panel's start until the core has migrated (C6, step 0).
+- **For the maintainer, not decided here**: whether `groupConcurrency` may guard anything stronger than a throttle (the runs say it held for running work in every pass; the source's recount-and-give-back is a timing argument, not a transaction around the claim; DBOS's partition lock is a real one); the recommendation on schedules above; whether to keep `@dbos-inc/dbos-sdk` in this spike's dependencies once the finding is written up; and whether to hold the panel's start until the core has migrated (C6, step 0).

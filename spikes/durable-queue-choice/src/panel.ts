@@ -247,7 +247,7 @@ const handle = async (command: PanelCommand): Promise<PanelReply | null> => {
     case "create-schedules": {
       for (let index = 0; index < command.count; index += 1) {
         const board = boardIdSchema.parse(`board-${String(index).padStart(3, "0")}`);
-        const guarded = index % 2 === 1;
+        const guarded = command.guard === "all" || index % 2 === 1;
         await jobs.schedule(
           scheduleFireJob,
           board,

@@ -29,6 +29,10 @@ const spikeSyntax = [
   { selector: "ClassDeclaration, ClassExpression", message: "Classes are for adapters only (ADR 0025)." },
 ];
 
+const PG_BOSS = { name: "pg-boss", message: "Only src/jobs.ts imports pg-boss (the seam, ADR 0037)." };
+const DBOS = { name: "@dbos-inc/dbos-sdk", message: "Only src/dbos/jobs.ts imports DBOS (its seam)." };
+const BY_PATH = { group: ["**/src/**"], message: "Import by name, not by path." };
+
 export default defineConfig(
   withoutGlobalIgnores,
   { ignores: ["src/generated/**", "node_modules/**", ".data/**", ".runs/**"] },
@@ -37,9 +41,18 @@ export default defineConfig(
     languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
     rules: { "no-restricted-syntax": ["error", ...spikeSyntax] },
   },
-  // src/jobs.ts is the seam: the one file that imports pg-boss (ADR 0037, Q78).
+  // Two seams. src/jobs.ts is the one file that imports pg-boss (ADR 0037, Q78); src/dbos/jobs.ts is
+  // the one file that imports DBOS (the build order's fallback, run for C3 and C4 only).
+  {
+    files: ["**/*.ts"],
+    rules: { "no-restricted-imports": ["error", { paths: [PG_BOSS, DBOS], patterns: [BY_PATH] }] },
+  },
   {
     files: ["src/jobs.ts"],
-    rules: { "no-restricted-imports": ["error", { patterns: [{ group: ["**/src/**"], message: "Import by name, not by path." }] }] },
+    rules: { "no-restricted-imports": ["error", { paths: [DBOS], patterns: [BY_PATH] }] },
+  },
+  {
+    files: ["src/dbos/jobs.ts"],
+    rules: { "no-restricted-imports": ["error", { paths: [PG_BOSS], patterns: [BY_PATH] }] },
   },
 );
