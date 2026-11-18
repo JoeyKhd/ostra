@@ -81,6 +81,7 @@ Everything is **strictly typed**, end to end. The maintainer: "everything needs 
 - `import type` for type-only imports. Named exports, except where the framework requires a default export.
 - Files and folders: kebab-case (`task-timeline.tsx`, `use-runner-status.ts`, `task-timeline.test.ts`). Conventional root docs keep their names (`README.md`, `AGENTS.md`, `CLAUDE.md`, `GLOSSARY.md`).
 - Functions, components and handlers: `const helloWorld = () => {}`. In `.tsx`, write generics as `<T,>`.
+- **Adapters are the one place for classes** (ADR 0025): each integration extends its kind's abstract base class (`TrackerAdapter`, `CodeHostAdapter`, `AgentAdapter`, `RunnerProviderAdapter`, `ModelProviderAdapter`, `NotificationAdapter`, `SecretStoreAdapter`), only one level deep, and passes its kind's contract test suite.
 
 ## Boundaries
 
