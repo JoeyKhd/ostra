@@ -1,6 +1,6 @@
 # 15: The `ostra` CLI and personal-runner sign-in
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 01
 Features: F-013, F-014 (sign-in)
@@ -33,3 +33,5 @@ Spec: `../spec.md`, sections 4 ("A personal runner joins") and 5.1
 - [ ] Committed as `✨ add the ostra CLI and runner sign-in`.
 
 ## Comments
+
+- 2026-11-18, runner: done in 7a92e46 (`✨ add the ostra CLI and runner sign-in`). `apps/runner` is the `ostra` CLI (`bin`, `engines.node >=24.5`, root script `pnpm ostra`, run from source by type stripping). `ostra runner` reads `/runner/v1/info` and refuses a server outside the window with the fix (install the server's version); signs in by the device flow against the panel's better-auth, or registers with a join token; makes the Ed25519 key with `node:crypto` and keeps it owner-only (0600 in a 0700 folder; on Windows an `icacls` ACL with inheritance removed, set with an argument array); trades a fresh signed assertion for each 10-minute access token, held in memory. `ostra runner status` shows the runner, server, key file check, version window and last refusal. A revoked runner gets a clear message and exit code 3. The data folder default stays the protocol's `~/.ostra/runner` (`runnerConfigFields`), not the user's config folder the ticket names, so the docs and the contract agree. `ostra login` and `ostra checkout` say they come with F-103. Whole-repo checks green.

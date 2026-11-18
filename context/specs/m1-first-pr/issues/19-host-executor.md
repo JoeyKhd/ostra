@@ -1,6 +1,6 @@
 # 19: The `host` executor
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 04, 18
 Features: F-016, F-050, F-014 (the executor), F-078 (commits)
@@ -27,3 +27,5 @@ Spec: `../spec.md`, sections 1, 2 and 11 (items 5, 7, 9, 10)
 - [ ] Committed as `✨ add the host executor`.
 
 ## Comments
+
+- 2026-11-18, runner: done in c5c1232 (`✨ add the host executor`); ticket 22 added the `TaskProcesses` seam to it (9a3db82). `packages/adapters/adapter-executor-host`: `HostExecutor` with ADR 0029's declared differences. Task roots under the data folder, with the repos side by side. Git with a task-local config (insteadOf to the git proxy, the bot's identity, no credential helper, never the member's global or system config), and the same settings in each checkout. Env files and secret files per repo, kept out of git through `.git/info/exclude`, and refused inside `.git`. Setup runs per repo with `OSTRA_RUNNER_SHELL` on the script as a file, streamed. A `prepare-commit-msg` hook adds the co-author trailers to the agent's own commits, from a file. The branch and the hidden ref are pushed together. Stop ends the agent's whole tree through a `Containment` seam: a cgroup v2 unit on Linux when the runner's cgroup is delegated, the process tree otherwise; a Windows job object is the seam's next implementation (Q126). The detached-helper contract case **passes** on Windows here (the tree's snapshots catch the helper while its parent lives), so no known gap is declared; a helper whose parent exits between two snapshots can still escape. On Windows, libuv copies a fixed set of OS variables (PATH, USERPROFILE, TEMP and the like, no credential) into every child's environment, whatever the launch says. Whole-repo checks green.

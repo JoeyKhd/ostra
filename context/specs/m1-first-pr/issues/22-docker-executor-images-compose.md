@@ -1,6 +1,6 @@
 # 22: The `docker` executor, the three images and the compose file
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 21
 Features: F-017, F-001, F-019 (the base image pin), F-050 (the base image)
@@ -35,3 +35,5 @@ Spec: `../spec.md`, sections 1 and 2
 - [ ] Committed as `✨ add the docker executor and images`.
 
 ## Comments
+
+- 2026-11-18, runner: done in 9a3db82 (`✨ add the docker executor and images`), with the docker runner's settings added to the protocol's runner config, additively, in 0de13d0. **This machine has no Docker: the live suite skips with "no Docker on this machine", F-017 stays planned and F-001 building.** The split follows ADR 0029 and spike 3. The runner creates and removes boxes on the Engine API, over its socket with `node:http` (no new dependency): an `internal` box network, a task volume, the agent's container (the base image, the box's init as root under tini, every process as uid 1000, no credential in its spec) and the sidecar (the runner image, `ostra sidecar` as 1000, a read-only root, on the box network as `sidecar` and on a shared egress network with inter-container traffic off). Inside the box, `ostra sidecar` runs the same task host with `DockerExecutor`: the host executor's logic on the shared volume, with its processes run in the agent's container over the bridge (ported from spike 3, with a deadline on every request). The egress baseline is `iptables` rules for `DOCKER-USER` (`egress.ts`, `deploy/egress-baseline.sh`), unverified. `deploy/` holds the server, runner and base Dockerfiles, the server's entrypoint (`web`, `core`, `all`) and `compose.yaml` (the server, Postgres, and one pool runner joining with the bootstrap token through `OSTRA_JOIN_TOKEN_FILE`, with the socket's warning). Tests: the box specs, release and cleanup against a fake Engine API, the box dispatcher, the compose file parsed (no secret value), and the base image's OpenCode SHA-256s equal to the adapter's pins. **Two deviations:** the executor contract suite runs against `DockerExecutor` through the real bridge to a local init, not against the fake Engine API, because the Engine is the runner's side and isn't in the task's path. And the protocol has no task-scoped token for a sidecar, so a box's sidecar reads the runner's own 10-minute access token from a file the runner rewrites every 4 minutes. A token for one task, tied to its lease, is the contract change this waits on. Whole-repo checks green.

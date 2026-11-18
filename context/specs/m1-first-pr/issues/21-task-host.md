@@ -1,6 +1,6 @@
 # 21: The task host: the sidecar's work, end to end
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 11, 15, 16, 17, 19, 20
 Features: F-013, F-016, F-019, F-023, F-025, F-089, F-090 (on this machine)
@@ -28,3 +28,5 @@ The code that runs one task, the same in every executor (ADR 0029). On `host` th
 - [ ] Committed as `✨ add the task host`.
 
 ## Comments
+
+- 2026-11-18, runner: done in 2d83e73 (`✨ add the task host`); the fake agent got a `write` script for it in db0b2dc. `src/task-host/`: `ServerLink` (the runner's connection, plus HTTP with its access token); the agent registry (each task gets its own driver, so partial text goes to its session); the environment check (no launch variable may hold the model token, a git token, the MCP token or an environment secret); and the run. The run fetches the spec, holds the credentials in memory only, starts the three proxies, creates and prepares the workspace with setup events, builds and checks the launch, opens the session and runs the turn, then commits and pushes and sends `git.pushed` per ref and `session.ended`. Permissions are answered once and recorded as `approval.auto_answered` with "no rules until F-026"; questions are shown read-only until the turn's time runs out. Stop cancels the turn, pushes the hidden ref and sends no `session.ended`, so core opens no PR; a crash pushes the hidden ref and sends `session.crashed`. The base agent class writes the turn's own events, and `user.message` is a server-only kind, so the runner writes neither. Tests: dispatch to a PR-ready branch, no changes, stop and crash, the credential check, and a search of the task root, events and logs for every real credential, all with the fake gateway, the scripted fake agent, the stub models, the real proxies and the git upstream stub; the same run with the real OpenCode binary against a stub model (edits through the proxies, tokens counted exactly as billed); and the gated live turn on `model.env`, which passed. Whole-repo checks green.

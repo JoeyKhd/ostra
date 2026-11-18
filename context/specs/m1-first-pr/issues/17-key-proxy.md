@@ -1,6 +1,6 @@
 # 17: The key proxy
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 02, 12
 Features: F-089
@@ -31,3 +31,5 @@ The key proxy of ADR 0030, as a module the task host starts per task (ticket 21)
 - [ ] Committed as `✨ add the key proxy`.
 
 ## Comments
+
+- 2026-11-18, runner: done in d2f956e (`✨ add the key proxy`). `src/sidecar/key-proxy.ts`, on ticket 12's usage parser: a fake key of 192 random bits with an expiry, every client credential header dropped, the real one set by auth scheme, its own keep-alive connections to the provider, byte-for-byte pass-through (keep-alives, vendor fields and error bodies), a `usage.recorded` for every model call (estimated when the stream had none), `Retry-After` parsed, and an upstream 401 or 403 reported as the task's typed failure. Tested against both stub formats and a raw upstream; the gated live call matched the endpoint's own figure exactly. **Gap:** the protocol has no event or frame for a provider's rate limit, so the task host logs it (provider, status, retry time) but can't yet tell the server to hold dispatches. That's a contract addition for core and the panel to agree on. Whole-repo checks green.

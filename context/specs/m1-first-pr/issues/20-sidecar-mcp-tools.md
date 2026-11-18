@@ -1,6 +1,6 @@
 # 20: ostra's MCP tools in the sidecar
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 02
 Features: F-030 (the PR text), F-078 (the template)
@@ -22,3 +22,5 @@ An MCP server per task on `@modelcontextprotocol/sdk` (exact pin; confirm its li
 - [ ] Committed as `✨ add ostra's MCP tools for agents`.
 
 ## Comments
+
+- 2026-11-18, runner: done in c6d932b (`✨ add ostra's MCP tools for agents`). `src/sidecar/mcp-tools.ts` on `@modelcontextprotocol/sdk` 1.32.2 (MIT, checked on npm): Streamable HTTP, stateless, a random per-task bearer checked in constant time, and one tool, `set_pull_request_text`. Its input is a strict schema, checked against the task's repos and size caps, and emitted as `pr.text_set`. The tool's description carries each repo's PR template and the title rule. Tested with the SDK's own client. Whole-repo checks green.

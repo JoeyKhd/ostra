@@ -1,6 +1,6 @@
 # 16: The runner's connection, spool and commands
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: 01, 02
 Features: F-013 (WebSocket), F-045 (the runner's side)
@@ -32,3 +32,5 @@ The peer side of ADR 0034, WebSocket only (`ws` 8.23.0, exact pin; the HTTP carr
 - [ ] Committed as `✨ add the runner's connection and spool`.
 
 ## Comments
+
+- 2026-11-18, runner: done in a5bdc27 (`✨ add the runner's connection and spool`); another session fixed two orderings in `peer.ts` after it (c48b470, 1df63f3). `src/connection/`: the WebSocket peer (`ws` 8.23.0), a disk spool per session with a 1 GiB runner quota that blocks the producer instead of dropping, resend from the first unacked event and from `resendFrom`, the credit window counted in frames and bytes, commands applied once by ID with the highest contiguous seq acked, `notAfter` judged by `welcome.serverTime`, `outcome-unknown` after a crash mid-command, live text at most every 250 ms with a snapshot after a reconnect, the self-fence on an injectable clock, and `4403`, `4409`, `4401`, `evict` and `goaway` handled. A choice to confirm with the gateway: a `credit` frame adds to the window, and acks free it. Tests run against a fake gateway built from the protocol's schemas, including a child process killed between spool write and ack. Whole-repo checks green.
