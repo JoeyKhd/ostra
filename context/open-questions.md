@@ -32,6 +32,7 @@ A settled question leaves this file. Its answer lives on in the ADR (`decisions/
 | Q-26 | F-050 to F-052 |
 | Q-27 | F-058 in v1 |
 | Q-28 | ADR 0018: Claude Code through ACP |
+| Q60–Q63, the panel's look (asked in chat 2026-11-18) | `brand/app-design.md`: neutral graphite chrome with brand accents, denser type, few boxes, concepts in real HTML; direction B picked |
 
 ## Open
 

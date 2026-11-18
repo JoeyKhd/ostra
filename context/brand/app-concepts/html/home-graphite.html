@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ostra · home · graphite</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="graphite.css">
+<style>
+  .r .why { color: var(--muted); }
+  .r .why .mono { color: var(--text); font-size: 12.5px; }
+  .r .age { font: 400 12px 'IBM Plex Mono'; color: var(--faint); width: 32px; text-align: right; }
+  .r .proj { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); width: 128px; flex: none; }
+  .r .title { width: 230px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r .act { width: 104px; display: flex; justify-content: flex-end; }
+  .pcell { display: inline-flex; align-items: center; gap: 8px; }
+  .hero { font: 700 28px/1 Manrope, sans-serif; letter-spacing: -0.02em; margin: 4px 0 2px; }
+  .hero-sub { color: var(--muted); font-size: 12.5px; }
+  .chart { margin: 14px 0 6px; }
+  .chart text { font: 400 10.5px 'IBM Plex Mono'; fill: var(--faint); }
+  .chart text.v { fill: var(--muted); }
+  .pool { display: grid; grid-template-columns: 1fr auto; align-items: center; row-gap: 5px; padding: 7px 0; font-size: 12.5px; }
+  .pool .meter { width: 100%; grid-column: 1 / 3; }
+  .pool .mono { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" data-active="home"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right"></i><b>Home</b>
+      <div class="right"><span class="btn primary"><i data-lucide="plus"></i> New task</span></div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <div class="key">Wednesday 18 November</div>
+        <h1>Acme Corp</h1>
+        <p class="lede">238 tasks running across 18 projects, 41 queued. 37 pull requests merged today.</p>
+
+        <div class="section">
+          <div class="shead"><span class="dot amber"></span><h2>Needs you</h2><span class="n">5</span><span class="more">Open all <i data-lucide="arrow-right"></i></span></div>
+          <div class="rows">
+            <div class="r"><span class="key">CALC-142</span><span class="title">Retry webhook delivery on 5xx</span><span class="proj"><span class="pdot" style="background:#6FB8AA"></span>calculator</span><span class="grow why">Approval: <span class="mono">pnpm add p-retry</span></span><span class="age">4m</span><span class="act"><span class="btn sm amber">Approve</span></span></div>
+            <div class="r"><span class="key">BIL-88</span><span class="title">Prorate seat changes</span><span class="proj"><span class="pdot" style="background:#8C7CF0"></span>billing-platform</span><span class="grow why">Plan ready for review</span><span class="age">11m</span><span class="act"><span class="btn sm">Review plan</span></span></div>
+            <div class="r"><span class="key">WEB-311</span><span class="title">Fix cart badge count</span><span class="proj"><span class="pdot" style="background:#E0A458"></span>web-storefront</span><span class="grow why">PR <span class="mono">#2213</span> ready, checks passed</span><span class="age">18m</span><span class="act"><span class="btn sm">Review PR</span></span></div>
+            <div class="r"><span class="key">MOB-57</span><span class="title">Crash in the Android share sheet</span><span class="proj"><span class="pdot" style="background:#5FA8E8"></span>mobile-app</span><span class="grow why">Question: keep the old share API as a fallback?</span><span class="age">26m</span><span class="act"><span class="btn sm">Answer</span></span></div>
+            <div class="r"><span class="key">CALC-150</span><span class="title">Export history as CSV</span><span class="proj"><span class="pdot" style="background:#6FB8AA"></span>calculator</span><span class="grow why">Plan ready for review</span><span class="age">41m</span><span class="act"><span class="btn sm">Review plan</span></span></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h2>Projects</h2><span class="n">18</span><span class="more">All projects <i data-lucide="arrow-right"></i></span></div>
+          <table class="t">
+            <tr><th>Project</th><th>Tracker</th><th class="num">Running</th><th class="num">Queued</th><th class="num">Needs you</th><th class="num">PRs this week</th><th class="num">Spend, Nov</th></tr>
+            <tr><td><span class="pcell"><span class="pdot" style="background:#6FB8AA"></span>calculator</span></td><td class="muted">Linear · <span class="mono">CALC</span></td><td class="num">11</td><td class="num">3</td><td class="num amberx">3</td><td class="num">41</td><td class="num">$612</td></tr>
+            <tr><td><span class="pcell"><span class="pdot" style="background:#8C7CF0"></span>billing-platform</span></td><td class="muted">Linear · <span class="mono">BIL</span></td><td class="num">31</td><td class="num">9</td><td class="num amberx">1</td><td class="num">118</td><td class="num">$1,104</td></tr>
+            <tr><td><span class="pcell"><span class="pdot" style="background:#E0A458"></span>web-storefront</span></td><td class="muted">Linear · <span class="mono">WEB</span></td><td class="num">44</td><td class="num">12</td><td class="num amberx">2</td><td class="num">176</td><td class="num">$1,380</td></tr>
+            <tr><td><span class="pcell"><span class="pdot" style="background:#5FA8E8"></span>mobile-app</span></td><td class="muted">Linear · <span class="mono">MOB</span></td><td class="num">19</td><td class="num">6</td><td class="num amberx">1</td><td class="num">64</td><td class="num">$498</td></tr>
+            <tr><td><span class="pcell"><span class="pdot" style="background:#C27BA0"></span>data-pipeline</span></td><td class="muted">Prompts only</td><td class="num">8</td><td class="num">2</td><td class="num faint">0</td><td class="num">22</td><td class="num">$210</td></tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h2>Recent activity</h2><span class="more">Audit log <i data-lucide="arrow-right"></i></span></div>
+          <div class="rows">
+            <div class="r"><i data-lucide="git-merge" style="color:var(--green)"></i><span class="grow">PR <span class="mono">#2207</span> <span class="muted">Add gift card balance check</span> merged into <span class="mono">main</span></span><span class="muted">web-storefront</span><span class="age">3m</span></div>
+            <div class="r"><i data-lucide="box" style="color:var(--muted)"></i><span class="grow">Snapshot rebuilt from <span class="mono">main@9c41e2a</span> <span class="muted">· 1.9 GB · 2m 41s</span></span><span class="muted">calculator</span><span class="age">12m</span></div>
+            <div class="r"><i data-lucide="server" style="color:var(--muted)"></i><span class="grow">Runner <span class="mono">build-17</span> joined <span class="mono">build-fleet</span></span><span class="muted">Organization</span><span class="age">20m</span></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="props">
+        <h5>Pull requests merged, last 7 days</h5>
+        <div class="hero">849</div>
+        <div class="hero-sub">1,042 opened · 23 min median to first PR</div>
+        <svg class="chart" id="merged" width="264" height="112" role="img" aria-label="Pull requests merged per day"></svg>
+        <div class="sep"></div>
+        <h5>Spend, November <span class="mono">$4,212 of $6,000</span></h5>
+        <div class="pool"><span class="meter"><i style="width:70%"></i></span></div>
+        <div class="sep"></div>
+        <h5>Runner pools <span class="mono">238 busy · 41 queued</span></h5>
+        <div class="pool"><span>build-fleet</span><span class="mono">142 / 200</span><span class="meter"><i style="width:71%"></i></span></div>
+        <div class="pool"><span>e2b-elastic</span><span class="mono">58 · max 400</span><span class="meter"><i style="width:14.5%"></i></span></div>
+        <div class="pool"><span>k8s-gvisor</span><span class="mono">31 / 200</span><span class="meter"><i style="width:15.5%"></i></span></div>
+        <div class="pool"><span>laptops</span><span class="mono">7 / 12 online</span><span class="meter"><i style="width:58%"></i></span></div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script>
+  // One series, so no legend: the panel title names it. The max and today get direct labels.
+  const days = ["T", "F", "S", "S", "M", "T", "W"];
+  const merged = [168, 182, 31, 24, 196, 211, 37];
+  const W = 264, base = 92, y0 = 16, slot = W / days.length, bw = 22, max = Math.max(...merged);
+  const svg = document.getElementById("merged");
+  let out = `<line x1="0" x2="${W}" y1="${base + 0.5}" y2="${base + 0.5}" stroke="#2A2C30"/>`;
+  merged.forEach((v, i) => {
+    const h = (v / max) * (base - y0), x = i * slot + (slot - bw) / 2, y = base - h, r = Math.min(4, h);
+    const today = i === days.length - 1;
+    out += `<path d="M${x},${base} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${base} Z" fill="${today ? "#64676D" : "#CFD8D4"}"/>`;
+    out += `<text x="${x + bw / 2}" y="${base + 16}" text-anchor="middle">${today ? "today" : days[i]}</text>`;
+    if (v === max || today) out += `<text class="v" x="${x + bw / 2}" y="${y - 5}" text-anchor="middle">${v}</text>`;
+  });
+  svg.innerHTML = out;
+</script>
+<script src="shell.js"></script>
+</body>
+</html>

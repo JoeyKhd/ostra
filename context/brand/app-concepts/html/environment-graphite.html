@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ostra · environment · graphite</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="graphite.css">
+<style>
+  .page { padding-top: 24px; }
+  .tabs { margin-top: 16px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .two .section { margin-top: 18px; }
+  .r .sub2 { color: var(--faint); font: 400 12px 'IBM Plex Mono'; }
+  .r .lucide { color: var(--muted); width: 14px; height: 14px; }
+  .code .ln { color: var(--faint); display: inline-block; width: 22px; user-select: none; }
+  .shead .hint { color: var(--faint); font-size: 12px; margin-left: 4px; }
+  .mask { letter-spacing: 1px; color: var(--faint); }
+  .note { color: var(--faint); font-size: 12px; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .note .lucide { width: 13px; height: 13px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" data-active="calculator/environment"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right"></i><b>Environment</b>
+      <div class="right"><span class="btn"><i data-lucide="terminal-square"></i> Open a shell</span><span class="btn"><i data-lucide="refresh-cw"></i> Rebuild snapshot</span></div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <h1>Environment</h1>
+        <p class="lede">The computer every calculator task starts from. Saving a change rebuilds the snapshot; running tasks keep the one they started with.</p>
+        <div class="tabs">
+          <span class="tab on">Overview</span>
+          <span class="tab">Variables and secrets <span class="n">5</span></span>
+          <span class="tab">Snapshots <span class="n">24</span></span>
+          <span class="tab">Build logs</span>
+        </div>
+
+        <div class="two">
+          <div class="section">
+            <div class="shead"><h2>Repos</h2><span class="n">2</span><span class="more">Manage <i data-lucide="arrow-right"></i></span></div>
+            <div class="rows">
+              <div class="r"><i data-lucide="git-branch"></i><span class="grow mono" style="font-size:12.5px">acme/calculator-web</span><span class="sub2">main → /work/web</span></div>
+              <div class="r"><i data-lucide="git-branch"></i><span class="grow mono" style="font-size:12.5px">acme/calculator-api</span><span class="sub2">main → /work/api</span></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="shead"><h2>Services</h2><span class="n">2</span><span class="more">Edit <i data-lucide="arrow-right"></i></span></div>
+            <div class="rows">
+              <div class="r"><span class="dot green"></span><span class="grow mono" style="font-size:12.5px">postgres:16</span><span class="sub2">:5432 · healthy</span></div>
+              <div class="r"><span class="dot green"></span><span class="grow mono" style="font-size:12.5px">redis:7</span><span class="sub2">:6379 · healthy</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h2>Setup script</h2><span class="hint">runs once per snapshot, as the agent's user</span><span class="more">Edit <i data-lucide="arrow-right"></i></span></div>
+          <div class="code"><span class="ln">1</span>corepack enable<br><span class="ln">2</span>pnpm install --frozen-lockfile<br><span class="ln">3</span>pnpm --filter calculator-api prisma generate<br><span class="ln">4</span>pnpm --filter calculator-api db:seed <span class="c"># test data only</span></div>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h2>Variables and secrets</h2><span class="n">5</span><span class="more">All <i data-lucide="arrow-right"></i></span></div>
+          <table class="t">
+            <tr><th>Name</th><th>Value</th><th>Repo</th><th>Updated</th></tr>
+            <tr><td class="mono" style="font-size:12.5px">DATABASE_URL</td><td><span class="chip"><i data-lucide="lock"></i> secret</span> <span class="mask">••••••••</span></td><td class="muted">calculator-api</td><td class="muted">Priya Shah · 3d</td></tr>
+            <tr><td class="mono" style="font-size:12.5px">STRIPE_TEST_KEY</td><td><span class="chip"><i data-lucide="lock"></i> secret</span> <span class="mask">••••••••</span></td><td class="muted">calculator-api</td><td class="muted">Alex Kim · 2w</td></tr>
+            <tr><td class="mono" style="font-size:12.5px">SENTRY_DSN</td><td><span class="chip"><i data-lucide="lock"></i> secret</span> <span class="mask">••••••••</span></td><td class="muted">calculator-web</td><td class="muted">Sam Rivera · 1mo</td></tr>
+            <tr><td class="mono" style="font-size:12.5px">NEXT_PUBLIC_API_URL</td><td class="mono" style="font-size:12.5px">http://localhost:4000</td><td class="muted">calculator-web</td><td class="muted">Sam Rivera · 1mo</td></tr>
+          </table>
+          <div class="note"><i data-lucide="shield-check"></i> Secrets are added when a task starts, and never saved into a snapshot. The agent reaches model providers through ostra's key proxy, so it never holds a provider key.</div>
+        </div>
+      </div>
+
+      <aside class="props">
+        <h5>Snapshot</h5>
+        <div class="row2"><span class="k">Status</span><span class="v"><span class="dot green"></span> Ready</span></div>
+        <div class="row2"><span class="k">Built</span><span class="v">2h ago · 2m 41s</span></div>
+        <div class="row2"><span class="k">From</span><span class="v mono" style="font-size:12px">main@9c41e2a</span></div>
+        <div class="row2"><span class="k">Size</span><span class="v mono">1.9 GB</span></div>
+        <div class="row2"><span class="k">Base image</span><span class="v mono" style="font-size:12px">ostra/base:node22</span></div>
+        <div class="sep"></div>
+        <h5>Where tasks run</h5>
+        <div class="row2"><span class="k">Pools</span><span class="v">build-fleet, e2b-elastic</span></div>
+        <div class="row2"><span class="k">Box</span><span class="v mono">4 vCPU / 8 GB</span></div>
+        <div class="row2"><span class="k">Boots in</span><span class="v mono">about 2 s</span></div>
+        <div class="row2"><span class="k">Idle after</span><span class="v">15 min, then paused</span></div>
+        <div class="sep"></div>
+        <h5>Rules</h5>
+        <div class="row2"><span class="k">Network</span><span class="v">Allow list · 6 hosts</span></div>
+        <div class="row2"><span class="k">Checks</span><span class="v mono" style="font-size:12px">pnpm lint · pnpm test</span></div>
+        <div class="row2"><span class="k">Approvals</span><span class="v">Migrations, new deps</span></div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

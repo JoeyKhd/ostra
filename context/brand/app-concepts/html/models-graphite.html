@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ostra · models · graphite</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="graphite.css">
+<style>
+  .page { padding-top: 24px; }
+  .content { grid-template-columns: 1fr 340px; }
+  .logo { width: 16px; height: 16px; filter: invert(1); opacity: 0.88; flex: none; }
+  .lg { width: 16px; display: grid; place-items: center; flex: none; }
+  .lg .lucide { width: 15px; height: 15px; color: var(--muted); }
+  .rows > .r { padding: 0 10px; }
+  .rows > .r.sel { background: var(--sel); }
+  .r .name { width: 150px; flex: none; }
+  .r .url { color: var(--faint); font: 400 12px 'IBM Plex Mono'; }
+  .r .cnt { color: var(--muted); font-size: 12.5px; width: 82px; text-align: right; }
+  .mcell { display: inline-flex; align-items: center; gap: 9px; }
+  table.t td:first-child, table.t th:first-child { padding-left: 10px; }
+  table.t td:last-child, table.t th:last-child { padding-left: 24px; }
+  .def { font-size: 11px; color: var(--faint); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 5px; margin-left: 4px; }
+  .drawer h3 { font: 700 16px Manrope, sans-serif; margin: 2px 0 4px; display: flex; align-items: center; gap: 8px; }
+  .drawer .lede { font-size: 12.5px; margin-bottom: 18px; }
+  .test { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin: 4px 0 16px; }
+  .btns { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" data-active="models"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right"></i><b>Models</b>
+      <div class="right"><span class="btn primary"><i data-lucide="plus"></i> Add provider</span></div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <h1>Models</h1>
+        <p class="lede">Any provider with an API base URL and a bearer token. Names, logos, limits and prices come from models.dev, updated an hour ago.</p>
+
+        <div class="section">
+          <div class="shead"><h2>Providers</h2><span class="n">5</span></div>
+          <div class="rows">
+            <div class="r"><img class="logo" src="https://models.dev/logos/anthropic.svg" alt=""><span class="name">Anthropic</span><span class="grow url">https://api.anthropic.com</span><span class="cnt">2 models</span><span class="st"><span class="dot green"></span> Connected</span></div>
+            <div class="r"><img class="logo" src="https://models.dev/logos/openai.svg" alt=""><span class="name">OpenAI</span><span class="grow url">https://api.openai.com/v1</span><span class="cnt">3 models</span><span class="st"><span class="dot green"></span> Connected</span></div>
+            <div class="r"><img class="logo" src="https://models.dev/logos/google.svg" alt=""><span class="name">Google</span><span class="grow url">https://generativelanguage.googleapis.com</span><span class="cnt">2 models</span><span class="st"><span class="dot green"></span> Connected</span></div>
+            <div class="r"><img class="logo" src="https://models.dev/logos/openrouter.svg" alt=""><span class="name">OpenRouter</span><span class="grow url">https://openrouter.ai/api/v1</span><span class="cnt">6 models</span><span class="st"><span class="dot green"></span> Connected</span></div>
+            <div class="r sel"><span class="lg"><i data-lucide="server"></i></span><span class="name">internal-vllm</span><span class="grow url">https://llm.acme.internal/v1</span><span class="cnt">1 model</span><span class="st"><span class="dot green"></span> Connected</span></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h2>Enabled models</h2><span class="n">14</span><span class="more">Browse the catalog <i data-lucide="arrow-right"></i></span></div>
+          <table class="t">
+            <tr><th>Model</th><th>Provider</th><th class="num">Context</th><th class="num">Input $/M</th><th class="num">Output $/M</th><th>Used by</th></tr>
+            <tr><td><span class="mcell"><img class="logo" src="https://models.dev/logos/anthropic.svg" alt="">Claude Sonnet 5.5<span class="def">default</span></span></td><td class="muted">Anthropic</td><td class="num">1M</td><td class="num">$2.00</td><td class="num">$10.00</td><td class="muted">9 projects</td></tr>
+            <tr><td><span class="mcell"><img class="logo" src="https://models.dev/logos/anthropic.svg" alt="">Claude Opus 5.5</span></td><td class="muted">Anthropic</td><td class="num">1M</td><td class="num">$4.00</td><td class="num">$20.00</td><td class="muted">3 projects</td></tr>
+            <tr><td><span class="mcell"><img class="logo" src="https://models.dev/logos/openai.svg" alt="">GPT-6.2 Sol</span></td><td class="muted">OpenAI</td><td class="num">1.05M</td><td class="num">$2.00</td><td class="num">$10.00</td><td class="muted">4 projects</td></tr>
+            <tr><td><span class="mcell"><img class="logo" src="https://models.dev/logos/google.svg" alt="">Gemini 4 Carbon</span></td><td class="muted">Google</td><td class="num">1M</td><td class="num">$2.00</td><td class="num">$10.00</td><td class="muted">1 project</td></tr>
+            <tr><td><span class="mcell"><img class="logo" src="https://models.dev/logos/openrouter.svg" alt="">Kimi K3.1 Pro</span></td><td class="muted">OpenRouter</td><td class="num">1M</td><td class="num">$2.00</td><td class="num">$10.00</td><td class="muted">2 projects</td></tr>
+            <tr><td><span class="mcell"><img class="logo" src="https://models.dev/logos/openrouter.svg" alt="">DeepSeek V4 Flash</span></td><td class="muted">OpenRouter</td><td class="num">1M</td><td class="num">$0.15</td><td class="num">$0.60</td><td class="muted">PR reviews</td></tr>
+            <tr><td><span class="mcell"><span class="lg"><i data-lucide="server"></i></span>qwen-coder</span></td><td class="muted">internal-vllm</td><td class="num">256k</td><td class="num faint">—</td><td class="num faint">—</td><td class="muted">data-pipeline</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <aside class="props drawer">
+        <h5>Provider</h5>
+        <h3><i data-lucide="server" style="width:16px;height:16px;color:var(--muted)"></i> internal-vllm</h3>
+        <p class="lede">Any server that speaks the OpenAI or Anthropic API. Agents reach it through ostra's key proxy, so the token never enters a box.</p>
+        <div class="field"><label>Name</label><div class="input">internal-vllm</div></div>
+        <div class="field"><label>API base URL</label><div class="input mono" style="font-size:12.5px">https://llm.acme.internal/v1</div></div>
+        <div class="field"><label>Bearer token</label><div class="input"><span class="faint" style="letter-spacing:1px">••••••••••••••••••••</span><i data-lucide="eye-off"></i></div><div class="help">Stored in the secret store. Only admins can replace it.</div></div>
+        <div class="field"><label>API format</label><div class="input">OpenAI-compatible<i data-lucide="chevron-down"></i></div></div>
+        <div class="field"><label>Catalog</label><div class="input">Custom, no models.dev entry<i data-lucide="chevron-down"></i></div></div>
+        <div class="test"><span class="dot green"></span> Connected · found 1 model, <span class="mono" style="color:var(--text);font-size:12px">qwen-coder</span></div>
+        <div class="btns"><span class="btn">Test connection</span><span class="btn primary">Save provider</span></div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

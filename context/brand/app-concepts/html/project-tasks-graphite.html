@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ostra · project tasks · graphite</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="graphite.css">
+<style>
+  .page { padding-top: 22px; }
+  .head { display: flex; align-items: center; gap: 10px; }
+  .head h1 { margin: 0; }
+  .head .right { margin-left: auto; display: flex; gap: 6px; }
+  .filters { display: flex; align-items: center; gap: 6px; margin: 14px 0 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 7px; overflow: hidden; }
+  .seg span { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; color: var(--muted); font-weight: 500; font-size: 12.5px; }
+  .seg span.on { background: var(--sel); color: var(--text); }
+  .ghead { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--surface); border-radius: 6px; margin-top: 10px; font-weight: 600; }
+  .ghead .n { font: 500 11.5px 'IBM Plex Mono'; color: var(--faint); font-weight: 500; }
+  .ghead .note { color: var(--faint); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .ghead .lucide { width: 14px; height: 14px; }
+  .ghead .x { margin-left: auto; color: var(--faint); }
+  .rows > .r { padding: 0 12px; }
+  .rows > .r:first-child { border-top: 0; }
+  .rows > .r:last-child { border-bottom: 0; }
+  .r .si { width: 14px; display: grid; place-items: center; flex: none; }
+  .r .si .lucide { width: 14px; height: 14px; }
+  .r .title { width: 250px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r .why { color: var(--muted); }
+  .r .why .mono { color: var(--text); font-size: 12.5px; }
+  .r .box { width: 78px; font: 400 12px 'IBM Plex Mono'; color: var(--faint); flex: none; }
+  .r .age { font: 400 12px 'IBM Plex Mono'; color: var(--faint); width: 30px; text-align: right; flex: none; }
+  .r .key.p { color: var(--faint); font-family: 'IBM Plex Sans'; font-size: 12px; }
+  .r.more { color: var(--faint); font-size: 12.5px; min-height: 32px; padding-left: 38px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" data-active="calculator/tasks"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right"></i><b>Tasks</b>
+      <div class="right"><span class="btn"><i data-lucide="message-square-plus"></i> Prompt</span><span class="btn primary"><i data-lucide="plus"></i> New task</span></div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <div class="head"><h1>Tasks</h1></div>
+        <div class="filters">
+          <span class="seg"><span class="on"><i data-lucide="list"></i> List</span><span><i data-lucide="columns-3"></i> Board</span></span>
+          <span class="btn sm">Active <span class="faint mono">17</span></span>
+          <span class="btn sm ghost">All</span>
+          <span class="btn sm ghost">Merged</span>
+          <span style="margin-left:auto" class="btn sm ghost"><i data-lucide="list-filter"></i> Filter</span>
+          <span class="btn sm ghost"><i data-lucide="sliders-horizontal"></i> Display</span>
+        </div>
+
+        <div class="ghead"><i data-lucide="hand" style="color:var(--amber)"></i> Needs you <span class="n">3</span></div>
+        <div class="rows">
+          <div class="r"><span class="si"><span class="dot amber"></span></span><span class="key">CALC-161</span><span class="title">Add history panel</span><span class="grow why">Approval: <span class="mono">pnpm db:migrate</span> · for Sam</span><span class="box">e2b-7f3a</span><span class="avatar sm">SR</span><span class="age">14m</span></div>
+          <div class="r"><span class="si"><span class="dot amber"></span></span><span class="key">CALC-142</span><span class="title">Retry webhook delivery on 5xx</span><span class="grow why">Approval: <span class="mono">pnpm add p-retry</span></span><span class="box">build-04</span><span class="avatar sm">AK</span><span class="age">4m</span></div>
+          <div class="r"><span class="si"><span class="dot amber"></span></span><span class="key">CALC-150</span><span class="title">Export history as CSV</span><span class="grow why">Plan ready for review</span><span class="box">e2b-0b17</span><span class="avatar sm">AK</span><span class="age">41m</span></div>
+        </div>
+
+        <div class="ghead"><span class="dot green"></span> Running <span class="n">11</span></div>
+        <div class="rows">
+          <div class="r"><span class="si"><span class="dot green"></span></span><span class="key">CALC-158</span><span class="title">Fix rounding in percent mode</span><span class="grow why">Running <span class="mono">pnpm test percent</span></span><span class="box">build-07</span><span class="avatar sm">PS</span><span class="age">27m</span></div>
+          <div class="r"><span class="si"><span class="dot green"></span></span><span class="key">CALC-163</span><span class="title">Keyboard shortcuts for memory keys</span><span class="grow why">Editing <span class="mono">src/keys/memory.ts</span></span><span class="box">e2b-2c9d</span><span class="avatar sm">JL</span><span class="age">6m</span></div>
+          <div class="r"><span class="si"><span class="dot green"></span></span><span class="key">CALC-160</span><span class="title">Show units in the display</span><span class="grow why">Reading <span class="mono">src/display/format.ts</span></span><span class="box">build-11</span><span class="avatar sm">SR</span><span class="age">9m</span></div>
+          <div class="r"><span class="si"><i data-lucide="loader-circle" style="color:var(--muted)"></i></span><span class="key p">Prompt</span><span class="title">Add a /health endpoint to the API</span><span class="grow why">Preparing · restoring snapshot</span><span class="box">e2b-91c0</span><span class="avatar sm">AK</span><span class="age">1m</span></div>
+          <div class="r more">7 more running</div>
+        </div>
+
+        <div class="ghead"><i data-lucide="circle-dashed" style="color:var(--muted)"></i> Queued <span class="n">3</span><span class="note">waiting for a box on build-fleet · about 2 min</span><i data-lucide="chevron-right" class="x"></i></div>
+
+        <div class="ghead"><i data-lucide="git-pull-request" style="color:var(--muted)"></i> In review <span class="n">3</span></div>
+        <div class="rows">
+          <div class="r"><span class="si"><i data-lucide="git-pull-request" style="color:var(--muted)"></i></span><span class="key">CALC-155</span><span class="title">Upgrade Prisma to 7.2</span><span class="grow why">PR <span class="mono">#481</span> · checks passed · 1 approval</span><span class="box"></span><span class="avatar sm">PS</span><span class="age">2h</span></div>
+          <div class="r"><span class="si"><i data-lucide="git-pull-request" style="color:var(--muted)"></i></span><span class="key">CALC-149</span><span class="title">Parse locale decimal separators</span><span class="grow why">PR <span class="mono">#478</span> · 2 review comments</span><span class="box"></span><span class="avatar sm">JL</span><span class="age">5h</span></div>
+          <div class="r"><span class="si"><i data-lucide="git-pull-request" style="color:var(--muted)"></i></span><span class="key">CALC-147</span><span class="title">Memory recall button</span><span class="grow why">PR <span class="mono">#476</span> · changes requested</span><span class="box"></span><span class="avatar sm">SR</span><span class="age">1d</span></div>
+        </div>
+      </div>
+
+      <aside class="props">
+        <h5>About calculator</h5>
+        <div class="row2"><span class="k">Tracker</span><span class="v"><i data-lucide="link-2"></i> Linear · <span class="mono">CALC</span></span></div>
+        <div class="row2"><span class="k">Intake</span><span class="v">Label <span class="chip">agent</span> starts a task</span></div>
+        <div class="row2"><span class="k">Repos</span><span class="v mono" style="font-size:12px">calculator-web, -api</span></div>
+        <div class="row2"><span class="k">Snapshot</span><span class="v"><span class="dot green"></span> Ready · 2h ago</span></div>
+        <div class="sep"></div>
+        <h5>Defaults</h5>
+        <div class="row2"><span class="k">Agent</span><span class="v"><i data-lucide="bot"></i> OpenCode</span></div>
+        <div class="row2"><span class="k">Model</span><span class="v"><i data-lucide="sparkles"></i> Claude Sonnet 5.5</span></div>
+        <div class="row2"><span class="k">Pools</span><span class="v">build-fleet, e2b-elastic</span></div>
+        <div class="row2"><span class="k">Box</span><span class="v mono">4 vCPU / 8 GB</span></div>
+        <div class="row2"><span class="k">Approvals</span><span class="v">Migrations, new deps</span></div>
+        <div class="sep"></div>
+        <h5>This week</h5>
+        <div class="row2"><span class="k">Merged</span><span class="v mono">41 PRs</span></div>
+        <div class="row2"><span class="k">To first PR</span><span class="v mono">19 min median</span></div>
+        <div class="row2"><span class="k">Spend</span><span class="v mono">$612 of $900</span></div>
+        <div class="row2"><span class="k">Members</span><span class="v"><span class="avatar sm">AK</span><span class="avatar sm" style="margin-left:-11px">SR</span><span class="avatar sm" style="margin-left:-11px">PS</span><span class="avatar sm" style="margin-left:-11px">JL</span> <span class="muted">+5</span></span></div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

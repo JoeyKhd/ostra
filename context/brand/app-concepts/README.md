@@ -34,3 +34,5 @@ The maintainer rejected round 2 ("the ui is FUCKING ugly"). The diagnosis: every
 |---|---|---|
 | A, console | `html/task-a-northflank.html` / `.png` | Navy. Northflank's structure: breadcrumb switchers, a tab bar, a resource header, a status strip, a left sub-menu |
 | B, graphite | `html/task-b-graphite.html` / `.png` | Near-black graphite, Linear-like: a sidebar of projects, a document-style task, a properties panel |
+
+**The maintainer picked B** ("B is very nice!"). Its rules are in `brand/app-design.md`. The other five screens were then built in it: `home-`, `project-tasks-`, `environment-`, `runner-pools-` and `models-graphite`. The six B screens share `html/graphite.css` and `html/shell.js`, the sidebar. To re-render one, open it in a 1440×900 browser window at 2×. Rounds 1 and 2 are superseded.
