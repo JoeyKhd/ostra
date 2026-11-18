@@ -34,10 +34,10 @@ const ManifestSchema = z
     url: z.string(),
     redirect_url: z.string(),
     callback_urls: z.array(z.string()).max(10),
-    hook_attributes: z.object({ url: z.string(), active: z.boolean() }).strict(),
+    hook_attributes: z.object({ url: z.string(), active: z.boolean() }).strict().optional(),
     public: z.boolean(),
     default_permissions: z.record(z.string(), z.enum(['read', 'write'])),
-    default_events: z.array(z.string()),
+    default_events: z.array(z.string()).optional(),
   })
   .strict();
 type Manifest = z.infer<typeof ManifestSchema>;
@@ -100,7 +100,7 @@ export const runManifestLocal = async (root: string): Promise<Check[]> => {
           owner: { login: 'ostra-sandbox' },
           // GitHub creates the App with what the manifest asked for.
           permissions: manifestSeen.default_permissions,
-          events: manifestSeen.default_events,
+          events: manifestSeen.default_events ?? [],
           node_id: 'unknown-field-tolerated',
         }),
       );
@@ -157,9 +157,17 @@ export const runManifestLocal = async (root: string): Promise<Check[]> => {
           : `missing ${gaps.join(', ')}`,
     });
     checks.push({
-      name: 'with no public URL, the webhook is off and the redirect comes back to the local server',
-      ok: seen?.hook_attributes.active === false && seen.redirect_url === `${server.url}/callback` && seen.callback_urls.length === 1,
-      detail: seen === null ? 'no manifest' : `hook active: ${String(seen.hook_attributes.active)}, ${String(seen.callback_urls.length)} OAuth callback URL`,
+      name: 'with no public URL, the manifest has no webhook and no events, and the redirect comes back to the local server',
+      ok:
+        seen !== null &&
+        seen.hook_attributes === undefined &&
+        seen.default_events === undefined &&
+        seen.redirect_url === `${server.url}/callback` &&
+        seen.callback_urls.length === 1,
+      detail:
+        seen === null
+          ? 'no manifest'
+          : `webhook: ${seen.hook_attributes === undefined ? 'none' : 'present'}, events: ${seen.default_events === undefined ? 'none' : String(seen.default_events.length)}, ${String(seen.callback_urls.length)} OAuth callback URL`,
     });
     const bad = await fetch(`${server.url}/callback?code=abc123&state=${'x'.repeat(state.length)}`);
     checks.push({ name: 'a callback with the wrong state is refused, and no exchange happens', ok: bad.status === 400 && conversions === 0, detail: `status ${String(bad.status)}` });

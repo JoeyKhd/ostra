@@ -14,9 +14,11 @@ export const MANIFEST_RESULT_FILE = 'github-app-manifest-result.json';
 
 // The permissions v1 needs (F-006, F-119, ADR 0040, research §2.3). checks:
 // write and actions: read are asked for from day one, so no install
-// re-approves later. email_addresses is an account permission: "Sign in with
-// GitHub" (F-119) goes through the App's own OAuth and reads the member's
-// verified email.
+// re-approves later.
+// email_addresses was here, as an account permission for F-119. GitHub refused
+// the manifest with "Default permission records resource is not included in
+// the list" (2026-11-18). Linking a member's GitHub account needs only their
+// login and ID from the App's OAuth (GET /user), which takes no permission.
 // Deliberately left out for this spike:
 //  - workflows: write. Optional by policy (research §2.3); left out so the
 //    spike tests the default, where a push touching .github/workflows/ fails
@@ -33,7 +35,6 @@ export const V1_PERMISSIONS = {
   issues: 'read',
   statuses: 'read',
   metadata: 'read',
-  email_addresses: 'read',
 } as const satisfies Record<string, 'read' | 'write'>;
 
 export const V1_EVENTS = [
@@ -56,17 +57,22 @@ export type ManifestInput = {
   readonly webhookUrl: string | null;
 };
 
+// GitHub refuses a manifest whose webhook URL isn't reachable from the public
+// internet, even with `active: false` (2026-11-18: "Hook url is not supported
+// because it isn't reachable over the public Internet (127.0.0.1)"). So with no
+// public URL, the manifest has no webhook and no events. Both are added in the
+// App's settings once a tunnel exists.
 export const buildManifest = (input: ManifestInput) => ({
   name: input.name,
   url: input.homepageUrl,
-  hook_attributes:
-    input.webhookUrl === null ? { url: `${input.homepageUrl}/api/github/webhooks`, active: false } : { url: input.webhookUrl, active: true },
+  ...(input.webhookUrl === null
+    ? {}
+    : { hook_attributes: { url: input.webhookUrl, active: true }, default_events: V1_EVENTS }),
   redirect_url: input.redirectUrl,
   // The OAuth callback for "Sign in with GitHub" (research §2.2 sketch).
   callback_urls: [`${input.homepageUrl}/api/auth/callback/github`],
   public: false,
   default_permissions: V1_PERMISSIONS,
-  default_events: V1_EVENTS,
 });
 
 export const PermissionsSchema = z.record(z.string(), z.enum(['read', 'write', 'admin']));
