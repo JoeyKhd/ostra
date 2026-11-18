@@ -523,7 +523,15 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       chain = chain
         .then(() => handleFrame(data, isBinary))
         .catch((error: unknown) => {
-          logger.error("gateway.frame-failed", { runnerId: runner.runnerId, error: error instanceof Error ? error.name : "unknown" });
+          // A database error's code (Prisma's P-codes, Postgres' SQLSTATE) says what failed without content.
+          const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+          const sqlState: unknown = Reflect.get(Object(Reflect.get(Object(Reflect.get(Object(Reflect.get(Object(error), "meta")), "driverAdapterError")), "cause")), "originalCode");
+          logger.error("gateway.frame-failed", {
+            runnerId: runner.runnerId,
+            error: error instanceof Error ? error.name : "unknown",
+            ...(typeof code === "string" ? { code } : {}),
+            ...(typeof sqlState === "string" ? { sqlState } : {}),
+          });
           ws.close(1011, "internal error");
         });
     });
