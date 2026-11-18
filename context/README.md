@@ -13,6 +13,8 @@
 | 7 | Risks and spikes: settle every open question | `open-questions.md`, `build-order.md` (milestone 0) | 1 open (Jira sign-in, before Jira work). Grilling rounds 1–6 answered 2026-11-17 |
 | 8 | Build order: milestones, each ending in something a team can use | `build-order.md` | Agreed |
 
+**System overview:** `architecture/system-overview.png`, a diagram of the whole system. Its source is `system-overview.html`; re-render it after a change, and keep it in step with `open-questions.md` as decisions settle.
+
 **Brand:** the identity is done: palette, logo and type (`brand/brief.md`), with every derived file in `brand/assets.md`. Panel screens come next, image first, through `ui-taste`.
 
 Sign-off held: every v1 row has its "done when", no open question blocks a v1 row, and the build order is agreed.
