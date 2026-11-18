@@ -1,12 +1,13 @@
 {
   "name": "@ostra/protocol",
   "version": "0.0.0",
-  "description": "Zod schemas for the runner protocol, agent events and config",
+  "description": "Zod schemas for the runner protocol, agent events, the task spec and config",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

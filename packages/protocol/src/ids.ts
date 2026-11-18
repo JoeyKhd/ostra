@@ -139,3 +139,35 @@ export type FindingId = z.infer<typeof findingIdSchema>;
  */
 export const ticketKeySchema = idBase.brand<"TicketKey">();
 export type TicketKey = z.infer<typeof ticketKeySchema>;
+
+/** The ID of an account (better-auth's user). A member is an account's membership in one organization. */
+export const userIdSchema = idBase.brand<"UserId">();
+export type UserId = z.infer<typeof userIdSchema>;
+
+/** The ID of a turn's text segment: one message or one thought, streamed and then saved whole. */
+export const segmentIdSchema = idBase.brand<"SegmentId">();
+export type SegmentId = z.infer<typeof segmentIdSchema>;
+
+/** The ID the agent gives a tool call (ACP's `toolCallId`). */
+export const toolCallIdSchema = idBase.brand<"ToolCallId">();
+export type ToolCallId = z.infer<typeof toolCallIdSchema>;
+
+/** The ID of a question the agent asked (an ACP elicitation). */
+export const questionIdSchema = idBase.brand<"QuestionId">();
+export type QuestionId = z.infer<typeof questionIdSchema>;
+
+/** The ID the panel gives a member's message, so a resent steer is applied once. */
+export const clientMessageIdSchema = idBase.brand<"ClientMessageId">();
+export type ClientMessageId = z.infer<typeof clientMessageIdSchema>;
+
+/** The ID of one option of an approval, as the agent offered it (ACP's `optionId`). */
+export const optionIdSchema = idBase.brand<"OptionId">();
+export type OptionId = z.infer<typeof optionIdSchema>;
+
+/** The ID of one server process (a replica of core) that holds runner connections. */
+export const replicaIdSchema = idBase.brand<"ReplicaId">();
+export type ReplicaId = z.infer<typeof replicaIdSchema>;
+
+/** The ID of a code host's or tracker's webhook delivery, as the vendor sent it. */
+export const webhookDeliveryIdSchema = idBase.brand<"WebhookDeliveryId">();
+export type WebhookDeliveryId = z.infer<typeof webhookDeliveryIdSchema>;

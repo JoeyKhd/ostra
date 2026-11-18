@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Node's types are for the tests (node:crypto test vectors). The source itself uses no Node
+    // API, so the panel can import it in a browser.
+    "types": ["node"]
+  },
   "include": ["src"]
 }
