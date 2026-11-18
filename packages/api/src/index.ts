@@ -11,3 +11,5 @@ export { createStreamHub } from "./stream/hub.ts";
 export type { StreamHub, CreateStreamHubInput } from "./stream/hub.ts";
 export { createApiRuntime } from "./runtime.ts";
 export type { ApiRuntime, ApiRuntimeInput } from "./runtime.ts";
+export { createModelsDevCatalogSource, MODELS_DEV_URL } from "./catalog/models-dev.ts";
+export type { ModelsDevCatalogInput } from "./catalog/models-dev.ts";

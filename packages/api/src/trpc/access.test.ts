@@ -50,6 +50,7 @@ const withoutOrganization = async () => {
     headers: new Headers(),
     resHeaders: new Headers(),
     user: {
+      sessionId: "stray-session",
       userId: userIdSchema.parse(account.id),
       name: account.name,
       username: account.username,

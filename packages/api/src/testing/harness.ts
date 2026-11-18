@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { LogRecord } from "@ostra/adapter-sdk";
+import type { CatalogEntry, LogRecord } from "@ostra/adapter-sdk";
 import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
@@ -46,12 +46,16 @@ export type BareHarness = {
   /** Every line the API logged, to check that nothing sensitive reached one. */
   readonly logs: readonly LogRecord[];
   readonly setupToken: string;
+  /** The models.dev catalog the routers see: a test pushes entries into it. */
+  readonly catalogEntries: CatalogEntry[];
+  /** A caller for a context a test built (other settings, another session). */
+  readonly callerFor: (context: Context) => AppCaller;
   /** A caller with no session. */
   readonly anonymous: (resHeaders?: Headers) => AppCaller;
   /** A caller signed in as this member of an organization. */
   readonly as: (member: SeededMember) => Promise<AppCaller>;
   /** The context a member's request would resolve, for tests that call a helper directly. */
-  readonly contextOf: (member: SeededMember) => Promise<Context>;
+  readonly contextOf: (member: SeededMember, sessionId?: string) => Promise<Context>;
   readonly dispose: () => Promise<void>;
 };
 
@@ -74,6 +78,7 @@ export const createBareHarness = async (): Promise<BareHarness> => {
   const jobs = memoryJobQueue();
   const outbox = memoryOutbox();
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
+  const catalogEntries: CatalogEntry[] = [];
   const setupToken = `ostra-setup-${randomBytes(24).toString("hex")}`;
 
   const deps: ApiDeps = {
@@ -100,7 +105,7 @@ export const createBareHarness = async (): Promise<BareHarness> => {
     hashPassword,
     catalog: createCatalogSource({
       fetchEnabled: false,
-      loadBundled: () => Promise.resolve([]),
+      loadBundled: () => Promise.resolve(catalogEntries),
       fetchLatest: () => Promise.resolve([]),
       clock: systemClock,
       logger: silentLogger,
@@ -108,9 +113,10 @@ export const createBareHarness = async (): Promise<BareHarness> => {
     stream: hub,
   };
 
-  const contextOf = async (member: SeededMember): Promise<Context> => {
+  const contextOf = async (member: SeededMember, sessionId = `session-of-${member.id}`): Promise<Context> => {
     const account = await test.db.user.findUniqueOrThrow({ where: { id: member.userId } });
     const user: SessionUser = {
+      sessionId,
       userId: member.userId,
       name: account.name,
       username: account.username,
@@ -129,6 +135,8 @@ export const createBareHarness = async (): Promise<BareHarness> => {
     fakes: { secretStore, modelProvider, codeHost, jobs, outbox },
     logs,
     setupToken,
+    catalogEntries,
+    callerFor: (context) => callerFactory(context),
     anonymous: (resHeaders = new Headers()) => callerFactory({ deps, headers: new Headers(), resHeaders, user: null, member: null }),
     as: async (member) => callerFactory(await contextOf(member)),
     contextOf,

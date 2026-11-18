@@ -110,7 +110,10 @@ describe("the first account", () => {
     expect(member).toMatchObject({ organizationId: created.organizationId, role: "admin" });
     const setting = await harness.test.db.instanceSetting.findUniqueOrThrow({ where: { id: "instance" } });
     expect(setting.firstAdminCreatedAt).not.toBeNull();
-    // The admin sees an organization from the first request on.
+    // The organization has its built-in OpenCode profile, with no model until the admin picks one.
+    expect(await harness.test.db.agentProfile.findMany({ where: { organizationId: created.organizationId } })).toMatchObject([
+      { name: "OpenCode", adapter: "opencode", builtIn: true, modelId: null },
+    ]);
     const audit = await harness.test.db.auditEntry.findFirst({ where: { organizationId: created.organizationId, action: "instance.first-admin-created" } });
     expect(audit).not.toBeNull();
   });
@@ -176,6 +179,12 @@ describe("a device sign-in for a personal runner (RFC 8628)", () => {
 });
 
 describe("the organization roles (ADR 0026)", () => {
+  it("gives an organization an instance admin makes later its built-in profile too", async () => {
+    const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
+    const created = await harness.auth.api.createOrganization({ body: { name: "Second Org", slug: "second-org" }, headers: cookieHeaderFrom(headers) });
+    expect(await harness.test.db.agentProfile.count({ where: { organizationId: created.id, builtIn: true } })).toBe(1);
+  });
+
   it("accept admin and member, and refuse owner", async () => {
     const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
     const browser = cookieHeaderFrom(headers);

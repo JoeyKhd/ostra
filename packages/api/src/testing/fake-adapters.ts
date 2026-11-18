@@ -166,9 +166,16 @@ export class FakeCodeHost extends CodeHostAdapter {
 
   appManifest(input: AppManifestInput): AppManifest {
     this.manifests.push(input);
+    // Like the real host, a private address gets a manifest without a webhook (GitHub refuses one).
+    const privateAddress = /localhost|127\.0\.0\.1|\.local\b/.test(input.webhookUrl);
     return {
-      manifest: { name: input.name, url: input.homepageUrl, redirect_url: input.redirectUrl },
-      createUrl: "https://github.example/settings/apps/new",
+      manifest: {
+        name: input.name,
+        url: input.homepageUrl,
+        redirect_url: input.redirectUrl,
+        ...(privateAddress ? {} : { hook_attributes: { url: input.webhookUrl, active: true } }),
+      },
+      createUrl: 'https://github.example/settings/apps/new',
     };
   }
 

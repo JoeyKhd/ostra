@@ -15,6 +15,8 @@ import { highestRole } from "./roles.ts";
 
 /** Who is signed in, as better-auth resolved their session. */
 export type SessionUser = {
+  /** The login session's own ID (not its token, which is never read): what a one-time value binds to. */
+  readonly sessionId: string;
   readonly userId: UserId;
   readonly name: string;
   readonly username: string | null;
@@ -42,6 +44,7 @@ export const resolveSession = async (auth: OstraAuth, headers: Headers): Promise
   const role: unknown = Reflect.get(user, "role");
   const username: unknown = Reflect.get(user, "username");
   return {
+    sessionId: session.id,
     userId: userIdSchema.parse(user.id),
     name: user.name,
     username: typeof username === "string" ? username : null,
