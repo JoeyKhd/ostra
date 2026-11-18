@@ -1,0 +1,28 @@
+{
+  "name": "@ostra/e2e-m1",
+  "version": "0.0.0",
+  "description": "Milestone 1's end-to-end demo against the dev stack and the test org (ticket 39)",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "demo": "node src/demo.ts",
+    "clean-up": "node src/clean-up.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@octokit/auth-app": "8.3.1",
+    "@octokit/rest": "22.0.1",
+    "@ostra/db": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}
