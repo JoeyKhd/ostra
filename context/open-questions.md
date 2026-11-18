@@ -60,7 +60,7 @@ The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be ab
 | Q8 | Elastic runners | Design for them in v1, ship the first provider right after |
 | Q9 | Runner pools | In v1 |
 | Q10 | Schedules on intake rules | In v1 |
-| Q11 | Spike 1 | **The maintainer leans toward Rivet Sandbox Agent** ("Rivet sandox is nice i think", 2026-11-18). Proposal: it becomes the runner's agent layer, with ACP as the fallback. Spike 1 then *validates* it instead of comparing: OpenCode on any base URL and model, steering mid-turn, resume, permission requests, the event schema, and running in E2B. It also carries the Q46 bake-off, since it drives OpenCode and Claude Code side by side |
+| Q11 | Spike 1 | **Settled 2026-11-18: Rivet Sandbox Agent drives the agents (ADR 0024).** Spike 1 validates it for OpenCode and carries the Q46 bake-off |
 | Q12 | CI failures and review comments sent to the owning agent | Move F-035 into v1 |
 | Q13 | Reviewer agent as a profile option | In v1 |
 | Q14 | Variants ×2/×3 | Soon after v1 |

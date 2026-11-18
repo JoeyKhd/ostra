@@ -1,6 +1,6 @@
 # One agent interface, with ACP first
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 3, following the recommendation in `research/agent-harnesses.md`.
+**Status:** accepted (plan signed off 2026-11-17). **Partly superseded by ADR 0024 (2026-11-18):** Rivet Sandbox Agent, which is built on ACP, replaces ostra's own generic ACP driver. ostra's own typed event model and the per-agent profiles still stand. Chosen on 2026-11-17 in grilling round 3, following the recommendation in `research/agent-harnesses.md`.
 
 - **ostra's own driver interface and event model**, shaped like ACP, typed as discriminated unions and checked with Zod.
 - **The first driver is one generic ACP driver.** It covers every agent that speaks ACP, natively or through an adapter.
