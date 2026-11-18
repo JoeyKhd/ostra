@@ -92,3 +92,18 @@ The maintainer: the product "doesnt feel like a HUGE tool", and "i want to be ab
 | Q25 | Integrations, from `research/integrations-platform.md` | No integrations platform: each one is a cloud service, ELv2 (Nango) or abandoned. Use the official SDKs behind ostra's adapters: `@linear/sdk`, the Octokit modules (`auth-app`, `webhooks`, `plugin-throttling`, `plugin-retry`, `createFromManifest`) and `jira.js` later. Port Cyrus's agent-event-to-Linear-activity rules, tool-call formatter and webhook fixtures, with attribution (needs Q21) |
 | Q26 | Keeping keys from the agent (Q17), from `research/credential-proxy.md` | **Model key:** a small loopback proxy in the runner (`node:http`, no MITM CA); Claude Code gets `ANTHROPIC_BASE_URL` plus a per-task fake key, and the proxy swaps in the real one. Off on subscription laptops (Anthropic's terms). **GitHub:** the agent gets no credential at all, and the runner does every fetch and push. **Allowlists (F-052, later):** `@anthropic-ai/sandbox-runtime`. **Per-repo `.env` secrets:** accepted as visible to the code under test (ADR 0020) |
 | Q27 | Separate OS user on remote runners, raised by `research/credential-proxy.md` | Yes, in v1. On remote runners the agent runs as a different OS user from the runner, so it can't read the runner's memory or files, where the real keys live. Laptops keep one user: it's the member's own machine and their own login |
+
+## Round 8 (asked 2026-11-18): ostra as a platform with Projects
+
+The maintainer: "you are taking this project from being an actual full-fledged framework setup enterprise thing. You're creating a small tool out of it." Their picture: a dashboard where you create a **project** (e.g. "calculator") and hook it up to Jira or Linear. **Runners are pre-configured in the framework** and do all the work: check out the repo, install dependencies, provide the env vars for a test environment. You keep prompting it, or it picks up tracker tasks manually or automatically, "the same way as Claude has their Claude Code in the cloud". **Models:** use models.dev for logos and names, and any API base with a bearer token. This round reshapes several of the open questions in rounds 7 and earlier.
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q28 | Is the playback right: organization → model providers, runner pools → projects (repos, tracker, environment, agent defaults, automations, tasks)? | Yes |
+| Q29 | What a project contains: one repo, or several | Several repos allowed. The environment checks them out side by side, and each changed repo gets its own PR |
+| Q30 | Above projects | An **organization** (members, SSO, roles), with access per project. It replaces "team" |
+| Q31 | Tasks without a ticket | Yes: prompt a project directly. When a tracker is connected, ostra creates the matching ticket by default (a project setting) |
+| Q32 | Runners | Pools managed at the organization level by admins. Each project chooses which pools it may use. Laptops stay possible as personal runners |
+| Q33 | Environment as the project's computer | A base image (ostra's default or a custom Dockerfile), a setup script, env vars and secrets, network rules, and a snapshot after setup so tasks start in seconds |
+| Q34 | Models | A model registry from models.dev plus custom providers (API base, bearer token, model ID). Claude Code serves Anthropic-compatible endpoints, and **OpenCode joins v1** for every other provider. This reverses "Claude Code only" (ADR 0004) |
+| Q35 | Enterprise depth in v1 | SSO (OIDC/SAML), roles per project, and the audit log in v1. Budgets and quotas soon after |
