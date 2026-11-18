@@ -1,6 +1,6 @@
 # 36: The task-view fold
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: 02
 Features: F-023
@@ -23,9 +23,11 @@ Spec: `../spec.md`, sections 5.1 and 8
 
 ## Done when
 
-- [ ] A test per event kind, ticket 02's fixtures, and a recorded OpenCode session with tool calls folded with nothing dropped.
-- [ ] 5,000 events fold in well under the render budget on this machine (the number recorded in the test's output).
-- [ ] Package checks pass.
-- [ ] Committed as `✨ add the task-view fold`.
+- [x] A test per event kind, ticket 02's fixtures, and a recorded OpenCode session with tool calls folded with nothing dropped.
+- [x] 5,000 events fold in well under the render budget on this machine (the number recorded in the test's output).
+- [x] Package checks pass.
+- [x] Committed as `✨ add the task-view fold`.
 
 ## Comments
+
+- 2026-11-18 (web): built in `packages/task-view`: `foldTaskEvents`, `deriveTaskState`, the live-text reducer (`applyLiveTextFrame`, offsets and snapshots), `foldCoverage` and `@ostra/task-view/testing` (an every-kind session, long sessions, and spike 1's t5 capture converted to stored events with local paths scrubbed). 62 tests. 5,000 events fold in about 2 ms on this machine (Windows 11, Node 24.14), and refold with identity reuse in about 3 ms. Milestone 1's kinds are their own `data-*` parts: `setup`, `pushed`, `pr-text`, `pr`, `session-end`, `driver`; usage and the context figure ride on the turn's metadata.
