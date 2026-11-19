@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { notifyChannels } from "@ostra/db";
 import { ensureBuiltInAgentProfile } from "@ostra/domain";
 import { projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -112,7 +114,8 @@ export const seedTask = async (
       source: "prompt",
       title: input.title ?? "A task",
       prompt: "A prompt",
-      branchName: "ostra/00000000-a-task",
+      // Unique per project (ticket 46): the last 8 hex digits, as a real task's ID gives them.
+      branchName: `ostra/${randomBytes(4).toString("hex")}-a-task`,
       state,
       ...(state === "needs_you" ? { needsYouReason: "question" as const } : {}),
       ...(state === "stopped" ? { stoppedReason: "requested" as const } : {}),

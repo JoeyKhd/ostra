@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 
 import type { OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
@@ -78,7 +80,7 @@ const newTask = async (organizationId: string, projectId: string) =>
       source: "prompt",
       title: "Add CONTRIBUTING.md",
       prompt: "Add a short CONTRIBUTING.md",
-      branchName: "ostra/test-add-contributing",
+      branchName: `ostra/${randomBytes(4).toString("hex")}-add-contributing`,
     },
   });
 
@@ -257,5 +259,27 @@ describe("the command outbox", () => {
         },
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("a project's branch names (ticket 46)", () => {
+  const named = (projectId: string, branchName: string, organizationId: string = fixture.a.organization.id) =>
+    test.db.task.create({
+      data: { organizationId, projectId, kind: "code", source: "prompt", title: "Nightly", prompt: "p", branchName },
+    });
+
+  it("F-016: the index refuses a hand-made duplicate in a project, and allows it in another project and for the placeholder", async () => {
+    const branch = `ostra/${randomBytes(4).toString("hex")}-nightly`;
+    await named(fixture.a.openProject.id, branch);
+    await expect(named(fixture.a.openProject.id, branch)).rejects.toThrow(/task_project_branch_unique|Unique constraint/);
+    // Another project of the organization, and another organization's project, may hold the name.
+    await named(fixture.a.restrictedProject.id, branch);
+    await named(fixture.b.project.id, branch, fixture.b.organization.id);
+    // The placeholder a create writes first is left out of the index.
+    await named(fixture.a.openProject.id, "pending");
+    await named(fixture.a.openProject.id, "pending");
+    // A rename onto a taken name is refused too.
+    const other = await named(fixture.a.openProject.id, `ostra/${randomBytes(4).toString("hex")}-other`);
+    await expect(test.db.task.update({ where: { id: other.id }, data: { branchName: branch } })).rejects.toThrow();
   });
 });

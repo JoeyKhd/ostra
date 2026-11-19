@@ -20,10 +20,15 @@ Settled as Q136, item 10, on 2026-11-19 (`context/open-questions.md`, Settled). 
 
 ## Done when
 
-- [ ] Tests: two tasks forced to the same name, with a faked ID suffix, end with different branches; the index refuses a hand-made duplicate; two creates at the same moment don't block each other on the placeholder.
-- [ ] The migration applies to an empty database and to one holding milestone 1's demo data.
-- [ ] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
-- [ ] The whole-repo checks pass (spec section 9: the schema).
-- [ ] Committed as `✨ make branch names unique per project`.
+- [x] Tests: two tasks forced to the same name, with a faked ID suffix, end with different branches; the index refuses a hand-made duplicate; two creates at the same moment don't block each other on the placeholder.
+- [x] The migration applies to an empty database and to one holding milestone 1's demo data.
+- [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
+- [x] The whole-repo checks pass (spec section 9: the schema).
+- [x] Committed as `✨ make branch names unique per project`.
 
 ## Comments
+- 2026-11-19, core: done in `✨ make branch names unique per project`.
+  - **The index:** `task_project_branch_unique` on `task (projectId, branchName) WHERE "branchName" <> 'pending'`, declared in `schema.prisma` and made in migration `20261119230100_task_branch_unique`. The migration first looks for two tasks of a project with one branch, and stops with an error that names them, the project and the branch; it renames nothing.
+  - **The create:** `claimBranchNameInTx` (`packages/domain/src/use-cases/create-prompt-task.ts`) sets the name under a savepoint, and on a refusal by that index (SQLSTATE 23505 naming it) rolls back to the savepoint and tries 12, then 16 hex digits (`BRANCH_ID_DIGITS`), in the caller's transaction. `startTicketTask` (ticket 29) isn't written yet: it calls `claimBranchNameInTx` the same way.
+  - Test seeds that wrote one fixed branch name for every task (`seedTask` in `packages/api/src/testing/world.ts`, `newTask` in `packages/db/src/schema.test.ts`) now write a random 8-digit part, as a real task's ID gives.
+  - Tests: `packages/api/src/routers/branch-names.test.ts`, `packages/db/src/schema.test.ts` and `packages/db/src/migrations.test.ts` (an empty database; one migrated to milestone 1's schema with the demo's rows, then the rest; one with a shared branch). Proof: F-016's third row, `partial` (the box and the working tree wait for F-017).

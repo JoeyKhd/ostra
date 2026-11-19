@@ -1023,6 +1023,9 @@ model Task {
   @@unique([projectId, ticketId], where: raw("kind = 'code' AND \"ticketId\" IS NOT NULL AND state NOT IN ('stopped', 'merged', 'done')"), map: "task_one_active_code_task_per_ticket")
   @@index([projectId, state])
   @@index([organizationId, state])
+  /// Two tasks of a project never share a branch (F-016, Q136 item 10). A create writes the
+  /// placeholder `pending` before the real name, so the index leaves it out (ticket 46).
+  @@unique([projectId, branchName], where: raw("\"branchName\" <> 'pending'"), map: "task_project_branch_unique")
   @@map("task")
 }
 
