@@ -341,13 +341,18 @@ export const deepEqual = (a: unknown, b: unknown): boolean => {
 
 const hiddenRefPrefix = "refs/ostra/wip/";
 
-const addUsage = (sum: TokenCounts | undefined, add: TokenCounts): TokenCounts => ({
-  inputTokens: (sum?.inputTokens ?? 0) + add.inputTokens,
-  outputTokens: (sum?.outputTokens ?? 0) + add.outputTokens,
-  cacheReadTokens: (sum?.cacheReadTokens ?? 0) + add.cacheReadTokens,
-  cacheWriteTokens: (sum?.cacheWriteTokens ?? 0) + add.cacheWriteTokens,
-  estimated: (sum?.estimated ?? false) || add.estimated,
-});
+const addUsage = (sum: TokenCounts | undefined, add: Omit<TokenCounts, "reasoningTokens"> & { readonly reasoningTokens?: number | undefined }): TokenCounts => {
+  const reasoningTokens = (sum?.reasoningTokens ?? 0) + (add.reasoningTokens ?? 0);
+  return {
+    inputTokens: (sum?.inputTokens ?? 0) + add.inputTokens,
+    outputTokens: (sum?.outputTokens ?? 0) + add.outputTokens,
+    cacheReadTokens: (sum?.cacheReadTokens ?? 0) + add.cacheReadTokens,
+    cacheWriteTokens: (sum?.cacheWriteTokens ?? 0) + add.cacheWriteTokens,
+    estimated: (sum?.estimated ?? false) || add.estimated,
+    // F-137: the reasoning subset, kept only when an endpoint reported some.
+    ...(reasoningTokens > 0 ? { reasoningTokens } : {}),
+  };
+};
 
 // ---- the fold ---------------------------------------------------------------------------
 
@@ -481,6 +486,9 @@ export const foldTaskEvents = (
         const started = ensureTurn(event.turnId, sessionId, seq);
         started.meta.turnState = "running";
         if (event.mode === "plan") started.meta.turnMode = "plan";
+        // F-137: the level the turn ran at, and the one asked for when the clamp moved it.
+        if (event.effort !== undefined && event.effort !== "default") started.meta.effort = event.effort;
+        if (event.adjustedFrom !== undefined) started.meta.adjustedFrom = event.adjustedFrom;
         break;
       }
       case "turn.ended": {
@@ -814,9 +822,18 @@ export const foldTaskEvents = (
       case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
-      case "effort.changed":
         // Protocol minor 3. No row until the milestone 4 task page draws them.
         break;
+      case "effort.changed": {
+        // F-137: in time order; during a turn it applies from the next one (ADR 0066).
+        const turn = lastTurnBySession.get(sessionId);
+        row(seq, sessionId, {
+          type: "data-effort",
+          id: `effort:${String(seq)}`,
+          data: { from: event.from, to: event.to, memberId: event.memberId, duringTurn: turn?.meta.turnState === "running", at: stored.at },
+        });
+        break;
+      }
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

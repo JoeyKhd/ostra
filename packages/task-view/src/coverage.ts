@@ -66,5 +66,5 @@ export const foldCoverage = {
   "turn.released": "no row (milestone 4)",
   "review.check_updated": "no row (milestone 4)",
   "pr.related_updated": "no row (milestone 4)",
-  "effort.changed": "no row (milestone 4, ticket 63)",
+  "effort.changed": "effort row",
 } as const satisfies Record<TaskEventKind, string>;

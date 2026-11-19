@@ -92,6 +92,7 @@ const convertPart = (part: TaskUIPart): ThreadPart | null => {
     case "data-pr":
     case "data-session-end":
     case "data-driver":
+    case "data-effort":
     case "data-files-outside":
     case "data-saved":
     case "data-limit":

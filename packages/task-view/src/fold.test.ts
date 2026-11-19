@@ -373,7 +373,7 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "effort.changed": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).toContain("data-effort");
     },
   },
   "pr.opened": {
@@ -708,6 +708,58 @@ describe("milestone 3's marks in the thread", () => {
     expect(comments.find((message) => message.role === "user")?.metadata?.author?.intent).toBe("diff-comments");
     const typed = foldTaskEvents(storeEvents([f["user.message"]]), []);
     expect(typed.find((message) => message.role === "user")?.metadata?.author?.intent).toBeUndefined();
+  });
+});
+
+describe("reasoning effort in the thread (F-137)", () => {
+  const otherTurn = turnIdSchema.parse("01900000-0000-7000-8000-0000000000b2");
+  const effortOf = (messages: readonly TaskUIMessage[]) => partsOf(messages).find((part) => part.type === "data-effort");
+
+  it("F-137: a turn keeps the level it ran at, the level asked for when clamped, and its reasoning tokens", () => {
+    const clamped = foldTaskEvents(storeEvents([
+      { ...f["turn.started"], effort: "max", adjustedFrom: "xhigh" },
+      { ...f["usage.recorded"], outputTokens: 9_100, reasoningTokens: 6_400 },
+      { ...f["usage.recorded"], outputTokens: 100, reasoningTokens: 100 },
+      f["turn.ended"],
+    ]), []);
+    const meta = lastTurnMeta(clamped);
+    expect(meta?.effort).toBe("max");
+    expect(meta?.adjustedFrom).toBe("xhigh");
+    expect(meta?.usage?.reasoningTokens).toBe(6_500);
+    expect(meta?.usage?.outputTokens).toBe(9_200);
+  });
+
+  it("F-137: a turn at the default, or with no reasoning reported, carries neither", () => {
+    const plain = foldTaskEvents(storeEvents([{ ...f["turn.started"], effort: "default" }, f["usage.recorded"], f["turn.ended"]]), []);
+    const meta = lastTurnMeta(plain);
+    expect(meta?.effort).toBeUndefined();
+    expect(meta?.adjustedFrom).toBeUndefined();
+    expect(meta?.usage).not.toHaveProperty("reasoningTokens");
+  });
+
+  it("F-137: a change during a turn applies from the next turn, between turns it doesn't say so, and it sits in time order", () => {
+    const during = foldTaskEvents(storeEvents([f["turn.started"], f["agent.message"], { ...f["effort.changed"], from: "xhigh", to: "low" }]), []);
+    expect(effortOf(during)).toMatchObject({ data: { from: "xhigh", to: "low", memberId: fixtureIds.member, duringTurn: true } });
+    expect(during.map((message) => message.role)).toEqual(["assistant", "system"]);
+    const between = foldTaskEvents(storeEvents([f["turn.started"], f["turn.ended"], { ...f["effort.changed"], to: "low" }, { ...f["turn.started"], turnId: otherTurn }]), []);
+    expect(effortOf(between)).toMatchObject({ data: { to: "low", duringTurn: false } });
+    expect(between.map((message) => message.role)).toEqual(["assistant", "system", "assistant"]);
+  });
+
+  it("F-137: the state follows the task's level, the running turn's level and the reasoning tokens", () => {
+    const events = storeEvents([
+      { ...f["turn.started"], effort: "max", adjustedFrom: "xhigh" },
+      { ...f["usage.recorded"], reasoningTokens: 6_400 },
+      { ...f["effort.changed"], from: "xhigh", to: "low" },
+    ]);
+    const running = deriveTaskState(events);
+    expect(running.effort).toBe("low");
+    expect(running.runningEffort).toBe("max");
+    expect(running.reasoningTokens).toBe(6_400);
+    const ended = deriveTaskState([...events, ...storeEvents([f["turn.ended"]], { fromSeq: 10 })]);
+    expect(ended.runningEffort).toBeNull();
+    expect(deriveTaskState(storeEvents([f["turn.started"]])).runningEffort).toBe("default");
+    expect(deriveTaskState([]).effort).toBeNull();
   });
 });
 

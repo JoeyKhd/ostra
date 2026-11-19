@@ -32,6 +32,7 @@ import { ApprovalCard, PlanBlock, QuestionCard, TicketClosedBlock, WatcherBar, a
 import { ChangesTab } from "./task-changes/changes-tab";
 import { ChecksTab, checksMarkerOf } from "./task-checks/checks-tab";
 import { ChecksTabMarker } from "./task-checks/task-checks";
+import { ReasoningRow } from "./task-effort";
 import { TakeItLocal } from "./take-it-local";
 import type { LocalLoad } from "./take-it-local";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
@@ -98,9 +99,11 @@ const CopyLink = () => {
  * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
  * are the only markers. Spend (F-084) and the Changes group (F-027) come later.
  */
-const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket }: {
+const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket }: {
   readonly task: Task;
   readonly tokens: { readonly inputTokens: number; readonly outputTokens: number; readonly estimated: boolean };
+  /** F-137: the reasoning tokens inside `out`, from the turns' usage. */
+  readonly reasoningTokens: number;
   readonly context: { readonly used: number; readonly size: number } | null;
   readonly now: number;
   readonly onTakeOver: () => void;
@@ -161,6 +164,7 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
             </span>
           ) : null}
         </PropRow>
+        <ReasoningRow tokens={reasoningTokens} />
         <PropRow label={t("taskAnswers.usage.cache")}>
           <Mono><span data-testid="task-cache">{formatTokens(usage.cacheReadTokens)} {t("taskAnswers.usage.read")} · {formatTokens(usage.cacheWriteTokens)} {t("taskAnswers.usage.write")}</span></Mono>
         </PropRow>
@@ -390,6 +394,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         <Properties
           task={data}
           tokens={view.tokens}
+          reasoningTokens={view.reasoningTokens}
           context={view.context}
           now={now}
           takingOver={takeOver.isPending}

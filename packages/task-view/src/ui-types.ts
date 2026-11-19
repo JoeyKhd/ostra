@@ -9,6 +9,7 @@ import {
   optionIdSchema,
 } from "@ostra/protocol";
 import type {
+  EffortLevel,
   MemberId,
   MessageDelivery,
   MessageDeliveryState,
@@ -137,6 +138,17 @@ export type SessionEndData = {
 
 export type DriverChangeData = { readonly memberId: MemberId; readonly byMemberId: MemberId };
 
+/** The driver changed the task's reasoning level (F-137, `effort.changed`). */
+export type EffortChangeData = {
+  readonly from: EffortLevel;
+  readonly to: EffortLevel;
+  readonly memberId: MemberId;
+  /** A turn was running, so the change applies from the next one (ADR 0066). */
+  readonly duringTurn: boolean;
+  /** When it was recorded, in ms since the epoch. */
+  readonly at: number;
+};
+
 /** Files the agent left outside every repo (Q133): their names, and how many more. Empty: they're gone. */
 export type FilesOutsideReposData = { readonly paths: readonly string[]; readonly more: number };
 
@@ -167,6 +179,7 @@ export type TaskDataParts = {
   pr: PullRequestData;
   "session-end": SessionEndData;
   driver: DriverChangeData;
+  effort: EffortChangeData;
   "files-outside": FilesOutsideReposData;
   saved: SavedData;
   limit: LimitData;
@@ -183,6 +196,8 @@ export type TokenCounts = {
   readonly cacheWriteTokens: number;
   /** True when any count in the sum was the key proxy's estimate. */
   readonly estimated: boolean;
+  /** Minor 3 (F-137): the reasoning tokens inside `outputTokens`, when the endpoint reported any. */
+  readonly reasoningTokens?: number;
 };
 
 export type TaskMessageMeta = {
@@ -195,6 +210,10 @@ export type TaskMessageMeta = {
   turnState?: "running" | "ended" | "failed";
   /** Milestone 3 (F-063): a plan turn's mode, so its header reads "Planning". Missing means a build turn. */
   turnMode?: TurnMode;
+  /** Minor 3 (F-137): the reasoning level the turn ran at. Missing means `default`. */
+  effort?: EffortLevel;
+  /** Minor 3: the level asked for, when the clamp changed it (ADR 0066). */
+  adjustedFrom?: EffortLevel;
   stopReason?: StopReason;
   error?: string;
   author?: {

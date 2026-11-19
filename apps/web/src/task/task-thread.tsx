@@ -23,11 +23,12 @@ import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { formatClock, formatTokens } from "@/lib/format";
+import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { toThreadMessageLike } from "./convert";
+import { TurnUsage } from "./effort-marks";
 import { AssistantText, DataRow, Reasoning, SafeLink, ToolRow } from "./renderers";
 import type { TaskStreamState } from "./stream-state";
 import { createTaskIndexStore, indexMessages, TaskContext, useTaskContext, useTaskMessage } from "./task-context";
@@ -144,11 +145,8 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
           }}
         </MessagePrimitive.Parts>
         {/* F-084: each turn shows its own tokens once it ended, from the key proxy's counts; "≈" marks an estimate. */}
-        {role === "assistant" && meta?.usage !== undefined && meta.turnState !== "running" && meta.usage.inputTokens + meta.usage.outputTokens > 0 ? (
-          <div data-part="turn-usage" className="mt-1 font-mono text-xs text-faint">
-            {meta.usage.estimated ? "≈ " : ""}{t("taskAnswers.usage.turn", { input: formatTokens(meta.usage.inputTokens), output: formatTokens(meta.usage.outputTokens) })}
-          </div>
-        ) : null}
+        {/* F-137: with the level it ran at, its reasoning tokens, and the clamp's line when it moved the level. */}
+        {role === "assistant" && meta !== undefined && meta.turnState !== "running" ? <TurnUsage meta={meta} /> : null}
       </div>
     </MessagePrimitive.Root>
   );

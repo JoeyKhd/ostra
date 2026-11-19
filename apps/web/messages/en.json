@@ -381,7 +381,50 @@
     "context": "Context",
     "maxOutput": "Max output",
     "inputPrice": "Input $/M",
-    "outputPrice": "Output $/M"
+    "outputPrice": "Output $/M",
+    "reasoning": {
+      "tabKeys": "Keys",
+      "tabModels": "Models",
+      "model": "Model",
+      "listedBy": "Listed by",
+      "window": "Window",
+      "reasoning": "Reasoning",
+      "doesntReason": "Doesn't reason",
+      "notSet": "Not set",
+      "fromCatalog": "from the catalog",
+      "byAdmin": "set by an admin",
+      "useCatalog": "Use the catalog's",
+      "unsetNote": "doesn't reason until an admin says",
+      "priceMark": "reasoning priced apart",
+      "priceFootnote": "Reasoning priced apart: the catalog lists a separate price for this model's reasoning tokens. In v1, ostra prices reasoning tokens as output.",
+      "customModel": "custom model",
+      "customModelLabel": "Custom model",
+      "modelLabel": "Model",
+      "listedByLine": "Listed by {keys} · {format}",
+      "more": "+{n}",
+      "limits": "Limits",
+      "contextWindow": "Context window",
+      "outputLimit": "Output limit",
+      "limitFromCatalog": "from the catalog",
+      "reasons": "Reasons",
+      "no": "No",
+      "yes": "Yes",
+      "levelsLabel": "Levels its endpoint takes",
+      "onlyToggle": "Only on or off",
+      "offers": "Profiles on this model offer {levels}.",
+      "tickSome": "Tick the levels the endpoint takes, or Only on or off.",
+      "catalogSays": "The catalog says: {levels}.",
+      "catalogSaysNone": "The catalog says it doesn't reason.",
+      "edit": "Edit",
+      "confirmCatalogTitle": "Use the catalog's levels?",
+      "confirmCatalog": "Use the catalog's levels for {model}? Profiles and tasks on it will offer {levels}.",
+      "droppedOne": "1 profile is set to {level}. Its tasks will run at {runAt}.",
+      "droppedMany": "{n} profiles are set to {level}. Their tasks will run at {runAt}.",
+      "confirmSaveTitle": "Save {model}'s levels?",
+      "priceNote": "Its catalog prices reasoning at {price} per million, apart from output. ostra v1 prices it as output.",
+      "empty": "No model yet. Add a provider, and the models its key lists show here.",
+      "reasonsNoLevels": "Reasons, with no levels"
+    }
   },
   "github": {
     "title": "GitHub",
@@ -1055,7 +1098,22 @@
     },
     "waitingOnYou": "{n} waiting on you",
     "runningCount": "{n} running",
-    "group": "{group}, {n}"
+    "group": "{group}, {n}",
+    "effort": {
+      "label": "Effort",
+      "nextTurn": "From the next turn.",
+      "thisTurn": "This turn runs at {level}.",
+      "takeOver": "Take over to change",
+      "failed": "The effort didn't change. {reason}",
+      "reasoning": "Reasoning",
+      "reasoningTokens": "{n} tokens",
+      "reasoningTip": "Counted inside out. Priced as output.",
+      "marker": "{name} set effort to {level}",
+      "markerDuringTurn": "{name} set effort to {level}, from the next turn",
+      "ranAt": "Ran at {level}: this model has no {asked}.",
+      "ranAtDefault": "Ran at the default: this model takes no effort level.",
+      "usageReasoning": "{n} reasoning"
+    }
   },
   "newTask": {
     "title": "New task",
@@ -2349,7 +2407,17 @@
       "stay": "Stay",
       "leave": "Leave",
       "noSuchProfile": "No such profile.",
-      "allProfiles": "All agent profiles"
+      "allProfiles": "All agent profiles",
+      "effort": {
+        "label": "Effort",
+        "help": "How long {model} thinks before it acts. Its own levels.",
+        "note": "A running task keeps its own level. A change here applies to new tasks.",
+        "noReasoning": "{model} doesn't take an effort level. Tasks run at the endpoint's default.",
+        "stored": "Saved as {saved}. {model} has no {saved}, so new tasks run at {runAt}.",
+        "unsetCustom": "Nobody has said whether {model} reasons, so tasks run without an effort level.",
+        "setInModels": "Set it in Models",
+        "agentNone": "{agent} doesn't take an effort level. Tasks run at the model's default."
+      }
     },
     "rules": {
       "name": "Name",
@@ -2474,7 +2542,8 @@
       "archiving": "Archiving…",
       "archiveTitle": "Archive {name}?",
       "archiveBody": "It leaves every picker, and nobody can start a task with it. Tasks that used it keep their record.",
-      "archiveMoves": "{project} defaults to it for {kind}: those start with {builtIn} until an admin picks another."
+      "archiveMoves": "{project} defaults to it for {kind}: those start with {builtIn} until an admin picks another.",
+      "effort": "Effort"
     },
     "presets": {
       "dependency": "Adding a dependency",
@@ -2607,5 +2676,31 @@
       "changes": "Changes",
       "checks": "Checks"
     }
+  },
+  "effort": {
+    "levels": {
+      "default": "Default",
+      "none": "Off",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high",
+      "max": "Max",
+      "on": "On"
+    },
+    "hints": {
+      "default": "The endpoint's own default. ostra sends nothing.",
+      "none": "No thinking. Fastest and cheapest.",
+      "minimal": "Barely any thinking. Nearly as fast as off.",
+      "low": "A little thinking. Quick and cheap.",
+      "medium": "Balanced speed, cost and depth.",
+      "high": "Thinks longer on hard steps. Slower, costs more.",
+      "xhigh": "The deepest thinking. Slowest and costliest.",
+      "max": "As much thinking as the model allows. Slowest and costliest.",
+      "on": "Thinks before it acts. The model has no levels, only on or off.",
+      "xhighBesideMax": "Very deep thinking. Slow and costly."
+    },
+    "and": "{list} and {last}"
   }
 }

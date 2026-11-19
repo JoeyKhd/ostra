@@ -1,5 +1,6 @@
 import type {
   ApprovalId,
+  EffortLevel,
   MemberId,
   QuestionId,
   RepoId,
@@ -52,6 +53,12 @@ export type TaskViewState = {
     readonly headSha: string;
   }[];
   readonly lastOutcome: SessionOutcome | null;
+  /** F-137: the task's level after its last `effort.changed`, or `null` when nobody changed it. */
+  readonly effort: EffortLevel | null;
+  /** F-137: the running turn's level (`default` when it sent none), or `null` while no turn runs. */
+  readonly runningEffort: EffortLevel | null;
+  /** F-137: the reasoning tokens over the whole task, inside `tokens.outputTokens`. */
+  readonly reasoningTokens: number;
 };
 
 export type DeriveOptions = {
@@ -78,6 +85,9 @@ export const deriveTaskState = (
   let tokens = zeroTokens;
   let context: TaskViewState["context"] = null;
   let lastOutcome: SessionOutcome | null = null;
+  let effort: EffortLevel | null = null;
+  let runningEffort: EffortLevel | null = null;
+  let reasoningTokens = 0;
   const approvals = new Set<ApprovalId>();
   const questions = new Set<QuestionId>();
   const openTools = new Map<ToolCallId, { toolKind: ToolKind; title: string }>();
@@ -112,6 +122,7 @@ export const deriveTaskState = (
         break;
       case "turn.started":
         running = true;
+        runningEffort = event.effort ?? "default";
         openTools.clear();
         activity = { kind: "thinking" };
         break;
@@ -164,6 +175,7 @@ export const deriveTaskState = (
         if (running) activity = current({ kind: "thinking" });
         break;
       case "usage.recorded":
+        reasoningTokens += event.reasoningTokens ?? 0;
         tokens = {
           inputTokens: tokens.inputTokens + event.inputTokens,
           outputTokens: tokens.outputTokens + event.outputTokens,
@@ -214,6 +226,9 @@ export const deriveTaskState = (
         if (activity.kind === "runner-lost")
           activity = running ? current({ kind: "thinking" }) : { kind: "idle" };
         break;
+      case "effort.changed":
+        effort = event.to;
+        break;
       case "session.saved":
       case "session.limit_reached":
       case "ticket.files_ready":
@@ -235,7 +250,6 @@ export const deriveTaskState = (
       case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
-      case "effort.changed":
       case "user.message":
       case "tool.progress":
       case "plan.updated":
@@ -262,5 +276,8 @@ export const deriveTaskState = (
     pullRequests: [...prs.values()],
     branches: [...branches.values()],
     lastOutcome,
+    effort,
+    runningEffort: running ? runningEffort : null,
+    reasoningTokens,
   };
 };

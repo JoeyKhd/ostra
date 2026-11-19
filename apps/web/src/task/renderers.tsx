@@ -32,6 +32,7 @@ import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
 import { t } from "@/lib/messages";
 
+import { EffortMarker } from "./effort-marks";
 import { filesOutsideText } from "./files-outside-words";
 import { restoredDetail, savedDetail } from "./marker-words";
 import { useDataPart, useTaskContext, useToolPart } from "./task-context";
@@ -472,6 +473,8 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
             : t("task.driverChanged", { name: memberName(part.data.memberId), by: memberName(part.data.byMemberId) })}
         </Line>
       );
+    case "data-effort":
+      return <EffortMarker data={part.data} name={memberName(part.data.memberId)} />;
     case "data-system": {
       const event = part.data.event;
       let text: string;

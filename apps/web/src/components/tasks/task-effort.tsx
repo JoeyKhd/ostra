@@ -1,0 +1,115 @@
+"use client";
+
+import type { EffortLevel } from "@ostra/protocol";
+
+import { effortHint, effortLabel, offersChoice } from "@/components/effort/effort-words";
+import { PropRow } from "@/components/shell/page-frame";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
+import { formatTokens } from "@/lib/format";
+import { t } from "@/lib/messages";
+
+// A task's effort in the properties panel (F-137, F-024; task-effort.md): the driver picks one of
+// the model's levels, and it applies from the next turn (ADR 0066); everyone else reads it, with
+// "Take over to change" when they may.
+
+export type TaskEffort = {
+  /** The task's level now: the last change, or the profile's at creation. */
+  readonly level: EffortLevel;
+  /** The levels of the session's model, `Default` first. `Default` alone offers no choice. */
+  readonly levels: readonly EffortLevel[];
+  /** The running turn's level, or `null` while no turn runs. */
+  readonly runningTurn: EffortLevel | null;
+};
+
+/** What the row shows. */
+export type TaskEffortView =
+  | { readonly kind: "control"; readonly level: EffortLevel; readonly levels: readonly EffortLevel[]; readonly runsAt: EffortLevel | null }
+  | { readonly kind: "text"; readonly level: EffortLevel; readonly takeOver: boolean };
+
+/**
+ * The row for one viewer: the driver of a live task gets the control (with the running turn's
+ * level while it differs); anyone else, a finished task or a model with no levels reads the text.
+ */
+export const taskEffortView = (effort: TaskEffort, viewer: { readonly driver: boolean; readonly canTakeOver: boolean; readonly finished: boolean }): TaskEffortView => {
+  if (!offersChoice(effort.levels)) return { kind: "text", level: "default", takeOver: false };
+  if (viewer.finished) return { kind: "text", level: effort.level, takeOver: false };
+  if (!viewer.driver) return { kind: "text", level: effort.level, takeOver: viewer.canTakeOver };
+  const runsAt = effort.runningTurn !== null && effort.runningTurn !== effort.level ? effort.runningTurn : null;
+  return { kind: "control", level: effort.level, levels: effort.levels, runsAt };
+};
+
+export const TaskEffortRow = ({ effort, viewer, onChange, onTakeOver, pending, error }: {
+  /** `null` while it loads. */
+  readonly effort: TaskEffort | null;
+  readonly viewer: { readonly driver: boolean; readonly canTakeOver: boolean; readonly finished: boolean };
+  readonly onChange: (level: EffortLevel) => void;
+  readonly onTakeOver: () => void;
+  readonly pending: boolean;
+  /** Why the last change failed, or `null`. */
+  readonly error: string | null;
+}) => {
+  if (effort === null) {
+    return <PropRow label={t("tasks.effort.label")}><Skeleton className="h-5 w-[120px]" /></PropRow>;
+  }
+  const view = taskEffortView(effort, viewer);
+  if (view.kind === "text") {
+    return (
+      <PropRow label={t("tasks.effort.label")}>
+        <span data-testid="task-effort" data-level={view.level}>{effortLabel(view.level)}</span>
+        {view.takeOver ? (
+          <>
+            <span aria-hidden className="text-faint">·</span>
+            <Button variant="link" className="text-ui font-normal" onClick={onTakeOver} data-action="effort-take-over">{t("tasks.effort.takeOver")}</Button>
+          </>
+        ) : null}
+      </PropRow>
+    );
+  }
+  return (
+    <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-x-2 py-[3px] text-ui">
+      <span className="flex h-[26px] items-center text-muted">{t("tasks.effort.label")}</span>
+      <div className="min-w-0">
+        <Select value={view.level} disabled={pending} onValueChange={(next) => {
+          const level = view.levels.find((candidate) => candidate === next);
+          if (level !== undefined && level !== view.level) onChange(level);
+        }}>
+          <SelectTrigger className="h-7 w-[200px] max-w-full bg-surface text-ui" aria-label={t("tasks.effort.label")} data-testid="task-effort-trigger" data-level={view.level}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="w-[280px]">
+            {view.levels.map((level) => (
+              <SelectItem key={level} value={level} textValue={effortLabel(level)}>
+                <span className="flex min-w-0 flex-col">
+                  <span>{effortLabel(level)}</span>
+                  <span className="text-[12.5px] text-muted">{effortHint(level, view.levels)}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {view.runsAt === null ? null : (
+          <p className="mt-1.5 text-[12.5px] leading-[1.45] text-muted" data-testid="task-effort-next">
+            {t("tasks.effort.nextTurn")}
+            <br />
+            {t("tasks.effort.thisTurn", { level: effortLabel(view.runsAt) })}
+          </p>
+        )}
+        {error === null ? null : <p role="alert" className="mt-1.5 text-[12.5px] text-red">{t("tasks.effort.failed", { reason: error })}</p>}
+      </div>
+    </div>
+  );
+};
+
+/** `Reasoning`: the task's reasoning tokens, inside `out` (ADR 0066, "Cost"); `—` when no turn reported any. */
+export const ReasoningRow = ({ tokens }: { readonly tokens: number }) => (
+  <PropRow label={t("tasks.effort.reasoning")}>
+    <Tooltip content={t("tasks.effort.reasoningTip")}>
+      <span className="truncate font-mono text-ui" data-testid="task-reasoning" title={t("tasks.effort.reasoningTip")}>
+        {tokens === 0 ? "—" : t("tasks.effort.reasoningTokens", { n: formatTokens(tokens) })}
+      </span>
+    </Tooltip>
+  </PropRow>
+);
