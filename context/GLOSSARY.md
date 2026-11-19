@@ -69,7 +69,7 @@ _Avoid_: trigger, workflow
 ### Acting on a task
 
 **Needs you**:
-A task waiting on a person: a question, an approval, a plan to approve, a finished draft, a session that ended without changes, or a PR ready for review. Each item is for the driver, a reviewer or the members of the project. Amber in the panel, and the first thing on the home screen.
+A task waiting on a person: a question, an approval, a plan to approve, a finished draft, a session that ended without changes, files an agent left outside every repo, or a PR ready for review. Each item is for the driver, a reviewer or the members of the project. Amber in the panel, and the first thing on the home screen.
 _Avoid_: blocked, pending, waiting, attention
 
 **Approval**:
@@ -94,7 +94,7 @@ A needs-you moment delivered to one member on one channel: the panel's "Needs yo
 _Avoid_: alert, inbox (the Inbox is a project's tickets), message (members send messages to the agent)
 
 **Dispatch**:
-Choosing where a task runs, on a runner in one of its project's pools or on its member's personal runner, and starting its box and its session.
+Choosing where a task runs, on a runner in one of its project's pools or on its member's personal runner, and starting its box and its session. A dispatch reaches the runner as an offer, and the task stays queued until the runner accepts it.
 _Avoid_: schedule (a schedule is a kind of automation), assign (assigning is something done in the tracker)
 
 **Driver**:
@@ -146,6 +146,15 @@ _Avoid_: runner token, API key
 The key a runner uses to join a pool. It is shown once, stored hashed and set to expire.
 _Avoid_: API key, registration code
 
+**Drain**:
+An admin's hold on a runner: it takes no new tasks and finishes the ones it has, until an admin resumes it. A disconnect or a restart doesn't lift it.
+_Avoid_: pause, cordon, disable
+_Not_: a runner shutting down by itself, which needs no admin and ends when it reconnects
+
+**Revoke**:
+Ending a credential for good: a runner's identity, a join token or a CLI session. A revoked runner is disconnected at once, its tasks stop and can be reopened on another runner, and it can't connect again.
+_Avoid_: delete, remove, ban
+
 **Executor**:
 How a runner gives a task its place to run: `docker` (a box of containers), `kubernetes` (a box as a pod) or `host` (a worktree on the machine, no box, so no services and no box sizes).
 _Avoid_: "host" alone (the code host is something else), runner provider
@@ -158,6 +167,10 @@ _Avoid_: sandbox, VM, container (a box has several)
 The ostra container in a box that holds the task's credentials, proxies its model calls and its git, and drives the agent. On the `host` executor, the runner process does its work.
 _Avoid_: proxy (it does more), agent
 
+**Task token**:
+The credential a box's sidecar holds: a token for one task, valid exactly as long as that task's lease. The sidecar connects with it and fetches the task's credentials with it, and it does nothing for any other task. The runner hands it over when it makes the box.
+_Avoid_: sidecar token, session token, access token (that's the runner's own, good for ten minutes)
+
 **Key proxy**:
 The part of the sidecar that swaps the agent's fake key for the real one and counts usage.
 _Avoid_: gateway
@@ -169,6 +182,10 @@ _Avoid_: gateway
 **Lease**:
 The server's grant that lets one box work on a task. Each dispatch raises its epoch, and writes from an older epoch are refused.
 _Avoid_: lock
+
+**Process containment**:
+How an executor ends every process of a task together: the box's container, a Windows job object, a Linux cgroup, or, where the machine gives no such unit, the agent's process tree and a sweep for the task's marker. A runner reports which one it has.
+_Avoid_: isolation (only a box isolates), sandboxing (containment ends processes, it doesn't limit what they reach)
 
 **Hidden ref**:
 The commit at `refs/ostra/wip/<task>` that a box writes to in each repo after every turn, by a forced push. It sits outside the task's branches and holds the working tree as `git add -A` reads it, so unfinished work from a cut-short turn survives without landing on a branch. Ignored files aren't in it. A fresh box restores it.
@@ -189,7 +206,7 @@ _Avoid_: message, job
 ### The environment
 
 **Workspace**:
-The checkouts of a project's repos inside a task's box, on the task's branches.
+The checkouts of a project's repos inside a task's box, on the task's branches. A file in it outside every checkout belongs to no branch.
 _Avoid_: sandbox, checkout, worktree (a worktree is how the `host` executor makes a workspace)
 _Not_: a Linear workspace, which is an account in Linear
 

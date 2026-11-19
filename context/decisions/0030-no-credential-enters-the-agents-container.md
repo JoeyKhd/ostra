@@ -1,12 +1,12 @@
 # No credential enters the agent's container: the sidecar, the key proxy and the git proxy
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0014. Settles Q17, Q26, Q27, Q41 and Q47. **Amended 2026-11-18 after spikes 1 and 4, and 2026-11-19 after spike 3** (`research/spike-how-should-the-runner-drive-opencode.md`, `research/spike-github-app-and-git-proxy.md`): every call is metered, the git proxy's contract is stated (the `User-Agent`, LFS and its host list, refusals, its address), and spike 3 gets OpenCode's loopback port to test. Spike 3 then settled the git proxy's URL (Q152), reworded the password test, and found that on `kubernetes` the agent keeps public egress (ADR 0029, Q151).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0014. Settles Q17, Q26, Q27, Q41 and Q47. **Amended 2026-11-18 after spikes 1 and 4, and 2026-11-19 after spike 3** (`research/spike-how-should-the-runner-drive-opencode.md`, `research/spike-github-app-and-git-proxy.md`): every call is metered, the git proxy's contract is stated (the `User-Agent`, LFS and its host list, refusals, its address), and spike 3 gets OpenCode's loopback port to test. Spike 3 then settled the git proxy's URL (Q152), reworded the password test, and found that on `kubernetes` the agent keeps public egress (ADR 0029, Q151). **Amended 2026-11-19:** a box's credentials are given to its task token only (Q129).
 
 No model key and no GitHub token is ever in the agent's container. They live in the box's sidecar (ADR 0029), and the agent reaches models and GitHub only through two proxies there (Q17).
 
 **Where the real credentials live.**
 - On the server, encrypted, through the built-in `SecretStoreAdapter`.
-- They reach the sidecar per task over the runner protocol, tied to the task and its lease epoch.
+- They reach the sidecar per task over the runner protocol, tied to the task and its lease epoch. On `docker` and `kubernetes`, core gives them to the box's task token and to nothing else, so the pool runner that made the box can't fetch them with its own token (Q129, ADR 0034). On `host` the runner's process is the sidecar and fetches them itself.
 - The sidecar keeps them in memory only. They're never in an environment variable, an argument or a file, the sidecar's own included (`research/credential-proxy.md`, "Interactions with OS users"). They're never logged.
 
 **The key proxy** (Q26).

@@ -1,6 +1,6 @@
 # The web app uses the libraries the maintainer already works with
 
-**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) as the first email option, with SMTP through `nodemailer` as the second. First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
+**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) as the first email option, with SMTP through `nodemailer` as the second. Amended again 2026-11-19: `koffi` is how the runner makes a Windows job object (Q126). First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
 
 | Area | Choice |
 |---|---|
@@ -51,7 +51,7 @@ Milestone 1 starts from these and pins exactly (a version less than a day old is
 
 ## Dependencies added in the 2026-11-18 rework
 
-`AGENTS.md` says to ask before adding a dependency. The ones below were chosen on the maintainer's delegation (answers 4.6), and no other ADR names them. Each is added only when its feature is built, pinned exactly, in the same commit as the updated `pnpm-lock.yaml`. The maintainer confirmed them on 2026-11-19 ("rest is ok"), except the Windows job-object helper, which is still to choose.
+`AGENTS.md` says to ask before adding a dependency. The ones below were chosen on the maintainer's delegation (answers 4.6), and no other ADR names them. Each is added only when its feature is built, pinned exactly, in the same commit as the updated `pnpm-lock.yaml`. The maintainer confirmed them on 2026-11-19 ("rest is ok"), except the Windows job-object helper, which was chosen later that day (Q126, the last row).
 
 | Dependency | Package | For | License |
 |---|---|---|---|
@@ -60,6 +60,6 @@ Milestone 1 starts from these and pins exactly (a version less than a day old is
 | `resend` | server | Email for invites, reset links and notifications (F-115, Q54), as the email channel's `NotificationAdapter` and better-auth's mail callbacks. Chosen by the maintainer on 2026-11-19 as the first email option ("resend is better and works with better-auth", "resend is priority") | MIT; confirmed 2026-11-19 |
 | `nodemailer` | server | The second email option: SMTP, for installs that can't or won't use a hosted service (a company's own mail relay, an air-gapped network). Same channel, same mail; built after Resend ("add smtp as an option as well, but resend is priority") | MIT-0; confirmed 2026-11-19 |
 | `@tanstack/react-virtual` | web | List virtualization on the task page for long tasks (ADR 0036, Q112) | MIT; confirmed 2026-11-19 |
-| A way to make a Windows job object from Node | runner | Process containment on the `host` executor on Windows (ADR 0029, Q126): a native addon or a small helper program | to choose and confirm |
+| `koffi` | runner (`@ostra/adapter-executor-host`), loaded on Windows only | The Windows job object that ends every process of a task on the `host` executor (ADR 0029, Q126). Pinned at 3.3.8, with install scripts off: its prebuilt `@koromix/koffi-win32-x64` or `-arm64` package is enough. It replaces "a native addon or a small helper program": the code stays TypeScript, and nothing is compiled on a member's machine. Node's own `node:ffi` takes its place once the CLI's minimum Node has it out of experimental (`research/host-process-containment.md`) | MIT; chosen 2026-11-19 on the maintainer's delegation, the day the maintainer allowed new dependencies for the session |
 
 Other dependencies from the same list are recorded in the ADR of the feature that needs them, each with its own confirmation line: `@agentclientprotocol/sdk` (ADR 0032), `@modelcontextprotocol/sdk` (ADR 0044), an S3 client (ADR 0043) and `@changesets/cli` (ADR 0045).

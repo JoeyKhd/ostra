@@ -1,6 +1,6 @@
 # Domain model
 
-**Status:** draft (2026-11-17), from grilling rounds 1–5. Reworked on 2026-11-18 from the delegated answers in `history/answers-2026-11-18.md` (section 4.5). Terms follow `GLOSSARY.md`; this document says how they relate and how they change. Features are cited by ledger ID (`features.md`), decisions by ADR number (`decisions/`), and the answers by question ID (Q-numbers in the answers file).
+**Status:** draft (2026-11-17), from grilling rounds 1–5. Reworked on 2026-11-18 from the delegated answers in `history/answers-2026-11-18.md` (section 4.5). Amended on 2026-11-19 from the questions milestone 1 raised (`history/answers-2026-11-19.md`): how a code task's PRs end (Q107), a runner's drain, resume and revoke (Q108, Q131), the task token (Q129), a queued task's offer (Q132) and files outside every repo (Q133). Terms follow `GLOSSARY.md`; this document says how they relate and how they change. Features are cited by ledger ID (`features.md`), decisions by ADR number (`decisions/`), and the answers by question ID (Q-numbers in the answers file).
 
 ## What exists
 
@@ -36,7 +36,7 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 | **Model provider** | an organization | An API base URL and a token, in one of the two API formats that "Test connection" detects (Q34, F-088). Usable on personal runners only when an admin allows it for that provider; off by default (Q47). |
 | **Model** | a model provider | Listed from the endpoint itself. Names, limits and prices come from the models.dev catalog, the endpoint's own list, or a price an admin enters (Q34, Q105). |
 | **Runner pool** | an organization | A named set of runners that projects send tasks to (Q9, F-091). Has its join tokens, may require an admin to approve each new runner, and caps its total boxes and each project's share (Q43, Q48). |
-| **Join token** | a runner pool | The key a runner joins the pool with. Shown once, stored hashed, expires after 30 days by default *(working value)*, and can be revoked. Every join is an audit entry (Q48, Q94). |
+| **Join token** | a runner pool | The key a runner joins the pool with. Shown once, stored hashed, expires after 30 days by default *(working value)*, and can be revoked. Any token of the pool that hasn't expired or been revoked lets a runner join, and every join is an audit entry that names the token (Q48, Q94, Q130). |
 | **Runner** | a runner pool, or one member | ostra's runner program, `ostra runner`. A pool runner gives tasks of any allowed project a place to run. A personal runner belongs to one member and runs only that member's tasks (Q32, Q44, F-013, F-014, F-015). Each reports its executor (`docker`, `host` or `kubernetes`), capacity, labels and version (F-061, F-067). |
 | **Agent profile** | an organization | Agent, model, instructions, skills, MCP servers, approval rules and plan-first. Can be limited to some members. A project picks a default per task kind (Q28, Q70, F-021, F-026, F-063). |
 | **Memory note** | an organization or a project | One fact every task in its scope should know. Written by members, scanned for secrets (Q84, Q86, Q88, F-109). Agents get an index and search the rest through ostra's MCP tools (Q85, F-110). Repo and path scopes come later (F-129). |
@@ -66,9 +66,9 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 |---|---|---|
 | **Task** | a project | ostra's long-lived unit of work in one project (ADR 0006, ADR 0027). Has a kind (refine, code or review) and a source (a ticket, a prompt, or later a PR) (Q64, Q31, F-097). Holds the driver, its sessions and its task repos. May change any of the project's repos (Q29, F-098). A review task links to the code task it reviews (Q71). |
 | **Task repo** | a task | One per repo the task changed: the branch and the PR. The branch name is the same in every repo, and the PRs link to each other and to the ticket (Q29, F-030, F-031). |
-| **Workspace** | a task | The checkouts of the project's repos inside the task's box, side by side, on the task's branches (F-016). |
+| **Workspace** | a task | The checkouts of the project's repos inside the task's box, side by side, on the task's branches (F-016). The agent starts inside the repo when the project has one, and at the workspace root when it has several, with instructions that name each repo's folder. A file left in the root, outside every repo, belongs to no branch: ostra says so and never moves it (Q133). |
 | **Box** | a task, through a lease | The task's own isolated computer: the agent's container (the repos and the tools, no credentials), the sidecar, and the environment's services (Q38, ADR 0029). Serves one task and can be thrown away at any time. The `host` executor has no box: the task runs in a worktree, and the runner process does the sidecar's work. |
-| **Sidecar** | a box | The ostra container that holds the task's credentials, runs the key proxy, the git proxy, ostra's MCP tools and the ACP driver, and spools events. It connects to the server itself, with a short-lived token for that one task, tied to the lease (Q26, Q38, ADR 0030). |
+| **Sidecar** | a box | The ostra container that holds the task's credentials, runs the key proxy, the git proxy, ostra's MCP tools and the ACP driver, and spools events. It connects to the server itself, with a task token: a token for that one task, valid exactly as long as the task's lease, and the only thing the box's credentials are given to (Q26, Q38, Q129, ADR 0030, ADR 0034). |
 | **Lease** | a task | The server's grant that lets one box work on the task. Each dispatch raises its epoch, and writes from an older epoch are refused (ADR 0034, F-045). |
 | **Session** | a task | One conversation with one agent profile in one box. Records how it began (below). Its full history is kept on the server (ADR 0006). |
 | **Turn** | a session | One prompt and the agent's full response. After every turn, unfinished work goes to a hidden ref and the agent's session archive goes to the server (Q42, Q53, F-096). |
@@ -86,7 +86,7 @@ A task's kind is in the schema from the first migration (Q64, ADR 0028). It fixe
 | Kind | Starts from | The box may | Hands in | Ends |
 |---|---|---|---|---|
 | **refine** | a ticket or a prompt | read the code, answer questions, prototype. Its git proxy accepts fetches only (Q66) | a draft, through ostra's MCP tools (Q67) | **done** when a member accepts the draft |
-| **code** | a ticket or a prompt | change any of the project's repos and push the task's branches and its hidden ref (Q29, Q41) | the PR text, through ostra's MCP tools; one PR per changed repo | **merged** when its last PR merges |
+| **code** | a ticket or a prompt | change any of the project's repos and push the task's branches and its hidden ref (Q29, Q41) | the PR text, through ostra's MCP tools; one PR per changed repo | **merged** when none of its PRs is open and at least one merged (Q107) |
 | **review** | a code task's PR (later, a PR people wrote: F-123) | read the PR's head, read-only (Q71) | findings, through ostra's MCP tools | **done** when its findings are posted |
 
 The onboarding task is a code task from a built-in template, not a fourth kind (Q49).
@@ -112,11 +112,11 @@ A task's state is a discriminated union per kind (Q64). Every kind shares the fi
 | State | Means | Leaves when |
 |---|---|---|
 | **awaiting approval** | Started by someone outside ostra; nothing runs yet (F-040) | A member approves it (→ queued) or rejects it (→ stopped) |
-| **queued** | Waiting for a place to run: a runner in one of the project's pools, by labels, box size and free capacity, within the project's cap on that pool and its budget. Or the member's own personal runner, when they chose it. Ordered by ticket priority (Q4, Q32, Q43, Q105, F-067, F-069) | A runner takes it (→ preparing) |
+| **queued** | Waiting for a place to run: a runner in one of the project's pools, by labels, box size and free capacity, within the project's cap on that pool and its budget. Or the member's own personal runner, when they chose it. Ordered by ticket priority (Q4, Q32, Q43, Q105, F-067, F-069). A dispatch reaches a runner as an offer, and the task is still queued while the offer is out: its page says which runner it was offered to, or why no runner fits (Q132) | A runner accepts the offer (→ preparing). An offer that is refused, or not answered in 2 minutes *(working value)*, changes nothing: the task is still queued |
 | **preparing** | The executor is creating the box from the snapshot, starting its services, checking out the task's branches and restoring the session (F-016, F-050, F-051, F-094) | The box is ready (→ running), or setup fails (→ needs you) |
 | **running** | A session is active | The session ends with what the kind hands in (→ the kind's states), or anything in the "needs you" list below happens |
 | **needs you** | A person has to act (below) | A member answers, approves, steers or reopens (→ queued, or → running while the box is still warm), or stops it |
-| **stopped** | A member stopped it, or the task's work was closed without merging | Reopening (→ queued) |
+| **stopped** | A member stopped it, a code task's PRs all closed with none merged (Q107), or its runner was lost or revoked (F-045, Q131) | Reopening (→ queued) |
 
 A task that is queued after a stop or a long wait almost always lands on a fresh box. That's the normal path, not the exception (Q42, Q53, F-033).
 
@@ -127,10 +127,22 @@ A task that is queued after a stop or a long wait almost always lands on a fresh
                │
                ├──▶ needs you   (a round cap or the spend cap is reached)
                ├──▶ queued      (reopen, @ostra, Update branch, a diff comment, a "changes requested" review)
-               └──▶ stopped     (every open PR closed unmerged)
+               └──▶ stopped     (no PR is open, and none merged)
 ```
 
-**In review** holds while any of the task's PRs is open (Q29). Its sub-state says what it's waiting on:
+**In review** holds while any of the task's PRs is open (Q29).
+
+**How it ends** (Q107). The task follows its PRs, whichever order their events arrive in, so a webhook and the reconcile (F-044) always agree:
+
+| The task's PRs | The task is |
+|---|---|
+| at least one is open | in review |
+| none is open, and at least one merged | merged |
+| none is open, and none merged | stopped |
+
+A repo whose PR closed unmerged shows that on the task. After a reopen that repo keeps its branch, and the task's next push to it opens a new PR. A PR that someone reopens on GitHub puts the task back in review, waiting for a reviewer.
+
+While the task is in review, its sub-state says what it's waiting on:
 
 ```
  CI running ── fails ──▶ fixing CI ── pushed ──▶ CI running
@@ -148,14 +160,14 @@ A task that is queued after a stop or a long wait almost always lands on a fresh
 | **fixing CI** | The coding agent has the failing checks and their logs, for at most 2 rounds *(working value)* (Q12, F-035) | It pushes (→ CI running), or the cap is reached (→ needs you) |
 | **AI review** | The linked review task reads the PR's head (Q71, F-100) | Its findings are posted: blocking ones (→ fixing findings), none (→ waiting for a reviewer) |
 | **fixing findings** | The coding agent has the blocking findings, for at most 2 rounds *(working value)*. Nits are only listed (Q72, F-101) | It pushes (→ CI running), or the cap is reached (→ needs you) |
-| **waiting for a reviewer** | The PRs are green and reviewed by the agent. A reviewer has it under "needs you" (Q73, F-102) | A "changes requested" review (→ queued, F-105), the last PR merges (→ merged) |
+| **waiting for a reviewer** | The PRs are green and reviewed by the agent. A reviewer has it under "needs you" (Q73, F-102) | A "changes requested" review (→ queued, F-105), or the last open PR merges or closes (→ merged, or → stopped when none merged) |
 
 In the two fixing sub-states a session runs in a box, and the task stays in review because its PRs stay open. Together, the CI and AI review rounds give a task at most 4 automatic turns *(working value)* before a person has to act. Every automatic turn also stops at the task's spend cap, and waits while its budget is full (Q72, Q105, ADR 0041, ADR 0042).
 
 | State | Means | Leaves when |
 |---|---|---|
 | **in review** | At least one PR is open. The sub-state above says what it waits on | As the diagram shows |
-| **merged** | The task's last open PR merged | Reopening (→ queued). A repo whose PR merged gets a fresh branch and a new PR (F-066) |
+| **merged** | None of the task's PRs is open, and at least one merged (Q107) | Reopening (→ queued). A repo whose PR merged gets a fresh branch and a new PR (F-066). A PR reopened on GitHub (→ in review) |
 
 ### Refine and review tasks
 
@@ -174,6 +186,7 @@ Each case is a needs-you item:
 - the agent asks a question or wants an approval (F-026)
 - the agent proposes a plan, under plan-first (F-063)
 - a session ends without changes (F-065)
+- a turn leaves files in the workspace outside every repo (Q133). This item sits beside the turn's result: a repo that changed still gets its PR
 - a session times out, stalls or reaches the task's spend cap (F-068)
 - a session, the box or the environment's setup crashes (F-047)
 - the ticket was closed or cancelled while the task ran (F-066)
@@ -188,7 +201,7 @@ A turn that waits on a person follows the box's idle timer: after 15 minutes *(w
 
 | Audience | Gets |
 |---|---|
-| **the driver** | the task's questions, approvals, plans, drafts, stops and crashes, while the task has a driver |
+| **the driver** | the task's questions, approvals, plans, drafts, stops and crashes, and files left outside its repos, while the task has a driver |
 | **the reviewer** | a code task waiting for a reviewer. The reviewer comes from the PR's requested reviewers or CODEOWNERS, matched to members by their linked GitHub account (Q73) |
 | **the members of the project** | items on a task with no driver, such as one an automation or someone outside ostra started, and environment proposals |
 
@@ -242,19 +255,20 @@ The `host` executor has no box. Its worktree goes through the same states, so a 
 
 ```
  joining ──▶ online ⇄ offline
-    │          │
-    │          ▼
-    │       draining ──▶ revoked
-    └─────────────────▶ revoked (rejected)
+                │         │
+          drain ▼         ▼ drain
+               draining ── resume ──▶ online, or offline when it isn't connected
+
+ any state but revoked ── revoke ──▶ revoked     (a rejected join is a revoke from joining)
 ```
 
 | State | Means | Leaves when |
 |---|---|---|
-| **joining** | A pool runner has traded its join token for its own identity, a key pair whose private half never leaves it. A personal runner is signing in with a device code. A pool that requires it waits here for an admin to approve (Q48, Q94). The runner is pinned to its server's version (F-061) | It's accepted (→ online), or rejected (→ revoked) |
-| **online** | Connected, and takes dispatches up to its capacity | The connection drops (→ offline), or an admin drains it (→ draining) |
-| **offline** | Not connected. On `docker` and `kubernetes` its boxes keep working, because each sidecar connects on its own (Q38). Leases that outlive the grace period end, and their writes are refused (F-045) | It reconnects (→ online) |
-| **draining** | Takes no new tasks. Its running tasks finish | An admin revokes it (→ revoked) |
-| **revoked** | Its identity is revoked, and it can't connect again. Each runner is revoked on its own; rotating a join token disconnects no runner that already joined (Q94) | Never |
+| **joining** | A pool runner has traded its join token for its own identity, a key pair whose private half never leaves it. A personal runner is signing in with a device code. A pool that requires it waits here for an admin to approve, connected or not, and is offered no task until then (Q48, Q94, Q130). The runner is pinned to its server's version (F-061) | It's accepted (→ online), or rejected (→ revoked) |
+| **online** | Connected, and takes dispatches up to its capacity. A runner that is shutting down by itself, for an upgrade or a restart, stays online with no free slots until it disconnects. That isn't a drain, and it needs no admin (Q108) | The connection drops (→ offline), or an admin drains it (→ draining) |
+| **offline** | Not connected. On `docker` and `kubernetes` its boxes keep working, because each sidecar connects on its own (Q38). Leases that outlive the grace period end, and their writes are refused (F-045) | It reconnects (→ online), or an admin drains it (→ draining) |
+| **draining** | An admin's hold: it takes no new tasks, and its running tasks finish. It stays draining whether it is connected or not, through disconnects and restarts, and the panel shows its connection beside the state (Q108) | An admin resumes it (→ online, or → offline when it isn't connected) |
+| **revoked** | Its identity is revoked, and it can't connect again. An admin can revoke a runner in any other state, and a member their own personal runner. A connected runner is disconnected at once. Its leases end with the revoke, with no grace: its tasks stop, and each is ready to reopen on another runner (Q131, F-045). Each runner is revoked on its own; rotating a join token disconnects no runner that already joined (Q94) | Never |
 
 ## A snapshot's lifecycle
 
@@ -339,3 +353,14 @@ The eight changes of section 4.5 of the answers, for tracing:
 6. **Box, runner, snapshot, approval and proposal** gain lifecycles of their own (Q38, Q39, Q42, Q48, Q86, Q94).
 7. **Events get two numbers** (Q23).
 8. **Needs-you items gain an audience** (Q73, F-036).
+
+## What changed on 2026-11-19
+
+From the questions milestone 1 raised (`history/answers-2026-11-19.md`), for tracing:
+
+1. **A code task's end follows the set of its PRs,** whatever the order of their events, and a PR reopened on GitHub puts it back in review (Q107).
+2. **A runner's drain is an admin's hold that only an admin lifts,** and a revoke is possible from any state and ends the runner's leases at once (Q108, Q131).
+3. **A joined runner waits in `joining`** when its pool requires approval, and any live token of the pool lets a runner join (Q130).
+4. **The sidecar's token is the task token:** valid as long as the task's lease (Q129).
+5. **A queued task says why it waits,** an open offer included (Q132).
+6. **Files left outside every repo are a needs-you item** (Q133).

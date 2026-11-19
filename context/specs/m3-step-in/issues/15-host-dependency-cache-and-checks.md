@@ -23,3 +23,5 @@ Spec: `../spec.md`, sections 1 ("On this machine") and 4; ADR 0038 (amended), AD
 - [ ] Committed as `✨ add the host dependency cache and checks`.
 
 ## Comments
+
+- 2026-11-19: milestone 2's ticket 42 gives each task one containment unit on `host` (Q126; ADR 0029, "Process containment on `host`"). A check's process joins its task's unit, so what a check leaves running ends with the task, and the timeout's tree reap isn't the only thing that ends it.

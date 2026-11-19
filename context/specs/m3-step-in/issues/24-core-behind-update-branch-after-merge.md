@@ -21,3 +21,5 @@ Spec: `../spec.md`, section 4 ("Behind and update branch", "After a merge", "A t
 - [ ] Committed as `✨ add update branch and fresh branches`.
 
 ## Comments
+
+- 2026-11-19: milestone 2's ticket 46 makes a project's branch names unique in the database (Q136, item 10; `context/open-questions.md`, Settled). A fresh branch's name (`-2`, `-3`) goes through the same check when this ticket makes it. And Q107 is settled: a repo whose PR closed unmerged keeps its branch after a reopen, and the task's next push to it opens a new PR, which `TaskPullRequest` keeps beside the closed one.

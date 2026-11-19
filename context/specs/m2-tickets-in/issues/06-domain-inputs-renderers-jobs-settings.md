@@ -10,6 +10,7 @@ Spec: `../spec.md`, section 5.4
 ## What to build
 
 - **Lifecycle inputs,** each with exhaustive tests and `satisfies never` in every default branch: the task's `work_saved` and `limit_reached` (a restore conflict is a needs-you item, not an input: decided below), and `reopen` from `in_review` and `needs_you` as well; the session's `idle → ended`; the box's `ready ⇄ idle → stopped → released` with a release reason. Refused transitions stay results, never throws.
+- **How a task's PRs end** (Q107, settled 2026-11-19; `context/domain-model.md`, "How it ends"): a pure function from a task's task repos to what the task is, which ticket 16 calls, so the answer never depends on the order of the events: in review while one PR is open, merged when none is open and at least one merged, stopped (`prs_closed`) when none is open and none merged. With it, the task repo's `pushed` from `closed_unmerged` (to `branch_pushed`, so a reopened task's next push there opens a new PR), and the task's `pr_reopened` (from `merged`, and from `stopped` with `prs_closed`, to in review at `waiting_for_reviewer`).
 - **The board's status mapping:** the strict schema (`open`, `started`, `inReview`, `done`, `doneBy`) and the pure function that drafts it from `listStatuses` and the integration check, as spec section 3, step 2 describes.
 - **The ticket prompt renderer:** a small template language with named placeholders (`{{ticket.title}}`) and list sections (`{{#comments}}…{{/comments}}`), nothing else: no expressions, no code, no includes. Every value from the ticket goes inside a marked block that says it's the ticket's text. The built-in template, and a validator that refuses an unknown placeholder before an admin saves one.
 - **The rebuild template,** exactly as ADR 0039 words it (Q128, spec section 5.4): pure, from the stored history: the ticket and the PRs' text, every member message and every agent message oldest first, an interrupted turn's text in its own labelled section, each branch's log with its file statistics, a line saying whether unfinished work was restored, no tool output, and the 100,000-character cap that cuts the oldest messages first and says how many. Its tests port spike 2's five questions as fixtures.
@@ -33,7 +34,7 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Tests: every new input from every state; the mapping drafted from Linear's and the Jira fake's statuses; the renderer escapes nothing it shouldn't and refuses unknown placeholders; ticket text can't close its marked block; the rebuild template holds every fact spike 2's questions need except the tool output, and stays under its cap.
+- [ ] Tests: every new input from every state; the PR rule for every mix of open, merged and closed task repos, with the same answer in every order of events; the mapping drafted from Linear's and the Jira fake's statuses; the renderer escapes nothing it shouldn't and refuses unknown placeholders; ticket text can't close its marked block; the rebuild template holds every fact spike 2's questions need except the tool output, and stays under its cap.
 - [ ] `jobPayloadSchemas` holds exactly `jobNames`, as the compiler checks.
 - [ ] Committed as `✨ add the milestone 2 domain contracts`.
 

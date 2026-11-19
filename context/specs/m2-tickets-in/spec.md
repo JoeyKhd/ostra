@@ -25,7 +25,7 @@ Read from the code on `main` on 2026-11-19, so builders don't rebuild what exist
 - **The runner pushes the hidden ref on stop and on crash only,** and a session is one turn: after the turn the runner commits, pushes, sends `session.ended`, and releases the workspace. Core opens PRs on `session.ended`.
 - **The protocol is at minor 0.** It carries `steer`, `interrupt`, `stop` (reasons `requested`, `grace-expired`, `spend-cap`, `runaway`), and the events `session.restored` (kind only) and `session.crashed`.
 - **The task lifecycle already has `reopen`,** and the enums already hold the needs-you reasons `stalled`, `spend_cap`, `crashed` and `ticket_closed`, and the stop reasons `runaway` and `spend_cap`.
-- **Known gaps from M1's demo** that this milestone owns: a batch the server can't store is resent forever (ticket 17); OpenCode's tool outputs land in the machine's temp folder on `host` (Q134's interim answer, in ticket 23's release). The agent already starts inside the repo when a task has one (Q133).
+- **Known gaps from M1's demo** that this milestone owns: a batch the server can't store is resent forever (ticket 17); OpenCode's tool outputs land in the machine's temp folder on `host` (Q134's interim answer, in ticket 23's release). The agent already starts inside the repo when a task has one (Q133), and ticket 44 reports files left outside every repo.
 - **`packages/jobs` has four gaps** that ADR 0037 lists after spike 8: no heartbeat on pg-boss's forwarding queue and no boot check, no `singletonSeconds` on its schedules, no `group` for throttled jobs, no test of the panel's start against an empty schema. F-044's five minutes rest on the first (ticket 01).
 - **The default first admin** (`demo@demo.com` / `demo` unless `OSTRA_ADMIN_*` says otherwise, with the forced password change and `OSTRA_ALLOW_DEFAULT_PASSWORD`) is milestone 1's, decided by the maintainer on 2026-11-19 and designed in `context/brand/app-targets/m1/change-password.md`. Milestone 2 uses it and builds nothing more for it.
 
@@ -354,6 +354,19 @@ Five builders: **core**, **runner**, **web**, **api** and **adapters**. Core and
 | 39 | The end-to-end demo and the ledger | core (lead) | 20, 33, 34, 35, 36, 37, 38 |
 | 40 | The maintainer's steps outside the code | maintainer | none |
 
+**Follow-ups from the questions milestone 1 raised** (settled 2026-11-19: `context/open-questions.md`, Settled, and `context/history/answers-2026-11-19.md`). They aren't part of this milestone's demo, each is its own commit, and their features aren't in this spec's list, so each ticket names its own. Tickets 41, 42, 44, 45 and 46 touch credentials, the schema, the runner protocol or what runs agent output, so they run all the checks for the whole repo (section 9). Where one adds to a screen, its UI waits for the target to be amended and approved, and its data and tests go ahead.
+
+| # | Ticket | Builder | Blocked by | Features | Settles |
+|---|---|---|---|---|---|
+| 41 | Revoke a runner at once, and the runner lifecycle's drain and resume | core, api, web | none | F-013, F-091, F-092, F-045 | Q131, Q108 |
+| 42 | A job object on Windows, and a marker sweep where there's no kernel unit | runner | 02 | F-014 | Q126 |
+| 43 | Say why a queued task waits | api, web | none | F-014, F-067, F-069 | Q132 |
+| 44 | Files left outside every repo raise a needs-you item | runner, core, web | 02, 05, 22 | F-016, F-065 | Q133 |
+| 45 | Check the secrets key at start, and a setting for the runner-token key | core | none | F-001, F-118 | Q136, item 1 |
+| 46 | A project's branch names are unique in the database | core | 05 | F-016 | Q136, item 10 |
+
+Q107 has no ticket of its own: tickets 06 and 16 carry its rule. Three more follow-ups are milestone 1's own (`../m1-first-pr/spec.md`, section 7, tickets 41 to 43).
+
 **Who starts when.** core takes 02, then 05, then 06, then 01; adapters take 03 at once and 04 after 02. api starts on 28 once 06 and 07 are in. web takes 32 at once; its screen tickets wait for the targets' approval (section 12). runner takes 25 after 02. The rest unblock as the table says.
 
 ---
@@ -402,7 +415,7 @@ As milestone 1 (`../m1-first-pr/spec.md`, section 9). In short:
 | `spikes/runner-transport/src/harness/` | the cut proxy, the `kill9`, `cuts` and `acks` scenarios | 38 |
 | `spikes/durable-queue-choice/src/` | schedules created at runtime | 14, 16, 20 |
 
-**Dependencies.** None new without the maintainer's yes. `@linear/sdk` is **not** added: milestone 1's adapter speaks GraphQL over `fetch`, and the plain API needs nothing more. Its webhook verifier is a constant-time HMAC that ticket 08 writes with `node:crypto`, as spike 5 read it. (Agent mode in milestone 6 may want the SDK; that's its own question.) The S3-compatible adapter uses `@aws-sdk/client-s3` (Apache-2.0), approved by the maintainer on 2026-11-19 (ADR 0043). gzip is `node:zlib`.
+**Dependencies.** None new without the maintainer's yes. `@linear/sdk` is **not** added: milestone 1's adapter speaks GraphQL over `fetch`, and the plain API needs nothing more. Its webhook verifier is a constant-time HMAC that ticket 08 writes with `node:crypto`, as spike 5 read it. (Agent mode in milestone 6 may want the SDK; that's its own question.) The S3-compatible adapter uses `@aws-sdk/client-s3` (Apache-2.0), approved by the maintainer on 2026-11-19 (ADR 0043). gzip is `node:zlib`. Ticket 42, a follow-up, adds `koffi` 3.3.8 (MIT) to the `host` executor, for the Windows job object (ADR 0007, Q126).
 
 ---
 

@@ -1,6 +1,6 @@
 # A task belongs to a project and may change several repos
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q29, and supersedes Q7. Replaces "one ticket, one repo" in F-007 and the domain model.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q29, and supersedes Q7. Replaces "one ticket, one repo" in F-007 and the domain model. **Amended 2026-11-19** (`context/history/answers-2026-11-19.md`): how a task ends when some of its PRs merge and others close (Q107).
 
 A task belongs to one project (ADR 0026). It starts from a ticket or from a prompt (F-097), and later from a PR. It may change any of the project's repos.
 
@@ -8,12 +8,14 @@ A task belongs to one project (ADR 0026). It starts from a ticket or from a prom
 - **One branch name across repos.** The git proxy accepts pushes only to the task's branches and its hidden ref (ADR 0030).
 - **One PR per repo the task changed.** The PRs link to each other and to the ticket. Each is a **task repo** record: the repo, its branch and its PR. A repo the task didn't change gets no PR.
 - **Lifecycle.** A code task is in review while any of its PRs is open, and merged when the last one merges. The ticket moves to "in review" when the first PR opens (F-031). Linear already moves a ticket only when its last linked PR merges.
+- **A mixed ending** (Q107, amended 2026-11-19). "Merged when the last one merges" didn't say what a task is when one PR merges and another closes unmerged, and read with "stopped when every open PR closed" it gave two answers for the same pair of PRs, depending on which event came last. Webhooks and the reconcile promise no order (F-044). So the task follows the set of its PRs: in review while at least one is open, **merged when none is open and at least one merged, and stopped when none is open and none merged.** The repo whose PR closed shows "closed unmerged" on the task. After a reopen it keeps its branch, and the task's next push to it opens a new PR. A PR that someone reopens on GitHub puts the task back in review. The ticket follows the task, as for any merge.
 - **After a merge, per repo.** Reopening a task gives a repo whose PR merged a fresh branch and a new PR (F-066).
 - **A ticket gets at most one active code task per project.** A ticket with sub-issues still becomes one task per sub-issue (F-077).
 - **Intake doesn't pick a repo.** An intake rule names a task kind, a profile and pool labels (F-011).
 
 ## Considered options
 
+- **A mixed ending stops the task, or asks the driver** (Q107). Rejected. Code from the task is on the default branch, and "stopped" tells a member that nothing landed. A needs-you item would ask a person to confirm a PR they closed on purpose.
 - **One task per repo, with a ticket that needs two repos split into linked tasks shown as a group (Q7, F-007).** Rejected.
   - Two sessions can't keep an API change and its caller in step. One session in one box can.
   - Intake has to guess a repo. `research/landscape.md` records that mistake in Cyrus: "silently falling back to the first repo".

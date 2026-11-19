@@ -80,7 +80,7 @@ On 2026-11-19, from a fresh checkout, three checks failed and a fourth passed wi
 - A task in a box on the `docker` executor, its egress rules, and the sidecar container (F-017).
 - The agent's container holding no credential, for the key proxy and the git proxy (F-089, F-090).
 - OpenCode pinned and checksum-verified in the base image (F-019).
-- The executor contract case for a detached helper on `docker` and on Linux `host` (ADR 0029). On Windows, process-tree containment held in every run here, but a helper whose parent exits between two snapshots can still escape (Q126).
+- The executor contract case for a detached helper on `docker` and on Linux `host` (ADR 0029). On Windows, process-tree containment held in every run here, but a helper whose parent exits between two snapshots can still escape (Q126, settled 2026-11-19: a job object, in milestone 2's ticket 42).
 
 **Other milestone 1 work not done:**
 - Ticket 40: the manifest flow ("Create a new App") run in a browser. F-006 stays `building` until it is.
@@ -88,11 +88,11 @@ On 2026-11-19, from a fresh checkout, three checks failed and a fourth passed wi
 
 **Gaps found by the demo** (follow-ups, none blocks the demo):
 - **A batch the server can't store is resent forever.** When saving a frame fails, core closes the socket with 1011, and the runner reconnects and resends the same batch, with no limit. Such a batch needs to be refused once, visibly, or held aside.
-- **The agent works from the workspace root, not the repo.** With one repo, an agent told "create docs/numbers.md" once wrote it at the root, outside `test1/`. The task ended without changes and the file was lost without a word. Starting the agent in the repo when there is only one, or telling it where the repos are, would prevent it. The demo's prompt names the repo.
+- **The agent works from the workspace root, not the repo.** With one repo, an agent told "create docs/numbers.md" once wrote it at the root, outside `test1/`. The task ended without changes and the file was lost without a word. Starting the agent in the repo when there is only one, or telling it where the repos are, would prevent it. The demo's prompt names the repo. *(Q133, settled 2026-11-19: the agent starts in the repo when there is one, and milestone 2's ticket 44 reports files left outside every repo.)*
 - **OpenCode writes tool outputs to the machine's temp folder** (`%TEMP%\opencode\tool-outputs\<taskId>\…`), not the task's, although the launch sets `TEMP` and `TMP` to the task's folder. On `host` these files outlive the task.
-- **The sidecar in a box uses the runner's own access token,** not one scoped to its task (protocol work, with core).
+- **The sidecar in a box uses the runner's own access token,** not one scoped to its task (protocol work, with core). *(Q129, settled 2026-11-19: ticket 41.)*
 - **The panel:** `tasks.get` doesn't return the model or whether the agent can be steered; Stop still shows on a task in review, and pressing it moves the task to "stopped" with its PR still open; "Needs you" and "My tasks" aren't in the sidebar.
 - **A checkout in a deep folder can't run the tests on Windows.** The embedded Postgres reads files under `node_modules/.pnpm/@embedded-postgres+windows-x64@…/native/share/extension/`, which pass Windows' 260-character path limit once the checkout's own path is longer than about 75 characters. initdb then fails, and every database test with it. A short path works.
 - **OpenCode may move a long command to the background** without being asked, which ends the turn while the command runs on. On `host` it is killed with the agent at the session's end. ostra has no say in it yet: no permission rule or tool setting covers it.
 - **A tool's output can carry the runner's local folders** to the panel: OpenCode's "moved to the background" message holds the absolute path of its output file. Tool inputs are made relative (`49db388`); outputs aren't.
-- **Join tokens made in the panel** aren't accepted by core's register yet (F-091, milestone 5).
+- **Join tokens made in the panel** aren't accepted by core's register yet (F-091, milestone 5). *(Q130, settled 2026-11-19: ticket 42, with the approval switch enforced.)*

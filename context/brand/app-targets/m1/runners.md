@@ -81,7 +81,7 @@ Picture rows: `build-01` online 3/4, `build-02` online 2/4, `build-03` draining 
 Under the rows:
 1. `--muted` 12.5px: `Connect another machine: run this in a clone of ostra, then approve the code it prints.` With no runner yet: `Connect your machine: run this in a clone of ostra, then approve the code it prints.`
 2. A code box (`.code`, one line): mono `pnpm ostra runner --server {corePublicUrl}`, with a teal `Copy` text button at its right end (`Copied` for 1.5s).
-3. `--faint` 12px with Lucide `shield` (13px): `Personal runners use the host executor: the agent runs as a process on your machine, not isolated.` On Windows, append ` A process the agent detaches isn't contained.` (F-014, Q126).
+3. `--faint` 12px with Lucide `shield` (13px): `Personal runners use the host executor: the agent runs as a process on your machine, not isolated.` On a runner that reports `process-tree` containment, append ` A process the agent detaches isn't contained.` (F-014, Q126). That is every Windows runner until milestone 2's ticket 42 gives it a job object, and after it a macOS runner, a Linux runner with no cgroup of its own, and a Windows runner whose job object couldn't be made.
 
 - Empty (no runner): no row; the section count is `0` and line 1 uses its "Connect your machine" form.
 - The list polls every 2s until a runner is online, then every 15s (as today). When a new runner comes online the row appears; no toast.
@@ -169,7 +169,7 @@ Type: `h1` Manrope 700 24px; body Plex Sans 13px; section titles Plex Sans 600 1
     - executor and version range per pool (`pools.list`)
     - `lastUsedAt` and `revokedAt` are returned by `pools.joinTokens` already but not shown
     - the first project's name for `calculator, +2` (`pools.list` returns only `projectCount`)
-    - `draining` has no action yet: Drain and Revoke a runner are F-092's, milestone 5. Until then the page shows the state only, with no row actions.
+    - Row actions have no place in this target yet, and the page shows the state only. Five are coming, and the target is amended and approved before any is built: **Revoke** on any runner, and on one's own under Your machine (milestone 2's ticket 41, Q131); **Approve** and **Reject** on a `joining` runner of a pool that requires approval (milestone 1's ticket 42, Q130); **Drain** and **Resume** with the fleet view (F-092, milestone 5, Q108). A draining runner shows its connection beside the state, since a drain outlasts a disconnect.
 
 ## Text in the picture that's wrong
 
