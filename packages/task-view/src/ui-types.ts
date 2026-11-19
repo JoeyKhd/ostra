@@ -11,6 +11,7 @@ import {
 import type {
   MemberId,
   MessageDelivery,
+  MessageDeliveryState,
   PlanEntry,
   QuestionField,
   QuestionId,
@@ -190,7 +191,14 @@ export type TaskMessageMeta = {
   turnState?: "running" | "ended" | "failed";
   stopReason?: StopReason;
   error?: string;
-  author?: { memberId: MemberId; delivery: MessageDelivery; reopen?: boolean; replayed?: boolean };
+  author?: {
+    memberId: MemberId;
+    delivery: MessageDelivery;
+    /** Where the message stands now, from the log (ticket 19): a queued one reads "delivered after the turn" once its turn starts. Missing on an optimistic message. */
+    deliveryState?: MessageDeliveryState;
+    reopen?: boolean;
+    replayed?: boolean;
+  };
   optimistic?: boolean;
   /** The key proxy's counts for this turn (F-089): what spend comes from. */
   usage?: TokenCounts;

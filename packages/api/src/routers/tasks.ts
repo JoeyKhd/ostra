@@ -1,4 +1,5 @@
 import {
+  agentSteersMidTurn,
   answerApproval,
   appendServerEvent,
   checkProjectRepos,
@@ -27,6 +28,7 @@ import {
   approvalDecisionSchema,
   approvalIdSchema,
   approvalOptionSchema,
+  messageIntentSchema,
   clientMessageIdSchema,
   memberIdSchema,
   needsYouItemIdSchema,
@@ -353,6 +355,8 @@ export const tasksRouter = router({
         interrupt: isDriver && sessionGoing && state === "running",
         answerApprovals: state === "needs_you" || state === "running",
         takeOver: !isDriver,
+        /** Milestone 3 (ticket 19, ADR 0036): whether Send reaches the agent mid-turn, for the composer's hint. */
+        steersMidTurn: agent !== null && agentSteersMidTurn(agent.adapter),
         stop: state !== "stopped" && state !== "merged" && state !== "done" && state !== "in_review" && !endedByLimitOrCrash,
         /** Any member who can read the project may reopen: stopped, in review, done, or needing a reopen. */
         reopen: reopenState && reopenBlocked === null,
@@ -467,6 +471,8 @@ export const tasksRouter = router({
       clientMessageId: clientMessageIdSchema,
       text: z.string().trim().min(1).max(runnerLimits.steerTextMaxChars),
       delivery: z.enum(["queue", "interrupt"]).default("queue"),
+      /** Milestone 3 (ticket 19): why the panel wrote the message (update branch, diff comments, keep working, fix checks). */
+      intent: messageIntentSchema.optional(),
     }),
   ).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;
@@ -506,6 +512,11 @@ export const tasksRouter = router({
       if (input.delivery === "interrupt") {
         await appendServerEvent(tx, { organizationId, projectId, taskId: input.taskId, sessionId, at: now, event: { kind: "turn.cancel_requested", memberId: ctx.scope.memberId } });
       }
+      // ADR 0036: an agent that steers mid-turn takes a message at once while its turn runs; for any
+      // other, or between turns, the message waits for the next turn and reads "queued" to everyone
+      // until that turn starts (`messageDeliveries`).
+      const adapter = session.state === "running" ? await sessionAdapterInTx(tx, session.agentProfileId, organizationId) : null;
+      const steers = adapter !== null && agentSteersMidTurn(adapter);
       const seq = await appendServerEvent(tx, {
         organizationId,
         projectId,
@@ -517,12 +528,13 @@ export const tasksRouter = router({
           memberId: ctx.scope.memberId,
           clientMessageId: input.clientMessageId,
           text: input.text,
-          delivery: input.delivery === "interrupt" ? "after-interrupt" : "queued",
+          delivery: input.delivery === "interrupt" ? "after-interrupt" : steers ? "immediate" : "queued",
+          ...(input.intent === undefined ? {} : { intent: input.intent }),
         },
       });
       await ports.outbox.enqueueInTx(tx, organizationId, runnerIdSchema.parse(lease.runnerId), {
         kind: "steer",
-        body: { sessionId, clientMessageId: input.clientMessageId, text: input.text, delivery: input.delivery },
+        body: { sessionId, clientMessageId: input.clientMessageId, text: input.text, delivery: input.delivery, ...(input.intent === undefined ? {} : { intent: input.intent }) },
         notAfter: now + runnerLimits.offerTimeoutMs,
         task: { taskId: input.taskId, projectId },
       });
@@ -602,11 +614,15 @@ export const tasksRouter = router({
   }),
 });
 
+/** The agent adapter of a session's profile, or `null` when it has none. */
+const sessionAdapterInTx = async (tx: Tx, profileId: string | null, organizationId: OrganizationId): Promise<string | null> =>
+  profileId === null ? null : ((await tx.agentProfile.findFirst({ where: { id: profileId, organizationId }, select: { adapter: true } }))?.adapter ?? null);
+
 /** The lease and the session a send, an interrupt or an answer goes through. */
 const activeLeaseAndSession = async (tx: Tx, taskId: string) => {
   const [lease, session] = await Promise.all([
     tx.lease.findFirst({ where: { taskId, state: "active" }, select: { runnerId: true, epoch: true } }),
-    tx.session.findFirst({ where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } }, select: { id: true } }),
+    tx.session.findFirst({ where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } }, select: { id: true, state: true, agentProfileId: true } }),
   ]);
   return { lease, session };
 };

@@ -1,7 +1,7 @@
 import type { UIToolInvocation } from "ai";
 import type { z } from "zod";
 
-import { typedToolSchemas } from "@ostra/protocol";
+import { messageDeliveries, typedToolSchemas } from "@ostra/protocol";
 import type {
   ApprovalId,
   ApprovalOption,
@@ -369,6 +369,9 @@ export const foldTaskEvents = (
   const prTitles = new Map<RepoId, string>();
   const committedSegments = new Set<SegmentId>();
   const committedClientIds = new Set<ClientMessageId>();
+  // Where each member message stands, the same for every viewer (ticket 19): "queued" until the
+  // turn that carries it starts, then "delivered after the turn".
+  const deliveries = messageDeliveries(events);
 
   const push = (builder: Builder): Builder => {
     builders.push(builder);
@@ -463,6 +466,7 @@ export const foldTaskEvents = (
             author: {
               memberId: event.memberId,
               delivery: event.delivery,
+              deliveryState: deliveries.get(event.clientMessageId) ?? "delivered",
               ...(event.reopen === true ? { reopen: true } : {}),
               ...(event.replayed === true ? { replayed: true } : {}),
             },

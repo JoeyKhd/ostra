@@ -7,6 +7,7 @@ export * from "./change.ts";
 export * from "./events/tools.ts";
 export * from "./events/agent-events.ts";
 export * from "./events/live-text.ts";
+export * from "./events/message-deliveries.ts";
 
 export * from "./agent/rules.ts";
 export * from "./agent/prompts.ts";

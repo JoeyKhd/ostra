@@ -10,6 +10,7 @@ import {
   sessionIdSchema,
   segmentIdSchema,
   storedEventSchema,
+  turnIdSchema,
   taskEventKinds,
 } from "@ostra/protocol";
 import type { StoredEvent, TaskEvent, TaskEventKind } from "@ostra/protocol";
@@ -741,3 +742,26 @@ describe("protocol minor 1's markers (ticket 36)", () => {
   });
 });
 
+
+describe("queued messages (ticket 19)", () => {
+  const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e2");
+  const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d2", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
+  const memberId = memberIdSchema.parse("01900000-0000-7000-8000-0000000000b2");
+  const queued = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c2");
+  const steered = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c3");
+
+  it("F-024: a queued message reads queued to every viewer until its turn starts, then delivered after the turn", () => {
+    const log = [
+      stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
+      stored(2, { kind: "user.message", memberId, clientMessageId: queued, text: "Also the key", delivery: "queued" }),
+      stored(3, { kind: "user.message", memberId, clientMessageId: steered, text: "Now", delivery: "immediate" }),
+      stored(4, { kind: "turn.ended", turnId: turnIdSchema.parse("t-1"), stopReason: "end_turn" }),
+    ];
+    const stateOf = (messages: readonly TaskUIMessage[], id: string) => messages.find((message) => message.id === `user:${id}`)?.metadata?.author?.deliveryState;
+    const before = foldTaskEvents(log, []);
+    expect(stateOf(before, queued)).toBe("queued");
+    expect(stateOf(before, steered)).toBe("delivered");
+    const after = foldTaskEvents([...log, stored(5, { kind: "turn.started", turnId: turnIdSchema.parse("t-2") })], []);
+    expect(stateOf(after, queued)).toBe("delivered-after-turn");
+  });
+});

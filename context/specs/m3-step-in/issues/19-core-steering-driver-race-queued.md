@@ -1,6 +1,6 @@
 # 19: Core: steering, the driver race and queued messages
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 07
 Features: F-024
@@ -19,8 +19,14 @@ Milestone 1 built Send, "Interrupt and send" and take over. This ticket finishes
 
 ## Done when
 
-- [ ] Tests: the race test passes 50 of 50; a watcher's send and interrupt are refused by the API; a queued message's state moves from queued to delivered in the log; an unknown intent is refused.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api` and `core`.
-- [ ] Committed as `✅ close the driver race on send`.
+- [x] Tests: the race test passes 50 of 50; a watcher's send and interrupt are refused by the API; a queued message's state moves from queued to delivered in the log; an unknown intent is refused.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api` and `core`.
+- [x] Committed as `✅ close the driver race on send`.
 
 ## Comments
+
+- 2026-11-19: done in `✅ close the driver race on send`. Milestone 1 already read the driver under the task's lock in `tasks.send` and `tasks.interrupt`, so the race test passed as written: 50 of 50 for each, with both outcomes seen (one run: 47 sends committed before the take-over, 3 refused). Its break-it read the driver before `lockTask` inside the same transaction, and both races failed. Choices made here:
+  - **Queued, then delivered:** `tasks.send` writes `immediate` only when the session's turn is running and its agent steers mid-turn (`agentSteersMidTurn`); otherwise `queued`. The runner's later delivery is the `turn.started` it records in that session after the message, so nothing new is stored: `messageDeliveries` (`packages/protocol/src/events/message-deliveries.ts`) reads each message as `delivered`, `queued`, `delivered-after-turn` or `after-interrupt` from the log, and the fold carries it as `author.deliveryState` for the thread (ticket 43 shows it).
+  - **Intents:** `tasks.send` takes `intent`, checked against the protocol's `messageIntentSchema`, and passes it to the `steer` command and the `user.message`.
+  - **`tasks.get`** says `capabilities.steersMidTurn` for the composer's two hints.
+  Tests: `packages/api/src/routers/steering.test.ts` (six cases on a real Postgres) and a fold case in `packages/task-view/src/fold.test.ts`, each with a break-it (in `context/proof/F-024.md`).
