@@ -1245,6 +1245,7 @@ model Command {
   body           Json
   projectId      String?
   project        Project?       @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// Set only with projectId: the migration checks it (F-086).
   taskId         String?
   task           Task?          @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
   /// Server time past which the peer rejects it.
@@ -1384,6 +1385,7 @@ model Blob {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectId      String?
   project        Project?      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// Set only with projectId: the migration checks it (F-086).
   taskId         String?
   task           Task?         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
   store          BlobStoreKind
@@ -1414,6 +1416,7 @@ model BlobUpload {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectId      String?
   project        Project?      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// Set only with projectId: the migration checks it (F-086).
   taskId         String?
   task           Task?         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
   store          BlobStoreKind
