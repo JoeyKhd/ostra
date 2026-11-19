@@ -233,6 +233,12 @@ export const devOnlyEnvNames = [
   "OSTRA_DEV_BLOCK_WEBHOOKS",
 ] as const;
 
+/**
+ * Variables the runner sets in a task's own processes (ticket 42's containment marker): never read
+ * by the server, and not refused, so an agent that runs ostra's own server in its task can start it.
+ */
+const taskEnvNames = ["OSTRA_TASK_UNIT"] as const;
+
 /** Spikes' own variables (`spikes/`), which share the dev env files: never read, never refused. */
 const SPIKE_PREFIX = "OSTRA_SPIKE_";
 
@@ -394,6 +400,7 @@ const knownOstraNames: ReadonlySet<string> = new Set<string>([
   ...settingNames,
   ...runnerEnvNames,
   ...devOnlyEnvNames,
+  ...taskEnvNames,
 ]);
 
 /** Reads the server's settings from the environment. Never throws; the errors name variables, never values. */

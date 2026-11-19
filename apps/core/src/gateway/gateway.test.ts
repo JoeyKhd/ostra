@@ -329,6 +329,22 @@ describe("the WebSocket", () => {
     expect(await notices()).toBe(before + 1);
     expect((await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).labels).toEqual(["gpu"]);
   });
+
+  it("F-014: stores the containment a runner reports, and keeps it when a status leaves it out", async () => {
+    const peer = track(await connect(harness, runner));
+    await peer.next("welcome");
+    const stored = async () => (await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).processContainment;
+    const status: Status = { type: "status", executor: "host", capacity: 1, freeSlots: 1, labels: [], version: "0.0.0", running: [], spoolBytes: 0 };
+    peer.send({ ...status, processContainment: "process-tree" });
+    await waitFor(async () => (await stored()) === "process_tree");
+    peer.send({ ...status, processContainment: "job-object" });
+    await waitFor(async () => (await stored()) === "job_object");
+    expect(await stored()).toBe("job_object");
+    // A sidecar's status, or an older runner's, says nothing about it: the row keeps what it had.
+    peer.send({ ...status, capacity: 3 });
+    await waitFor(async () => (await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).capacity === 3);
+    expect(await stored()).toBe("job_object");
+  });
 });
 
 describe("revoked runners", () => {

@@ -1,4 +1,4 @@
-import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { adapterError, ExecutorAdapter, ok } from "@ostra/adapter-sdk";
 import type {
@@ -21,10 +21,10 @@ import type {
 } from "@ostra/adapter-sdk";
 import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxState, GitPerson, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
-import { detectContainment, processTreeContainment } from "./containment.ts";
+import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import { localProcesses } from "./task-processes.ts";
 import type { TaskProcesses } from "./task-processes.ts";
-import type { Containment, ContainmentUnit } from "./containment.ts";
+import type { Containment, ContainmentProbe, ContainmentUnit } from "./containment.ts";
 import { excludeFromGit, insideCheckout, renderEnvFile, writeCheckoutFile } from "./env-file.ts";
 import { baseEnv, codeHostRefusal, ostraLines, runProgram } from "./process.ts";
 import { localShellProbe, missingShellReason, resolveSetupShell } from "./setup-shell.ts";
@@ -44,10 +44,12 @@ import type { RunResult } from "./process.ts";
 //     agent/                     the agent's own config, data and cache
 //     git/config                 the task's git config: identity, insteadOf, no credential helper
 //     setup/setup.sh             the environment's setup script
+//     unit-marker                the task's containment marker, so a restarted runner finds its processes
 //
 // Its differences from `docker` are ADR 0029's allowed ones, declared in `capabilities`: no
 // isolation, no services, no box sizes, no snapshots, and process containment by the tree (or a
-// cgroup on Linux) instead of a container.
+// cgroup on Linux, or a Windows job object) instead of a container. The task's unit is made with
+// its folder; the setup script and the agent join it, and it ends at stop and release (ticket 42).
 
 export type HostExecutorOptions = {
   /** The runner's data folder: task roots go in `tasks/`. */
@@ -72,9 +74,11 @@ export type HostExecutorOptions = {
 type RunningAgent = {
   readonly pid: number | null;
   readonly exited: Promise<ProcessExit>;
-  readonly unit: ContainmentUnit;
   readonly stdinEnd: () => void;
 };
+
+/** The file in a task's folder that keeps its unit's marker. */
+const UNIT_MARKER_FILE = "unit-marker";
 
 type BoxRecord = {
   readonly ref: BoxRef;
@@ -85,6 +89,8 @@ type BoxRecord = {
   readonly gitConfig: string;
   readonly spec: TaskSpec;
   readonly proxies: TaskProxies;
+  /** Every process of the task, as one unit (ticket 42). Made with the folder. */
+  unit: ContainmentUnit | undefined;
   agent: RunningAgent | undefined;
 };
 
@@ -130,6 +136,20 @@ const splitOutput = (text: string): readonly string[] => {
   return pieces;
 };
 
+/** The markers kept in the task folders a run of this runner left. */
+const keptMarkers = async (dataDir: string): Promise<readonly string[]> => {
+  const tasks = path.join(dataDir, "tasks");
+  const folders = await readdir(tasks).catch((): string[] => []);
+  const markers: string[] = [];
+  for (const folder of folders) {
+    const marker = (await readFile(path.join(tasks, folder, UNIT_MARKER_FILE), "utf8").catch(() => "")).trim();
+    if (/^ostra-unit-[0-9a-f]{24}$/.test(marker)) {
+      markers.push(marker);
+    }
+  }
+  return markers;
+};
+
 export class HostExecutor extends ExecutorAdapter {
   readonly name = "host";
   readonly capabilities: ExecutorCapabilities;
@@ -163,9 +183,30 @@ export class HostExecutor extends ExecutorAdapter {
     this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: false, processContainment: kind };
   }
 
-  /** A host executor with the best containment this machine allows (ADR 0029, Q126). */
-  static async start(options: Omit<HostExecutorOptions, "containment">, context?: AdapterContext): Promise<HostExecutor> {
-    return new HostExecutor({ ...options, containment: await detectContainment() }, context);
+  /**
+   * A host executor with the best containment this machine allows (ADR 0029, Q126), after it ended
+   * what an earlier run of this runner left behind (ticket 42). A fallback to the process tree is
+   * logged with its reason.
+   */
+  static async start(
+    options: Omit<HostExecutorOptions, "containment">,
+    context?: AdapterContext,
+    probe: Partial<ContainmentProbe> = {},
+  ): Promise<HostExecutor> {
+    const prefix = cgroupPrefix(path.resolve(options.dataDir));
+    const containment = await detectContainment({
+      cgroupPrefix: prefix,
+      onFallback: (reason) => {
+        context?.logger.warn("containment.fallback", { containment: "process-tree", reason });
+      },
+      ...probe,
+    });
+    const markers = await keptMarkers(options.dataDir);
+    const left = await sweepLeftovers({ probe, markers, cgroupPrefix: prefix }).catch(() => ({ cgroups: 0, processes: 0 }));
+    if (left.cgroups > 0 || left.processes > 0) {
+      context?.logger.info("containment.leftovers-ended", { cgroups: left.cgroups, processes: left.processes });
+    }
+    return new HostExecutor({ ...options, containment }, context);
   }
 
   async health(): Promise<HealthReport> {
@@ -209,6 +250,7 @@ export class HostExecutor extends ExecutorAdapter {
       gitConfig: path.join(root, "git", "config"),
       spec: input.spec,
       proxies: input.proxies,
+      unit: undefined,
       agent: undefined,
     };
     this.#boxes.set(key, record);
@@ -218,6 +260,10 @@ export class HostExecutor extends ExecutorAdapter {
       await mkdir(record.workspaceDir, { recursive: true });
       await mkdir(record.agentDir, { recursive: true });
       await mkdir(path.dirname(record.gitConfig), { recursive: true });
+      // The task's unit, with its folder: the setup script and the agent join it (ticket 42).
+      const marker = newUnitMarker();
+      await writeFile(path.join(root, UNIT_MARKER_FILE), marker);
+      record.unit = await this.#processes.createUnit(`${input.taskId}-${input.boxId}`, marker);
       await this.#writeTaskGitConfig(record);
     } catch (error) {
       record.state = "failed";
@@ -276,14 +322,19 @@ export class HostExecutor extends ExecutorAdapter {
       await mkdir(path.dirname(file.path), { recursive: true });
       await writeFile(file.path, file.content, { mode: 0o600 });
     }
-    const started = await this.#processes.startAgent(launch, `${record.ref.taskId}-${record.ref.boxId}`);
+    const unit = record.unit;
+    if (unit === undefined) {
+      return adapterError("conflict", "the box has no containment unit");
+    }
+    // The task's marker rides in the agent's environment, so its children carry it too.
+    const started = await this.#processes.startAgent({ ...launch, env: { ...launch.env, [TASK_UNIT_ENV]: unit.marker } }, unit);
     if (!started.ok) {
       return adapterError("unavailable", `the agent's process didn't start (${started.reason})`);
     }
-    const { process: agentProcess, unit, stdinEnd } = started.value;
+    const { process: agentProcess, stdinEnd } = started.value;
     const pid = agentProcess.pid;
     const exited = agentProcess.exited;
-    record.agent = { pid, exited, unit, stdinEnd };
+    record.agent = { pid, exited, stdinEnd };
     void exited.then(() => {
       if (record.agent?.pid === pid && record.state !== "stopped" && record.state !== "released") {
         record.state = "idle";
@@ -351,6 +402,8 @@ export class HostExecutor extends ExecutorAdapter {
       return ok(undefined);
     }
     await this.#endAgent(record, input.graceMs);
+    // Everything else the task started too: a daemon its setup script left (ticket 42).
+    await record.unit?.killAll();
     if (record.state !== "released") {
       record.state = "stopped";
     }
@@ -363,6 +416,8 @@ export class HostExecutor extends ExecutorAdapter {
       return ok(undefined);
     }
     await this.#endAgent(record, 0);
+    await record.unit?.dispose();
+    record.unit = undefined;
     try {
       await rm(record.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch (error) {
@@ -386,18 +441,17 @@ export class HostExecutor extends ExecutorAdapter {
       return;
     }
     record.agent = undefined;
-    // A chance to exit on its own (its stdin closes), then the whole tree.
+    // A chance to exit on its own (its stdin closes), then the task's whole unit.
     agent.stdinEnd();
     const quit = await Promise.race([agent.exited.then(() => true), new Promise<boolean>((resolve) => {
         setTimeout(() => {
           resolve(false);
         }, graceMs);
       })]);
-    await agent.unit.killAll();
+    await record.unit?.killAll();
     if (!quit) {
       await Promise.race([agent.exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
     }
-    await agent.unit.dispose();
     this.plumbing.logger.info("agent ended", { taskId: record.ref.taskId, boxId: record.ref.boxId, exitedInGrace: quit });
   }
 
@@ -573,6 +627,9 @@ export class HostExecutor extends ExecutorAdapter {
       const environment = record.spec.environment.repos.find((entry) => entry.repoId === repo.repoId);
       const secrets = input.secrets.find((entry) => entry.repoId === repo.repoId)?.entries ?? [];
       const env: Record<string, string> = { ...baseEnv(this.#env), OSTRA_REPO: repo.fullName };
+      if (record.unit !== undefined) {
+        env[TASK_UNIT_ENV] = record.unit.marker;
+      }
       for (const variable of environment?.variables ?? []) {
         if (variable.availableDuringSetup) {
           env[variable.name] = variable.value;
@@ -588,6 +645,7 @@ export class HostExecutor extends ExecutorAdapter {
         cwd: path.join(record.workspaceDir, repo.checkoutDir),
         env,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...(record.unit === undefined ? {} : { unit: record.unit }),
         maxBuffer: 0,
         onOutput: (stream, text) => {
           for (const piece of splitOutput(text)) {

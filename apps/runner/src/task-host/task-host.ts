@@ -105,6 +105,7 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
     handlers,
     status: () => ({
       executor: options.executorKind,
+      processContainment: options.executor.capabilities.processContainment,
       capacity: options.capacity,
       freeSlots: draining ? 0 : Math.max(0, options.capacity - runs.size),
       labels: options.labels,

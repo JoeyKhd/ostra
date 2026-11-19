@@ -143,6 +143,9 @@ export const allowedEnvNames: readonly string[] = [
   // The git guard (`gitGuardEnv`): the task-run overlays it on the launch, and no one else sets it.
   ...GIT_GUARD_ENV_NAMES,
   KEY_ENV,
+  // The task's containment marker (ticket 42): the host executor overlays it on the launch, so the
+  // runner can find every process of the task by it. Not a secret.
+  "OSTRA_TASK_UNIT",
 ];
 
 /** The hosts OpenCode adds to NO_PROXY at startup, when the launch passes none of its own. */

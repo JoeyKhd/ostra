@@ -259,8 +259,11 @@ export type TreeWatch = {
   readonly snapshot: () => Promise<void>;
   /** Kills every descendant ever seen that's still the same process. Returns how many. */
   readonly reap: () => Promise<number>;
-  /** Kills the descendants born since `since` (ms since the epoch): live ones, and seen orphans. */
-  readonly reapBornSince: (since: number) => Promise<number>;
+  /**
+   * Kills the descendants born since `since` (ms since the epoch): live ones, seen orphans, and the
+   * processes of `unitPids` (the task's job or cgroup, which holds the ones that detached themselves).
+   */
+  readonly reapBornSince: (since: number, unitPids?: readonly number[]) => Promise<number>;
   /** Kills the root and every descendant ever seen. */
   readonly killAll: () => Promise<void>;
 };
@@ -301,7 +304,7 @@ export const watchProcessTree = (rootPid: number): TreeWatch => {
       }
       return killed;
     },
-    reapBornSince: async (since) => {
+    reapBornSince: async (since, unitPids = []) => {
       const alive = await list();
       const skew = isLinux ? await bootSkewMs().catch(() => 0) : 0;
       const targets = new Map<number, ProcessInfo>();
@@ -310,9 +313,10 @@ export const watchProcessTree = (rootPid: number): TreeWatch => {
           targets.set(p.pid, p);
         }
       }
+      const inUnit = new Set(unitPids);
       for (const p of alive) {
         const seen = known.get(p.pid);
-        if (seen !== undefined && sameProcess(seen, p) && bornSince(p, since, skew)) {
+        if (p.pid !== rootPid && ((seen !== undefined && sameProcess(seen, p)) || inUnit.has(p.pid)) && bornSince(p, since, skew)) {
           targets.set(p.pid, p);
         }
       }

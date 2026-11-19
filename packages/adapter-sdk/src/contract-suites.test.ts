@@ -177,7 +177,34 @@ defineExecutorContractSuite({
           isAlive,
           kill: killTree,
         },
-        knownGaps: { detachedHelper: "the tiny executor only ends the agent's own process tree" },
+        cleanEnvHelper: {
+          launch: (box) =>
+            nodeLaunch(
+              box.workspaceDir,
+              [
+                "const { spawn } = require('node:child_process');",
+                "const env = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {};",
+                "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', env });",
+                "helper.unref();",
+                "require('node:fs').writeFileSync('helper.pid', String(helper.pid));",
+                "process.exit(0);",
+              ].join("\n"),
+            ),
+          readPid: async (box) => {
+            try {
+              const pid = Number.parseInt(await readFile(path.join(box.workspaceDir, "helper.pid"), "utf8"), 10);
+              return Number.isInteger(pid) && pid > 0 ? pid : null;
+            } catch {
+              return null;
+            }
+          },
+          isAlive,
+          kill: killTree,
+        },
+        knownGaps: {
+          detachedHelper: "the tiny executor only ends the agent's own process tree",
+          cleanEnvHelper: "the tiny executor only ends the agent's own process tree",
+        },
       },
     }),
 });

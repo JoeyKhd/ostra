@@ -96,6 +96,12 @@ export type AgentProcess = {
   /** In the executor's own process namespace. */
   readonly pid: number | null;
   readonly exited: Promise<ProcessExit>;
+  /**
+   * The PIDs in the task's containment unit now, when the unit can list them (a Windows job, a
+   * cgroup: ticket 42). A cancelled turn's reap takes the ones born during it from this list, so a
+   * process that detached itself ends too.
+   */
+  readonly unitPids?: () => Promise<readonly number[]>;
 };
 
 export type CommitAndPushInput = {

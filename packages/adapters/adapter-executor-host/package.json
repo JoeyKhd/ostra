@@ -16,6 +16,7 @@
   "dependencies": {
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/protocol": "workspace:*",
+    "koffi": "3.3.8",
     "zod": "4.6.7"
   },
   "devDependencies": {

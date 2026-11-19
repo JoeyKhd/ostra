@@ -19,6 +19,7 @@ import type {
   DownFrame,
   ErrorFrame,
   ExecutorKind,
+  ProcessContainment,
   LeaseEpoch,
   Peer,
   RunnerEvent,
@@ -65,6 +66,8 @@ export type CommandHandlers = { readonly [K in CommandKind]: (command: CommandOf
 
 export type PeerStatus = {
   readonly executor: ExecutorKind;
+  /** How the runner ends a task's processes together (ticket 42). A sidecar leaves it out. */
+  readonly processContainment?: ProcessContainment;
   readonly capacity: number;
   readonly freeSlots: number;
   readonly labels: readonly RunnerLabel[];
@@ -386,6 +389,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       version: RUNNER_VERSION,
       running: [...status.running],
       spoolBytes: spoolBytes(),
+      ...(status.processContainment === undefined ? {} : { processContainment: status.processContainment }),
     });
   };
 

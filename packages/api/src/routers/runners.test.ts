@@ -177,3 +177,21 @@ describe("runners.list and runners.mine", () => {
     expect(await (await harness.as(b.admin)).runners.mine()).toEqual([]);
   });
 });
+
+describe("a runner's containment (ticket 42)", () => {
+  it("F-014: runners.mine and runners.list return the containment each runner reported, null before it did", async () => {
+    const { a } = harness.fixture;
+    const tree = await seedPersonalRunner(harness, a.member.id, "contain-tree");
+    const job = await seedPersonalRunner(harness, a.member.id, "contain-job");
+    const silent = await seedPersonalRunner(harness, a.member.id, "contain-none");
+    await harness.test.db.runner.update({ where: { id: tree }, data: { processContainment: "process_tree" } });
+    await harness.test.db.runner.update({ where: { id: job }, data: { processContainment: "job_object" } });
+    const mine = await (await harness.as(a.member)).runners.mine();
+    const byId = new Map(mine.map((runner) => [runner.id, runner.processContainment]));
+    expect([byId.get(tree), byId.get(job), byId.get(silent)]).toEqual(["process-tree", "job-object", null]);
+    const listed = await (await harness.as(a.admin)).runners.list();
+    expect(listed.find((runner) => runner.id === tree)?.processContainment).toBe("process-tree");
+    // The other cases count this member's runners.
+    await harness.test.db.runner.deleteMany({ where: { id: { in: [tree, job, silent] } } });
+  });
+});

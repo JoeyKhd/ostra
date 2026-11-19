@@ -77,6 +77,33 @@ defineExecutorContractSuite({
           isAlive: (pid) => Promise.resolve(isAlive(pid)),
           kill: (pid) => killTree(pid),
         },
+        // Ticket 42: a helper with an empty environment. A box's container holds it whatever it
+        // carries; here the stand-in init finds it among its descendants, so the agent stays.
+        cleanEnvHelper: {
+          launch: (box) =>
+            nodeLaunch(
+              [
+                "const { spawn } = require('node:child_process');",
+                "const fs = require('node:fs');",
+                "const env = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {};",
+                "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', env });",
+                "helper.unref();",
+                `fs.writeFileSync(${JSON.stringify(pidFile(box))}, String(helper.pid));`,
+                "setInterval(() => {}, 1000);",
+              ].join("\n"),
+              box,
+            ),
+          readPid: async (box) => {
+            try {
+              const pid = Number((await readFile(pidFile(box), "utf8")).trim());
+              return pid > 0 ? pid : null;
+            } catch {
+              return null;
+            }
+          },
+          isAlive: (pid) => Promise.resolve(isAlive(pid)),
+          kill: (pid) => killTree(pid),
+        },
       },
       dispose: async () => {
         bridge.close();

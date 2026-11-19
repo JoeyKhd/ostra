@@ -4,6 +4,7 @@ import type {
   BoxReleaseReason,
   CommandKind,
   CommandResult,
+  ProcessContainment,
   SessionLimit,
   SessionOutcome,
 } from "@ostra/protocol";
@@ -14,6 +15,7 @@ import type {
   BoxReleaseReason as DbBoxReleaseReason,
   CommandKind as DbCommandKind,
   CommandResult as DbCommandResult,
+  ProcessContainment as DbProcessContainment,
   SessionLimit as DbSessionLimit,
   SessionOutcome as DbSessionOutcome,
 } from "./generated/prisma/enums.ts";
@@ -107,3 +109,16 @@ export const boxReleaseReasonFromDb = {
   task_deleted: "task-deleted",
   requested: "requested",
 } as const satisfies Record<DbBoxReleaseReason, BoxReleaseReason>;
+
+export const processContainmentToDb = {
+  container: "container",
+  "job-object": "job_object",
+  cgroup: "cgroup",
+  "process-tree": "process_tree",
+} as const satisfies Record<ProcessContainment, DbProcessContainment>;
+export const processContainmentFromDb = {
+  container: "container",
+  job_object: "job-object",
+  cgroup: "cgroup",
+  process_tree: "process-tree",
+} as const satisfies Record<DbProcessContainment, ProcessContainment>;

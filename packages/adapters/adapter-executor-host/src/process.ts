@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ContainmentUnit } from "./containment.ts";
 
 // Child processes for the host executor: argument arrays only, never a shell line, and an
 // environment built from an allowlist, never the runner's own (which may hold the member's tokens).
@@ -58,6 +59,11 @@ export type RunOptions = {
   readonly onOutput?: (stream: "stdout" | "stderr", text: string) => void;
   /** The most output kept per stream, so a chatty tool can't fill memory. */
   readonly maxBuffer?: number;
+  /**
+   * The task's unit the program joins in the same tick as its `spawn` (ticket 42): a daemon the
+   * setup script leaves running ends with the task.
+   */
+  readonly unit?: ContainmentUnit;
 };
 
 const DEFAULT_MAX_BUFFER = 4 * 1024 * 1024;
@@ -75,6 +81,10 @@ export const runProgram = (command: string, args: readonly string[], options: Ru
       windowsHide: true,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
+    if (options.unit !== undefined && child.pid !== undefined) {
+      const exited = new Promise((done) => child.once("exit", done));
+      void options.unit.adopt(child.pid, { exited }).catch(() => undefined);
+    }
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {

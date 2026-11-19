@@ -35,6 +35,9 @@ allowBuilds:
   # The OpenCode agent: its postinstall is never run. The adapter resolves the platform binary
   # itself and checks its SHA-256 (ticket 11).
   "@opencode/cli": false
+  # koffi, the host executor's Windows job object (ADR 0007, Q126): its install script would build
+  # from source, and its prebuilt `@koromix/koffi-<platform>` package is enough.
+  koffi: false
   "@embedded-postgres/windows-x64": true
   "@embedded-postgres/linux-x64": true
   "@embedded-postgres/linux-arm64": true

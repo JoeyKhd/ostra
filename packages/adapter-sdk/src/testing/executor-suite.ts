@@ -19,22 +19,32 @@ export type ExecutorFixture = {
   /** A process that writes back each line it reads on stdin. */
   readonly echoLaunch: (box: CreatedBox) => AgentLaunch;
   /**
-   * ADR 0029's case: a process that starts a detached helper and writes the helper's PID to a
-   * file. The suite stops the task and checks the helper is gone.
+   * ADR 0029's case: a process that starts a detached helper, writes the helper's PID to a file,
+   * and exits at once, so the helper's parent is gone. The suite stops the task and checks the
+   * helper is gone.
    */
-  readonly detachedHelper: {
-    readonly launch: (box: CreatedBox) => AgentLaunch;
-    /** The helper's PID, once the process has written it. */
-    readonly readPid: (box: CreatedBox) => Promise<number | null>;
-    readonly isAlive: (pid: number) => Promise<boolean>;
-    /** Kills the helper after the case, whatever its outcome, so no test leaves one running. */
-    readonly kill: (pid: number) => Promise<void>;
-  };
+  readonly detachedHelper: HelperCase;
+  /**
+   * Ticket 42's second case: the same, with a helper that also clears its environment, so it
+   * carries no marker. The recorded gap of a `process-tree` unit; `job-object`, `cgroup` and
+   * `container` pass it.
+   */
+  readonly cleanEnvHelper: HelperCase;
   /**
    * Cases the adapter can't pass yet on this platform, each with its reason. A listed case is
    * expected to fail, and the suite fails if it starts passing, so the gap is noticed when it closes.
    */
-  readonly knownGaps?: { readonly detachedHelper?: string };
+  readonly knownGaps?: { readonly detachedHelper?: string; readonly cleanEnvHelper?: string };
+};
+
+/** A process that leaves a helper behind, and how the suite finds and ends that helper. */
+export type HelperCase = {
+  readonly launch: (box: CreatedBox) => AgentLaunch;
+  /** The helper's PID, once the process has written it. */
+  readonly readPid: (box: CreatedBox) => Promise<number | null>;
+  readonly isAlive: (pid: number) => Promise<boolean>;
+  /** Kills the helper after the case, whatever its outcome, so no test leaves one running. */
+  readonly kill: (pid: number) => Promise<void>;
 };
 
 let boxCounter = 0;
@@ -176,43 +186,51 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       await adapter.release(box);
     }, CASE_TIMEOUT_MS);
 
-    const detachedCase = async (): Promise<void> => {
+    const helperCase = async (pick: (fixture: ExecutorFixture) => HelperCase): Promise<void> => {
       const { adapter, fixture } = subject();
+      const helper = pick(fixture);
       const { box, created } = await createAndPrepare(fixture.spec);
-      const agent = await adapter.startAgent(box, fixture.detachedHelper.launch(created));
+      const agent = await adapter.startAgent(box, helper.launch(created));
       expect(agent.ok).toBe(true);
-      const pid = await pollFor(() => fixture.detachedHelper.readPid(created), 10_000);
+      const pid = await pollFor(() => helper.readPid(created), 10_000);
       try {
         expect(pid, "the helper wrote its PID").not.toBeNull();
         if (pid === null) {
           return;
         }
         await adapter.stop({ box, graceMs: 500 });
-        const gone = await waitFor(async () => !(await fixture.detachedHelper.isAlive(pid)), 5_000);
+        const gone = await waitFor(async () => !(await helper.isAlive(pid)), 5_000);
         expect(gone, "a detached helper outlived the task's stop").toBe(true);
       } finally {
         if (pid !== null) {
-          await fixture.detachedHelper.kill(pid);
+          await helper.kill(pid);
         }
         await adapter.release(box);
       }
     };
 
-    const gaps = (): string | undefined => subject().fixture.knownGaps?.detachedHelper;
-    it("stops every process of the task, a detached helper included (ADR 0029)", async (context) => {
-      const reason = gaps();
+    /** A case that is a known gap must fail, so the gap is noticed when it closes. */
+    const withGap = async (reason: string | undefined, annotate: (text: string) => Promise<unknown>, run: () => Promise<void>): Promise<void> => {
       if (reason === undefined) {
-        await detachedCase();
+        await run();
         return;
       }
-      await context.annotate(`known gap: ${reason}`);
+      await annotate(`known gap: ${reason}`);
       let failed = false;
       try {
-        await detachedCase();
+        await run();
       } catch {
         failed = true;
       }
       expect(failed, `the known gap is closed (${reason}): remove it from knownGaps`).toBe(true);
+    };
+
+    it("stops every process of the task, a detached helper included (ADR 0029)", async (context) => {
+      await withGap(subject().fixture.knownGaps?.detachedHelper, (text) => context.annotate(text), () => helperCase((fixture) => fixture.detachedHelper));
+    }, CASE_TIMEOUT_MS);
+
+    it("stops a detached helper that also cleared its environment (ticket 42)", async (context) => {
+      await withGap(subject().fixture.knownGaps?.cleanEnvHelper, (text) => context.annotate(text), () => helperCase((fixture) => fixture.cleanEnvHelper));
     }, CASE_TIMEOUT_MS);
   });
 };

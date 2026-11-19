@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { adminLede, runnerAge, runnerDot, runnerStateText, runnerTotals, versionRange } from "./runner-words";
+import { adminLede, hostNote, runnerAge, runnerDot, runnerStateText, runnerTotals, versionRange } from "./runner-words";
 import type { RunnerState } from "./runner-words";
 
 const states = ["joining", "online", "offline", "draining", "revoked"] as const satisfies readonly RunnerState[];
@@ -51,5 +51,22 @@ describe("the admin lede", () => {
     expect(adminLede(runners, 2, false)).toBe("Where tasks run. 4 of 8 runners online, 7 of 14 boxes busy, across 2 pools.");
     expect(adminLede([], 1, false)).toBe("Where tasks run. 0 of 0 runners online, 0 of 0 boxes busy, across 1 pool.");
     expect(adminLede([], 1, true)).toBe("Where tasks run. 0 of 0 runners online, 0 of 0 boxes busy, across 1 pool and your machine.");
+  });
+});
+
+describe("the line under Your machine", () => {
+  const plain = "Personal runners use the host executor: the agent runs as a process on your machine, not isolated.";
+
+  it("F-014: says a detached process isn't contained when a runner reports process-tree, whatever its system", () => {
+    expect(hostNote([{ processContainment: "process-tree" }])).toBe(`${plain} A process the agent detaches isn't contained.`);
+    expect(hostNote([{ processContainment: "job-object" }, { processContainment: "process-tree" }])).toBe(
+      `${plain} A process the agent detaches isn't contained.`,
+    );
+  });
+
+  it("F-014: says only the plain line for a job object, a cgroup, no report yet, or no runner", () => {
+    for (const mine of [[{ processContainment: "job-object" as const }], [{ processContainment: "cgroup" as const }], [{ processContainment: null }], [], undefined]) {
+      expect(hostNote(mine)).toBe(plain);
+    }
   });
 });

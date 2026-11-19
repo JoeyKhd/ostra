@@ -80,6 +80,8 @@ describe("the server's settings", () => {
         OSTRA_DEV_GITHUB_ORG: "ostra-test",
         OSTRA_DEV_PUBLIC_URL: "https://tunnel.example",
         OSTRA_SPIKE_PRICE_INPUT: "0.1",
+        // The containment marker the runner gives a task's processes (ticket 42).
+        OSTRA_TASK_UNIT: "ostra-unit-0123456789abcdef01234567",
         PATH: "/usr/bin",
         HOME: "/home/dev",
       }).ok,

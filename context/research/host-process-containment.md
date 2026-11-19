@@ -130,3 +130,7 @@ All of this section is **unverified** on a Mac. The contract case for it runs on
 3. **F-014:** its "done when" names the three mechanisms and the Mac run.
 4. **The executor's capability** `processContainment` already has `job-object`. The runner has to tell the server which one it has, because the panel's line about detached processes depends on it and no longer on the operating system.
 5. **Revisit when** the CLI's minimum Node has `node:ffi` out of experimental. The same six calls move to it, and `koffi` leaves.
+
+## Built (2026-11-19, milestone 2's ticket 42)
+
+The probe is ported as `packages/adapters/adapter-executor-host/src/job-object.ts`, with the same seven functions and layouts, an unnamed `HANDLE` type (koffi refuses a type name declared twice in one process) and one job made and closed when it loads. Its tests ran on this machine (Windows 11 x64, Node 24.14.0): `context/specs/m2-tickets-in/evidence/42-windows-containment.txt`. One correction to section 3's control: a **tree walk** (not `taskkill /T`) still finds a helper whose parent exited, because Windows keeps the dead parent's PID on its children. What the walk can't reach is a helper whose parent and grandparent both exited, and the tests use that case. The macOS case (section 4) hasn't run: it waits for a Mac.

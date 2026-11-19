@@ -84,6 +84,8 @@ export type AgentIo = {
    * `AgentProcess` fits this type as it is.
    */
   readonly pid?: number | null;
+  /** The PIDs in the task's containment unit, when the executor can list them (`AgentProcess.unitPids`). */
+  readonly unitPids?: () => Promise<readonly number[]>;
 };
 
 /** An ACP `session/update`'s update, as the agent sent it: vendor-owned, so loose. */

@@ -1,3 +1,4 @@
+import { processContainmentFromDb } from "@ostra/db";
 import { approveRunner, generateJoinToken, hashJoinToken, rejectRunner, revokeRunner, revokeRunnerInputSchema } from "@ostra/domain";
 import { joinTokenIdSchema, memberIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -21,6 +22,7 @@ const runnerRowSelect = {
   kind: true,
   name: true,
   executor: true,
+  processContainment: true,
   capacity: true,
   labels: true,
   version: true,
@@ -47,6 +49,8 @@ export const runnersRouter = router({
       executor: row.executor,
       /** A `host` runner runs the agent as a process on the machine: "personal, not isolated". */
       isolated: row.executor !== "host",
+      /** How it ends a task's processes, as its status said (ticket 42); `null` before it said. */
+      processContainment: row.processContainment === null ? null : processContainmentFromDb[row.processContainment],
       state: row.state,
       capacity: row.capacity,
       labels: row.labels,
@@ -74,6 +78,7 @@ export const runnersRouter = router({
       kind: row.kind,
       executor: row.executor,
       isolated: row.executor !== "host",
+      processContainment: row.processContainment === null ? null : processContainmentFromDb[row.processContainment],
       state: row.state,
       capacity: row.capacity,
       labels: row.labels,

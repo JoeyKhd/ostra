@@ -227,6 +227,7 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     handlers,
     status: () => ({
       executor: "docker",
+      processContainment: "container",
       capacity: options.capacity,
       freeSlots: draining ? 0 : Math.max(0, options.capacity - running.size),
       labels: options.labels,

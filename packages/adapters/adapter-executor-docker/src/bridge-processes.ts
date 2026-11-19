@@ -1,3 +1,4 @@
+import { newUnitMarker } from "@ostra/adapter-executor-host";
 import type { RunOptions, RunResult, TaskProcesses } from "@ostra/adapter-executor-host";
 import type { Bridge } from "./bridge/bridge-server.ts";
 
@@ -6,6 +7,18 @@ import type { Bridge } from "./bridge/bridge-server.ts";
 // and the task's files stay with the sidecar, on the box's shared task volume.
 
 export const bridgeProcesses = (bridge: Bridge): TaskProcesses => ({
+  // The agent's container is the unit: the init kills every process of the agent's user.
+  createUnit: (_name, marker) =>
+    Promise.resolve({
+      kind: "container",
+      marker: marker ?? newUnitMarker(),
+      pids: null,
+      adopt: () => Promise.resolve(),
+      killAll: async () => {
+        await bridge.reapAll();
+      },
+      dispose: () => Promise.resolve(),
+    }),
   startAgent: async (launch) => {
     try {
       const process = await bridge.spawn({ command: launch.command, args: launch.args, cwd: launch.cwd, env: launch.env });
@@ -13,15 +26,6 @@ export const bridgeProcesses = (bridge: Bridge): TaskProcesses => ({
         ok: true,
         value: {
           process: { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr, pid: process.pid, exited: process.exited },
-          // The agent's container is the unit: the init kills every process of the agent's user.
-          unit: {
-            kind: "container",
-            adopt: () => Promise.resolve(),
-            killAll: async () => {
-              await bridge.reapAll();
-            },
-            dispose: () => Promise.resolve(),
-          },
           stdinEnd: () => {
             process.stdin.end();
           },

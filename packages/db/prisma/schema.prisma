@@ -487,6 +487,9 @@ model Runner {
   /// The runner's Ed25519 public key, raw, base64url. The private half never leaves the runner.
   publicKey       String       @unique
   executor        ExecutorKind
+  /// How the runner ends a task's processes together, as its last status said (ADR 0029,
+  /// ticket 42). `null`: a runner that hasn't said, or an older one.
+  processContainment ProcessContainment?
   capacity        Int
   labels          String[]
   version         String
@@ -1519,6 +1522,14 @@ enum ExecutorKind {
   docker
   host
   kubernetes
+}
+
+/// The protocol's `processContainment` (ticket 42); `enums.ts` maps the hyphens.
+enum ProcessContainment {
+  container
+  job_object
+  cgroup
+  process_tree
 }
 
 enum RunnerState {

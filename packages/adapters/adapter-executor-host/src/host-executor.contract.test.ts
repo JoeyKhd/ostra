@@ -4,12 +4,15 @@ import path from "node:path";
 import { isAlive, killTree } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
 import { defineExecutorContractSuite, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import type { HelperCase } from "@ostra/adapter-sdk/testing";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { HostExecutor } from "./host-executor.ts";
+import { detachedHelperScript } from "./testing/helpers.ts";
 
 // The executor contract suite (ADR 0025, ADR 0029) against the host executor and the git upstream
-// stub. On Windows the detached-helper case is a known gap: without a job object (Q126), a
-// process that detached itself between two tree snapshots outlives the task's stop.
+// stub, with the containment this machine gives (`HostExecutor.start`): a job object on Windows,
+// a cgroup on a Linux runner that has one, the process tree and the task's marker elsewhere. A
+// helper that clears its environment is the recorded gap of the process tree (ticket 42).
 
 const windowsEnv = (): Record<string, string> =>
   process.platform === "win32" ? { SystemRoot: process.env["SystemRoot"] ?? "C:\\Windows" } : {};
@@ -24,6 +27,21 @@ const nodeLaunch = (script: string, box: CreatedBox): AgentLaunch => ({
 
 const pidFile = (box: CreatedBox): string => path.join(box.agentDir, "helper.pid");
 
+const helperCase = (clearEnv: boolean): HelperCase => ({
+  // The agent detaches a helper through a go-between, and both exit at once: no parent is left.
+  launch: (box) => nodeLaunch(detachedHelperScript(pidFile(box), { exitAtOnce: true, clearEnv }), box),
+  readPid: async (box) => {
+    try {
+      const pid = Number((await readFile(pidFile(box), "utf8")).trim());
+      return pid > 0 ? pid : null;
+    } catch {
+      return null;
+    }
+  },
+  isAlive: (pid) => Promise.resolve(isAlive(pid)),
+  kill: (pid) => killTree(pid),
+});
+
 defineExecutorContractSuite({
   name: "host, against the git upstream stub",
   create: async () => {
@@ -31,7 +49,8 @@ defineExecutorContractSuite({
     const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
     await upstream.createRepo("ostra-test/test1");
     const spec = { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, setupScript: "echo ready\n" } };
-    const adapter = new HostExecutor({ dataDir: path.join(root, "runner") });
+    const adapter = await HostExecutor.start({ dataDir: path.join(root, "runner") });
+    const treeOnly = adapter.capabilities.processContainment === "process-tree";
     return {
       adapter,
       fixture: {
@@ -39,31 +58,11 @@ defineExecutorContractSuite({
         proxies: { gitBaseUrl: upstream.origin, modelBaseUrl: "http://127.0.0.1:9/v1", mcpUrl: "http://127.0.0.1:9/mcp" },
         failingSetupSpec: { ...spec, environment: { ...spec.environment, setupScript: "exit 3\n" } },
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
-        detachedHelper: {
-          // The agent starts a helper detached from it, writes the helper's PID, and keeps running.
-          launch: (box) =>
-            nodeLaunch(
-              [
-                "const { spawn } = require('node:child_process');",
-                "const fs = require('node:fs');",
-                "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });",
-                "helper.unref();",
-                `fs.writeFileSync(${JSON.stringify(pidFile(box))}, String(helper.pid));`,
-                "setInterval(() => {}, 1000);",
-              ].join("\n"),
-              box,
-            ),
-          readPid: async (box) => {
-            try {
-              const pid = Number((await readFile(pidFile(box), "utf8")).trim());
-              return pid > 0 ? pid : null;
-            } catch {
-              return null;
-            }
-          },
-          isAlive: (pid) => Promise.resolve(isAlive(pid)),
-          kill: (pid) => killTree(pid),
-        },
+        detachedHelper: helperCase(false),
+        cleanEnvHelper: helperCase(true),
+        ...(treeOnly
+          ? { knownGaps: { cleanEnvHelper: "the process tree ends a helper that left its group by its marker, and this one cleared its environment" } }
+          : {}),
       },
       dispose: async () => {
         await upstream.close();

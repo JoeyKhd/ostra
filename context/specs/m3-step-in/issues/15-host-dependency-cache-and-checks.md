@@ -25,3 +25,4 @@ Spec: `../spec.md`, sections 1 ("On this machine") and 4; ADR 0038 (amended), AD
 ## Comments
 
 - 2026-11-19: milestone 2's ticket 42 gives each task one containment unit on `host` (Q126; ADR 0029, "Process containment on `host`"). A check's process joins its task's unit, so what a check leaves running ends with the task, and the timeout's tree reap isn't the only thing that ends it.
+- 2026-11-19, milestone 2's builder of ticket 42: built. The unit is the box record's `unit` in `HostExecutor`; a program joins it by passing it as `unit` in `runProgram`'s options (`RunOptions.unit`), which adopts the process in the same tick as its spawn. Each process of the unit also gets `OSTRA_TASK_UNIT`, the marker the process-tree unit sweeps by.

@@ -24,8 +24,7 @@ describe("containment", () => {
     expect(ownCgroupPath("1:name=systemd:/x\n")).toBeNull();
   });
 
-  it("uses the process tree off Linux, and on Linux without a delegated cgroup", async () => {
-    expect((await detectContainment({ platform: "win32", cgroupRoot: "/nope", readSelfCgroup: () => Promise.resolve("") })).kind).toBe("process-tree");
+  it("uses the process tree on macOS, and on Linux without a delegated cgroup", async () => {
     expect((await detectContainment({ platform: "darwin", cgroupRoot: "/nope", readSelfCgroup: () => Promise.resolve("") })).kind).toBe("process-tree");
     const failing = await detectContainment({ platform: "linux", cgroupRoot: "/nope", readSelfCgroup: () => Promise.reject(new Error("no /proc")) });
     expect(failing.kind).toBe("process-tree");

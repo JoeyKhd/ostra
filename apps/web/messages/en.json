@@ -509,7 +509,7 @@
     "connectAnother": "Connect another machine: run this in a clone of ostra, then approve the code it prints.",
     "connectFirst": "Connect your machine: run this in a clone of ostra, then approve the code it prints.",
     "hostNote": "Personal runners use the host executor: the agent runs as a process on your machine, not isolated.",
-    "hostNoteWindows": " A process the agent detaches isn't contained.",
+    "hostNoteTreeOnly": " A process the agent detaches isn't contained.",
     "personalOf": "personal · {name}",
     "justNow": "just now",
     "seenAgo": "seen {age} ago",

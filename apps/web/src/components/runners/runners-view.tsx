@@ -19,7 +19,7 @@ import { NewPoolSheet } from "./new-pool-sheet";
 import { PoolProperties } from "./pool-properties";
 import { PoolsTable } from "./pools-table";
 import { MyRunnerRows, RunnerRows } from "./runner-rows";
-import { adminLede } from "./runner-words";
+import { adminLede, hostNote } from "./runner-words";
 
 type Runner = RouterOutputs["runners"]["mine"][number];
 
@@ -41,7 +41,6 @@ const RunnerSkeleton = () => <SkeletonRows rows={3} bars={["w-[90px]", "w-[80px]
 /** Your machine: the member's own runners, then the command that connects one (everyone sees it). */
 const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: string; readonly mine: readonly Runner[] | undefined; readonly now: number }) => {
   const command = `pnpm ostra runner --server ${corePublicUrl}`;
-  const windows = mine?.some((runner) => runner.os?.platform === "win32") === true;
   return (
     <Section title={t("runners.yourMachine")} {...(mine === undefined ? {} : { count: mine.length })}>
       <div className="overflow-x-auto">
@@ -54,10 +53,7 @@ const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: str
       </div>
       <p className="mt-3 flex items-start gap-2 text-sm text-faint">
         <ShieldIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
-        <span>
-          {t("runners.hostNote")}
-          {windows ? t("runners.hostNoteWindows") : ""}
-        </span>
+        <span>{hostNote(mine)}</span>
       </p>
     </Section>
   );

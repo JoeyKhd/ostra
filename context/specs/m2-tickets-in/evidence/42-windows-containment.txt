@@ -1,0 +1,32 @@
+# Ticket 42 on Windows: the host executor's containment tests, run 2026-11-19T03:01Z
+# win32 x64 10.0.26200 Node v24.14.0
+# Command: npx vitest run --reporter=verbose src/job-object.test.ts src/host-containment.test.ts src/host-executor.contract.test.ts (in packages/adapters/adapter-executor-host)
+
+ RUN  v5.1.1 ~/ow/fu-m2b/packages/adapters/adapter-executor-host
+ ✓ src/job-object.test.ts > the job object's layouts and prototypes > F-014: lays out JOBOBJECT_EXTENDED_LIMIT_INFORMATION as 64-bit Windows does, with only LimitFlags set 1ms
+ ✓ src/job-object.test.ts > the job object's layouts and prototypes > F-014: reads JOBOBJECT_BASIC_PROCESS_ID_LIST: two counts, then 8-byte PIDs 1ms
+ ✓ src/job-object.test.ts > the job object's layouts and prototypes > F-014: declares the seven kernel32 functions with fixed prototypes 0ms
+ ✓ src/job-object.test.ts > koffi's loading > F-014: koffi isn't imported on Linux or macOS 2ms
+ ✓ src/job-object.test.ts > koffi's loading > F-014: a koffi that can't load is a reason, not a throw 0ms
+ ✓ src/job-object.test.ts > a job object on Windows > F-014: holds a process, lists it, and ends it with TerminateJobObject 10ms
+ ✓ src/job-object.test.ts > a job object on Windows > F-014: ends what it holds when its last handle closes (kill-on-close) 3ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > has a kebab-case name and its kind 1ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > declares every capability, with its type 0ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > reports itself healthy against its fakes 52ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > takes a box through create, prepare, the agent, stop and release 1025ms
+ ✓ src/host-containment.test.ts > a host task's processes (ticket 42) > F-014: a detached grandchild whose parent exited ends when the task stops 1188ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > refuses to start an agent in a released box 568ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > reports a failing setup script by its exit code, not as an error 575ms
+ ✓ src/host-containment.test.ts > a host task's processes (ticket 42) > F-014: a daemon the setup script leaves behind ends with the task 1153ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > stops every process of the task, a detached helper included (ADR 0029) 1167ms
+ ✓ src/host-containment.test.ts > a host task's processes (ticket 42) > F-014: a runner killed hard leaves no process of its task 1377ms
+ ✓ src/host-executor.contract.test.ts > executor contract: host, against the git upstream stub > stops a detached helper that also cleared its environment (ticket 42) 1175ms
+ ✓ src/host-containment.test.ts > a host task's processes (ticket 42) > F-014: with koffi faked to fail, the executor falls back to the tree, says why in its log, and reports process-tree 2318ms
+ ✓ src/host-containment.test.ts > a host task's processes (ticket 42) > F-014: gives the agent and the setup script the task's marker, the same for both 1134ms
+ ↓ src/host-containment.test.ts > a Linux runner without a cgroup of its own > F-014: on Linux with no cgroup of its own (the probe faked), a helper that left the agent's group is ended by its marker
+ ✓ src/host-containment.test.ts > the marker sweep's readers > F-014: finds the processes whose /proc environ holds the marker, and no other 2ms
+ ✓ src/host-containment.test.ts > the marker sweep's readers > F-014: finds the processes `ps -E` shows with the marker, and no other 0ms
+ Test Files  3 passed (3)
+      Tests  22 passed | 1 skipped (23)
+   Start at  04:01:21
+   Duration  8.24s (tests 88%, transform 8%, import 4%)

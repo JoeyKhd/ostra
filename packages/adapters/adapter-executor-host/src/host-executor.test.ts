@@ -296,7 +296,9 @@ describe("the host executor", () => {
     const parsed: unknown = JSON.parse(keys);
     const names = Array.isArray(parsed) ? parsed.map(String) : [];
     expect(names).toContain("OSTRA_ONLY");
-    const extra = names.filter((name) => name !== "OSTRA_ONLY" && name !== "SystemRoot");
+    // The task's containment marker is the one variable the executor adds (ticket 42).
+    expect(names).toContain("OSTRA_TASK_UNIT");
+    const extra = names.filter((name) => name !== "OSTRA_ONLY" && name !== "SystemRoot" && name !== "OSTRA_TASK_UNIT");
     if (process.platform === "win32") {
       expect(extra.filter((name) => !WINDOWS_REQUIRED_ENV.includes(name.toUpperCase()))).toEqual([]);
     } else {
@@ -330,6 +332,7 @@ describe("the executor's git, where the agent controls the checkout", () => {
     return new HostExecutor({
       dataDir: path.join(root, "runner-recorded"),
       processes: {
+        createUnit: local.createUnit,
         startAgent: local.startAgent,
         run: (command, args, options) => {
           calls.push({ command, args });

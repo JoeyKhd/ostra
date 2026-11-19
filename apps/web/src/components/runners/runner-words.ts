@@ -84,3 +84,11 @@ export const adminLede = (runners: readonly Counted[], pools: number, ownMachine
       : ownMachine ? t("runners.acrossPoolsAndMachine", { pools }) : t("runners.acrossPools", { pools });
   return t("runners.ledeAdmin", { online: totals.online, total: totals.total, busy: totals.busy, slots: totals.slots, across });
 };
+
+/**
+ * The line under Your machine (runners.md, F-014, Q126): it adds that a detached process isn't
+ * contained when one of the member's runners reports `process-tree` containment, whatever its
+ * system: macOS, Linux without a cgroup of its own, Windows when its job object couldn't be made.
+ */
+export const hostNote = (mine: readonly Pick<RouterOutputs["runners"]["mine"][number], "processContainment">[] | undefined): string =>
+  `${t("runners.hostNote")}${mine?.some((runner) => runner.processContainment === "process-tree") === true ? t("runners.hostNoteTreeOnly") : ""}`;

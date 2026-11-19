@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
-import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels } from "@ostra/db";
+import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels, processContainmentToDb } from "@ostra/db";
 import { awaitsApproval, notifyRunnerInTx, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
 import type { RunnerInput, RunnerLifecycle } from "@ostra/domain";
 import {
@@ -353,13 +353,16 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     statuses.set(runner.runnerId, status);
     const row = await db.runner.findFirst({
       where: { id: runner.runnerId, organizationId: runner.organizationId },
-      select: { executor: true, capacity: true, labels: true, version: true },
+      select: { executor: true, capacity: true, labels: true, version: true, processContainment: true },
     });
     if (row === null) {
       return;
     }
+    // A status without it (a sidecar, an older runner) keeps what the row says (ticket 42).
+    const containment = status.processContainment === undefined ? row.processContainment : processContainmentToDb[status.processContainment];
     const changed =
       row.executor !== status.executor ||
+      row.processContainment !== containment ||
       row.capacity !== status.capacity ||
       row.version !== status.version ||
       row.labels.length !== status.labels.length ||
@@ -371,7 +374,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     await db.$transaction(async (tx) => {
       await tx.runner.update({
         where: { id: runner.runnerId },
-        data: { executor: status.executor, capacity: status.capacity, labels: [...status.labels], version: status.version },
+        data: { executor: status.executor, capacity: status.capacity, labels: [...status.labels], version: status.version, processContainment: containment },
       });
       await context.ports.notices.emitInTx(tx, {
         organizationId: runner.organizationId,

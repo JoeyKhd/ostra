@@ -483,7 +483,7 @@ const connectAgent = async (
         const stopReason = stopReasonSchema.safeParse(parsed.data.stopReason);
         const reason: StopReason = stopReason.success ? stopReason.data : "end_turn";
         if (reason === "cancelled" && watch !== undefined) {
-          await watch.reapBornSince(turn.startedAt);
+          await watch.reapBornSince(turn.startedAt, await io.unitPids?.().catch(() => []));
         }
         return ok({ stopReason: reason });
       } finally {
