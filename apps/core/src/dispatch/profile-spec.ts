@@ -126,9 +126,18 @@ export const profileSpecParts = async (
     await db.taskApprovalRule.findMany({ where: { taskId: task.id, organizationId: task.organizationId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })
   ).map((row) => taskRuleSchema.parse({ ruleId: row.id, tool: row.tool, pattern: row.pattern }));
 
-  // Plan mode only on the task's first session, before any plan was proposed (ADR 0049, Q169).
+  // Plan mode on the task's first session, before any plan was proposed (ADR 0049, Q169), and on a
+  // session a plan revision reopened (ticket 18: "Ask for changes" after the box idled out), whose
+  // message carries `intent: "plan-revision"` while the plan still waits.
   const earlier = await db.session.count({ where: { taskId: task.id, id: { not: session.id } } });
-  const firstTurnMode: TurnMode = profile.planFirst && task.planState === "none" && earlier === 0 ? "plan" : "build";
+  const revision =
+    task.planState === "proposed"
+      ? await db.event.findFirst({
+          where: { taskId: task.id, sessionId: session.id, kind: "user.message", payload: { path: ["intent"], equals: "plan-revision" } },
+          select: { seq: true },
+        })
+      : null;
+  const firstTurnMode: TurnMode = profile.planFirst && ((task.planState === "none" && earlier === 0) || revision !== null) ? "plan" : "build";
   return {
     ok: true,
     parts: { skills, mcpServers, approvalRules: rules.data, taskRules, planFirst: profile.planFirst, firstTurnMode },

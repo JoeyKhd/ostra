@@ -10,6 +10,7 @@ import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import { recordApprovalAutoAnsweredInTx, recordApprovalClosedInTx, recordApprovalRequestedInTx } from "./approvals.ts";
 import { holdProviderInTx } from "./hold-provider.ts";
+import { recordPlanProposedInTx, recordQuestionAskedInTx } from "./plans-questions.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx, setNeedsYouSummaryInTx } from "./needs-you-items.ts";
 import { releaseLeaseInTx } from "./record-session-end.ts";
@@ -407,6 +408,17 @@ const applyEffects = async (
         await reloadSession();
         await reloadTask();
         break;
+      case "question.asked":
+        // Milestone 3 (ticket 18, F-024): the driver's item, needs you, the fan-out.
+        await recordQuestionAskedInTx(deps, { task: taskRow, session: current, event });
+        await reloadSession();
+        await reloadTask();
+        break;
+      case "plan.proposed":
+        // Milestone 3 (ticket 18, F-063): planState proposed, the plan item, needs you, the fan-out.
+        await recordPlanProposedInTx(deps, { task: taskRow, event });
+        await reloadTask();
+        break;
       case "workspace.files_outside_repos":
         // Q133, ticket 44: one open item per task, updated as the set changes, closed when it's empty.
         await applyFilesOutsideReposInTx(deps, taskRow, event.paths, event.more);
@@ -490,8 +502,8 @@ const applyEffects = async (
       case "tool.completed":
       case "tool.failed":
       case "approval.answered":
-      case "question.asked":
       case "question.answered":
+      // A question the turn's end closed keeps its item open: its answer reopens the task (ticket 18).
       case "question.closed":
       case "plan.updated":
       case "compaction.updated":
@@ -510,7 +522,6 @@ const applyEffects = async (
       // Protocol minor 2 (milestone 3): stored for now. Tickets 18 (plans), 23 (checks), 26
       // (snapshots) and 27 (services) give them their reactions; the server-only ones never come
       // from a runner, since the gateway refuses them.
-      case "plan.proposed":
       case "plan.answered":
       case "snapshot.built":
       case "snapshot.failed":

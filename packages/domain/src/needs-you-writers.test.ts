@@ -72,6 +72,7 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       // Ticket 24: a ticket closed while its task runs, and "Keep working".
       "packages/domain/src/use-cases/after-merge.ts",
       "packages/domain/src/use-cases/ingest-events.ts",
+      "packages/domain/src/use-cases/plans-questions.ts",
       "packages/domain/src/use-cases/record-session-end.ts",
       "packages/domain/src/use-cases/reopen.ts",
       "packages/domain/src/use-cases/sessions-m2.ts",

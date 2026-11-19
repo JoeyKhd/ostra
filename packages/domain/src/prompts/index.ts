@@ -165,3 +165,21 @@ export const expiredApprovalAnswerPrompt = (input: {
       return input.decision satisfies never;
   }
 };
+
+// ---------- a question answered after its turn ended (F-024, Q168; ticket 18) ----------
+
+/**
+ * The reopen's message when the driver answers a question whose turn already ended: the question
+ * and each answer, by its field's label, as data.
+ */
+export const lateQuestionAnswerPrompt = (input: {
+  readonly question: string;
+  readonly fields: readonly { readonly id: string; readonly label: string }[];
+  readonly answers: Readonly<Record<string, string>>;
+}): string =>
+  [
+    "Your last turn ended before a member answered your question. They have answered it now: carry on with their answers.",
+    DATA_LINE,
+    markedBlock("question", input.question),
+    markedBlock("answers", input.fields.map((field) => `${field.label === "" ? field.id : field.label}: ${input.answers[field.id] ?? ""}`).join("\n")),
+  ].join("\n\n");
