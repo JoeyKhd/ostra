@@ -1,13 +1,16 @@
 # syntax=docker/dockerfile:1.7
-# The runner image (ADR 0046): the `ostra` CLI, which is a pool runner (`runner`) and, in each
-# docker box, its sidecar (`sidecar`). It holds git and git-lfs for the sidecar's checkouts and
-# commits on the box's task volume, and no agent: the agent runs in the base image's container.
+# The runner image (ADR 0046): the `ostra` CLI, built from apps/runner, which is a pool runner
+# (`ostra runner`) and, in each box, its sidecar (`ostra sidecar`). It holds git and git-lfs for
+# the sidecar's checkouts and commits on the box's task volume, and no agent: the agent runs in the
+# base image's container. `ostra --version` prints the release version; an image runner installs
+# no other version (ADR 0034: its tag is the pin).
 #
-#   docker build -f deploy/Dockerfile.runner -t ostra/runner:0.0.0 .
+#   pnpm images:build                  (Linux with Docker: all three, tagged with the release)
+#   pnpm check:images                  (anywhere: the static checks, packages/deploy-checks)
 #
-# Written for milestone 1, built on Linux only (ticket 22).
+# Every FROM is pinned by digest. Built live in milestone 5's Linux proof job (ticket 35).
 
-FROM node:24.14.0-bookworm-slim AS base
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 
@@ -22,14 +25,19 @@ COPY --from=prune /src/out/json/ ./
 RUN pnpm install --frozen-lockfile --prod
 COPY --from=prune /src/out/full/ ./
 
-FROM node:24.14.0-bookworm-slim AS runtime
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS runtime
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends git git-lfs ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=build --chown=node:node /app /app
-# The box's task volume is seeded from this folder: owned by the agent's user (uid 1000, `node`).
-RUN mkdir -p /task /run/ostra && chown node:node /task
+# `ostra` on the PATH: the docker executor runs the sidecar as this image's entrypoint with
+# `sidecar`, and the kubernetes executor's pod runs `ostra sidecar`.
+RUN printf '#!/bin/sh\nexec node /app/apps/runner/src/main.ts "$@"\n' > /usr/local/bin/ostra \
+  && chmod 0755 /usr/local/bin/ostra \
+  && mkdir -p /task /run/ostra && chown node:node /task
+# The box's task volume is seeded from /task: owned by the agent's user (uid 1000, `node`), which
+# the sidecar runs as too.
 USER node
 WORKDIR /task
-ENTRYPOINT ["node", "/app/apps/runner/src/main.ts"]
+ENTRYPOINT ["ostra"]
 CMD ["runner"]

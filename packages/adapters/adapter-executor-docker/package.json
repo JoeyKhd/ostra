@@ -21,7 +21,6 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@ostra/adapter-opencode": "workspace:*",
     "vitest": "5.1.1"
   }
 }

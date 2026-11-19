@@ -1,0 +1,24 @@
+{
+  "name": "@ostra/deploy-checks",
+  "version": "0.0.0",
+  "description": "The static checks of the three images, the compose file and the Helm charts (milestone 5, tickets 22 and 23)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=4"
+  },
+  "dependencies": {
+    "@ostra/adapter-opencode": "workspace:*",
+    "@ostra/adapter-sdk": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "5.1.1"
+  }
+}

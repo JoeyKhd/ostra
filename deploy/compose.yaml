@@ -4,14 +4,16 @@
 # required settings, each with a working default (docs/configuration.md). The first account needs
 # the setup token the server prints in its log at first start (Q117).
 #
-# Written for milestone 1 and run on Linux only: the machine milestone 1 was built on has no
-# Docker (ticket 22). Until `docker compose up` runs there, F-001 stays `building`.
+# The server, runner and base images are the ones `pnpm images:build` tags with the release
+# version (`pnpm check:images` keeps them equal); every other image is pinned by digest. Run on
+# Linux only: until `docker compose up` runs in milestone 5's Linux proof job (ticket 35), F-001
+# stays `building`.
 
 name: ostra
 
 services:
   postgres:
-    image: postgres:18.6-bookworm
+    image: postgres:18.6-bookworm@sha256:f1ea2a1a4fb7b68d4836be1fdcb8a6466a89b072158bf9d97663600538c294c5
     environment:
       POSTGRES_USER: ostra
       POSTGRES_DB: ostra

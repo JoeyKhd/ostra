@@ -1,13 +1,15 @@
 # syntax=docker/dockerfile:1.7
 # ostra's base image (ADR 0046, ADR 0038): the agent's container for an environment that names no
 # image of its own. The tools, OpenCode pinned and checked, the models.dev catalog as a file, and
-# the box's small init under tini. It holds no credential and no ostra server code.
+# the box's small init under tini. It holds no credential and no ostra server code, and nothing is
+# downloaded when a box starts.
 #
-#   docker build -f deploy/Dockerfile.base -t ostra/base:0.0.0 .
+#   pnpm images:build                  (Linux with Docker: all three, tagged with the release)
+#   pnpm check:images                  (anywhere: the static checks, packages/deploy-checks)
 #
-# Written for milestone 1, built on Linux only (ticket 22). F-019's "base image pin" waits for it.
+# Every FROM is pinned by digest. Built live in milestone 5's Linux proof job (ticket 35).
 
-FROM node:24.14.0-bookworm-slim AS base
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 
@@ -24,9 +26,11 @@ COPY --from=prune /src/out/json/ ./
 RUN pnpm install --frozen-lockfile --prod
 COPY --from=prune /src/out/full/ ./
 
-# OpenCode 2.3.2, installed with its scripts off, and its platform binary checked against the
-# SHA-256 that @ostra/adapter-opencode pins (`pinnedChecksums`): a mismatch fails the build.
-FROM node:24.14.0-bookworm-slim AS opencode
+# OpenCode at the adapter's version (`OPENCODE_VERSION`), installed with its scripts off, and its
+# platform binary checked against the SHA-256 that @ostra/adapter-opencode pins in the repo
+# (`pinnedChecksums`): a mismatch fails the build. The expected sums are written here, never read
+# from the download; `pnpm check:images` fails when they differ from the pins.
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS opencode
 ARG TARGETARCH
 WORKDIR /opt/opencode
 RUN npm install --ignore-scripts --no-audit --no-fund --prefix /opt/opencode @opencode/cli@2.3.2
@@ -41,20 +45,24 @@ RUN set -eu; \
   mkdir -p /opt/opencode/bin; \
   ln -s "$bin" /opt/opencode/bin/opencode
 
-FROM node:24.14.0-bookworm-slim AS runtime
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS runtime
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends \
      tini bash git git-lfs ca-certificates curl ripgrep python3 build-essential procps \
   && rm -rf /var/lib/apt/lists/*
-RUN corepack enable
 COPY --from=opencode /opt/opencode /opt/opencode
 COPY --from=init /app /opt/ostra/app
 COPY packages/adapters/adapter-model-endpoint/catalog/models-dev.json /opt/ostra/catalog/models-dev.json
-# The init's fixed path, which the box's create body names (`boxes.ts`).
+# The init's fixed path, which the box's create body names (`boxes.ts`, `pod.ts`).
 RUN mkdir -p /opt/ostra/init \
   && printf 'import "/opt/ostra/app/packages/adapters/adapter-executor-docker/src/init/main.ts";\n' > /opt/ostra/init/main.ts \
   && mkdir -p /task && chown node:node /task
-ENV PATH=/opt/opencode/bin:$PATH
+# OpenCode reads the catalog from the file and fetches nothing: no catalog, no update. A task's
+# launch names its own catalog file over this one (`@ostra/adapter-opencode`, `config.ts`).
+ENV PATH=/opt/opencode/bin:$PATH \
+  OPENCODE_MODELS_PATH=/opt/ostra/catalog/models-dev.json \
+  OPENCODE_DISABLE_MODELS_FETCH=1 \
+  OPENCODE_DISABLE_AUTOUPDATE=1
 WORKDIR /task
 # tini is PID 1 and reaps zombies; the init runs under it as root and starts every process of the
 # task as the agent's user (uid 1000, `node`).
