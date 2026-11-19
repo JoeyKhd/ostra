@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretRef } from "@ostra/adapter-sdk";
-import { apiFormatFromDb } from "@ostra/db";
+import { apiFormatFromDb, effortLevelFromDb } from "@ostra/db";
 import {
   agentDisplayName,
   archiveAgentProfile,
@@ -27,6 +27,8 @@ import {
   approvalToolSchema,
   blobIdSchema,
   HTTP_HEADER_VALUE,
+  clampEffort,
+  effortLevelSchema,
   memberIdSchema,
   modelIdSchema,
   projectIdSchema,
@@ -34,10 +36,12 @@ import {
   ruleMatches,
   taskKindSchema,
 } from "@ostra/protocol";
-import type { AgentProfileId, ApprovalRequestSubject, ApprovalRule, ApprovalTool, OrganizationId, RuleContext } from "@ostra/protocol";
+import type { AgentProfileId, ApprovalRequestSubject, ApprovalRule, ApprovalTool, EffortLevel, OrganizationId, RuleContext } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { effortLevelViewSchema, levelRefusal, levelsOfModel, loadModelEffort, reasoningOf, reasoningSourceSchema, toLevelViews } from "../services/agent-effort.ts";
+import type { AgentEffort } from "../services/agent-effort.ts";
 import { adminProcedure, loadProjectAccess, memberProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-021, F-026 (the rules), F-063 (the switch), ticket 34: agent profiles. Any member sees the
@@ -93,6 +97,8 @@ const profileRowSchema = z.object({
   agentName: z.string(),
   builtIn: z.boolean(),
   model: modelViewSchema.nullable(),
+  /** F-137: how much its model reasons; a new task copies it. */
+  effort: effortLevelSchema,
   planFirst: z.boolean(),
   access: accessViewSchema,
   archivedAt: z.number().nullable(),
@@ -104,6 +110,36 @@ const profileRowSchema = z.object({
   defaults: z.array(z.object({ projectId: projectIdSchema, projectName: z.string(), kind: taskKindSchema })),
   lastEdit: lastEditSchema.nullable(),
 });
+
+/**
+ * The Effort control's choices on one model, for one agent (F-137, ADR 0066): the levels, `Default`
+ * first (`Default` alone: no control), the level the stored one runs at by the clamp and whether it
+ * moved, where the model's controls came from (`null`: nobody said, so a custom model doesn't
+ * reason), and whether the agent takes a level at all.
+ */
+const effortOptionsSchema = z.object({
+  levels: z.array(effortLevelViewSchema),
+  runsAt: effortLevelSchema,
+  adjusted: z.boolean(),
+  reasoningSource: reasoningSourceSchema,
+  customModel: z.boolean(),
+  agentTakesEffort: z.boolean(),
+});
+
+type ModelForEffort = Parameters<typeof levelsOfModel>[2] & { readonly catalogId: string | null };
+
+const effortOptionsOf = (effort: AgentEffort, adapter: string, model: ModelForEffort | null, stored: EffortLevel): z.infer<typeof effortOptionsSchema> => {
+  const levels = model === null ? (["default"] as const) : levelsOfModel(effort, adapter, model);
+  const clamped = clampEffort(stored, levels);
+  return {
+    levels: toLevelViews(levels),
+    runsAt: clamped.level,
+    adjusted: clamped.adjusted,
+    reasoningSource: model === null ? null : reasoningOf(model).source,
+    customModel: model !== null && model.catalogId === null,
+    agentTakesEffort: effort.capabilityOf(adapter) !== "none",
+  };
+};
 
 const mcpViewSchema = z.discriminatedUnion("transport", [
   z.object({
@@ -134,6 +170,8 @@ const profileDetailSchema = profileRowSchema.omit({ skills: true, mcpServers: tr
   archivedBy: z.object({ name: z.string().nullable(), at: z.number() }).nullable(),
   /** Whether the viewer can edit it: an organization admin, and it isn't archived. */
   canEdit: z.boolean(),
+  /** F-137: what the Effort control offers on its model (ADR 0066). */
+  effortOptions: effortOptionsSchema,
 });
 
 type ProfileRow = Awaited<ReturnType<typeof loadRows>>[number];
@@ -220,6 +258,7 @@ const toRow = async (
               providerName: row.model.provider.name,
               apiFormat: apiFormatFromDb[row.model.provider.apiFormat],
             },
+      effort: effortLevelFromDb[row.effort],
       planFirst: row.planFirst,
       access:
         row.access === "everyone"
@@ -288,6 +327,8 @@ const saveInput = z.strictObject({
   access: memberAccessInput,
   mcpServers: z.array(mcpServerInput).max(profileLimits.mcpServersMax),
   skills: z.array(skillInput).max(profileLimits.skillsMax),
+  /** F-137: one of the model's levels. Absent keeps the stored level (`default` for a new profile). */
+  effort: effortLevelSchema.optional(),
 });
 
 const saveCodes = {
@@ -450,6 +491,7 @@ export const agentProfilesRouter = router({
         createdBy: { name: nameOf(created?.actorId ?? null), at: (created?.createdAt ?? row.createdAt).getTime() },
         archivedBy: archived === undefined ? null : { name: nameOf(archived.actorId), at: archived.createdAt.getTime() },
         canEdit: ctx.scope.role === "admin" && row.archivedAt === null,
+        effortOptions: effortOptionsOf(ctx.deps.agentEffort, row.adapter, row.model, effortLevelFromDb[row.effort]),
       };
     }),
 
@@ -506,6 +548,25 @@ export const agentProfilesRouter = router({
       return [...offered.filter((profile) => profile.isDefault), ...offered.filter((profile) => !profile.isDefault)];
     }),
 
+  /**
+   * F-137 (ADR 0066): the levels an agent offers on a model, for the editor's Effort control as the
+   * admin picks the model, and what a stored level runs at there. Any member; another
+   * organization's model is `NOT_FOUND`.
+   */
+  effortLevels: memberProcedure
+    .input(z.strictObject({ adapter: z.string().max(100), modelId: modelIdSchema, stored: effortLevelSchema.optional() }))
+    .output(effortOptionsSchema)
+    .query(async ({ ctx, input }) => {
+      const model = await ctx.deps.db.model.findFirst({
+        where: { id: input.modelId, organizationId: ctx.scope.organizationId },
+        include: { provider: { select: { apiFormat: true } } },
+      });
+      if (model === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No such model" });
+      }
+      return effortOptionsOf(ctx.deps.agentEffort, input.adapter, model, input.stored ?? "default");
+    }),
+
   /** The four presets, each with fresh rule IDs, for the editor's one-click buttons. */
   presets: memberProcedure
     .output(z.array(z.object({ preset: approvalRulePresetSchema, name: z.string(), rules: z.array(approvalRuleSchema) })))
@@ -528,6 +589,14 @@ export const agentProfilesRouter = router({
         input.profileId === undefined ? null : await db.agentProfile.findFirst({ where: { id: input.profileId, organizationId }, select: { mcpServers: true } });
       if (input.profileId !== undefined && existing === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No such agent profile" });
+      }
+      // F-137: a level the model doesn't offer is refused, naming the ones it does (ADR 0066, Q289).
+      if (input.effort !== undefined && input.effort !== "default") {
+        const offered = input.modelId === null ? null : await loadModelEffort(db, ctx.deps.agentEffort, organizationId, input.modelId, input.adapter);
+        const levels = offered?.levels ?? ["default"];
+        if (!levels.includes(input.effort)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: levelRefusal(input.effort, levels) });
+        }
       }
       const before = existing === null ? [] : parseServers(existing.mcpServers);
       const written: SecretRef[] = [];
@@ -578,6 +647,7 @@ export const agentProfilesRouter = router({
         access: input.access,
         mcpServers: servers,
         skills: input.skills,
+        ...(input.effort === undefined ? {} : { effort: input.effort }),
       });
       if (!result.ok) {
         await forgetWritten();

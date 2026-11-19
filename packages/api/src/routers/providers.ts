@@ -1,4 +1,4 @@
-import { syncProviderModels, addModelProvider } from "@ostra/domain";
+import { BUILT_IN_PROFILE_ADAPTER, syncProviderModels, addModelProvider, setModelReasoningInTx } from "@ostra/domain";
 import {
   addModelProviderInputSchema,
   apiFormatSchema,
@@ -6,12 +6,14 @@ import {
   httpUrlSchema,
   modelIdSchema,
   providerIdSchema,
+  reasoningControlsSchema,
 } from "@ostra/protocol";
 import { mapModel, mapModelProvider } from "@ostra/db";
 import type { CatalogEntry, ModelEndpoint } from "@ostra/adapter-sdk";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { effortLevelViewSchema, levelsOfModel, reasoningOf, reasoningSourceSchema, toLevelViews } from "../services/agent-effort.ts";
 import { adminProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-088, F-014 (allow on personal runners), ticket 31: model providers. Admin only, organization
@@ -85,7 +87,23 @@ const modelViewSchema = z.object({
   inputPricePerMTok: z.number().nullable(),
   outputPricePerMTok: z.number().nullable(),
   logoPath: z.string().nullable(),
+  /**
+   * F-137 (ADR 0066): the controls the model runs with (an admin's, else the catalog's, else none),
+   * where they came from (`null`: nobody said, so a custom model doesn't reason), the catalog's own
+   * beside an override, the levels the agent offers on it, and whether the catalog prices reasoning
+   * apart from output (v1 prices it as output).
+   */
+  reasoning: z.object({
+    controls: reasoningControlsSchema,
+    source: reasoningSourceSchema,
+    catalog: reasoningControlsSchema.nullable(),
+    levels: z.array(effortLevelViewSchema),
+    reasoningPriceDiffers: z.boolean(),
+  }),
 });
+
+/** The catalog lists a reasoning price apart from output (ticket 58); a custom model has none. */
+const reasoningPriceDiffersOf = (entry: CatalogEntry | undefined): boolean => entry?.reasoningPriceDiffers ?? false;
 
 const toCatalogView = (entry: CatalogEntry) => ({
   kind: "catalog" as const,
@@ -277,11 +295,17 @@ export const providersRouter = router({
 
   /** A provider's models, matched to the catalog (with its logo path) or custom (editable). */
   models: adminProcedure
-    .input(z.strictObject({ providerId: providerIdSchema }))
+    .input(
+      z.strictObject({
+        providerId: providerIdSchema,
+        /** F-137: the agent whose levels each model offers. Default: the built-in profile's, OpenCode. */
+        adapter: z.string().max(100).optional(),
+      }),
+    )
     .output(z.array(modelViewSchema))
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.scope.organizationId;
-      const provider = await ctx.deps.db.modelProvider.findFirst({ where: { id: input.providerId, organizationId }, select: { id: true } });
+      const provider = await ctx.deps.db.modelProvider.findFirst({ where: { id: input.providerId, organizationId }, select: { id: true, apiFormat: true } });
       if (provider === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No such model provider" });
       }
@@ -289,9 +313,12 @@ export const providersRouter = router({
         ctx.deps.db.model.findMany({ where: { providerId: input.providerId, organizationId }, orderBy: { endpointModelId: "asc" } }),
         ctx.deps.catalog.entries(),
       ]);
-      const logos = new Map(catalog.map((entry) => [entry.catalogId, entry.logoPath] as const));
+      const entries = new Map(catalog.map((entry) => [entry.catalogId, entry] as const));
+      const adapter = input.adapter ?? BUILT_IN_PROFILE_ADAPTER;
       return rows.map((row) => {
         const model = mapModel(row);
+        const reasoning = reasoningOf(row);
+        const entry = model.catalogId === null ? undefined : entries.get(model.catalogId);
         return {
           id: model.id,
           endpointModelId: model.endpointModelId,
@@ -303,12 +330,24 @@ export const providersRouter = router({
           maxOutputTokens: model.maxOutputTokens,
           inputPricePerMTok: model.inputPricePerMTok === null ? null : model.inputPricePerMTok.toNumber(),
           outputPricePerMTok: model.outputPricePerMTok === null ? null : model.outputPricePerMTok.toNumber(),
-          logoPath: model.catalogId === null ? null : (logos.get(model.catalogId) ?? null),
+          logoPath: entry?.logoPath ?? null,
+          reasoning: {
+            controls: reasoning.controls,
+            source: reasoning.source,
+            catalog: reasoning.catalog,
+            levels: toLevelViews(levelsOfModel(ctx.deps.agentEffort, adapter, { ...row, provider: { apiFormat: provider.apiFormat } })),
+            reasoningPriceDiffers: reasoningPriceDiffersOf(entry),
+          },
         };
       });
     }),
 
-  /** Edits a custom model: its name, limits and prices. A catalog model takes the catalog's values. */
+  /**
+   * Edits a custom model: its name, limits and prices. A catalog model takes the catalog's values,
+   * except its reasoning (F-137, ADR 0066, Q286): on any model an organization admin sets the
+   * controls its endpoint takes, or `null` to go back to the catalog's (none, for a custom model).
+   * A catalog refresh never touches them. Each change is an audit entry.
+   */
   updateModel: adminProcedure
     .input(
       z.strictObject({
@@ -318,6 +357,7 @@ export const providersRouter = router({
         maxOutputTokens: z.number().int().positive().max(100_000_000).nullable().optional(),
         inputPricePerMTok: z.number().min(0).max(MAX_PRICE).nullable().optional(),
         outputPricePerMTok: z.number().min(0).max(MAX_PRICE).nullable().optional(),
+        reasoning: reasoningControlsSchema.nullable().optional(),
       }),
     )
     .output(z.object({ id: modelIdSchema }))
@@ -329,8 +369,19 @@ export const providersRouter = router({
         if (model === null) {
           throw new TRPCError({ code: "NOT_FOUND", message: "No such model" });
         }
-        if (model.catalogId !== null) {
-          throw new TRPCError({ code: "CONFLICT", message: "A catalog model takes the catalog's values: only a custom model is edited" });
+        const { reasoning } = input;
+        const editsFields = [input.displayName, input.contextWindow, input.maxOutputTokens, input.inputPricePerMTok, input.outputPricePerMTok].some(
+          (value) => value !== undefined,
+        );
+        if (model.catalogId !== null && editsFields) {
+          throw new TRPCError({ code: "CONFLICT", message: "A catalog model takes the catalog's values: only its reasoning is edited" });
+        }
+        if (reasoning !== undefined) {
+          const set = await setModelReasoningInTx(ports, tx, ctx.scope, { modelId: input.modelId, controls: reasoning });
+          unwrap(set, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
+        }
+        if (!editsFields) {
+          return { id: input.modelId };
         }
         await tx.model.update({
           where: { id: model.id },

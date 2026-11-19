@@ -292,7 +292,7 @@ describe("tasks.get", () => {
     await harness.test.db.session.update({ where: { id: task.sessionId }, data: { inputTokens: 1_200, outputTokens: 300, cacheReadTokens: 5_000, cacheWriteTokens: 400 } });
     await harness.test.db.task.update({ where: { id: task.taskId }, data: { spentMicroUsd: 42_000 } });
     const got = await caller.tasks.get({ taskId: task.taskId });
-    expect(got.usage?.totals).toEqual({ inputTokens: 1_200, outputTokens: 300, cacheReadTokens: 5_000, cacheWriteTokens: 400, spentMicroUsd: 42_000, agentMs: 61_000, estimated: true });
+    expect(got.usage?.totals).toEqual({ inputTokens: 1_200, outputTokens: 300, cacheReadTokens: 5_000, cacheWriteTokens: 400, spentMicroUsd: 42_000, agentMs: 61_000, reasoningTokens: 0, estimated: true });
     expect(got.usage?.turns).toEqual([
       expect.objectContaining({ turnId: turn.id, ordinal: 1, inputTokens: 1_200, outputTokens: 300, cacheReadTokens: 5_000, cacheWriteTokens: 400, spentMicroUsd: 42_000, agentMs: 61_000, estimated: true }),
     ]);

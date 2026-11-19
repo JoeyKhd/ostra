@@ -13,6 +13,8 @@ import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, loginSessionIdSchema } from "../auth/scope.ts";
 import type { SessionUser } from "../auth/scope.ts";
 import { createCatalogSource } from "../catalog/catalog-source.ts";
+import { controlsAgentEffort } from "../services/agent-effort.ts";
+import type { AgentEffort } from "../services/agent-effort.ts";
 import { appRouter } from "../routers/app-router.ts";
 import { createLinearAppKit } from "../services/linear-app.ts";
 import type { LinearEndpoints } from "../services/linear-app.ts";
@@ -84,6 +86,8 @@ export type BareHarnessOptions = {
   readonly linearEndpoints?: LinearEndpoints;
   /** The adapters that send mail (the test mail). Default: none. */
   readonly email?: EmailDirectory;
+  /** F-137: each agent's reasoning levels. Default: the one the runtime uses. */
+  readonly agentEffort?: AgentEffort;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -162,6 +166,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       logger: silentLogger,
     }),
     email: emailDirectory,
+    agentEffort: options.agentEffort ?? controlsAgentEffort,
     stream: hub,
   };
 

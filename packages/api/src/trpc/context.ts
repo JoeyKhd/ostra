@@ -6,6 +6,7 @@ import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
 import type { MemberContext, SessionUser } from "../auth/scope.ts";
 import type { CatalogSource } from "../catalog/catalog-source.ts";
+import type { AgentEffort } from "../services/agent-effort.ts";
 import type { BlobStoreView } from "../services/blob-store-view.ts";
 import type { EmailDirectory } from "../services/email.ts";
 import type { TrackerDirectory } from "../services/trackers.ts";
@@ -46,6 +47,8 @@ export type ApiDeps = {
   /** better-auth's `hashPassword`, handed to the domain so it doesn't import the auth library. */
   readonly hashPassword: (password: string) => Promise<string>;
   readonly catalog: CatalogSource;
+  /** F-137: the levels each agent can send for a model, and whether it takes one at all (ADR 0066). */
+  readonly agentEffort: AgentEffort;
   /** The blob store's name and health, for the storage page (F-114, ticket 31). */
   readonly blobStore: BlobStoreView;
   /** The organization's tracker connection as an adapter (tickets 27 to 29). */

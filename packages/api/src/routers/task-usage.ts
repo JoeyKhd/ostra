@@ -1,3 +1,4 @@
+import { effortLevelFromDb } from "@ostra/db";
 import { readTaskUsage } from "@ostra/domain";
 import { turnIdSchema } from "@ostra/protocol";
 import type { OrganizationId, TaskId } from "@ostra/protocol";
@@ -10,10 +11,17 @@ import type { ApiDeps } from "../trpc/context.ts";
 // whose model has no price: the page then shows tokens and no dollars.
 
 export const loadUsageView = async (deps: ApiDeps, organizationId: OrganizationId, taskId: TaskId) => {
-  const usage = await readTaskUsage(deps.db, organizationId, taskId);
+  const [usage, effortRows, sessions] = await Promise.all([
+    readTaskUsage(deps.db, organizationId, taskId),
+    // F-137 (ADR 0066): each turn's level, the level it was asked for when the clamp moved it, and
+    // the reasoning tokens the endpoint reported, a part of the output tokens.
+    deps.db.turn.findMany({ where: { organizationId, taskId }, select: { id: true, effort: true, effortAdjustedFrom: true, reasoningTokens: true } }),
+    deps.db.session.findMany({ where: { organizationId, taskId }, select: { reasoningTokens: true } }),
+  ]);
   if (usage === null) {
     return null;
   }
+  const effortOf = new Map(effortRows.map((row) => [row.id, row] as const));
   const counts = (figures: { readonly inputTokens: number; readonly outputTokens: number; readonly cacheReadTokens: number; readonly cacheWriteTokens: number }) => ({
     inputTokens: figures.inputTokens,
     outputTokens: figures.outputTokens,
@@ -25,10 +33,14 @@ export const loadUsageView = async (deps: ApiDeps, organizationId: OrganizationI
       ...counts(usage.totals),
       spentMicroUsd: usage.totals.spentMicroUsd,
       agentMs: usage.totals.agentMs,
+      /** F-137: the reasoning tokens, a part of `outputTokens`. */
+      reasoningTokens: sessions.reduce((sum, session) => sum + session.reasoningTokens, 0),
       /** Some of it was estimated by the key proxy. */
       estimated: usage.totals.estimated,
     },
-    turns: usage.turns.map((turn) => ({
+    turns: usage.turns.map((turn) => {
+      const effort = effortOf.get(turn.turnId);
+      return {
       turnId: turnIdSchema.parse(turn.turnId),
       sessionId: turn.sessionId,
       ordinal: turn.ordinal,
@@ -38,6 +50,11 @@ export const loadUsageView = async (deps: ApiDeps, organizationId: OrganizationI
       spentMicroUsd: turn.spentMicroUsd,
       agentMs: turn.agentMs,
       estimated: turn.estimated,
-    })),
+      /** F-137: the level the turn ran at (`null` for a turn before milestone 4), and the one asked for when the clamp moved it. */
+      effort: effort === undefined || effort.effort === null ? null : effortLevelFromDb[effort.effort],
+      adjustedFrom: effort === undefined || effort.effortAdjustedFrom === null ? null : effortLevelFromDb[effort.effortAdjustedFrom],
+      reasoningTokens: effort?.reasoningTokens ?? 0,
+    };
+    }),
   };
 };

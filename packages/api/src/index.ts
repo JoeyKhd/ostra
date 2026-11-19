@@ -22,3 +22,5 @@ export type { GitHubLinkOutcome, GitHubLinkResult, GitHubLinkStart } from "./ser
 export type { LinearTrackerAuth, TrackerDirectory, TrackerLookup } from "./services/trackers.ts";
 export { createLinearAppKit, linearEndpoints, linearScopes, linearWebhookEvents } from "./services/linear-app.ts";
 export type { LinearEndpoints } from "./services/linear-app.ts";
+export { controlsAgentEffort, levelsFromControls } from "./services/agent-effort.ts";
+export type { AgentEffort, EffortLevelsInput, ReasoningEffortCapability } from "./services/agent-effort.ts";

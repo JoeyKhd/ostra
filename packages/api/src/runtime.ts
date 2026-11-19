@@ -9,6 +9,8 @@ import type { OstraAuth } from "./auth/create-auth.ts";
 import { ensureFirstAdmin } from "./auth/first-admin.ts";
 import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
+import { controlsAgentEffort } from "./services/agent-effort.ts";
+import type { AgentEffort } from "./services/agent-effort.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
 import { noEmailDirectory } from "./services/email.ts";
 import type { EmailDirectory } from "./services/email.ts";
@@ -42,6 +44,8 @@ export type ApiRuntimeInput = {
   readonly makeLinearTracker: (auth: LinearTrackerAuth) => TrackerAdapter;
   /** Builds the adapter that sends mail for the install's email (Resend, SMTP). Unset, the build has none and "Send a test mail" says so. */
   readonly email?: EmailDirectory;
+  /** F-137: each agent's reasoning levels. Unset, read off the model's controls for the agents that take one. */
+  readonly agentEffort?: AgentEffort;
   readonly logger: Logger;
 };
 
@@ -87,6 +91,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     logger: input.logger,
     hashPassword,
     catalog: input.catalog,
+    agentEffort: input.agentEffort ?? controlsAgentEffort,
     blobStore: input.blobStore,
     linear: createLinearAppKit(input.linearEndpoints === undefined ? {} : { endpoints: input.linearEndpoints }),
     trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),

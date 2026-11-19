@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   agentSteersMidTurn,
   answerApproval,
@@ -23,13 +25,14 @@ import {
   startTicketTask,
   startTicketTaskInputSchema,
   waitingFor,
+  setTaskEffort,
   stopTask,
   taskFromColumns,
   taskToColumns,
   transitionTask,
 } from "@ostra/domain";
 import type { TaskLifecycle, Waiting } from "@ostra/domain";
-import { mapEventToStored } from "@ostra/db";
+import { effortLevelFromDb, mapEventToStored } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import {
   approvalDecisionSchema,
@@ -37,6 +40,8 @@ import {
   approvalOptionSchema,
   messageIntentSchema,
   clientMessageIdSchema,
+  effortChangeIdSchema,
+  effortLevelSchema,
   memberIdSchema,
   needsYouItemIdSchema,
   projectIdSchema,
@@ -45,7 +50,7 @@ import {
   sessionIdSchema,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { OrganizationId, StoredEvent, TaskId } from "@ostra/protocol";
+import type { EffortLevel, OrganizationId, StoredEvent, TaskId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -55,6 +60,8 @@ import { loadChecksView } from "./task-checks.ts";
 import { loadLocalView } from "./task-local.ts";
 import { loadApprovalsAndPlan, previewApproval } from "./task-m3.ts";
 import { loadUsageView } from "./task-usage.ts";
+import { levelRefusal, loadModelEffort, toLevelViews } from "../services/agent-effort.ts";
+import type { ApiDeps } from "../trpc/context.ts";
 import { loadTaskExtras, prStateOf } from "./task-extras.ts";
 import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
@@ -287,6 +294,8 @@ export const tasksRouter = router({
     const pinnedRunner = lease === null && task.runnerId !== null ? await db.runner.findFirst({ where: { id: task.runnerId, organizationId }, select: { id: true, name: true, kind: true, executor: true } }) : null;
     const runner = lease === null ? pinnedRunner : lease.runner;
     const extras = await loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null);
+    // F-137: the levels of the model the newest session runs, or the profile's before there's one.
+    const effortLevels = await taskEffortLevels(ctx.deps, organizationId, session?.modelId ?? agent?.model?.id ?? null, agent?.adapter ?? null);
     // Milestone 3 (ticket 35): the approvals, questions and plan the page answers from, and the task's rules.
     const answerable = await loadApprovalsAndPlan(ctx.deps, task);
     const isDriver = task.driverMemberId === ctx.scope.memberId;
@@ -368,6 +377,11 @@ export const tasksRouter = router({
             },
       /** The agent profile the task runs with: its agent and model (task.md, the properties panel). */
       agent,
+      /**
+       * F-137 (ADR 0066): the task's reasoning level for its next turn, and the levels its session's
+       * model offers, `Default` first (`Default` alone: no control). Each turn's level is in `usage`.
+       */
+      effort: { level: effortLevelFromDb[task.effort], levels: toLevelViews(effortLevels) },
       // Ticket 36: the item's ID, so the page can answer it (`tasks.dismissNeedsYou`).
       needsYou: task.needsYouItems.map((item) => ({ id: needsYouItemIdSchema.parse(item.id), reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
       ...extras,
@@ -380,6 +394,8 @@ export const tasksRouter = router({
         interrupt: isDriver && sessionGoing && state === "running",
         answerApprovals: state === "needs_you" || state === "running",
         takeOver: !isDriver,
+        /** F-137: the driver changes the level, from the next turn; anyone else takes over first. */
+        setEffort: isDriver,
         /** Milestone 3 (ticket 19, ADR 0036): whether Send reaches the agent mid-turn, for the composer's hint. */
         steersMidTurn: agent !== null && agentSteersMidTurn(agent.adapter),
         stop: state !== "stopped" && state !== "merged" && state !== "done" && state !== "in_review" && !endedByLimitOrCrash,
@@ -695,6 +711,30 @@ export const tasksRouter = router({
     });
   }),
 
+  /**
+   * F-137 (ADR 0066, Q288): sets the task's reasoning level from its next turn. The driver only,
+   * under the task's lock (ticket 56's use case); a level the session's model doesn't offer is
+   * refused, naming the ones it does. `changeId` makes a retried change apply once.
+   */
+  setEffort: taskProcedure(
+    "read",
+    z.strictObject({ taskId: taskIdSchema, level: effortLevelSchema, changeId: effortChangeIdSchema.optional() }),
+  ).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
+    const levels = await taskEffortLevelsOf(ctx.deps, organizationId, input.taskId);
+    if (!levels.includes(input.level)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: levelRefusal(input.level, levels) });
+    }
+    const result = await setTaskEffort({ db, ...ports }, ctx.scope, {
+      taskId: input.taskId,
+      level: input.level,
+      changeId: input.changeId ?? effortChangeIdSchema.parse(randomUUID()),
+    });
+    const set = unwrap(result, { "not-found": "NOT_FOUND", "take-over-to-change": "FORBIDDEN" });
+    return { from: set.from, to: set.to, changed: set.changed, sentToRunner: set.sentToRunner };
+  }),
+
   /** Cancels the running turn and keeps the session. The driver only. */
   interrupt: taskProcedure("read", taskInput).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;
@@ -765,6 +805,32 @@ export const tasksRouter = router({
     });
   }),
 });
+
+/** The levels a model offers for an agent; `default` alone without either. */
+const taskEffortLevels = async (deps: ApiDeps, organizationId: OrganizationId, modelId: string | null, adapter: string | null): Promise<readonly EffortLevel[]> => {
+  if (modelId === null || adapter === null) {
+    return ["default"];
+  }
+  return (await loadModelEffort(deps.db, deps.agentEffort, organizationId, modelId, adapter))?.levels ?? ["default"];
+};
+
+/** A task's levels: its newest session's model and agent, or its project's default code profile's before it has one. */
+const taskEffortLevelsOf = async (deps: ApiDeps, organizationId: OrganizationId, taskId: TaskId): Promise<readonly EffortLevel[]> => {
+  const task = await deps.db.task.findFirst({
+    where: { id: taskId, organizationId },
+    select: { projectId: true, sessions: { orderBy: { startedAt: "desc" }, take: 1, select: { modelId: true, agentProfileId: true } } },
+  });
+  if (task === null) {
+    return ["default"];
+  }
+  const session = task.sessions[0];
+  const profileId =
+    session?.agentProfileId ??
+    (await deps.db.project.findFirst({ where: { id: task.projectId, organizationId }, select: { defaultCodeProfileId: true } }))?.defaultCodeProfileId ??
+    null;
+  const profile = profileId === null ? null : await deps.db.agentProfile.findFirst({ where: { id: profileId, organizationId }, select: { adapter: true, modelId: true } });
+  return taskEffortLevels(deps, organizationId, session?.modelId ?? profile?.modelId ?? null, profile?.adapter ?? null);
+};
 
 /** The agent adapter of a session's profile, or `null` when it has none. */
 const sessionAdapterInTx = async (tx: Tx, profileId: string | null, organizationId: OrganizationId): Promise<string | null> =>
