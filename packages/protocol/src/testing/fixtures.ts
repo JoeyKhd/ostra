@@ -411,6 +411,8 @@ export const minor2FieldFixtures = {
     files: [{ path: "0196f1a0-0000-7000-8000-000000000011.png", blobId: ids.ticketFileBlob }],
     skipped: [{ blobId: ids.blob, reason: "download-failed" }],
   },
+  "environment.setup_finished, from a warm cache": { kind: "environment.setup_finished", exitCode: 0, durationMs: 800, dependencyCache: "warm" },
+  "environment.setup_finished, without the snapshot": { kind: "environment.setup_finished", exitCode: 0, durationMs: 41_000, snapshot: "fell-back" },
   "plan.answered, approved with edits": {
     kind: "plan.answered",
     decision: "approve",
@@ -653,6 +655,7 @@ export const taskSpecMinor2Fixture: TaskSpec = {
     imageRef: "ostra-snapshot/0196f1a0:17",
     digest: fixtureDigests.imageDigest,
   },
+  checksTotalMinutes: 30,
 };
 
 /** Task credentials at minor 2, with an HTTP MCP server's address and secret header. Every value is fake. */

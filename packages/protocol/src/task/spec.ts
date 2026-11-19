@@ -397,6 +397,11 @@ export const taskSpecSchema = z
     firstTurnMode: turnModeSchema.optional(),
     /** Minor 2: the environment's checks, in order. */
     checks: z.array(taskSpecCheckSchema).max(runnerLimits.checksMax).optional(),
+    /**
+     * Minor 2: all of a turn's checks together (`OSTRA_CHECKS_TOTAL_MINUTES`); past it, the rest are
+     * `timed-out` without running. Missing means `runnerLimits.checksTotalMinutes`.
+     */
+    checksTotalMinutes: z.number().int().positive().max(24 * 60).optional(),
     /** Minor 2: the environment's services; a `host` runner is never offered a task that has any. */
     services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
     /** Minor 2: what the box starts from. */

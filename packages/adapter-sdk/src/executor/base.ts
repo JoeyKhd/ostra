@@ -102,7 +102,25 @@ export type PrepareInput = {
 export type PrepareResult = {
   /** `null` when the environment has no setup script. */
   readonly setup: { readonly exitCode: number | null; readonly durationMs: number } | null;
+  /**
+   * Milestone 3, `host-cache` (F-051): the project's cache the box started from, and whether it was
+   * there already (`dependency cache: warm`). Absent when the spec names no host cache.
+   */
+  readonly dependencyCache?: { readonly cacheKey: string; readonly reused: boolean };
+  /**
+   * Milestone 3, `image` (F-051): whether the box started from the spec's snapshot, or fell back to
+   * a full setup because this runner doesn't hold it. Absent when the spec names no snapshot image.
+   */
+  readonly snapshot?: "used" | "fell-back";
+  /** Milestone 3 (F-094): each of the spec's services, healthy or failed, in the spec's order. */
+  readonly services?: readonly ServiceHealth[];
 };
+
+/** A service's health once the box is ready (F-094): `service.healthy` or `service.failed`. */
+export type ServiceHealth =
+  | { readonly name: string; readonly outcome: "healthy"; readonly afterMs: number }
+  /** `reason` is words for the panel, never the service's output. */
+  | { readonly name: string; readonly outcome: "failed"; readonly reason: string };
 
 export type ProcessExit = { readonly code: number | null; readonly signal: string | null };
 
@@ -133,6 +151,26 @@ export type CommitAndPushInput = {
   readonly branchName: string;
   /** The task's hidden ref, `refs/ostra/wip/<taskId>`, which also holds unfinished work (ADR 0039). */
   readonly hiddenRef: string;
+  /**
+   * Milestone 3 (F-054): push only what's committed, committing nothing more. After `commitWork`
+   * and the turn's checks, so what a check left in the working tree isn't committed.
+   */
+  readonly pushOnly?: boolean;
+};
+
+/** Milestone 3 (F-054): what a turn left, committed before its checks run, with no push. */
+export type CommitWorkInput = Pick<CommitAndPushInput, "box" | "message" | "author" | "coAuthors">;
+
+/** One repo after `commitWork`. */
+export type CommittedRepoWork = {
+  readonly repoId: RepoId;
+  /** The checkout's head, or `null` when it can't be read. */
+  readonly headSha: GitSha | null;
+  /**
+   * Whether the turn changed the repo: its head moved since the box was made ready or since the last
+   * `commitWork`, by this commit or by the agent's own. A check that names the repo runs only then (Q188).
+   */
+  readonly changed: boolean;
 };
 
 export type RepoPushResult = {
@@ -260,6 +298,16 @@ export abstract class ExecutorAdapter {
 
   /** Commits what's left, pushes the branch and the hidden ref in every repo, reports which are ahead. */
   abstract commitAndPush(input: CommitAndPushInput): Promise<AdapterResult<readonly RepoPushResult[]>>;
+
+  /**
+   * Milestone 3 (F-054, ADR 0052): commits what the turn left in every repo, as `commitAndPush`
+   * does, and pushes nothing, so the checks run on the commit; then `commitAndPush` with `pushOnly`.
+   * Says which repos the turn changed. Additive: `unsupported` until an executor has it.
+   */
+  commitWork(input: CommitWorkInput): Promise<AdapterResult<readonly CommittedRepoWork[]>> {
+    this.plumbing.logger.debug("commitWork is not supported", { taskId: input.box.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't commit without a push yet`));
+  }
 
   /** Ends the agent and every process of the task (`stopped`). The workspace stays. */
   abstract stop(input: StopInput): Promise<AdapterResult<void>>;

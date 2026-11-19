@@ -201,6 +201,8 @@ describe("minor 2's events", () => {
     expect(encodeEventForMinor(minor2FieldFixtures["session.saved"], 1)).not.toHaveProperty("checks");
     expect(encodeEventForMinor(minor2FieldFixtures["session.restored"], 1)).not.toHaveProperty("fallbackReason");
     expect(encodeEventForMinor(minor2FieldFixtures["ticket.files_ready"], 1)).not.toHaveProperty("skipped");
+    expect(encodeEventForMinor(minor2FieldFixtures["environment.setup_finished, from a warm cache"], 1)).toEqual({ kind: "environment.setup_finished", exitCode: 0, durationMs: 800 });
+    expect(encodeEventForMinor(minor2FieldFixtures["environment.setup_finished, without the snapshot"], 0)).not.toHaveProperty("snapshot");
     expect(encodeEventForMinor(minor2FieldFixtures["session.restored"], 0)).toEqual({ kind: "session.restored" });
     expect(encodeEventForMinor(minor2FieldFixtures["approval.requested"], 2)).toEqual(minor2FieldFixtures["approval.requested"]);
     // Down to minor 0 drops both minors' fields.
@@ -355,7 +357,7 @@ describe("the task spec at minor 2", () => {
     expect(taskSpecSchemaV1.safeParse(taskSpecMinor2Fixture).success).toBe(false);
     const down = encodeTaskSpecForMinor(taskSpecMinor2Fixture, 1);
     expect(taskSpecSchemaV1.parse(roundTrip(down))).toEqual(down);
-    for (const field of ["firstTurnMode", "checks", "services", "snapshot"]) {
+    for (const field of ["firstTurnMode", "checks", "checksTotalMinutes", "services", "snapshot"]) {
       expect(down).not.toHaveProperty(field);
     }
     for (const field of ["skills", "mcpServers", "approvalRules", "taskRules", "planFirst"]) {

@@ -405,6 +405,23 @@ const ticketFilesReadyV2 = ticketFilesReady.extend({
     .optional(),
 });
 
+const setupFinishedV1 = z.strictObject({
+  kind: z.literal("environment.setup_finished"),
+  /** `null` when the script was killed by a signal or a timeout. */
+  exitCode: z.number().int().nullable(),
+  durationMs: z.number().int().nonnegative(),
+});
+
+const setupFinished = setupFinishedV1.extend({
+  /** Minor 2, `host`: whether the project's dependency cache was there already (F-051, ADR 0038). */
+  dependencyCache: z.enum(["warm", "cold"]).optional(),
+  /**
+   * Minor 2, `docker`: whether the box started from the spec's snapshot image, or fell back to a
+   * full setup because this runner doesn't hold it (F-051, ADR 0038).
+   */
+  snapshot: z.enum(["used", "fell-back"]).optional(),
+});
+
 const sessionSavedV2 = sessionSaved.extend({
   /** Minor 2: the checks run after the turn, in order, for the PR opener (ADR 0052). */
   checks: z.array(savedCheckSchema).max(runnerLimits.checksMax).optional(),
@@ -603,12 +620,7 @@ const sharedEventOptions = [
     stream: z.enum(["stdout", "stderr"]),
     text: z.string().max(SETUP_OUTPUT_MAX_CHARS),
   }),
-  z.strictObject({
-    kind: z.literal("environment.setup_finished"),
-    /** `null` when the script was killed by a signal or a timeout. */
-    exitCode: z.number().int().nullable(),
-    durationMs: z.number().int().nonnegative(),
-  }),
+  // `environment.setup_finished` grew in minor 2: `setupFinished` and `setupFinishedV1` above.
 
   // ---- milestone 1: git and the PR (F-030, F-065, F-078) ----
   z.strictObject({
@@ -671,6 +683,7 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
   turnStarted,
   approvalRequested,
   approvalAnswered,
+  setupFinished,
   ...minor2NewEventOptions,
   ...sharedEventOptions,
 ]);
@@ -690,6 +703,7 @@ export const taskEventSchemaV1 = z.discriminatedUnion("kind", [
   turnStartedV1,
   approvalRequestedV1,
   approvalAnsweredV1,
+  setupFinishedV1,
   ...sharedEventOptions,
 ]);
 
@@ -704,6 +718,7 @@ export const taskEventSchemaV0 = z.discriminatedUnion("kind", [
   turnStartedV1,
   approvalRequestedV1,
   approvalAnsweredV1,
+  setupFinishedV1,
   ...sharedEventOptions,
 ]);
 
@@ -757,6 +772,7 @@ const approvalAnsweredStripV1 = z.object(approvalAnsweredV1.shape);
 const sessionSavedStripV1 = z.object(sessionSaved.shape);
 const sessionRestoredStripV1 = z.object(sessionRestored.shape);
 const ticketFilesReadyStripV1 = z.object(ticketFilesReady.shape);
+const setupFinishedStripV1 = z.object(setupFinishedV1.shape);
 
 /** An event without the fields minor 2 added: what a minor-1 peer reads. */
 const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
@@ -780,6 +796,9 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
   }
   if (event.kind === "ticket.files_ready") {
     return ticketFilesReadyStripV1.parse(event);
+  }
+  if (event.kind === "environment.setup_finished") {
+    return setupFinishedStripV1.parse(event);
   }
   return event;
 };
