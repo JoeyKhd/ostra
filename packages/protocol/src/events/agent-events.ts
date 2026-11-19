@@ -234,6 +234,27 @@ const ticketFilesReady = z.strictObject({
     .max(runnerLimits.ticketFilesMax),
 });
 
+/**
+ * One name in the workspace root (Q133, milestone 2's ticket 44): a file or a folder beside the
+ * repos' checkouts, top level only, never a path that climbs or descends.
+ */
+export const workspaceEntryNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((name) => name !== "." && name !== ".." && !/[/\\\u0000]/.test(name), "a name in the workspace root, with no separator");
+
+/**
+ * Files the agent left in the workspace root, outside every repo (Q133): no branch, hidden ref or
+ * PR carries them. At most `filesOutsideReposMax` names, and how many more there were. Sent when
+ * the set changes, an empty list when they're gone. The names are content: never logged.
+ */
+const workspaceFilesOutsideRepos = z.strictObject({
+  kind: z.literal("workspace.files_outside_repos"),
+  paths: z.array(workspaceEntryNameSchema).max(runnerLimits.filesOutsideReposMax),
+  more: z.number().int().nonnegative(),
+});
+
 // ---------- protocol minor 2's vocabularies (milestone 3) ----------
 
 /** How a turn runs (ADR 0049, F-063): a plan turn reads and never writes; a build turn works. */
@@ -590,6 +611,7 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
   sessionSavedV2,
   sessionLimitReached,
   ticketFilesReady,
+  workspaceFilesOutsideRepos,
   turnStarted,
   approvalRequested,
   approvalAnswered,
@@ -608,6 +630,7 @@ export const taskEventSchemaV1 = z.discriminatedUnion("kind", [
   sessionSaved,
   sessionLimitReached,
   ticketFilesReady,
+  workspaceFilesOutsideRepos,
   turnStartedV1,
   approvalRequestedV1,
   approvalAnsweredV1,
@@ -640,6 +663,7 @@ export const minor1EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
   "session.saved",
   "session.limit_reached",
   "ticket.files_ready",
+  "workspace.files_outside_repos",
 ]);
 
 /** The kinds minor 2 added (milestone 3). As with minor 1's, a sender checks the minor first. */

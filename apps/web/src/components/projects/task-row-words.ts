@@ -72,6 +72,8 @@ export const needsYouReasonText = (reason: NeedsYouReason): string => {
       return t("tasks.needsYouReason.restoreConflict");
     case "unstorable_event":
       return t("tasks.needsYouReason.unstorableEvent");
+    case "files_outside_repos":
+      return t("tasks.needsYouReason.filesOutsideRepos");
     default:
       return reason satisfies never;
   }

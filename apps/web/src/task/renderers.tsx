@@ -27,6 +27,7 @@ import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
 import { t } from "@/lib/messages";
 
+import { filesOutsideText } from "./files-outside-words";
 import { useDataPart, useTaskContext, useToolPart } from "./task-context";
 import type { ToolLikePart } from "./task-context";
 
@@ -411,6 +412,15 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
         <div data-part="session-end" data-outcome={part.data.outcome}>
           <Line icon={<InfoIcon />} tone="muted">
             {part.data.outcome === "with-changes" ? t("task.endedWithChanges") : t("task.endedWithoutChanges")}
+          </Line>
+        </div>
+      );
+    case "data-files-outside":
+      // Q133: the names the agent left beside the repos. The item itself is on Home and the task's needs-you list.
+      return (
+        <div data-part="files-outside">
+          <Line icon={<FileTextIcon />} tone="muted">
+            {filesOutsideText(part.data)}
           </Line>
         </div>
       );

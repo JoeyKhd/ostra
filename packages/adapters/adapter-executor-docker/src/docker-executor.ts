@@ -88,4 +88,9 @@ export class DockerExecutor extends ExecutorAdapter {
   state(box: BoxRef): Promise<AdapterResult<BoxState>> {
     return this.#inner.state(box);
   }
+
+  /** The task volume's workspace root, as the sidecar sees it (ticket 44). */
+  listWorkspaceRoot(box: BoxRef): Promise<AdapterResult<readonly string[]>> {
+    return this.#inner.listWorkspaceRoot(box);
+  }
 }

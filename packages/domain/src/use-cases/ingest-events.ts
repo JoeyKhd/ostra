@@ -84,6 +84,44 @@ const bySession = (events: readonly RunnerEvent[]): Map<SessionId, RunnerEvent[]
 
 type Stored = { readonly item: RunnerEvent; readonly seq: TaskSeq };
 
+/** The names an item lists, for the panel's words: as many as fit, then how many more. */
+const filesSummary = (paths: readonly string[], more: number): string => `${paths.join(", ")}${more > 0 ? ` (+${String(more)})` : ""}`;
+
+/**
+ * Files left outside every repo (Q133): a needs-you item for the driver, or for the project's
+ * members when the task has none. An open one is updated, never doubled, and an empty set closes it.
+ * ostra never moves, commits or deletes the files: a reply lets the agent move them.
+ */
+export const applyFilesOutsideReposInTx = async (
+  deps: Pick<IngestEventsDeps, "tx" | "notices" | "clock">,
+  task: LockedTask,
+  paths: readonly string[],
+  more: number,
+): Promise<void> => {
+  const { tx } = deps;
+  const open = await tx.needsYouItem.findFirst({ where: { taskId: task.id, reason: "files_outside_repos", state: "open" }, select: { id: true } });
+  if (paths.length === 0) {
+    if (open === null) {
+      return;
+    }
+    await tx.needsYouItem.update({ where: { id: open.id }, data: { state: "answered", resolvedAt: new Date(deps.clock.now()) } });
+  } else if (open === null) {
+    await tx.needsYouItem.create({
+      data: {
+        organizationId: task.organizationId,
+        projectId: task.projectId,
+        taskId: task.id,
+        reason: "files_outside_repos",
+        audience: task.driverMemberId === null ? "project_members" : "driver",
+        summary: filesSummary(paths, more),
+      },
+    });
+  } else {
+    await tx.needsYouItem.update({ where: { id: open.id }, data: { summary: filesSummary(paths, more) } });
+  }
+  await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
+};
+
 /** What the stored events imply, in the same transaction (ticket 25). */
 const applyEffects = async (
   deps: IngestEventsDeps,
@@ -233,6 +271,10 @@ const applyEffects = async (
         }
         break;
       }
+      case "workspace.files_outside_repos":
+        // Q133, ticket 44: one open item per task, updated as the set changes, closed when it's empty.
+        await applyFilesOutsideReposInTx(deps, taskRow, event.paths, event.more);
+        break;
       case "user.message":
       case "turn.cancel_requested":
       case "agent.content":

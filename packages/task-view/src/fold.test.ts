@@ -251,6 +251,13 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
+  "workspace.files_outside_repos": {
+    prefix: [],
+    check: (m) => {
+      const part = m.flatMap((message) => message.parts).find((each) => each.type === "data-files-outside");
+      expect(part?.type === "data-files-outside" ? part.data : undefined).toEqual({ paths: ["notes.md", "plan.txt"], more: 0 });
+    },
+  },
   "plan.proposed": {
     prefix: [],
     check: (m) => {

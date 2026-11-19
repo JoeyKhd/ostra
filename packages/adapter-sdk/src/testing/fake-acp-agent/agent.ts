@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 
@@ -72,6 +72,8 @@ export const fakeScripts = [
   "recall",
   /** A long turn: a thought every 100 ms for the seconds given (default 2), then a message. */
   "long",
+  /** Ticket 44: moves a file inside the session's folder. */
+  "move",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -428,24 +430,50 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         return "end_turn";
 
       case "write": {
-        // An edit the agent really makes: a file in the session's folder, as `[[fake:write <path>]]`
-        // names it (default `fake-change.txt`), so a runner test gets a branch with a change.
-        const relative = args === "" ? "fake-change.txt" : args;
+        // Edits the agent really makes: files in the session's folder, as `[[fake:write <path> ...]]`
+        // names them (default `fake-change.txt`), so a runner test gets a branch with a change. With
+        // several repos the folder is the workspace root, so `test1/x.md` lands in a repo and `x.md`
+        // beside them (ticket 44).
         const root = session.cwd;
         if (root === null) {
           await say("No folder to write in.");
           return "end_turn";
         }
-        const target = path.resolve(root, relative);
-        if (!target.startsWith(`${path.resolve(root)}${path.sep}`)) {
+        const relatives = args === "" ? ["fake-change.txt"] : args.split(/\s+/).filter((each) => each !== "");
+        for (const relative of relatives) {
+          const target = path.resolve(root, relative);
+          if (!target.startsWith(`${path.resolve(root)}${path.sep}`)) {
+            await say("That path leaves the session's folder.");
+            return "end_turn";
+          }
+          await update({ sessionUpdate: "tool_call", toolCallId: "t-write", title: `Write ${relative}`, kind: "edit", status: "in_progress", rawInput: { filePath: relative }, locations: [{ path: relative }] });
+          await mkdir(path.dirname(target), { recursive: true });
+          await writeFile(target, "Written by the fake agent.\n");
+          await update({ sessionUpdate: "tool_call_update", toolCallId: "t-write", status: "completed" });
+        }
+        await say(`Wrote ${relatives.join(", ")}.`);
+        return "end_turn";
+      }
+
+      case "move": {
+        // `[[fake:move <from> <to>]]`: a file moved inside the session's folder, as an agent asked to
+        // move a file into a repo would (ticket 44).
+        const root = session.cwd;
+        const [from, to] = args.split(/\s+/);
+        if (root === null || from === undefined || to === undefined) {
+          await say("Nothing to move.");
+          return "end_turn";
+        }
+        const source = path.resolve(root, from);
+        const target = path.resolve(root, to);
+        const inside = (file: string): boolean => file.startsWith(`${path.resolve(root)}${path.sep}`);
+        if (!inside(source) || !inside(target)) {
           await say("That path leaves the session's folder.");
           return "end_turn";
         }
-        await update({ sessionUpdate: "tool_call", toolCallId: "t-write", title: `Write ${relative}`, kind: "edit", status: "in_progress", rawInput: { filePath: relative }, locations: [{ path: relative }] });
         await mkdir(path.dirname(target), { recursive: true });
-        await writeFile(target, "Written by the fake agent.\n");
-        await update({ sessionUpdate: "tool_call_update", toolCallId: "t-write", status: "completed" });
-        await say(`Wrote ${relative}.`);
+        await rename(source, target);
+        await say(`Moved ${from} to ${to}.`);
         return "end_turn";
       }
 

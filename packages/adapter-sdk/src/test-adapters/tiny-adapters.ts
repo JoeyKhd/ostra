@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -735,6 +735,14 @@ export class TinyExecutor extends ExecutorAdapter {
   state(ref: BoxRef): Promise<AdapterResult<BoxState>> {
     const box = this.#boxes.get(String(ref.boxId));
     return Promise.resolve(box === undefined ? adapterError("not-found", "no such box") : ok(box.state));
+  }
+
+  async listWorkspaceRoot(ref: BoxRef): Promise<AdapterResult<readonly string[]>> {
+    const box = this.#boxes.get(String(ref.boxId));
+    if (box === undefined || box.state === "released") {
+      return adapterError("not-found", "no such box");
+    }
+    return ok(await readdir(box.created.workspaceDir));
   }
 }
 

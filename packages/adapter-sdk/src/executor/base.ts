@@ -230,4 +230,11 @@ export abstract class ExecutorAdapter {
 
   /** The box's state as the executor sees it. */
   abstract state(box: BoxRef): Promise<AdapterResult<BoxState>>;
+
+  /**
+   * The names in the workspace root, top level only (Q133, ticket 44): the repos' checkouts, ostra's
+   * own folders, and anything the agent left beside them. On `host` the worktree's root; in a box,
+   * the task volume, as the sidecar sees it. Names only, never content, and never logged.
+   */
+  abstract listWorkspaceRoot(box: BoxRef): Promise<AdapterResult<readonly string[]>>;
 }

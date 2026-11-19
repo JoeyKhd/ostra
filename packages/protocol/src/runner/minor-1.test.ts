@@ -44,7 +44,7 @@ import { negotiate, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./version.ts";
 // Protocol minor 1 (milestone 2, ticket 02): every addition round-trips, a minor-0 peer keeps
 // working, and nothing minor 1 added reaches it.
 
-const addedKinds = ["session.saved", "session.limit_reached", "ticket.files_ready"] as const;
+const addedKinds = ["session.saved", "session.limit_reached", "ticket.files_ready", "workspace.files_outside_repos"] as const;
 
 const eventsFrame = (event: TaskEvent): UpFrame => ({
   type: "events",
@@ -80,7 +80,7 @@ describe("the version", () => {
 describe("minor 1's events", () => {
   const added = addedKinds;
 
-  it("adds three kinds, each with a fixture", () => {
+  it("adds four kinds, each with a fixture", () => {
     expect([...minor1EventKinds].sort()).toEqual([...added].sort());
     for (const kind of added) {
       expect(taskEventKinds).toContain(kind);
@@ -185,6 +185,22 @@ describe("up frames across minors", () => {
   it("a minor-0 peer's frame still parses at minor 1", () => {
     const frame = eventsFrame(eventFixtures["session.crashed"]);
     expect(parseUpFrame(encodeUpFrame(frame, 0), 1)).toEqual({ ok: true, frame });
+  });
+});
+
+describe("files outside every repo (ticket 44)", () => {
+  it("F-016: names entries of the workspace root only, at most 50, with how many more", () => {
+    const event = { kind: "workspace.files_outside_repos", paths: ["notes.md", ".scratch", "a b.txt"], more: 3 };
+    expect(taskEventSchema.parse(event)).toEqual(event);
+    for (const name of ["../escape", "dir/file.md", "dir\\file.md", "..", ".", "", "nul\u0000name"]) {
+      expect(taskEventSchema.safeParse({ ...event, paths: [name] }).success, JSON.stringify(name)).toBe(false);
+    }
+    const fifty = Array.from({ length: runnerLimits.filesOutsideReposMax }, (_, index) => `file-${String(index)}.txt`);
+    expect(runnerLimits.filesOutsideReposMax).toBe(50);
+    expect(taskEventSchema.safeParse({ ...event, paths: fifty, more: 7 }).success).toBe(true);
+    expect(taskEventSchema.safeParse({ ...event, paths: [...fifty, "one-more.txt"] }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ ...event, more: -1 }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ ...event, extra: true }).success).toBe(false);
   });
 });
 

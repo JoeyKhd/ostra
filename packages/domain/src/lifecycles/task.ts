@@ -81,8 +81,12 @@ export type TaskInput =
   /** A runaway limit stopped the session (F-068): the maximum duration, the stall or the spend cap. */
   | { readonly type: "limit_reached"; readonly limit: SessionLimit }
   // ---- code ----
-  /** The session ended; `withChanges` when any repo's branch is ahead (F-030, F-065). */
-  | { readonly type: "session_ended"; readonly withChanges: boolean; readonly rounds: ReviewRounds }
+  /**
+   * The session ended; `withChanges` when any repo's branch is ahead (F-030, F-065).
+   * `filesOutsideRepos`: the agent left files outside every repo (Q133), which is why a session
+   * without changes needs you then, instead of for `no_changes`.
+   */
+  | { readonly type: "session_ended"; readonly withChanges: boolean; readonly rounds: ReviewRounds; readonly filesOutsideRepos?: boolean }
   /**
    * Protocol minor 1: a turn ended and its work left the box (`session.saved`). `withChanges`: a
    * branch is ahead; `prOpen`: the task already has an open PR. Either goes to review (the first
@@ -183,7 +187,11 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
       if (status.state !== "running") {
         return refuse(input, from);
       }
-      return moveTo(input.withChanges ? firstReviewState(input.rounds) : { state: "needs_you", reason: "no_changes" });
+      return moveTo(
+        input.withChanges
+          ? firstReviewState(input.rounds)
+          : { state: "needs_you", reason: input.filesOutsideRepos === true ? "files_outside_repos" : "no_changes" },
+      );
     case "work_saved":
       if (status.state !== "running") {
         return refuse(input, from);

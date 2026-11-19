@@ -217,6 +217,7 @@ export const deriveTaskState = (
       case "session.saved":
       case "session.limit_reached":
       case "ticket.files_ready":
+      case "workspace.files_outside_repos":
       case "plan.proposed":
       case "plan.answered":
       case "check.started":

@@ -28,9 +28,12 @@ Settled as Q133 on 2026-11-19 (`context/open-questions.md`, Settled). The worksp
 ## Done when
 
 - [ ] With the scripted fake agent, in both executors' suites: a file written at the root is reported once, with its path. A turn that also changed a repo still opens its PR, with the item beside it. A turn that changed nothing needs you for this reason. A later turn that moved the file closes the item. The repos' folders and ostra's own are never reported.
-- [ ] The paths reach the event log and the panel, and no log line.
-- [ ] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
-- [ ] The whole-repo checks pass (spec section 9: the runner protocol, the schema).
-- [ ] Committed as `✨ flag files left outside every repo`.
+- [x] The paths reach the event log and the panel, and no log line.
+- [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
+- [x] The whole-repo checks pass (spec section 9: the runner protocol, the schema).
+- [x] Committed as `✨ flag files left outside every repo`.
 
 ## Comments
+
+- 2026-11-19, the builder: built in the commit `✨ flag files left outside every repo`, on milestone 1's turn loop (ticket 22, after every turn, isn't built yet: the scan sits after each turn and at a stop, where 22's work will run too). The event is `workspace.files_outside_repos` at minor 1 (`runnerLimits.filesOutsideReposMax`, 50), sent only to a server that reads it (`SessionChannel.supports`). `ExecutorAdapter.listWorkspaceRoot` lists the root (the host worktree; on `docker` the sidecar's inner host executor, on the task volume), and `workspace-scan.ts` leaves out the checkouts and `OSTRA_WORKSPACE_ENTRIES` (`.ostra`, ticket 26's folder). Core keeps one open `files_outside_repos` item per task (`summary` holds the names for Home), for the driver or the project's members, closes it on an empty set, and a session without changes needs you for this reason. The thread shows the names and what to do (`task.filesOutside`), in a plain line: the amber item block waits for the task page's target (ticket 32), so no target was amended. The fake agent gained `write <path> ...` with several paths and `move <from> <to>`. The condition is the new sentence of F-016's "done when", proved in `context/proof/F-016.md`.
+- Not ticked: the first box. Proved on `host` with the scripted fake agent and in core; the executor suite's listing case runs on both executors, but the whole scenario on `docker` waits for a real box (F-017). A member's dismiss is ticket 18's, still `notYet`.

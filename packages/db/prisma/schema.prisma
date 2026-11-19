@@ -2049,6 +2049,8 @@ enum NeedsYouReason {
   restore_conflict
   /// Milestone 2: the server couldn't store an event, and refused it once (F-043).
   unstorable_event
+  /// Q133, milestone 2's ticket 44: the agent left files in the workspace root, outside every repo.
+  files_outside_repos
 }
 
 enum TaskStopReason {

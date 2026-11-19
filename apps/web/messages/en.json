@@ -131,7 +131,8 @@
       "waitingForReviewer": "Waiting for a reviewer",
       "environmentProposal": "Environment change proposed",
       "restoreConflict": "Restore conflict",
-      "unstorableEvent": "An event couldn't be stored"
+      "unstorableEvent": "An event couldn't be stored",
+      "filesOutsideRepos": "Files left outside the repositories"
     },
     "action": {
       "approve": "Approve",
@@ -632,6 +633,11 @@
     "prOpened": "Opened a pull request",
     "endedWithChanges": "The session ended with changes.",
     "endedWithoutChanges": "The session ended without changes: no pull request.",
+    "filesOutside": "The agent left {count} outside the repositories: {names}. Reply to have them moved into a repository, or dismiss.",
+    "filesOutsideOne": "1 file",
+    "filesOutsideMany": "{n} files",
+    "filesOutsideMore": "{names} and {n} more",
+    "filesOutsideGone": "No files are left outside the repositories now.",
     "driverChanged": "{name} is driving now ({by} handed it over)",
     "unsupported": "An event this panel doesn't know:",
     "tool": {
@@ -771,7 +777,8 @@
       "waitingForReviewer": "Waiting for a reviewer",
       "environmentProposal": "A change to the environment to review",
       "restoreConflict": "Its saved work conflicts with the branch",
-      "unstorableEvent": "An event couldn't be stored"
+      "unstorableEvent": "An event couldn't be stored",
+      "filesOutsideRepos": "Files left outside the repositories"
     },
     "stopReason": {
       "requested": "asked to stop",

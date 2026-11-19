@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   closeCodes,
   encodeUpFrame,
+  eventKindSupportedAt,
   parseDownFrame,
   PROTOCOL_MAJOR,
   PROTOCOL_MINOR,
@@ -140,6 +141,8 @@ export type SessionChannel = SessionRef & {
    * spool is over its quota, so a producer reading the agent's output stops reading it.
    */
   readonly emit: (event: TaskEvent) => Promise<RunnerEvent>;
+  /** Whether the server, at the negotiated minor, reads an event of `kind`: check before emitting one a minor added. */
+  readonly supports: (kind: TaskEvent["kind"]) => boolean;
   readonly appendLiveText: (segment: Omit<LiveSegment, "taskId" | "sessionId">, delta: string) => void;
   readonly endLiveText: (segmentId: LiveSegment["segmentId"]) => void;
   /** Nothing more will be emitted. The spool is deleted once the server has acked everything. */
@@ -857,6 +860,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     sessionId: session.sessionId,
     leaseEpoch: session.leaseEpoch,
     emit: (event) => emitInto(session, event),
+    supports: (kind) => eventKindSupportedAt(kind, minor),
     appendLiveText: (segment, delta) => {
       liveText.append({ ...segment, taskId: session.taskId, sessionId: session.sessionId }, delta);
     },

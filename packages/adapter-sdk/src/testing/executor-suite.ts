@@ -1,3 +1,6 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { TaskSpec } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
@@ -179,6 +182,20 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       expect(await adapter.state(box)).toEqual({ ok: true, value: "stopped" });
       expect(await adapter.release(box, "requested")).toEqual({ ok: true, value: undefined });
       expect(await adapter.state(box)).toEqual({ ok: true, value: "released" });
+    }, CASE_TIMEOUT_MS);
+
+    it("lists the workspace root's names, a file left beside the repos included (ticket 44)", async () => {
+      const { adapter, fixture } = subject();
+      const { box, created } = await createAndPrepare(fixture.spec);
+      await writeFile(path.join(created.workspaceDir, "left-beside.md"), "x\n");
+      const listed = await adapter.listWorkspaceRoot(box);
+      expect(listed.ok).toBe(true);
+      const names = listed.ok ? listed.value : [];
+      expect(names).toContain("left-beside.md");
+      // Names only, top level only: a file inside a folder isn't one of them.
+      expect(names.some((name) => name.includes("/") || name.includes("\\"))).toBe(false);
+      await adapter.release(box, "requested");
+      expect((await adapter.listWorkspaceRoot(box)).ok).toBe(false);
     }, CASE_TIMEOUT_MS);
 
     it("refuses to start an agent in a released box", async () => {

@@ -118,6 +118,12 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
     return { ok: true, outcome: "with-changes" };
   }
+  // Q133: files left outside every repo are why the task needs you, and their item is open already.
+  const outside = await tx.needsYouItem.findFirst({ where: { taskId: task.id, reason: "files_outside_repos", state: "open" }, select: { id: true } });
+  if (outside !== null) {
+    await moveTaskInTx(moveDeps, task, { type: "session_ended", withChanges: false, rounds: M1_ROUNDS, filesOutsideRepos: true });
+    return { ok: true, outcome: "without-changes" };
+  }
   // F-065: no changes, no PR. The driver hears it, with what the agent said.
   const moved = await moveTaskInTx(moveDeps, task, { type: "session_ended", withChanges: false, rounds: M1_ROUNDS });
   if (moved) {

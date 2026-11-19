@@ -189,6 +189,8 @@ export const homeRouter = router({
         // Milestone 2: needs-you items rather than task states, listed for completeness (ticket 06).
         case "restore_conflict":
         case "unstorable_event":
+        // Q133, ticket 44: the item names the files; the row says what it is.
+        case "files_outside_repos":
           return { reason };
         default:
           return reason satisfies never;

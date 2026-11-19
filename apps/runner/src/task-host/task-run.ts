@@ -28,6 +28,7 @@ import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
+import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 
 // One task, from its dispatch to its last event (ticket 21, ADR 0029): the same code on every
 // executor. The order:
@@ -278,6 +279,29 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const stopReason: StopReason = outcome.result.value.stopReason;
     log.info("turn ended", { stopReason });
     return { crashed: null };
+  };
+
+  // ---------- files outside every repo (Q133) ----------
+
+  /** The last set reported: an event goes up only when it changes. The names are never logged. */
+  let outsideReported = outsideKey([], { repos: [] });
+  const scanOutsideRepos = async (currentSpec: TaskSpec): Promise<void> => {
+    if (!boxPrepared || channel?.supports("workspace.files_outside_repos") !== true) {
+      return;
+    }
+    const listed = await deps.executor.listWorkspaceRoot(box);
+    if (!listed.ok) {
+      log.warn("listing the workspace root failed", { code: listed.error.code });
+      return;
+    }
+    const key = outsideKey(listed.value, currentSpec);
+    if (key === outsideReported) {
+      return;
+    }
+    outsideReported = key;
+    const found = filesOutsideRepos(listed.value, currentSpec);
+    log.info("files outside the repos changed", { count: found.paths.length + found.more });
+    await emit({ kind: "workspace.files_outside_repos", paths: [...found.paths], more: found.more });
   };
 
   // ---------- endings ----------
@@ -560,6 +584,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         end({ kind: "crashed", error: result.crashed });
         break;
       }
+      await scanOutsideRepos(taskSpec);
       next = steers.length > 0 ? steers.splice(0).join("\n\n") : undefined;
     }
     end({ kind: "finished" });
@@ -581,6 +606,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       }
       case "stopped": {
         await endAgent();
+        if (taskSpec !== undefined) {
+          await scanOutsideRepos(taskSpec);
+        }
         if (taskSpec !== undefined && boxPrepared) {
           const pushed = await pushWork(taskSpec, `${taskSpec.title} (stopped: unfinished work)`);
           if (!pushed.ok) {

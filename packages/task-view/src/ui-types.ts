@@ -132,6 +132,9 @@ export type SessionEndData = {
 
 export type DriverChangeData = { readonly memberId: MemberId; readonly byMemberId: MemberId };
 
+/** Files the agent left outside every repo (Q133): their names, and how many more. Empty: they're gone. */
+export type FilesOutsideReposData = { readonly paths: readonly string[]; readonly more: number };
+
 export type TaskDataParts = {
   plan: { entries: PlanEntry[] };
   question: QuestionData;
@@ -142,6 +145,7 @@ export type TaskDataParts = {
   pr: PullRequestData;
   "session-end": SessionEndData;
   driver: DriverChangeData;
+  "files-outside": FilesOutsideReposData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };
   problem: { seq: number; text: string };

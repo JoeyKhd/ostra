@@ -433,6 +433,19 @@ export class HostExecutor extends ExecutorAdapter {
     return Promise.resolve(ok(this.#boxes.get(boxKey(box))?.state ?? "released"));
   }
 
+  /** The worktree's root: its names, top level only (ticket 44). */
+  async listWorkspaceRoot(box: BoxRef): Promise<AdapterResult<readonly string[]>> {
+    const record = this.#boxes.get(boxKey(box));
+    if (record === undefined || record.state === "released") {
+      return adapterError("not-found", "no such box");
+    }
+    try {
+      return ok(await readdir(record.workspaceDir));
+    } catch (error) {
+      return adapterError("unavailable", `couldn't list the workspace (${error instanceof Error ? error.name : "unknown"})`);
+    }
+  }
+
   // ---------- inside ----------
 
   async #endAgent(record: BoxRecord, graceMs: number): Promise<void> {

@@ -51,6 +51,8 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
       return [plain(t("home.reason.restoreConflict"))];
     case "unstorable_event":
       return [plain(t("home.reason.unstorableEvent"))];
+    case "files_outside_repos":
+      return [plain(t("home.reason.filesOutsideRepos"))];
     default:
       return detail satisfies never;
   }
@@ -78,6 +80,7 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
     case "environment_proposal":
     case "restore_conflict":
     case "unstorable_event":
+    case "files_outside_repos":
       return "home.action.openTask";
     default:
       return reason satisfies never;

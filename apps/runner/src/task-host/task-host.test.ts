@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
@@ -9,6 +9,8 @@ import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/a
 import type { GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
 import {
   boxIdSchema,
+  clientMessageIdSchema,
+  repoIdSchema,
   runnerIdSchema,
   sessionIdSchema,
   taskCredentialsSchema,
@@ -671,5 +673,78 @@ describe("the environment prepares the box (F-050)", () => {
     expect(out("stdout")).toContain("prepared with test");
     expect(out("stderr")).toContain("a warning");
     expect(events.find((event) => event.kind === "environment.setup_finished")).toMatchObject({ exitCode: 0 });
+  }, 120_000);
+});
+
+describe("files outside every repo (ticket 44)", () => {
+  /** A task on two repos: its agent starts at the workspace root (Q133). */
+  const twoRepoTask = async (prompt: string) => {
+    if ((await upstream.refSha("ostra-test/test2", "refs/heads/main").catch(() => null)) === null) {
+      await upstream.createRepo("ostra-test/test2", { "README.md": "# test2\n" });
+    }
+    const made = taskFor(prompt);
+    const [first] = made.spec.repos;
+    if (first === undefined) {
+      throw new Error("the fixture has a repo");
+    }
+    const spec: TaskSpec = {
+      ...made.spec,
+      repos: [first, { ...first, repoId: repoIdSchema.parse("repo-test2"), fullName: "ostra-test/test2", cloneUrl: "https://github.com/ostra-test/test2.git", checkoutDir: "test2" }],
+    };
+    const credentials = { ...made.credentials, repos: spec.repos.map((repo) => ({ repoId: repo.repoId, gitToken: GIT_TOKEN, expiresAt: Date.now() + 3_600_000 })) };
+    server.tasks.set(spec.taskId, { spec, credentials });
+    return spec;
+  };
+
+  const outsideEvents = (spec: TaskSpec) =>
+    eventsOf(spec).flatMap((item) => (item.event.kind === "workspace.files_outside_repos" ? [{ paths: item.event.paths, more: item.event.more }] : []));
+
+  it("F-016: reports a file left at the root once, with its name, never a repo's folder or ostra's own, and an empty set once a later turn moved it", async () => {
+    const { dataDir, dispatch } = await start();
+    const spec = await twoRepoTask("[[fake:silent]]");
+    dispatch(spec);
+    await waitForKind(spec, "turn.started");
+    // What the agent left during its turn: one file beside the repos, and ostra's own folder.
+    const workspace = path.join(dataDir, "tasks", spec.taskId, "workspace");
+    await writeFile(path.join(workspace, "notes.md"), "Written beside the repos.\n");
+    await mkdir(path.join(workspace, ".ostra", "ticket"), { recursive: true });
+    // The member's reply interrupts the turn; the next turn moves the file into a repo.
+    gateway.sendCommand(
+      makeCommand({
+        seq: counter * 10 + 1,
+        id: `steer-${String(counter)}`,
+        notAfter: Date.now() + 120_000,
+        kind: "steer",
+        body: { sessionId: spec.sessionId, clientMessageId: clientMessageIdSchema.parse(`msg-${String(counter)}`), text: "[[fake:move notes.md test1/notes.md]]", delivery: "interrupt" },
+      }),
+    );
+    await waitForKind(spec, "session.ended");
+    expect(outsideEvents(spec)).toEqual([
+      { paths: ["notes.md"], more: 0 },
+      { paths: [], more: 0 },
+    ]);
+    // The move landed in the repo, so its PR carries it.
+    expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("notes.md");
+    const turns = eventsOf(spec).filter((item) => item.event.kind === "turn.started").map((item) => item.sessionSeq);
+    const first = eventsOf(spec).find((item) => item.event.kind === "workspace.files_outside_repos")?.sessionSeq ?? 0;
+    // Reported after the first turn, before the second began.
+    expect(first).toBeGreaterThan(turns[0] ?? 0);
+    expect(first).toBeLessThan(turns[1] ?? 0);
+    expect(everyEventOnce()).toBe(true);
+  }, 120_000);
+
+  it("F-016: reports a turn that changed a repo and left a file too, and no name in any log line", async () => {
+    const { dispatch } = await start();
+    const spec = await twoRepoTask("[[fake:write plan.txt test1/change.md]]");
+    logs.length = 0;
+    dispatch(spec);
+    await waitForKind(spec, "session.ended");
+    expect(outsideEvents(spec)).toEqual([{ paths: ["plan.txt"], more: 0 }]);
+    const ended = eventsOf(spec).find((item) => item.event.kind === "session.ended")?.event;
+    expect(ended).toMatchObject({ outcome: "with-changes" });
+    expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("change.md");
+    const logged = JSON.stringify(logs);
+    expect(logged).toContain("files outside the repos changed");
+    expect(logged).not.toContain("plan.txt");
   }, 120_000);
 });

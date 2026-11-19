@@ -82,6 +82,8 @@ export const runnerLimits = {
   archiveMaxBytes: 64 * MiB,
   /** Spec section 11, item 9: the most ticket images copied into one task's workspace. */
   ticketFilesMax: 20,
+  /** Q133, ticket 44: the most names a `workspace.files_outside_repos` lists *(working value)*. */
+  filesOutsideReposMax: 50,
   /** Spec section 11, item 9: the largest ticket image copied into the workspace. */
   ticketFileMaxBytes: 10 * MiB,
 

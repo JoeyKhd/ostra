@@ -46,6 +46,7 @@ export const foldCoverage = {
   "session.saved": "no row (ticket 36)",
   "session.limit_reached": "no row (its needs-you item shows it; ticket 36)",
   "ticket.files_ready": "no row (ticket 36)",
+  "workspace.files_outside_repos": "files outside the repos row",
   // Protocol minor 2: no row until the milestone 3 task page (tickets 43, 46, 47) draws them.
   "plan.proposed": "no row (milestone 3, ticket 43)",
   "plan.answered": "no row (milestone 3, ticket 43)",

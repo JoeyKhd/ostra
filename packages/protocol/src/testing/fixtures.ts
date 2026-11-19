@@ -255,6 +255,7 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
   },
   "session.limit_reached": { kind: "session.limit_reached", limit: "spend-cap", observed: 25_000_000 },
   "ticket.files_ready": { kind: "ticket.files_ready", files: [{ path: "screenshot-1.png", blobId: ids.ticketFileBlob }] },
+  "workspace.files_outside_repos": { kind: "workspace.files_outside_repos", paths: ["notes.md", "plan.txt"], more: 0 },
   // Minor 2 (milestone 3).
   "plan.proposed": {
     kind: "plan.proposed",

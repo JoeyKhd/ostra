@@ -503,3 +503,71 @@ describe.skipIf(Object.values(live).some((value) => value === undefined || value
     }
   });
 });
+
+describe("files left outside every repo (ticket 44)", () => {
+  const items = (task: QueuedTask) => test.db.needsYouItem.findMany({ where: { taskId: task.taskId, reason: "files_outside_repos" }, orderBy: { createdAt: "asc" } });
+
+  it("F-016: raises one item for the driver with the names, updates it as the set changes, and closes it when they're gone", async () => {
+    const task = await runningTask();
+    await send(task, task.next, { kind: "workspace.files_outside_repos", paths: ["notes.md", "plan.txt"], more: 0 });
+    expect(await items(task)).toMatchObject([{ state: "open", audience: "driver", summary: "notes.md, plan.txt" }]);
+    // The set changes: the same item, never a second one.
+    await send(task, task.next, { kind: "workspace.files_outside_repos", paths: ["plan.txt"], more: 2 });
+    expect(await items(task)).toMatchObject([{ state: "open", summary: "plan.txt (+2)" }]);
+    // A later turn moved them: the item closes.
+    await send(task, task.next, { kind: "workspace.files_outside_repos", paths: [], more: 0 });
+    const closed = await items(task);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]?.state).toBe("answered");
+    expect(closed[0]?.resolvedAt).not.toBeNull();
+    // The event log keeps the names, for the thread.
+    const stored = await test.db.event.findMany({ where: { taskId: task.taskId, kind: "workspace.files_outside_repos" }, orderBy: { seq: "asc" } });
+    expect(stored.map((row) => row.payload)).toEqual([
+      { kind: "workspace.files_outside_repos", paths: ["notes.md", "plan.txt"], more: 0 },
+      { kind: "workspace.files_outside_repos", paths: ["plan.txt"], more: 2 },
+      { kind: "workspace.files_outside_repos", paths: [], more: 0 },
+    ]);
+  });
+
+  it("F-016: is for the project's members when the task has no driver", async () => {
+    const task = await runningTask();
+    await test.db.task.update({ where: { id: task.taskId }, data: { driverMemberId: null } });
+    await send(task, task.next, { kind: "workspace.files_outside_repos", paths: ["scratch"], more: 0 });
+    expect(await items(task)).toMatchObject([{ state: "open", audience: "project_members" }]);
+  });
+
+  it("F-065: a turn that changed nothing needs you for the files, not for no changes", async () => {
+    const task = await runningTask();
+    const before = codeHost.pulls.length;
+    await send(
+      task,
+      task.next,
+      { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "I wrote my notes down." },
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+      { kind: "workspace.files_outside_repos", paths: ["notes.md"], more: 0 },
+      { kind: "session.ended", outcome: "without-changes", repos: [{ repoId: theRepo(), ahead: false }] },
+    );
+    await reactToEnd(task);
+    expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "files_outside_repos" });
+    expect((await test.db.needsYouItem.findMany({ where: { taskId: task.taskId } })).map((item) => item.reason)).toEqual(["files_outside_repos"]);
+    await openPrs(task);
+    expect(codeHost.pulls.length).toBe(before);
+  });
+
+  it("F-030: a turn that also changed a repo still opens its PR, with the item beside it", async () => {
+    const task = await runningTask();
+    const before = codeHost.pulls.length;
+    await send(
+      task,
+      task.next,
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+      { kind: "workspace.files_outside_repos", paths: ["plan.txt"], more: 0 },
+      { kind: "session.ended", outcome: "with-changes", repos: [{ repoId: theRepo(), ahead: true }] },
+    );
+    await reactToEnd(task);
+    await openPrs(task);
+    expect(codeHost.pulls.length).toBe(before + 1);
+    expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "in_review" });
+    expect(await items(task)).toMatchObject([{ state: "open", summary: "plan.txt" }]);
+  });
+});

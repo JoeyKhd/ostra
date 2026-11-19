@@ -718,6 +718,15 @@ export const foldTaskEvents = (
         });
         break;
       }
+      case "workspace.files_outside_repos": {
+        // Q133: the names the agent left beside the repos, each time the set changes.
+        row(seq, sessionId, {
+          type: "data-files-outside",
+          id: `files-outside:${String(seq)}`,
+          data: { paths: event.paths, more: event.more },
+        });
+        break;
+      }
       case "driver.changed": {
         row(seq, sessionId, {
           type: "data-driver",
