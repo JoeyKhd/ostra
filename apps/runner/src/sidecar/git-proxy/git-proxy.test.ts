@@ -43,7 +43,7 @@ const runGit = (args: readonly string[], cwd: string, extraEnv: NodeJS.ProcessEn
     });
   });
 
-const startProxy = async (mode: ProxyMode = "read-write", maxDiscardBytes?: number): Promise<GitProxy> => {
+const startProxy = async (mode: ProxyMode = "read-write", maxDiscardBytes?: number, lfsActionHosts: readonly string[] = []): Promise<GitProxy> => {
   const proxy = await startGitProxy({
     taskId,
     branch,
@@ -54,7 +54,7 @@ const startProxy = async (mode: ProxyMode = "read-write", maxDiscardBytes?: numb
         repoId: repoIdSchema.parse("repo-1"),
         fullName: repo,
         cloneUrl: upstream.cloneUrl(repo),
-        lfsActionHosts: [],
+        lfsActionHosts,
         token: () => Promise.resolve(token),
       },
     ],
@@ -336,7 +336,9 @@ describe("LFS through the proxy", () => {
   }, 120_000);
 
   it("F-090: refuses an object whose action points at a host it doesn't allow, with an error and no actions", async () => {
-    const proxy = await startProxy();
+    // The storage host lfs.example.test is allowed, so the host check itself must refuse its
+    // plain-http URL and its look-alike, besides the metadata address, loopback and localhost.
+    const proxy = await startProxy("read-write", undefined, ["lfs.example.test"]);
     const response = await fetch(`${proxy.urlFor(repo)}/info/lfs/objects/batch`, {
       method: "POST",
       headers: { "content-type": "application/vnd.git-lfs+json", accept: "application/vnd.git-lfs+json" },
