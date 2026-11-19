@@ -54,7 +54,7 @@ const helpCommands = (lines: readonly string[]): readonly Command[] => {
 
 const helpFlags = (lines: readonly string[]): readonly Flag[] =>
   lines.flatMap((line) => {
-    const match = /^\s+--([a-z][a-z0-9-]*)\s+(OSTRA_[A-Z_]+)\s+(.+)$/.exec(line);
+    const match = /^\s+--([a-z][a-z0-9-]*)\s+(OSTRA_[A-Z0-9_]+)\s+(.+)$/.exec(line);
     return match?.[1] === undefined || match[2] === undefined || match[3] === undefined
       ? []
       : [{ flag: match[1], env: match[2], description: match[3].trim() }];
