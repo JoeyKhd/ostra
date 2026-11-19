@@ -12,7 +12,7 @@ import { taskSpecFixture } from "@ostra/protocol/testing";
 import { startConnection } from "../connection/peer.ts";
 import type { RunnerConnection } from "../connection/peer.ts";
 import { createAgentRegistry } from "../task-host/agents.ts";
-import type { AgentFactory } from "../task-host/agents.ts";
+import type { AgentFactory, AgentRegistry } from "../task-host/agents.ts";
 import { runnerServerLink } from "../task-host/server-link.ts";
 import { createTaskHost } from "../task-host/task-host.ts";
 import type { TaskHost, TaskHostOptions } from "../task-host/task-host.ts";
@@ -77,6 +77,8 @@ export type HarnessOptions = {
   readonly host?: Partial<Omit<TaskHostOptions, "link" | "executor" | "agents" | "logger">>;
   /** The runner's data folder; a new one by default. Two harnesses with two folders are two runners. */
   readonly dataDir?: string;
+  /** The agent adapters, by name. Default: the fake agents. */
+  readonly agents?: AgentRegistry;
 };
 
 export type Harness = {
@@ -145,7 +147,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
       },
     }),
     executor,
-    agents: createAgentRegistry(harnessAgents),
+    agents: options.agents ?? createAgentRegistry(harnessAgents),
     logger,
     listenHost: "127.0.0.1",
     stopGraceMs: 1_000,
