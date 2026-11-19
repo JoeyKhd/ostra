@@ -1,0 +1,53 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same app's approved task page for a ticket task: keep its sidebar style, top bar, header, ticket strip, properties panel, fonts and density exactly. This picture shows the same task on its new "Changes" tab: a code review view of the task's diff. The second reference is the app's Home screen, for the sidebar style. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the comment box, the review bar) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success and additions green #4FB286; errors and deletions red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Diff rows: added lines on a very dark green tint rgba(79,178,134,0.10) with a green "+" and green line numbers; removed lines on a very dark red tint rgba(229,103,92,0.10) with a red "−"; context lines on the page background. NO AMBER on this page except the small amber dots next to other projects in the sidebar and the amber "5" pill. No gradients, no glow, no purple, no blue tint, no cards inside cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, branch names, SHAs, counts, line numbers, times and all code in IBM Plex Mono 12px. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px: hinge logo + "Acme Corp" + up-down chevron; "Search" with "⌘K" and an off-white "+" button; "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects": "calculator" expanded (teal 8px square), under it "Tasks 17" (selected row #1A1B1E), "Inbox 4", "Environment", "Boards", "Repos", "Settings"; then "billing-platform", "web-storefront", "mobile-app", "data-pipeline" (each with its 8px colour square), "··· 13 more". Section label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear", "Storage". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px, bottom hairline. Left breadcrumbs: "calculator  ›  Tasks  ›  CALC-174" (last one bright). Right: a small ghost link icon, then two outlined buttons each with a git pull-request icon: "PR #483" and "PR #91".
+
+3) MAIN COLUMN, left padding 40px, right padding 40px:
+- Mono faint line: "CALC-174 · from Linear"
+- Title: "Keep a history of results"
+- Status line, 13px: a 7px GREEN dot + bright "In review", faint middle dot, muted "Idle, the box stops in 11 min", faint middle dot, muted "Started 42 min ago on" + faint mono "alex-laptop".
+- Ticket strip (one row, no box): small outlined chips "In Review", "frontend", "history" (22px, muted text), faint "· High priority", teal "Open in Linear" with a tiny arrow-up-right.
+- UNDERLINE TABS directly under it, 36px, with a full-width hairline under them: "Activity" (muted), "Changes" (bright, with a 2px off-white underline) followed by a faint mono "6", "Checks" (muted) followed by a small green check icon.
+- BEHIND LINE, one 36px row, no box: a muted git-merge icon, bright "calculator-web" in mono, muted "is 2 commits behind" + mono "main", then a small outlined 28px button "Update branch" with a git-merge icon. At the far right of the row, faint 12px: "As of the last turn · " + mono "7d41e0a".
+- Then TWO COLUMNS inside the main column:
+  a) FILES column, 220px wide, a list with no box. A repo heading row: mono bright 12.5px "calculator-web" and under it faint 12px mono "ostra/calc-174-9f3c… → main" and faint 12px "3 ahead · 2 behind". File rows, 26px each, mono 12px: a one-letter muted status glyph column (M, A, R), the file name, right-aligned green/red counts:
+     "M  state.ts  +24 −6" (this row selected, #1A1B1E background, with a tiny speech-bubble icon and faint "2"),
+     "A  panel.tsx  +118" (with a tiny speech-bubble icon and faint "1"),
+     "R  store.ts  +9 −2",
+     "A  history.svg" with faint "binary",
+     "M  pnpm-lock.yaml" with faint "too large".
+     Then a second repo heading: mono "calculator-api", faint "1 ahead · up to date with main", one file row "M  history.ts  +12 −3".
+  b) DIFF column, the rest of the width, a vertical hairline on its left:
+     - FILE HEADER row 34px on #131416 with a 1px #1F2023 border at top and bottom: chevron-down, mono bright "src/calculator/state.ts", green "+24", red "−6". At the far right, faint "Viewed" checkbox.
+     - HUNK HEADER row 24px, faint mono on #131416: "@@ -38,8 +38,14 @@ export const calculatorReducer".
+     - Diff lines, 20px each, mono 12px, two faint line-number columns (old, new) 40px each, then a 16px +/− column, then the code:
+       "38 38    case "evaluate": {"
+       "39 39      const result = evaluate(state.input);"
+       "40    −    return { ...state, result };"  (red tint)
+       "   40 +    const entry = { result, input: state.input, at: Date.now() };" (green tint)
+       DIRECTLY UNDER THIS LINE, A COMMENT BEING WRITTEN, indented to the code, a box #131416 with border #2A2C30 radius 8px: a focused 2-row text area containing "Call it createdAt, like the other stores." with a text cursor; bottom row of the box: faint 12px "Only you see a draft until you send it." on the left, and on the right a ghost button "Cancel" and an outlined button "Save draft".
+       "   41 +    return {" (green tint)
+       "   42 +      ...state," (green tint)
+       "   43 +      history: [entry, ...state.history].slice(0, 50)," (green tint)
+       UNDER LINE 43, A SENT COMMENT, no box, a 2px #2A2C30 left rule, indented to the code: 20px round avatar "SR", bright 600 "Sam Rivera", faint mono "09:20", a small muted outlined chip "Sent"; text 13px: "Keep the 50 in one constant so the panel can use it too."
+       UNDER IT, A DRAFT, no box, a 2px #2A2C30 left rule: 20px avatar "AK", bright 600 "Alex Kim", a small faint outlined chip "Draft", right-aligned tiny ghost pencil and trash icons; text 13px: "Add a test for the 51st result."
+       "   44 +    };" (green tint)
+       "41 45    }"
+     - A collapsed row 24px, faint 12px, centered-left with an unfold icon: "Show 18 unchanged lines".
+     - AN OUTDATED COMMENT, muted, no box, 2px #2A2C30 left rule: 20px avatar "SR", muted "Sam Rivera", a small faint outlined chip "Outdated", faint mono "line 52 · 3be91f0"; a quoted line in faint mono "−   history.push(result);" ; text in muted 13px: "This keeps every result forever."
+     - SECOND FILE HEADER row 34px on #131416: chevron-right, mono "pnpm-lock.yaml", then faint "Too large to show here", then teal "Open on GitHub" with a tiny arrow-up-right.
+- REVIEW BAR pinned at the bottom of the main column, where the message composer usually sits: a box #131416, border #2A2C30, radius 8px, 52px tall: on the left a muted message-square icon and bright "3 draft comments" + faint " on 2 files", and faint 12px "Sent together as one message. The session is idle, so they start the next turn."; on the right an off-white filled primary button with an arrow-up icon: "Send 3 comments to the agent".
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels 11px faint regular. Rows 28px, keys muted 12.5px in an 84px column, values bright 12.5px, no icons inside values:
+"Properties": "Status" green dot "In Review"; "Driver" 18px avatar "AK" "Alex Kim"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "alex-laptop" with small muted outlined chips "Personal" "host" on the next line aligned with the values; "Box" "Idle · stops in 11 min"; "Tokens" mono "96k in · 14k out"; "Spend" mono "$0.84" + muted " of $25.00".
+Hairline. "Ticket": "Key" teal mono "CALC-174"; "Status" "In Review"; "Board" "Calculator"; "Synced" muted mono "40 s ago".
+Hairline. "Code": "Branch" mono "ostra/calc-174-9f3c…"; mono "calculator-web" with right-aligned teal "#483" + muted " · open"; mono "calculator-api" with right-aligned teal "#91" + muted " · open".
+
+Calm, precise, dense like Linear or GitHub's pull request review in a dark pro console. Strict grid, crisp small text, the code perfectly monospaced and aligned, all copy spelled exactly as given.

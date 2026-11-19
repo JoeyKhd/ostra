@@ -1,0 +1,46 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same app's task page on its "Changes" tab: keep its sidebar, top bar, header, ticket strip, underline tabs and properties panel exactly. This picture shows the same task on its "Checks" tab instead: the results of the checks that ran after each turn, one of which failed. The second reference is the app's Home screen, for the sidebar style. The third is the ostra hinge logo mark, drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (code blocks, output) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; errors and failures red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. NO AMBER on this page except the small amber dots next to other projects in the sidebar and the amber "5" pill: a failed check is red, never amber. No gradients, no glow, no purple, no blue tint, no cards inside cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, check names, commands, SHAs, durations, times and all output in IBM Plex Mono 12px. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, identical to the first reference: hinge logo + "Acme Corp" + up-down chevron; "Search" "⌘K" and an off-white "+" button; "Home"; "Needs you" amber pill "5"; "My tasks" "7". "Projects": "calculator" expanded, "Tasks 17" (selected), "Inbox 4", "Environment", "Boards", "Repos", "Settings"; "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "··· 13 more". "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear", "Storage". Bottom: avatar "AK" "Alex Kim".
+
+2) TOP BAR 44px: breadcrumbs "calculator  ›  Tasks  ›  CALC-174". Right: a small ghost link icon, then one outlined button with a git pull-request-draft icon (a pull-request glyph with a dashed line): "PR #483".
+
+3) MAIN COLUMN, left and right padding 40px:
+- Mono faint "CALC-174 · from Linear"
+- Title "Keep a history of results"
+- Status line: 7px GREEN dot + bright "In review", faint middle dot, muted "Idle, the box stops in 12 min", faint middle dot, muted "Started 58 min ago on" + faint mono "alex-laptop".
+- Ticket strip: small outlined chips "In Review", "frontend", "history" (22px, muted text), faint "· High priority", teal "Open in Linear" with arrow-up-right.
+- UNDERLINE TABS, 36px, full-width hairline under them: "Activity" (muted), "Changes" (muted) + faint mono "6", "Checks" (bright, 2px off-white underline) + a small red circle-x icon and red mono "1".
+- THE DRAFT PR LINE, one 40px row, no box: a muted git-pull-request-draft icon, bright "PR #483 is a draft", muted " because a check failed after turn 3. ostra marks it ready when every check passes.", then teal "Open on GitHub" with a tiny arrow-up-right.
+- A hairline.
+- TURN SECTION HEADER, 32px: bright 600 13px "Turn 3", faint mono "09:41 · 7d41e0a", then on the right faint 12px "1 failed · 2 passed · 40.1 s".
+- CHECK ROWS, 40px each, separated by hairlines, a strict grid: a 16px status icon, the check name in mono 12.5px bright (a fixed 150px column), the command in faint mono 12px (truncated with an ellipsis), then right-aligned: the status word and the duration in mono.
+  Row 1: green circle-check icon, "whitespace", faint "git diff --check origin/main...HEAD", right: green "passed", faint mono "1.2 s".
+  Row 2 (expanded, this row has a chevron-down at its far left): red circle-x icon, "settings-json", faint "node -e \"JSON.parse(fs.readFileSync('config/settings.json'))\"", right: red "failed · exit 1", faint mono "0.4 s".
+     UNDER ROW 2, indented to the name column: a faint 12px label "Output, last 40 lines", then an OUTPUT BLOCK, #131416, 1px #1F2023 border, radius 8px, padding 12px 14px, mono 12px/1.6, muted text, 8 lines:
+       "undefined:14"
+       "  \"historyLimit\": 50,"
+       "}"
+       "^"
+       "SyntaxError: Expected double-quoted property name in JSON at position 412"
+       "    at JSON.parse (<anonymous>)"
+       "    at [eval]:1:6"
+       "Node.js v22.11.0"
+     (the SyntaxError line in red #E5675C, the rest muted).
+     Then an ACTION ROW 40px: an off-white filled primary button 28px with a wrench icon: "Ask the agent to fix", then teal "Download the full output" with a tiny download icon, then faint 12px: "Sends this check's output to OpenCode as the next turn."
+  Row 3: green circle-check icon, "unit-tests", faint "pnpm test", right: green "passed", faint mono "38.5 s".
+- Then two COLLAPSED TURN ROWS, 36px each, hairlines between, each with a muted chevron-right:
+  "Turn 2" + faint mono "09:12 · 3be91f0", right: green "3 passed" + faint mono "39.8 s".
+  "Turn 1" + faint mono "08:47 · a41c9d2", right: green "2 passed" + muted " · " + red "1 timed out" + faint mono "10 min".
+- Then faint 12px, plain: "Checks run after every turn that changes the code, before the push. They come from the project's environment."
+- No message composer on this tab: empty page background below.
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px, identical to the first reference: "Properties": "Status" green dot "In Review"; "Driver" avatar "AK" "Alex Kim"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "alex-laptop" with muted chips "Personal" "host" on the next line; "Box" "Idle · stops in 12 min"; "Tokens" mono "131k in · 19k out"; "Spend" mono "$1.12" + muted " of $25.00".
+Hairline. "Ticket": "Key" teal mono "CALC-174"; "Status" "In Review"; "Board" "Calculator"; "Synced" muted mono "12 s ago".
+Hairline. "Code": "Branch" mono "ostra/calc-174-9f3c…"; mono "calculator-web" with right-aligned teal "#483" + muted " · draft"; "Checks" with value red "1 failed" + muted " · 2 passed".
+
+Calm, precise, dense like Linear or a CI run page in a dark pro console. Strict grid, crisp small text, all copy spelled exactly as given.
