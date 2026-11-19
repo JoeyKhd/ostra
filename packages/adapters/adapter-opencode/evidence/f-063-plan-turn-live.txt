@@ -1,0 +1,17 @@
+# F-063: a plan turn on the real model, in OpenCode's plan agent, 2026-11-19 (ticket 08, m3)
+# Windows 11, Node 24, OpenCode 2.3.2 (pinned), the development endpoint of model.env through the test's key-proxy stand-in.
+# Run: set -a; . ~/.config/ostra-dev/model.env; set +a; npx vitest run src/opencode-adapter.live.test.ts -t F-063 --reporter=verbose --silent=false
+# What it checked: the launch with `mode: "plan"` started the session in OpenCode's plan agent (`default_agent: "plan"`, with the
+# plan agent's denies in the config); the turn's prompt was the protocol's `planTurnPrompt` for "Add a CONTRIBUTING.md that says
+# how to run the tests, and link it from README.md."; the turn ended `end_turn`; the workspace held the same files after it, and
+# README.md the same text; no request reached ostra (the plan agent refused by itself); the last `plan.updated` had entries
+# (OpenCode's todo list, mapped in the adapter), and the agent's message was not empty. No URL, key or prompt text of the model is printed.
+
+live plan turn: 4 plan entries, 6 tool calls, workspace unchanged
+ ✓ src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > F-063: a plan turn on the real model, in OpenCode's plan agent, changes no file and yields a plan 31180ms
+      Tests  1 passed | 2 skipped (3)
+
+# Run 2, 2026-11-19, after the rebase onto ticket 30's runner (same command, same checks):
+live plan turn: 5 plan entries, 5 tool calls, workspace unchanged
+ ✓ src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > F-063: a plan turn on the real model, in OpenCode's plan agent, changes no file and yields a plan 7375ms
+      Tests  1 passed | 2 skipped (3)

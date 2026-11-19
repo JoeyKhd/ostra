@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { OPENCODE_VERSION, pinnedChecksums, platformPackages, resolveOpenCodeBinary, sha256File } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
-import { allowedEnvNames, KEY_ENV, selfSetEnv } from "./config.ts";
+import { allowedEnvNames, KEY_ENV, repoInstructionGlobs, selfSetEnv } from "./config.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 
@@ -96,7 +96,7 @@ describe("the OpenCode adapter's launch", () => {
     ]);
   });
 
-  it("F-026: asks the runner before each call of a tool a profile rule or a task rule watches, and of all three in a plan turn, with `external_directory` still denied last", async () => {
+  it("F-026: writes the profile's rules into OpenCode's own permissions as ask on what each covers, with `external_directory` denied last; a task rule or a plan turn adds none", async () => {
     const withRules = jsonFile(
       (
         await launch({
@@ -108,29 +108,27 @@ describe("the OpenCode adapter's launch", () => {
       ).files,
       "opencode.json",
     );
-    expect(withRules["permissions"]).toEqual([
+    const permissions = z.array(z.strictObject({ action: z.string(), resource: z.string(), effect: z.string() })).parse(withRules["permissions"]);
+    expect(permissions[0]).toEqual({ action: "*", resource: "*", effect: "allow" });
+    expect(permissions.at(-1)).toEqual({ action: "external_directory", resource: "*", effect: "deny" });
+    // Each rule asks on what it covers, not on its whole tool.
+    expect(permissions).toContainEqual({ action: "shell", resource: "*pnpm*add*", effect: "ask" });
+    expect(permissions).toContainEqual({ action: "edit", resource: "migrations/*", effect: "ask" });
+    expect(permissions).not.toContainEqual({ action: "edit", resource: "*", effect: "ask" });
+    // A task rule only answers what a profile rule asks about, so it adds no ask; a plan turn runs
+    // as OpenCode's plan agent, whose own denies make it read-only.
+    const base = [
       { action: "*", resource: "*", effect: "allow" },
-      { action: "edit", resource: "*", effect: "ask" },
-      { action: "shell", resource: "*", effect: "ask" },
       { action: "external_directory", resource: "*", effect: "deny" },
-    ]);
+    ];
     const withTaskRule = jsonFile(
       (await launch({ taskRules: [{ ruleId: taskApprovalRuleIdSchema.parse("task-rule-1"), tool: "fetch", pattern: "example.com" }] })).files,
       "opencode.json",
     );
-    expect(withTaskRule["permissions"]).toEqual([
-      { action: "*", resource: "*", effect: "allow" },
-      { action: "webfetch", resource: "*", effect: "ask" },
-      { action: "external_directory", resource: "*", effect: "deny" },
-    ]);
+    expect(withTaskRule["permissions"]).toEqual(base);
     const plan = jsonFile((await launch({ mode: "plan" })).files, "opencode.json");
-    expect(plan["permissions"]).toEqual([
-      { action: "*", resource: "*", effect: "allow" },
-      { action: "edit", resource: "*", effect: "ask" },
-      { action: "shell", resource: "*", effect: "ask" },
-      { action: "webfetch", resource: "*", effect: "ask" },
-      { action: "external_directory", resource: "*", effect: "deny" },
-    ]);
+    expect(plan["permissions"]).toEqual(base);
+    expect(plan["default_agent"]).toBe("plan");
   });
 
   it("omits the MCP header when there is no bearer, and writes the instructions when there are some", async () => {
@@ -139,7 +137,8 @@ describe("the OpenCode adapter's launch", () => {
     expect(config["mcp"]).toEqual({ servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp" } } });
     const written = files.find((file) => file.path.endsWith("instructions.md"));
     expect(written?.content).toBe("Prefer small commits.");
-    expect(config["instructions"]).toEqual([written?.path]);
+    // The repo's own AGENTS.md comes first, named because OpenCode's project config is off (ADR 0049).
+    expect(config["instructions"]).toEqual([...repoInstructionGlobs(input().workspaceDir), written?.path]);
   });
 
   it("F-019: writes the model catalog as a file, and points OpenCode at it with its own fetch off", async () => {
@@ -233,12 +232,12 @@ describe("the OpenCode adapter's capabilities", () => {
       elicitationForm: true,
       modelBaseUrlAndPlaceholderKey: true,
       sessionArchive: true,
-      // Milestone 3: what's proved today; ticket 08 turns them on with their proofs.
-      permissionRules: "runner-only",
-      planMode: "none",
-      skills: false,
-      mcp: { http: false, stdio: false },
-      projectConfigOverride: false,
+      // Milestone 3 (ticket 08), each proved on the pinned binary in the contract tests.
+      permissionRules: "native",
+      planMode: "session-mode",
+      skills: true,
+      mcp: { http: true, stdio: true },
+      projectConfigOverride: true,
     });
     expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });

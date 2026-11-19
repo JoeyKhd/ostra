@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { adapterError, AgentAdapter, createAcpDriver, ok } from "@ostra/adapter-sdk";
+import { adapterError, AgentAdapter, createAcpDriver, describeStandardPermission, ok } from "@ostra/adapter-sdk";
 import type {
   AcpUpdate,
   AdapterContext,
@@ -14,12 +14,16 @@ import type {
   ImportSessionInput,
   MapContext,
   MappedUpdate,
+  PermissionRequest,
   PrepareLaunchInput,
 } from "@ostra/adapter-sdk";
+import { checkoutDirSchema, mcpSubjectValue } from "@ostra/protocol";
+import type { ApprovalRequestSubject } from "@ostra/protocol";
 
 import { ARCHIVE_VERIFIED_VERSIONS, OPENCODE_VERSION, resolveOpenCodeBinary } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
 import { buildAgentEnv, buildCliEnv, launchFiles, taskDirs } from "./config.ts";
+import { OSTRA_MCP_SERVER } from "./permissions.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 import type { TodoTracker } from "./todo-plan.ts";
 
@@ -39,6 +43,37 @@ const AGENT_SESSION_ID = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 
 const isAbsolutePath = (value: string): boolean => path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
 
+/** A profile MCP server's name as OpenCode prefixes its tools with it (`<name>_<tool>`). */
+const MCP_SERVER_NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
+
+/** Whether `child` is inside `parent`, by their resolved paths. */
+const isInside = (parent: string, child: string): boolean => {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+/** The launch's milestone 3 inputs, checked before any file is written (ADR 0049). */
+const checkProfileInputs = (input: PrepareLaunchInput): string | null => {
+  for (const skill of input.skills ?? []) {
+    // A skill is read from the task's own agent folder, never from the repo or the runner's machine.
+    if (!isAbsolutePath(skill.dir) || !isInside(input.agentDir, skill.dir)) {
+      return "a skill's folder is outside the task's agent folder";
+    }
+  }
+  const names = new Set<string>();
+  for (const server of input.mcpServers ?? []) {
+    if (!MCP_SERVER_NAME.test(server.name) || server.name === OSTRA_MCP_SERVER || names.has(server.name)) {
+      return "an MCP server's name is not a plain name, is ostra's own, or is given twice";
+    }
+    names.add(server.name);
+  }
+  // A repo's skills are named by its checkout folder: one folder name inside the workspace.
+  if ((input.repoDirs ?? []).some((dir) => !checkoutDirSchema.safeParse(dir).success)) {
+    return "a repo's folder is not one folder name inside the workspace";
+  }
+  return null;
+};
+
 export class OpenCodeAdapter extends AgentAdapter {
   readonly name = "opencode";
   readonly capabilities: AgentCapabilities = {
@@ -56,15 +91,16 @@ export class OpenCodeAdapter extends AgentAdapter {
     // ostra has run (ADR 0039, spike 2): another pinned version reads false until the agent suite has
     // passed on it, and reopening then uses the rebuild template.
     sessionArchive: ARCHIVE_VERIFIED_VERSIONS.includes(OPENCODE_VERSION),
-    // Milestone 3 (ADR 0049): declared as what's proved today. Milestone 3's ticket 08 maps the
-    // rules into OpenCode's own permissions, its plan agent, skills, MCP servers and the config
-    // precedence, proves each in the agent suite, and turns them on. Until then the runner checks
-    // every request, plan first isn't offered, and the repo's OpenCode config is hidden.
-    permissionRules: "runner-only",
-    planMode: "none",
-    skills: false,
-    mcp: { http: false, stdio: false },
-    projectConfigOverride: false,
+    // Milestone 3 (ADR 0049, ticket 08), each checked against OpenCode 2.3.2 (the README) and in the
+    // agent contract suite: the rules are written into OpenCode's own permissions as "ask"; plan
+    // first is OpenCode's plan agent, switched with `session/set_mode` and made read-only by the
+    // config; skills are read from the folders the runner wrote; both MCP transports; and the
+    // repo's own OpenCode config is never read (`OPENCODE_DISABLE_PROJECT_CONFIG`).
+    permissionRules: "native",
+    planMode: "session-mode",
+    skills: true,
+    mcp: { http: true, stdio: true },
+    projectConfigOverride: true,
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */
@@ -72,6 +108,8 @@ export class OpenCodeAdapter extends AgentAdapter {
 
   readonly #resolveBinary: () => Promise<AdapterResult<OpenCodeBinary>>;
   readonly #todos = new Map<string, TodoTracker>();
+  /** The profile's MCP server names per workspace, so a tool's permission names its server (`describePermission`). */
+  readonly #mcpServersByWorkspace = new Map<string, readonly string[]>();
 
   constructor(options: OpenCodeAdapterOptions = {}, context?: AdapterContext) {
     super(options.driver ?? createAcpDriver(), context);
@@ -93,6 +131,11 @@ export class OpenCodeAdapter extends AgentAdapter {
     if (input.model.baseUrl === "" || input.model.placeholderKey === "") {
       return adapterError("invalid-input", "OpenCode needs the model base URL and the task's key");
     }
+    const refused = checkProfileInputs(input);
+    if (refused !== null) {
+      return adapterError("invalid-input", refused);
+    }
+    this.#mcpServersByWorkspace.set(path.resolve(input.workspaceDir), (input.mcpServers ?? []).map((server) => server.name));
     return ok({
       command: binary.value.path,
       // `opencode acp` speaks ACP on its stdio (ADR 0018).
@@ -154,6 +197,23 @@ export class OpenCodeAdapter extends AgentAdapter {
       return adapterError("unsupported", `OpenCode ${binary.value.packageVersion} has not passed ostra's session archive checks`);
     }
     return binary;
+  }
+
+  /**
+   * What an OpenCode permission request touches (ADR 0049). Its edits, commands and fetches come in
+   * ACP's standard kinds (the base's reading); an MCP tool comes as kind `other`, titled
+   * `<server>_<tool>`, which names the profile's server. ostra's own tools, and every other request
+   * (a skill, a question), touch nothing a rule watches.
+   */
+  protected override describePermission(request: PermissionRequest, cwd: string): ApprovalRequestSubject | null {
+    const standard = describeStandardPermission(request, cwd);
+    if (standard !== null || request.toolKind !== "other") {
+      return standard;
+    }
+    const servers = this.#mcpServersByWorkspace.get(path.resolve(cwd)) ?? [];
+    // The longest name first: a server `docs` and a server `docs-v2` are told apart.
+    const server = [...servers].sort((a, b) => b.length - a.length).find((name) => request.title.startsWith(`${name}_`) && request.title.length > name.length + 1);
+    return server === undefined ? null : { tool: "mcp", subject: { kind: "tool", value: mcpSubjectValue(server, request.title.slice(server.length + 1)) } };
   }
 
   protected mapUpdate(update: AcpUpdate, context: MapContext): MappedUpdate {

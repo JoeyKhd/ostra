@@ -2,14 +2,14 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import { runAgentCommand, spawnAgentProcess } from "@ostra/adapter-sdk/testing";
 import type { TaskEvent } from "@ostra/protocol";
-import { turnIdSchema } from "@ostra/protocol";
+import { planTurnPrompt, turnIdSchema } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -168,6 +168,61 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((call) => call.presented === `Bearer ${FAKE_KEY}`)).toBe(true);
   }, 240_000);
+
+  it("F-063: a plan turn on the real model, in OpenCode's plan agent, changes no file and yields a plan", async () => {
+    if (!env.success) {
+      return;
+    }
+    const { baseUrl } = await startStandIn();
+    const input = { ...(await newBox(baseUrl)), mode: "plan" as const };
+    const before = (await readdir(input.workspaceDir, { recursive: true })).sort();
+    const readme = await readFile(path.join(input.workspaceDir, "README.md"), "utf8");
+    const adapter = new OpenCodeAdapter();
+    const prepared = await adapter.prepareLaunch(input);
+    if (!prepared.ok) {
+      throw new Error(`prepareLaunch failed: ${prepared.error.message}`);
+    }
+    const started = await spawnAgentProcess(prepared.value);
+    closers.push(started.stop);
+    const events: TaskEvent[] = [];
+    const asked: string[] = [];
+    const session = await adapter.startSession({
+      taskId: fixtureIds.task,
+      sessionId: fixtureIds.session,
+      io: started.io,
+      cwd: input.workspaceDir,
+      mcpServers: [],
+      onEvents: (batch) => {
+        events.push(...batch);
+      },
+      // Nothing in a plan turn needs a person: the plan agent refuses what it may not do by itself.
+      onPermission: (_agentSessionId, request) => {
+        asked.push(request.toolKind ?? "unknown");
+        return Promise.resolve({ outcome: "cancelled" });
+      },
+      onQuestion: () => Promise.resolve({ outcome: "cancelled" }),
+    });
+    if (!session.ok) {
+      throw new Error(`startSession failed: ${session.error.message}`);
+    }
+    const result = await adapter.prompt(
+      session.value,
+      turnIdSchema.parse("live-plan-turn-1"),
+      planTurnPrompt("Add a CONTRIBUTING.md that says how to run the tests, and link it from README.md."),
+      { mode: "plan" },
+    );
+    await adapter.close(session.value);
+
+    expect(result, "the live plan turn").toMatchObject({ ok: true, value: { stopReason: "end_turn" } });
+    expect((await readdir(input.workspaceDir, { recursive: true })).sort()).toEqual(before);
+    expect(await readFile(path.join(input.workspaceDir, "README.md"), "utf8")).toBe(readme);
+    expect(asked).toEqual([]);
+    // The plan: OpenCode's todo list, mapped to plan.updated, and the message that sums it up.
+    const plans = events.flatMap((event) => (event.kind === "plan.updated" ? [event] : []));
+    expect(plans.at(-1)?.entries.length ?? 0).toBeGreaterThan(0);
+    expect(events.some((event) => event.kind === "agent.message" && event.text.trim().length > 0)).toBe(true);
+    console.info(`live plan turn: ${String(plans.at(-1)?.entries.length ?? 0)} plan entries, ${String(events.filter((event) => event.kind === "tool.called").length)} tool calls, workspace unchanged`);
+  }, 300_000);
 
   it("F-033: a real session exported after three turns, imported in a fresh directory, answers about its first turn", async () => {
     if (!env.success) {

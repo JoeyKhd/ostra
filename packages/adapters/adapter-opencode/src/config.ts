@@ -1,7 +1,12 @@
 import path from "node:path";
 
 import { GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
-import type { LaunchFile, PrepareLaunchInput } from "@ostra/adapter-sdk";
+import type { LaunchFile, LaunchMcpServer, PrepareLaunchInput } from "@ostra/adapter-sdk";
+
+import { agentForMode, buildPermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
+import type { OpenCodePermission } from "./permissions.ts";
+
+export { permissionRules } from "./permissions.ts";
 
 // What ostra writes for OpenCode, per task (ADR 0032, spec section 11 item 6). Ported from
 // spikes/how-should-the-runner-drive-opencode/src/lib/opencode.ts (`buildOpenCodeConfig`,
@@ -45,43 +50,49 @@ export const taskDirs = (agentDir: string) => ({
 });
 export type TaskDirs = ReturnType<typeof taskDirs>;
 
-/**
- * Edit and shell inside the worktree are allowed, and `external_directory` is denied: the agent's
- * reach ends at its task's workspace (AGENTS.md). Rules are ordered, and the last that matches
- * wins. These are the whole of a task with no approval rule and no plan turn.
- */
-export const permissionRules = [
-  { action: "*", resource: "*", effect: "allow" },
-  { action: "external_directory", resource: "*", effect: "deny" },
-] as const;
+/** An MCP server of the profile as OpenCode's config names it (ADR 0049, Q170). */
+const mcpServerConfig = (server: LaunchMcpServer): Record<string, unknown> =>
+  server.transport === "http"
+    ? // At the sidecar's MCP proxy, which adds the server's secret: the address holds none, and no header goes with it.
+      { type: "remote", url: server.url, codemode: false }
+    : // A command in the image, with the server's variables, none of them a secret.
+      { type: "local", command: [server.command, ...server.args], environment: { ...server.env }, codemode: false };
 
-/** OpenCode's permission action for each tool an approval rule watches (ADR 0049). */
-const ACTION_BY_TOOL = { edit: "edit", execute: "shell", fetch: "webfetch" } as const;
-type WatchedTool = keyof typeof ACTION_BY_TOOL;
-
-export type OpenCodePermissionRule = { readonly action: string; readonly resource: string; readonly effect: "allow" | "ask" | "deny" };
-
-const isWatched = (tool: string): tool is WatchedTool => Object.hasOwn(ACTION_BY_TOOL, tool);
+/** A folder with `/` between its parts and none at its end: OpenCode reads it so on every platform. */
+const slashed = (dir: string): string => dir.replaceAll("\\", "/").replace(/\/+$/, "");
 
 /**
- * The task's permissions (F-026, F-063). OpenCode declares `permissionRules: "runner-only"` until
- * ticket 08 writes the rules into its own settings, so the runner's check must stand: OpenCode asks
- * the runner before each call of a tool a rule watches (the tools of the profile's rules and of the
- * task rules, and all three in a plan turn), and the runner decides each request. The rest stays
- * allowed, and `external_directory` stays denied, last, so it always wins.
+ * The repo's own instructions, which OpenCode reads from the project when its project config is
+ * on. With it off (`OPENCODE_DISABLE_PROJECT_CONFIG`, so the profile's permissions and MCP servers
+ * win, ADR 0049), they're named here instead: the `AGENTS.md` at the workspace's root and at each
+ * repo's (F-021: "added beside the repo's own `AGENTS.md`, never replacing it").
  */
-export const taskPermissionRules = (input: PrepareLaunchInput): readonly OpenCodePermissionRule[] => {
-  const watched = new Set<WatchedTool>();
-  const tools = [...(input.approvalRules ?? []).map((rule) => rule.tool), ...(input.taskRules ?? []).map((rule) => rule.tool)];
-  for (const tool of input.mode === "plan" ? [...tools, "edit", "execute", "fetch"] : tools) {
-    if (isWatched(tool)) {
-      watched.add(tool);
-    }
-  }
-  const [allowAll, denyOutside] = permissionRules;
-  const asks = [...watched].sort().map((tool): OpenCodePermissionRule => ({ action: ACTION_BY_TOOL[tool], resource: "*", effect: "ask" }));
-  return [allowAll, ...asks, denyOutside];
+export const repoInstructionGlobs = (workspaceDir: string): readonly string[] => {
+  const root = slashed(workspaceDir);
+  return [`${root}/AGENTS.md`, `${root}/*/AGENTS.md`];
 };
+
+/**
+ * The repos' own skill folders, which OpenCode reads from the project only when its project config
+ * is on. With it off they're named here, at the workspace's root and in each repo's checkout,
+ * because a wildcard in `skills` finds nothing (checked on 2.3.2), and a folder that isn't there is
+ * passed over. So the profile's skills sit beside the repo's, never replacing them (F-021).
+ */
+export const repoSkillDirs = (workspaceDir: string, repoDirs: readonly string[]): readonly string[] => {
+  const root = slashed(workspaceDir);
+  return [root, ...repoDirs.map((dir) => `${root}/${dir}`)].map((dir) => `${dir}/.opencode/skills`);
+};
+
+/** One of OpenCode's permission rules (the name ticket 30 gave it). */
+export type OpenCodePermissionRule = OpenCodePermission;
+
+/**
+ * The task's permissions (F-026): the profile's rules written into OpenCode's own as `ask`, after
+ * everything allowed and before `external_directory` denied (`buildPermissions`). A plan turn adds
+ * no ask here: it runs as OpenCode's plan agent, whose own denies make it read-only (F-063).
+ */
+export const taskPermissionRules = (input: PrepareLaunchInput): readonly OpenCodePermissionRule[] =>
+  buildPermissions({ approvalRules: input.approvalRules ?? [], mcpServers: input.mcpServers ?? [] });
 
 export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath: string | null): Record<string, unknown> => {
   const { model } = input;
@@ -89,13 +100,22 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
     name: model.endpointModelId,
     limit: { context: DEFAULT_CONTEXT, output: DEFAULT_OUTPUT },
   };
+  const mcpServers = input.mcpServers ?? [];
+  const skills = input.skills ?? [];
   return {
     $schema: "https://opencode.ai/config.json",
     model: `${PROVIDER_ID}/${model.endpointModelId}`,
     // Nothing leaves the box on OpenCode's own account.
     share: "disabled",
     update: "disable",
+    // The profile's rules as OpenCode's own permissions, never its defaults (ADR 0031, ADR 0049).
     permissions: taskPermissionRules(input),
+    // Plan first runs as OpenCode's plan agent, made read-only by the denies it adds (F-063).
+    agents: { [agentForMode("plan")]: { permissions: planModePermissions(mcpServers) } },
+    default_agent: agentForMode(input.mode ?? "build"),
+    // The profile's skills, from the folders the runner wrote them to in the task's agent folder,
+    // then the repos' own, which the project config being off would otherwise drop.
+    skills: [...skills.map((skill) => skill.dir), ...repoSkillDirs(input.workspaceDir, input.repoDirs ?? [])],
     experimental: { todo: true },
     providers: {
       [PROVIDER_ID]: {
@@ -108,11 +128,13 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
         models: { [model.endpointModelId]: providerModel },
       },
     },
-    ...(instructionsPath === null ? {} : { instructions: [instructionsPath] }),
-    // ostra's tools for the task: the PR's title and body are written through them (ticket 20).
+    instructions: [...repoInstructionGlobs(input.workspaceDir), ...(instructionsPath === null ? [] : [instructionsPath])],
     mcp: {
       servers: {
-        ostra: {
+        // The profile's servers, beside ostra's own.
+        ...Object.fromEntries(mcpServers.map((server) => [server.name, mcpServerConfig(server)])),
+        // ostra's tools for the task: the PR's title and body are written through them (ticket 20).
+        [OSTRA_MCP_SERVER]: {
           type: "remote",
           url: input.mcp.url,
           ...(input.mcp.bearer === undefined ? {} : { headers: { authorization: `Bearer ${input.mcp.bearer}` } }),
@@ -168,6 +190,7 @@ export const allowedEnvNames: readonly string[] = [
   "OPENCODE_DISABLE_AUTOUPDATE",
   "OPENCODE_DISABLE_CLAUDE_CODE",
   "OPENCODE_DISABLE_FREE_MODELS",
+  "OPENCODE_DISABLE_PROJECT_CONFIG",
   // The git guard (`gitGuardEnv`): the task-run overlays it on the launch, and no one else sets it.
   ...GIT_GUARD_ENV_NAMES,
   KEY_ENV,
@@ -226,6 +249,11 @@ export const buildCliEnv = (dirs: TaskDirs): Record<string, string> => {
     OPENCODE_DISABLE_AUTOUPDATE: "1",
     OPENCODE_DISABLE_CLAUDE_CODE: "1",
     OPENCODE_DISABLE_FREE_MODELS: "1",
+    // A repo's own `opencode.json` and `.opencode/` are never read: its permissions, MCP servers,
+    // agents and plugins can't widen the profile's (ADR 0049, Q171). Checked on 2.3.2: without
+    // this, a repo config that allows everything wins, and even with the profile's config given as
+    // content, a repo's MCP server is added (the README). The repo's AGENTS.md is named in the config.
+    OPENCODE_DISABLE_PROJECT_CONFIG: "1",
   });
   return env;
 };
@@ -247,15 +275,33 @@ export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record
 
 /** Every file ostra writes before OpenCode starts. The folders they sit in are made with them. */
 export const launchFiles = (input: PrepareLaunchInput, dirs: TaskDirs): readonly LaunchFile[] => {
+  const instructions = instructionsText(input);
   const files: LaunchFile[] = [
-    { path: dirs.config, content: `${JSON.stringify(buildOpenCodeConfig(input, input.instructions === null ? null : dirs.instructions), null, 2)}\n` },
+    { path: dirs.config, content: `${JSON.stringify(buildOpenCodeConfig(input, instructions === null ? null : dirs.instructions), null, 2)}\n` },
     { path: dirs.catalog, content: `${JSON.stringify(buildModelsCatalog(input))}\n` },
     // Empty marker files, so the folders the agent expects exist when it starts.
     { path: path.join(dirs.home, ".ostra-keep"), content: "" },
     { path: path.join(dirs.tmp, ".ostra-keep"), content: "" },
   ];
-  if (input.instructions !== null) {
-    files.push({ path: dirs.instructions, content: input.instructions });
+  if (instructions !== null) {
+    files.push({ path: dirs.instructions, content: instructions });
   }
   return files;
 };
+
+/**
+ * The profile's instructions, with the IDs of its skills after them. OpenCode lists a skill to the
+ * model only when its `SKILL.md` starts with a `description` (checked on 2.3.2), and a profile's
+ * skill may have none: named here, every one of them can be loaded with the `skill` tool.
+ */
+export const instructionsText = (input: PrepareLaunchInput): string | null => {
+  const skills = input.skills ?? [];
+  if (skills.length === 0) {
+    return input.instructions;
+  }
+  const index = `${SKILLS_HEADING}: ${skills.map((skill) => `\`${skill.name}\``).join(", ")}.\n`;
+  return input.instructions === null ? index : `${input.instructions.replace(/\n*$/, "")}\n\n${index}`;
+};
+
+/** The line that names the profile's skills in the instructions. */
+export const SKILLS_HEADING = "Skills this task's profile adds (load one with the `skill` tool, by its ID)";
