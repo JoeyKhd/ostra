@@ -12,6 +12,7 @@ import type {
   MemberId,
   MessageDelivery,
   MessageDeliveryState,
+  MessageIntent,
   PlanEntry,
   QuestionField,
   QuestionId,
@@ -23,6 +24,7 @@ import type {
   ToolInput,
   ToolOutput,
   TurnId,
+  TurnMode,
   TypedToolKind,
 } from "@ostra/protocol";
 
@@ -189,6 +191,8 @@ export type TaskMessageMeta = {
   at?: number;
   turnId?: TurnId;
   turnState?: "running" | "ended" | "failed";
+  /** Milestone 3 (F-063): a plan turn's mode, so its header reads "Planning". Missing means a build turn. */
+  turnMode?: TurnMode;
   stopReason?: StopReason;
   error?: string;
   author?: {
@@ -198,6 +202,8 @@ export type TaskMessageMeta = {
     deliveryState?: MessageDeliveryState;
     reopen?: boolean;
     replayed?: boolean;
+    /** Milestone 3 (ticket 46): why ostra sent it for the member (diff comments, update branch, a PR comment, fix checks, keep working). */
+    intent?: MessageIntent;
   };
   optimistic?: boolean;
   /** The key proxy's counts for this turn (F-089): what spend comes from. */

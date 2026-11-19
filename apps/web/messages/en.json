@@ -2218,7 +2218,8 @@
       "expired": "Expired",
       "cancelled": "Cancelled",
       "closed": "Closed"
-    }
+    },
+    "pageTitle": "Needs you"
   },
   "agentProfiles": {
     "title": "Agent profiles",
@@ -2490,6 +2491,115 @@
       "code": "Code tasks",
       "review": "Review tasks",
       "saved": "Saved."
+    }
+  },
+  "taskAnswers": {
+    "asks": {
+      "path": "asks before {agent} edits this file:",
+      "command": "asks before {agent} runs this command:",
+      "url": "asks before {agent} fetches this address:",
+      "tool": "asks before {agent} uses this tool:",
+      "other": "{agent} asks before it goes on:"
+    },
+    "forTask": {
+      "edit": "Edit {pattern} in this task",
+      "execute": "Run {pattern} in this task",
+      "fetch": "Fetch {pattern} in this task",
+      "other": "Use {pattern} in this task"
+    },
+    "forTaskAdds": "Approve for this task also approves later requests that match: {rule}.",
+    "anyMember": "Any member of {project} can answer. The first answer wins.",
+    "answeredFirst": "Someone answered this first.",
+    "approveOnce": "Approve once",
+    "approveTask": "Approve for this task",
+    "answerAnyway": "Answer anyway",
+    "expiredTitle": "Needs you · approval (expired)",
+    "deny": {
+      "button": "Deny",
+      "withReason": "Deny and send the reason",
+      "label": "Reason for {agent} (optional)",
+      "counter": "{n} of 2,000",
+      "warning": "Denying ends {agent}'s turn.",
+      "otherOne": "The other open approval closes as cancelled.",
+      "otherMany": "The {n} other open approvals close as cancelled."
+    },
+    "receipt": {
+      "once": "Approved once by {name}",
+      "task": "Approved for this task by {name}",
+      "taskPattern": "Approved for this task by {name} · {pattern}",
+      "denied": "Denied by {name}",
+      "deniedWhy": "Denied by {name}: {reason}",
+      "answered": "Answered by {name}",
+      "byRule": "Approved by this task's rule",
+      "byNamedRule": "Approved by this task's rule {rule}",
+      "expired": "The approval expired",
+      "cancelled": "The approval was cancelled"
+    },
+    "question": {
+      "send": "Send answer",
+      "sending": "Sending…",
+      "driverFoot": "{agent} waits for your answer. Only the driver answers questions.",
+      "takeOver": "Take over to answer",
+      "nobody": "Nobody is driving. Take over to answer.",
+      "driverAnswers": "{name} answers questions while driving."
+    },
+    "plan": {
+      "title": "Needs you · plan",
+      "approve": "Approve plan",
+      "edit": "Edit and approve",
+      "askChanges": "Ask for changes",
+      "whatChange": "What should change in the plan?",
+      "sendChanges": "Send to the agent",
+      "addStep": "Add a step",
+      "step": "Step {n}",
+      "up": "Move up",
+      "down": "Move down",
+      "remove": "Remove the step",
+      "edited": "edited",
+      "approvedBy": "Plan approved by {name}",
+      "driverFoot": "{agent} works from the plan once it's approved, and changes nothing before.",
+      "driverAnswers": "{name} approves the plan while driving.",
+      "revisionAsked": "{name} asked for changes; the agent is revising the plan."
+    },
+    "watcher": {
+      "driving": "{name} is driving.",
+      "nobody": "Nobody is driving.",
+      "hint": "Any member can answer approvals. Take over to send messages."
+    },
+    "ticketClosed": {
+      "title": "Needs you · ticket closed",
+      "body": "The ticket was closed while the task ran, so its turn was interrupted.",
+      "bodyStatus": "The ticket moved to {status} while the task ran, so its turn was interrupted.",
+      "stop": "Stop the task",
+      "keep": "Keep working"
+    },
+    "usage": {
+      "cache": "Cache",
+      "read": "read",
+      "write": "write",
+      "agentTime": "Agent time",
+      "profile": "Profile",
+      "none": "None",
+      "turn": "{input} in · {output} out",
+      "turnSpend": "{spend}",
+      "rules": "Approval rules",
+      "fromProfile": "profile",
+      "fromTask": "this task · {name}"
+    },
+    "planning": "Planning",
+    "intent": {
+      "diff-comments": "from diff comments",
+      "update-branch": "update branch",
+      "plan-revision": "plan changes",
+      "pr-comment": "from a PR comment",
+      "fix-checks": "fix checks",
+      "keep-working": "keep working",
+      "message": "message"
+    },
+    "tabs": {
+      "activity": "Activity",
+      "changes": "Changes",
+      "checks": "Checks"
     }
   }
 }

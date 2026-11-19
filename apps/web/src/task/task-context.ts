@@ -1,4 +1,5 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
 
 import type { TaskDataPart, TaskUIMessage, TaskUIPart } from "@ostra/task-view";
 
@@ -75,6 +76,12 @@ export type TaskContextValue = {
   readonly agent: { readonly name: string; readonly model: string | null };
   /** What an open approval asks, in the descriptor's words (the needs-you item's summary), or `null`. */
   readonly approvalSummary: (approvalId: string) => string | null;
+  /** Milestone 3 (ticket 43): the answerable card of an open approval, or `null` to keep the read-only note. */
+  readonly approvalCard?: (approvalId: string) => ReactNode;
+  /** The receipt of an answered or closed approval in the task page's words, or `null` for the fold's own. */
+  readonly approvalReceipt?: (approvalId: string) => string | null;
+  /** The answerable form of an open question, or `null` to keep the read-only note. */
+  readonly questionCard?: (questionId: string) => ReactNode;
 };
 
 export const TaskContext = createContext<TaskContextValue | null>(null);

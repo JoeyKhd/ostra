@@ -171,10 +171,15 @@ const approvalSubject = (part: ToolLikePart): string | null => {
  * answering comes with F-026 in milestone 3, so the buttons' place holds the read-only line.
  */
 const ApprovalNote = ({ part }: { readonly part: ToolLikePart }) => {
-  const { memberName, approvalSummary } = useTaskContext();
+  const { memberName, approvalSummary, approvalCard, approvalReceipt } = useTaskContext();
   const metadata = approvalMetadataSchema.safeParse(part.toolMetadata);
   if (!metadata.success) return null;
   const receipt = metadata.data.approval.descriptor.receipt;
+  // Milestone 3 (ticket 43): the task page answers it, and words its receipt with the rule and the reason.
+  const card = receipt === undefined ? approvalCard?.(metadata.data.approval.id) : undefined;
+  if (card !== undefined && card !== null) return <>{card}</>;
+  const worded = receipt === undefined ? null : (approvalReceipt?.(metadata.data.approval.id) ?? null);
+  if (worded !== null) return <div data-part="approval" data-state={receipt?.state} className="ml-[104px] text-sm text-muted">{worded}</div>;
   if (receipt === undefined) {
     const summary = approvalSummary(metadata.data.approval.id);
     const subject = approvalSubject(part);
@@ -312,7 +317,7 @@ const PlanStatus = ({ status }: { readonly status: "pending" | "in_progress" | "
 const planTone = (status: "pending" | "in_progress" | "completed"): string => (status === "in_progress" ? "text-text" : "text-muted");
 
 const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
-  const { memberName } = useTaskContext();
+  const { memberName, questionCard } = useTaskContext();
   const [open, setOpen] = useState(false);
   switch (part.type) {
     case "data-plan":
@@ -331,6 +336,8 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
       );
     case "data-question": {
       const status = part.data.status;
+      const card = status.state === "open" ? questionCard?.(part.data.questionId) : undefined;
+      if (card !== undefined && card !== null) return <div data-part="question">{card}</div>;
       return (
         <div data-part="question">
           {status.state === "open" ? (

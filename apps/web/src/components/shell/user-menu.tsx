@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRoundIcon, LogOutIcon } from "lucide-react";
+import { BellIcon, KeyRoundIcon, LogOutIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -40,6 +40,16 @@ export const UserMenu = ({ me }: { readonly me: RouterOutputs["me"]["get"] }) =>
       <DropdownMenuContent side="top" align="start" className="w-[212px]">
         <DropdownMenuLabel className="truncate font-normal">{me.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/account">
+            <UserIcon aria-hidden /> {t("shell.account")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/account/notifications">
+            <BellIcon aria-hidden /> {t("shell.notifications")}
+          </Link>
+        </DropdownMenuItem>
         {me.passwordChange === "none" ? null : (
           <DropdownMenuItem asChild>
             <Link href="/change-password">

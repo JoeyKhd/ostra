@@ -1,11 +1,13 @@
 "use client";
 
-import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { BellIcon, CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { t } from "@/lib/messages";
+import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { CommandMenu } from "./command-menu";
@@ -63,6 +65,10 @@ export type SidebarProps = {
 export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
   const admin = me.organization?.role === "admin";
   const [searching, setSearching] = useState(false);
+  const trpc = useTRPC();
+  // Ticket 44: the member's open, unread notifications, kept fresh while the panel is open.
+  const unread = useQuery({ ...trpc.notifications.unreadCount.queryOptions(), refetchInterval: 10_000 });
+  const count = unread.data?.count ?? 0;
 
   return (
     <nav aria-label={t("shell.navigation")} className="flex h-full flex-col bg-side px-2.5 py-3">
@@ -101,6 +107,14 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       <NavLink href="/" exact icon={<HouseIcon />} onNavigate={onNavigate}>
         {t("shell.home")}
       </NavLink>
+      <NavLink
+        href="/needs-you"
+        icon={<BellIcon />}
+        onNavigate={onNavigate}
+        end={count === 0 ? undefined : <span data-testid="needs-you-count" className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-amber px-1 font-mono text-[11px] font-semibold text-ink">{count}</span>}
+      >
+        {t("needsYouPage.pageTitle")}
+      </NavLink>
 
       <SectionLabel>{t("shell.projects")}</SectionLabel>
       <ProjectNav onNavigate={onNavigate} admin={admin} />
@@ -128,9 +142,14 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
         </>
       ) : null}
       {me.instanceAdmin ? (
+        <>
+        <NavLink href="/organization/email" icon={<MailIcon />} onNavigate={onNavigate}>
+          {t("shell.email")}
+        </NavLink>
         <NavLink href="/organization/storage" icon={<HardDriveIcon />} onNavigate={onNavigate}>
           {t("shell.storage")}
         </NavLink>
+        </>
       ) : null}
       <NavLink href="/organization/agent-profiles" icon={<SlidersHorizontalIcon />} onNavigate={onNavigate}>
         {t("shell.agentProfiles")}

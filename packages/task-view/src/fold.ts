@@ -469,13 +469,16 @@ export const foldTaskEvents = (
               deliveryState: deliveries.get(event.clientMessageId) ?? "delivered",
               ...(event.reopen === true ? { reopen: true } : {}),
               ...(event.replayed === true ? { replayed: true } : {}),
+              ...(event.intent === undefined || event.intent === "message" ? {} : { intent: event.intent }),
             },
           },
         });
         break;
       }
       case "turn.started": {
-        ensureTurn(event.turnId, sessionId, seq).meta.turnState = "running";
+        const started = ensureTurn(event.turnId, sessionId, seq);
+        started.meta.turnState = "running";
+        if (event.mode === "plan") started.meta.turnMode = "plan";
         break;
       }
       case "turn.ended": {

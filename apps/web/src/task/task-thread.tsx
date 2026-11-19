@@ -23,7 +23,7 @@ import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
@@ -63,6 +63,7 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
         {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
         {meta?.author?.reopen === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="reopen">{t("task.reopenTag")}</span> : null}
         {meta?.author?.replayed === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="replayed">{t("task.replayedTag")}</span> : null}
+        {meta?.author?.intent === undefined ? null : <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="intent" data-intent={meta.author.intent}>{t(`taskAnswers.intent.${meta.author.intent}`)}</span>}
         {meta?.optimistic === true ? <span className="text-sm text-faint">{t("task.sending")}</span> : null}
       </div>
     );
@@ -74,6 +75,7 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
         <span className="min-w-0">
           {time === null ? null : <Meta dot={false}>{time}</Meta>}
           {agent.model === null ? null : <Meta dot={time !== null}>{agent.model}</Meta>}
+          {meta?.turnMode === "plan" ? <Meta className="text-amber">{t("taskAnswers.planning")}</Meta> : null}
           {meta?.turnState === "running" ? <Meta className="text-teal">{t("task.working")}</Meta> : null}
           {meta?.turnState === "failed" ? <Meta className="text-red">{t("task.turnFailed")}</Meta> : null}
           {meta?.stopReason === "cancelled" ? <Meta>{t("task.turnStopped")}</Meta> : null}
@@ -141,6 +143,12 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
             }
           }}
         </MessagePrimitive.Parts>
+        {/* F-084: each turn shows its own tokens once it ended, from the key proxy's counts; "≈" marks an estimate. */}
+        {role === "assistant" && meta?.usage !== undefined && meta.turnState !== "running" && meta.usage.inputTokens + meta.usage.outputTokens > 0 ? (
+          <div data-part="turn-usage" className="mt-1 font-mono text-xs text-faint">
+            {meta.usage.estimated ? "≈ " : ""}{t("taskAnswers.usage.turn", { input: formatTokens(meta.usage.inputTokens), output: formatTokens(meta.usage.outputTokens) })}
+          </div>
+        ) : null}
       </div>
     </MessagePrimitive.Root>
   );
@@ -206,6 +214,12 @@ export type TaskThreadProps = {
   /** The agent's display name and model, for its message headers. */
   readonly agent: { readonly name: string; readonly model: string | null };
   readonly approvalSummary: (approvalId: string) => string | null;
+  /** Milestone 3 (ticket 43): the answerable cards and the worded receipts, from `tasks.get`. */
+  readonly approvalCard?: (approvalId: string) => ReactNode;
+  readonly approvalReceipt?: (approvalId: string) => string | null;
+  readonly questionCard?: (questionId: string) => ReactNode;
+  /** After the last message, inside the scroll: the plan waiting for the driver, or its receipt. */
+  readonly tail?: ReactNode;
   /** In place of the composer when the viewer can't send: the take-over line, or nothing. */
   readonly notDriver?: ReactNode;
   /** The composer reopens the task (`tasks.reopen`) instead of sending (ticket 36). */
@@ -220,7 +234,7 @@ export type TaskThreadProps = {
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -283,8 +297,16 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
   const agentName = agent.name;
   const agentModel = agent.model;
   const context = useMemo<TaskContextValue>(
-    () => ({ store, memberName, agent: { name: agentName, model: agentModel }, approvalSummary }),
-    [store, memberName, agentName, agentModel, approvalSummary],
+    () => ({
+      store,
+      memberName,
+      agent: { name: agentName, model: agentModel },
+      approvalSummary,
+      ...(approvalCard === undefined ? {} : { approvalCard }),
+      ...(approvalReceipt === undefined ? {} : { approvalReceipt }),
+      ...(questionCard === undefined ? {} : { questionCard }),
+    }),
+    [store, memberName, agentName, agentModel, approvalSummary, approvalCard, approvalReceipt, questionCard],
   );
 
   return (
@@ -300,6 +322,7 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
               </div>
             ) : null}
             <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
+            {tail}
           </ThreadPrimitive.Viewport>
           {canSend || canReopen ? (
             <div className="shrink-0 pt-3">
@@ -308,7 +331,7 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
           ) : instead !== undefined ? (
             instead
           ) : notDriver === undefined ? null : (
-            <div className="shrink-0 pt-3 text-sm text-faint" data-part="not-driver">{notDriver}</div>
+            <div className="shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
           )}
         </ThreadPrimitive.Root>
       </TaskContext.Provider>

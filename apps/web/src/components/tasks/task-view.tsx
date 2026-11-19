@@ -18,7 +18,7 @@ import { NeedsYou } from "@/components/ui/needs-you";
 import { Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { formatElapsed, formatTokens } from "@/lib/format";
+import { formatDuration, formatElapsed, formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -28,8 +28,18 @@ import { useTaskLog } from "@/task/use-task-log";
 
 import { AgentGot, LimitBlock, MergedHint, RestoreConflict, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, spendText } from "./task-ticket";
 import { headerActivity, shownInThread, stateTone, taskStateLine } from "./task-words";
+import { ApprovalCard, PlanBlock, QuestionCard, TicketClosedBlock, WatcherBar, approvalReceipt } from "./task-answers";
+import { ChangesTab } from "./task-changes/changes-tab";
+import { ChecksTab, checksMarkerOf } from "./task-checks/checks-tab";
+import { ChecksTabMarker } from "./task-checks/task-checks";
+import { TakeItLocal } from "./take-it-local";
+import type { LocalLoad } from "./take-it-local";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Task = RouterOutputs["tasks"]["get"];
+
+type TaskTab = "activity" | "changes" | "checks";
 
 /** Records how long the fold of the default view took, for ADR 0036's render bar (the e2e reads it). */
 const recordFold = (ms: number, messages: number): void => {
@@ -98,6 +108,7 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
   /** The Ticket and On Linear groups (ticket 36). */
   readonly ticket: ReactNode;
 }) => {
+  const usage = task.usage?.totals ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, spentMicroUsd: null, agentMs: 0, estimated: false };
   const input = Math.max(tokens.inputTokens, task.session?.inputTokens ?? 0);
   const output = Math.max(tokens.outputTokens, task.session?.outputTokens ?? 0);
   return (
@@ -122,6 +133,9 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
             </>
           ) : null}
         </PropRow>
+        <PropRow label={t("taskAnswers.usage.profile")}>
+          {task.agent === null ? <span className="text-faint">{t("taskAnswers.usage.none")}</span> : <span className="truncate" data-testid="task-profile">{task.agent.name}</span>}
+        </PropRow>
         {task.agent === null ? null : (
           <>
             <PropRow label={t("taskPage.agent")}><span className="truncate">{task.agent.agentName}</span></PropRow>
@@ -138,7 +152,7 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
         )}
         <PropRow label={t("taskPage.tokens")}>
           <Mono>
-            <span data-testid="task-tokens">{formatTokens(input)} {t("taskPage.in")} · {formatTokens(output)} {t("taskPage.out")}</span>
+            <span data-testid="task-tokens">{usage.estimated ? "≈ " : ""}{formatTokens(Math.max(input, usage.inputTokens))} {t("taskPage.in")} · {formatTokens(Math.max(output, usage.outputTokens))} {t("taskPage.out")}</span>
           </Mono>
           {/* F-089: a call whose endpoint reported no usage was estimated by the key proxy, and the count says so. */}
           {tokens.estimated ? (
@@ -146,6 +160,9 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
               {t("taskPage.estimated")}
             </span>
           ) : null}
+        </PropRow>
+        <PropRow label={t("taskAnswers.usage.cache")}>
+          <Mono><span data-testid="task-cache">{formatTokens(usage.cacheReadTokens)} {t("taskAnswers.usage.read")} · {formatTokens(usage.cacheWriteTokens)} {t("taskAnswers.usage.write")}</span></Mono>
         </PropRow>
         {context === null ? null : (
           <PropRow label={t("taskPage.context")}>
@@ -159,8 +176,19 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
         <PropRow label={t("taskPage.spend")}>
           <Mono className={task.spend.reached ? "text-amber" : ""}>{spendText(task.spend)}</Mono>
         </PropRow>
+        <PropRow label={t("taskAnswers.usage.agentTime")}><Mono><span data-testid="task-agent-time">{formatDuration(usage.agentMs)}</span></Mono></PropRow>
         <PropRow label={t("taskPage.time")}><Mono>{formatElapsed(task.createdAt, now)}</Mono></PropRow>
       </PropGroup>
+      {task.taskRules.length === 0 ? null : (
+        <PropGroup title={t("taskAnswers.usage.rules")}>
+          {task.taskRules.map((rule) => (
+            <div key={rule.ruleId} className="flex h-[26px] items-center gap-2 text-[12.5px]" data-testid="task-rule">
+              <span className="min-w-0 flex-1 truncate font-mono text-text">{rule.tool} {rule.pattern}</span>
+              <span className="shrink-0 text-xs text-faint">{t("taskAnswers.usage.fromTask", { name: rule.createdBy?.name ?? t("taskPage.someone") })}</span>
+            </div>
+          ))}
+        </PropGroup>
+      )}
       {ticket}
       <PropGroup title={t("taskPage.code")}>
         {task.repos.map((repo) => {
@@ -171,6 +199,13 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket
               <PropRow label={t("taskPage.branch")}>
                 <span className="truncate font-mono text-ui" title={repo.branchName}>{repo.branchName}</span>
               </PropRow>
+              {repo.pullRequests.filter((pr) => pr.number !== repo.pr?.number).map((pr) => (
+                <PropRow key={pr.number} label={t("taskPage.pr")}>
+                  <a href={safeHref(pr.url) ?? "#"} target="_blank" rel="noopener noreferrer" className="font-mono text-ui text-teal hover:underline" data-testid="pr-earlier">#{pr.number}</a>
+                  <span className="text-faint">·</span>
+                  <span className="text-ui text-muted">{pr.state}</span>
+                </PropRow>
+              ))}
               <PropRow label={t("taskPage.pr")}>
                 {repo.pr === null || href === null ? <span className="text-faint">{t("taskPage.noPr")}</span> : (
                   <>
@@ -207,6 +242,20 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const view = useMemo(() => deriveTaskState(log.state.events), [log.state.events]);
   const [stopping, setStopping] = useState(false);
   const now = useNow();
+  const router = useRouter();
+  const params = useSearchParams();
+  const tabParam = params.get("tab");
+  const tab: TaskTab = tabParam === "changes" || tabParam === "checks" ? tabParam : "activity";
+  const selectTab = useCallback((next: TaskTab) => {
+    const query = new URLSearchParams(params.toString());
+    if (next === "activity") query.delete("tab");
+    else query.set("tab", next);
+    const search = query.toString();
+    router.replace(search === "" ? `/tasks/${taskId}` : `/tasks/${taskId}?${search}`, { scroll: false });
+  }, [params, router, taskId]);
+  const [localOpened, setLocalOpened] = useState(false);
+  const local = useQuery(trpc.tasks.local.queryOptions(localOpened ? { taskId } : skipToken));
+  const checksMarker = useQuery({ ...trpc.tasks.checks.queryOptions({ taskId }), refetchInterval: 15_000 });
 
   const getKey = trpc.tasks.get.queryKey({ taskId });
   const stop = useMutation(
@@ -231,6 +280,39 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     (approvalId: string) => needsYou?.find((item) => item.approvalId === approvalId)?.summary ?? null,
     [needsYou],
   );
+  // Ticket 43: the open approvals and questions answered in the thread, from `tasks.get`.
+  const approvals = task.data?.approvals;
+  const questions = task.data?.questions;
+  const agentName = task.data?.agent?.agentName ?? t("task.agent");
+  const projectName = project.data?.name ?? "";
+  const driverName = task.data?.driver?.name ?? null;
+  const isDriver = task.data !== undefined && task.data.driver !== null && task.data.driver.memberId === me.data?.memberId;
+  const takeOverNow = useCallback(() => { takeOver.mutate({ taskId }); }, [takeOver, taskId]);
+  const approvalCard = useCallback(
+    (approvalId: string): ReactNode => {
+      const approval = approvals?.find((one) => one.approvalId === approvalId);
+      if (approval === undefined || (approval.state !== "open" && !approval.answerableAnyway)) return null;
+      const othersOpen = (approvals ?? []).filter((one) => one.state === "open" && one.approvalId !== approvalId).length;
+      return <ApprovalCard key={approvalId} taskId={taskId} approval={approval} agent={agentName} project={projectName} othersOpen={othersOpen} />;
+    },
+    [approvals, taskId, agentName, projectName],
+  );
+  const receiptOf = useCallback(
+    (approvalId: string): string | null => {
+      const approval = approvals?.find((one) => one.approvalId === approvalId);
+      return approval === undefined ? null : approvalReceipt(approval);
+    },
+    [approvals],
+  );
+  const questionCard = useCallback(
+    (questionId: string): ReactNode => {
+      const question = questions?.find((one) => one.questionId === questionId);
+      return question === undefined ? null : (
+        <QuestionCard taskId={taskId} question={question} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
+      );
+    },
+    [questions, taskId, agentName, isDriver, driverName, takeOverNow, takeOver.isPending],
+  );
 
   const data = task.data;
   if (task.error !== null) {
@@ -251,6 +333,14 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const activity = idleHeader(data.box, now) ?? headerActivity(view.activity);
   const mode = composerMode(composerInputOf(data));
   const conflict = data.needsYou.find((item) => item.reason === "restore_conflict");
+  const ticketClosed = data.needsYou.find((item) => item.reason === "ticket_closed");
+  const sessionGoing = data.session !== null && ["starting", "running", "waiting", "idle"].includes(data.session.state);
+  const changedFiles = data.repos.length;
+  const localLoad: LocalLoad = local.data !== undefined
+    ? { kind: "ready", local: { checkoutLine: local.data.checkoutCommand, loginLine: local.data.loginCommand, hasCliSession: local.data.hasCliSession, repos: local.data.repos.map((repo) => ({ fullName: repo.fullName, branch: repo.branch, mergedPr: repo.pr?.state === "merged" ? repo.pr.number : null })) } }
+    : local.error !== null
+      ? { kind: "error", message: errorText(local.error) ?? t("errors.unknown") }
+      : { kind: "loading" };
   const firstBoard = boards.data?.boards[0];
   const ticketGroups = (
     <TicketProperties
@@ -267,12 +357,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   // A member who isn't the driver sees who is, and how to take over, where the composer would be.
   const notDriver =
     data.capabilities.send || !data.capabilities.takeOver || finished ? undefined : (
-      <span className="flex flex-wrap items-center gap-1">
-        {data.driver === null ? t("task.composer.noDriver") : t("task.composer.notDriver", { name: data.driver.name })}
-        <Button variant="link" className="text-sm font-normal" onClick={() => { takeOver.mutate({ taskId }); }} disabled={takeOver.isPending}>
-          {t("taskPage.takeOver")}
-        </Button>
-      </span>
+      <WatcherBar driver={data.driver?.name ?? null} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
     );
 
   return (
@@ -286,6 +371,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       actions={
         <>
           <CopyLink />
+          <TakeItLocal pushed={data.repos.some((repo) => repo.headSha !== null)} load={localLoad} onOpen={() => { setLocalOpened(true); }} />
           {prs.map((pr) =>
             pr.href === null ? null : (
               <a key={pr.number} href={pr.href} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
@@ -340,6 +426,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               error: errorText(reopen.error),
             }}
           />
+          {ticketClosed === undefined ? null : <TicketClosedBlock taskId={taskId} status={ticketClosed.summary} />}
           {conflict === undefined ? null : (
             <RestoreConflict
               savedWorkUrl={null}
@@ -347,14 +434,34 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               dismiss={{ run: () => { dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending }}
             />
           )}
-          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined ? (
+          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" ? (
             <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
               <p className="whitespace-pre-wrap">{summary ?? t("taskPage.needsYouDefault")}</p>
             </NeedsYou>
           ) : null}
-          <div className="mt-5 border-b border-line" />
+          <UnderlineTabs
+            className="mt-4"
+            label={t("taskAnswers.tabs.activity")}
+            idPrefix="task-tab"
+            selected={tab}
+            onSelect={selectTab}
+            tabs={[
+              { id: "activity", label: t("taskAnswers.tabs.activity") },
+              { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
+              { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={checksMarkerOf(checksMarker.data)} /> },
+            ]}
+          />
         </div>
         {log.error === null ? null : <p role="alert" className="mt-3 text-red">{log.error}</p>}
+        {tab === "changes" ? (
+          <div className="min-h-0 flex-1" id="task-tab-changes">
+            <ChangesTab taskId={taskId} agent={agentName} driver={driverName} isDriver={isDriver} running={running} steersMidTurn={data.capabilities.steersMidTurn} sessionGoing={sessionGoing} onTakeOver={takeOverNow} onSeeActivity={() => { selectTab("activity"); }} />
+          </div>
+        ) : tab === "checks" ? (
+          <div className="min-h-0 flex-1" id="task-tab-checks">
+            <ChecksTab taskId={taskId} projectId={data.projectId} agent={agentName} driver={driverName} isDriver={isDriver} running={running} sessionGoing={sessionGoing} now={now} onTakeOver={takeOverNow} onSeeActivity={() => { selectTab("activity"); }} />
+          </div>
+        ) : (
         <TaskThread
           taskId={taskId}
           log={log.state}
@@ -368,11 +475,16 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           running={running}
           agent={{ name: data.agent?.agentName ?? t("task.agent"), model: data.agent?.model?.name ?? null }}
           approvalSummary={approvalSummary}
+          approvalCard={approvalCard}
+          approvalReceipt={receiptOf}
+          questionCard={questionCard}
+          tail={data.plan === null ? null : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
           {...(notDriver === undefined ? {} : { notDriver })}
           hasEarlier={log.state.olderBefore !== null}
           loadEarlier={log.loadEarlier}
           onFold={recordFold}
         />
+        )}
       </div>
     </PageFrame>
   );
