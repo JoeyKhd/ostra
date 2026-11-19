@@ -270,6 +270,9 @@ model EmailSettings {
   smtpUser              String?
   /// The SMTP password, in the secret store: a reference, never the value.
   smtpPasswordSecretRef String?
+  /// The organization whose namespace in the secret store holds the two secrets above: the install
+  /// has one email and the store keys values by organization, so it is the saving admin's.
+  secretsOrganizationId String?
   /// Set when `OSTRA_EMAIL_PROVIDER` chose the provider: the panel shows it read-only.
   lockedBySettings      Boolean       @default(false)
   lastTestAt            DateTime?
