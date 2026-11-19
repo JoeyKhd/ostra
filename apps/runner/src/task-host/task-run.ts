@@ -20,7 +20,7 @@ import type { CommandOutcome, SessionChannel } from "../connection/peer.ts";
 import { startGitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import type { GitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import { hiddenRefFor } from "../sidecar/git-proxy/policy.ts";
-import { startKeyProxy } from "../sidecar/key-proxy.ts";
+import { rateLimitHoldSeconds, startKeyProxy } from "../sidecar/key-proxy.ts";
 import type { KeyProxy, UpstreamRefusal } from "../sidecar/key-proxy.ts";
 import { startMcpTools } from "../sidecar/mcp-tools.ts";
 import type { McpTools } from "../sidecar/mcp-tools.ts";
@@ -44,6 +44,9 @@ import type { ServerLink } from "./server-link.ts";
 export const NO_RULES_YET = "no rules until F-026";
 
 /** How much of the push work a stop waits for before it acks anyway. */
+/** A rate-limit hold is reported again only when it reaches this far past the last one reported. */
+const RATE_LIMIT_REPORT_STEP_MS = 5_000;
+
 const STOP_DEADLINE_MS = 120_000;
 
 export type TaskRunDeps = {
@@ -132,6 +135,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let boxPrepared = false;
   let keyProxy: KeyProxy | undefined;
   let gitProxy: GitProxy | undefined;
+  /** When the last rate-limit event's hold ends, in ms since the epoch: later 429s inside it say nothing new. */
+  let rateLimitedUntil = 0;
   let mcp: McpTools | undefined;
   let spec: TaskSpec | undefined;
   /** The task's credentials: in this closure only, never in a variable, argument or file of the runner. */
@@ -359,9 +364,16 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         void emit(event);
       },
       onRateLimited: (limit) => {
-        // The protocol has no event for this yet: logged with the provider, for the server's logs.
         log.warn("model provider rate-limited the task", { providerId: taskSpec.agent.providerId, status: limit.status, retryAfterMs: limit.retryAfterMs });
       },
+        // F-089: the server holds new dispatches on the provider. A hold is reported again only
+        // when it reaches well past the last one, so an agent retrying into a limit doesn't fill its log.
+        const retryAfterSeconds = rateLimitHoldSeconds(limit.retryAfterMs);
+        const until = Date.now() + retryAfterSeconds * 1000;
+        if (until >= rateLimitedUntil + RATE_LIMIT_REPORT_STEP_MS) {
+          rateLimitedUntil = until;
+          void emit({ kind: "provider.rate_limited", providerId: taskSpec.agent.providerId, retryAfterSeconds });
+        }
       onUpstreamRefused: (refusal: UpstreamRefusal) => {
         // F-089: an upstream 401 or 403 fails the task at once, with a typed reason.
         end({ kind: "crashed", error: `the model provider refused the task's token (status ${String(refusal.status)})` });

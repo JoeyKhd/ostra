@@ -5,11 +5,11 @@ import { createLogger, createUsageMeter } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { startAnthropicStub, startOpenAiStub } from "@ostra/adapter-sdk/testing";
 import type { StubReply, StubServer } from "@ostra/adapter-sdk/testing";
-import { modelIdSchema, providerIdSchema, taskIdSchema } from "@ostra/protocol";
+import { modelIdSchema, providerIdSchema, RATE_LIMIT_HOLD_DEFAULT_SECONDS, RATE_LIMIT_HOLD_MAX_SECONDS, taskIdSchema } from "@ostra/protocol";
 import type { ApiFormat, AuthScheme, TaskEventOf } from "@ostra/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { isAllowedRoute, parseRetryAfter, startKeyProxy } from "./key-proxy.ts";
+import { isAllowedRoute, parseRetryAfter, rateLimitHoldSeconds, startKeyProxy } from "./key-proxy.ts";
 import type { KeyProxy, KeyProxyOptions, RateLimit, UpstreamRefusal } from "./key-proxy.ts";
 
 // Ticket 17's "done when", against both stub formats (spec section 8) and a raw upstream for the
@@ -395,6 +395,14 @@ describe("Retry-After", () => {
     expect(parseRetryAfter(new Date(10_000).toUTCString(), 4_000)).toBe(6_000);
     expect(parseRetryAfter(undefined, 0)).toBeNull();
     expect(parseRetryAfter("soon", 0)).toBeNull();
+  });
+
+  it("turns it into a hold in whole seconds: rounded up, at least one, capped, a default when absent", () => {
+    expect(rateLimitHoldSeconds(7_000)).toBe(7);
+    expect(rateLimitHoldSeconds(7_001)).toBe(8);
+    expect(rateLimitHoldSeconds(0)).toBe(1);
+    expect(rateLimitHoldSeconds(10 * 3_600_000)).toBe(RATE_LIMIT_HOLD_MAX_SECONDS);
+    expect(rateLimitHoldSeconds(null)).toBe(RATE_LIMIT_HOLD_DEFAULT_SECONDS);
   });
 });
 

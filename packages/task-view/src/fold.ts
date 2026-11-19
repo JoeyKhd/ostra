@@ -741,6 +741,9 @@ export const foldTaskEvents = (
         turn.meta.context = { used: event.contextUsed, size: event.contextSize };
         break;
       }
+      case "provider.rate_limited":
+        // The server holds new dispatches on the provider; the thread has nothing to show.
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

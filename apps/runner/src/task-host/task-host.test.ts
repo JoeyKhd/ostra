@@ -373,6 +373,44 @@ describe("the task host", () => {
         } else {
           files.push(full);
         }
+  it("reports a model provider's rate limit as an event, once for a burst of 429s", async () => {
+    const { dispatch } = await start();
+    const limited = await startAnthropicStub({
+      realKey: MODEL_TOKEN,
+      models: ["stub-model"],
+      brain: () => ({ error: { status: 429, message: "slow down", retryAfterSeconds: 7 } }),
+    });
+    try {
+      const { spec, credentials } = taskFor("[[fake:silent]]");
+      server.tasks.set(spec.taskId, { spec, credentials: { ...credentials, model: { ...credentials.model, baseUrl: limited.baseUrl } } });
+      launches.length = 0;
+      dispatch(spec);
+      await waitForKind(spec, "turn.started");
+      const env = launches.at(-1)?.env ?? {};
+      const baseUrl = env["FAKE_AGENT_BASE_URL"];
+      const key = env["FAKE_AGENT_API_KEY"];
+      if (baseUrl === undefined || key === undefined) {
+        throw new Error("the agent's launch has no model endpoint");
+      }
+      // The agent retries into the limit: three calls, each answered 429 through the key proxy.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const answer = await fetch(`${baseUrl}/messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({ model: "stub-model", max_tokens: 16, messages: [{ role: "user", content: "hi" }] }),
+        });
+        expect(answer.status).toBe(429);
+        await answer.text();
+      }
+      await waitForKind(spec, "provider.rate_limited");
+      const reports = eventsOf(spec).flatMap((item) => (item.event.kind === "provider.rate_limited" ? [item.event] : []));
+      expect(reports).toEqual([{ kind: "provider.rate_limited", providerId: spec.agent.providerId, retryAfterSeconds: 7 }]);
+      expect(everyEventOnce()).toBe(true);
+    } finally {
+      await limited.close();
+    }
+  }, 120_000);
+
       }
     };
     await walk(dataDir);

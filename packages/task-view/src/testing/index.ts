@@ -78,6 +78,7 @@ export const allKindsSession = (): TaskEvent[] => [
   { ...f["agent.message"], segmentId: segmentIdSchema.parse("seg-2") },
   f["usage.recorded"],
   f["session.usage"],
+  f["provider.rate_limited"],
   f["agent.unknown"],
   f["turn.cancel_requested"],
   f["turn.ended"],

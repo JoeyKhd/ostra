@@ -6,7 +6,7 @@ import type { LogRecord } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { dispatchTask, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import { dispatchTask, holdProviderInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { repoFullNameSchema, runnerPaths, taskCredentialsSchema, taskSpecSchema } from "@ostra/protocol";
@@ -18,7 +18,7 @@ import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { dispatchPayload, ENV_SECRET, PROVIDER_TOKEN, seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
-import { applyOfferResultsInTx, holdProviderInTx, offerTimeoutHandler, requeueQueuedTasks } from "./dispatcher.ts";
+import { applyOfferResultsInTx, offerTimeoutHandler, requeueQueuedTasks } from "./dispatcher.ts";
 import type { DispatcherDeps } from "./dispatcher.ts";
 import { handleTaskEndpoint } from "./endpoints.ts";
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { eventFixtures, fixtureIds as ids } from "../testing/fixtures.ts";
 import {
+  RATE_LIMIT_HOLD_MAX_SECONDS,
   readEventSchema,
   runnerEventSchema,
   serverOnlyKinds,
@@ -15,8 +16,8 @@ import { typedToolSchemas } from "./tools.ts";
 const fixtures = Object.values(eventFixtures);
 
 describe("the event union", () => {
-  it("has the 29 kinds of spike 7 and milestone 1's 8", () => {
-    expect(taskEventKinds).toHaveLength(37);
+  it("has the 29 kinds of spike 7 and milestone 1's 9", () => {
+    expect(taskEventKinds).toHaveLength(38);
     for (const kind of [
       "environment.setup_started",
       "environment.setup_output",
@@ -26,6 +27,7 @@ describe("the event union", () => {
       "session.ended",
       "usage.recorded",
       "session.usage",
+      "provider.rate_limited",
     ]) {
       expect(taskEventKinds).toContain(kind);
     }
@@ -109,5 +111,21 @@ describe("live text", () => {
     expect(liveTextFrameSchema.parse(frame)).toEqual(frame);
     expect(liveTextFrameSchema.safeParse({ ...frame, seq: 1 }).success).toBe(false);
     expect(liveTextFrameSchema.safeParse({ ...frame, offset: -1 }).success).toBe(false);
+  });
+});
+
+describe("provider.rate_limited", () => {
+  const event = eventFixtures["provider.rate_limited"];
+
+  it("is a kind the runner may send", () => {
+    const item = { sessionId: ids.session, sessionSeq: 1, leaseEpoch: 1, at: 1, event };
+    expect(runnerEventSchema.parse(item)).toEqual(item);
+  });
+
+  it("bounds the hold: positive whole seconds, at most an hour", () => {
+    expect(taskEventSchema.safeParse({ ...event, retryAfterSeconds: RATE_LIMIT_HOLD_MAX_SECONDS }).success).toBe(true);
+    expect(taskEventSchema.safeParse({ ...event, retryAfterSeconds: RATE_LIMIT_HOLD_MAX_SECONDS + 1 }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ ...event, retryAfterSeconds: 0 }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ ...event, retryAfterSeconds: 1.5 }).success).toBe(false);
   });
 });

@@ -219,6 +219,7 @@ export const deriveTaskState = (
       case "plan.updated":
       case "compaction.updated":
       case "session.config_changed":
+      case "provider.rate_limited":
       case "agent.unknown":
       case "unsupported":
         break;

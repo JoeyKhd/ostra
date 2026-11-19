@@ -41,4 +41,5 @@ export const foldCoverage = {
   "session.ended": "session end row",
   "usage.recorded": "assistant message usage",
   "session.usage": "assistant message context",
+  "provider.rate_limited": "no row (the server holds new dispatches)",
 } as const satisfies Record<TaskEventKind, string>;

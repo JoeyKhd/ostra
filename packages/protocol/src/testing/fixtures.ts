@@ -161,6 +161,7 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     estimated: false,
   },
   "session.usage": { kind: "session.usage", contextUsed: 12_000, contextSize: 200_000 },
+  "provider.rate_limited": { kind: "provider.rate_limited", providerId: ids.provider, retryAfterSeconds: 30 },
 };
 
 /** A full task spec for `ostra-test/test1`. */

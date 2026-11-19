@@ -304,6 +304,14 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(lastTurnMeta(m)?.context).toEqual({ used: 12_000, size: 200_000 });
     },
   },
+  // The server acts on it (it holds new dispatches on the provider); the thread shows nothing.
+  "provider.rate_limited": {
+    prefix: turnPrefix,
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).not.toContain("data-unsupported");
+    },
+  },
 };
 
 describe("foldTaskEvents, one kind at a time", () => {

@@ -5,7 +5,7 @@ import type { ChangeNotices, Clock, CommandOutbox, JobPayload } from "@ostra/dom
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { OrganizationId, ProviderId, TaskId } from "@ostra/protocol";
+import type { TaskId } from "@ostra/protocol";
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
 
@@ -122,15 +122,4 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
     });
   }
   return sent;
-};
-
-/**
- * Holds new dispatches on a provider until `until` (it answered with a rate limit, F-088). A later
- * hold only extends an earlier one.
- */
-export const holdProviderInTx = async (tx: Tx, organizationId: OrganizationId, providerId: ProviderId, until: Date): Promise<void> => {
-  await tx.modelProvider.updateMany({
-    where: { id: providerId, organizationId, OR: [{ dispatchHeldUntil: null }, { dispatchHeldUntil: { lt: until } }] },
-    data: { dispatchHeldUntil: until },
-  });
 };

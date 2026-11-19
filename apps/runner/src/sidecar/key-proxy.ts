@@ -5,6 +5,7 @@ import { request as httpsRequest, Agent as HttpsAgent } from "node:https";
 import type { AddressInfo } from "node:net";
 import { createUsageMeter, formatForPath, resolveUsage } from "@ostra/adapter-sdk";
 import type { Logger, TokenUsage, WireFormat } from "@ostra/adapter-sdk";
+import { RATE_LIMIT_HOLD_DEFAULT_SECONDS, RATE_LIMIT_HOLD_MAX_SECONDS } from "@ostra/protocol";
 import type { ApiFormat, ModelId, ProviderId, TaskCredentials, TaskEventOf, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -202,6 +203,18 @@ export const parseRetryAfter = (value: string | undefined, now: number): number 
   }
   const date = Date.parse(trimmed);
   return Number.isNaN(date) ? null : Math.max(0, date - now);
+};
+
+/**
+ * How long the server holds new dispatches after a rate limit: the provider's `Retry-After` in
+ * whole seconds, rounded up, at least one and at most the protocol's cap; a default when the
+ * provider didn't say.
+ */
+export const rateLimitHoldSeconds = (retryAfterMs: number | null): number => {
+  if (retryAfterMs === null) {
+    return RATE_LIMIT_HOLD_DEFAULT_SECONDS;
+  }
+  return Math.min(RATE_LIMIT_HOLD_MAX_SECONDS, Math.max(1, Math.ceil(retryAfterMs / 1000)));
 };
 
 /** The real credential's headers, by the provider's auth scheme (ADR 0033). */

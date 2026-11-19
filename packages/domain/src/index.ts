@@ -28,6 +28,7 @@ export * from "./use-cases/create-first-admin.ts";
 export * from "./use-cases/create-project.ts";
 export * from "./use-cases/create-prompt-task.ts";
 export * from "./use-cases/dispatch-task.ts";
+export * from "./use-cases/hold-provider.ts";
 export * from "./use-cases/ingest-events.ts";
 export * from "./use-cases/issue-task-credentials.ts";
 export * from "./use-cases/open-pull-requests.ts";

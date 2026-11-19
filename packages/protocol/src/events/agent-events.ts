@@ -96,6 +96,11 @@ export type SessionOutcome = z.infer<typeof sessionOutcomeSchema>;
 
 const tokenCount = z.number().int().nonnegative();
 
+/** The longest a provider's rate limit holds new dispatches, whatever its `Retry-After` said. */
+export const RATE_LIMIT_HOLD_MAX_SECONDS = 3600;
+/** The hold when the provider answered with a rate limit but didn't say for how long. */
+export const RATE_LIMIT_HOLD_DEFAULT_SECONDS = 30;
+
 /** The largest piece of setup output in one event; longer output is split. */
 export const SETUP_OUTPUT_MAX_CHARS = 16_384;
 
@@ -259,6 +264,13 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
     cacheWriteTokens: tokenCount,
     /** True when the endpoint reported no usage and the key proxy estimated it. */
     estimated: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("provider.rate_limited"),
+    /** The key proxy saw the model provider answer with a rate limit (F-088, F-089). */
+    providerId: providerIdSchema,
+    /** How long the server holds new dispatches on the provider; the runner clamps it. */
+    retryAfterSeconds: z.number().int().positive().max(RATE_LIMIT_HOLD_MAX_SECONDS),
   }),
   z.strictObject({
     kind: z.literal("session.usage"),

@@ -6,6 +6,7 @@ import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, 
 import { z } from "zod";
 
 import type { Ports } from "../ports.ts";
+import { holdProviderInTx } from "./hold-provider.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
@@ -158,6 +159,23 @@ const applyEffects = async (
           },
         });
         break;
+      case "provider.rate_limited": {
+        // F-088, F-089: the key proxy saw a rate limit, so new dispatches wait on that provider. A
+        // runner can only hold the provider its own session's model runs on, never another one.
+        const profile =
+          current.agentProfileId === null
+            ? null
+            : await tx.agentProfile.findFirst({
+                where: { id: current.agentProfileId, organizationId: task.organizationId },
+                select: { model: { select: { providerId: true } } },
+              });
+        if (profile?.model?.providerId === event.providerId) {
+          await holdProviderInTx(tx, task.organizationId, event.providerId, new Date(deps.clock.now() + event.retryAfterSeconds * 1000));
+        } else {
+          deps.logger?.warn("ingest.rate-limit-for-another-provider", { taskId: task.id, sessionId: session.id, providerId: event.providerId });
+        }
+        break;
+      }
       case "git.pushed":
         if (event.ref === `refs/heads/${event.branch}`) {
           await tx.taskRepo.updateMany({
