@@ -563,6 +563,15 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           end({ kind: "version", message: frame.message });
           return;
         }
+        if (frame.code === "event-rejected") {
+          // The database refused this event even as a placeholder, so the server skipped it and moved
+          // its cursor past it. It's refused for good: drop it from the spool, never send it again.
+          log.warn("server refused an event for good", { sessionId: frame.sessionId, sessionSeq: frame.sessionSeq });
+          if (frame.sessionId !== undefined && frame.sessionSeq !== undefined) {
+            await onAck({ type: "ack", sessionId: frame.sessionId, upTo: frame.sessionSeq });
+          }
+          return;
+        }
         log.warn("server error", { code: frame.code, sessionId: frame.sessionId });
         return;
       case "evict":

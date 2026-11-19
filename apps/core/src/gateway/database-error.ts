@@ -22,3 +22,21 @@ export const databaseErrorCodes = (error: unknown): DatabaseErrorCodes => {
   }
   return { code: parsed.data.code, sqlState: parsed.data.meta?.driverAdapterError?.cause?.originalCode };
 };
+
+// Prisma's own codes for a value or constraint the database refused, for when the driver's SQLSTATE
+// isn't on the error: P2000 value too long, P2002 unique, P2003 foreign key, P2004 constraint,
+// P2011 null constraint.
+const prismaDataCodes: ReadonlySet<string> = new Set(["P2000", "P2002", "P2003", "P2004", "P2011"]);
+
+/**
+ * Whether the database refused the data itself: SQLSTATE class 22 (data exception: bad text, a value
+ * out of range) or class 23 (integrity constraint). The same data is refused again on every try, so
+ * a caller must not retry it as it was. Anything else (a lost connection, a deadlock, a timeout) is
+ * transient and worth a retry.
+ */
+export const isDataRefusal = (codes: DatabaseErrorCodes): boolean => {
+  if (codes.sqlState !== undefined) {
+    return codes.sqlState.startsWith("22") || codes.sqlState.startsWith("23");
+  }
+  return codes.code !== undefined && prismaDataCodes.has(codes.code);
+};

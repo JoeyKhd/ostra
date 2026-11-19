@@ -224,6 +224,208 @@ describe("ingest", () => {
   });
 });
 
+// A lone surrogate is text no UTF-8 holds: Postgres' jsonb refuses it (SQLSTATE 22P02), and so it
+// does on every resend. (A NUL is repaired before it gets there; see storable-event.ts.)
+const LONE_SURROGATE = "\ud800";
+const poison = (segment: string): TaskEvent => message(segment, `poison ${LONE_SURROGATE} text`);
+
+const storedEvents = async (task: LeasedTask) =>
+  (await test.db.event.findMany({ where: { taskId: task.taskId }, orderBy: { seq: "asc" }, select: { sessionSeq: true, kind: true, payload: true } })).map(
+    (row) => [row.sessionSeq, row.kind] as const,
+  );
+
+describe("a batch the database refuses", () => {
+  it("stores a placeholder for the refused event, saves the rest, and acks the whole batch", async () => {
+    const task = await newTask();
+    records.length = 0;
+    const replies = await ingest(ours, frame(runnerEvent(task, 1, thought("a")), runnerEvent(task, 2, poison("seg-bad")), runnerEvent(task, 3, thought("c"))));
+    expect(replies).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 3 }]);
+    expect(await storedEvents(task)).toEqual([
+      [1, "agent.thought"],
+      [2, "agent.unknown"],
+      [3, "agent.thought"],
+    ]);
+    const placeholder = await test.db.event.findFirstOrThrow({ where: { taskId: task.taskId, sessionSeq: 2 } });
+    expect(placeholder.payload).toEqual({ kind: "agent.unknown", acpKind: "event-refused", raw: "refused by the database: 22P02" });
+    expect((await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).ingestedSeq).toBe(3);
+    // The log has IDs and codes, and none of the event.
+    const refused = records.filter((record) => record.message === "ingest.event-refused");
+    expect(refused.map((record) => record.fields)).toEqual([
+      {
+        component: "ingest",
+        runnerId: ours.runnerId,
+        sessionId: task.sessionId,
+        sessionSeq: 2,
+        kind: "agent.message",
+        code: "P2007",
+        sqlState: "22P02",
+      },
+    ]);
+    expect(JSON.stringify(records)).not.toContain("poison");
+  });
+
+  it("refuses the poison once: the resend stores nothing and is acked, and the next batch flows", async () => {
+    const task = await newTask();
+    const batch = frame(runnerEvent(task, 1, poison("seg-1")), runnerEvent(task, 2, thought("b")));
+    expect(await ingest(ours, batch)).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 2 }]);
+    records.length = 0;
+    // The ack was lost, so the runner sends it again: the cursor is past it, so nothing is tried.
+    expect(await ingest(ours, batch)).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 2 }]);
+    expect(records.filter((record) => record.message === "ingest.event-refused")).toEqual([]);
+    expect(await ingest(ours, frame(runnerEvent(task, 3, thought("c")), runnerEvent(task, 4, thought("d"))))).toEqual([
+      { type: "ack", sessionId: task.sessionId, upTo: 4 },
+    ]);
+    expect(await storedEvents(task)).toEqual([
+      [1, "agent.unknown"],
+      [2, "agent.thought"],
+      [3, "agent.thought"],
+      [4, "agent.thought"],
+    ]);
+  });
+
+  it("replaces each refused event, wherever they are in the batch", async () => {
+    const task = await newTask();
+    const events = [
+      runnerEvent(task, 1, poison("s1")),
+      runnerEvent(task, 2, thought("b")),
+      runnerEvent(task, 3, thought("c")),
+      runnerEvent(task, 4, poison("s4")),
+      runnerEvent(task, 5, thought("e")),
+      runnerEvent(task, 6, poison("s6")),
+    ];
+    expect(await ingest(ours, frame(...events))).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 6 }]);
+    expect((await storedEvents(task)).map(([, kind]) => kind)).toEqual([
+      "agent.unknown",
+      "agent.thought",
+      "agent.thought",
+      "agent.unknown",
+      "agent.thought",
+      "agent.unknown",
+    ]);
+    expect(await storedSeqs(task)).toEqual([1, 2, 3, 4, 5, 6].map((n) => [n, n]));
+  });
+
+  it("keeps the effects of the events around the refused one, and none of the refused one's", async () => {
+    const task = await newTask("running");
+    const replies = await ingest(
+      ours,
+      frame(
+        runnerEvent(task, 1, { kind: "turn.started", turnId }),
+        runnerEvent(task, 2, poison("seg-bad")),
+        runnerEvent(task, 3, { kind: "turn.ended", turnId, stopReason: "end_turn" }),
+      ),
+    );
+    expect(replies).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 3 }]);
+    expect(await test.db.turn.findFirstOrThrow({ where: { sessionId: task.sessionId } })).toMatchObject({ ordinal: 1, startSeq: 1, stopReason: "end_turn" });
+  });
+
+  it("does not hold up another session in the same frame", async () => {
+    const bad = await newTask();
+    const good = await newTask();
+    const replies = await ingest(
+      ours,
+      frame(runnerEvent(bad, 1, poison("s1")), runnerEvent(good, 1, thought("a")), runnerEvent(good, 2, thought("b")), runnerEvent(bad, 2, thought("c"))),
+    );
+    expect(replies).toHaveLength(2);
+    expect(replies).toContainEqual({ type: "ack", sessionId: bad.sessionId, upTo: 2 });
+    expect(replies).toContainEqual({ type: "ack", sessionId: good.sessionId, upTo: 2 });
+    expect(await storedEvents(good)).toEqual([
+      [1, "agent.thought"],
+      [2, "agent.thought"],
+    ]);
+    expect(await storedEvents(bad)).toEqual([
+      [1, "agent.unknown"],
+      [2, "agent.thought"],
+    ]);
+  });
+
+  it("still refuses a stale lease the plain way when the batch has a poison event", async () => {
+    const task = await newTask();
+    await test.db.task.update({ where: { id: task.taskId }, data: { leaseEpoch: 2 } });
+    const replies = await ingest(ours, frame(runnerEvent(task, 1, poison("s1"))));
+    expect(replies).toEqual([expect.objectContaining({ type: "error", code: "stale-lease", currentEpoch: 2 })]);
+    expect(await storedEvents(task)).toEqual([]);
+  });
+
+  it("skips the event and says so when not even the placeholder can be stored", async () => {
+    const task = await newTask();
+    // The table now refuses the placeholder's kind too. NOT VALID: the rows already there are left alone.
+    await test.db.$executeRaw`ALTER TABLE "event" ADD CONSTRAINT "event_refuse_test" CHECK ("kind" <> 'agent.unknown' AND "payload"->>'text' IS DISTINCT FROM 'poison') NOT VALID`;
+    try {
+      records.length = 0;
+      const replies = await ingest(
+        ours,
+        frame(runnerEvent(task, 1, thought("a")), runnerEvent(task, 2, message("seg-p", "poison")), runnerEvent(task, 3, thought("c"))),
+      );
+      expect(replies).toHaveLength(2);
+      expect(replies).toContainEqual({ type: "ack", sessionId: task.sessionId, upTo: 3 });
+      expect(replies).toContainEqual(
+        expect.objectContaining({ type: "error", code: "event-rejected", sessionId: task.sessionId, sessionSeq: 2 }),
+      );
+      // Event 2 has no row, and its number is spent: the cursor is past it.
+      expect(await storedEvents(task)).toEqual([
+        [1, "agent.thought"],
+        [3, "agent.thought"],
+      ]);
+      expect((await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).ingestedSeq).toBe(3);
+      expect(records.some((record) => record.message === "ingest.event-skipped")).toBe(true);
+      expect(JSON.stringify(records)).not.toContain("poison");
+      // Nothing is asked for again.
+      expect(await ingest(ours, frame(runnerEvent(task, 2, message("seg-p", "poison")), runnerEvent(task, 3, thought("c"))))).toEqual([
+        { type: "ack", sessionId: task.sessionId, upTo: 3 },
+      ]);
+      expect(await ingest(ours, frame(runnerEvent(task, 4, thought("d"))))).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 4 }]);
+    } finally {
+      await test.db.$executeRaw`ALTER TABLE "event" DROP CONSTRAINT "event_refuse_test"`;
+    }
+  });
+
+  it("throws on a failure that is not the data's, so the runner reconnects and resends", async () => {
+    const task = await newTask("running");
+    const failing = createIngest({
+      db: test.db,
+      jobs: { enqueueInTx: () => Promise.reject(new Error("the queue is gone")) },
+      notices: postgresChangeNotices,
+      clock: systemClock,
+      liveText,
+      logger: createLogger((record) => records.push(record)),
+    });
+    await expect(failing(ours, frame(runnerEvent(task, 1, { kind: "session.ended", outcome: "without-changes", repos: [] })))).rejects.toThrow(
+      "the queue is gone",
+    );
+    expect(await storedEvents(task)).toEqual([]);
+  });
+
+  it("does not close the socket or loop: the poison batch is acked once, and the next batch flows", async () => {
+    const harness = await startGateway(test.db, test.url, { hooks: { ingest, liveText: liveText.write } });
+    try {
+      const runner = await registerPersonal(harness, test.db, fixture.a.member);
+      const task = await seedLeasedTask(test.db, { runnerId: runner.runnerId, organizationId: fixture.a.organization.id }, fixture.a.openProject.id);
+      const peer = await connect(harness, runner);
+      await peer.next("welcome");
+      records.length = 0;
+      peer.send(frame(runnerEvent(task, 1, thought("a")), runnerEvent(task, 2, poison("seg-bad"))));
+      expect(await peer.next("ack")).toEqual({ type: "ack", sessionId: task.sessionId, upTo: 2 });
+      peer.send(frame(runnerEvent(task, 3, thought("c"))));
+      expect(await peer.next("ack")).toEqual({ type: "ack", sessionId: task.sessionId, upTo: 3 });
+      const state = await Promise.race([peer.closed.then(() => "closed"), new Promise<string>((resolve) => {
+          setTimeout(() => {
+            resolve("open");
+          }, 300);
+        })]);
+      expect(state).toBe("open");
+      expect(await storedEvents(task)).toEqual([
+        [1, "agent.thought"],
+        [2, "agent.unknown"],
+        [3, "agent.thought"],
+      ]);
+      peer.close();
+    } finally {
+      await harness.stop();
+    }
+  });
+});
+
 describe("live text", () => {
   it("is shown, then deleted when its message commits, and never stored as an event", async () => {
     const task = await newTask("running");

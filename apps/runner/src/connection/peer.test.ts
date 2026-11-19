@@ -189,6 +189,29 @@ describe("events: spooled, sent, acked, stored once", () => {
     expect(storedTexts(gw)).toEqual(["line 0", "line 1", "line 2", "line 3"]);
   });
 
+  it("drops an event the server refused for good from its spool, and never sends it again", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    const connection = await connect(fake);
+    await gw.waitFor(() => gw.connected());
+    gw.holdAcks = true;
+    const channel = await connection.openSession({ taskId, sessionId, leaseEpoch });
+    await emitMany(channel, 0, 3);
+    await gw.waitFor(() => storedTexts(gw).length === 3);
+    // The server skipped event 2: its cursor moved past it, and it says so.
+    gw.send({ type: "error", code: "event-rejected", message: "refused", sessionId, sessionSeq: 2 });
+    await gw.waitFor(() => connection.report().sessions[0]?.ackedUpTo === 2);
+    // Only event 3 is left to send, and it's still unacked.
+    expect(connection.report().sessions[0]).toMatchObject({ lastSeq: 3, ackedUpTo: 2 });
+    gw.drop();
+    gw.holdAcks = false;
+    await channel.drained();
+    expect(gw.connections()).toBe(2);
+    expect(gw.received.get(`${sessionId}#1`)).toBe(1);
+    expect(gw.received.get(`${sessionId}#2`)).toBe(1);
+    expect(gw.received.get(`${sessionId}#3`)).toBe(2);
+    expect(gw.protocolErrors).toEqual([]);
+  });
+
   it("discards a session's spool when the server refuses its lease, and tells the task host", async () => {
     const { server: fake, gateway: gw } = await setup();
     const stale: SessionId[] = [];
