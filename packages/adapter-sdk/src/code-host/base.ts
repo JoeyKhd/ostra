@@ -113,6 +113,13 @@ export type OpenPullRequestInput = {
   readonly draft: boolean;
 };
 
+export type UpdatePullRequestBodyInput = {
+  readonly access: RepoAccess;
+  readonly number: number;
+  /** The agent's text and ostra's footer: untrusted text, sent as data. */
+  readonly body: string;
+};
+
 export type WebhookInput = {
   readonly headers: Readonly<Record<string, string | undefined>>;
   /** The raw body, exactly as received: the signature is over these bytes. */
@@ -231,6 +238,16 @@ export abstract class CodeHostAdapter {
 
   /** Opens a PR as the App. Opening one that exists answers `conflict`. */
   abstract openPullRequest(input: OpenPullRequestInput): Promise<AdapterResult<PullRequest>>;
+
+  /**
+   * Replaces a PR's body, as the App: a task's first PRs link the ones opened after them (F-030).
+   * Additive to the first contract: a host that can't answers `unsupported`, and a PR then links
+   * only the task's PRs opened before it.
+   */
+  updatePullRequestBody(input: UpdatePullRequestBodyInput): Promise<AdapterResult<PullRequest>> {
+    this.plumbing.logger.debug("updatePullRequestBody is not supported", { repo: input.access.repo, prNumber: input.number });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't change a PR's body`));
+  }
 
   /** Checks a webhook's signature. */
   abstract verifyWebhook(input: WebhookInput): boolean;

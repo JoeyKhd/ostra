@@ -16,6 +16,7 @@ import type {
   HostRepo,
   Installation,
   OpenPullRequestInput,
+  UpdatePullRequestBodyInput,
   PermissionLevel,
   PullRequest,
   ReadFilesResult,
@@ -453,6 +454,28 @@ export class GitHubAdapter extends CodeHostAdapter {
     } catch (error) {
       return toAdapterError("opening a PR", error, this.plumbing.clock.now());
     }
+  }
+
+  override async updatePullRequestBody(input: UpdatePullRequestBodyInput): Promise<AdapterResult<PullRequest>> {
+    const { access } = input;
+    // A PATCH that sets the same body twice is the same PR: safe to retry.
+    return this.#guarded("changing a PR's body", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      // The body holds the agent's text: untrusted, sent as data in the JSON body.
+      const response = await octokit.request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+        owner,
+        repo: name,
+        pull_number: input.number,
+        body: input.body.slice(0, MAX_BODY_CHARS),
+      });
+      const parsed = parseVendor(pullRequestSchema, response.data, "GitHub's changed PR");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      this.plumbing.logger.info("github.pr.body-updated", { repo: access.repo, prNumber: parsed.value.number });
+      return ok(toPullRequest(parsed.value));
+    });
   }
 
   // ---------- webhooks ----------

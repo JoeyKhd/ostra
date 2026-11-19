@@ -30,7 +30,7 @@ export type FakePullRequest = {
   readonly head: string;
   readonly base: string;
   readonly title: string;
-  readonly body: string;
+  body: string;
   readonly draft: boolean;
   state: "open" | "closed";
   merged: boolean;
@@ -407,6 +407,24 @@ export const createFakeGitHub = async (options: {
       };
       pulls.push(pr);
       send(response, 201, prJson(pr));
+      return;
+    }
+    const patched = /^\/pulls\/(\d+)$/.exec(rest);
+    if (method === "PATCH" && patched?.[1] !== undefined) {
+      if (!needs("pull_requests", "write")) {
+        forbid();
+        return;
+      }
+      const pr = pulls.find((item) => item.repo === `${owner}/${name}` && item.number === Number(patched[1]));
+      if (pr === undefined) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const body = bodySchema.parse(await readBody(request));
+      if (body.body !== undefined) {
+        pr.body = body.body;
+      }
+      send(response, 200, prJson(pr));
       return;
     }
     send(response, 404, { message: "Not Found" });

@@ -1,4 +1,4 @@
-import type { Logger } from "@ostra/adapter-sdk";
+import type { Logger, RepoAccess } from "@ostra/adapter-sdk";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Db } from "@ostra/db";
@@ -85,6 +85,8 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     orderBy: { createdAt: "asc" },
   });
   const opened: OpenedPullRequest[] = [];
+  /** The PRs this run opened, with the agent's text and how many of the task's other PRs they link. */
+  const openedHere: { readonly repoId: RepoId; readonly access: RepoAccess; readonly number: number; readonly text: string; readonly linked: number }[] = [];
   for (const taskRepo of taskRepos) {
     const repoId = repoIdSchema.parse(taskRepo.repoId);
     if (taskRepo.state === "pr_open" && taskRepo.prNumber !== null && taskRepo.prUrl !== null) {
@@ -112,7 +114,8 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     const reused = pull !== null;
     if (pull === null) {
       // The body is the agent's text (untrusted, sent as data), and the footer is ostra's.
-      const body = pullRequestBody(taskRepo.prBody ?? fallbackBody, taskUrl, opened.map((other) => other.url));
+      const text = taskRepo.prBody ?? fallbackBody;
+      const body = pullRequestBody(text, taskUrl, opened.map((other) => other.url));
       const created = await deps.adapters.codeHost.openPullRequest({
         access,
         head: taskRepo.branchName,
@@ -125,6 +128,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
         return { ok: false, error: "code-host-failed", message: `the code host refused the PR (${created.error.code})` };
       }
       pull = created.value;
+      openedHere.push({ repoId, access, number: created.value.number, text, linked: opened.length });
     }
     const pr = pull;
     await db.$transaction(async (tx) => {
@@ -157,6 +161,19 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       });
     });
     opened.push({ repoId, number: pr.number, url: pr.url, reused });
+  }
+
+  // A PR opened before the task's later ones links them too, now that they all exist (F-030). Only
+  // the PRs this run opened: their body is still ostra's, so nobody's edit is overwritten.
+  for (const mine of openedHere) {
+    const others = opened.filter((other) => other.repoId !== mine.repoId).map((other) => other.url);
+    if (others.length <= mine.linked) {
+      continue;
+    }
+    const updated = await deps.adapters.codeHost.updatePullRequestBody({ access: mine.access, number: mine.number, body: pullRequestBody(mine.text, taskUrl, others) });
+    if (!updated.ok) {
+      deps.logger?.warn("a PR couldn't link the task's other PRs", { taskId: task.id, repoId: mine.repoId, prNumber: mine.number, code: updated.error.code });
+    }
   }
 
   // Every changed repo has its PR: the task is in review, waiting for a reviewer (spec section 4).

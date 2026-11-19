@@ -131,7 +131,7 @@ const openPrs = async (task: QueuedTask): Promise<void> => {
 const theRepo = (): RepoId => repoIdSchema.parse(world.repoId);
 
 describe("a session that ends with changes", () => {
-  it("F-030: opens one PR per changed repo, once, even when the job runs twice, and the task goes to review", async () => {
+  it("F-030, F-078: opens one PR per changed repo, once, even when the job runs twice, and the task goes to review", async () => {
     const task = await runningTask();
     await send(
       task,
@@ -174,6 +174,75 @@ describe("a session that ends with changes", () => {
     // The reaction run twice changes nothing more.
     await reactToEnd(task);
     expect(await jobs.find("task.open-pull-requests", { organizationId: task.organizationId, taskId: task.taskId, sessionId: task.sessionId, eventSeq: opened[0]?.seq ?? 0 })).toHaveLength(0);
+  });
+});
+
+describe("a task with several repos", () => {
+  it("F-030: opens one PR for each repo the task changed and none for the one it didn't, each body linking the task and its other PRs", async () => {
+    const task = await runningTask();
+    const first = await test.db.repo.findUniqueOrThrow({ where: { id: world.repoId } });
+    const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+    const suffix = randomBytes(3).toString("hex");
+    const addRepo = async (name: string): Promise<RepoId> => {
+      const fullName = `ostra-test/${name}-${suffix}`;
+      const repo = await test.db.repo.create({
+        data: {
+          organizationId: first.organizationId,
+          projectId: first.projectId,
+          connectionId: first.connectionId,
+          installationId: first.installationId,
+          hostRepoId: `host-${fullName}`,
+          fullName,
+          defaultBranch: "main",
+          checkoutDir: `${name}-${suffix}`,
+        },
+      });
+      await test.db.taskRepo.create({
+        data: { organizationId: first.organizationId, projectId: first.projectId, taskId: task.taskId, repoId: repo.id, branchName, baseBranch: "main" },
+      });
+      return repoIdSchema.parse(repo.id);
+    };
+    const second = await addRepo("api");
+    const untouched = await addRepo("docs");
+    const before = codeHost.pulls.length;
+    await send(
+      task,
+      task.next,
+      { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "I changed the app and its API." },
+      { kind: "pr.text_set", repoId: theRepo(), title: "ignored", body: "The app's side of the change." },
+      { kind: "pr.text_set", repoId: second, title: "ignored", body: "The API's side of the change." },
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+      {
+        kind: "session.ended",
+        outcome: "with-changes",
+        repos: [
+          { repoId: theRepo(), ahead: true },
+          { repoId: second, ahead: true },
+          { repoId: untouched, ahead: false },
+        ],
+      },
+    );
+    await reactToEnd(task);
+    await openPrs(task);
+    const pulls = codeHost.pulls.slice(before);
+    expect(pulls.map((pull) => pull.repo)).toEqual([first.fullName, `ostra-test/api-${suffix}`]);
+    const [app, api] = pulls;
+    if (app === undefined || api === undefined) {
+      throw new Error("two PRs");
+    }
+    const taskUrl = `http://localhost:3000/tasks/${task.taskId}`;
+    expect(app.body).toContain("The app's side of the change.");
+    expect(api.body).toContain("The API's side of the change.");
+    for (const pull of pulls) {
+      expect(pull.title).toBe("Add a short CONTRIBUTING.md");
+      expect(pull.body).toContain(taskUrl);
+    }
+    // Each links the other: the first one too, opened before the second existed.
+    expect(app.body).toContain(api.url);
+    expect(api.body).toContain(app.url);
+    expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId, repoId: untouched } })).toMatchObject({ prNumber: null, ahead: false });
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.opened" } })).toBe(2);
+    expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "in_review" });
   });
 });
 

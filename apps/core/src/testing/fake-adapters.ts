@@ -17,6 +17,7 @@ import type {
   HostRepo,
   Installation,
   OpenPullRequestInput,
+  UpdatePullRequestBodyInput,
   PermissionLevel,
   PullRequest,
   ReadFilesResult,
@@ -174,6 +175,20 @@ export class FakeCodeHost extends CodeHostAdapter {
     };
     this.pulls.push(pull);
     return Promise.resolve(ok(pull));
+  }
+
+  override updatePullRequestBody(input: UpdatePullRequestBodyInput): Promise<AdapterResult<PullRequest>> {
+    if (!this.known(input.access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    const index = this.pulls.findIndex((pull) => pull.repo === input.access.repo && pull.number === input.number);
+    const found = this.pulls[index];
+    if (found === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    const updated: OpenedPull = { ...found, body: input.body };
+    this.pulls[index] = updated;
+    return Promise.resolve(ok(updated));
   }
 
   verifyWebhook(): boolean {

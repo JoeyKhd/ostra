@@ -26,7 +26,7 @@ const startFake = (): Promise<FakeGitHub> =>
           ".github/pull_request_template.md": template,
           "src/index.ts": "export {};\n",
         },
-        branches: ["main", "ostra/contract", "ostra/other", "ostra/third"],
+        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth"],
       },
       { id: 1002, owner: "fake-org", name: "test2", defaultBranch: "main", files: { "secret.txt": "other repo\n" }, branches: ["main"] },
     ],
@@ -257,6 +257,21 @@ describe("the GitHub adapter", () => {
       expect(stored?.title.length).toBe(256);
       const found = await adapter.findPullRequest(fixture.access, "ostra/other");
       expect(found.ok && found.value?.number).toBe(opened.ok ? opened.value.number : -1);
+    });
+
+    it("F-030: changes a PR's body as the App, with the text as data, and refuses a PR that isn't there", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/fourth", base: "main", title: "Fourth", body: "first text", draft: false });
+      if (!opened.ok) {
+        throw new Error("open failed");
+      }
+      const body = "first text, then the task's other PRs: https://github.example/fake-org/test2/pull/9 `whoami`";
+      const updated = await adapter.updatePullRequestBody({ access: fixture.access, number: opened.value.number, body });
+      expect(updated).toMatchObject({ ok: true, value: { number: opened.value.number, state: "open" } });
+      expect(fake.pulls.find((pr) => pr.number === opened.value.number)?.body).toBe(body);
+      const write = [...fake.tokens.values()].at(-1);
+      expect(write?.repos).toEqual(["test1"]);
+      expect(write?.permissions).toEqual({ pull_requests: "write", metadata: "read" });
+      expect(await adapter.updatePullRequestBody({ access: fixture.access, number: 9999, body })).toMatchObject({ ok: false, error: { code: "not-found" } });
     });
 
     it("answers conflict for a branch whose PR is open, without a second call to create", async () => {
