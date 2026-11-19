@@ -192,6 +192,10 @@ describe("usage per turn and per task (F-084)", () => {
       { inputTokens: 10_000, outputTokens: 2_000, cacheReadTokens: 0, cacheWriteTokens: 0 },
       { inputTokens: 7_000, outputTokens: 300, cacheReadTokens: 100, cacheWriteTokens: 50 },
     ].map((tokens) => priceTokens(prices, tokens));
+    // Worked by hand, each kind at its own price per million ($3 in, $15 out, $0.30 cache read,
+    // $3.75 cache write), in micro-USD, a part of one rounded up: so a wrong price can't move both sides.
+    expect(eventCosts).toEqual([3_000_000 + 1_500_000 + 600_000, 1_500_000 + 750_000 + 1_500_000, 30_000 + 30_000, 25_718]);
+    expect(read.totals.spentMicroUsd).toBe(8_935_718);
     expect(read.totals.spentMicroUsd).toBe(eventCosts.reduce((sum, cost) => sum + cost, 0));
     expect(read.totals.spentMicroUsd).toBe((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).spentMicroUsd);
 
