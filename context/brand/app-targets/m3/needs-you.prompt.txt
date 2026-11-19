@@ -1,0 +1,45 @@
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no shadows, no gradients, no glow, no purple, no illustrations, no emoji. It is the "Needs you" page of "ostra", a self-hosted control panel for coding agents: the member's notification inbox across every project, where they answer what waits on them. The FIRST attached image is the approved Home screen of this product: copy its sidebar, top bar, title and lede style, section header lines, 40px hairline rows, aligned columns, button sizes and 300px right properties panel EXACTLY, at the same small, dense scale. It must look like another page of the same product. Use the attached logo mark (a rounded shell split by one diagonal channel) in the sidebar's top-left, small, off-white.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, the command chip, the group bands) #131416; selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; link teal #6FB8AA; error red #E5675C. Amber #FFB224 means "needs you" and is used ONLY for: the sidebar's "Needs you" count badge, the small project dots in the sidebar, the 2px left rule and title of the one open approval block, and ONE filled "Approve once" button with dark #0C1D21 text. Unread rows are marked by a small 6px off-white #EDEDEE dot, never amber or blue. Outline buttons: #131416 fill, 1px #2A2C30 border, #EDEDEE text, 26px tall, 6px radius.
+
+TYPE: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, group titles weight 600); IBM Plex Mono 12px for task keys, commands, paths and ages. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT:
+1. SIDEBAR 232px, #0A0B0C, right hairline, as in the first reference: logo mark + "Acme Corp" semibold + up-down chevron; search field "Search" with "⌘K" and a small off-white "+" button. Rows: "Home" (house icon), "Needs you" (hand icon) SELECTED (row background #1A1B1E, white text) with an amber pill badge "6", "My tasks" (user-circle icon) faint "7". Faint label "Projects": "calculator" (teal square #6FB8AA) amber dot, "billing-platform" (violet square #8C7CF0) amber dot, "web-storefront" (ochre square #E0A458) amber dot, "mobile-app" (blue square #5FA8E8) amber dot, "data-pipeline" (rose square #C27BA0) no dot, "··· 13 more". Faint label "Organization": "Runner pools" (server icon) faint "238", "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub" (git-pull-request icon), "Linear" (three slanted lines icon), "Settings" (gear icon). Bottom: grey circle avatar "AK" and "Alex Kim".
+2. TOP BAR 44px with a bottom hairline: breadcrumbs "Acme Corp  ›  Needs you" ("Needs you" white). On the far right one outline button with a check-check icon: "Mark all as read".
+3. MAIN COLUMN (padding 28px 40px):
+   - title "Needs you"
+   - one muted 13.5px line: "What waits on you across your projects. 6 unread."
+   - 16px below, underline tabs: "Open" white weight 500 with faint mono "9" after it and a 2px white underline; "Done" muted. A hairline under the tabs across the column.
+   - Then the list, grouped by project. Each group starts with a quiet header band 30px tall (background #131416, 6px radius): the 8px project colour square, the project name 13px weight 600, a faint mono count. Rows under it are 40px, separated by 1px #1F2023 hairlines, no boxes. One grid for every row so columns line up: unread dot column (14px) | key (faint mono, 76px) | title (13px; unread rows white weight 500, read rows muted weight 400) | reason (muted 12.5px, 300px, commands in mono white) | age (faint mono, right-aligned, 40px) | action (one button, every button 112px wide, right-aligned).
+
+   GROUP "calculator" (teal square), count "3":
+     row: [white dot] "CALC-142" "Retry webhook delivery on 5xx" | "Approval: " + mono "pnpm add p-retry" | "4m" | (no button: this row is EXPANDED, a faint chevron-up icon in the action column instead)
+       EXPANDED under it, indented to the title column, 14px vertical padding, a needs-you block with a 2px amber left rule and 12px left padding (no card, no box):
+         title row: a small amber hand icon + amber "Needs you · approval" (13px weight 600)
+         line: "OpenCode wants to add a dependency. Rule: " + white "Adding a dependency"
+         a command chip: mono 12.5px "pnpm add p-retry", background #131416, 1px #1F2023 border, 6px radius
+         buttons 28px, 8px apart: outline "Deny", filled amber "Approve once", outline "Approve for this task"
+         one faint 12px line: "For this task adds " + mono "pnpm add" + " to the task's rules. Any member of calculator can answer."
+     row: [white dot] "CALC-150" "Export history as CSV" | "Question: keep the old CSV header?" | "12m" | outline "Answer"
+     row: [no dot] "CALC-139" "Cache parsed expressions" | "Setup failed: " + mono "pnpm install" + " exited 1" | "1h" | outline "Open task"
+
+   GROUP "billing-platform" (violet square), count "2":
+     row: [white dot] "BIL-88" "Prorate seat changes" | "Plan ready for review" | "11m" | outline "Review plan"
+     row: [no dot] "BIL-84" "Invoice PDF footer" | "No progress for 20 min" | "2h" | outline "Open task"
+
+   GROUP "web-storefront" (ochre square), count "2":
+     row: [white dot] "WEB-311" "Fix cart badge count" | "Draft PR #2213 ready" | "18m" | outline "Review PR"
+     row: [white dot] "WEB-305" "Remove the legacy checkout" | "The ticket was closed" | "34m" | outline "Open task"
+
+   GROUP "mobile-app" (blue square), count "2":
+     row: [white dot] "MOB-57" "Crash in the Android share sheet" | "Question: keep the old share API?" | "26m" | outline "Answer"
+     row: [no dot] "MOB-52" "Offline banner flickers" | "Finished without changes" | "3h" | outline "Open task"
+
+4. RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px 18px, no cards. Small faint 11px group label "Where these reach you". Rows 30px, muted key column 84px, white values, 12.5px:
+     "Panel"   "Always"
+     "Ticket"  "A comment on Linear"
+     "Email"   mono "alex@acme.dev" , and under it a muted line "after 2 min, if unread"
+   Then a faint 12px paragraph: "A mail waits 2 minutes and isn't sent once you've read it here." Then a teal link "Notification choices →". Nothing else in the panel.
+
+The overall feel: calm, precise, dense, like Linear's inbox inside a quiet graphite console; the eye goes to the one open approval and its one amber button. Every word spelled exactly as written above, crisp and legible, aligned to a strict grid, nothing decorative.

@@ -1,0 +1,37 @@
+EDIT the first reference image (the ostra task page with the "Take it local" popover open). Keep its layout, data, spacing, palette, type, sizes and every other word exactly, and change ONLY these things:
+1. Sidebar top-left: the organization switcher must read "Acme Corp" (IBM Plex Sans semibold 13px, #EDEDEE) next to the small off-white logo mark, exactly as in the second reference image. Do NOT write the word "ostra" there.
+2. In the popover's first git code block (under "acme/calculator-web"), the first line must read exactly "git fetch origin ostra/ost-142-4b7e19c2-retry-webhook" (webhook, not webbook). Both code blocks show exactly the same two lines: "git fetch origin ostra/ost-142-4b7e19c2-retry-webhook" and "git switch ostra/ost-142-4b7e19c2-retry-webhook". Remove the stray mark after "acme/calculator-web".
+3. The popover title "Take it local" is IBM Plex Sans 13px weight 600, the same size as the body text, not larger. In the line under it, "ostra" has no underline: the line reads "Check out this task's branches on your machine. Git fetches them with your own access; ostra hands out no token."
+4. The top bar's last button "PR #91" uses the same git-pull-request icon as "PR #483", not a square.
+5. Sidebar: the "GitHub" row uses a thin Lucide git-pull-request line icon in grey, and the "Linear" row a thin grey icon of three short slanted parallel lines; no brand logos, no circle-slash sign.
+6. Properties panel: the branch value reads "ostra/ost-142-4b7e…" with clean characters.
+Everything else stays identical. No gradients, no glow, no purple, no cards. Flat straight-on screenshot, crisp text.
+
+---
+
+The first generation, which the edit above corrected:
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no glow, no gradients, no purple, no illustrations, no emoji. It is the task page of "ostra", a self-hosted control panel for coding agents, with the "Take it local" popover open under its top-bar button. The FIRST attached image is the approved task page of this product: copy its sidebar, top bar, header, thread rows, composer and 300px right properties panel EXACTLY, at the same small, dense scale. Use the attached logo mark (a rounded shell split by one diagonal channel) in the sidebar's top-left, small, off-white.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (code blocks, inputs, the popover) #131416; selected nav item and pressed button #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286; link teal #6FB8AA; primary button filled warm off-white #F3F0E8 with near-black #0C1D21 text. Amber #FFB224 appears ONLY on the sidebar's "Needs you" count badge and the small project dots, nowhere else.
+
+TYPE: task title Manrope Bold 24px; everything else IBM Plex Sans 13px (buttons and nav weight 500, popover title weight 600); IBM Plex Mono 12px for task keys, branch names, repo names, runner names, commands and times. Icons are thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT:
+1. SIDEBAR 232px, exactly as in the first reference: "Acme Corp" switcher with the logo, search "Search ⌘K" and a small off-white "+" button; "Home", "Needs you" (amber count badge "5"), "My tasks" (faint "7"); label "Projects"; "calculator" expanded (teal square, amber dot) with "Tasks" SELECTED (faint "17"), "Inbox" (faint "4"), "Environment", "Repos", "Settings"; then "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "··· 13 more"; label "Organization": "Runner pools" (faint "238"), "Models", "Agent profiles", "GitHub", "Linear"; bottom: avatar "AK" and "Alex Kim".
+2. TOP BAR 44px with a bottom hairline: breadcrumbs "calculator  ›  Tasks  ›  OST-142" (last crumb white). On the right, left to right: a ghost copy-link icon button; an outline button with a terminal-square icon and "Take it local" shown PRESSED (fill #1A1B1E, border #2A2C30); an outline button with a git-pull-request icon "PR #483"; an outline button with a git-pull-request icon "PR #91". All buttons 28px tall, 7px radius.
+3. THREAD COLUMN (behind the popover, unchanged and undimmed): faint mono "OST-142 · from Linear"; title "Retry webhook delivery on 5xx"; status line: green dot + "In review" (white, weight 500), faint " · ", muted "Idle, the box stops in 9 min", faint " · ", muted "Started 38 min ago on " + faint mono "alex-laptop". A hairline. Then thread rows: author "OpenCode" bold + faint mono "14:21 · Claude Sonnet 5.5 · done"; text "Webhook delivery now retries on 5xx with exponential backoff, up to 5 attempts. Both repos have a PR."; tool rows with a fixed verb column: "Edited  src/webhooks/deliver.ts  +64 −9" (green and red counts), "Edited  src/webhooks/retry.ts  +41", "Ran  pnpm test webhooks  ✓ exit 0"; then "Pushed  ostra/ost-142-4b7e19c2-retry-webhook  9a1c03e"; then green "Opened a pull request" + teal "#483" + muted "in acme/calculator-web"; then green "Opened a pull request" + teal "#91" + muted "in acme/calculator-api"; then a moon icon + "The session is idle.". Composer pinned at the bottom: "Message the agent…" and an off-white "Send" button.
+4. PROPERTIES PANEL 300px on the right, mostly covered by the popover at its top; visible below the popover: group "Code" with rows "Branch  ostra/ost-142-4b7e…", "calculator-web  #483 · open", "calculator-api  #91 · open".
+
+THE POPOVER (the focus of the image): anchored 6px under the "Take it local" button, its RIGHT edge aligned with the top bar's right padding (18px from the window edge), 460px wide, background #131416, 1px #2A2C30 border, 10px radius, padding 16px, a very soft dark drop shadow only. It overlaps the top-right of the thread and the properties panel. Contents, top to bottom, left-aligned:
+   - title "Take it local" (13px, weight 600, white)
+   - muted 12.5px line, wrapping to two lines: "Check out this task's branches on your machine. Git fetches them with your own access; ostra hands out no token."
+   - 14px gap, small faint 11px label "With the ostra CLI"
+   - a code field 32px tall, background #0D0E10, 1px #2A2C30 border, 7px radius: mono 12.5px white "ostra checkout OST-142", and at its far right a small ghost copy icon button (copy icon, grey)
+   - under it, a hint row in 12px with a small info icon in faint grey: muted "First time on this machine? Run " + mono white "ostra login" + muted ", then approve its code in the browser."
+   - 14px gap, a 1px #1F2023 hairline, 14px gap, small faint 11px label "With git, in each repo"
+   - repo 1: mono muted "acme/calculator-web" on its own line, then a code block (background #0D0E10, 1px #2A2C30 border, 7px radius, padding 8px 10px) with two mono 12px white lines "git fetch origin ostra/ost-142-4b7e19c2-retry-webhook" and "git switch ostra/ost-142-4b7e19c2-retry-webhook", and a small ghost copy icon at its top-right corner
+   - repo 2: mono muted "acme/calculator-api", then the same two-line code block with the same two lines and copy icon
+   - 12px gap, one faint 12px line: "Reopening the task starts from the branches as they are, your commits included."
+
+The overall feel: calm, precise, dense, a quiet graphite console; the eye goes from the pressed "Take it local" button to the one command and its copy icon. Every word spelled exactly as written above, crisp and legible, aligned to a strict grid.
