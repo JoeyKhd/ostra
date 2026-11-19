@@ -1,0 +1,54 @@
+# Generation 1 (layout and copy right; the Title input in mono, links underlined, a bordered "Archive note", a refusal line that promised the agent the token). References: scratchpad m3-targets/agent-profile.png (the approved 2048 original of app-targets/m3/agent-profile), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the editor of one memory note, "Check JavaScript with node", in ostra, a self-hosted control panel for coding agents. A memory note is one fact a project wants every agent task to know. The member has just edited it and pressed Save, and the save was refused because the body holds a GitHub token. It must look like the same product as the FIRST attached screenshot (the approved agent profile editor): the same sidebar, the same top bar, the same graphite near-black chrome, the same section style, the same field and editor-box style, the same right properties panel with small faint group labels, at exactly the same small dense scale. Use the attached logo mark (a rounded shell split by one diagonal channel) small and off-white in the sidebar's top-left. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs, selects and the body editor #131416 with a 1px #2A2C30 border and 7px radius; selected nav row #1A1B1E; hairlines #1F2023; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; teal #6FB8AA only for inline links; green #4FB286 only for the small "Active" dot; red #E5675C only for the refusal line and its icon and the editor's 1px red border; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations.
+
+FONTS: page title Manrope Bold 26px. UI text IBM Plex Sans (section titles semibold, field labels 12px medium grey). IBM Plex Mono ONLY for: the eyebrow, the note body inside the editor, version numbers "v2" "v1", task keys like "CALC-142", "node --check", and the byte counter. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 234px wide, background #0A0B0C, a 1px #1F2023 line on its right: the logo mark then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small off-white square "+" button beside it. Nav rows: "Home" (house icon); "Needs you" (hand icon) with a small amber pill "2". Small faint label "Projects": "calculator" (tiny teal 8px square), expanded under it, indented: "Tasks", "Inbox", "Environment", "Memory" (book-marked icon; this row is SELECTED, background #1A1B1E, white text, and a faint grey count "3" at the right), "Settings"; then "billing-platform" (violet-grey square), "+ New project". Small faint label "Organization": rows "Runners" (server icon), "Models" (cpu icon), "GitHub", "Linear", "Agent profiles" (sliders icon), "Memory" (book-marked icon), "Members" (users icon), "Audit log" (scroll-text icon). At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  calculator  >  Memory  >  Check JavaScript with node" (last part white medium, the rest grey). Right: a ghost text button "Discard changes" in grey, then the one primary off-white button "Save note".
+
+3) MAIN PAGE COLUMN, padding 28px top, 36px left, content max 720px wide:
+- Eyebrow, faint mono 12px: "Memory note · version 2 · saved 1h ago"
+- Page title "Check JavaScript with node" (Manrope Bold 26px)
+- Grey lede, one line, 8px under the title: "Agents in calculator get its title in their index, and read the whole note when they need it."
+- Section "Note": three labelled fields in one row, 34px tall: "Title" input "Check JavaScript with node" (wide, about 330px); "Kind" select with a small terminal icon and "Command" and a chevron-down; "Scope" select with a tiny teal 8px square and "calculator" and a chevron-down.
+- "Body" label, then an editor box (#131416, 1px RED #E5675C border because of the error, 8px radius, padding 10px 14px, mono 13px, line-height 1.75) with three lines:
+  "Run node --check <file> on every JavaScript file you change."
+  "Scripts print a newline at the end of their output."
+  "Tests that call GitHub read GITHUB_TOKEN=ghp_EXAMPLE00000000000000000000000000"
+  Under the box, at the right, a faint mono counter "214 B of 4 KiB".
+- Directly under the editor, the refusal, 13px: a small red circle-alert icon and red text "This note holds a GitHub token. Memory never holds credentials." and on the next line grey text "Nothing was saved. Keep the token in" then a teal link "calculator's environment secrets" and grey ", where the agent's tools can use it."
+- Section "Versions" with a faint mono count "2" and an inline grey note "every save keeps the one before it". Rows 40px with hairlines between them, no boxes, one grid:
+  Row 1: faint mono "v2" | white "Merged from a proposal" | grey "Alex Kim" | grey "Sam Rivera's diff comment on" and a teal mono link "CALC-142" | faint mono "1h ago" | a teal "View" link at the right.
+  Row 2: faint mono "v1" | white "Approved from a proposal" | grey "Sam Rivera" | grey "proposed by OpenCode in" and a teal mono link "CALC-118" | faint mono "3 Nov" | a teal "View" link.
+  Under the rows a faint line: "Unsaved changes would become version 3."
+- Footnote, 22px below: a shield-check icon faint, then 13px grey: "A note is text every agent in calculator follows. Each save is scanned for credentials, and a note that holds one is refused."
+
+4) RIGHT PROPERTIES PANEL, 380px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no boxes. Groups with SMALL faint grey labels (12px, weight 500, not bold headings), separated by hairlines:
+- "Note": key/value rows 30px, key grey in a 96px column: Status | small green dot "Active"; Version | "2"; Last used | "2h ago in CALC-161" (CALC-161 mono); Used | "9 times in 6 tasks".
+- "Always": a row "Always give it whole" in white with a toggle switch at the right, OFF (grey #2A2C30 track, light knob); under it faint 12px help: "Every session starts with the whole note, not only its title. calculator's always notes use 1.4 of 8 KiB."
+- "Source": rows: From | "OpenCode's proposal"; Task | teal mono "CALC-118" then white "Add the release script"; Approved | "3 Nov by Sam Rivera".
+- "Archive": a ghost button with an archive icon "Archive note" in grey, no border; faint help "Archived, it leaves the index and search. Its versions stay."
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word spelled exactly as written.
+
+
+# Generation 2 (kept): a constrained redraw of generation 1. References: generation 1, then the same three as above
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+Redraw the first attached screenshot (a memory note editor in a dark graphite web app, 1440x960 CSS pixels at 2x) as the same flat, straight-on screen with the SAME layout, the same sidebar, the same fields, the same red-bordered body editor, the same refusal lines, the same versions rows, the same right panel and the same copy, changing only what is listed here. Match the scale and density of the second attached screenshot (the approved agent profile editor).
+
+FIX THESE:
+1. Typography: the Title input's value "Check JavaScript with node" is IBM Plex Sans, NOT mono. IBM Plex Mono stays ONLY for the eyebrow "Memory note · version 2 · saved 1h ago", the three lines inside the body editor, "214 B of 4 KiB", "v2", "v1", "1h ago", "3 Nov", and the task keys "CALC-142", "CALC-118", "CALC-161".
+2. Links are teal #6FB8AA with NO underline: "calculator's environment secrets", "CALC-142", "CALC-118", both "View" links, and "CALC-118" in the right panel.
+3. The refusal's second line reads exactly: "Nothing was saved. A token belongs in calculator's environment secrets." with "calculator's environment secrets" as the teal link, and nothing after it.
+4. "Archive note" in the right panel is a ghost button: archive icon and grey text, no border.
+5. Everything else exactly as in the first attached screenshot.
+
+Palette unchanged: page #0D0E10, sidebar #0A0B0C, inputs #131416 with 1px #2A2C30 borders, the body editor's 1px red #E5675C border, hairlines #1F2023, text #F2F3F4, grey #B4B7BB, faint #8B8E93, teal only for links, green only for the "Active" dot, red only for the refusal and the editor border, amber #FFB224 only on the sidebar's "2" pill. No gradients, no glow, no shadows.

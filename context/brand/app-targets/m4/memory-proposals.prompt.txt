@@ -1,0 +1,51 @@
+# Generation 1 (layout and copy right; robot icons on the agent rows, against the brief, and stray specks on "camelCase"). References: scratchpad m3-targets/needs-you.png (the approved 2048 original of app-targets/m3/needs-you), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no shadows, no gradients, no glow, no purple, no illustrations, no emoji. It is the "Proposals" page of a project's Memory in "ostra", a self-hosted control panel for coding agents. A proposal is a memory note an agent or a member suggested; nothing reaches an agent until a member decides it. The page shows the open proposals as a list, and one selected proposal opened below the list, with the related existing notes side by side and the four decisions. The FIRST attached image is the approved "Needs you" screen of this product: copy its sidebar, top bar, title and lede style, underline tabs, 40px hairline rows with aligned columns, outline button sizes and right properties panel EXACTLY, at the same small, dense scale. It must look like another page of the same product. Use the attached logo mark (a rounded shell split by one diagonal channel) small and off-white in the sidebar's top-left.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, the merge editor, code chips) #131416; selected nav item and the selected list row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; link teal #6FB8AA; no red anywhere on this page. Amber #FFB224 appears ONLY on the sidebar's small "Needs you" count pill "2", nowhere else on the page: proposals are not "needs you". Primary button: filled off-white #F3F0E8 with dark #0C1D21 text, only ONE on the page. Outline buttons: #131416 fill, 1px #2A2C30 border, #F2F3F4 text, 30px tall, 7px radius.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, ages, counts, file paths and the text inside the merge editor. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT:
+1. SIDEBAR 234px, #0A0B0C, right hairline, as in the first reference: logo mark + "Acme Corp" semibold + up-down chevron; search field "Search" with "⌘K" and a small off-white "+" button. Rows: "Home" (house icon), "Needs you" (hand icon) with an amber pill "2", "My tasks" (user-circle icon). Faint label "Projects": "calculator" (teal square), expanded under it, indented: "Tasks", "Inbox", "Environment", "Memory" (book-marked icon) SELECTED (row background #1A1B1E, white text) with a faint grey count "4" at the right, "Settings"; then "billing-platform" (violet-grey square), "web-storefront" (ochre square). Faint label "Organization": "Runners" (server icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "Memory" (book-marked icon), "Members" (users icon), "Audit log" (scroll-text icon). Bottom: grey circle avatar "AK" and "Alex Kim".
+2. TOP BAR 46px with a bottom hairline: breadcrumbs "Acme Corp  ›  calculator  ›  Memory  ›  Proposals" ("Proposals" white). Nothing on the right.
+3. MAIN COLUMN (padding 28px 36px):
+   - title "Proposals"
+   - one grey 15px line: "What agents and members asked calculator to remember. None reaches an agent until someone decides it."
+   - 16px below, underline tabs: "Open" white weight 500 with faint mono "4" after it and a 2px white underline; "Decided" grey. A hairline under the tabs across the column.
+   - The list: 40px rows separated by 1px #1F2023 hairlines, no boxes, one grid so the columns line up: source icon (15px) | title (13.5px white weight 500) | source text (grey 13px) | relation chip | age (faint mono, right-aligned).
+     row 1 SELECTED (background #1A1B1E, 6px radius): bot icon | "Settings keys are single lowercase words" | "OpenCode in" + faint mono "CALC-171" | a small grey outline chip with a tiny not-equal icon "contradicts" | "14m"
+     row 2: message-square icon | "Print a newline at the end of script output" | "Sam Rivera, a diff comment on" + mono "CALC-168" | no chip | "1h"
+     row 3: bot icon | "Regenerate the Prisma client before API tests" | "OpenCode in" + mono "CALC-160" | no chip | "3h"
+     row 4: bot icon | "Percent math uses decimal.js" | "OpenCode, closing turn of" + mono "CALC-157" | a small grey outline chip "refines" | "1d"
+   - 24px below the list, the opened proposal, as two columns side by side, 24px gap, NO cards, only hairlines:
+     LEFT column, header "Proposed" (small faint label): the title "Settings keys are single lowercase words" white 15px weight 600; a line with a small grey outline chip "convention" and grey "for calculator"; the body, 13.5px white: "Keys in config/settings.json are single lowercase words: release, not releaseName." (config/settings.json in mono); then a faint line "The agent says it contradicts" + white "Settings keys use camelCase".
+     RIGHT column, header "Related notes" (small faint label) with faint grey "ranked by their text": three rows with hairlines between them, each two lines: line one the note title in white + a small grey outline kind chip at the right; line two a grey one-line excerpt.
+       "Settings keys use camelCase"  chip "convention"  — a small grey outline chip with a tiny not-equal icon "contradicts" next to the title; excerpt "New keys in config/settings.json are camelCase, like releaseName."
+       "Config lives in config/settings.json"  chip "convention"  — excerpt "Read settings from config/settings.json, never from env."
+       "Check JavaScript with node"  chip "command"  — excerpt "Run node --check <file> on every JavaScript file you change."
+   - Under both columns, a hairline, then the decisions in one row, 8px apart: an outline button "Approve as a new note", an outline button "Approve and archive Settings keys use camelCase", an outline button with chevron "Merge into Settings keys use camelCase" shown PRESSED (background #1A1B1E), and at the far right a ghost text button "Reject" in grey with no border.
+   - Under the decisions, the merge editor is open: label "Version 2 of Settings keys use camelCase" (grey 12px), then a text box (#131416, 1px #2A2C30 border, 8px radius, padding 10px 14px, mono 13px, line-height 1.75) with two lines: "Keys in config/settings.json are single lowercase words:" / "release, not releaseName. Older camelCase keys are renamed when touched." Under it, 8px down, the ONE primary off-white button "Merge as version 2" and a ghost button "Cancel", and faint 12px text "Its new version names this proposal as its source."
+4. RIGHT PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px, no boxes. Small faint group labels (12px weight 500), key/value rows 30px with grey keys in an 84px column and white values, groups separated by hairlines:
+   - "Proposal": State | "Open"; Kind | "convention"; Scope | teal 8px square "calculator"; Proposed | "14m ago"
+   - "Source": From | "OpenCode, while working"; Task | teal mono "CALC-171" ; then white "Rename the releaseName key" on its own row under it; Driver | "Sam Rivera"; Session | mono "2"
+   - "This task": Proposals | "1 of 20"
+   - then a faint 12px note: "An approved note reaches the next session, never a running one."
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word spelled exactly as written.
+
+
+# Generation 2 (kept): a constrained redraw of generation 1. References: generation 1, then the same three as above
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+Redraw the first attached screenshot (the "Proposals" page of a dark graphite web app, 1440x960 CSS pixels at 2x) as the same flat, straight-on screen with the SAME layout, the same sidebar, the same list, the same two side-by-side columns, the same buttons, the same merge editor, the same right panel and the same copy, changing only what is listed here. Match the scale and density of the second attached screenshot (the approved Needs you page).
+
+FIX THESE:
+1. Icons in the list's first column: there must be NO robot or bot faces anywhere. Rows 1, 3 and 4 (proposals made by the agent) use a thin Lucide "git-branch" line icon, 15px, grey. Row 2 (a member's diff comment) keeps its thin "message-square" speech icon.
+2. Remove the stray dots and specks: the word "camelCase" in the related note title "Settings keys use camelCase" and the button "Approve and archive Settings keys use camelCase" are clean, with no extra marks above the letters.
+3. The task keys "CALC-171", "CALC-168", "CALC-160" and "CALC-157" in the list's source column are IBM Plex Mono in faint grey #8B8E93; the words before them stay IBM Plex Sans.
+4. The "Reject" ghost button sits at the far right of the decisions row, grey text, no border.
+5. Everything else exactly as in the first attached screenshot: the selected first row, the "contradicts" and "refines" chips with their not-equal icon, "Proposed" and "Related notes" columns, the three related notes with their kind chips, the decisions row with "Merge into Settings keys use camelCase" pressed, the merge editor with its two mono lines, the one off-white primary button "Merge as version 2", "Cancel", and the right panel's Proposal, Source and This task groups.
+
+Palette unchanged: page #0D0E10, sidebar #0A0B0C, surfaces #131416, selected row #1A1B1E, hairlines #1F2023, control borders #2A2C30, text #F2F3F4, grey #B4B7BB, faint #8B8E93, teal #6FB8AA only for the link "CALC-171" in the right panel, amber #FFB224 only on the sidebar's "2" pill. No gradients, no glow, no shadows.
