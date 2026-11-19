@@ -1,6 +1,17 @@
 "use client";
 
-import { CircleXIcon, CpuIcon, FolderPlusIcon, GitPullRequestArrowIcon, GitPullRequestIcon, ServerIcon } from "lucide-react";
+import {
+  CircleXIcon,
+  CpuIcon,
+  FolderPlusIcon,
+  GitPullRequestArrowIcon,
+  GitPullRequestIcon,
+  ListChecksIcon,
+  MessageSquareIcon,
+  ServerIcon,
+  ShieldCheckIcon,
+  UserRoundIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -194,6 +205,10 @@ const icons: Readonly<Record<ActivityIcon, ReactNode>> = {
   project: <FolderPlusIcon className="text-muted" />,
   provider: <CpuIcon className="text-muted" />,
   github: <GitPullRequestIcon className="text-muted" />,
+  approval: <ShieldCheckIcon className="text-muted" />,
+  plan: <ListChecksIcon className="text-muted" />,
+  driver: <UserRoundIcon className="text-muted" />,
+  comment: <MessageSquareIcon className="text-muted" />,
 };
 
 const ActivityLine = ({ row, now }: { readonly row: ActivityRow; readonly now: number }) => {

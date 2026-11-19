@@ -21,7 +21,7 @@ const card = (over: Partial<BoardCard> & Pick<BoardCard, "taskId" | "status">): 
   ...over,
 });
 
-const approval = card({ taskId: "t1", status: { kind: "needs-you", detail: { reason: "approval", command: "pnpm add p-retry" } } });
+const approval = card({ taskId: "t1", status: { kind: "needs-you", detail: { reason: "approval", command: "pnpm add p-retry", subject: null, ruleName: null } } });
 const queued = card({ taskId: "t2", key: "PIPE-31", status: { kind: "queued", on: { kind: "pool", name: "build-fleet" } } });
 const running = card({ taskId: "t3", status: { kind: "running", activity: { verb: "running", subject: "pnpm test percent" } } });
 const preparing = card({ taskId: "t4", key: null, driver: null, status: { kind: "preparing", step: "restoring-snapshot" } });

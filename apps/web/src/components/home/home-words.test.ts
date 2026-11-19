@@ -5,19 +5,25 @@ import { actionKey, activityParts, amberRow, formatSpend, reasonParts, summaryTe
 import type { NeedsYouDetail, NeedsYouRow } from "./home-words";
 
 const row = (id: string, detail: NeedsYouDetail, since: number): NeedsYouRow => ({
+  itemId: null,
+  reason: detail.reason,
+  state: "open",
   taskId: taskIdSchema.parse(id),
   key: id.slice(0, 8),
   title: "A task",
   project: { id: projectIdSchema.parse("p-1"), name: "calculator" },
   detail,
   since,
+  driver: null,
+  answer: null,
+  outcome: null,
 });
 
 const text = (parts: readonly { readonly text: string }[]): string => parts.map((part) => part.text).join("");
 
 describe("reasonParts", () => {
   it("sets an approval's command in mono", () => {
-    expect(reasonParts({ reason: "approval", command: "pnpm add p-retry" })).toEqual([{ text: "Approval: " }, { text: "pnpm add p-retry", code: true }]);
+    expect(reasonParts({ reason: "approval", command: "pnpm add p-retry", subject: null, ruleName: null })).toEqual([{ text: "Approval: " }, { text: "pnpm add p-retry", code: true }]);
   });
 
   it("words each reason, with a fallback when the detail is missing", () => {
@@ -41,9 +47,9 @@ describe("actionKey", () => {
 describe("amberRow", () => {
   it("is the approval that has waited longest, and nothing without one", () => {
     const rows = [
-      row("t-new", { reason: "approval", command: null }, 300),
+      row("t-new", { reason: "approval", command: null, subject: null, ruleName: null }, 300),
       row("t-q", { reason: "question", question: null }, 100),
-      row("t-old", { reason: "approval", command: null }, 200),
+      row("t-old", { reason: "approval", command: null, subject: null, ruleName: null }, 200),
     ];
     expect(amberRow(rows)).toBe("t-old");
     expect(amberRow([rows[1] ?? row("x", { reason: "crashed" }, 0)])).toBeNull();
@@ -65,6 +71,20 @@ describe("activityParts", () => {
       { text: " joined " },
       { text: "build-fleet", code: true },
     ]);
+  });
+
+  it("words what members did to a running task, with the task's key in mono (ticket 36)", () => {
+    const task = { key: "CALC-142", title: "Retry webhook delivery", taskId: taskIdSchema.parse("t"), by: "Alex Kim" };
+    expect(activityParts({ kind: "approval.answered", decision: "allow_once", ...task })).toEqual([
+      { text: "CALC-142", code: true },
+      { text: ": a request approved once" },
+    ]);
+    expect(text(activityParts({ kind: "approval.answered", decision: "allow_task", ...task }))).toBe("CALC-142: a request approved for the task");
+    expect(text(activityParts({ kind: "approval.answered", decision: "deny", ...task }))).toBe("CALC-142: a request denied");
+    expect(text(activityParts({ kind: "approval.answered", decision: null, ...task }))).toBe("CALC-142: a request answered");
+    expect(text(activityParts({ kind: "plan.answered", ...task }))).toBe("CALC-142: its plan answered");
+    expect(text(activityParts({ kind: "task.driver-changed", ...task }))).toBe("CALC-142: taken over");
+    expect(text(activityParts({ kind: "pr.comment-accepted", ...task }))).toBe("CALC-142: a PR comment sent to the agent");
   });
 });
 

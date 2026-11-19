@@ -97,7 +97,7 @@ export const amberRow = (rows: readonly NeedsYouRow[]): NeedsYouRow["taskId"] | 
   return approvals.reduce((oldest, row) => (row.since < oldest.since ? row : oldest)).taskId;
 };
 
-export type ActivityIcon = "pr" | "stopped" | "runner" | "project" | "provider" | "github";
+export type ActivityIcon = "pr" | "stopped" | "runner" | "project" | "provider" | "github" | "approval" | "plan" | "driver" | "comment";
 
 /** The icon of an event; colour only where the words carry it too (stopped). */
 export const activityIcon = (event: ActivityEvent): ActivityIcon => {
@@ -114,6 +114,14 @@ export const activityIcon = (event: ActivityEvent): ActivityIcon => {
       return "provider";
     case "github.connected":
       return "github";
+    case "approval.answered":
+      return "approval";
+    case "plan.answered":
+      return "plan";
+    case "task.driver-changed":
+      return "driver";
+    case "pr.comment-accepted":
+      return "comment";
     default:
       return event satisfies never;
   }
@@ -149,6 +157,15 @@ export const activityParts = (event: ActivityEvent): readonly Part[] => {
       return [plain(t("home.activity.providerAdded", { provider: event.provider }))];
     case "github.connected":
       return [plain(t("home.activity.githubConnected"))];
+    // Milestone 3 (ticket 36): what members did to a running task.
+    case "approval.answered":
+      return around(`home.activity.approvalAnswered.${event.decision ?? "unknown"}`, "key", code(event.key));
+    case "plan.answered":
+      return around("home.activity.planAnswered", "key", code(event.key));
+    case "task.driver-changed":
+      return around("home.activity.driverChanged", "key", code(event.key));
+    case "pr.comment-accepted":
+      return around("home.activity.commentAccepted", "key", code(event.key));
     default:
       return event satisfies never;
   }

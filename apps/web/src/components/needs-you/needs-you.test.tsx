@@ -22,7 +22,7 @@ const row = (over: Partial<NotificationView> & Pick<NotificationView, "id">): No
   project: { id: "p-calc", name: "calculator" },
   at: now - 4 * min,
   read: false,
-  detail: { reason: "approval", command: "pnpm add p-retry" },
+  detail: { reason: "approval", command: "pnpm add p-retry", subject: null, ruleName: null },
   ask: approvalAsk,
   outcome: null,
   deliveryFailed: null,
@@ -33,7 +33,7 @@ const rows: readonly NotificationView[] = [
   row({ id: "c-read", key: "CALC-139", read: true, at: now - 60 * min, detail: { reason: "setup_failed", exitCode: 1 }, ask: null }),
   row({ id: "c-approval" }),
   row({ id: "c-question", key: "CALC-150", at: now - 12 * min, detail: { reason: "question", question: "keep the old CSV header?" }, ask: questionAsk }),
-  row({ id: "b-plan", key: "BIL-88", project: { id: "p-bill", name: "billing-platform" }, at: now - 11 * min, detail: { reason: "plan" }, ask: planAsk }),
+  row({ id: "b-plan", key: "BIL-88", project: { id: "p-bill", name: "billing-platform" }, at: now - 11 * min, detail: { reason: "plan", steps: null }, ask: planAsk }),
   row({ id: "m-read", key: "MOB-52", project: { id: "p-mob", name: "mobile-app" }, read: true, at: now - 1 * min, detail: { reason: "no_changes" }, ask: null }),
 ];
 

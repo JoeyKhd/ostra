@@ -180,7 +180,16 @@
       "runnerJoinedPersonal": "Runner {runner} joined as a personal runner",
       "projectCreated": "Project {project} created",
       "providerAdded": "Model provider {provider} added",
-      "githubConnected": "GitHub connected"
+      "githubConnected": "GitHub connected",
+      "approvalAnswered": {
+        "allow_once": "{key}: a request approved once",
+        "allow_task": "{key}: a request approved for the task",
+        "deny": "{key}: a request denied",
+        "unknown": "{key}: a request answered"
+      },
+      "planAnswered": "{key}: its plan answered",
+      "driverChanged": "{key}: taken over",
+      "commentAccepted": "{key}: a PR comment sent to the agent"
     },
     "panel": {
       "prsOpened": "Pull requests opened, last 7 days",
