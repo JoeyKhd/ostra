@@ -10,9 +10,13 @@ import type { ApprovalOption, ApprovalRequestSubject, ApprovalRule, ApprovalRule
 //      read-only MCP server's tools. Anything else is refused at once, and no person is asked.
 //   2. A "for this task" rule answers "once" at once (`approval.auto_answered` with its ID).
 //   3. A profile rule asks a person: the request is held for an `approval-answer`.
-//   4. Nothing covers it. A `native` agent asked because its own settings said "ask", and those
-//      came from the profile, so a person is asked still. A `runner-only` agent asks for every
-//      request: this one needs nobody, and it's allowed once.
+//   4. Nothing covers it. The runner's check stands for every agent (ADR 0049): a request whose
+//      subject it read, and no rule covers, needs nobody, and it's allowed once. A `native` agent's
+//      settings may ask for more than a rule covers (OpenCode's patterns can't say every rule
+//      exactly, so they ask for a superset: ticket 08), and that over-ask must cost no person. Only
+//      a `native` agent's request the runner can't read asks a person still: its settings, which
+//      came from the profile, said "ask", and nothing here can say they were wrong. A `runner-only`
+//      agent asks for every request, and one with no subject touches nothing a rule watches.
 //
 // Pure: the request's text (paths, commands) is the agent's and never logged.
 
@@ -49,7 +53,7 @@ export const decidePermission = (input: PermissionDecisionInput): PermissionDeci
       return { kind: "ask", rule: { source: "profile", ruleId: profileRule.ruleId, name: profileRule.name } };
     }
   }
-  return input.permissionRules === "native" ? { kind: "ask", rule: null } : { kind: "allow" };
+  return input.permissionRules === "native" && subject === null ? { kind: "ask", rule: null } : { kind: "allow" };
 };
 
 /** The agent's "once" option: ADR 0036 answers "for this task" once too, and the runner keeps the rule. */

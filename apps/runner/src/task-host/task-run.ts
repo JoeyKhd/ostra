@@ -1377,6 +1377,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       approvalRules: taskSpec.agent.approvalRules ?? [],
       taskRules: [...taskRules],
       mode,
+      // F-021: an agent that keeps the repo's own config out still reads each repo's own skills.
+      repoDirs: taskSpec.repos.map((repo) => repo.checkoutDir),
     });
     if (!launch.ok) {
       return failed(`the agent couldn't be launched: ${launch.error.message}`);

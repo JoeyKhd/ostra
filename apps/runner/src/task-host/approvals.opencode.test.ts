@@ -10,8 +10,8 @@ import { defaultAgents } from "./agents.ts";
 
 // Ticket 30 (F-026, F-024) on the agent the runner ships: the real, pinned OpenCode on the host
 // executor, with a scripted stub model behind the real key proxy, as milestone 1's demo runs it.
-// OpenCode asks the runner before each call of a tool a rule watches (`runner-only`), and the
-// runner holds what a profile rule covers for a person's answer.
+// OpenCode's own permissions ask for what each rule covers (`native`, ticket 08), and the runner
+// holds what a profile rule covers for a person's answer.
 
 const MINUTE = 60_000;
 

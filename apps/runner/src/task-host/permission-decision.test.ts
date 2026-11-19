@@ -38,9 +38,13 @@ describe("decidePermission", () => {
     expect(decidePermission({ ...base, taskRules: [forTask], request: request(edit("migrations/002.sql")) }).kind).toBe("ask");
   });
 
-  it("F-026: without a rule, a runner-only agent's request needs nobody, and a native agent's still asks, because its settings came from the profile", () => {
+  it("F-026: without a rule, a request the runner reads needs nobody, for a native agent too; only a native agent's request it can't read still asks", () => {
     expect(decidePermission({ ...base, request: request(edit("src/a.ts")) })).toEqual({ kind: "allow" });
-    expect(decidePermission({ ...base, permissionRules: "native", request: request(edit("src/a.ts")) })).toEqual({ kind: "ask", rule: null });
+    // A native agent's settings ask for a superset of a rule (ticket 08): the over-ask costs no person.
+    expect(decidePermission({ ...base, permissionRules: "native", request: request(edit("src/a.ts")) })).toEqual({ kind: "allow" });
+    expect(decidePermission({ ...base, permissionRules: "native", request: request(command('git commit -m "a message"'), "execute") })).toEqual({ kind: "allow" });
+    expect(decidePermission({ ...base, permissionRules: "native", request: request(edit("migrations/001.sql")) }).kind).toBe("ask");
+    expect(decidePermission({ ...base, permissionRules: "native", request: request(null, "other") })).toEqual({ kind: "ask", rule: null });
     expect(decidePermission({ ...base, request: request(null, "read") })).toEqual({ kind: "allow" });
   });
 
