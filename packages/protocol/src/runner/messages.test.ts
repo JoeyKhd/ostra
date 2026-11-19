@@ -119,6 +119,21 @@ const downFrames: { readonly [T in Exclude<DownFrameType, "command">]: Extract<D
 const allDown: readonly DownFrame[] = [...Object.values(downFrames), ...Object.values(commands)];
 const allUp: readonly UpFrame[] = Object.values(upFrames);
 
+describe("an event the database refused", () => {
+  it("is an error frame that names the session and the number, and refuses an unknown field", () => {
+    const frame: DownFrame = {
+      type: "error",
+      code: "event-rejected",
+      message: "the database refused this event",
+      sessionId: ids.session,
+      sessionSeq: 4,
+    };
+    expect(parseDownFrame(encodeDownFrame(frame))).toEqual({ ok: true, frame });
+    expect(parseDownFrame(JSON.stringify({ ...frame, surprise: true })).ok).toBe(false);
+    expect(parseDownFrame(JSON.stringify({ ...frame, sessionSeq: 0 })).ok).toBe(false);
+  });
+});
+
 describe("up frames", () => {
   it.each(allUp.map((frame) => [frame.type, frame] as const))("%s round-trips", (_type, frame) => {
     expect(parseUpFrame(encodeUpFrame(frame))).toEqual({ ok: true, frame });

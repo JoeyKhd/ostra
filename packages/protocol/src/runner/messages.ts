@@ -185,6 +185,13 @@ export const protocolErrorCodeSchema = z.enum([
   "unknown-session",
   /** A runner sent a kind only the server writes. */
   "forbidden-kind",
+  /**
+   * The database refused an event (SQLSTATE class 22 or 23) and not even a placeholder could be
+   * stored in its place: the event is skipped, the session's cursor moves past it, and the `ack`
+   * covers it. `sessionId` and `sessionSeq` name it. The runner drops it from its spool; it never
+   * resends it.
+   */
+  "event-rejected",
   "internal",
 ]);
 export type ProtocolErrorCode = z.infer<typeof protocolErrorCodeSchema>;
@@ -195,6 +202,8 @@ export const errorFrameSchema = z.strictObject({
   /** For a person reading the runner's log. Never holds content. */
   message: z.string().max(2000),
   sessionId: sessionIdSchema.optional(),
+  /** With `event-rejected`: the number of the refused event in its session. */
+  sessionSeq: sessionSeqSchema.optional(),
   currentEpoch: leaseEpochSchema.optional(),
   supported: z.strictObject({ min: count, max: count }).optional(),
   serverMinor: count.optional(),
