@@ -1,0 +1,113 @@
+demo shell: OSTRA_DEV_PG_PORT=unset
+commit 7ebbccc
+$ node e2e/m1-first-pr/src/demo.ts --checks --clean-up
+(node:38468) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[demo] step 2: the seeded admin chooses its own password
+[demo] screenshot context\specs\m1-first-pr\demo\01-change-password.png
+[demo] screenshot context\specs\m1-first-pr\demo\02-checklist.png
+[demo] step 3: add the model provider
+[demo] screenshot context\specs\m1-first-pr\demo\03-provider-tested.png
+[demo] step 3: allow the provider on personal runners
+[demo] step 3: make the dev model the built-in OpenCode profile's model
+[demo] screenshot context\specs\m1-first-pr\demo\04-provider-saved.png
+[demo] step 4: connect the existing GitHub App
+[demo] screenshot context\specs\m1-first-pr\demo\05-github-connected.png
+[demo] step 5: create the project
+[demo] screenshot context\specs\m1-first-pr\demo\06-project-new.png
+[demo] screenshot context\specs\m1-first-pr\demo\07-environment-draft.png
+[demo] screenshot context\specs\m1-first-pr\demo\08-environment-saved.png
+[demo] step 6: start the runner
+[runner] This runner isn't signed in yet. Approve it in the panel:
+[runner] 
+[runner]   Open   http://localhost:3701/device?user_code=RWZLR8BR
+[runner]   Code   RWZLR8BR
+[runner] 
+[runner] The code works for 10 minutes. Waiting for approval...
+[demo] step 6: approve the runner's code in the panel
+[demo] screenshot context\specs\m1-first-pr\demo\09-device-approve.png
+[runner] info runner registered runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 kind=personal
+[runner] Signed in. This is runner 01a1f1f2-0d45-755b-a0fb-44310130ff68 (personal).
+[runner] Runner 01a1f1f2-0d45-755b-a0fb-44310130ff68 (personal, host, not isolated, job-object containment) is connecting to http://localhost:9301. Press Ctrl-C to stop.
+[runner] info connected runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 minor=2 connectionEpoch=1 replicaId=core:5fe7b3ee-ca69-49f7-b30e-0c5d8dc626a0
+[demo] screenshot context\specs\m1-first-pr\demo\10-runner-online.png
+[demo] screenshot context\specs\m1-first-pr\demo\11-prompt.png
+[runner] info dispatch accepted runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 component=task-host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1
+[demo] task 01a1f1f2-1a3f-778e-b28f-15b02961b8c5 started
+[demo] screenshot context\specs\m1-first-pr\demo\12-watching.png
+[runner] info box created runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 boxId=01a1f1f2-1c7e-740b-825c-99d67aa1550a repos=1
+[runner] info box ready runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 boxId=01a1f1f2-1c7e-740b-825c-99d67aa1550a setupExitCode=null
+[runner] info agent started runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 boxId=01a1f1f2-1c7e-740b-825c-99d67aa1550a pid=17616 containment=job-object
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=21560 ms=726
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=5242 ms=952
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=4141 ms=387
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=5476 ms=386
+[demo] screenshot context\specs\m1-first-pr\demo\13-second-tab.png
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2842 ms=394
+[demo] screenshot context\specs\m1-first-pr\demo\14-after-reload.png
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=17329 ms=673
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=25106 ms=1524
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=24710 ms=760
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=17773 ms=698
+[runner] info turn ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 stopReason=end_turn
+[runner] info files outside the repos changed runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 count=0
+[runner] info agent ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 boxId=01a1f1f2-1c7e-740b-825c-99d67aa1550a exitedInGrace=true
+[runner] info git proxy forwarded a push runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 component=git-proxy repoId=01a1f1f1-eb2c-774a-b0ac-3ce1d46660a5 refCount=2
+[runner] info pushed runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 ahead=1
+[runner] info box released runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 boxId=01a1f1f2-1c7e-740b-825c-99d67aa1550a reason=requested
+[runner] info task run ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-1a3f-778e-b28f-15b02961b8c5 sessionId=01a1f1f2-1a48-778a-97c2-b02cabdcd82e leaseEpoch=1 ending=finished
+[demo] screenshot context\specs\m1-first-pr\demo\15-pull-request.png
+[demo] pull request: https://github.com/ostra-test/test1/pull/39
+[demo] screenshot context\specs\m1-first-pr\demo\16-prompt.png
+[demo] task 01a1f1f2-7ecb-7685-9127-b1fab58766a3 started
+[runner] info dispatch accepted runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 component=task-host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1
+[runner] info box created runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 boxId=01a1f1f2-820f-756c-9972-62fd53cdb7ec repos=1
+[runner] info box ready runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 boxId=01a1f1f2-820f-756c-9972-62fd53cdb7ec setupExitCode=null
+[runner] info agent started runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 boxId=01a1f1f2-820f-756c-9972-62fd53cdb7ec pid=24308 containment=job-object
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=12237 ms=556
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=4003 ms=656
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2478 ms=421
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=4498 ms=330
+[runner] info turn ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 stopReason=end_turn
+[runner] info files outside the repos changed runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 count=0
+[runner] info agent ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 boxId=01a1f1f2-820f-756c-9972-62fd53cdb7ec exitedInGrace=true
+[runner] info pushed runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 ahead=0
+[runner] info box released runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 boxId=01a1f1f2-820f-756c-9972-62fd53cdb7ec reason=requested
+[runner] info task run ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-7ecb-7685-9127-b1fab58766a3 sessionId=01a1f1f2-7ed3-774c-9340-9c44ec31b9f4 leaseEpoch=1 ending=finished
+[demo] screenshot context\specs\m1-first-pr\demo\17-needs-you.png
+[demo] screenshot context\specs\m1-first-pr\demo\18-prompt.png
+[demo] task 01a1f1f2-ac62-774f-9421-d6214b63f84c started
+[runner] info dispatch accepted runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 component=task-host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1
+[runner] info box created runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c boxId=01a1f1f2-b0ee-75d4-94d4-1703491baa6a repos=1
+[runner] info box ready runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c boxId=01a1f1f2-b0ee-75d4-94d4-1703491baa6a setupExitCode=null
+[runner] info agent started runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c boxId=01a1f1f2-b0ee-75d4-94d4-1703491baa6a pid=40072 containment=job-object
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=58107 ms=893
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=14315 ms=1028
+[runner] info model call runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=7501 ms=371
+[runner] info git proxy refused a push runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 component=git-proxy refCount=1 codes=ref-not-allowed
+[runner] info git proxy refused a push runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 component=git-proxy refCount=1 codes=other-repo
+[demo] screenshot context\specs\m1-first-pr\demo\19-before-stop.png
+[runner] info stop requested runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 reason=requested
+[runner] info turn ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 stopReason=cancelled
+[runner] info files outside the repos changed runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 count=0
+[runner] info agent ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c boxId=01a1f1f2-b0ee-75d4-94d4-1703491baa6a exitedInGrace=true
+[runner] info git proxy forwarded a push runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 component=git-proxy repoId=01a1f1f1-eb2c-774a-b0ac-3ce1d46660a5 refCount=2
+[runner] info pushed runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c ahead=1
+[runner] info box released runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 adapterKind=executor adapter=host taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c boxId=01a1f1f2-b0ee-75d4-94d4-1703491baa6a reason=requested
+[runner] info task run ended runnerId=01a1f1f2-0d45-755b-a0fb-44310130ff68 taskId=01a1f1f2-ac62-774f-9421-d6214b63f84c sessionId=01a1f1f2-ac69-7649-bf2a-19ebac2ab8ef leaseEpoch=1 ending=stopped
+[demo] screenshot context\specs\m1-first-pr\demo\20-stopped.png
+[demo] PASS the PR is the bot's, with the admin as co-author, the prompt as title and a link to the task: opened by ostra-sandbox-036d7c[bot]; 1 commits by the bot, each with Co-authored-by demo
+[demo] PASS the session's stored token counts equal the sum of the key proxy's usage events: 9 model calls; input 5464, output 1609, cache read 61440
+[demo] PASS no empty PR: the task without changes is in needs you: 1 needs-you item with a summary, 0 PRs
+[demo] PASS git proxy refuses a push to main: remote: ostra: only the task's branch and its hidden ref can be pushed
+[demo] PASS git proxy refuses a push to another repo: remote: ostra: this task's proxy serves only the task's own repos
+[demo] PASS nothing the proxy refused reached GitHub: test1/main is the same commit; test2 has no ostra/e2e-probe branch
+[demo] PASS no credential in the task's folders: worktree, OpenCode's directories, tool outputs: searched 48 files in the task folder and 0 tool-output files by value; 0 unreadable
+[demo] PASS the agent's environment holds only the allowlist, the fake key and the proxy URLs: 1 agent process: every name is allowed; 0 values hold a secret
+[demo] PASS the session's token counts are within 2% of the agent's own: 2 of 3 model calls closed; key proxy: input 4310, output 631; OpenCode: input 4310, output 631
+[demo] PASS stop ended the session mid-turn, and the stopped task opened no PR: sessions: stopped; 0 PRs
+[demo] PASS stop left the branch and the hidden ref with the unfinished work on GitHub: branch ostra/4b63f84c-create-docs-numbers-md-listing-the-numbe: on GitHub; hidden ref: on GitHub; docs/numbers.md in it: 10 lines
+[demo] PASS no credential reached the event log or a log line: searched the event log and 2 logs for 26 values and the GitHub token pattern
+[demo] PASS no task folder left behind: 0 task folders left in the runner's data folder
+[demo] clean-up: closed 1 PRs, deleted 4 refs; kept https://github.com/ostra-test/test1/pull/39
+EXIT 0 in 98 s

@@ -4,13 +4,15 @@ import os from "node:os";
 import path from "node:path";
 
 import { allowedEnvNames, selfSetEnv } from "@ostra/adapter-opencode";
-import { devDatabaseUrl, devPgPort } from "@ostra/db/dev";
+import { devPgDir } from "@ostra/db/dev";
 import type { TaskId } from "@ostra/protocol";
 import pg from "pg";
 import { z } from "zod";
 
 import { agentLaunches, descendantsOf, listProcesses, namesOutside, readEnvironments } from "./agent-process.ts";
 import type { ProcessEnvironment } from "./agent-process.ts";
+import { demoDatabase, judgeTaskInDatabase } from "./database.ts";
+import type { DemoDatabase } from "./database.ts";
 import { agentDatabasePath, readAgentTotals, TOKEN_TOLERANCE, withinTolerance } from "./agent-tokens.ts";
 import type { TokenTotals } from "./agent-tokens.ts";
 import type { DemoGitHub } from "./github.ts";
@@ -107,8 +109,12 @@ export const checkGitProxy = async (github: DemoGitHub, settings: DemoSettings, 
 /** `TOKEN_PATTERN` in Postgres's regex dialect (\b there is a backspace). */
 const SQL_TOKEN_PATTERN = "gh[pousr]_[A-Za-z0-9]{30,}";
 
+/** The stack's database, found once (`demoDatabase`). */
+let database: Promise<DemoDatabase> | undefined;
+const stackDatabase = (): Promise<DemoDatabase> => (database ??= demoDatabase(process.env, devPgDir));
+
 const withDatabase = async <T,>(run: (client: pg.Client) => Promise<T>): Promise<T> => {
-  const client = new pg.Client({ connectionString: process.env["DATABASE_URL"] ?? devDatabaseUrl(devPgPort(process.env)) });
+  const client = new pg.Client({ connectionString: (await stackDatabase()).url });
   await client.connect();
   try {
     return await run(client);
@@ -122,6 +128,12 @@ const countRowSchema = z.object({ n: z.coerce.number() });
 
 /** The `n` of a `SELECT count(*) AS n` result: a row that isn't a number fails, it doesn't become NaN. */
 export const countRows = (result: pg.QueryResult): number => countRowSchema.parse(result.rows[0]).n;
+
+/** Throws unless the database the checks read holds the task the panel started (`judgeTaskInDatabase`). */
+export const assertTaskInDatabase = async (taskId: TaskId): Promise<void> => {
+  const rows = await withDatabase(async (client) => countRows(await client.query("SELECT count(*)::int AS n FROM task WHERE id = $1", [taskId])));
+  judgeTaskInDatabase(taskId, rows, await stackDatabase());
+};
 
 const branchRowSchema = z.object({ name: z.string() });
 
@@ -277,7 +289,9 @@ export const checkTokens = async (taskId: TaskId): Promise<CheckResult> =>
     return {
       name: "the session's stored token counts equal the sum of the key proxy's usage events",
       ok,
-      detail: `${String(row.calls)} model calls; input ${String(row.in)}, output ${String(row.out)}, cache read ${String(row.cache)}`,
+      detail: found
+        ? `${String(row.calls)} model calls; input ${String(row.in)}, output ${String(row.out)}, cache read ${String(row.cache)}`
+        : `no session for the task in the database at ${(await stackDatabase()).address}`,
     };
   });
 

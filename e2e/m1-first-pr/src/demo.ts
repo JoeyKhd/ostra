@@ -18,6 +18,7 @@ import type { TaskId } from "@ostra/protocol";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import {
+  assertTaskInDatabase,
   checkAgentTokenCount,
   checkGitProxy,
   checkNoCredential,
@@ -248,6 +249,8 @@ const startTask = async (page: Page, settings: DemoSettings, projectHref: string
   await form.getByRole("button", { name: /Start/ }).click();
   await page.waitForURL(/\/tasks\/[^/]+$/, { timeout: 30_000 });
   const taskId = taskIdSchema.parse(new URL(page.url()).pathname.split("/").at(-1));
+  // The checks read Postgres directly: stop now, not after the run, if it isn't this stack's.
+  await assertTaskInDatabase(taskId);
   say(`task ${taskId} started`);
   return taskId;
 };
