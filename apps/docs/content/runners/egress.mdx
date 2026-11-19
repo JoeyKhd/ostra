@@ -3,9 +3,25 @@ title: "The egress baseline"
 description: "What a box may reach on the network."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+A box can't reach a private address range, the cloud metadata address or another box. The agent holds no credential worth stealing, but a box on your network could still probe it, so the baseline closes that.
 
 ## The baseline
 
+| Blocked | Ranges |
+|---|---|
+| Private ranges | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` |
+| Link-local and the cloud metadata address | `169.254.0.0/16`, `169.254.169.254` |
+| Other boxes | every other box's networks |
+
+The one exception is the ostra server's own address and port, which a box's sidecar must reach, plus DNS on `kubernetes`.
+
+- **On `docker`**, the agent's container is on an internal network with no route out except the sidecar, and the sidecar's network gets host rules in Docker's `DOCKER-USER` chain. Run them once as root on each pool machine, after Docker starts, with the boxes' egress subnet and the server's address, from a clone of the release: `sudo ./deploy/egress-baseline.sh <the egress subnet> <the server's address>`. Keep the runner's box subnets clear of your own networks.
+- **On `kubernetes`**, the runner's Helm chart applies it as NetworkPolicies on the box namespace, and the runner refuses to start boxes without them. The policy applies to the whole pod, so the agent's container keeps direct public egress ([Executors](/docs/runners/executors), the fourth difference). A cluster whose network plugin doesn't enforce NetworkPolicy ignores it, and ostra's check tells the two apart.
+- **On `host`** there's no box, so nothing enforces it: that's one reason `host` is labelled "not isolated".
+
+> [!CAUTION]
+> A runner on the host executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
+
 ## Adding hosts
+
+A model server on your own network is at a private address, which the baseline blocks. Name it as an exception for the boxes, and let the panel accept it as a provider's base URL with `OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE=true`. Allowlists for each environment, which narrow what a box may reach on the public internet, come after v1.

@@ -3,13 +3,32 @@ title: "Executors"
 description: "Where a runner runs tasks: docker, host or kubernetes, and what each isolates."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+A runner's **executor** is where it runs each task. A task behaves the same on every executor, and on a pool runner or a personal one, except for the four differences at the end of this page: any other difference is a bug.
 
 ## docker
 
+Each task gets its own **box**: the agent's container, a **sidecar** and the environment's services, on networks of their own. The sidecar holds the task's credentials and proxies the agent's model calls and its git, so the agent only ever sees a fake key: no model key and no GitHub token enters its container. The agent's container sits on an internal network whose only exit is the sidecar.
+
+The runner needs the Docker Engine's socket, from `DOCKER_HOST` or the default socket, and that socket is root on the machine. Boxes start from the environment's base image, or `ostra/base` for one that names none. The [egress baseline](/docs/runners/egress) keeps every box off private ranges, the cloud metadata address and other boxes.
+
 ## host
+
+No box: the runner runs the agent in a worktree on its own machine, as a process of the account it runs as. It's what a personal runner on a laptop uses, and it needs nothing but the machine.
+
+> [!CAUTION]
+> A runner on the host executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
+
+The panel labels every `host` runner "not isolated". The key proxy and the git proxy still hold the credentials, so the agent never sees them, but nothing stops it reading the account's own files or reaching its network. A `host` pool on Linux or macOS runs its agents as a separate OS user, which the admin creates with a sudoers rule. On Windows a `host` pool runner refuses to start in v1; a personal runner on Windows works as on the other systems.
 
 ## kubernetes
 
+Each task's box is a pod in the runner's namespace: the agent's container, the sidecar, and the services as native sidecar containers. It needs Kubernetes 1.29 or later and a registry the cluster can pull from. The runner's service account has a role in its own namespaces only. It's installed with the runner's Helm chart: [Kubernetes with Helm](/docs/install/helm).
+
 ## The allowed differences
+
+These four are the only ones:
+
+1. **No services on `host`.** The `host` executor doesn't start an environment's services, and ostra never sends it a task whose environment declares them.
+2. **No box sizes on `host`.** It counts slots only.
+3. **Weaker process containment on `host` where the machine gives no kernel unit:** always on macOS, on Linux when the runner has no cgroup of its own to write, and on Windows when the job object can't be made. A process the agent detaches may outlive its task there. The runner reports it, and the panel shows it.
+4. **On `kubernetes`, the agent's container has direct internet access.** Every container in a pod shares one network, and a NetworkPolicy selects pods, not containers. The baseline (private ranges, the metadata address, other boxes) holds on both executors, but on `kubernetes` the agent can also reach any public host without going through the sidecar. No credential is exposed, because the agent holds none, but a prompt-injected agent can send data out. The panel says so on a `kubernetes` pool: "the agent has direct internet access".

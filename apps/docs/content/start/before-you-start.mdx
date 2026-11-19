@@ -3,13 +3,23 @@ title: "Before you start"
 description: "What a team needs before it installs ostra."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+Three things, and an optional fourth. Have them at hand and the [30-minute path](/docs/start/30-minute-path) holds.
 
 ## A Linux machine with Docker
 
+The server, Postgres and a pool runner start from one compose file. The machine needs Docker Engine with the Compose plugin (`docker compose`), `curl`, and ports 3000 and 8787 free: the panel listens on 3000, and core, which runners connect to, on 8787.
+
+> [!WARNING]
+> The pool runner mounts the Docker socket, which is root on this machine. Run pools on machines that do nothing else.
+
 ## A GitHub organization you administer
+
+ostra opens pull requests through a GitHub App, as the App's own bot, with the member as co-author. You need to be able to create an App and install it on the organization that holds your repos, or to have someone who can do it with you. The panel creates the App for you on GitHub, or connects one you already have.
 
 ## A model provider's base URL and token
 
+Any provider with an API base URL and a bearer token: a hosted API, a gateway, or a model server on your own network. ostra detects whether the endpoint speaks the OpenAI-compatible or the Anthropic Messages format, lists its models and tests the connection. The token goes to the secret store and never reaches an agent.
+
 ## Linear is optional
+
+With a Linear workspace, tickets become tasks and ostra keeps their status in step. Without one, tasks start from prompts. You can [connect it](/docs/install/linear) at any time, so skip it for the first run.

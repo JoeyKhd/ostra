@@ -3,11 +3,31 @@ title: "First sign-in"
 description: "Sign in as demo and choose your own password."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+The server creates the first account itself, at its first start: the instance admin, who is also the admin of the install's one organization.
 
-## Sign in as demo
+## 1. Sign in as demo
 
-## Choose a new password
+Open the panel (`http://localhost:3000`, or your `OSTRA_PUBLIC_URL`). Under **Username or email**, type `demo` or `demo@demo.com`; under **Password**, `demo`. Then **Sign in**.
+
+## 2. Choose a new password
+
+The panel opens **Choose a new password**: "This install still uses the default password. Choose your own before you go on." Type it twice, at least 12 characters, and **Save and continue**. Until you do, the panel does nothing else: anyone who can reach a fresh install knows the default.
+
+Then Home opens, with the setup checklist: [Setup in the panel](/docs/install/setup).
 
 ## Your own first admin
+
+To start with your own account instead of `demo`, give the server these settings **before its first start**, under the server's `environment:` in `compose.yaml`. They are read only when the first admin is created; changing them later changes nothing.
+
+```yaml
+OSTRA_ADMIN_EMAIL: you@example.com
+OSTRA_ADMIN_USERNAME: you
+OSTRA_ADMIN_PASSWORD: a-password-of-12-or-more-characters
+OSTRA_ORGANIZATION_NAME: Example
+```
+
+With `OSTRA_ADMIN_PASSWORD` set, there's no forced change. For a demo that nobody else can reach, `OSTRA_ALLOW_DEFAULT_PASSWORD=true` lets `demo` keep the default password, with a warning across the panel until it changes. Never set it on an install others can reach.
+
+## Everyone else
+
+Sign-up is closed: there's no page where a stranger makes an account. An admin invites each member from the organization's settings, and the invitation's link works once, for 7 days (`OSTRA_INVITATION_DAYS`). Mail is optional; without it, the admin copies the link and sends it.

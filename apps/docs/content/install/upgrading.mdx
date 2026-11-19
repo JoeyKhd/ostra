@@ -3,13 +3,30 @@ title: "Upgrading"
 description: "Move an install to a newer release."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+ostra uses semantic versioning, and the server and runner images are tagged per release. You upgrade on your own schedule.
 
 ## Before you upgrade
 
+- **Read the release's notes.** Each says what an operator must do, if anything.
+- **Back up** the database and the server's data folder (the `server-data` volume): it holds the secrets key.
+- **Runners can wait.** The server accepts runners one minor version behind or ahead of it, and tells an older runner to update. A runner outside that window is refused, with a message saying why. So upgrade the server first, then the runners, one at a time.
+
 ## Upgrade with Docker Compose
+
+In the folder that holds `compose.yaml`, fetch the new release's compose file, then pull and restart. The server runs its migrations as it starts.
+
+```sh
+curl -fsSLO https://github.com/JoeyKhd/ostra/releases/latest/download/compose.yaml
+docker compose pull
+docker compose up -d
+```
+
+Migrations only add in a release: a column or table that goes away is dropped in a later one.
 
 ## Upgrade with Helm
 
+`helm upgrade` each chart to the new release's version, the server's first. The server chart keeps its shared secret across upgrades.
+
 ## Settings that were removed
+
+A setting ostra no longer reads never stops an upgrade. The server starts, ignores it, and logs one `settings.retired_ignored` warning with its name, when it was removed and why. Remove it from your environment to quiet the warning. The list is under "Removed settings" in the [configuration reference](/docs/reference/configuration).

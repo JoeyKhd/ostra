@@ -3,11 +3,28 @@ title: "Linear (optional)"
 description: "Connect a Linear workspace, so its tickets become tasks."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+With Linear connected, a ticket becomes a task, and ostra keeps the ticket's status in step, writes one comment on it, and links the pull request back. The organization uses its own Linear app, whose tokens stay on your server in the secret store and never reach an agent. You need to be an admin of the Linear workspace.
 
-## Connect Linear
+## 1. Create the app in Linear
+
+Organization › Linear, then **Create the app in Linear**. ostra fills in the app's name, its callback and its webhook; you press Create in Linear.
+
+## 2. Paste the app's values
+
+From the app's page in Linear: the **Client ID**, the **Client secret** and the **Webhook signing secret**. They go to the secret store and are never shown again. Polling needs no signing secret.
+
+## 3. Authorize
+
+**Authorize in Linear.** Linear asks you to install the app on the workspace, then sends you back to ostra, and the connection shows **Connected**.
+
+## Webhooks or polling
+
+With a public https address in `OSTRA_CORE_PUBLIC_URL`, Linear sends each change to ostra as it happens. Without one, the app gets no webhook, and ostra asks Linear for changes every 60 seconds (`OSTRA_TRACKER_POLL_SECONDS`). Either way a webhook that's missed is caught by a regular check, so nothing is lost.
 
 ## Choose the teams
 
+A project's **Boards** attach Linear teams to it. Its intake rules say which tickets start a task by themselves; any other ticket waits in the Inbox, where a member starts it.
+
 ## Skip it for now
+
+On the setup checklist, **Skip for now** sets Linear aside. Tasks start from prompts until you connect it, and the row keeps a **Connect Linear** link.

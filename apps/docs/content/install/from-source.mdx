@@ -1,0 +1,48 @@
+---
+title: "Run from source"
+description: "The whole stack from a clone, for contributors and demos."
+---
+
+For working on ostra, or trying it on a machine without Docker. It runs the same server as the images, in development mode, on an embedded Postgres, so nothing else needs installing. Don't serve a team from it: install with [Docker Compose](/docs/install/docker-compose) for that.
+
+## 1. Clone and install
+
+You need Node 24.2 or newer, pnpm 11 (`corepack enable` picks up the version the repo pins) and `git`.
+
+```sh
+git clone https://github.com/JoeyKhd/ostra.git
+cd ostra
+pnpm install
+```
+
+## 2. Start the stack
+
+```sh
+pnpm dev
+```
+
+It starts the embedded Postgres in `.ostra-dev/pg` (port 54329, `OSTRA_DEV_PG_PORT`) unless `DATABASE_URL` is set, generates Prisma's client, applies the migrations, then starts core and the panel in watch mode. Each line of output carries its piece's label (`[db  ]`, `[core]`, `[web ]`). On an empty database the server creates the first admin, and `pnpm dev` says in a box how to sign in: `demo` with the password `demo`, which the panel then asks you to change.
+
+The panel is at `http://localhost:3000` (`OSTRA_WEB_PORT`) and core at `http://localhost:8787` (`OSTRA_CORE_PORT`). Ctrl-C stops everything, the database too.
+
+> [!NOTE]
+> On Windows, keep the checkout's path short, such as `C:\src\ostra`: the embedded Postgres unpacks deep inside `node_modules`, and Windows' path limit stops it on a long checkout path.
+
+## 3. Start a runner
+
+In another terminal, in the same clone, start a personal runner and approve the code it prints in the panel:
+
+```sh
+pnpm ostra runner --server http://localhost:8787
+```
+
+It runs on the `host` executor: [Personal runners](/docs/runners/personal).
+
+> [!CAUTION]
+> A runner on the host executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
+
+## Start over
+
+`pnpm dev:reset` says what it would delete; `pnpm dev:reset --yes` stops the dev database and deletes `.ostra-dev/`, so the next `pnpm dev` starts from an empty database and a new first admin.
+
+The rest of the developer's guide, from the checks to the tests: [Developing ostra](/docs/contributing/development).

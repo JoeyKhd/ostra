@@ -214,7 +214,7 @@ Every feature we've decided on, with a checkable "done when". It is the source o
 
 | ID | Feature | Done when | Priority | Status |
 |---|---|---|---|---|
-| F-058 | Docs site | A public docs site has the self-hosting guide, the configuration reference (every setting with its default), how to set up a runner, and the adapter guide for contributors. *Building 2026-11-19: `apps/docs` on Fumadocs, exported static for GitHub Pages by the manual `docs.yml`, with its search and the configuration reference rendered from `docs/configuration.md` (milestone 7's ticket 21); the guides are milestone 7's tickets 22 and 23.* | v1 | building |
+| F-058 | Docs site | A public docs site has the self-hosting guide, the configuration reference (every setting with its default), how to set up a runner, and the adapter guide for contributors. *Building 2026-11-19: `apps/docs` on Fumadocs, exported static for GitHub Pages by the manual `docs.yml`, with its search and the configuration reference rendered from `docs/configuration.md` (milestone 7's ticket 21); the install, setup and runner guides are written, and their `run` commands are run by `proof.yml`'s `docs-commands` job (ticket 22); the rest of the guides are ticket 23.* | v1 | building |
 
 ## Reliability and scale
 

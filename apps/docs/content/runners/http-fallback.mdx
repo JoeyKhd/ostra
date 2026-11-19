@@ -3,9 +3,21 @@ title: "The HTTP fallback"
 description: "When a runner can't hold a WebSocket open."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+A runner dials out to core and holds one WebSocket open, on core's address (`OSTRA_SERVER_URL`), so it works behind NAT and needs no open port. Some corporate proxies and firewalls refuse a WebSocket upgrade. For those, the runner falls back to plain HTTP: it posts its messages to core and waits for core's on a long poll. Both carry the same messages, so a task behaves the same either way.
 
 ## When it's used
 
+When the WebSocket can't be opened, or keeps dropping, the runner switches to HTTP by itself within 30 seconds, and reconnects on its own after any drop.
+
+> [!NOTE]
+> Today's runner speaks the WebSocket only; the fallback and `--transport` choices other than `websocket` come with milestone 5, before v1.
+
 ## Choosing a transport
+
+`--transport` (`OSTRA_RUNNER_TRANSPORT`) pins it:
+
+| Value | What the runner does |
+|---|---|
+| `auto` | The WebSocket, falling back to HTTP when it can't hold one. |
+| `websocket` | The WebSocket only, and reconnects on its own when it drops. |
+| `http` | HTTP only, for a network that is known to refuse WebSockets. |

@@ -3,11 +3,38 @@ title: "Personal runners"
 description: "Run tasks on your own machine with ostra runner."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+A **personal runner** is a member's own machine. It runs only the tasks its owner sends to it, on the `host` executor, so it needs no Docker.
+
+> [!CAUTION]
+> A runner on the host executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
 
 ## Install the CLI
 
+The runner is `ostra runner`, part of the `ostra` command-line tool. It needs Node 24.5 or later, and `git`. At launch it's published to npm; until then, run it from a clone of ostra, where `pnpm ostra` is the same command:
+
+```sh
+git clone https://github.com/JoeyKhd/ostra.git
+cd ostra
+pnpm install
+```
+
 ## Sign in with a device code
 
+Start the runner with your server's core address (`OSTRA_CORE_PUBLIC_URL`):
+
+```sh
+pnpm ostra runner --server http://localhost:8787
+```
+
+It prints a code and the panel's `/device` address. Open it, check that the code matches the one in your terminal, and **Approve runner**. Approve only a code you printed yourself, just now.
+
+The runner trades that sign-in once for a key of its own, and the server ends the sign-in, so the runner can connect and take its tasks, and nothing else a member can. Its key lives in its data folder, `~/.ostra/runner` (`--data-dir`), so it signs in only the first time.
+
 ## Start your runner
+
+After the first time, the same command starts it, and Organization › Runners shows it under **Your machine**. Pick it when you start a task, and the task runs on this machine.
+
+- A model provider must allow personal runners (**Allow on personal runners**, off by default) before its models can be used here: on your own machine, you could read the key the proxy holds.
+- `pnpm ostra runner status` shows the runner's ID, its server, the versions it accepts and its last refusal.
+- A personal runner starts no services; a project whose environment declares them runs on a pool.
+- On Windows, setup scripts run with Git for Windows' bash. Keep `--data-dir` short, because git refuses very long paths there.

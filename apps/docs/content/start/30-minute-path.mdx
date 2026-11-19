@@ -3,11 +3,26 @@ title: "The 30-minute path"
 description: "From docker compose up to your first agent-made pull request."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+A team new to ostra gets from `docker compose up` to its first agent-made pull request in under 30 minutes, following these pages and nothing else. If a step here doesn't work as written, that's a bug in the docs: [open an issue](https://github.com/JoeyKhd/ostra/issues).
 
 ## Start ostra
 
+About ten minutes. [Install with Docker Compose](/docs/install/docker-compose): download the compose file, start it, and open the panel. The compose file brings up the server, Postgres and a pool runner, which registers on its own.
+
+## Sign in
+
+A minute. [First sign-in](/docs/install/first-sign-in): sign in as `demo` with the password `demo`, and choose your own password.
+
 ## Set it up in the panel
 
+About fifteen minutes. [Setup in the panel](/docs/install/setup): Home shows a checklist, and each row opens the screen it needs.
+
+1. Add a model provider: its base URL and token.
+2. Connect GitHub: create the App, or connect an existing one, and install it on your organization.
+3. Skip Linear for now.
+4. Create a project from one of your repos, and save the environment ostra drafts for it.
+5. The runner is online already: the compose file's pool runner joined at the first start.
+
 ## Start a task
+
+The rest. Choose **New task**, pick the project, type a prompt such as "Add a test for the parser's empty input", and start it. Watch the agent work in the task's timeline; when its checks pass it opens a pull request, linked from the task.

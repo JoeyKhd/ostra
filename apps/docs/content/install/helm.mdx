@@ -4,10 +4,28 @@ description: "Install ostra on a Kubernetes cluster with its Helm charts."
 ---
 
 > [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+> The Helm charts are being built (milestone 5). Until a release ships them, install with [Docker Compose](/docs/install/docker-compose). This page describes them as v1 has them.
 
 ## The charts
 
+Two charts, in `deploy/helm/`, versioned with each release. They are separate because the server and its runners are often in different clusters, and a runner's chart must be installable by someone who can't touch the server.
+
+- **`ostra-server`** runs the server image as `web` and `core` deployments, each with its replicas, against a Postgres you provide.
+- **`ostra-runner`** installs a pool runner on the `kubernetes` executor: the namespaces its boxes run in, a service account with a role in those namespaces only, the runner's deployment, its join token from a Kubernetes secret, and the egress policies.
+
+Both need Kubernetes 1.29 or later, because a box's services run as native sidecar containers.
+
 ## Values
 
+Each chart's values are checked at install against its `values.schema.json`, and each value has its line in the [configuration reference](/docs/reference/configuration). Only the required values lack a default:
+
+- `ostra-server`: the Postgres connection, and the addresses people and runners reach it at.
+- `ostra-runner`: the server's core address and the Kubernetes secret that holds the pool's join token.
+
+Replicas don't share a data folder, so every server process needs the same secrets key, `BETTER_AUTH_SECRET` and runner-token key. The server chart makes one secret holding all three on install and keeps it on upgrade, or uses the one you name with `existingSecret`. **Back that secret up** with the database: without the secrets key, stored secrets can't be read.
+
 ## Pool runners on kubernetes
+
+A `kubernetes` pool needs a registry the cluster can pull from, for the boxes' snapshot images. It accepts a task at once and reports "waiting for a node" while an autoscaled cluster adds one.
+
+On `kubernetes`, the egress baseline is a NetworkPolicy on the box's pod, and every container in a pod shares one network. So the agent's container has direct internet access, which the panel says plainly on a `kubernetes` pool. No credential is exposed, because the agent holds none, but a prompt-injected agent can send data to a public host. A NetworkPolicy also does nothing on a cluster whose network plugin doesn't enforce it: [Executors](/docs/runners/executors) and [The egress baseline](/docs/runners/egress) say how ostra tells.

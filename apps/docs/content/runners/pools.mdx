@@ -3,11 +3,39 @@ title: "Pools and join tokens"
 description: "A pool runner registers once with its pool's join token."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+A **pool** is a group of runners on your servers or your cluster, which run the tasks of every project allowed to use it. A runner joins its pool once, with the pool's **join token**, and gets its own key pair; after that it connects with its key, and the token isn't needed again. The compose file's runner joins the `default` pool by itself, with the bootstrap token the server writes at its first start.
 
 ## Make a join token
 
+Organization › Runners, then **New pool**: give it a **Name**, and optionally **Max boxes** (empty: no limit) and **Require approval for each new runner**, where an admin approves each runner before it takes tasks.
+
+Select the pool, then **New token** under **Join tokens**. The token is shown once and stored only as a hash, so copy it now. The list shows when each token expires and when it was last used.
+
 ## Start a pool runner
 
+On the pool's machine, start the runner image with the token. On the `docker` executor it needs the Docker socket, to start the boxes beside it, and a data folder at the same path inside and out, which the boxes' token folders are mounted from:
+
+```sh
+docker run -d --name ostra-runner --restart unless-stopped --user root \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/ostra-runner:/var/lib/ostra-runner \
+  -e OSTRA_SERVER_URL=https://core.ostra.example.com \
+  -e OSTRA_JOIN_TOKEN=<the join token> \
+  -e OSTRA_RUNNER_EXECUTOR=docker \
+  -e OSTRA_RUNNER_DATA_DIR=/var/lib/ostra-runner \
+  -e OSTRA_RUNNER_CAPACITY=4 \
+  ostra/runner:<version> runner
+```
+
+`OSTRA_SERVER_URL` is core's address as this machine reaches it (`OSTRA_CORE_PUBLIC_URL` on the server). The runner shows on the Runners page as joining, then online. Every setting is also a flag of `ostra runner`, listed in the [configuration reference](/docs/reference/configuration): `OSTRA_RUNNER_CAPACITY` is how many tasks it runs at once, `OSTRA_RUNNER_LABELS` the labels tasks can ask for, and `OSTRA_RUNNER_NAME` its name in the panel.
+
+> [!WARNING]
+> The pool runner mounts the Docker socket, which is root on this machine. Run pools on machines that do nothing else.
+
+Rootless Docker or the gVisor runtime narrows what a box that escapes can reach. On Kubernetes, the runner's Helm chart makes the runner and its token secret instead: [Kubernetes with Helm](/docs/install/helm).
+
 ## Revoke a join token
+
+Select the pool and **Revoke** the token. Runners that already joined stay connected; no new runner can join with it.
+
+To remove a runner itself, revoke the runner. A revoke is final: its tasks stop at once, each ready to reopen on another runner, and a revoked runner that joins again is a new runner. **Drain** is the gentle way, for maintenance: a draining runner takes no new tasks, its running tasks finish, and it stays draining until an admin resumes it.

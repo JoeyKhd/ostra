@@ -15,6 +15,8 @@ curl -fsSLO https://github.com/JoeyKhd/ostra/releases/latest/download/compose.ya
 
 ## 2. Start it
 
+Docker pulls the images and starts three containers: Postgres, the server, and a pool runner on the `docker` executor. The server runs its migrations, creates the first admin and the first organization, and writes the default pool's join token to its data folder, where the runner reads it and registers.
+
 ```sh run
 docker compose up -d
 docker compose ps
@@ -26,17 +28,45 @@ docker compose ps
 > [!WARNING]
 > The pool runner mounts the Docker socket, which is root on this machine. Run pools on machines that do nothing else.
 
-## 3. Open the panel
+## 3. Check that it's up
+
+Core answers on 8787 and the panel on 3000 once the migrations have run. These wait up to a minute for each.
+
+```sh run
+curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://localhost:8787/healthz
+curl -fsS -o /dev/null --retry 30 --retry-delay 2 --retry-all-errors http://localhost:3000/sign-in
+```
+
+If either gives up, `docker compose logs server` says why. A server that can't start names the setting to fix.
+
+## 4. Open the panel
 
 Open `http://localhost:3000` and sign in as `demo`.
 
 > [!CAUTION]
 > A runner on the host executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
 
+The compose file's runner uses the `docker` executor, so each task runs in its own box. The `host` executor is what a [personal runner](/docs/runners/personal) on a laptop uses.
+
 ## Required settings
 
-None. Every setting has a working default, listed in the [configuration reference](/docs/reference/configuration). The compose file's runner reads the bootstrap join token from the server's data folder, so the pool runner registers on its own.
+None. Every setting has a working default, listed in the [configuration reference](/docs/reference/configuration). The ones you're most likely to set go in front of `docker compose up`, or under the server's `environment:` in `compose.yaml`:
+
+| Setting | Default | Set it when |
+|---|---|---|
+| `OSTRA_PUBLIC_URL` | `http://localhost:3000` | People reach the panel at another address, such as `https://ostra.example.com`. |
+| `OSTRA_CORE_PUBLIC_URL` | `http://localhost:8787` | Runners on other machines, or GitHub's and Linear's webhooks, reach core at another address. |
+
+```sh
+OSTRA_PUBLIC_URL=https://ostra.example.com OSTRA_CORE_PUBLIC_URL=https://core.ostra.example.com docker compose up -d
+```
+
+Put a TLS-terminating proxy in front of both ports for an install others reach. Without a public address everything still works: GitHub and Linear are read on a schedule instead of by webhook.
+
+## Back up the data
+
+Two Docker volumes hold everything: `postgres-data`, the database, and `server-data`, the server's generated keys. **Back up both.** The secrets key in `server-data` is the only way to read the provider tokens, GitHub keys and environment secrets the database holds; without it they are lost.
 
 ## Next steps
 
-Sign in and set ostra up in the panel: [First sign-in](/docs/install/first-sign-in).
+Sign in and choose your own password: [First sign-in](/docs/install/first-sign-in).

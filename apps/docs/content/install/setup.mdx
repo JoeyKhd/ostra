@@ -4,13 +4,53 @@ description: "Add a model provider and the GitHub App, in the checklist's order.
 summary: "Sign in as demo, choose a password, then add a model provider and the GitHub App, in the checklist's order."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest.
 
-## The setup checklist
+## 1. Create the first admin
 
-## Add a model provider
+Done already: the server created it at its first start, and you chose its password ([First sign-in](/docs/install/first-sign-in)).
 
-## Connect the GitHub App
+## 2. Add a model provider
 
-## Create a project
+**Add a provider** opens Organization › Models. A provider is any endpoint with an API base URL and a token.
+
+1. Give it a **Name**, its **API base URL** (such as `https://api.example.com/v1`) and its **Token**.
+2. **Test connection.** ostra detects the API format, OpenAI-compatible or Anthropic Messages, and lists the models it serves. Correct the format if the endpoint speaks the other one.
+3. **Save provider**, then choose a model and **Use as default model**: the built-in OpenCode profile uses it.
+
+Why: every agent's model calls go through the runner's key proxy, which holds this token; the agent sees a fake key, so the token never reaches its container. The token goes to the secret store and is never shown again. Names, limits and prices come from the models.dev catalog, so ostra can count each task's spend.
+
+A base URL at a private, loopback or link-local address, such as a model server on your own network, is refused unless `OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE=true`. **Allow on personal runners** is off by default: on a member's own machine, that member could read the key the proxy holds.
+
+## 3. Connect GitHub
+
+**Connect GitHub** opens Organization › GitHub. A GitHub App opens every pull request, as its own bot, with the member as co-author. ostra mints a token for one repo at a time and never hands it to an agent.
+
+- **Create a new App:** type the **Organization on GitHub** that holds your repos (empty: your own GitHub account), then **Create the App on GitHub**. GitHub asks you to confirm, then sends you back here with the App connected.
+- **Use an existing App:** paste its **App ID**, its **Private key** (the `.pem` file) and its **Webhook secret**, then **Connect the App**.
+
+Then **Install on GitHub**, on the organization that holds your repos, for all repositories or the ones tasks may change. The App asks for checks and actions from the start, so no later release asks you to approve it again.
+
+An install without a public address gets an App with no webhook: pull request states are still read every 5 minutes (`OSTRA_RECONCILE_MINUTES`), but `@ostra` comments on a pull request need the webhook. Set `OSTRA_CORE_PUBLIC_URL` to a public https address, then give the App its webhook in its settings on GitHub.
+
+## 4. Connect Linear, or skip it
+
+Optional. **Skip for now** sets it aside, and tasks start from prompts until you connect it; the row keeps a **Connect Linear** link. Connecting it takes a few minutes of its own: [Linear (optional)](/docs/install/linear).
+
+## 5. Create a project
+
+**Create a project** opens New project. Pick one or more repos the App can reach. ostra reads each repo's files, its lockfiles and setup files, and drafts the project's **environment**: the setup script every task runs before the agent starts, its tools, and its entries.
+
+Check the draft, fill in any secrets, and **Save environment**. Why: every task of the project starts from this environment, so a setup that works once works for every task. Variables, secrets and files each belong to one repo, and a secret reaches only its own repo's checkout. Use dev and test credentials here, never production ones.
+
+## 6. Connect a runner
+
+Done on its own with the compose file: its pool runner joined the default pool at the first start, and the row ticks once it's online. Organization › Runners shows it, with its executor, its slots and its version.
+
+To add more: a server joins a pool with a join token ([Pools and join tokens](/docs/runners/pools)), and a member's laptop joins as a personal runner ([Personal runners](/docs/runners/personal)).
+
+## 7. Start the first task
+
+**New task**: pick the project, type a prompt, and start it. The task's page shows the agent's work as it happens. You can steer it with a message, answer its questions and approve what its rules hold back. When its checks pass, it pushes its branch and opens a pull request for each repo it changed, linked from the task.
+
+The checklist's last row ticks, and Home shows your projects, what needs you, and the runners.

@@ -1,13 +1,29 @@
 ---
 title: "What ostra is"
-description: "The source-available, self-hosted control plane for coding agents."
+description: "The source-available, self-hosted control panel for coding agents."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 22.
+ostra is a source-available, self-hosted control panel that turns the coding agents your team already uses into cloud agents. The code is public, and you host it yourself, for your own team: there is no hosted version. ostra is source-available, not open source: the server and the panel are under the Sustainable Use License, and the runner, the protocol, the adapters and these docs are Apache-2.0.
 
 ## The tracker is the source of truth
 
+A ticket from your tracker, or a plain prompt, becomes a **task**. Linear is the tracker at launch, and it's optional: without one, tasks start from prompts. When a task comes from a ticket, ostra keeps the ticket's status in step and links the pull request back on it.
+
 ## Tasks, runners and agents
 
+An agent works each task on its own branch, and ships a GitHub pull request for each repo it changes. At launch the agent is OpenCode, with more agents later through the same interface.
+
+- A **project** holds its repos and its **environment**: the setup script, services, variables and secrets every task starts from.
+- A **runner** is a machine that runs tasks. It dials out to your ostra, so it works behind NAT. Servers join a **pool** with a join token; a laptop joins as a **personal runner** that runs only its owner's tasks.
+- On the `docker` and `kubernetes` executors, each task gets its own **box**: the agent's container, a **sidecar** that holds the task's credentials and proxies its model calls and git, and the environment's services. The agent never holds a model key or a GitHub token.
+- Anything that waits on a person shows as **needs you**: an approval, a question, a plan, a pull request to review. One member drives a task at a time, and anyone can take over. A task can be reopened months later.
+
 ## What you host
+
+One install runs one organization: your team, with its members, its model providers and its runner pools. Sign-up is by invitation only: after the first admin, people join when an admin invites them.
+
+- **The server:** the panel and core, one image, on Postgres, the only database.
+- **Runners:** a pool runner on the same machine to start with, and more on your servers, your Kubernetes cluster or your members' laptops.
+- **Your models:** any provider with an API base URL and a token, in the OpenAI-compatible or the Anthropic Messages format.
+
+Start with [Before you start](/docs/start/before-you-start).

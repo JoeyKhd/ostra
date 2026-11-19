@@ -84,3 +84,37 @@ jobs:
             apps/web/test-results/
           retention-days: 14
           if-no-files-found: ignore
+
+  # The docs' checked commands (F-058, ticket 22): every `sh` block marked `run` in apps/docs/content,
+  # in the navigation's order, on a fresh ubuntu-24.04, stopping at the first that fails. The release
+  # candidate's images are built from this commit, and its compose file is this commit's, so the
+  # install guide's download link points at deploy/ (`--release-assets`). No secret.
+  docs-commands:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The release candidate: the server, runner and base images the compose file names.
+      - run: docker compose -f deploy/compose.yaml --profile images build
+
+      - run: set -o pipefail; node scripts/check-docs-commands.ts --cwd "$RUNNER_TEMP/docs-commands" --release-assets "file://$GITHUB_WORKSPACE/deploy/" 2>&1 | tee docs-commands.log
+
+      - if: always()
+        run: |
+          cd "$RUNNER_TEMP/docs-commands/ostra" 2>/dev/null && docker compose ps -a && docker compose logs --no-color > "$GITHUB_WORKSPACE/docs-commands-stack.log" 2>&1 || true
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-commands
+          path: |
+            docs-commands.log
+            docs-commands-stack.log
+          retention-days: 14
+          if-no-files-found: ignore
