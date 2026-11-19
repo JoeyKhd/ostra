@@ -82,6 +82,10 @@ export const auditActions = {
   "runner.approved": "runner",
   "runner.rejected": "runner",
   "runner.revoked": "runner",
+  // Milestone 5 (F-091, F-092): a join names its token; an admin drains and resumes.
+  "runner.joined": "runner",
+  "runner.drained": "runner",
+  "runner.resumed": "runner",
   "pool.created": "runner-pool",
   "pool.updated": "runner-pool",
   "join-token.created": "join-token",
