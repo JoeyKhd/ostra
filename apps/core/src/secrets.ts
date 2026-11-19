@@ -5,7 +5,7 @@ import type { SecretRowStore } from "@ostra/adapter-sdk";
 import { generateSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import type { Db } from "@ostra/db";
 import type { ServerSettings } from "@ostra/domain";
-import { organizationIdSchema } from "@ostra/protocol";
+import { errnoCode, organizationIdSchema } from "@ostra/protocol";
 
 // The built-in secret store's two server-side pieces (ticket 26, spec section 11, item 1): its key
 // and its rows. The panel builds the same pair (apps/web/src/server/deps.ts): both read the key
@@ -14,8 +14,6 @@ import { organizationIdSchema } from "@ostra/protocol";
 
 /** The file in OSTRA_DATA_DIR that holds the secrets key when OSTRA_SECRETS_KEY is unset. */
 export const SECRETS_KEY_FILE = "secrets-key";
-
-const isMissing = (error: unknown): boolean => Reflect.get(Object(error), "code") === "ENOENT";
 
 export const loadSecretsKey = async (settings: Pick<ServerSettings, "secretsKey" | "dataDir">): Promise<string> => {
   if (settings.secretsKey !== null) {
@@ -28,7 +26,7 @@ export const loadSecretsKey = async (settings: Pick<ServerSettings, "secretsKey"
       return kept;
     }
   } catch (error) {
-    if (!isMissing(error)) {
+    if (errnoCode(error) !== "ENOENT") {
       throw error;
     }
   }
@@ -37,7 +35,7 @@ export const loadSecretsKey = async (settings: Pick<ServerSettings, "secretsKey"
     await writeFile(file, `${generateSecretsKey()}\n`, { mode: 0o600, flag: "wx" });
   } catch (error) {
     // The panel wrote it first: its key wins.
-    if (Reflect.get(Object(error), "code") !== "EEXIST") {
+    if (errnoCode(error) !== "EEXIST") {
       throw error;
     }
   }

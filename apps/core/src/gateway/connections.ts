@@ -27,6 +27,7 @@ import { z } from "zod";
 
 import { bearerToken } from "./access-token.ts";
 import type { AckedCommand, GatewayContext, RunnerRef } from "./context.ts";
+import { databaseErrorCodes } from "./database-error.ts";
 
 // The runner's WebSocket session (ADR 0034) on one replica of core. Ported from
 // spikes/runner-transport/src/server/replica.ts:
@@ -524,13 +525,12 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         .then(() => handleFrame(data, isBinary))
         .catch((error: unknown) => {
           // A database error's code (Prisma's P-codes, Postgres' SQLSTATE) says what failed without content.
-          const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
-          const sqlState: unknown = Reflect.get(Object(Reflect.get(Object(Reflect.get(Object(Reflect.get(Object(error), "meta")), "driverAdapterError")), "cause")), "originalCode");
+          const { code, sqlState } = databaseErrorCodes(error);
           logger.error("gateway.frame-failed", {
             runnerId: runner.runnerId,
             error: error instanceof Error ? error.name : "unknown",
-            ...(typeof code === "string" ? { code } : {}),
-            ...(typeof sqlState === "string" ? { sqlState } : {}),
+            ...(code === undefined ? {} : { code }),
+            ...(sqlState === undefined ? {} : { sqlState }),
           });
           ws.close(1011, "internal error");
         });

@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { errnoCode } from "@ostra/protocol";
+
 // Keys core makes for itself at first start and keeps in OSTRA_DATA_DIR (docs/configuration.md):
 // the key that signs runners' access tokens, and the bootstrap join token's file. Each is written
 // once, readable by its owner only, and never logged.
@@ -10,7 +12,7 @@ const readIfThere = async (file: string): Promise<string | null> => {
   try {
     return (await readFile(file, "utf8")).trim();
   } catch (error) {
-    if (Reflect.get(Object(error), "code") === "ENOENT") {
+    if (errnoCode(error) === "ENOENT") {
       return null;
     }
     throw error;
@@ -24,7 +26,7 @@ export const writeOwnerOnly = async (file: string, text: string): Promise<boolea
     await writeFile(file, `${text}\n`, { mode: 0o600, flag: "wx" });
     return true;
   } catch (error) {
-    if (Reflect.get(Object(error), "code") === "EEXIST") {
+    if (errnoCode(error) === "EEXIST") {
       return false;
     }
     throw error;

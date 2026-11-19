@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 
 // Helpers for reading text that came over a wire. They never throw on bad input, and the details
 // they return name paths and rules, never the values, so they are safe to log.
@@ -47,4 +47,16 @@ export const describeIssues = (error: z.ZodError, max = 5): string => {
   });
   const more = error.issues.length > max ? ` (+${String(error.issues.length - max)} more)` : "";
   return `${lines.join("; ")}${more}`;
+};
+
+const errnoSchema = z.looseObject({ code: z.string().optional() });
+
+/**
+ * The `code` of a thrown value when it has a string one (Node's errno codes such as `ENOENT` and
+ * `EEXIST`, Prisma's P-codes), else `undefined`. The thrown value is external data: it is read
+ * through a schema, so no cast and no `Reflect.get` on an unchecked object.
+ */
+export const errnoCode = (error: unknown): string | undefined => {
+  const parsed = errnoSchema.safeParse(error);
+  return parsed.success ? parsed.data.code : undefined;
 };

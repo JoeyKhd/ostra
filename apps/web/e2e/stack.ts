@@ -12,6 +12,7 @@ import path from "node:path";
 import { createScenarioBrain, startAnthropicStub } from "@ostra/adapter-sdk/testing";
 import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "@ostra/db/dev";
 import { createJobs } from "@ostra/jobs";
+import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
 import { e2eModelToken, e2ePort, e2eStubModels, e2eStubPort, e2eSetupToken } from "./settings.ts";
@@ -37,7 +38,7 @@ const isAlive = (pid: number): boolean => {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return Reflect.get(Object(error), "code") === "EPERM";
+    return errnoCode(error) === "EPERM";
   }
 };
 

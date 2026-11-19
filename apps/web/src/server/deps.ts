@@ -14,7 +14,7 @@ import type { Db } from "@ostra/db";
 import { parseServerSettings, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import type { JobQueue, ServerSettings } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
-import { organizationIdSchema } from "@ostra/protocol";
+import { errnoCode, organizationIdSchema } from "@ostra/protocol";
 
 // The panel's composition root (ADR 0016): one per web process. It builds what only the web app
 // makes (the database client, the adapters, the enqueue-only job queue and the outbox) and hands
@@ -29,8 +29,6 @@ const sink = (record: LogRecord): void => {
 
 const logger = createLogger(sink, { service: "web" });
 
-const isMissing = (error: unknown): boolean => Reflect.get(Object(error), "code") === "ENOENT";
-
 /**
  * The built-in secret store's key (spec section 11, item 1): `OSTRA_SECRETS_KEY`, or one generated
  * at first start and kept in `OSTRA_DATA_DIR/secrets-key` (mode 0600), which core reads too.
@@ -42,14 +40,14 @@ const loadSecretsKey = async (settings: ServerSettings): Promise<string> => {
     const kept = (await readFile(file, "utf8")).trim();
     if (kept !== "") return kept;
   } catch (error) {
-    if (!isMissing(error)) throw error;
+    if (errnoCode(error) !== "ENOENT") throw error;
   }
   await mkdir(path.dirname(file), { recursive: true });
   try {
     await writeFile(file, `${generateSecretsKey()}\n`, { mode: 0o600, flag: "wx" });
   } catch (error) {
     // Another process wrote it first: its key wins.
-    if (Reflect.get(Object(error), "code") !== "EEXIST") throw error;
+    if (errnoCode(error) !== "EEXIST") throw error;
   }
   await chmod(file, 0o600).catch(() => undefined);
   return (await readFile(file, "utf8")).trim();

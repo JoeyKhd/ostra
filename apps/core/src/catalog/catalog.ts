@@ -8,6 +8,7 @@ import { syncProviderModels } from "@ostra/domain";
 import type { ChangeNotices, Clock, ServerAdapters } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { organizationIdSchema, parseJson, providerIdSchema } from "@ostra/protocol";
+import { z } from "zod";
 
 // The model catalog (ticket 28, F-088, ADR 0033, ADR 0021): a daily `catalog.refresh` fetches the
 // models.dev catalog with a plain GET that carries no install data, keeps the last good copy in
@@ -119,6 +120,9 @@ export const refreshCatalog = async (deps: CatalogDeps): Promise<RefreshOutcome>
   return "stored";
 };
 
+/** The last good copy as stored on disk: the fetch's own file wraps the providers. */
+const storedCatalogSchema = z.looseObject({ providers: modelsDevCatalogSchema });
+
 /** The catalog's entries: the last good copy when fetching is on and one exists, else the bundled copy. */
 export const catalogSource =
   (deps: Pick<CatalogDeps, "dataDir" | "catalogFetch" | "logger">) =>
@@ -126,9 +130,9 @@ export const catalogSource =
     if (deps.catalogFetch) {
       try {
         const json = parseJson(await readFile(path.join(deps.dataDir, CATALOG_FILE), "utf8"));
-        const stored = json.ok ? modelsDevCatalogSchema.safeParse(Reflect.get(Object(json.value), "providers")) : null;
+        const stored = json.ok ? storedCatalogSchema.safeParse(json.value) : null;
         if (stored?.success === true) {
-          return catalogEntries(stored.data);
+          return catalogEntries(stored.data.providers);
         }
       } catch {
         // No copy yet: the bundled one.
