@@ -868,7 +868,21 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { ok: false, error: `preparing the workspace failed: ${prepared.error.message}` };
     }
     if (prepared.value.setup !== null) {
-      await emit({ kind: "environment.setup_finished", exitCode: prepared.value.setup.exitCode, durationMs: prepared.value.setup.durationMs });
+      const cache = prepared.value.dependencyCache;
+      const snapshot = prepared.value.snapshot;
+      await emit({
+        kind: "environment.setup_finished",
+        exitCode: prepared.value.setup.exitCode,
+        durationMs: prepared.value.setup.durationMs,
+        // Milestone 3 (F-051): what the box started from. A minor-1 peer's codec drops both.
+        ...(cache === undefined ? {} : { dependencyCache: cache.reused ? ("warm" as const) : ("cold" as const) }),
+        ...(snapshot === undefined ? {} : { snapshot }),
+      });
+      log.info("setup finished", {
+        exitCode: prepared.value.setup.exitCode,
+        durationMs: prepared.value.setup.durationMs,
+        dependencyCache: cache === undefined ? null : cache.reused ? "warm" : "cold",
+      });
       if (prepared.value.setup.exitCode !== 0) {
         return { ok: false, error: `the environment's setup script failed (exit ${String(prepared.value.setup.exitCode)})` };
       }

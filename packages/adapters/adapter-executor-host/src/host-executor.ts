@@ -1,8 +1,16 @@
 import { createWriteStream } from "node:fs";
 import type { WriteStream } from "node:fs";
-import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { adapterError, ExecutorAdapter, localWipFiles, ok, restoreWorkInProgressIn, saveWorkInProgressIn } from "@ostra/adapter-sdk";
+import {
+  adapterError,
+  ExecutorAdapter,
+  localWipFiles,
+  ok,
+  restoreWorkInProgressIn,
+  runChecksWith,
+  saveWorkInProgressIn,
+} from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
@@ -10,11 +18,15 @@ import type {
   AgentLaunch,
   AgentProcess,
   BoxRef,
+  CheckRunResult,
   CommitAndPushInput,
+  CommitWorkInput,
   CreateBoxInput,
   CreatedBox,
   ExecutorCapabilities,
   HealthReport,
+  PrepareCacheInput,
+  PreparedCache,
   PrepareInput,
   PrepareResult,
   ProcessExit,
@@ -22,6 +34,8 @@ import type {
   RestoredRepoWork,
   RestoreWorkInProgressInput,
   RunAgentCommandInput,
+  RunChecksInput,
+  RunOneCheck,
   SavedRepoWork,
   SaveWorkInProgressInput,
   StopInput,
@@ -29,7 +43,7 @@ import type {
   WipDeps,
 } from "@ostra/adapter-sdk";
 import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
-import type { BoxReleaseReason, BoxState, GitPerson, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
+import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import { localProcesses } from "./task-processes.ts";
 import type { TaskProcesses } from "./task-processes.ts";
@@ -54,11 +68,16 @@ import type { RunResult } from "./process.ts";
 //     git/config                 the task's git config: identity, insteadOf, no credential helper
 //     setup/setup.sh             the environment's setup script
 //     unit-marker                the task's containment marker, so a restarted runner finds its processes
+//   <dataDir>/cache/<projectId>/   milestone 3's host cache (F-051, ADR 0038 as amended, Q185)
+//     <repoId>.git               a bare mirror of each repo, fetched through the git proxy
+//     deps/                      the dependency cache the setup's package managers point into
+//     cache-key, last-used       the spec's key, and when a task last used it
 //
 // Its differences from `docker` are ADR 0029's allowed ones, declared in `capabilities`: no
-// isolation, no services, no box sizes, no snapshots, and process containment by the tree (or a
-// cgroup on Linux, or a Windows job object) instead of a container. The task's unit is made with
-// its folder; the setup script and the agent join it, and it ends at stop and release (ticket 42).
+// isolation, no services, no box sizes, a host cache instead of a snapshot image, and process
+// containment by the tree (or a cgroup on Linux, or a Windows job object) instead of a container.
+// The task's unit is made with its folder; the setup script, the agent and the checks join it, and
+// it ends at stop and release (ticket 42).
 
 export type HostExecutorOptions = {
   /** The runner's data folder: task roots go in `tasks/`. */
@@ -78,7 +97,32 @@ export type HostExecutorOptions = {
   readonly processContainment?: ExecutorCapabilities["processContainment"];
   /** Where the base environment's variables come from. Default: this process's. */
   readonly env?: NodeJS.ProcessEnv;
+  /** How long a project's host cache stays without a task using it (F-051). Default: 30 days. */
+  readonly cacheIdleDays?: number;
 };
+
+/** A project's host cache stays this long without a task (F-051, working value). */
+export const CACHE_IDLE_DAYS = 30;
+
+/** How often a running executor looks for idle caches, besides at start. */
+const SWEEP_EVERY_MS = 60 * 60_000;
+
+/** Why a `host` runner refuses a spec with services: the words ostra shows (ADR 0029, F-094). */
+export const HOST_SERVICES_REASON = "the `host` executor starts no services";
+
+/**
+ * The package managers' cache variables, each pointed into the project's dependency cache (F-051),
+ * so the setup's install is warm from the second task on. `CARGO_HOME` holds cargo's registry.
+ */
+export const dependencyCacheEnv = (dir: string): Readonly<Record<string, string>> => ({
+  OSTRA_DEPENDENCY_CACHE: dir,
+  npm_config_cache: path.join(dir, "npm"),
+  PNPM_STORE_DIR: path.join(dir, "pnpm-store"),
+  YARN_CACHE_FOLDER: path.join(dir, "yarn"),
+  PIP_CACHE_DIR: path.join(dir, "pip"),
+  GOMODCACHE: path.join(dir, "go-mod"),
+  CARGO_HOME: path.join(dir, "cargo"),
+});
 
 type RunningAgent = {
   readonly pid: number | null;
@@ -103,6 +147,9 @@ type BoxRecord = {
   unit: ContainmentUnit | undefined;
   agent: RunningAgent | undefined;
 };
+
+/** A project's cache folder: its ID, with anything odd replaced. */
+const projectFolder = (projectId: ProjectId): string => projectId.replace(/[^A-Za-z0-9._-]/g, "_");
 
 const boxKey = (box: BoxRef): string => `${box.taskId}\u0000${box.boxId}`;
 
@@ -187,6 +234,11 @@ export class HostExecutor extends ExecutorAdapter {
   #containment: Containment | undefined;
   readonly #processes: TaskProcesses;
   #lfs: boolean | undefined;
+  readonly #cacheIdleMs: number;
+  /** One cache update per project at a time: two tasks of a project never fetch one mirror together. */
+  readonly #cacheLocks = new Map<string, Promise<unknown>>();
+  /** When the idle caches were last swept: at start, then at most hourly as boxes use a cache. */
+  #lastSweep = 0;
 
   /** Use `HostExecutor.start` to get the containment this machine allows; this constructor uses the one given. */
   constructor(options: HostExecutorOptions, context?: AdapterContext) {
@@ -204,8 +256,9 @@ export class HostExecutor extends ExecutorAdapter {
         return this.#containment;
       });
     const kind = options.processContainment ?? options.containment?.kind ?? "process-tree";
-    // Milestone 3's ticket 15 builds the repo mirrors and the dependency cache, and declares `host-cache`.
-    this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: "none", processContainment: kind };
+    this.#cacheIdleMs = (options.cacheIdleDays ?? CACHE_IDLE_DAYS) * 24 * 60 * 60_000;
+    // The repo mirrors and the dependency cache stand in for a snapshot image (ADR 0038, Q185).
+    this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: "host-cache", processContainment: kind };
   }
 
   /**
@@ -231,7 +284,10 @@ export class HostExecutor extends ExecutorAdapter {
     if (left.cgroups > 0 || left.processes > 0) {
       context?.logger.info("containment.leftovers-ended", { cgroups: left.cgroups, processes: left.processes });
     }
-    return new HostExecutor({ ...options, containment }, context);
+    const executor = new HostExecutor({ ...options, containment }, context);
+    // A project's cache that no task used for its idle days goes (F-051).
+    await executor.sweepIdleCaches().catch(() => 0);
+    return executor;
   }
 
   async health(): Promise<HealthReport> {
@@ -260,8 +316,15 @@ export class HostExecutor extends ExecutorAdapter {
     return this.#setupShell;
   }
 
+  /** A host never starts services, with the reason ostra shows (F-094), and keeps only a host cache (ADR 0038). */
+  protected override refuseUnfitSpec(spec: TaskSpec): AdapterResult<never> | null {
+    if ((spec.services?.length ?? 0) > 0 && !this.capabilities.services) {
+      return adapterError("unsupported", HOST_SERVICES_REASON);
+    }
+    return super.refuseUnfitSpec(spec);
+  }
+
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
-    // A host never starts services, and only a host cache it keeps (ADR 0038, ADR 0029).
     const unfit = this.refuseUnfitSpec(input.spec);
     if (unfit !== null) {
       return unfit;
@@ -310,9 +373,17 @@ export class HostExecutor extends ExecutorAdapter {
     }
     record.state = "preparing";
     const log = this.plumbing.logger.child({ taskId: record.ref.taskId, boxId: record.ref.boxId });
+    // The project's host cache first (F-051): the mirrors make the clones local, the deps folder the install warm.
+    const cache = await this.#useCache(record, input.signal);
     for (const repo of record.spec.repos) {
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
-      const cloned = await this.#git(record, ["clone", "--quiet", "--origin", "origin", "--branch", repo.defaultBranch, repo.cloneUrl, checkout], record.workspaceDir);
+      // From the mirror's objects, then dissociated: the worktree needs nothing of the mirror after.
+      const reference = cache === null ? [] : ["--reference-if-able", this.#mirrorOf(cache.projectId, repo.repoId), "--dissociate"];
+      const cloned = await this.#git(
+        record,
+        ["clone", "--quiet", ...reference, "--origin", "origin", "--branch", repo.defaultBranch, repo.cloneUrl, checkout],
+        record.workspaceDir,
+      );
       if (cloned.code !== 0) {
         record.state = "failed";
         log.warn("clone failed", { repoId: repo.repoId, code: cloned.code });
@@ -330,14 +401,17 @@ export class HostExecutor extends ExecutorAdapter {
         return written;
       }
     }
-    const setup = await this.#runSetup(record, input);
+    const setup = await this.#runSetup(record, input, cache?.prepared.dependencyCacheDir ?? null);
     if (!setup.ok) {
       record.state = "failed";
       return setup;
     }
     record.state = "ready";
-    log.info("box ready", { setupExitCode: setup.value?.exitCode ?? null });
-    return ok({ setup: setup.value });
+    log.info("box ready", { setupExitCode: setup.value?.exitCode ?? null, dependencyCache: cache === null ? null : cache.prepared.reused ? "warm" : "cold" });
+    return ok({
+      setup: setup.value,
+      ...(cache === null ? {} : { dependencyCache: { cacheKey: cache.prepared.cacheKey, reused: cache.prepared.reused } }),
+    });
   }
 
   async startAgent(box: BoxRef, launch: AgentLaunch): Promise<AdapterResult<AgentProcess>> {
@@ -380,26 +454,13 @@ export class HostExecutor extends ExecutorAdapter {
       return adapterError("conflict", `nothing to push from a box that is ${record?.state ?? "released"}`);
     }
     const results: RepoPushResult[] = [];
-    const messageFile = path.join(record.root, "git", "commit-message.txt");
-    await writeFile(messageFile, commitMessageWithTrailers(input.message, input.coAuthors));
-    const authorEnv = {
-      GIT_AUTHOR_NAME: input.author.name,
-      GIT_AUTHOR_EMAIL: input.author.email,
-      GIT_COMMITTER_NAME: input.author.name,
-      GIT_COMMITTER_EMAIL: input.author.email,
-    };
+    const commit = input.pushOnly === true ? null : await this.#commitMessage(record, input);
     for (const repo of record.spec.repos) {
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
-      const status = await this.#git(record, ["status", "--porcelain"], checkout);
-      if (status.code !== 0) {
-        return adapterError("unavailable", `reading ${repo.fullName}'s changes failed`);
-      }
-      if (status.stdout.trim().length > 0) {
-        // Everything the agent left: changed, new and untracked files (the env files are excluded).
-        await this.#git(record, ["add", "--all"], checkout);
-        const committed = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", messageFile], checkout, authorEnv);
-        if (committed.code !== 0) {
-          return adapterError("unavailable", `committing ${repo.fullName}'s changes failed${this.#reason(committed)}`);
+      if (commit !== null) {
+        const committed = await this.#commitLeft(record, repo, commit);
+        if (!committed.ok) {
+          return committed;
         }
       }
       const count = await this.#git(record, ["rev-list", "--count", `refs/remotes/origin/${repo.defaultBranch}..HEAD`], checkout);
@@ -628,7 +689,315 @@ export class HostExecutor extends ExecutorAdapter {
     }
   }
 
+  // ---------- milestone 3: the host cache (F-051) and checks (F-054) ----------
+
+  /**
+   * Makes or refreshes a project's host cache (ADR 0038 as amended, Q185): a bare mirror of each
+   * repo, fetched through the git proxy, and the dependency cache folder. One update per project at
+   * a time. A new cache key starts the dependency cache again; the mirrors are only git objects and
+   * stay. `reused` says the key's cache was all there already: the task reports it as warm.
+   */
+  override async prepareCache(input: PrepareCacheInput): Promise<AdapterResult<PreparedCache>> {
+    const folder = projectFolder(input.projectId);
+    const previous = this.#cacheLocks.get(folder) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(() => this.#refreshCache(input));
+    this.#cacheLocks.set(folder, run);
+    try {
+      return await run;
+    } finally {
+      if (this.#cacheLocks.get(folder) === run) {
+        this.#cacheLocks.delete(folder);
+      }
+    }
+  }
+
+  /**
+   * Removes a project's host cache, as when the project is removed from this runner (F-051).
+   * `conflict` while a box of the project is live: its setup may be reading the cache.
+   */
+  async removeProjectCache(projectId: ProjectId): Promise<AdapterResult<void>> {
+    if ([...this.#boxes.values()].some((record) => record.spec.projectId === projectId && record.state !== "released")) {
+      return adapterError("conflict", "a box of the project is still using its cache");
+    }
+    await this.#cacheLocks.get(projectFolder(projectId))?.catch(() => undefined);
+    try {
+      await rm(this.#cacheDir(projectId), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (error) {
+      return adapterError("unavailable", `couldn't remove the project's cache (${errorCode(error)})`);
+    }
+    this.plumbing.logger.info("host cache removed", { projectId });
+    return ok(undefined);
+  }
+
+  /**
+   * Removes every project's host cache no task used for the idle days (30, a working value), except
+   * one a live box or an update holds. `HostExecutor.start` runs it, and a box that uses a cache at
+   * most hourly after. Answers how many went.
+   */
+  async sweepIdleCaches(now: number = Date.now()): Promise<number> {
+    this.#lastSweep = now;
+    const root = path.join(this.#dataDir, "cache");
+    const folders = await readdir(root).catch((): string[] => []);
+    const live = new Set(
+      [...this.#boxes.values()].filter((record) => record.state !== "released").map((record) => projectFolder(record.spec.projectId)),
+    );
+    let removed = 0;
+    for (const folder of folders) {
+      if (live.has(folder) || this.#cacheLocks.has(folder)) {
+        continue;
+      }
+      const used = await stat(path.join(root, folder, "last-used")).catch(() => null);
+      const lastUsed = used?.mtimeMs ?? (await stat(path.join(root, folder)).catch(() => null))?.mtimeMs ?? now;
+      if (now - lastUsed >= this.#cacheIdleMs) {
+        await rm(path.join(root, folder), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => undefined);
+        removed += 1;
+      }
+    }
+    if (removed > 0) {
+      this.plumbing.logger.info("idle host caches removed", { removed });
+    }
+    return removed;
+  }
+
+  /**
+   * The turn's checks (F-054, ADR 0052, Q188), in the worktree: each as a child process of the
+   * setup shell, in its repo's folder or the workspace root, with the check's environment only
+   * (`checkEnvironment`: nothing of the runner's), in the task's unit, and its timeout ending the
+   * whole process tree. `runChecksWith` keeps the order, the total and the output files.
+   */
+  override async runChecks(box: BoxRef, input: Omit<RunChecksInput, "workspaceDir">): Promise<AdapterResult<readonly CheckRunResult[]>> {
+    const record = this.#boxes.get(boxKey(box));
+    if (
+      record === undefined ||
+      record.state === "released" ||
+      record.state === "creating" ||
+      record.state === "preparing" ||
+      record.state === "failed"
+    ) {
+      return adapterError("conflict", `checks don't run in a box that is ${record?.state ?? "released"}`);
+    }
+    const setupShell = await this.#resolveShell();
+    if (setupShell.kind === "missing") {
+      return adapterError("unavailable", setupShell.reason);
+    }
+    const shell = setupShell.command;
+    const unit = record.unit;
+    let results: readonly CheckRunResult[];
+    try {
+      results = await runChecksWith({ ...input, workspaceDir: record.workspaceDir }, (check) => this.#runCheck(shell, unit, check));
+    } catch (error) {
+      return adapterError("unavailable", `the checks couldn't run (${errorCode(error)})`);
+    }
+    // Statuses only: a check's output is untrusted and never logged.
+    this.plumbing.logger.info("checks ran", {
+      taskId: box.taskId,
+      boxId: box.boxId,
+      checks: results.length,
+      notPassed: results.filter((result) => result.status !== "passed").length,
+    });
+    return ok(results);
+  }
+
+  // ---------- inside: the host cache and checks ----------
+
+  #cacheDir(projectId: ProjectId): string {
+    return path.join(this.#dataDir, "cache", projectFolder(projectId));
+  }
+
+  #mirrorOf(projectId: ProjectId, repoId: RepoId): string {
+    return path.join(this.#cacheDir(projectId), `${repoId.replace(/[^A-Za-z0-9._-]/g, "_")}.git`);
+  }
+
+  /** The spec's host cache for a box, made fresh; `null` when the spec names none or it couldn't be made. */
+  async #useCache(
+    record: BoxRecord,
+    signal: AbortSignal | undefined,
+  ): Promise<{ readonly projectId: ProjectId; readonly prepared: PreparedCache } | null> {
+    const snapshot = record.spec.snapshot ?? null;
+    if (snapshot?.kind !== "host-cache") {
+      return null;
+    }
+    const prepared = await this.prepareCache({
+      projectId: record.spec.projectId,
+      cacheKey: snapshot.cacheKey,
+      repos: record.spec.repos.map((repo) => ({ repoId: repo.repoId, cloneUrl: repo.cloneUrl })),
+      proxies: record.proxies,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (!prepared.ok) {
+      // The cache makes a setup fast and never fails it: the box clones and installs in full.
+      this.plumbing.logger.warn("the host cache wasn't prepared", {
+        taskId: record.ref.taskId,
+        projectId: record.spec.projectId,
+        code: prepared.error.code,
+      });
+      return null;
+    }
+    // A runner that stays up for months still lets go of a cache no task uses (F-051).
+    if (Date.now() - this.#lastSweep >= SWEEP_EVERY_MS) {
+      void this.sweepIdleCaches().catch(() => 0);
+    }
+    return { projectId: record.spec.projectId, prepared: prepared.value };
+  }
+
+  async #refreshCache(input: PrepareCacheInput): Promise<AdapterResult<PreparedCache>> {
+    const dir = this.#cacheDir(input.projectId);
+    const deps = path.join(dir, "deps");
+    const keyFile = path.join(dir, "cache-key");
+    const gitConfig = path.join(dir, "gitconfig");
+    try {
+      await mkdir(dir, { recursive: true });
+      const keptKey = (await readFile(keyFile, "utf8").catch(() => "")).trim();
+      const depsThere = (await stat(deps).catch(() => null))?.isDirectory() === true;
+      let reused = keptKey === input.cacheKey && depsThere;
+      if (keptKey !== input.cacheKey) {
+        await rm(deps, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      }
+      await mkdir(deps, { recursive: true });
+      // The mirrors' own global config: empty, so the member's never applies.
+      await writeFile(gitConfig, "");
+      for (const repo of input.repos) {
+        const mirror = this.#mirrorOf(input.projectId, repo.repoId);
+        if ((await stat(path.join(mirror, "HEAD")).catch(() => null)) === null) {
+          reused = false;
+          await rm(mirror, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+          for (const args of [
+            ["init", "--quiet", "--bare", mirror],
+            ["--git-dir", mirror, "config", "remote.origin.url", repo.cloneUrl],
+            // The branches only: a task clones its default branch and fetches its own.
+            ["--git-dir", mirror, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*"],
+          ]) {
+            const made = await this.#cacheGit(dir, gitConfig, input.proxies, repo.cloneUrl, args, undefined);
+            if (made.code !== 0) {
+              return adapterError("unavailable", `making the mirror of ${repo.repoId} failed (exit ${String(made.code)})`);
+            }
+          }
+        }
+        const fetched = await this.#cacheGit(
+          dir,
+          gitConfig,
+          input.proxies,
+          repo.cloneUrl,
+          ["--git-dir", mirror, "fetch", "--quiet", "--prune", "origin"],
+          input.signal,
+        );
+        if (fetched.code !== 0) {
+          return adapterError("unavailable", `fetching the mirror of ${repo.repoId} through the git proxy failed${this.#reason(fetched)}`);
+        }
+      }
+      await writeFile(keyFile, input.cacheKey);
+      const now = new Date();
+      await writeFile(path.join(dir, "last-used"), now.toISOString());
+      await utimes(path.join(dir, "last-used"), now, now);
+      this.plumbing.logger.info("host cache prepared", { projectId: input.projectId, repos: input.repos.length, reused });
+      return ok({ cacheKey: input.cacheKey, reused, dependencyCacheDir: deps });
+    } catch (error) {
+      return adapterError("unavailable", `couldn't prepare the host cache (${errorCode(error)})`);
+    }
+  }
+
+  /** git on a project's mirrors: the code host's origin to the git proxy, no credential helper, nothing above the cache. */
+  #cacheGit(
+    cwd: string,
+    gitConfig: string,
+    proxies: PrepareCacheInput["proxies"],
+    cloneUrl: string,
+    args: readonly string[],
+    signal: AbortSignal | undefined,
+  ): Promise<RunResult> {
+    const to = `${proxies.gitBaseUrl.replace(/\/+$/, "")}/`;
+    const from = `${new URL(cloneUrl).origin}/`;
+    return this.#processes.run("git", [...GIT_HARDENING, "-c", "credential.helper=", "-c", `url.${to}.insteadOf=${from}`, ...args], {
+      cwd,
+      env: {
+        ...baseEnv(this.#env),
+        GIT_CONFIG_GLOBAL: gitConfig,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_TERMINAL_PROMPT: "0",
+        GCM_INTERACTIVE: "never",
+        GIT_CEILING_DIRECTORIES: path.dirname(cwd),
+      },
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  /** One check: the admin's command line, run by the setup shell, in the task's unit; its timeout reaps the tree. */
+  async #runCheck(shell: string, unit: ContainmentUnit | undefined, check: Parameters<RunOneCheck>[0]): Promise<Awaited<ReturnType<RunOneCheck>>> {
+    const controller = new AbortController();
+    // Set from the timer, so kept in an object the type checker doesn't narrow.
+    const cut = { timedOut: false };
+    const timer = setTimeout(() => {
+      cut.timedOut = true;
+      controller.abort();
+    }, check.timeoutMs);
+    const onAbort = (): void => {
+      // The task stopping cuts the check short, as its timeout would.
+      cut.timedOut = true;
+      controller.abort();
+    };
+    check.signal?.addEventListener("abort", onAbort, { once: true });
+    if (check.signal?.aborted === true) {
+      onAbort();
+    }
+    try {
+      const result = await this.#processes.run(shell, ["-c", check.command], {
+        cwd: check.cwd,
+        // The check's whole environment, plus the unit's marker the process-tree sweep finds it by.
+        env: unit === undefined ? check.env : { ...check.env, [TASK_UNIT_ENV]: unit.marker },
+        signal: controller.signal,
+        ownGroup: true,
+        maxBuffer: 0,
+        ...(unit === undefined ? {} : { unit }),
+        onOutput: (_stream, text) => {
+          check.onOutput(text);
+        },
+      });
+      // A program that never started: `runProgram` names why in its stderr, with no exit code.
+      const error = result.code === null && !cut.timedOut ? result.stderr.trim().slice(0, 200) || "the check didn't start" : null;
+      return { exitCode: result.code, timedOut: cut.timedOut, error };
+    } finally {
+      clearTimeout(timer);
+      check.signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
   // ---------- inside ----------
+
+  /** The commit message file, with its trailers, and the App's bot as author and committer. */
+  async #commitMessage(record: BoxRecord, input: CommitWorkInput): Promise<{ readonly file: string; readonly env: Readonly<Record<string, string>> }> {
+    const file = path.join(record.root, "git", "commit-message.txt");
+    await writeFile(file, commitMessageWithTrailers(input.message, input.coAuthors));
+    return {
+      file,
+      env: {
+        GIT_AUTHOR_NAME: input.author.name,
+        GIT_AUTHOR_EMAIL: input.author.email,
+        GIT_COMMITTER_NAME: input.author.name,
+        GIT_COMMITTER_EMAIL: input.author.email,
+      },
+    };
+  }
+
+  /** Commits everything the turn left in one repo: changed, new and untracked files (the env files are excluded). */
+  async #commitLeft(
+    record: BoxRecord,
+    repo: TaskSpec["repos"][number],
+    commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
+  ): Promise<AdapterResult<void>> {
+    const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+    const status = await this.#git(record, ["status", "--porcelain"], checkout);
+    if (status.code !== 0) {
+      return adapterError("unavailable", `reading ${repo.fullName}'s changes failed`);
+    }
+    if (status.stdout.trim().length > 0) {
+      await this.#git(record, ["add", "--all"], checkout);
+      const committed = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", commit.file], checkout, commit.env);
+      if (committed.code !== 0) {
+        return adapterError("unavailable", `committing ${repo.fullName}'s changes failed${this.#reason(committed)}`);
+      }
+    }
+    return ok(undefined);
+  }
 
   async #endAgent(record: BoxRecord, graceMs: number): Promise<void> {
     const agent = record.agent;
@@ -818,7 +1187,7 @@ export class HostExecutor extends ExecutorAdapter {
     return ok(undefined);
   }
 
-  async #runSetup(record: BoxRecord, input: PrepareInput): Promise<AdapterResult<PrepareResult["setup"]>> {
+  async #runSetup(record: BoxRecord, input: PrepareInput, dependencyCacheDir: string | null): Promise<AdapterResult<PrepareResult["setup"]>> {
     const script = record.spec.environment.setupScript;
     if (script === null || script.trim().length === 0) {
       return ok(null);
@@ -835,7 +1204,12 @@ export class HostExecutor extends ExecutorAdapter {
     for (const repo of record.spec.repos) {
       const environment = record.spec.environment.repos.find((entry) => entry.repoId === repo.repoId);
       const secrets = input.secrets.find((entry) => entry.repoId === repo.repoId)?.entries ?? [];
-      const env: Record<string, string> = { ...baseEnv(this.#env), OSTRA_REPO: repo.fullName };
+      const env: Record<string, string> = {
+        ...baseEnv(this.#env),
+        // The project's dependency cache, for the package managers and the script (F-051).
+        ...(dependencyCacheDir === null ? {} : dependencyCacheEnv(dependencyCacheDir)),
+        OSTRA_REPO: repo.fullName,
+      };
       if (record.unit !== undefined) {
         env[TASK_UNIT_ENV] = record.unit.marker;
       }

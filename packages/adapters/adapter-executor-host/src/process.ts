@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { killTree } from "@ostra/adapter-sdk";
 import type { ContainmentUnit } from "./containment.ts";
 
 // Child processes for the host executor: argument arrays only, never a shell line, and an
@@ -54,7 +55,13 @@ export type RunResult = { readonly code: number | null; readonly stdout: string;
 export type RunOptions = {
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
+  /** Ends the program's whole process tree (milestone 1's tree reap), not only the program. */
   readonly signal?: AbortSignal;
+  /**
+   * Its own process group on Linux and macOS, so the tree reap reaches what it put in the
+   * background too (a check, F-054). Windows ends the tree by its parent links either way.
+   */
+  readonly ownGroup?: boolean;
   /** Called with each chunk as it comes, besides collecting it. */
   readonly onOutput?: (stream: "stdout" | "stderr", text: string) => void;
   /** The most output kept per stream, so a chatty tool can't fill memory. */
@@ -74,13 +81,24 @@ export const runProgram = (command: string, args: readonly string[], options: Ru
     const max = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
     let stdout = "";
     let stderr = "";
+    if (options.signal?.aborted === true) {
+      resolve({ code: null, stdout: "", stderr: "AbortError: aborted before it started" });
+      return;
+    }
     const child = spawn(command, [...args], {
       cwd: options.cwd,
       env: { ...options.env },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      detached: options.ownGroup === true && process.platform !== "win32",
     });
+    // An abort ends the whole tree: a program's own children don't outlive it (milestone 1's reap).
+    const onAbort = (): void => {
+      if (child.pid !== undefined) {
+        void killTree(child.pid).catch(() => undefined);
+      }
+    };
+    options.signal?.addEventListener("abort", onAbort, { once: true });
     if (options.unit !== undefined && child.pid !== undefined) {
       const exited = new Promise((done) => child.once("exit", done));
       void options.unit.adopt(child.pid, { exited }).catch(() => undefined);
@@ -103,6 +121,7 @@ export const runProgram = (command: string, args: readonly string[], options: Ru
     const finish = (code: number | null): void => {
       if (!settled) {
         settled = true;
+        options.signal?.removeEventListener("abort", onAbort);
         resolve({ code, stdout, stderr });
       }
     };

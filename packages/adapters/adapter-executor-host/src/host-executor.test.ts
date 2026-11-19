@@ -117,7 +117,7 @@ afterAll(async () => {
 
 describe("the host executor", () => {
   it("declares ADR 0029's allowed differences", () => {
-    expect(executor.capabilities).toEqual({ isolation: "none", services: false, boxSizes: false, snapshots: "none", processContainment: "process-tree" });
+    expect(executor.capabilities).toEqual({ isolation: "none", services: false, boxSizes: false, snapshots: "host-cache", processContainment: "process-tree" });
   });
 
   it("checks out two repos side by side, streams setup, commits with the trailer, pushes, keeps unfinished work, and releases", async () => {

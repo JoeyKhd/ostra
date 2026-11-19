@@ -5,6 +5,7 @@ import { killTree } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
 import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import type { HelperCase } from "@ostra/adapter-sdk/testing";
+import { projectIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { HostExecutor } from "./host-executor.ts";
 import { detachedHelperScript } from "./testing/helpers.ts";
@@ -26,6 +27,18 @@ const nodeLaunch = (script: string, box: CreatedBox): AgentLaunch => ({
 });
 
 const pidFile = (box: CreatedBox): string => path.join(box.agentDir, "helper.pid");
+
+/** Node, as a check's command line names it: the setup shell reads forward slashes on every OS. */
+const node = `'${process.execPath.replaceAll("\\", "/")}'`;
+
+/** Milestone 3 (F-054): the suite's checks, as command lines the setup shell runs. */
+const hostCheckCommands = {
+  passing: "exit 0",
+  failing: "exit 3",
+  slow: `${node} -e 'setTimeout(() => {}, 60000)'`,
+  printsEnv: `${node} -e 'process.stdout.write(JSON.stringify(process.env))'`,
+  noisy: `${node} -e 'console.log("first line"); console.log("x".repeat(20 * 1024)); console.log("the last line")'`,
+} as const;
 
 // By birth as well as PID: a stop that takes seconds leaves a killed helper's PID to another process.
 const helpers = trackedPids();
@@ -70,6 +83,14 @@ defineExecutorContractSuite({
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
         // Milestone 2 (ticket 22): the hidden ref is saved and restored in the box's first checkout.
         workInProgress: { checkout: (box) => localWorkspaceFiles(path.join(box.workspaceDir, "test1")), trackedFiles: ["README.md", "notes.txt"] },
+        // Milestone 3: checks run by the setup shell, and the host cache per project (tickets 15 and 05).
+        checks: hostCheckCommands,
+        cache: (projectId) => ({
+          projectId: projectIdSchema.parse(projectId),
+          cacheKey: projectId,
+          repos: spec.repos.map((repo) => ({ repoId: repo.repoId, cloneUrl: repo.cloneUrl })),
+          proxies: { gitBaseUrl: upstream.origin, modelBaseUrl: "http://127.0.0.1:9/v1", mcpUrl: "http://127.0.0.1:9/mcp" },
+        }),
         detachedHelper: helperCase(false),
         cleanEnvHelper: helperCase(true),
         ...(treeOnly
