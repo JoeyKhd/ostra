@@ -5,6 +5,7 @@ import { systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger } from "@ostra/adapter-sdk";
 import { S3BlobStore } from "@ostra/adapter-blob-s3";
 import { GitHubAdapter } from "@ostra/adapter-github";
+import { OpenCodeAdapter } from "@ostra/adapter-opencode";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
@@ -50,6 +51,7 @@ import { createCoreServer } from "./server.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
+import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { recordOnlyHandler, webhookProcessHandler } from "./webhooks/process.ts";
@@ -138,7 +140,17 @@ export const startCore = async (
     logger,
     timers,
   };
-  const dispatcherDeps: DispatcherDeps = { db, jobs, outbox: postgresCommandOutbox, notices, clock: systemClock, logger };
+  // A reopen restores an archive only for an agent whose adapter can import one (ADR 0039, ticket 18).
+  const archiveAgents = new Map([["opencode", new OpenCodeAdapter().capabilities.sessionArchive]]);
+  const dispatcherDeps: DispatcherDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    clock: systemClock,
+    logger,
+    reopen: { agentImportsArchives: (adapter) => archiveAgents.get(adapter) === true, archiveMaxBytes: settings.blobStore.maxBytes },
+  };
   const reactionDeps: ReactionDeps = {
     db,
     jobs,
@@ -286,6 +298,8 @@ export const startCore = async (
   // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
   // written where no queue was at hand (a task's move), every 2 s.
   await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
+  // A ticket task's context, images and first prompt, then its dispatch (ticket 18).
+  await jobs.work("ticket.fetch-context", fetchContextHandler({ db, jobs, notices, clock: systemClock, trackers, blobs, logger }), { localConcurrency: 4 });
   const drain = setInterval(() => {
     drainTicketWrites({ db, jobs, clock: systemClock }).catch((error: unknown) => {
       logger.warn("ticket.drain-failed", { error: error instanceof Error ? error.name : "unknown" });

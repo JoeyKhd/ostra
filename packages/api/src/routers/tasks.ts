@@ -505,8 +505,10 @@ export const tasksRouter = router({
    * for the one-click reopen from a limit or a crash; a merged task is refused until F-066.
    */
   reopen: taskProcedure("read", reopenTaskInputSchema).mutation(async ({ ctx, input }) => {
-    const { db, ports } = ctx.deps;
-    const result = await db.$transaction((tx) => reopenTask({ tx, scope: ctx.scope, ...ports }, input));
+    const { db, ports, settings } = ctx.deps;
+    // A task at its spend cap stays stopped until the cap is raised (F-068, ticket 19).
+    const spendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
+    const result = await db.$transaction((tx) => reopenTask({ tx, scope: ctx.scope, ...ports, spendCap }, input));
     const reopened = unwrap(result, {
       "not-found": "NOT_FOUND",
       forbidden: "FORBIDDEN",
@@ -514,6 +516,7 @@ export const tasksRouter = router({
       "ticket-has-task": "CONFLICT",
       "not-reopenable": "CONFLICT",
       "text-required": "BAD_REQUEST",
+      "spend-cap-reached": "PRECONDITION_FAILED",
     });
     return { sessionId: reopened.sessionId };
   }),

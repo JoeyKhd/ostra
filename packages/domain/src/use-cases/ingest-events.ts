@@ -128,6 +128,28 @@ export const applyFilesOutsideReposInTx = async (
   await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
 };
 
+/**
+ * A `session.restored` with what became of the box before it (ticket 18), when the runner didn't
+ * say: `kept` for the same box, `released` when the old one was released, else `lost`.
+ */
+const withPreviousBox = async (tx: Tx, taskId: TaskId, session: Session, item: RunnerEvent): Promise<RunnerEvent> => {
+  if (item.event.kind !== "session.restored") {
+    return item;
+  }
+  const previous = await tx.session.findFirst({
+    where: { taskId, id: { not: session.id }, startedAt: { lte: session.startedAt } },
+    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+    select: { boxId: true },
+  });
+  const previousBoxId = previous?.boxId ?? null;
+  if (previousBoxId === null) {
+    return item;
+  }
+  const box = await tx.box.findUnique({ where: { id: previousBoxId }, select: { state: true } });
+  const previousBox = previousBoxId === session.boxId ? "kept" : box?.state === "released" ? "released" : "lost";
+  return { ...item, event: { ...item.event, previousBox } };
+};
+
 /** The session's ID, branded: the row was found by it. */
 const item0SessionId = (session: Session): SessionId => sessionIdSchema.parse(session.id);
 
@@ -348,6 +370,31 @@ const applyEffects = async (
         await reloadTask();
         break;
       }
+      case "session.restored": {
+        // Ticket 18: how the session came back. A conflict between the saved work and the
+        // branch's new commits restores nothing and the task carries on from the branch's head;
+        // the driver hears it (ADR 0039, Q150), and the task doesn't move.
+        if (event.origin !== undefined) {
+          await tx.session.update({ where: { id: session.id }, data: { origin: event.origin } });
+        }
+        if (event.hiddenRef === "conflict") {
+          const open = await tx.needsYouItem.findFirst({ where: { taskId: task.id, reason: "restore_conflict", state: "open" }, select: { id: true } });
+          if (open === null) {
+            await tx.needsYouItem.create({
+              data: {
+                organizationId: task.organizationId,
+                projectId: task.projectId,
+                taskId: task.id,
+                reason: "restore_conflict",
+                audience: task.driverMemberId === null ? "project_members" : "driver",
+                summary: "The last turn's unfinished work conflicted with commits pushed to the branch since, so it wasn't restored. The agent carries on from the branch's head.",
+              },
+            });
+            await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
+          }
+        }
+        break;
+      }
       case "user.message":
       case "turn.cancel_requested":
       case "agent.content":
@@ -368,7 +415,6 @@ const applyEffects = async (
       case "driver.changed":
       case "runner.connected":
       case "runner.lost":
-      case "session.restored":
       case "pr.opened":
       case "agent.unknown":
       case "environment.setup_started":
@@ -449,7 +495,7 @@ const ingestSession = async (
       gap = true;
       break;
     }
-    fresh.push(item);
+    fresh.push(item.event.kind === "session.restored" && item.event.previousBox === undefined ? await withPreviousBox(tx, task.id, session, item) : item);
     cursor = item.sessionSeq;
   }
   let headSeq = 0;

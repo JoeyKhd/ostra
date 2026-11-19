@@ -21,6 +21,7 @@
     "@ostra/adapter-github": "workspace:*",
     "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
+    "@ostra/adapter-opencode": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/adapter-secret-store-builtin": "workspace:*",
     "@ostra/db": "workspace:*",

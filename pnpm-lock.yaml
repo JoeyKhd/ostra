@@ -53,6 +53,9 @@ importers:
       '@ostra/adapter-model-endpoint':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-model-endpoint
+      '@ostra/adapter-opencode':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-opencode
       '@ostra/adapter-sdk':
         specifier: workspace:*
         version: link:../../packages/adapter-sdk

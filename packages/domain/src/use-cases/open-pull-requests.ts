@@ -2,12 +2,14 @@ import type { Logger, RepoAccess } from "@ostra/adapter-sdk";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, sessionIdSchema } from "@ostra/protocol";
+import { organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, sessionIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { RepoId } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
+import { parseBoardMapping } from "../tickets/board-mapping.ts";
+import { ticketMagicLine, ticketPullRequestTitle } from "../tickets/contracts.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { writeTicketStepsInTx } from "../tickets/ticket-writes.ts";
@@ -53,14 +55,37 @@ export const pullRequestTitle = (title: string): string => {
   return line.length <= PR_TITLE_MAX ? line : `${line.slice(0, PR_TITLE_MAX - 3).trimEnd()}...`;
 };
 
-/** The PR's body: the agent's text, then a footer that links the task and its other PRs. */
-export const pullRequestBody = (text: string, taskUrl: string, others: readonly string[]): string => {
+/**
+ * The PR's body: the agent's text, a ticket task's `Closes <KEY>` (or the board's word, spec
+ * section 11, item 5), then a footer that links the task and its other PRs.
+ */
+export const pullRequestBody = (text: string, taskUrl: string, others: readonly string[], magicLine: string | null = null): string => {
   const footer = [
     "---",
     `Opened by [ostra](${taskUrl}) for this task: ${taskUrl}`,
     ...(others.length === 0 ? [] : ["", "The task's other PRs:", ...others.map((url) => `- ${url}`)]),
   ];
-  return `${text.trim()}\n\n${footer.join("\n")}\n`;
+  return `${text.trim()}\n\n${magicLine === null ? "" : `${magicLine}\n\n`}${footer.join("\n")}\n`;
+};
+
+/**
+ * A ticket task's PR title and magic line (spec section 11, item 5): `<KEY>: <ticket title>` and
+ * `Closes <KEY>`, from the ticket as last read and its board's mapping. A prompt task has neither.
+ */
+const ticketTextOf = async (
+  db: Db,
+  task: { readonly ticketKey: string | null; readonly ticketId: string | null; readonly boardId: string | null; readonly title: string },
+): Promise<{ readonly title: string; readonly magicLine: string } | null> => {
+  const key = ticketKeySchema.safeParse(task.ticketKey);
+  if (!key.success) {
+    return null;
+  }
+  const ticket = task.ticketId === null ? null : await db.ticket.findUnique({ where: { id: task.ticketId }, select: { title: true, key: true } });
+  const board = task.boardId === null ? null : await db.board.findUnique({ where: { id: task.boardId }, select: { statusMap: true } });
+  const current = ticketKeySchema.safeParse(ticket?.key);
+  const ticketKey = current.success ? current.data : key.data;
+  const word = parseBoardMapping(board?.statusMap)?.magicWord ?? "Closes";
+  return { title: ticketPullRequestTitle(ticketKey, ticket?.title ?? task.title), magicLine: ticketMagicLine(ticketKey, word) };
 };
 
 const M1_ROUNDS = { ci: false, aiReview: false } as const;
@@ -80,6 +105,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   const projectId = projectIdSchema.parse(task.projectId);
   const taskUrl = `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${task.id}`;
   const fallbackBody = (await db.$transaction((tx) => lastAgentMessageInTx(tx, task.id, input.sessionId))) ?? task.title;
+  const ticketText = await ticketTextOf(db, task);
   const taskRepos = await db.taskRepo.findMany({
     where: { taskId: task.id, ahead: true },
     include: { repo: { include: { connection: true } } },
@@ -116,12 +142,12 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     if (pull === null) {
       // The body is the agent's text (untrusted, sent as data), and the footer is ostra's.
       const text = taskRepo.prBody ?? fallbackBody;
-      const body = pullRequestBody(text, taskUrl, opened.map((other) => other.url));
+      const body = pullRequestBody(text, taskUrl, opened.map((other) => other.url), ticketText?.magicLine ?? null);
       const created = await deps.adapters.codeHost.openPullRequest({
         access,
         head: taskRepo.branchName,
         base: taskRepo.baseBranch,
-        title: pullRequestTitle(task.title),
+        title: ticketText?.title ?? pullRequestTitle(task.title),
         body,
         draft: false,
       });
@@ -174,7 +200,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     if (others.length <= mine.linked) {
       continue;
     }
-    const updated = await deps.adapters.codeHost.updatePullRequestBody({ access: mine.access, number: mine.number, body: pullRequestBody(mine.text, taskUrl, others) });
+    const updated = await deps.adapters.codeHost.updatePullRequestBody({ access: mine.access, number: mine.number, body: pullRequestBody(mine.text, taskUrl, others, ticketText?.magicLine ?? null) });
     if (!updated.ok) {
       deps.logger?.warn("a PR couldn't link the task's other PRs", { taskId: task.id, repoId: mine.repoId, prNumber: mine.number, code: updated.error.code });
     }

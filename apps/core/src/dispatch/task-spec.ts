@@ -7,6 +7,7 @@ import type { SpendCapSettings } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
 import { agentInstructions } from "./agent-instructions.ts";
+import { specMilestone2Parts } from "./restore-spec.ts";
 
 // `GET /runner/v1/tasks/:taskId/spec` (ticket 26, ADR 0034): what a dispatch hands the runner once it
 // accepted the offer, for the lease holder only. References and the task's text, never a secret:
@@ -160,6 +161,8 @@ export const buildTaskSpec = async (
     .map((row) => gitPersonSchema.safeParse({ name: row.name, email: row.email }))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
 
+  // Milestone 2 (ticket 18): the ticket, its images, and a reopen's restore section and template.
+  const extras = await specMilestone2Parts(db, task, session);
   const spec = taskSpecSchema.parse({
     taskId: task.id,
     sessionId: session.id,
@@ -167,7 +170,10 @@ export const buildTaskSpec = async (
     organizationId,
     kind: task.kind,
     title: task.title,
-    prompt: task.prompt ?? "",
+    prompt: extras.prompt ?? task.prompt ?? "",
+    ticket: extras.ticket,
+    contextFiles: extras.contextFiles,
+    ...(extras.restore === undefined ? {} : { restore: extras.restore }),
     branchName: task.branchName,
     leaseEpoch: input.leaseEpoch,
     repos,

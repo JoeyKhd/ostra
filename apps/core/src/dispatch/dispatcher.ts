@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { acceptOffer, dispatchTask, dispatchWaitColumns } from "@ostra/domain";
-import type { ChangeNotices, Clock, CommandOutbox, JobPayload } from "@ostra/domain";
+import type { ChangeNotices, Clock, CommandOutbox, JobPayload, ReopenDispatchSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -21,6 +21,8 @@ export type DispatcherDeps = {
   readonly notices: ChangeNotices;
   readonly clock: Clock;
   readonly logger: Logger;
+  /** Milestone 2 (ticket 18): what a reopen's dispatch needs to pick its step. */
+  readonly reopen?: ReopenDispatchSettings;
 };
 
 export const dispatchHandler =
@@ -28,7 +30,18 @@ export const dispatchHandler =
   async (context) => {
     const result = await deps.db.$transaction(
       (tx) =>
-        dispatchTask({ tx, jobs: deps.jobs, outbox: deps.outbox, notices: deps.notices, clock: deps.clock, logger: context.logger }, context.payload),
+        dispatchTask(
+          {
+            tx,
+            jobs: deps.jobs,
+            outbox: deps.outbox,
+            notices: deps.notices,
+            clock: deps.clock,
+            logger: context.logger,
+            ...(deps.reopen === undefined ? {} : { reopen: deps.reopen }),
+          },
+          context.payload,
+        ),
       { timeout: 30_000 },
     );
     context.logger.info("task.dispatch-done", { taskId: context.payload.taskId, outcome: result.ok ? "offered" : result.error });
