@@ -9,6 +9,9 @@ import { detectionViewSchema } from "./environments.ts";
 // one environment. Another organization's projects, and a restricted one a member isn't on, are
 // invisible: `list` leaves them out and `get` says `NOT_FOUND` (ADR 0026).
 
+/** The states a task ends in: what the sidebar's count of active tasks leaves out. */
+const finishedStates = ["stopped", "merged", "done"] as const;
+
 const projectSummarySchema = z.object({
   id: projectIdSchema,
   name: z.string(),
@@ -18,6 +21,8 @@ const projectSummarySchema = z.object({
   /** Tasks waiting on a person, for the sidebar's amber dot. */
   needsYouCount: z.number().int(),
   runningCount: z.number().int(),
+  /** Tasks in every state but stopped, merged and done, for the sidebar's Tasks count. */
+  activeCount: z.number().int(),
   /** Epoch ms. */
   createdAt: z.number().int(),
 });
@@ -72,7 +77,7 @@ export const projectsRouter = router({
     const ids = visible.map((project) => project.id);
     const counts = await db.task.groupBy({
       by: ["projectId", "state"],
-      where: { organizationId, projectId: { in: ids }, state: { in: ["needs_you", "running", "preparing"] } },
+      where: { organizationId, projectId: { in: ids }, state: { notIn: [...finishedStates] } },
       _count: { _all: true },
     });
     const countOf = (projectId: string, states: readonly string[]): number =>
@@ -85,6 +90,7 @@ export const projectsRouter = router({
       repos: row.repos.map((repo) => ({ repoId: repoIdSchema.parse(repo.id), fullName: repo.fullName, defaultBranch: repo.defaultBranch })),
       needsYouCount: countOf(row.id, ["needs_you"]),
       runningCount: countOf(row.id, ["running", "preparing"]),
+      activeCount: counts.filter((count) => count.projectId === row.id).reduce((sum, count) => sum + count._count._all, 0),
       createdAt: row.createdAt.getTime(),
     }));
   }),
@@ -106,9 +112,10 @@ export const projectsRouter = router({
         project.defaultCodeProfileId === null
           ? null
           : await db.agentProfile.findFirst({ where: { id: project.defaultCodeProfileId, organizationId }, select: { id: true, name: true } });
-      const [needsYou, running] = await Promise.all([
+      const [needsYou, running, active] = await Promise.all([
         db.task.count({ where: { organizationId, projectId: project.id, state: "needs_you" } }),
         db.task.count({ where: { organizationId, projectId: project.id, state: { in: ["running", "preparing"] } } }),
+        db.task.count({ where: { organizationId, projectId: project.id, state: { notIn: [...finishedStates] } } }),
       ]);
       return {
         id: projectIdSchema.parse(project.id),
@@ -119,6 +126,7 @@ export const projectsRouter = router({
         repos: project.repos.map((repo) => ({ repoId: repoIdSchema.parse(repo.id), fullName: repo.fullName, defaultBranch: repo.defaultBranch })),
         needsYouCount: needsYou,
         runningCount: running,
+        activeCount: active,
         createdAt: project.createdAt.getTime(),
         environmentStatus: project.environment === null ? null : project.environment.status,
         pools: project.pools.map((link) => ({ poolId: link.pool.id, name: link.pool.name, isDefault: link.pool.isDefault })),

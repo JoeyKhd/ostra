@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ApiProvider } from "@/lib/trpc";
 import { t } from "@/lib/messages";
 
+import { fontVariables } from "./fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#0D0E10", colorScheme: "dark" };
 
 const RootLayout = ({ children }: { readonly children: ReactNode }) => (
-  <html lang="en" data-theme="dark">
+  <html lang="en" data-theme="dark" className={fontVariables}>
     <body>
       <ApiProvider>{children}</ApiProvider>
     </body>

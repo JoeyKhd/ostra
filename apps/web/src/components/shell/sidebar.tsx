@@ -1,11 +1,14 @@
 "use client";
 
-import { CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, ServerIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, SearchIcon, ServerIcon } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { CommandMenu } from "./command-menu";
 import { NavLink } from "./nav-link";
 import { ProjectNav } from "./project-nav";
 import { UserMenu } from "./user-menu";
@@ -14,40 +17,91 @@ type Me = RouterOutputs["me"]["get"];
 
 const noop = (): void => undefined;
 
-const Section = ({ children }: { readonly children: string }) => (
-  <div className="px-2 pb-1 pt-3.5 text-xs font-medium text-faint">{children}</div>
+/** A group label: Plex Sans 500 11px `--faint` (graphite.css `.sec`). */
+const SectionLabel = ({ children }: { readonly children: string }) => (
+  <div className="px-2 pb-1 pt-3.5 text-xs font-medium leading-[1.45] text-faint">{children}</div>
 );
+
+/** The organization switcher: the Hinge mark, the organization's name and a chevron. */
+const OrganizationSwitcher = ({ me }: { readonly me: Me }) => {
+  const name = me.organization?.name ?? t("shell.noOrganization");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="flex w-full items-center gap-[9px] rounded-md px-2 py-1.5 text-left hover:bg-sel data-[state=open]:bg-sel"
+        aria-label={t("shell.switchOrganization")}
+      >
+        <img src="/brand/ostra-mark-fit.svg" alt="" width={20} height={20} className="size-5 shrink-0" />
+        <b className="min-w-0 truncate font-semibold text-text">{name}</b>
+        <ChevronsUpDownIcon aria-hidden className="ml-auto size-[13px] shrink-0 stroke-[1.75] text-faint" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[212px]">
+        <DropdownMenuLabel>{t("shell.organizations")}</DropdownMenuLabel>
+        {me.organization === null ? null : (
+          <DropdownMenuItem>
+            <img src="/brand/ostra-mark-fit.svg" alt="" width={16} height={16} className="size-4 shrink-0" />
+            <span className="min-w-0 truncate">{me.organization.name}</span>
+            <CheckIcon aria-label={t("shell.current")} className="ml-auto" />
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 export type SidebarProps = {
   readonly me: Me;
   readonly onNavigate?: () => void;
 };
 
-/** The 232px sidebar (app-design.md, Layout 1). */
+/**
+ * The 232px sidebar (app-targets/m1/README.md, "One sidebar"; graphite.css and shell.js). Milestone 1
+ * holds only what works: Home; the projects, each with Tasks and Environment, and New project; the
+ * organization's Runners, Models and GitHub. Rows are 26px, type 13px.
+ */
 export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
   const admin = me.organization?.role === "admin";
+  const [searching, setSearching] = useState(false);
 
   return (
     <nav aria-label={t("shell.navigation")} className="flex h-full flex-col bg-side px-2.5 py-3">
-      <div className="flex items-center gap-[9px] rounded-md px-2 py-1.5">
-        <img src="/brand/ostra-mark.svg" alt="" className="size-5" />
-        <b className="min-w-0 truncate font-semibold">{me.organization?.name ?? t("shell.noOrganization")}</b>
-      </div>
+      <OrganizationSwitcher me={me} />
       <div className="mb-3 mt-2.5 flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            setSearching(true);
+          }}
+          className="flex h-7 min-w-0 flex-1 items-center gap-[7px] rounded-md border border-line bg-surface px-[9px] text-faint hover:border-line-2 hover:text-muted"
+        >
+          <SearchIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75]" />
+          {t("shell.search")}
+          <kbd className="ml-auto font-mono text-[10.5px] font-medium text-faint">⌘K</kbd>
+        </button>
         <Link
           href="/tasks/new"
           onClick={onNavigate}
-          className="flex h-7 flex-1 items-center gap-[7px] rounded-md border border-line bg-surface px-2.5 text-muted hover:text-text"
+          aria-label={t("shell.newTask")}
+          title={t("shell.newTask")}
+          className="grid size-7 shrink-0 place-items-center rounded-md bg-shell text-ink hover:bg-[#e6e2d8]"
         >
-          <PlusIcon className="size-[14px]" />
-          {t("shell.newTask")}
+          <PlusIcon aria-hidden className="size-[15px] stroke-[1.75]" />
         </Link>
       </div>
+      <CommandMenu
+        open={searching}
+        onOpenChange={(open) => {
+          setSearching(open);
+          if (!open) onNavigate();
+        }}
+        admin={admin}
+      />
+
       <NavLink href="/" exact icon={<HouseIcon />} onNavigate={onNavigate}>
         {t("shell.home")}
       </NavLink>
 
-      <Section>{t("shell.projects")}</Section>
+      <SectionLabel>{t("shell.projects")}</SectionLabel>
       <ProjectNav onNavigate={onNavigate} />
       {admin ? (
         <NavLink href="/projects/new" icon={<PlusIcon />} onNavigate={onNavigate}>
@@ -55,7 +109,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
         </NavLink>
       ) : null}
 
-      <Section>{t("shell.organization")}</Section>
+      <SectionLabel>{t("shell.organization")}</SectionLabel>
       <NavLink href="/organization/runners" icon={<ServerIcon />} onNavigate={onNavigate}>
         {t("shell.runners")}
       </NavLink>
@@ -70,7 +124,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
         </>
       ) : null}
 
-      <div className="mt-auto">
+      <div className="mt-auto pt-3">
         <UserMenu me={me} />
       </div>
     </nav>

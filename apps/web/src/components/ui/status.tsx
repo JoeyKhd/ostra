@@ -12,10 +12,18 @@ const dotTone: Record<Tone, string> = {
   teal: "bg-teal",
 };
 
+/**
+ * The 7px dot alone (graphite.css `.dot`), for a place whose words are beside it already: a group
+ * band, a section title. Amber and green carry their 3px ring. It's decoration: the words say it.
+ */
+export const Dot = ({ tone, className }: { readonly tone: Tone; readonly className?: string }) => (
+  <span aria-hidden className={cn("inline-block size-[7px] shrink-0 rounded-full", dotTone[tone], className)} />
+);
+
 /** A status dot, always with its label: colour never carries meaning alone (app-design.md, rule 4). */
 export const Status = ({ tone, children, className }: { readonly tone: Tone; readonly children: ReactNode; readonly className?: string }) => (
   <span className={cn("inline-flex items-center gap-[7px]", className)}>
-    <span aria-hidden className={cn("inline-block size-[7px] shrink-0 rounded-full", dotTone[tone])} />
+    <Dot tone={tone} />
     {children}
   </span>
 );

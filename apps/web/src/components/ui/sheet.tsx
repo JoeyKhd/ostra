@@ -15,10 +15,12 @@ export const SheetClose = Dialog.Close;
 export type SheetContentProps = ComponentProps<typeof Dialog.Content> & {
   readonly side?: "left" | "right";
   readonly title: string;
+  /** The close button in the corner. The sidebar drawer leaves it out: its own header sits there. */
+  readonly closeButton?: boolean;
   readonly children: ReactNode;
 };
 
-export const SheetContent = ({ side = "right", title, className, children, ...props }: SheetContentProps) => (
+export const SheetContent = ({ side = "right", title, closeButton = true, className, children, ...props }: SheetContentProps) => (
   <Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
     <Dialog.Content
@@ -32,12 +34,14 @@ export const SheetContent = ({ side = "right", title, className, children, ...pr
     >
       <Dialog.Title className="sr-only">{title}</Dialog.Title>
       {children}
-      <Dialog.Close
-        className="absolute right-3 top-3 rounded-sm p-1 text-faint hover:text-text"
-        aria-label={t("common.close")}
-      >
-        <XIcon className="size-4" />
-      </Dialog.Close>
+      {closeButton ? (
+        <Dialog.Close
+          className="absolute right-3 top-3 rounded-sm p-1 text-faint hover:text-text"
+          aria-label={t("common.close")}
+        >
+          <XIcon className="size-4" />
+        </Dialog.Close>
+      ) : null}
     </Dialog.Content>
   </Dialog.Portal>
 );

@@ -73,7 +73,9 @@ test("sign in by username and by email reaches Home; sign out returns to sign-in
   if ((page.viewportSize()?.width ?? 0) < 1024) {
     await page.getByRole("button", { name: "Open navigation" }).click();
   }
-  await page.getByRole("button", { name: "Sign out" }).last().click();
+  // The member's row at the foot of the sidebar opens a menu with Sign out.
+  await page.getByTestId("user-menu").last().click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.waitForURL(/\/sign-in$/);
   await page.goto("/");
   await expect(page).toHaveURL(/\/sign-in$/);

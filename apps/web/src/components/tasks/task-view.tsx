@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GitBranchIcon, GitPullRequestIcon, HandIcon, LaptopIcon, ServerIcon, SquareIcon } from "lucide-react";
+import { GitBranchIcon, GitPullRequestIcon, LaptopIcon, ServerIcon, SquareIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import type { TaskId } from "@ostra/protocol";
@@ -10,6 +10,7 @@ import { deriveTaskState } from "@ostra/task-view";
 import { RunnerKind } from "@/components/runners/runners-view";
 import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { NeedsYou } from "@/components/ui/needs-you";
 import { Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
@@ -189,10 +190,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           </p>
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
           {data.group === "needs-you" ? (
-            <div data-testid="needs-you" className="mt-4 border-l-2 border-amber pl-3">
-              <div className="flex items-center gap-2 font-medium text-amber"><HandIcon className="size-[14px]" /> {t("taskPage.needsYou")}</div>
-              <p className="whitespace-pre-wrap text-body">{summary ?? data.reason ?? t("taskPage.needsYouDefault")}</p>
-            </div>
+            <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
+              <p className="whitespace-pre-wrap">{summary ?? data.reason ?? t("taskPage.needsYouDefault")}</p>
+            </NeedsYou>
           ) : null}
           <div className={cn("mt-5 border-b border-line")} />
         </div>

@@ -44,7 +44,15 @@
     "models": "Models",
     "github": "GitHub",
     "signOut": "Sign out",
-    "needsYouHere": "{n} waiting on you"
+    "changePassword": "Change the password",
+    "needsYouHere": "{n} waiting on you",
+    "activeTasks": "Active tasks: {n}",
+    "search": "Search",
+    "searchPlaceholder": "Go to a project or a page…",
+    "searchEmpty": "Nothing matches.",
+    "switchOrganization": "Switch organization",
+    "organizations": "Organizations",
+    "current": "Current"
   },
   "signIn": {
     "title": "Sign in",
@@ -71,9 +79,13 @@
     "submit": "Change the password",
     "busy": "Changing…"
   },
-  "defaultPassword": {
-    "banner": "This account still has the default password. Anyone who knows it can sign in as the admin.",
-    "action": "Change it"
+  "banner": {
+    "defaultPassword": {
+      "label": "Default password",
+      "lead": "The default password is still in use.",
+      "detail": "Anyone who knows it can sign in as you.",
+      "action": "Change it"
+    }
   },
   "home": {
     "title": "Home",

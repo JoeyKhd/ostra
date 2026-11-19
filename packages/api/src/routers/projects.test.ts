@@ -169,7 +169,36 @@ describe("projects.list and projects.get", () => {
       },
     });
     const summary = (await (await harness.as(a.member)).projects.list()).find((candidate) => candidate.slug === "test-one");
-    expect(summary).toMatchObject({ needsYouCount: 1, runningCount: 0 });
+    expect(summary).toMatchObject({ needsYouCount: 1, runningCount: 0, activeCount: 1 });
+  });
+
+  it("counts every task that hasn't finished as active, for the sidebar's Tasks count", async () => {
+    const { a } = harness.fixture;
+    const project = await harness.test.db.project.findFirstOrThrow({ where: { slug: "test-one" } });
+    const before = (await (await harness.as(a.member)).projects.list()).find((candidate) => candidate.slug === "test-one");
+    // (done is for refine and review tasks only; a code task ends merged or stopped.)
+    const states = ["queued", "running", "in_review", "stopped", "merged"] as const;
+    for (const [index, state] of states.entries()) {
+      await harness.test.db.task.create({
+        data: {
+          organizationId: a.organization.id,
+          projectId: project.id,
+          kind: "code",
+          source: "prompt",
+          title: state,
+          prompt: "a prompt",
+          branchName: `ostra/bbbbbbb${String(index)}-${state}`,
+          state,
+          subState: state === "in_review" ? "waiting_for_reviewer" : null,
+          stoppedReason: state === "stopped" ? "requested" : null,
+        },
+      });
+    }
+    const caller = await harness.as(a.member);
+    const summary = (await caller.projects.list()).find((candidate) => candidate.slug === "test-one");
+    // queued, running and in_review are active; stopped and merged are not.
+    expect(summary?.activeCount).toBe((before?.activeCount ?? 0) + 3);
+    expect((await caller.projects.get({ projectId: projectIdSchema.parse(project.id) })).activeCount).toBe(summary?.activeCount);
   });
 });
 

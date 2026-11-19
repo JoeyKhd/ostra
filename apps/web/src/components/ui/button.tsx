@@ -5,13 +5,16 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui's button, restyled to graphite (app-design.md): at most one primary (Shell) per page.
+// shadcn/ui's button, restyled to graphite (graphite.css `.btn`):
+// - `outline` (the default): `--surface` with a `--line-2` border, for every ordinary action.
+// - `primary`: the Shell fill, at most one per page.
+// - `amber`: only the one action that answers what needs you (an approval), never anything else.
 export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-medium transition-colors disabled:opacity-50 [&_svg]:size-[14px] [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "border-line-2 bg-surface text-text hover:bg-sel",
+        outline: "border-line-2 bg-surface text-text hover:bg-sel",
         primary: "border-shell bg-shell font-semibold text-ink hover:bg-[#e6e2d8]",
         amber: "border-amber bg-amber font-semibold text-ink hover:brightness-95",
         danger: "border-line-2 bg-surface text-red hover:bg-sel",
@@ -27,7 +30,7 @@ export const buttonVariants = cva(
         icon: "size-7 p-0",
       },
     },
-    defaultVariants: { variant: "default", size: "default" },
+    defaultVariants: { variant: "outline", size: "default" },
   },
 );
 
