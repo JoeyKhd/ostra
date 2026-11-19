@@ -443,7 +443,7 @@ const main = async (): Promise<void> => {
       checks.push(await checkPolling(db, tool, seeded.connectionId, ticket, ticket.title));
       checks.push({ name: "repo checks (F-055, F-060)", ok: true, detail: "waiting on ticket 40: test1 and test2 are private repos on a free plan, so no ruleset can be read or switched" });
       say("WAIT repo checks (F-055, F-060): waiting on ticket 40's steps 1 to 4");
-      if (!process.argv.includes("--keep-second")) await cleanUpSecondTask(github, tool, second.prNumber, second.ticketKey);
+      if (!process.argv.includes("--keep-second")) await cleanUpSecondTask(github, tool, second.taskId, second.prNumber, second.ticketKey);
     }
     await writeFile(path.join(settings.stateDir, "result.json"), JSON.stringify({ ticket, taskId, pr, timings: run.timings, checks }, null, 2));
     if (process.argv.includes("--archive-ticket")) await archiveIssue(tool, ticket.id);

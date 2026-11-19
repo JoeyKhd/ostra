@@ -237,8 +237,9 @@ export const secondTask = async (input: {
   return { checks, taskId, prNumber: pr.number, ticketKey };
 };
 
-/** Closes the second task's PR and archives its ticket: neither is kept (spec section 3, "Clean-up"). */
-export const cleanUpSecondTask = async (github: DemoGitHub, tool: LinearTool, prNumber: number | null, ticketKey: string | null): Promise<void> => {
+/** Closes the second task's PR, deletes its branch and hidden ref, and archives its ticket: none is kept (spec section 3, "Clean-up"). */
+export const cleanUpSecondTask = async (github: DemoGitHub, tool: LinearTool, taskId: TaskId, prNumber: number | null, ticketKey: string | null): Promise<void> => {
+  await github.octokit.rest.git.deleteRef({ owner: github.owner, repo: github.repo, ref: `ostra/wip/${taskId}` }).catch(() => undefined);
   if (prNumber !== null) {
     const pull = await github.octokit.rest.pulls.get({ owner: github.owner, repo: github.repo, pull_number: prNumber });
     if (pull.data.state === "open") await github.octokit.rest.pulls.update({ owner: github.owner, repo: github.repo, pull_number: prNumber, state: "closed" });

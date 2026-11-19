@@ -1,8 +1,8 @@
 // `pnpm --filter @ostra/e2e-m2 clean-up`: the demo's clean-up (spec section 3, "Clean-up"). It
-// closes the demo's PRs on the test repo, those whose branch names a ticket of the demo's team
-// (`ostra/ost-<n>-…`), and deletes their branches and hidden refs. Nothing else on the repo is
-// touched: milestone 1's kept PR, and other sessions' work, stay. It archives the tickets the demo made in OST (those with the `ostra-demo` label), and
-// deletes any webhook the dev seed left on Linear. `--keep-pr <n>` and `--keep-ticket <OST-n>` keep
+// closes this stack's PRs on the test repo, those whose body links a task on this stack's panel, and
+// deletes their branches and hidden refs. Nothing else on the repo is touched: milestone 1's kept
+// PR, and other stacks' work, stay. It archives the tickets the demo made in the team (those with the
+// `ostra-demo` label), and deletes any webhook the dev seed left on Linear. `--keep-pr <n>` and `--keep-ticket <OST-n>` keep
 // the final run's PR and ticket, which demo.md links.
 
 import { demoGitHub } from "@ostra/e2e-m1/github";
@@ -20,43 +20,37 @@ const demoIssuesSchema = z.object({
   issues: z.object({ nodes: z.array(z.object({ id: z.string(), identifier: z.string() })) }),
 });
 
-/** Closes the demo's open PRs except `keep`, then deletes the branches and hidden refs of every demo task not kept. */
-const cleanUpRepo = async (github: DemoGitHub, teamKey: string, keep: ReadonlySet<number>): Promise<{ readonly closed: number; readonly deleted: number }> => {
+/**
+ * Closes this stack's open PRs except `keep`, and deletes their branches and hidden refs. A PR is
+ * this stack's when its body links a task on this stack's panel (`OSTRA_PUBLIC_URL`): other stacks
+ * on the same test repo, the maintainer's and other sessions', have other addresses, and their PRs
+ * are never touched.
+ */
+const cleanUpRepo = async (github: DemoGitHub, publicUrl: string, keep: ReadonlySet<number>): Promise<{ readonly closed: number; readonly deleted: number }> => {
   const { owner, repo, octokit } = github;
-  const prefix = `ostra/${teamKey.toLowerCase()}-`;
-  const kept = new Set<string>();
+  const prefix = `${publicUrl}/tasks/`;
+  const taskIdIn = (body: string): string | undefined => {
+    const at = body.indexOf(prefix);
+    const id = at === -1 ? "" : body.slice(at + prefix.length, at + prefix.length + 36);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) ? id : undefined;
+  };
   let closed = 0;
-  const pulls = await octokit.rest.pulls.list({ owner, repo, state: "all", per_page: 100 });
-  for (const pull of pulls.data) {
-    if (!pull.head.ref.startsWith(prefix)) continue;
-    if (keep.has(pull.number)) {
-      kept.add(pull.head.ref);
-      continue;
-    }
+  let deleted = 0;
+  const pulls = await octokit.paginate(octokit.rest.pulls.list, { owner, repo, state: "all", per_page: 100 });
+  for (const pull of pulls) {
+    const taskId = taskIdIn(pull.body ?? "");
+    if (taskId === undefined || !pull.head.ref.startsWith("ostra/") || keep.has(pull.number)) continue;
     if (pull.state === "open") {
       await octokit.rest.pulls.update({ owner, repo, pull_number: pull.number, state: "closed" });
       closed += 1;
     }
-  }
-  // A branch `ostra/ost-<n>-<last 8 hex of the task ID>-<slug>` names its task's hidden ref.
-  const keptTasks = new Set([...kept].map((branch) => branch.slice(prefix.length).split("-")[1] ?? ""));
-  let deleted = 0;
-  const branches = await octokit.rest.git.listMatchingRefs({ owner, repo, ref: `heads/${prefix}` });
-  const demoTasks = new Set<string>();
-  for (const ref of branches.data) {
-    const branch = ref.ref.replace(/^refs\/heads\//, "");
-    const part = branch.slice(prefix.length).split("-")[1] ?? "";
-    demoTasks.add(part);
-    if (kept.has(branch)) continue;
-    await octokit.rest.git.deleteRef({ owner, repo, ref: ref.ref.replace(/^refs\//, "") });
-    deleted += 1;
-  }
-  const hidden = await octokit.rest.git.listMatchingRefs({ owner, repo, ref: "ostra/wip/" });
-  for (const ref of hidden.data) {
-    const part = ref.ref.replace(/^refs\/ostra\/wip\//, "").replaceAll("-", "").slice(-8);
-    if (!demoTasks.has(part) || keptTasks.has(part)) continue;
-    await octokit.rest.git.deleteRef({ owner, repo, ref: ref.ref.replace(/^refs\//, "") });
-    deleted += 1;
+    for (const ref of [`heads/${pull.head.ref}`, `ostra/wip/${taskId}`]) {
+      const gone = await octokit.rest.git.deleteRef({ owner, repo, ref }).then(
+        () => true,
+        () => false,
+      );
+      if (gone) deleted += 1;
+    }
   }
   return { closed, deleted };
 };
@@ -66,7 +60,7 @@ const main = async (): Promise<void> => {
   const keepPrs = new Set(valuesOf("--keep-pr").map(Number));
   const keepTickets = new Set(valuesOf("--keep-ticket"));
   const github = await demoGitHub(settings);
-  const cleaned = await cleanUpRepo(github, settings.linearTeamKey, keepPrs);
+  const cleaned = await cleanUpRepo(github, settings.publicUrl, keepPrs);
   process.stdout.write(`[clean-up] closed ${String(cleaned.closed)} PRs, deleted ${String(cleaned.deleted)} refs\n`);
 
   const tool = linearTool(settings.linearApiKey);
