@@ -90,3 +90,20 @@ test("Connect GitHub refuses an App it can't read, in words", async ({ page }) =
   await expect(page.getByRole("alert").filter({ hasText: /./ })).toContainText("private key");
   await expect(page.locator('[data-testid="github-connection"]')).toHaveCount(0);
 });
+
+test("F-006: Create a new App shows the manifest's permissions, leaves workflows out, and says it gets no webhook without a public address", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/organization/github");
+  await page.getByRole("tab", { name: "Create a new App" }).click();
+  const panel = page.getByRole("tabpanel");
+  await expect(panel).toContainText("This server's address isn't public, so the App is created without a webhook and receives no events.");
+  await expect(panel).toContainText("OSTRA_CORE_PUBLIC_URL");
+  await expect(panel.getByRole("button", { name: "Create the App on GitHub" })).toBeVisible();
+  const request = page.getByTestId("github-request");
+  for (const name of ["contents", "pull_requests", "checks", "actions", "issues", "statuses", "metadata", "workflows"]) {
+    await expect(request).toContainText(name);
+  }
+  await expect(request).toContainText("A push that touches .github/workflows/ fails, and the task says why.");
+  await expect(request).toContainText("Off until a public address");
+  await expect(request).not.toContainText("email_addresses");
+});

@@ -1,0 +1,8 @@
+# 2026-11-19T02:59:49Z: npx vitest run src/github-adapter.live.test.ts in packages/adapters/adapter-github, with github.env and github-test.env loaded (the App on ostra-test)
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter, live on the test org > reads the App: it has `checks: write` and `actions: read` 200ms
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter, live on the test org > lists the installation and both test repos 669ms
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter, live on the test org > names the App's bot, and a default branch 1320ms
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter, live on the test org > mints a token for test1 that can't read test2 705ms
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter, live on the test org > opens a PR on a test branch, finds it again, and cleans up 5239ms
+ Test Files  1 passed (1)
+      Tests  5 passed (5)

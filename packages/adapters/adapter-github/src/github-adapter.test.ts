@@ -87,7 +87,7 @@ describe("the GitHub adapter", () => {
       ownerLogin: "acme",
     };
 
-    it("asks for exactly the permissions GitHub accepted, and no `email_addresses` or `workflows`", () => {
+    it("F-006: asks for exactly the permissions GitHub accepted, `checks: write` and `actions: read` among them, and no `email_addresses` or `workflows`", () => {
       const { manifest } = adapter.appManifest(input);
       expect(manifest["default_permissions"]).toEqual({
         contents: "write",
@@ -102,26 +102,28 @@ describe("the GitHub adapter", () => {
       expect(JSON.stringify(manifest)).not.toContain("workflows");
     });
 
-    it("sends the webhook and its events when the URL is public", () => {
+    it("F-006: sends the webhook and its events when the URL is public", () => {
       const { manifest } = adapter.appManifest(input);
       expect(manifest["hook_attributes"]).toEqual({ url: input.webhookUrl, active: true });
       expect(manifest["default_events"]).toContain("pull_request_review");
     });
 
-    it.each([
-      "http://localhost:8787/hooks/x",
-      "http://127.0.0.1:8787/hooks/x",
-      "http://192.168.1.5/hooks/x",
-      "http://10.0.0.2/hooks/x",
-      "http://core:8787/hooks/x",
-      "http://ostra.local/hooks/x",
-    ])("leaves out the webhook and its events for %s: GitHub refuses it", (webhookUrl) => {
-      const { manifest } = adapter.appManifest({ ...input, webhookUrl });
-      expect(manifest).not.toHaveProperty("hook_attributes");
-      expect(manifest).not.toHaveProperty("default_events");
+    it("F-006: leaves out the webhook and its events for a loopback or private URL, which GitHub refuses", () => {
+      for (const webhookUrl of [
+        "http://localhost:8787/hooks/x",
+        "http://127.0.0.1:8787/hooks/x",
+        "http://192.168.1.5/hooks/x",
+        "http://10.0.0.2/hooks/x",
+        "http://core:8787/hooks/x",
+        "http://ostra.local/hooks/x",
+      ]) {
+        const { manifest } = adapter.appManifest({ ...input, webhookUrl });
+        expect(manifest, webhookUrl).not.toHaveProperty("hook_attributes");
+        expect(manifest, webhookUrl).not.toHaveProperty("default_events");
+      }
     });
 
-    it("posts to the organization's page, or the admin's own", () => {
+    it("F-006: posts to the organization's page, or the admin's own", () => {
       expect(adapter.appManifest(input).createUrl).toBe("https://github.example/organizations/acme/settings/apps/new");
       expect(adapter.appManifest({ ...input, ownerLogin: null }).createUrl).toBe("https://github.example/settings/apps/new");
     });

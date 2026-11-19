@@ -1,0 +1,9 @@
+# 2026-11-19T02:58:18.192Z: push a .github/workflows/ change to ostra-test/test1 with the App's task token (contents: write, metadata: read)
+$ git push --porcelain origin HEAD:refs/heads/ostra-test/workflows-probe-d943031e
+exit 1
+To https://github.com/ostra-test/test1.git
+!	HEAD:refs/heads/ostra-test/workflows-probe-d943031e	[remote rejected] (refusing to allow a GitHub App to create or update workflow `.github/workflows/ostra-probe.yml` without `workflows` permission)
+Done
+error: failed to push some refs to 'https://github.com/ostra-test/test1.git'
+$ git ls-remote origin refs/heads/ostra-test/workflows-probe-d943031e
+(no such branch on GitHub)
