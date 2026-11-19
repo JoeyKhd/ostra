@@ -1,7 +1,7 @@
 import type { RunnerNoticeSubject } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { isReservedLabel, joinTokenIdSchema, memberIdSchema, notificationDeliveryIdSchema, organizationIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
-import type { ExecutorKind, JoinTokenId, MemberId, OrganizationId, PoolId, RunnerId } from "@ostra/protocol";
+import type { ExecutorKind, JoinTokenId, MemberId, OrganizationId, PoolId, ProjectId, RunnerId } from "@ostra/protocol";
 
 import { requireOrganizationAdmin } from "../access.ts";
 import type { MemberScope } from "../access.ts";
@@ -11,7 +11,7 @@ import { EMAIL_DELAY_SECONDS_DEFAULT, emailDueAt } from "../notifications/choice
 import type { NotificationChannel } from "../notifications/choices.ts";
 import type { Ports } from "../ports.ts";
 import type { CreateJoinToken, CreatePool, PoolRunnerJoin, PoolSettings, RegisterPoolRunner, RevokeJoinToken, UpdatePool } from "./m5-signatures.ts";
-import { generateJoinToken, hashJoinToken } from "./pools.ts";
+import { ensureDefaultPool, generateJoinToken, hashJoinToken } from "./pools.ts";
 
 // Pools, join tokens, a pool runner's join and the join's notices (F-091, ADR 0029, Q48, Q94, Q130;
 // milestone 5's ticket 12). Each write is one transaction with its audit entry, its change notice
@@ -89,43 +89,82 @@ const makeJoinTokenInTx = async (
   return { joinTokenId, token, expiresAt: expiresAt === null ? null : expiresAt.getTime() };
 };
 
+/** Thrown inside `createPool`'s transaction so a refused project rolls the pool back. */
+const PROJECT_NOT_IN_ORGANIZATION = new Error("a project the pool is for isn't one of this organization");
+
+/**
+ * Adds a pool at the end of each project's ordered list (F-086). A project with no list of its
+ * own used the default pool, so it keeps it first. `false` when a project isn't the organization's.
+ */
+const linkProjectsInTx = async (tx: Tx, organizationId: OrganizationId, poolId: PoolId, projectIds: readonly ProjectId[]): Promise<boolean> => {
+  const unique = [...new Set(projectIds)];
+  if (unique.length === 0) {
+    return true;
+  }
+  const found = await tx.project.count({ where: { organizationId, id: { in: unique } } });
+  if (found !== unique.length) {
+    return false;
+  }
+  for (const projectId of unique) {
+    const links = await tx.projectPool.findMany({ where: { organizationId, projectId }, select: { position: true } });
+    let next = links.reduce((max, link) => Math.max(max, link.position + 1), 0);
+    if (links.length === 0) {
+      await tx.projectPool.create({ data: { organizationId, projectId, poolId: await ensureDefaultPool(tx, organizationId), position: 0 } });
+      next = 1;
+    }
+    await tx.projectPool.create({ data: { organizationId, projectId, poolId, position: next } });
+  }
+  return true;
+};
+
 /** An admin makes a pool, and its first join token, in one transaction. */
-export const createPool = (async (deps: PoolAdminDeps, scope: MemberScope, input: PoolSettings) => {
+export const createPool = (async (deps: PoolAdminDeps, scope: MemberScope, input: Parameters<CreatePool>[2]) => {
   if (!requireOrganizationAdmin(scope, scope.organizationId).ok) {
     return { ok: false as const, error: "forbidden" as const, message: "Only an admin makes a pool" };
   }
   if (!validSettings(input)) {
     return { ok: false as const, error: "invalid-input" as const, message: "A pool's name, cap or token lifetime isn't valid" };
   }
-  return deps.db.$transaction(async (tx) => {
-    const organizationId = scope.organizationId;
-    if ((await tx.runnerPool.count({ where: { organizationId, name: input.name } })) > 0) {
-      return { ok: false as const, error: "name-taken" as const, message: "A pool with that name exists" };
-    }
-    const row = await tx.runnerPool.create({
-      data: {
+  try {
+    return await deps.db.$transaction(async (tx) => {
+      const organizationId = scope.organizationId;
+      if ((await tx.runnerPool.count({ where: { organizationId, name: input.name } })) > 0) {
+        return { ok: false as const, error: "name-taken" as const, message: "A pool with that name exists" };
+      }
+      const row = await tx.runnerPool.create({
+        data: {
+          organizationId,
+          name: input.name,
+          requiresApproval: input.requiresApproval,
+          maxBoxes: input.maxBoxes,
+          joinTokenDays: input.joinTokenDays,
+          updatedByMemberId: scope.memberId,
+        },
+        select: { id: true },
+      });
+      const poolId = poolIdSchema.parse(row.id);
+      await deps.audit.recordInTx(tx, {
         organizationId,
-        name: input.name,
-        requiresApproval: input.requiresApproval,
-        maxBoxes: input.maxBoxes,
-        joinTokenDays: input.joinTokenDays,
-        updatedByMemberId: scope.memberId,
-      },
-      select: { id: true },
+        projectId: null,
+        actor: { kind: "member", id: scope.memberId },
+        action: "pool.created",
+        entity: "runner-pool",
+        entityId: poolId,
+        data: { requiresApproval: input.requiresApproval, maxBoxes: input.maxBoxes, joinTokenDays: input.joinTokenDays },
+      });
+      if (!(await linkProjectsInTx(tx, organizationId, poolId, input.projectIds ?? []))) {
+        // Nothing of the pool stays: the transaction rolls back with the refusal.
+        throw PROJECT_NOT_IN_ORGANIZATION;
+      }
+      const joinToken = await makeJoinTokenInTx(deps, tx, scope, { id: poolId, joinTokenDays: input.joinTokenDays }, { label: null });
+      return { ok: true as const, poolId, joinToken };
     });
-    const poolId = poolIdSchema.parse(row.id);
-    await deps.audit.recordInTx(tx, {
-      organizationId,
-      projectId: null,
-      actor: { kind: "member", id: scope.memberId },
-      action: "pool.created",
-      entity: "runner-pool",
-      entityId: poolId,
-      data: { requiresApproval: input.requiresApproval, maxBoxes: input.maxBoxes, joinTokenDays: input.joinTokenDays },
-    });
-    const joinToken = await makeJoinTokenInTx(deps, tx, scope, { id: poolId, joinTokenDays: input.joinTokenDays }, { label: null });
-    return { ok: true as const, poolId, joinToken };
-  });
+  } catch (error) {
+    if (error === PROJECT_NOT_IN_ORGANIZATION) {
+      return { ok: false as const, error: "invalid-input" as const, message: "A project the pool is for isn't one of this organization" };
+    }
+    throw error;
+  }
 }) satisfies CreatePool;
 
 /** An admin changes a pool's settings. A changed cap or approval switch asks the pool's admission again. */

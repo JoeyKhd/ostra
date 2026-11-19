@@ -55,7 +55,10 @@ export type NewJoinToken = { readonly joinTokenId: JoinTokenId; /** Shown once. 
 export type CreatePool = (
   deps: M5Deps,
   scope: MemberScope,
-  input: PoolSettings,
+  input: PoolSettings & {
+    /** Projects that use the pool from now, each at the end of its list (F-086); an unknown one is `invalid-input`. */
+    readonly projectIds?: readonly ProjectId[];
+  },
 ) => Promise<UseCaseResult<{ readonly poolId: PoolId; readonly joinToken: NewJoinToken }, "forbidden" | "name-taken" | "invalid-input">>;
 
 export type UpdatePool = (
