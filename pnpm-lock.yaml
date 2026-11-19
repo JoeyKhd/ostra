@@ -44,6 +44,9 @@ importers:
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-github
+      '@ostra/adapter-linear':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-linear
       '@ostra/adapter-model-endpoint':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-model-endpoint

@@ -4,6 +4,7 @@ import { hostname } from "node:os";
 import { systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
+import { LinearAdapter } from "@ostra/adapter-linear";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
@@ -35,6 +36,9 @@ import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } fr
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
+import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
+import { recordOnlyHandler, webhookProcessHandler } from "./webhooks/process.ts";
+import type { WebhookHandlers } from "./webhooks/process.ts";
 
 // Core (ADR 0016): one process that holds runner connections, runs the queue's workers and serves
 // the runner endpoints. `startCore` wires the pieces from the settings; `main.ts` runs it.
@@ -72,7 +76,12 @@ export type RunningCore = {
 export const startCore = async (
   settings: ServerSettings,
   logger: Logger,
-  options: { readonly host?: string; readonly adapters?: ServerAdapters } = {},
+  options: {
+    readonly host?: string;
+    readonly adapters?: ServerAdapters;
+    /** OSTRA_DEV_BLOCK_WEBHOOKS, development only: `linear`, `github`, comma separated. */
+    readonly devBlockWebhooks?: string;
+  } = {},
 ): Promise<RunningCore> => {
   const db = createDb(settings.databaseUrl);
   const adapters = options.adapters ?? (await createServerAdapters(db, settings, logger));
@@ -171,7 +180,25 @@ export const startCore = async (
     logger,
   });
   await jobs.work("blob.gc", blobGcHandler({ db, clock: systemClock, logger }), { localConcurrency: 1 });
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, blobEndpoints], upgrade: gateway.handleUpgrade, logger });
+  // The webhook inbox (ticket 13): verify, claim, 200; `webhook.process` acts from the queue.
+  const inbox = createWebhookInbox({
+    db,
+    jobs,
+    secretStore: adapters.secretStore,
+    // Verifying is pure: the adapter needs no token for it.
+    trackerVerifiers: { linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }, { logger, clock: adapterClock }) },
+    codeHost: adapters.codeHost,
+    clock: systemClock,
+    logger,
+    insertDeadlineMs: settings.webhookInsertDeadlineMs,
+    blocked: parseBlockedWebhooks(options.devBlockWebhooks, settings.mode),
+  });
+  const webhookHandlers: WebhookHandlers = {
+    linear: recordOnlyHandler("ticket ingest is not wired yet"),
+    github: recordOnlyHandler("PR states are not wired yet"),
+  };
+  await jobs.work("webhook.process", webhookProcessHandler({ db, clock: systemClock, handlers: webhookHandlers }));
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

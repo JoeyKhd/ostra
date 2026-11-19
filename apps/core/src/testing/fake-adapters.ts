@@ -1,8 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { adapterError, CodeHostAdapter, ModelProviderAdapter, ok, secretRefSchema, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
+  CodeHostWebhookEvent,
+  DeleteRefResult,
+  PullRequestDetails,
+  WebhookInput,
   CatalogEntry,
   CatalogMatch,
   ConnectionTest,
@@ -27,6 +31,7 @@ import type {
   SecretRef,
   SecretScope,
 } from "@ostra/adapter-sdk";
+import { parseJson, repoFullNameSchema } from "@ostra/protocol";
 import type { ApiFormat, GitPerson, OrganizationId } from "@ostra/protocol";
 
 // Fake adapters for core's tests (spec section 8): in memory, each a subclass of its kind's base
@@ -191,10 +196,201 @@ export class FakeCodeHost extends CodeHostAdapter {
     return Promise.resolve(ok(updated));
   }
 
-  verifyWebhook(): boolean {
-    return false;
+  // ---------- milestone 2: webhooks, PR states, refs (spec section 8) ----------
+
+  /** The App's webhook secret: deliveries are signed with it. */
+  webhookSecret = `whsec-${randomUUID()}`;
+  /** Each PR's merge state, by `repo#number`. */
+  readonly states = new Map<string, FakePullState>();
+  /** `getPullRequest` calls: the reconcile's reads. */
+  readonly prReads: { readonly repo: string; readonly number: number }[] = [];
+  readonly deletedRefs: { readonly repo: string; readonly ref: string }[] = [];
+  /** Fail the next `getPullRequest` this many times. */
+  failReads = 0;
+  /** The time PR changes are stamped with. */
+  now: () => number = () => Date.now();
+
+  #stateOf(repo: string, number: number): FakePullState {
+    const key = `${repo}#${String(number)}`;
+    let state = this.states.get(key);
+    if (state === undefined) {
+      state = { state: "open", headSha: "a".repeat(40), updatedAt: this.now(), mergedAt: null, closedAt: null };
+      this.states.set(key, state);
+    }
+    return state;
+  }
+
+  /** A person merges, closes or reopens a PR on the host. */
+  changePull(repo: string, number: number, change: "merge" | "close" | "reopen"): void {
+    const state = this.#stateOf(repo, number);
+    const now = Math.max(this.now(), state.updatedAt + 1);
+    state.updatedAt = now;
+    switch (change) {
+      case "merge":
+        state.state = "merged";
+        state.mergedAt = now;
+        state.closedAt = now;
+        break;
+      case "close":
+        state.state = "closed";
+        state.closedAt = now;
+        break;
+      case "reopen":
+        state.state = "open";
+        state.closedAt = null;
+        break;
+      default:
+        change satisfies never;
+    }
+    const index = this.pulls.findIndex((pull) => pull.repo === repo && pull.number === number);
+    const found = this.pulls[index];
+    if (found !== undefined) {
+      this.pulls[index] = { ...found, state: state.state };
+    }
+  }
+
+  hostRepoIdOf(repo: string): string {
+    for (const repos of this.repos.values()) {
+      const found = repos.find((candidate) => candidate.fullName === repo);
+      if (found !== undefined) return found.hostRepoId;
+    }
+    return `host-${repo}`;
+  }
+
+  /** A `pull_request` delivery as GitHub sends it, signed with `webhookSecret`. */
+  pullRequestDelivery(
+    repo: string,
+    number: number,
+    action: string,
+    options: { readonly deliveryId?: string; readonly installationId?: string; readonly hostRepoId?: string } = {},
+  ): { readonly body: string; readonly headers: Readonly<Record<string, string>> } {
+    const state = this.#stateOf(repo, number);
+    const pull = this.pulls.find((candidate) => candidate.repo === repo && candidate.number === number);
+    const body = JSON.stringify({
+      action,
+      number,
+      installation: { id: Number(options.installationId ?? "777") },
+      repository: { id: options.hostRepoId ?? this.hostRepoIdOf(repo), full_name: repo },
+      pull_request: {
+        number,
+        state: state.state === "open" ? "open" : "closed",
+        merged: state.state === "merged",
+        head: { ref: pull?.headBranch ?? "ostra/branch", sha: state.headSha },
+        updated_at: new Date(state.updatedAt).toISOString(),
+      },
+    });
+    return { body, headers: this.sign(body, "pull_request", options.deliveryId) };
+  }
+
+  /** GitHub's headers for a body: the event, the delivery ID and the HMAC. */
+  sign(body: string, event: string, deliveryId: string = randomUUID()): Readonly<Record<string, string>> {
+    return {
+      "content-type": "application/json",
+      "x-github-event": event,
+      "x-github-delivery": deliveryId,
+      "x-hub-signature-256": `sha256=${createHmac("sha256", this.webhookSecret).update(body).digest("hex")}`,
+    };
+  }
+
+  verifyWebhook(input: WebhookInput): boolean {
+    const header = input.headers["x-hub-signature-256"];
+    if (header === undefined) {
+      return false;
+    }
+    const expected = Buffer.from(`sha256=${createHmac("sha256", input.secret).update(input.body).digest("hex")}`);
+    const given = Buffer.from(header);
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  }
+
+  override parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
+    const event = input.headers["x-github-event"] ?? "unknown";
+    const json = parseJson(input.body);
+    if (!json.ok) {
+      return adapterError("invalid-response", "not JSON");
+    }
+    if (event !== "pull_request") {
+      return ok({ kind: "other", event });
+    }
+    const read = (...path: readonly string[]): unknown =>
+      path.reduce<unknown>((at, key) => (typeof at === "object" && at !== null ? Reflect.get(at, key) : undefined), json.value);
+    const number = read("number");
+    const repoId = read("repository", "id");
+    const repo = repoFullNameSchema.safeParse(read("repository", "full_name"));
+    const action = read("action");
+    const headSha = read("pull_request", "head", "sha");
+    const headBranch = read("pull_request", "head", "ref");
+    const updatedAt = read("pull_request", "updated_at");
+    const installation = read("installation", "id");
+    if (
+      typeof number !== "number" ||
+      (typeof repoId !== "string" && typeof repoId !== "number") ||
+      !repo.success ||
+      typeof action !== "string" ||
+      typeof headSha !== "string" ||
+      typeof headBranch !== "string" ||
+      typeof updatedAt !== "string"
+    ) {
+      return adapterError("invalid-response", "not a pull_request event");
+    }
+    return ok({
+      kind: "pull_request",
+      action,
+      installationId: typeof installation === "number" ? String(installation) : null,
+      hostRepoId: String(repoId),
+      repo: repo.data,
+      number,
+      state: read("pull_request", "merged") === true ? "merged" : read("pull_request", "state") === "open" ? "open" : "closed",
+      headBranch,
+      headSha,
+      changedAt: Date.parse(updatedAt),
+    });
+  }
+
+  override getPullRequest(access: RepoAccess, number: number): Promise<AdapterResult<PullRequestDetails>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    this.prReads.push({ repo: access.repo, number });
+    if (this.failReads > 0) {
+      this.failReads -= 1;
+      return Promise.resolve(adapterError("unavailable", "the host is down"));
+    }
+    const pull = this.pulls.find((candidate) => candidate.repo === access.repo && candidate.number === number);
+    if (pull === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    const state = this.#stateOf(access.repo, number);
+    return Promise.resolve(
+      ok({
+        ...pull,
+        state: state.state,
+        merged: state.state === "merged",
+        headSha: state.headSha,
+        updatedAt: state.updatedAt,
+        mergedAt: state.mergedAt,
+        closedAt: state.closedAt,
+      }),
+    );
+  }
+
+  override deleteRef(access: RepoAccess, ref: string): Promise<AdapterResult<DeleteRefResult>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    const deleted = !this.deletedRefs.some((done) => done.repo === access.repo && done.ref === ref);
+    this.deletedRefs.push({ repo: access.repo, ref });
+    return Promise.resolve(ok({ deleted }));
   }
 }
+
+/** A fake PR's merge state on the host. */
+export type FakePullState = {
+  state: "open" | "closed" | "merged";
+  headSha: string;
+  updatedAt: number;
+  mergedAt: number | null;
+  closedAt: number | null;
+};
 
 /** A model provider whose endpoints list a fixed set of models, by base URL. */
 export class FakeModelProvider extends ModelProviderAdapter {

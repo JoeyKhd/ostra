@@ -18,7 +18,8 @@ if (!parsed.ok) {
   process.exit(1);
 }
 
-const core = await startCore(parsed.settings, logger).catch((error: unknown) => {
+const devBlockWebhooks = process.env["OSTRA_DEV_BLOCK_WEBHOOKS"];
+const core = await startCore(parsed.settings, logger, devBlockWebhooks === undefined ? {} : { devBlockWebhooks }).catch((error: unknown) => {
   // A secrets key that can't read the database's secrets (Q136): say so, and the two fixes.
   if (isSecretsKeyMismatch(error)) {
     process.stderr.write(`core: ${error.message}

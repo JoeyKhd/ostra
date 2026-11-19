@@ -109,6 +109,6 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 | `OSTRA_DEV_GITHUB_ORG` | (none) | The test GitHub org, from `~/.config/ostra-dev/github-test.env`. |
 | `OSTRA_DEV_GITHUB_REPOS` | (none) | Its test repos, comma-separated. |
 | `OSTRA_DEV_PUBLIC_URL` | (none) | A public address that reaches core's port, from `~/.config/ostra-dev/tunnel.env`, for webhook tests. |
-| `OSTRA_DEV_BLOCK_WEBHOOKS` | (none) | `linear`, `github` or both, comma-separated: core refuses those webhook routes, so a test sees the polling and the reconcile catch up (milestone 2's demo and failure suite). |
+| `OSTRA_DEV_BLOCK_WEBHOOKS` | (none) | `linear`, `github` or both, comma-separated: core answers those webhook routes with 503 and stores nothing, so a test sees the polling and the reconcile catch up (milestone 2's demo and failure suite). Ignored when `NODE_ENV=production`. |
 
 Variables named `OSTRA_SPIKE_*` belong to the spikes in `spikes/`. The server neither reads nor refuses them, so the dev env files can be loaded before `pnpm dev`.
