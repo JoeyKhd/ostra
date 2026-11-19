@@ -12,8 +12,8 @@ export type TrackedPids = {
  * PIDs a test reads from a process it didn't start itself (a helper that wrote its own), told apart
  * by birth. Windows hands a dead process's PID to the next one it starts within moments, so after a
  * stop that took seconds, "is PID n alive?" can answer for another process, and a kill by that PID
- * would end it. Each check of a PID still in use lists the machine's processes: PowerShell, seconds
- * on a busy Windows machine.
+ * would end it. Each check of a PID still in use lists the machine's processes, in the listing every
+ * caller in the process shares (`shared-listing.ts`).
  */
 export const trackedPids = (): TrackedPids => {
   const keys = new Map<number, ProcessKey>();

@@ -33,9 +33,10 @@ import { isAlive, watchProcessTree } from "./process-tree.ts";
 //   being cancelled.
 // - A cancel returns within `cancelGraceMs` (5 s): the turn ends `cancelled` even when the agent
 //   never answers, and the agent's process tree is ended when the driver knows its PID. The reap
-//   of the turn's processes counts against the same budget: listing processes takes PowerShell
-//   seconds on a busy Windows machine, so a reap still running at the deadline finishes after the
-//   turn has ended, limited to the processes born during that turn.
+//   of the turn's processes counts against the same budget: a listing can wait for the one in
+//   flight, and takes a PowerShell's seconds on a Windows machine where koffi can't load, so a reap
+//   still running at the deadline finishes after the turn has ended, limited to the processes born
+//   during that turn.
 // - Updates that `session/load` replays are not emitted as new events.
 // - ACP payloads are vendor data: they're read with loose schemas, and no ACP type leaves this
 //   file. Failures are values (`AdapterResult`), with messages that hold no agent content.

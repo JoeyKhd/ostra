@@ -4,6 +4,11 @@ import { promisify } from "node:util";
 
 import { z } from "zod";
 
+import { sharedListing } from "./shared-listing.ts";
+import type { Freshness, SharedListing } from "./shared-listing.ts";
+import { loadWindowsProcessLister } from "./windows-processes.ts";
+import type { WindowsProcessListerLoad } from "./windows-processes.ts";
+
 // Process-tree helpers for ending an agent's whole tree. Ported from
 // spikes/how-should-the-runner-drive-opencode/src/lib/process-tree.ts, without the measuring.
 //
@@ -14,6 +19,10 @@ import { z } from "zod";
 //
 // A PID alone never identifies a process, because PIDs are reused. Every record carries the
 // process's creation time, and `sameProcess` compares PID, name and creation time.
+//
+// Every caller in this process shares one listing of the machine at a time (`shared-listing.ts`).
+// On Windows it's one call to ntdll through koffi (`windows-processes.ts`), and a PowerShell only
+// when koffi can't load. A listing command that hangs is killed at its time limit.
 
 const run = promisify(execFile);
 const isWindows = process.platform === "win32";
@@ -43,14 +52,38 @@ const windowsProcess = z.looseObject({
   StartedAt: z.number().nullish(),
 });
 
-const listWindows = async (): Promise<ProcessInfo[]> => {
+/**
+ * How long one command of these helpers may run: a listing, or `taskkill`. An overloaded WMI never
+ * answers PowerShell, and `taskkill` slows down with the machine too: a stalled one is killed then.
+ */
+export const COMMAND_TIMEOUT_MS = 15_000;
+
+export type BoundedCommand = {
+  readonly file: string;
+  readonly args: readonly string[];
+  /** Past this, the command is killed and the call fails. */
+  readonly timeoutMs: number;
+  readonly env?: NodeJS.ProcessEnv;
+};
+
+/** Runs a command, with no shell, and gives its output. Rejects when it fails or runs past its time limit. */
+export const runBoundedCommand = async (command: BoundedCommand): Promise<string> => {
+  const { stdout } = await run(command.file, [...command.args], {
+    windowsHide: true,
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: command.timeoutMs,
+    killSignal: "SIGKILL",
+    ...(command.env === undefined ? {} : { env: command.env }),
+  });
+  return stdout;
+};
+
+/** Windows' fallback when koffi can't load: WMI through PowerShell, a second or more and about 100 MB each. */
+export const listWindowsPowerShell = async (timeoutMs: number = COMMAND_TIMEOUT_MS): Promise<ProcessInfo[]> => {
   const script =
     "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name," +
     "@{n='StartedAt';e={if($_.CreationDate){([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds()}else{0}}} | ConvertTo-Json -Compress";
-  const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-    windowsHide: true,
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  const stdout = await runBoundedCommand({ file: "powershell.exe", args: ["-NoProfile", "-NonInteractive", "-Command", script], timeoutMs });
   const parsed = z.union([z.array(windowsProcess), windowsProcess]).parse(JSON.parse(stdout));
   return (Array.isArray(parsed) ? parsed : [parsed]).map((p) => ({
     pid: p.ProcessId,
@@ -60,12 +93,30 @@ const listWindows = async (): Promise<ProcessInfo[]> => {
   }));
 };
 
+let windowsNative: Promise<WindowsProcessListerLoad> | undefined;
+
+/** ntdll's process list through koffi, loaded once; PowerShell when it can't load, or for a call that failed. */
+const listWindows = async (): Promise<readonly ProcessInfo[]> => {
+  windowsNative ??= loadWindowsProcessLister();
+  const native = await windowsNative;
+  if (native.ok) {
+    try {
+      return await native.value();
+    } catch {
+      // This listing goes through PowerShell; the next one tries ntdll again.
+    }
+  }
+  return listWindowsPowerShell();
+};
+
 // `lstart` is fixed-format with LC_ALL=C: "Wed Nov 18 17:03:58 2026".
 const POSIX_LINE = /^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+\d+:\d+:\d+\s+\d{4})\s+(\S+)/;
 
 const listPosix = async (): Promise<ProcessInfo[]> => {
-  const { stdout } = await run("ps", ["-A", "-o", "pid=,ppid=,lstart=,comm="], {
-    maxBuffer: 64 * 1024 * 1024,
+  const stdout = await runBoundedCommand({
+    file: "ps",
+    args: ["-A", "-o", "pid=,ppid=,lstart=,comm="],
+    timeoutMs: COMMAND_TIMEOUT_MS,
     env: { PATH: process.env["PATH"] ?? "", LC_ALL: "C" },
   });
   const out: ProcessInfo[] = [];
@@ -150,8 +201,17 @@ const bootSkewMs = async (): Promise<number> => {
   return Number.isFinite(up) ? Math.max(0, Date.now() - up * 1000 - boot * 1000) : 0;
 };
 
-/** Every process on the machine. Throws when the platform's tool can't run. */
-export const listProcesses = async (): Promise<ProcessInfo[]> => (isWindows ? listWindows() : isLinux ? listLinux() : listPosix());
+export type ProcessListing = SharedListing<readonly ProcessInfo[]>;
+
+/** This process's one listing of the machine, shared by every caller (`shared-listing.ts`). */
+export const machineProcesses: ProcessListing = sharedListing(async () => (isWindows ? listWindows() : isLinux ? listLinux() : listPosix()));
+
+/**
+ * Every process on the machine, from a listing that starts after this call (`fresh`, the default),
+ * or, for a snapshot that only remembers, the one in flight or one a moment old (`recent`). Callers
+ * share what it returns, so none changes it. Throws when the platform's tool can't run.
+ */
+export const listProcesses = async (freshness: Freshness = "fresh"): Promise<readonly ProcessInfo[]> => machineProcesses.list(freshness);
 
 /**
  * Every process below `rootPid`, by the parent links. A link counts only when the child was born
@@ -235,9 +295,9 @@ const processState = async (pid: number): Promise<string | undefined> => {
 export const killTree = async (pid: number): Promise<void> => {
   if (isWindows) {
     try {
-      await run("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+      await runBoundedCommand({ file: "taskkill", args: ["/PID", String(pid), "/T", "/F"], timeoutMs: COMMAND_TIMEOUT_MS });
     } catch {
-      // Already gone, or partly gone: fall through to the direct kill.
+      // Already gone, partly gone, or `taskkill` outlived its time limit: fall through to the direct kill.
     }
     try {
       process.kill(pid, "SIGKILL");
@@ -296,9 +356,9 @@ const bornBy = (p: ProcessInfo, until: number, skewMs: number): boolean => (isWi
  * Watches the tree of `rootPid`, a process alive at `aliveAt` (by default now: its caller has just
  * started it), so born by then. A process at its PID born later is another one that got the PID
  * after the root exited, as Windows hands a PID on within moments: neither it nor what it started is
- * the root's.
+ * the root's. A snapshot takes the shared listing in flight; a reap or a kill waits for a fresh one.
  */
-export const watchProcessTree = (rootPid: number, aliveAt: number = Date.now()): TreeWatch => {
+export const watchProcessTree = (rootPid: number, aliveAt: number = Date.now(), listing: ProcessListing = machineProcesses): TreeWatch => {
   const watchedFrom = aliveAt;
   // A second of slack, for a clock that steps back: a root mistaken for another would outlive us.
   const impostorIn = (list: readonly ProcessInfo[]): ProcessInfo | undefined =>
@@ -314,10 +374,10 @@ export const watchProcessTree = (rootPid: number, aliveAt: number = Date.now()):
     }
     return below;
   };
-  const list = async (): Promise<ProcessInfo[]> => listProcesses().catch((): ProcessInfo[] => []);
+  const list = async (freshness: Freshness = "fresh"): Promise<readonly ProcessInfo[]> => listing.list(freshness).catch((): ProcessInfo[] => []);
   return {
     snapshot: async () => {
-      remember(await list());
+      remember(await list("recent"));
     },
     reap: async () => {
       if (known.size === 0) {

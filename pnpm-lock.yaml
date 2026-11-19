@@ -319,6 +319,10 @@ importers:
       vitest:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
+    optionalDependencies:
+      koffi:
+        specifier: 3.3.8
+        version: 3.3.8
 
   packages/adapters/adapter-blob-postgres:
     dependencies:

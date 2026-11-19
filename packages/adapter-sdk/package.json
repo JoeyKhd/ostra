@@ -19,6 +19,9 @@
     "@ostra/protocol": "workspace:*",
     "zod": "4.6.7"
   },
+  "optionalDependencies": {
+    "koffi": "3.3.8"
+  },
   "devDependencies": {
     "vitest": "5.1.1"
   }

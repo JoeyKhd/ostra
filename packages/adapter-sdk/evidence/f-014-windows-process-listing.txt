@@ -1,0 +1,33 @@
+# F-014 on Windows: the process listing through ntdll, shared, with PowerShell bounded, run 2026-11-19T13:07Z
+# win32 x64 10.0.26200 Node v24.14.0
+# Command: npx vitest run --reporter=verbose src/agent/acp/windows-processes.test.ts src/agent/acp/shared-listing.test.ts src/agent/acp/process-tree.test.ts (in packages/adapter-sdk)
+
+ RUN  v5.1.1 ~/ow/win-proc-list/packages/adapter-sdk
+ ✓ src/agent/acp/windows-processes.test.ts > ntdll's process list: layout and prototype > F-014: reads SYSTEM_PROCESS_INFORMATION as 64-bit Windows lays it out: the PID, the parent's, the image name and the creation time 1ms
+ ✓ src/agent/acp/windows-processes.test.ts > ntdll's process list: layout and prototype > F-014: declares NtQuerySystemInformation with a fixed prototype 0ms
+ ✓ src/agent/acp/windows-processes.test.ts > ntdll's process list: loading koffi > F-014: koffi isn't imported on Linux, macOS or 32-bit Windows 0ms
+ ✓ src/agent/acp/windows-processes.test.ts > ntdll's process list: loading koffi > F-014: a koffi that can't load is a reason, not a throw 0ms
+ ✓ src/agent/acp/shared-listing.test.ts > the machine's process listing, shared > F-014: a hundred concurrent listings and tree snapshots run one listing at a time 102ms
+ ✓ src/agent/acp/shared-listing.test.ts > the machine's process listing, shared > F-014: a caller that decides what to end waits for a listing that starts after it asks; a snapshot shares the one in flight 101ms
+ ✓ src/agent/acp/shared-listing.test.ts > the machine's process listing, shared > F-014: a reap a moment after a snapshot spares the stranger that got a seen child's PID 10ms
+ ✓ src/agent/acp/shared-listing.test.ts > the machine's process listing, shared > F-014: a listing that failed isn't kept, and the next caller starts another 12ms
+ ✓ src/agent/acp/shared-listing.test.ts > the machine's process listing, shared > F-014: concurrent listings of this machine share one listing 13ms
+ ✓ src/agent/acp/windows-processes.test.ts > ntdll's process list on Windows > F-014: lists the same PIDs, parents, names and start times as WMI for a tree it starts 786ms
+ ✓ src/agent/acp/windows-processes.test.ts > ntdll's process list on Windows > F-014: the machine's listing is ntdll's, not a PowerShell 6ms
+ ✓ src/agent/acp/process-tree.test.ts > a cancelled turn's reap > F-014: ends the unit's processes born during the turn, outside the agent's tree too, and spares the older ones 1761ms
+ ✓ src/agent/acp/shared-listing.test.ts > a listing command's time limit > F-014: a listing command that hangs is killed at its time limit, and the listing fails 3012ms
+ ✓ src/agent/acp/process-tree.test.ts > a cancelled turn's reap > F-023: a reap that ends at the turn's end spares the processes born after it 2668ms
+ ✓ src/agent/acp/process-tree.test.ts > a watched root whose PID another process took > F-014: ends neither the process that has the root's PID now nor its children 44ms
+ ✓ src/agent/acp/process-tree.test.ts > a process's descendants > F-014: follow a parent link only to a child born after its parent, not to an older process that kept a dead parent's PID 1ms
+ Test Files  3 passed (3)
+      Tests  16 passed (16)
+
+# One listing's cost, measured the same hour on this machine (a throwaway script outside the repo):
+# before, 5 runs of the PowerShell listing, each a new powershell.exe (peak memory from K32GetProcessMemoryInfo on its handle):
+{"powershell":[{"wallMs":727,"peakWorkingSetMB":89.4,"peakPrivateMB":68,"stdoutKB":27},{"wallMs":719,"peakWorkingSetMB":89.5,"peakPrivateMB":68.2,"stdoutKB":27},{"wallMs":726,"peakWorkingSetMB":89.2,"peakPrivateMB":67.8,"stdoutKB":27},{"wallMs":722,"peakWorkingSetMB":88.9,"peakPrivateMB":67.5,"stdoutKB":27},{"wallMs":731,"peakWorkingSetMB":89.4,"peakPrivateMB":68,"stdoutKB":28}]}
+# after, the ntdll lister of windows-processes.ts, 20 listings in one process:
+{"native":{"processes":311,"loadWithFirstListingMs":34,"listingMedianMs":1.6,"listingMaxMs":2.1,"rssBeforeMB":59.1,"rssAfterLoadMB":72.9,"rssAfter20MB":79.3}}
+
+# The four packages' tests through turbo (--concurrency=2), sampled every 500 ms for powershell.exe below the run:
+# Tasks: 4 successful, 4 total. adapter-sdk 338 passed, adapter-executor-host 73, adapter-executor-docker 59, runner 180 (skips aside).
+# SAMPLED 117 times: peak powershell.exe below the run 1, distinct powershell.exe seen 1, peak node.exe 32, exit 0
