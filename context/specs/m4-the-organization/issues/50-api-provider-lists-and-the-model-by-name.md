@@ -43,3 +43,14 @@ The web builder (tickets 53 and 63) found these missing from the API draft. The 
 3. `tasks.startCheck`, when it answers `open`: the serving provider's name, for New task's "Key · <provider>" row. The `no-provider` wait already has `modelName`.
 4. Nice to have: `providers.list` rows carry `host` (the base URL's host).
 5. The needs-you view for `no_provider_for_model` carries the model name, so the row can read "No key for {model}" as the target shows.
+
+6. A display name beside `text` wherever a model name is returned: `projects.providers` `models[]`, and the plan lines of `previewProviders`, `setProviders`, `previewDefaultList` and `setDefaultList`. The screens show "Claude Sonnet 5.5", not the catalog ID; `modelOptions` already has `displayName`.
+7. The preview's "What happens" counts:
+   - `released`: idle boxes whose key leaves the list
+   - `waiting`: tasks that would wait with no key
+
+   Each count needs the provider names and the model text the sentences cite.
+8. `providers.list`: this month's task count per provider, beside `monthSpentMicroUsd` (the panel's "This month · Tasks").
+9. Optional: for each model a provider lists, the projects it serves (`serves: string[]`, for "Models it lists").
+
+The web builder falls back where any of these are missing (catalog ID text, no "What happens", no task count), so none of them blocks it.
