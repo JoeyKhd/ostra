@@ -24,6 +24,7 @@ import { rateLimitHoldSeconds, startKeyProxy } from "../sidecar/key-proxy.ts";
 import type { KeyProxy, UpstreamRefusal } from "../sidecar/key-proxy.ts";
 import { startMcpTools } from "../sidecar/mcp-tools.ts";
 import type { McpTools } from "../sidecar/mcp-tools.ts";
+import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
@@ -494,7 +495,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // ADR 0029: git run by the agent outside a checkout reads the task's config, not the machine's
     // system or global one (on Git for Windows, the system config names the member's credential
     // manager). This is the runner's own overlay, so it holds for every agent adapter.
-    const guarded: AgentLaunch = { ...launch.value, env: { ...launch.value.env, ...gitGuardEnv(dirs.gitConfig) } };
+    // F-025: with one repo the agent starts in its checkout (the process, and the session below), so a
+    // relative path in the prompt lands in the repo; the adapter's `workspaceDir` stays the root.
+    const cwd = agentCwd(dirs.workspaceDir, taskSpec.repos);
+    const guarded: AgentLaunch = { ...launch.value, cwd, env: { ...launch.value.env, ...gitGuardEnv(dirs.gitConfig) } };
     // ADR 0030: the agent's process gets the fake key and the proxy URLs, never a real credential.
     const checked = checkLaunchEnvironment(guarded.env, held);
     if (!checked.ok) {
@@ -510,7 +514,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       taskId: taskSpec.taskId,
       sessionId: taskSpec.sessionId,
       io: { stdin: started.value.stdin, stdout: started.value.stdout, stderr: started.value.stderr },
-      cwd: dirs.workspaceDir,
+      cwd,
       mcpServers: [{ name: "ostra", url: mcp.url, headers: { authorization: `Bearer ${mcp.bearer}` } }],
       onEvents: (events) => {
         for (const event of events) {

@@ -62,7 +62,7 @@ beforeAll(async () => {
       // An edit of the repo's README, then text.
       "edit-readme": ({ step }) => {
         if (step === 0) {
-          return { toolCalls: [{ name: "edit", arguments: { path: "test1/README.md", oldString: "hello", newString: "hello, from OpenCode" } }] };
+          return { toolCalls: [{ name: "edit", arguments: { path: "README.md", oldString: "hello", newString: "hello, from OpenCode" } }] };
         }
         return step === 1 ? { text: "The README is edited." } : undefined;
       },

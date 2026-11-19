@@ -4,6 +4,7 @@ import { apiFormatFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
+import { agentInstructions } from "./agent-instructions.ts";
 
 // `GET /runner/v1/tasks/:taskId/spec` (ticket 26, ADR 0034): what a dispatch hands the runner once it
 // accepted the offer, for the lease holder only. References and the task's text, never a secret:
@@ -143,7 +144,10 @@ export const buildTaskSpec = async (
       modelId: model.id,
       endpointModelId: model.endpointModelId,
       apiFormat: apiFormatFromDb[model.provider.apiFormat],
-      instructions: profile.instructions,
+      instructions: agentInstructions(
+        profile.instructions,
+        taskRepos.map(({ repo }) => ({ fullName: repo.fullName, checkoutDir: repo.checkoutDir })),
+      ),
     },
     environment: {
       setupScript: environment?.setupScript ?? null,

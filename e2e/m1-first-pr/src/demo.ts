@@ -275,7 +275,7 @@ const stoppedTask = async (page: Page, settings: DemoSettings, projectHref: stri
     page,
     settings,
     projectHref,
-    `In the ${settings.githubRepo} repo, create docs/numbers.md listing the numbers one to ten as words, one per line. Then run this shell command, which waits ten minutes: node -e "setTimeout(() => {}, 600000)"`,
+    `Create docs/numbers.md listing the numbers one to ten as words, one per line. Then run this shell command, which waits ten minutes: node -e "setTimeout(() => {}, 600000)"`,
   );
   // The git proxy lives as long as the task: tried as soon as the agent is at work.
   await page.locator('[data-part="tool"]').first().waitFor({ state: "attached", timeout: 10 * 60_000 });

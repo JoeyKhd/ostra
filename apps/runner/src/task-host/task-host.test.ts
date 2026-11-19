@@ -206,8 +206,8 @@ const everyEventOnce = (): boolean => [...gateway.received.values()].every((coun
 describe("the task host", () => {
   it("runs a dispatch to a PR-ready branch, and every event is stored once", async () => {
     const { dataDir, dispatch } = await start();
-    // The agent's folder is the workspace: the repos are side by side in it (F-016).
-    const { spec } = taskFor("[[fake:write test1/CONTRIBUTING.md]]", "echo setting up\n");
+    // One repo: the agent starts in its checkout (F-025), so a relative path lands in the repo.
+    const { spec } = taskFor("[[fake:write CONTRIBUTING.md]]", "echo setting up\n");
     dispatch(spec);
     await waitForKind(spec, "session.ended");
     await gateway.waitFor(() => host?.running().length === 0);
@@ -237,6 +237,18 @@ describe("the task host", () => {
     expect(everyEventOnce()).toBe(true);
     // The workspace is released.
     expect(await readdir(path.join(dataDir, "tasks"))).toEqual([]);
+  }, 120_000);
+
+  it("starts the agent in the repo's checkout, so a relative path in the prompt lands in the repo (F-025)", async () => {
+    const { dispatch } = await start();
+    // The prompt names no repo, as a member's would not: the fake agent writes the path relative to
+    // the folder its session opened on.
+    const { spec } = taskFor("[[fake:write docs/numbers.md]]");
+    dispatch(spec);
+    await waitForKind(spec, "session.ended");
+    const ended = eventsOf(spec).find((item) => item.event.kind === "session.ended")?.event;
+    expect(ended).toMatchObject({ outcome: "with-changes" });
+    expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("docs/numbers.md");
   }, 120_000);
 
   it("ends a session with no changes as without-changes, pushing nothing", async () => {
