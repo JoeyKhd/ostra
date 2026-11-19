@@ -1,0 +1,53 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/models.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Storage" page of ostra's organization settings, a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense 13px type, hairline rows, few boxes. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs #131416 with a 1px #2A2C30 border and 7px radius; selected nav row #1A1B1E; hairlines #1F2023; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286 only for the small "Healthy" status dot; teal #6FB8AA only for inline links; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations.
+
+FONTS: page title in Manrope Bold 24px. UI text IBM Plex Sans 13px (section titles semibold 13px, labels 11.5px faint). IBM Plex Mono for numbers, sizes and setting names like OSTRA_BLOB_STORE. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small white ostra hinge logo (the attached logo, tiny, 20px) then "Acme Corp" semibold and a small up-down chevron. A full-width row "+ New task". Nav rows 26px with icons: "Home"; "Needs you" with a small amber pill "2". Small faint label "Projects": "calculator" with a tiny teal 8px square; "billing-platform" with a tiny violet-grey square; "+ New project". Small faint label "Organization": rows "Runners" (server icon), "Models" (cpu icon), "GitHub", "Linear", "Storage" (hard-drive icon; this row is SELECTED, background #1A1B1E, white text). At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  Storage" ("Storage" white medium, "Acme Corp" muted). Right: the one primary off-white button "Save retention".
+
+3) MAIN PAGE COLUMN, padding 28px top, 40px left, content max 720px wide, left-aligned:
+- Page title "Storage" (Manrope Bold 24px)
+- A muted lede, one line: "Where ostra keeps files, and how long it keeps a finished task's history."
+
+- Section title "Blob store" (semibold 13px) with a faint inline note "session archives, ticket images and attachments". Under it, NO box: key/value rows 40px tall split by 1px hairlines, the key column 180px in muted grey, the value in white:
+  Store in use  |  Built-in, in Postgres     then at the right a small green dot and "Healthy"
+  Blobs  |  1,284 (mono)
+  Total size  |  2.31 GiB (mono)
+  Largest blob allowed  |  64 MiB (mono)   then faint mono "OSTRA_BLOB_MAX_MIB"
+  S3-compatible store  |  Not configured (muted)
+- Under the rows, 10px down, a faint 12.5px help paragraph two lines long: "To move new blobs to an S3-compatible store, set OSTRA_BLOB_STORE=s3 and its five OSTRA_S3_ settings, then restart. Blobs already stored stay readable where they are." followed by a teal link "Configuration reference" with a tiny arrow-up-right icon.
+
+- 32px lower, section title "Retention" (semibold 13px). Under it a muted line: "How long a finished task keeps its history, archives and blobs."
+- A radio group, 32px rows, round radio buttons:
+  ( ) "As long as the task exists"  with faint text after it "default"
+  (•) "Delete after"  followed inline by a small mono number input 72px wide, 28px tall, containing "90", then the word "days after the task finishes"
+  The selected radio is filled off-white #EDEDEE with a dark centre.
+- Under it, indented to align with the radio labels, a block with a 2px #2A2C30 left rule (NOT amber, NOT a card) and 12px left padding, muted 12.5px text, three short lines:
+  "On save, every night ostra deletes these for tasks finished more than 90 days ago:"
+  "events and messages, live text, session archives, ticket images and attachments."
+  "The task, its repos and its pull request links stay. A reopened task says its history was removed."
+- Under the block, a faint 12px line: "Changes are recorded in the audit log."
+
+4) RIGHT PROPERTIES PANEL, 300px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no box. Key/value rows 30px, key muted 12.5px, value white:
+- small faint label "Configuration"
+  OSTRA_BLOB_STORE  |  postgres (mono)
+  OSTRA_BLOB_MAX_MIB  |  64 (mono)
+  OSTRA_RETENTION_DAYS  |  unset (faint mono)
+- hairline
+- small faint label "Sweeps"
+  Retention  |  daily, 03:00 (mono)
+  Last ran  |  never (faint)
+  Unfinished uploads  |  deleted after 24 h
+- hairline
+- small faint label "Last change"
+  a muted line "Never changed. Retention is off by default."
+
+Everything aligned on clean left edges, calm and dense like Linear's app, lots of quiet empty near-black space below the content, crisp small legible text, every word spelled exactly as written.

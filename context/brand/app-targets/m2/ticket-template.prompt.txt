@@ -1,0 +1,81 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/environment.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Ticket template" settings page of ostra, a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense 13px type, hairline rows, few boxes. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; code editors and inputs #131416 with a 1px #2A2C30 border and 8px radius; selected nav row #1A1B1E; hairlines #1F2023; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286 only for the small check and "Valid" line; teal #6FB8AA only for inline links; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no shadows, no illustrations.
+
+FONTS: page title in Manrope Bold 24px. UI text IBM Plex Sans 13px (section titles semibold 13px, labels 11.5px faint). IBM Plex Mono 12.5px for the template, the preview, placeholder names, ticket keys. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT:
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small white ostra hinge logo (the attached logo, tiny, 20px) then "Acme Corp" semibold and a small up-down chevron. A full-width row "+ New task". Nav rows 26px with icons: "Home"; "Needs you" with a small amber pill "2". Small faint label "Projects". "calculator" with a tiny teal 8px square, expanded with four indented rows: "Tasks" (faint count 4), "Inbox" (faint count 12), "Environment", "Settings" (gear icon; this row is SELECTED, background #1A1B1E, white text). "billing-platform" with a tiny violet-grey square. "+ New project". Small faint label "Organization": rows "Runners", "Models", "GitHub", "Linear", "Storage". At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px tall, a hairline under it. Left: breadcrumb "calculator  >  Settings  >  Ticket template" (last item white medium, the others muted). Right: a quiet ghost button "Reset to built-in" (muted text, no border), then the one primary off-white button "Save template".
+
+3) MAIN AREA, padding 28px top and 40px left and right, full width between the sidebar and the right edge (no right properties panel on this page).
+- Small faint mono eyebrow: "Custom · edited, not saved"
+- Page title "Ticket template" (Manrope Bold 24px)
+- One muted lede line, max 760px: "The first prompt of a task started from a ticket. Ticket text always goes inside marked blocks, so the agent reads it as data, never as instructions."
+- Below, TWO EQUAL COLUMNS side by side with a 28px gap, both starting at the same top edge:
+
+LEFT COLUMN:
+- Section title line: "Template" (semibold 13px) and a faint inline note "placeholders in {{ }}, lists in {{#…}} {{/…}}"
+- A code editor box (#131416, 1px #2A2C30 border, 8px radius), mono 12.5px, line height 20px, a gutter of faint right-aligned line numbers 1 to 20. Literal text is muted grey #9A9DA3; the placeholder tags in double braces are bright white #EDEDEE. The lines, exactly:
+   1  You're working on {{ticket.key}}: {{ticket.title}}
+   2  {{ticket.url}}
+   3
+   4  {{ticket.description}}
+   5
+   6  {{#ticket.labels}}Label: {{name}}
+   7  {{/ticket.labels}}
+   8  {{#ticket.parent}}Parent: {{key}} {{title}}{{/ticket.parent}}
+   9  {{#ticket.links}}Linked: {{key}} {{title}}
+  10  {{/ticket.links}}
+  11  Comments, oldest first:
+  12  {{#ticket.comments}}{{author}}: {{body}}
+  13  {{/ticket.comments}}
+  14  Images in the workspace:
+  15  {{#ticket.images}}- {{path}}
+  16  {{/ticket.images}}
+  17
+  18  {{profile.instructions}}
+  19
+  20  Run pnpm test before you open the pull request.
+  Line 20 has a thin 2px #2A2C30 left mark in the gutter showing it was edited.
+- Under the editor, 8px down: a small green check icon and green text "Valid · uses 10 placeholders".
+- Then a section title "Placeholders" with faint count "10", and a compact two-column list of 30px rows split by hairlines; each row: the placeholder in white mono on the left, a muted short description on the right:
+  {{ticket.key}}  —  The ticket's key, CALC-212
+  {{ticket.title}}  —  Its title
+  {{ticket.url}}  —  Its link on the tracker
+  {{ticket.description}}  —  Its description, in a marked block
+  {{#ticket.labels}}  —  Each label: {{name}}
+  {{#ticket.comments}}  —  Each comment, oldest first: {{author}}, {{body}}
+  (the list continues below the bottom edge of the screen)
+
+RIGHT COLUMN:
+- Section title line: "Preview" (semibold 13px), a faint inline note "on", then a small select control 28px tall (#131416 fill, #2A2C30 border, 7px radius, chevron) showing mono "CALC-212" and then "Division by 3 rounds the wrong way" truncated; at the far right of the line faint mono "1,184 characters".
+- A read-only preview box (#131416, 1px #2A2C30 border, 8px radius), mono 12.5px, line height 20px, no line numbers, text bright #EDEDEE. The marker lines of the marked blocks are faint grey #64676D. Exactly:
+  You're working on CALC-212: Division by 3 rounds the wrong way
+  https://linear.app/acme/issue/CALC-212
+
+  ┌ ticket text: description
+  10 / 3 shows 3.3333333333333335 on the result line.
+  Every other result is cut to 10 digits.
+  └ end of ticket text
+
+  Label: bug
+  Parent: CALC-180 Number formatting
+  Comments, oldest first:
+  ┌ ticket text: comment by Maya Ortiz
+  Same for 2 / 3. See the screenshot.
+  └ end of ticket text
+  Images in the workspace:
+  - .ostra/ticket/CALC-212/screenshot-1.png
+
+  Keep changes small. Match the code style around you.
+
+  Run pnpm test before you open the pull request.
+- Under the preview box, a faint 12px note with a small eye-off icon: "Rendered on the server for this page only. Never logged."
+
+Everything aligned on clean left edges, calm and dense like Linear's app, lots of quiet near-black space, crisp small legible text, every word spelled exactly as written.
