@@ -27,7 +27,7 @@ Settled as Q136, item 10, on 2026-11-19 (`context/open-questions.md`, Settled). 
 - [x] Committed as `✨ make branch names unique per project`.
 
 ## Comments
-- 2026-11-19, core: done in `✨ make branch names unique per project`.
+- 2026-11-19, core: done in `✨ make branch names unique per project` (1deaaa0).
   - **The index:** `task_project_branch_unique` on `task (projectId, branchName) WHERE "branchName" <> 'pending'`, declared in `schema.prisma` and made in migration `20261119230100_task_branch_unique`. The migration first looks for two tasks of a project with one branch, and stops with an error that names them, the project and the branch; it renames nothing.
   - **The create:** `claimBranchNameInTx` (`packages/domain/src/use-cases/create-prompt-task.ts`) sets the name under a savepoint, and on a refusal by that index (SQLSTATE 23505 naming it) rolls back to the savepoint and tries 12, then 16 hex digits (`BRANCH_ID_DIGITS`), in the caller's transaction. `startTicketTask` (ticket 29) isn't written yet: it calls `claimBranchNameInTx` the same way.
   - Test seeds that wrote one fixed branch name for every task (`seedTask` in `packages/api/src/testing/world.ts`, `newTask` in `packages/db/src/schema.test.ts`) now write a random 8-digit part, as a real task's ID gives.

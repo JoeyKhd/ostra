@@ -28,7 +28,7 @@ Settled as Q132 on 2026-11-19 (`context/open-questions.md`, Settled). A task sta
 - [x] Committed as `✨ say why a queued task waits`.
 
 ## Comments
-- 2026-11-19, core: done in `✨ say why a queued task waits`, data and API only. The task page's target has no place for the line, so the panel's sentences and the line wait for the target to be amended and approved.
+- 2026-11-19, core: done in `✨ say why a queued task waits` (7ece99b), data and API only. The task page's target has no place for the line, so the panel's sentences and the line wait for the target to be amended and approved.
   - **The column:** `Task.dispatchWait` (JSONB, nullable, migration `20261119230000_task_dispatch_wait`), parsed by `dispatchWaitSchema` (`packages/domain/src/dispatch-wait.ts`, strict): `no-model`, `provider-held { until }` (epoch ms), `provider-cap { cap }`, `personal-runner-not-allowed` (the provider isn't allowed on personal runners), `personal-runner-unavailable` (the picked runner is offline, busy, revoked or not its creator's), `no-runner-online`, `offer-declined`, `offer-timed-out`. `dispatchWaitColumns` writes it and milestone 1's `dispatchNote` together, for one release; an offer going out clears both.
   - **The read:** `waitingFor(task, lease)` in the domain, used by `tasks.get` and `tasks.list`: `{ kind: "offered", runner: { id, name }, since }`, `{ kind: "no-runner", reason }` or `null`. No procedure returns `dispatchNote`.
   - **Panel copy to add with the line:** one key per code, with `{until}` and `{cap}`, and the offer's "Offered to {runner}, waiting for it to accept".
