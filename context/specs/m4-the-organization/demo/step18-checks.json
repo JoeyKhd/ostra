@@ -1,0 +1,257 @@
+{
+  "ranAt": "2026-11-19T23:05:57.062Z",
+  "firstPart": [
+    "[demo] PASS 18.1 the profile offers the model's levels, Default first: view list, levels default, low, high, max; catalog ambient/deepseek/deepseek-v4.1-flash-1017 {\"effort\":[\"low\",\"high\",\"max\"],\"toggle\":true,\"supported\":true}",
+    "[demo] PASS 18.1 the save is an audit entry with the level: {\"action\":\"agent-profile.updated\",\"data\":{\"agent\":\"opencode\",\"rules\":0,\"access\":\"everyone\",\"effort\":\"high\",\"skills\":0,\"changed\":\"effort\",\"planFirst\":false,\"mcpServers\":0,\"closingTurn\":false}}",
+    "[demo] PASS 18.3 Models shows the levels from the catalog: Low, High, Max from the catalog",
+    "[demo] PASS 18.4 the task page shows Effort High: trigger high",
+    "[demo] PASS 18.5 the control says from the next turn, this turn at High: From the next turn. This turn runs at High.",
+    "[demo] PASS 18.5 the thread says who set it to Low: thread marker seen",
+    "[demo] PASS 18.5 the running turn finished at High: {\"ordinal\":1,\"effort\":\"high\",\"effortAdjustedFrom\":null,\"reasoningTokens\":264,\"outputTokens\":480,\"endedAt\":\"2026-11-19T21:57:39.434Z\",\"sessionId\":\"01a1f605-f49c-742f-946a-b90d358ab5e4\"}",
+    "[demo] PASS 18.6 the next turn ran at Low: {\"ordinal\":2,\"effort\":\"low\",\"effortAdjustedFrom\":null,\"reasoningTokens\":246,\"outputTokens\":487,\"endedAt\":\"2026-11-19T21:57:54.912Z\",\"sessionId\":\"01a1f605-f49c-742f-946a-b90d358ab5e4\"}",
+    "[demo] PASS after a runner restart and the reopen, the next turn still runs at Low: {\"ordinal\":1,\"effort\":\"low\",\"effortAdjustedFrom\":null,\"reasoningTokens\":259,\"outputTokens\":512,\"endedAt\":\"2026-11-19T22:03:40.947Z\",\"sessionId\":\"01a1f60c-c7ee-711e-947f-8891440221c1\"}",
+    "[demo] PASS the reopen ran in a new session: 01a1f605-f49c-742f-946a-b90d358ab5e4 -> 01a1f60c-c7ee-711e-947f-8891440221c1"
+  ],
+  "taskId": "01a1f605-f45c-735c-bd4f-454c3bcfcba2",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "executor": "host",
+  "checks": [
+    {
+      "name": "18.7 Sam sees Low and no control",
+      "ok": true,
+      "detail": "Low, controls 0"
+    },
+    {
+      "name": "18.7 tasks.setEffort as Sam is FORBIDDEN",
+      "ok": true,
+      "detail": "403 {\"error\":{\"message\":\"Take over to change the reasoning level\",\"code\":-32003,\"data\":{\"code\":\"FORBIDDEN\",\"httpStatus\":403,\"path\":\"tasks.setEffort\"}}}"
+    }
+  ],
+  "turns": [
+    {
+      "ordinal": 1,
+      "effort": "high",
+      "effortAdjustedFrom": null,
+      "reasoningTokens": 264,
+      "outputTokens": 480,
+      "endedAt": "2026-11-19T21:57:39.434Z"
+    },
+    {
+      "ordinal": 2,
+      "effort": "low",
+      "effortAdjustedFrom": null,
+      "reasoningTokens": 246,
+      "outputTokens": 487,
+      "endedAt": "2026-11-19T21:57:54.912Z"
+    },
+    {
+      "ordinal": 1,
+      "effort": "low",
+      "effortAdjustedFrom": null,
+      "reasoningTokens": 259,
+      "outputTokens": 512,
+      "endedAt": "2026-11-19T22:03:40.947Z"
+    }
+  ],
+  "events": [
+    {
+      "seq": 2,
+      "kind": "session.config_changed",
+      "payload": {
+        "key": "effort",
+        "kind": "session.config_changed",
+        "value": "high"
+      }
+    },
+    {
+      "seq": 3,
+      "kind": "turn.started",
+      "payload": {
+        "kind": "turn.started",
+        "mode": "build",
+        "effort": "high",
+        "turnId": "70a01fae-df00-4a5b-a098-6acecf29199d"
+      }
+    },
+    {
+      "seq": 10,
+      "kind": "effort.changed",
+      "payload": {
+        "to": "low",
+        "from": "high",
+        "kind": "effort.changed",
+        "memberId": "a74ab4be-a29e-4260-80d0-6b37cee26565"
+      }
+    },
+    {
+      "seq": 22,
+      "kind": "session.config_changed",
+      "payload": {
+        "key": "effort",
+        "kind": "session.config_changed",
+        "value": "low"
+      }
+    },
+    {
+      "seq": 23,
+      "kind": "turn.started",
+      "payload": {
+        "kind": "turn.started",
+        "mode": "build",
+        "effort": "low",
+        "turnId": "087eed00-6913-4ecf-961e-5fd66186f7b9"
+      }
+    },
+    {
+      "seq": 42,
+      "kind": "session.config_changed",
+      "payload": {
+        "key": "effort",
+        "kind": "session.config_changed",
+        "value": "low"
+      }
+    },
+    {
+      "seq": 43,
+      "kind": "turn.started",
+      "payload": {
+        "kind": "turn.started",
+        "mode": "build",
+        "effort": "low",
+        "turnId": "dcaac23f-f587-4637-a448-1196217b810d"
+      }
+    }
+  ],
+  "usageRecorded": [
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 5894,
+      "outputTokens": 277,
+      "cacheReadTokens": 256,
+      "reasoningTokens": 130,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 139,
+      "outputTokens": 121,
+      "cacheReadTokens": 384,
+      "reasoningTokens": 115,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 6199,
+      "outputTokens": 82,
+      "cacheReadTokens": 256,
+      "reasoningTokens": 19,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 6296,
+      "outputTokens": 222,
+      "cacheReadTokens": 256,
+      "reasoningTokens": 179,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 306,
+      "outputTokens": 229,
+      "cacheReadTokens": 6528,
+      "reasoningTokens": 67,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 299,
+      "outputTokens": 36,
+      "cacheReadTokens": 6784,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 4504,
+      "outputTokens": 210,
+      "cacheReadTokens": 2048,
+      "reasoningTokens": 167,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 316,
+      "outputTokens": 229,
+      "cacheReadTokens": 6528,
+      "reasoningTokens": 92,
+      "cacheWriteTokens": 0
+    },
+    {
+      "kind": "usage.recorded",
+      "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+      "estimated": false,
+      "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75",
+      "inputTokens": 309,
+      "outputTokens": 73,
+      "cacheReadTokens": 6784,
+      "cacheWriteTokens": 0
+    }
+  ],
+  "audits": [
+    {
+      "action": "agent-profile.model-set",
+      "data": {
+        "modelId": "01a1f603-9d14-74fd-92c9-8366072f6213",
+        "providerId": "01a1f603-9cc4-73f8-a84b-0173e59fac75"
+      },
+      "createdAt": "2026-11-19T21:53:23.431Z"
+    },
+    {
+      "action": "agent-profile.updated",
+      "data": {
+        "agent": "opencode",
+        "rules": 0,
+        "access": "everyone",
+        "effort": "high",
+        "skills": 0,
+        "changed": "effort",
+        "planFirst": false,
+        "mcpServers": 0,
+        "closingTurn": false
+      },
+      "createdAt": "2026-11-19T21:55:41.188Z"
+    },
+    {
+      "action": "task.effort-changed",
+      "data": {
+        "to": "low",
+        "from": "high"
+      },
+      "createdAt": "2026-11-19T21:56:05.302Z"
+    }
+  ]
+}

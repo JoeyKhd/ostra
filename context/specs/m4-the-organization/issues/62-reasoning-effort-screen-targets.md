@@ -1,6 +1,6 @@
 # 62: Screen targets: reasoning effort
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: none
 Features: F-137 (its screens)
