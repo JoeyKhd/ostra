@@ -1,0 +1,22 @@
+# Ticket 09 (m3): GitHub compare, drafts and reactions, live on ostra-test/test1 with the test App, 2026-11-19
+# Run: set -a; . ~/.config/ostra-dev/github.env; . ~/.config/ostra-dev/github-test.env; set +a
+#      npx vitest run src/github-adapter.live.test.ts -t "milestone 3" --reporter=verbose
+# What it checked:
+# - F-027, F-070: compare of a branch the test made, one commit ahead of main: ahead 1, behind 0, a 40-hex merge base,
+#   its file with its patch, not truncated; the other way round, behind 1; a missing branch is not-found.
+# - F-054: on a PR the test opened, setPullRequestDraft(true) made it a draft (read back through REST), true again
+#   was a success with no change, and false marked it ready. The first live run found that GitHub's GraphQL draft
+#   mutations answer FORBIDDEN ("Resource not accessible by integration") to a token with only `pull_requests: write`;
+#   they need `contents: write` too. The adapter now mints that, and the fake GitHub refuses as GitHub does.
+# - F-053: the App reacted eyes to a conversation comment and to a line comment (posted in spike 4's shapes):
+#   `created: true` the first time, `created: false` the second, and GitHub lists one eyes reaction on each.
+# - The comment-webhook case skipped: the test App has no webhook and no events (GET /app answers events: []),
+#   so GitHub delivers nothing. It runs once the maintainer does ticket 51, step 9.
+# The test closed its PR and deleted its branch. No token, key or secret is printed.
+# This machine's clock was an hour behind GitHub's; the test runs on GitHub's clock (see the file's beforeAll).
+
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 3, live on the test org (F-027, F-054, F-053) > F-027: compares the test branch with the default branch: one commit ahead, its file and its patch 2159ms
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 3, live on the test org (F-027, F-054, F-053) > F-054: makes a PR the test opens a draft and back, and a state already there is a success 6514ms
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 3, live on the test org (F-027, F-054, F-053) > F-053: reacts with eyes to a conversation comment and a line comment, once each 3680ms
+ ↓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 3, live on the test org (F-027, F-054, F-053) > F-053: parses both comment webhooks from the deliveries the comments triggered 206ms [the test App has no webhook subscribed to issue_comment and pull_request_review_comment (ticket 51, step 9)]
+      Tests  3 passed | 9 skipped (12)

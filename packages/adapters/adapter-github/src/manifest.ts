@@ -31,6 +31,9 @@ export const appEvents = [
   "workflow_run",
 ] as const;
 
+/** Where GitHub sends a member back after they sign in to link their account (F-119). */
+export const GITHUB_LINK_CALLBACK_PATH = "/api/github/link/callback";
+
 const privateIpv4 = /^(?:10\.|127\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|0\.)/;
 
 /**
@@ -69,8 +72,9 @@ export const buildAppManifest = (input: AppManifestInput, webUrl: string): AppMa
       url: input.homepageUrl,
       ...(withHook ? { hook_attributes: { url: input.webhookUrl, active: true }, default_events: [...appEvents] } : {}),
       redirect_url: input.redirectUrl,
-      // The OAuth callback for "Sign in with GitHub".
-      callback_urls: [`${homepage}/api/auth/callback/github`],
+      // The OAuth callbacks: "Sign in with GitHub", and the verified link of a member's account (F-119,
+      // ADR 0052). An App made before milestone 3 needs the second added once (ticket 51).
+      callback_urls: [`${homepage}/api/auth/callback/github`, `${homepage}${GITHUB_LINK_CALLBACK_PATH}`],
       public: false,
       default_permissions: { ...appPermissions },
     },

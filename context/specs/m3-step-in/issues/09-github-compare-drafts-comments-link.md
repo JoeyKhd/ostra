@@ -1,6 +1,6 @@
 # 09: GitHub adapter: compare, drafts, comments, push and the user link
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 03
 Features: F-027, F-054, F-070, F-053, F-119
@@ -20,8 +20,10 @@ Spec: `../spec.md`, section 5.2 ("`CodeHostAdapter`"); ADR 0052
 
 ## Done when
 
-- [ ] Tests: the suite passes on the fake GitHub; live, gated on the test App's credentials: compare of a branch in `test1`, a draft and back on a PR the test opens, a reaction on its comment, and both comment webhooks parsed from deliveries the test triggers. The user link's live case is ticket 51's manual run.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add GitHub compare, drafts and the user link`.
+- [x] Tests: the suite passes on the fake GitHub; live, gated on the test App's credentials: compare of a branch in `test1`, a draft and back on a PR the test opens, a reaction on its comment, and both comment webhooks parsed from deliveries the test triggers. The user link's live case is ticket 51's manual run. *(Done 2026-11-19: the deliveries case is written and skips, saying why, until the test App has its webhook: ticket 51, step 9.)*
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add GitHub compare, drafts and the user link`.
 
 ## Comments
+
+- 2026-11-19: done in `✨ add GitHub compare, drafts and the user link`. `compare` reads GitHub's compare (files on the first page, up to 300; a patch over 500 KB left out reads as `truncated`; an unknown status reads as `changed`), with a read-only token for the one repo. `setPullRequestDraft` uses GraphQL's two mutations and is idempotent; the first live run found that GitHub refuses them (FORBIDDEN, "Resource not accessible by integration") to a token with only `pull_requests: write`, so the adapter mints `contents: write` too, and the fake GitHub now refuses as GitHub does; a FORBIDDEN answer reads as `forbidden`. The `issue_comment`, `pull_request_review_comment` and `push` webhooks are parsed loosely behind the signature check; `addReaction` treats GitHub's 200 (already reacted) as `created: false`. The user link builds the sign-in URL with no scope, trades the code, reads `GET /user`, and revokes the token before it answers; a failed revocation links nothing. The manifest's `callback_urls` gained `/api/github/link/callback`. Live on `ostra-test/test1` (`packages/adapters/adapter-github/evidence/m3-compare-drafts-reactions-live.txt`): compare, a draft and back, and a reaction on each kind of comment passed. The comment-webhook deliveries case skips: the test App has no webhook and no events (`GET /app` answers `events: []`), so it waits for ticket 51, step 9. This machine's clock is an hour behind GitHub's, which makes GitHub refuse the App's JWT as "Bad credentials"; the live test runs on GitHub's clock. Proofs: `context/proof/F-027.md`, `F-053.md`, `F-054.md`, `F-070.md`, `F-119.md` (the adapter's halves, `partial`).

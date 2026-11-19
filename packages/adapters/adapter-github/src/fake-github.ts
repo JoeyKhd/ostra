@@ -35,7 +35,30 @@ export type FakeRepo = {
   readonly rulesRefused?: boolean;
   /** Refs that exist besides the branches, in full: `refs/ostra/wip/<taskId>`. */
   readonly refs?: readonly string[];
+  /** Milestone 3: what a compare of `base...head` answers. Two branches not listed compare as identical. */
+  readonly compares?: readonly FakeCompare[];
 };
+
+/** A compare the fake answers (F-027): GitHub's limits are applied to its files when it's read. */
+export type FakeCompare = {
+  readonly base: string;
+  readonly head: string;
+  readonly aheadBy: number;
+  readonly behindBy: number;
+  readonly mergeBase?: string;
+  readonly files?: readonly {
+    readonly path: string;
+    readonly previousPath?: string;
+    readonly status: string;
+    readonly additions: number;
+    readonly deletions: number;
+    /** Absent for a binary file. Over 500 KB, the fake leaves it out, as GitHub does. */
+    readonly patch?: string;
+  }[];
+};
+
+/** A member's GitHub account, as the verified link's sign-in reads it (F-119). */
+export type FakeGitHubUser = { readonly userId: string; readonly login: string };
 
 export type FakePullRequest = {
   readonly number: number;
@@ -44,7 +67,7 @@ export type FakePullRequest = {
   readonly base: string;
   readonly title: string;
   body: string;
-  readonly draft: boolean;
+  draft: boolean;
   state: "open" | "closed";
   merged: boolean;
   headSha: string;
@@ -74,6 +97,8 @@ export type InjectedFailure = {
   readonly method?: string;
   readonly status: number;
   readonly headers?: Readonly<Record<string, string>>;
+  /** The answer's body; default an error message. GraphQL refuses with 200 and `errors`. */
+  readonly body?: unknown;
   /** How many requests it answers; default 1. */
   times?: number;
 };
@@ -101,8 +126,31 @@ export type FakeGitHub = {
   readonly failures: InjectedFailure[];
   readonly webhookSecret: string;
   readonly signWebhook: (body: string) => string;
+  // ---- milestone 3 ----
+  /** Adds a comment on a PR's conversation (`issue`) or on a line (`review`), as a person; its ID. */
+  readonly addComment: (repo: string, kind: "issue" | "review") => string;
+  /** Reactions made so far, as `<repo>:<kind>:<commentId>:<content>`. */
+  readonly reactions: () => readonly string[];
+  /** How many times a draft mutation changed a PR. */
+  readonly draftChanges: () => number;
+  /** The App's OAuth client, which the verified link's exchange must send. */
+  readonly oauthClient: { readonly clientId: string; readonly clientSecret: string };
+  /** A sign-in's code for this user: reusable unless `singleUse`, and bound to `redirectUri` when given. */
+  readonly issueUserCode: (user: FakeGitHubUser, options?: { readonly singleUse?: boolean; readonly redirectUri?: string }) => string;
+  /** User tokens revoked so far. */
+  readonly revokedUserTokens: () => number;
+  /** User tokens handed out and not revoked. */
+  readonly liveUserTokens: () => number;
+  /** The next revocations fail, with this status (default 500). */
+  readonly failRevocations: (count: number, status?: number) => void;
   readonly close: () => Promise<void>;
 };
+
+/** GitHub's diff limits, which the fake applies to a compare's files. */
+const COMPARE_MAX_FILES = 300;
+const MAX_FILE_DIFF_BYTES = 500 * 1024;
+const REACTIONS: ReadonlySet<string> = new Set(["+1", "-1", "laugh", "confused", "heart", "hooray", "rocket", "eyes"]);
+const oauthBodySchema = z.looseObject({ client_id: z.string(), client_secret: z.string(), code: z.string(), redirect_uri: z.string().optional() });
 
 const base64url = (text: string): Buffer => Buffer.from(text, "base64url");
 
@@ -158,6 +206,16 @@ export const createFakeGitHub = async (options: {
   const refs = new Map<string, Set<string>>(options.repos.map((repo) => [`${repo.owner}/${repo.name}`, new Set(repo.refs ?? [])]));
   const tokens = new Map<string, TokenScope>();
   const failures: InjectedFailure[] = [];
+  const comments: { readonly repo: string; readonly kind: "issue" | "review"; readonly id: string }[] = [];
+  const reactions = new Map<string, number>();
+  let draftChanges = 0;
+  const oauthClient = { clientId: "Iv1.fakeclient", clientSecret: "fake-client-secret-value" };
+  const userCodes = new Map<string, { readonly user: FakeGitHubUser; readonly singleUse: boolean; readonly redirectUri: string | null }>();
+  const userTokens = new Map<string, FakeGitHubUser>();
+  let revokedUserTokens = 0;
+  let failRevocations = 0;
+  let failRevocationStatus = 500;
+  const nodeIdOf = (pr: FakePullRequest): string => `PR_fake_${Buffer.from(`${pr.repo}#${String(pr.number)}`).toString("base64url")}`;
 
   const send = (response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void => {
     response.writeHead(status, {
@@ -198,6 +256,8 @@ export const createFakeGitHub = async (options: {
   });
 
   const prJson = (pr: FakePullRequest) => ({
+    node_id: nodeIdOf(pr),
+    draft: pr.draft,
     number: pr.number,
     html_url: `https://github.example/${pr.repo}/pull/${String(pr.number)}`,
     state: pr.state,
@@ -258,7 +318,7 @@ export const createFakeGitHub = async (options: {
     );
     if (injected !== undefined) {
       injected.times = (injected.times ?? 1) - 1;
-      send(response, injected.status, { message: "an injected failure, with a secret-looking value ghp_0123456789abcdefghijklmnop" }, { ...injected.headers });
+      send(response, injected.status, injected.body ?? { message: "an injected failure, with a secret-looking value ghp_0123456789abcdefghijklmnop" }, { ...injected.headers });
       return;
     }
     const path = url.pathname;
@@ -295,6 +355,60 @@ export const createFakeGitHub = async (options: {
         return;
       }
       send(response, 200, { id: botId, login });
+      return;
+    }
+
+    // ---- milestone 3: the verified link's OAuth (F-119), on the website and the API
+    if (method === "POST" && path === "/login/oauth/access_token") {
+      const body = oauthBodySchema.safeParse(await readBody(request));
+      if (!body.success || body.data.client_id !== oauthClient.clientId || body.data.client_secret !== oauthClient.clientSecret) {
+        // GitHub answers a wrong client with 200 and an error, as it does a wrong code.
+        send(response, 200, { error: "incorrect_client_credentials", error_description: "The client_id and/or client_secret passed are incorrect." });
+        return;
+      }
+      const grant = userCodes.get(body.data.code);
+      if (grant === undefined || (grant.redirectUri !== null && grant.redirectUri !== body.data.redirect_uri)) {
+        send(response, 200, { error: "bad_verification_code", error_description: "The code passed is incorrect or expired." });
+        return;
+      }
+      if (grant.singleUse) {
+        userCodes.delete(body.data.code);
+      }
+      const accessToken = `ghu_${randomBytes(18).toString("hex")}`;
+      userTokens.set(accessToken, grant.user);
+      send(response, 200, { access_token: accessToken, token_type: "bearer", scope: "" });
+      return;
+    }
+    if (method === "GET" && path === "/user") {
+      const user = auth === undefined ? undefined : userTokens.get(auth);
+      if (user === undefined) {
+        send(response, 401, { message: "Bad credentials" });
+        return;
+      }
+      send(response, 200, { id: Number(user.userId), login: user.login, type: "User" });
+      return;
+    }
+    const revoke = /^\/applications\/([^/]+)\/token$/.exec(path);
+    if (method === "DELETE" && revoke !== null) {
+      const basic = /^Basic (.+)$/i.exec(request.headers.authorization ?? "")?.[1];
+      const [clientId = "", clientSecret = ""] = Buffer.from(basic ?? "", "base64").toString("utf8").split(":");
+      if (decodeURIComponent(revoke[1] ?? "") !== oauthClient.clientId || clientId !== oauthClient.clientId || clientSecret !== oauthClient.clientSecret) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      if (failRevocations > 0) {
+        failRevocations -= 1;
+        send(response, failRevocationStatus, { message: "the fake's revocation failed" });
+        return;
+      }
+      const body = z.looseObject({ access_token: z.string() }).safeParse(await readBody(request));
+      if (!body.success || !userTokens.delete(body.data.access_token)) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      revokedUserTokens += 1;
+      response.writeHead(204);
+      response.end();
       return;
     }
 
@@ -355,6 +469,38 @@ export const createFakeGitHub = async (options: {
     const scope = auth === undefined ? undefined : tokens.get(auth);
     if (scope === undefined || scope.expiresAt < Date.now()) {
       send(response, 401, { message: "Bad credentials" });
+      return;
+    }
+    // ---- milestone 3: GraphQL's draft mutations (F-054)
+    if (method === "POST" && path === "/graphql") {
+      const body = z.looseObject({ query: z.string(), variables: z.looseObject({ id: z.string().optional() }).optional() }).safeParse(await readBody(request));
+      const toDraft = body.success && body.data.query.includes("convertPullRequestToDraft");
+      const toReady = body.success && body.data.query.includes("markPullRequestReadyForReview");
+      if (!body.success || (!toDraft && !toReady)) {
+        send(response, 200, { errors: [{ type: "INVALID", message: "the fake GitHub answers only the draft mutations" }] });
+        return;
+      }
+      const pr = pulls.find((candidate) => nodeIdOf(candidate) === body.data.variables?.id);
+      const visible = pr !== undefined && (scope.repos === null || scope.repos.includes(pr.repo.slice(pr.repo.indexOf("/") + 1)));
+      if (!visible) {
+        send(response, 200, { data: null, errors: [{ type: "NOT_FOUND", message: "Could not resolve to a node with the global id" }] });
+        return;
+      }
+      // As GitHub answers (live, 2026-11-19): both mutations need `contents: write` as well as
+      // `pull_requests: write`; with `pull_requests: write` alone they are FORBIDDEN.
+      if (scope.permissions["pull_requests"] !== "write" || scope.permissions["contents"] !== "write") {
+        send(response, 200, { data: null, errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }] });
+        return;
+      }
+      if (pr.state !== "open") {
+        send(response, 200, { data: null, errors: [{ type: "UNPROCESSABLE", message: "Pull request is closed" }] });
+        return;
+      }
+      pr.draft = toDraft;
+      pr.updatedAt = tick();
+      draftChanges += 1;
+      const field = toDraft ? "convertPullRequestToDraft" : "markPullRequestReadyForReview";
+      send(response, 200, { data: { [field]: { pullRequest: { isDraft: pr.draft } } } });
       return;
     }
     if (method === "GET" && path === "/installation/repositories") {
@@ -544,6 +690,74 @@ export const createFakeGitHub = async (options: {
       response.end();
       return;
     }
+    // ---- milestone 3: compare (F-027), reactions (F-053)
+    const compareRoute = /^\/compare\/(.+)$/.exec(rest);
+    if (method === "GET" && compareRoute?.[1] !== undefined) {
+      if (!needs("contents", "read")) {
+        forbid();
+        return;
+      }
+      const basehead = decodeURIComponent(compareRoute[1]);
+      const split = basehead.indexOf("...");
+      const baseRef = split < 0 ? "" : basehead.slice(0, split);
+      const headRef = split < 0 ? "" : basehead.slice(split + 3);
+      const scripted = repo.compares?.find((candidate) => candidate.base === baseRef && candidate.head === headRef);
+      const known = (ref: string): boolean => repo.branches.includes(ref) || /^[0-9a-f]{40}$/.test(ref);
+      if (scripted === undefined && !(known(baseRef) && known(headRef))) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const files = scripted?.files ?? [];
+      send(response, 200, {
+        status: scripted === undefined ? "identical" : "diverged",
+        ahead_by: scripted?.aheadBy ?? 0,
+        behind_by: scripted?.behindBy ?? 0,
+        total_commits: scripted?.aheadBy ?? 0,
+        merge_base_commit: { sha: scripted?.mergeBase ?? "0".repeat(40) },
+        commits: [],
+        // As GitHub: at most 300 files, and a patch over 500 KB left out.
+        files: files.slice(0, COMPARE_MAX_FILES).map((file) => ({
+          filename: file.path,
+          ...(file.previousPath === undefined ? {} : { previous_filename: file.previousPath }),
+          status: file.status,
+          additions: file.additions,
+          deletions: file.deletions,
+          changes: file.additions + file.deletions,
+          ...(file.patch === undefined || Buffer.byteLength(file.patch) > MAX_FILE_DIFF_BYTES ? {} : { patch: file.patch }),
+        })),
+      });
+      return;
+    }
+    const reactionRoute = /^\/(issues|pulls)\/comments\/(\d+)\/reactions$/.exec(rest);
+    if (method === "POST" && reactionRoute !== null) {
+      // GitHub takes either permission for a reaction on a PR's comment.
+      if (!needs("pull_requests", "write") && !needs("issues", "write")) {
+        forbid();
+        return;
+      }
+      const kind = reactionRoute[1] === "issues" ? "issue" : "review";
+      const commentId = reactionRoute[2] ?? "";
+      if (!comments.some((comment) => comment.repo === `${owner}/${name}` && comment.kind === kind && comment.id === commentId)) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const body = z.looseObject({ content: z.string() }).safeParse(await readBody(request));
+      if (!body.success || !REACTIONS.has(body.data.content)) {
+        send(response, 422, { message: "Validation Failed" });
+        return;
+      }
+      const key = `${owner}/${name}:${kind}:${commentId}:${body.data.content}`;
+      const existing = reactions.get(key);
+      if (existing !== undefined) {
+        // Already reacted so: 200 with the same reaction.
+        send(response, 200, { id: existing, content: body.data.content, user: { login: `${appSlug}[bot]` } });
+        return;
+      }
+      const id = reactions.size + 1;
+      reactions.set(key, id);
+      send(response, 201, { id, content: body.data.content, user: { login: `${appSlug}[bot]` } });
+      return;
+    }
     const patched = /^\/pulls\/(\d+)$/.exec(rest);
     if (method === "PATCH" && patched?.[1] !== undefined) {
       if (!needs("pull_requests", "write")) {
@@ -597,6 +811,25 @@ export const createFakeGitHub = async (options: {
     failures,
     webhookSecret,
     signWebhook: (body) => `sha256=${createHmac("sha256", webhookSecret).update(body).digest("hex")}`,
+    addComment: (repo, kind) => {
+      const id = String(9_000_000 + comments.length + 1);
+      comments.push({ repo, kind, id });
+      return id;
+    },
+    reactions: () => [...reactions.keys()],
+    draftChanges: () => draftChanges,
+    oauthClient,
+    issueUserCode: (user, codeOptions = {}) => {
+      const code = `fakecode_${randomBytes(10).toString("hex")}`;
+      userCodes.set(code, { user, singleUse: codeOptions.singleUse ?? false, redirectUri: codeOptions.redirectUri ?? null });
+      return code;
+    },
+    revokedUserTokens: () => revokedUserTokens,
+    liveUserTokens: () => userTokens.size,
+    failRevocations: (count, status = 500) => {
+      failRevocations += count;
+      failRevocationStatus = status;
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

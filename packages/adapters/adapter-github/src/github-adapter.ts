@@ -12,17 +12,25 @@ import type {
   BranchRules,
   CodeHostAppCredentials,
   CodeHostCapabilities,
+  CodeHostOAuthClient,
   CodeHostWebhookEvent,
+  CommentRef,
+  CompareFile,
+  CompareFileStatus,
+  CompareResult,
   CreatedApp,
   DeleteRefResult,
   HealthReport,
   HostRepo,
   Installation,
+  LinkedUser,
   OpenPullRequestInput,
   UpdatePullRequestBodyInput,
   PermissionLevel,
   PullRequest,
+  PullRequestComment,
   PullRequestDetails,
+  Reaction,
   ReadFilesResult,
   RepoAccess,
   RepoFile,
@@ -41,16 +49,23 @@ import {
   branchProtectionSchema,
   branchRulesSchema,
   branchSchema,
+  compareSchema,
   contentFileSchema,
   conversionSchema,
+  graphqlAnswerSchema,
   installationSchema,
+  issueCommentWebhookSchema,
   pullRequestDetailsSchema,
   pullRequestListSchema,
+  pullRequestNodeSchema,
   pullRequestSchema,
   pullRequestWebhookSchema,
+  pushWebhookSchema,
   repoSchema,
+  reviewCommentWebhookSchema,
   treeSchema,
   userSchema,
+  userTokenSchema,
 } from "./schemas.ts";
 
 // The GitHub code host adapter (ADR 0040, ADR 0030, ADR 0025). The organization's own GitHub App
@@ -65,6 +80,11 @@ export type GitHubAdapterOptions = {
   readonly apiUrl?: string;
   /** The website, where the manifest form is posted. Default `https://github.com`. */
   readonly webUrl?: string;
+  /**
+   * Where the verified link trades a sign-in's code for a token (`/login/oauth/access_token`).
+   * Default: `webUrl`, as on GitHub.com and GitHub Enterprise Server; a test points it at its fake.
+   */
+  readonly oauthUrl?: string;
   /** Sent with every request: GitHub refuses a request with no `User-Agent`. */
   readonly userAgent?: string;
   /**
@@ -108,6 +128,43 @@ const REASON_RULES_REFUSED = "GitHub wouldn't let the App read this branch's rul
 /** Only refs under here are deleted: a branch or a tag is never ostra's to delete through this call. */
 const DELETABLE_REF = /^refs\/ostra\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
 
+/**
+ * GitHub's diff limits for commits, PRs and compares: at most 300 files, and no single file's diff
+ * over 500 KB, past which its patch is left out (docs.github.com, "Repository limits", "Diff
+ * limits"; the compare endpoint: "includes up to 300 changed files for the entire comparison").
+ */
+export const GITHUB_COMPARE_MAX_FILES = 300;
+export const GITHUB_MAX_FILE_DIFF_BYTES = 500 * 1024;
+const OAUTH_TIMEOUT_MS = 15_000;
+
+/** GitHub's file statuses in a compare, as ostra names them; one it adds later reads as `changed`. */
+const compareStatusOf = (status: string): CompareFileStatus => {
+  switch (status) {
+    case "added":
+    case "removed":
+    case "modified":
+    case "renamed":
+    case "copied":
+    case "changed":
+    case "unchanged":
+      return status;
+    default:
+      return "changed";
+  }
+};
+
+/** A ref (a branch, a tag or a SHA) safe to put on either side of a compare's `...`. */
+const isSafeRefName = (ref: string): boolean =>
+  ref.length > 0 && ref.length <= 255 && !ref.includes("..") && !/[\u0000- \u007f~^:?*[\\]/.test(ref);
+
+const isHttpUrl = (url: string): boolean => {
+  if (!URL.canParse(url)) {
+    return false;
+  }
+  const { protocol } = new URL(url);
+  return protocol === "https:" || protocol === "http:";
+};
+
 const quietLog = {
   debug: () => undefined,
   info: () => undefined,
@@ -139,6 +196,7 @@ export class GitHubAdapter extends CodeHostAdapter {
 
   readonly #apiUrl: string;
   readonly #webUrl: string;
+  readonly #oauthUrl: string;
   readonly #userAgent: string;
   /** Minted tokens, in memory only, until they near their expiry. */
   readonly #tokens = new Map<string, RepoToken>();
@@ -148,16 +206,19 @@ export class GitHubAdapter extends CodeHostAdapter {
     super(context);
     this.#apiUrl = (options.apiUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
     this.#webUrl = (options.webUrl ?? DEFAULT_WEB_URL).replace(/\/+$/, "");
+    this.#oauthUrl = (options.oauthUrl ?? this.#webUrl).replace(/\/+$/, "");
     this.#userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     // Where an LFS batch answer may send the git proxy (Q119, spike 4).
-    // Milestone 3's compare, drafts, PR comments and the verified link come with its ticket 09:
-    // until then each answers `unsupported`, as the base class does.
+    // Milestone 3 (ticket 09): compare, drafts, PR comments with reactions, and the verified link.
     this.capabilities = {
       checkRuns: true,
       prTemplates: true,
       lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)],
       branchRules: true,
-      compare: false, draftPullRequests: false, prComments: false, userLink: false,
+      compare: true,
+      draftPullRequests: true,
+      prComments: true,
+      userLink: true,
     };
   }
 
@@ -607,38 +668,27 @@ export class GitHubAdapter extends CodeHostAdapter {
     if (event === undefined || event === "") {
       return adapterError("invalid-response", "the webhook has no X-GitHub-Event header");
     }
-    if (event !== "pull_request") {
+    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push") {
       return ok({ kind: "other", event });
     }
     let payload: unknown;
     try {
       payload = JSON.parse(input.body);
     } catch {
-      return adapterError("invalid-response", "the pull_request webhook's body is not JSON");
+      return adapterError("invalid-response", `the ${event} webhook's body is not JSON`);
     }
-    const parsed = parseVendor(pullRequestWebhookSchema, payload, "GitHub's pull_request webhook");
-    if (!parsed.ok) {
-      return parsed;
+    switch (event) {
+      case "pull_request":
+        return parsePullRequestWebhook(payload);
+      case "issue_comment":
+        return parseIssueCommentWebhook(payload);
+      case "pull_request_review_comment":
+        return parseReviewCommentWebhook(payload);
+      case "push":
+        return parsePushWebhook(payload);
+      default:
+        return event satisfies never;
     }
-    const { action, number, installation, repository, pull_request: pr } = parsed.value;
-    const fullName = repoFullNameSchema.safeParse(repository.full_name);
-    const changedAt = Date.parse(pr.updated_at);
-    if (!fullName.success || Number.isNaN(changedAt)) {
-      return adapterError("invalid-response", "the pull_request webhook names a repo or a time that could not be read");
-    }
-    const merged = pr.merged === true || (pr.merged_at !== null && pr.merged_at !== undefined);
-    return ok({
-      kind: "pull_request",
-      action,
-      installationId: installation === null || installation === undefined ? null : String(installation.id),
-      hostRepoId: String(repository.id),
-      repo: fullName.data,
-      number,
-      state: pr.state === "open" ? "open" : merged ? "merged" : "closed",
-      headBranch: pr.head.ref,
-      headSha: pr.head.sha,
-      changedAt,
-    });
   }
 
   override async deleteRef(access: RepoAccess, ref: string): Promise<AdapterResult<DeleteRefResult>> {
@@ -664,6 +714,200 @@ export class GitHubAdapter extends CodeHostAdapter {
     });
   }
 
+  // ---------- milestone 3: compare, drafts, PR comments, the verified link (ADR 0051, ADR 0052) ----------
+
+  override async compare(access: RepoAccess, base: string, head: string): Promise<AdapterResult<CompareResult>> {
+    if (!isSafeRefName(base) || !isSafeRefName(head)) {
+      return adapterError("invalid-input", "a ref to compare is empty, too long, or holds `...` or control characters");
+    }
+    return this.#guarded<CompareResult>("comparing two refs", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { contents: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      // The files come on the first page only, up to GitHub's 300, whatever the page size: paging
+      // walks the commits, which ostra doesn't read, so one page of one commit is asked for.
+      const response = await octokit.request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+        owner,
+        repo: name,
+        basehead: `${base}...${head}`,
+        per_page: 1,
+        page: 1,
+      });
+      const parsed = parseVendor(compareSchema, response.data, "GitHub's compare");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      const files: CompareFile[] = (parsed.value.files ?? []).map((file) => {
+        const patch = file.patch ?? null;
+        const changes = file.changes ?? file.additions + file.deletions;
+        return {
+          path: file.filename,
+          previousPath: file.previous_filename ?? null,
+          status: compareStatusOf(file.status),
+          additions: file.additions,
+          deletions: file.deletions,
+          patch,
+          // GitHub leaves a file's patch out over its diff limit; a binary file has no patch and no line changes.
+          truncated: patch === null && changes > 0,
+        };
+      });
+      this.plumbing.logger.debug("github.compare.read", { repo: access.repo, files: files.length });
+      return ok({
+        aheadBy: parsed.value.ahead_by,
+        behindBy: parsed.value.behind_by,
+        mergeBase: parsed.value.merge_base_commit?.sha ?? null,
+        files,
+        filesTruncated: files.length >= GITHUB_COMPARE_MAX_FILES,
+        limits: { maxFiles: GITHUB_COMPARE_MAX_FILES, maxPatchBytes: GITHUB_MAX_FILE_DIFF_BYTES },
+      });
+    });
+  }
+
+  override async setPullRequestDraft(access: RepoAccess, number: number, draft: boolean): Promise<AdapterResult<PullRequest>> {
+    if (!Number.isSafeInteger(number) || number < 1) {
+      return adapterError("invalid-input", "a PR number is a positive whole number");
+    }
+    const operation = draft ? "making a PR a draft" : "marking a PR ready for review";
+    return this.#guarded<PullRequest>(operation, this.#budgetKey(access), async () => {
+      // GitHub's two draft mutations need `contents: write` too: with `pull_requests: write` alone
+      // they answer FORBIDDEN, "Resource not accessible by integration" (live on the test App, 2026-11-19).
+      const octokit = await this.#asRepo(access, { contents: "write", pull_requests: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const read = async (): Promise<AdapterResult<z.infer<typeof pullRequestNodeSchema>>> => {
+        const response = await octokit.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", { owner, repo: name, pull_number: number });
+        return parseVendor(pullRequestNodeSchema, response.data, "GitHub's PR");
+      };
+      const before = await read();
+      if (!before.ok) {
+        return before;
+      }
+      // Already as asked: a success, with no write (idempotent).
+      if ((before.value.draft ?? false) === draft) {
+        return ok(toPullRequest(before.value));
+      }
+      if (before.value.state !== "open") {
+        return adapterError("conflict", "only an open PR can be made a draft or ready for review");
+      }
+      // REST can't change a PR's draft state; GraphQL's two mutations can.
+      const mutation = draft
+        ? "mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { pullRequest { isDraft } } }"
+        : "mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }";
+      const answer = await octokit.request("POST /graphql", { query: mutation, variables: { id: before.value.node_id } });
+      const parsed = parseVendor(graphqlAnswerSchema, answer.data, "GitHub's GraphQL answer");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      const after = await read();
+      if (!after.ok) {
+        return after;
+      }
+      // A refusal is read from the PR's state, not from GitHub's words: another writer may have got there first.
+      if ((after.value.draft ?? false) !== draft) {
+        // GraphQL refuses with 200 and an error's `type`: FORBIDDEN is the App's permissions, never a race.
+        const forbidden = (parsed.value.errors ?? []).some((error) => error.type === "FORBIDDEN");
+        this.plumbing.logger.warn("github.pr.draft-refused", { repo: access.repo, prNumber: number, errors: parsed.value.errors?.length ?? 0, forbidden });
+        const message = draft ? "GitHub did not make the PR a draft" : "GitHub did not mark the PR ready for review";
+        return forbidden ? adapterError("forbidden", `${message}: the App isn't allowed to`) : adapterError("conflict", message);
+      }
+      this.plumbing.logger.info("github.pr.draft-set", { repo: access.repo, prNumber: number, draft });
+      return ok(toPullRequest(after.value));
+    });
+  }
+
+  override async addReaction(access: RepoAccess, comment: CommentRef, reaction: Reaction): Promise<AdapterResult<{ readonly created: boolean }>> {
+    if (!/^[1-9]\d{0,19}$/.test(comment.commentId)) {
+      return adapterError("invalid-input", "a comment ID is GitHub's number");
+    }
+    return this.#guarded("reacting to a PR comment", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const route =
+        comment.kind === "issue"
+          ? "POST /repos/{owner}/{repo}/issues/comments/{comment_id}/reactions"
+          : "POST /repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions";
+      const response = await octokit.request(route, { owner, repo: name, comment_id: Number(comment.commentId), content: reaction });
+      // GitHub answers 201 for a new reaction, and 200 when the App had reacted so already.
+      const created = response.status === 201;
+      this.plumbing.logger.info("github.comment.reacted", { repo: access.repo, kind: comment.kind, created });
+      return ok({ created });
+    });
+  }
+
+  override userAuthorizeUrl(client: CodeHostOAuthClient, state: string, redirectUri: string): AdapterResult<string> {
+    if (client.clientId.length === 0 || state.length === 0 || state.length > 512) {
+      return adapterError("invalid-input", "a sign-in needs the App's client ID and a state of at most 512 characters");
+    }
+    if (!isHttpUrl(redirectUri)) {
+      return adapterError("invalid-input", "the link's callback is not an http(s) URL");
+    }
+    // A GitHub App's user sign-in: no scopes (the App's own permissions apply), and no email (ADR 0040).
+    const url = new URL(`${this.#webUrl}/login/oauth/authorize`);
+    url.searchParams.set("client_id", client.clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("state", state);
+    url.searchParams.set("allow_signup", "false");
+    return ok(url.toString());
+  }
+
+  override async exchangeUserCode(client: CodeHostOAuthClient, code: string, redirectUri: string): Promise<AdapterResult<LinkedUser>> {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(code)) {
+      return adapterError("invalid-input", "the sign-in's code is not in GitHub's format");
+    }
+    if (!isHttpUrl(redirectUri)) {
+      return adapterError("invalid-input", "the link's callback is not an http(s) URL");
+    }
+    const exchanged = await this.#oauthCall("exchanging the sign-in's code", `${this.#oauthUrl}/login/oauth/access_token`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ client_id: client.clientId, client_secret: client.clientSecret, code, redirect_uri: redirectUri }),
+    });
+    if (!exchanged.ok) {
+      return exchanged;
+    }
+    const token = parseVendor(userTokenSchema, exchanged.value.body, "GitHub's sign-in answer");
+    if (!token.ok) {
+      return token;
+    }
+    const accessToken = token.value.access_token;
+    if (accessToken === undefined) {
+      // An expired, used or wrong code: GitHub says so with 200 and an `error`.
+      this.plumbing.logger.warn("github.link.code-refused", { status: exchanged.value.status });
+      return adapterError("unauthorized", "GitHub refused the sign-in's code: it may have expired or been used");
+    }
+    // Who signed in. Whatever this answers, the token is revoked before anything returns.
+    const who = await this.#oauthCall("reading who signed in", `${this.#apiUrl}/user`, {
+      method: "GET",
+      headers: { accept: "application/vnd.github+json", authorization: `Bearer ${accessToken}` },
+    });
+    const revoked = await this.#oauthCall("revoking the sign-in's token", `${this.#apiUrl}/applications/${encodeURIComponent(client.clientId)}/token`, {
+      method: "DELETE",
+      headers: {
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        authorization: `Basic ${Buffer.from(`${client.clientId}:${client.clientSecret}`).toString("base64")}`,
+      },
+      body: JSON.stringify({ access_token: accessToken }),
+    });
+    if (!revoked.ok) {
+      return revoked;
+    }
+    if (revoked.value.status !== 204) {
+      this.plumbing.logger.warn("github.link.revoke-failed", { status: revoked.value.status });
+      return adapterError("unavailable", `revoking the sign-in's token failed (HTTP ${String(revoked.value.status)}): nothing was linked`);
+    }
+    if (!who.ok) {
+      return who;
+    }
+    if (who.value.status !== 200) {
+      return adapterError(who.value.status === 401 ? "unauthorized" : "unavailable", `reading who signed in failed (HTTP ${String(who.value.status)})`);
+    }
+    const user = parseVendor(userSchema, who.value.body, "GitHub's user");
+    if (!user.ok) {
+      return user;
+    }
+    this.plumbing.logger.info("github.link.verified", { userId: user.value.id });
+    return ok({ userId: String(user.value.id), login: user.value.login });
+  }
+
   // ---------- webhooks ----------
 
   verifyWebhook(input: WebhookInput): boolean {
@@ -677,6 +921,44 @@ export class GitHubAdapter extends CodeHostAdapter {
   }
 
   // ---------- internals ----------
+
+  /**
+   * One call of the verified link's OAuth exchange, with `fetch`: the sign-in's token and the App's
+   * client secret are in it, so nothing about it is logged but the operation and the status.
+   */
+  async #oauthCall(
+    operation: string,
+    url: string,
+    init: { readonly method: string; readonly headers: Readonly<Record<string, string>>; readonly body?: string },
+  ): Promise<AdapterResult<{ readonly status: number; readonly body: unknown }>> {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: init.method,
+        headers: { "user-agent": this.#userAgent, ...init.headers },
+        ...(init.body === undefined ? {} : { body: init.body }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(OAUTH_TIMEOUT_MS),
+      });
+    } catch {
+      this.plumbing.logger.warn("github.link.call-failed", { operation });
+      return adapterError("unavailable", `${operation} failed: GitHub could not be reached`);
+    }
+    if (response.status === 429 || response.status >= 500) {
+      await response.body?.cancel();
+      return adapterError(response.status === 429 ? "rate-limited" : "unavailable", `${operation} failed (HTTP ${String(response.status)})`);
+    }
+    const text = await response.text();
+    let body: unknown = null;
+    if (text !== "") {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = null;
+      }
+    }
+    return ok({ status: response.status, body });
+  }
 
   #budgetKey(access: RepoAccess): string {
     return `inst:${access.app.appId}:${access.installationId}`;
@@ -832,4 +1114,127 @@ const toPullRequest = (pr: z.infer<typeof pullRequestSchema>): PullRequest => ({
   headBranch: pr.head.ref,
   baseBranch: pr.base.ref,
   title: pr.title,
+  ...(pr.draft === undefined ? {} : { draft: pr.draft }),
 });
+
+// ---------- webhooks, read loosely (GitHub owns these formats) ----------
+// The PR comment shapes are ported from spikes/github-app-and-git-proxy/src/github/pr-flow.ts
+// (spike 4): a conversation comment is an issue comment on the PR's number, and a line comment
+// names its `path`, its `line` and its `side` (`RIGHT` the head's, `LEFT` the base's).
+
+const installationIdOf = (installation: { readonly id: number } | null | undefined): string | null =>
+  installation === null || installation === undefined ? null : String(installation.id);
+
+const parsePullRequestWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(pullRequestWebhookSchema, payload, "GitHub's pull_request webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { action, number, installation, repository, pull_request: pr } = parsed.value;
+  const fullName = repoFullNameSchema.safeParse(repository.full_name);
+  const changedAt = Date.parse(pr.updated_at);
+  if (!fullName.success || Number.isNaN(changedAt)) {
+    return adapterError("invalid-response", "the pull_request webhook names a repo or a time that could not be read");
+  }
+  const merged = pr.merged === true || (pr.merged_at !== null && pr.merged_at !== undefined);
+  return ok({
+    kind: "pull_request",
+    action,
+    installationId: installationIdOf(installation),
+    hostRepoId: String(repository.id),
+    repo: fullName.data,
+    number,
+    state: pr.state === "open" ? "open" : merged ? "merged" : "closed",
+    headBranch: pr.head.ref,
+    headSha: pr.head.sha,
+    changedAt,
+  });
+};
+
+/** A comment's fields every comment event carries. Its body is untrusted text: data, never logged. */
+const toComment = (comment: { readonly id: number; readonly body?: string | null | undefined; readonly html_url: string; readonly user: { readonly id: number; readonly login: string } }): PullRequestComment => ({
+  commentId: String(comment.id),
+  authorId: String(comment.user.id),
+  authorLogin: comment.user.login,
+  body: comment.body ?? "",
+  url: comment.html_url,
+});
+
+const parseIssueCommentWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(issueCommentWebhookSchema, payload, "GitHub's issue_comment webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { action, installation, repository, issue, comment } = parsed.value;
+  const fullName = repoFullNameSchema.safeParse(repository.full_name);
+  if (!fullName.success) {
+    return adapterError("invalid-response", "the issue_comment webhook names a repo that could not be read");
+  }
+  return ok({
+    kind: "issue_comment",
+    action,
+    installationId: installationIdOf(installation),
+    hostRepoId: String(repository.id),
+    repo: fullName.data,
+    number: issue.number,
+    // GitHub sends PR conversation comments as issue comments: `issue.pull_request` says which.
+    onPullRequest: issue.pull_request !== null && issue.pull_request !== undefined,
+    comment: toComment(comment),
+  });
+};
+
+const parseReviewCommentWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(reviewCommentWebhookSchema, payload, "GitHub's pull_request_review_comment webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { action, installation, repository, pull_request: pr, comment } = parsed.value;
+  const fullName = repoFullNameSchema.safeParse(repository.full_name);
+  if (!fullName.success) {
+    return adapterError("invalid-response", "the pull_request_review_comment webhook names a repo that could not be read");
+  }
+  // `LEFT` is the base's side of the diff, `RIGHT` the head's; a comment on a whole file has no line.
+  const onFile = comment.subject_type === "file";
+  return ok({
+    kind: "pull_request_review_comment",
+    action,
+    installationId: installationIdOf(installation),
+    hostRepoId: String(repository.id),
+    repo: fullName.data,
+    number: pr.number,
+    comment: toComment(comment),
+    path: comment.path,
+    side: comment.side === "LEFT" ? "old" : "new",
+    line: onFile ? null : (comment.line ?? comment.original_line ?? null),
+  });
+};
+
+/** GitHub lists at most this many commits in a push's payload: a longer push's paths aren't all there. */
+const PUSH_MAX_COMMITS = 2048;
+
+const parsePushWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(pushWebhookSchema, payload, "GitHub's push webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { ref, before, after, installation, repository, commits } = parsed.value;
+  const fullName = repoFullNameSchema.safeParse(repository.full_name);
+  if (!fullName.success || !ref.startsWith("refs/")) {
+    return adapterError("invalid-response", "the push webhook names a repo or a ref that could not be read");
+  }
+  const changedPaths =
+    commits === null || commits === undefined || commits.length >= PUSH_MAX_COMMITS
+      ? null
+      : [...new Set(commits.flatMap((commit) => [...(commit.added ?? []), ...(commit.removed ?? []), ...(commit.modified ?? [])]))];
+  return ok({
+    kind: "push",
+    installationId: installationIdOf(installation),
+    hostRepoId: String(repository.id),
+    repo: fullName.data,
+    ref,
+    before,
+    after,
+    changedPaths,
+  });
+};
+

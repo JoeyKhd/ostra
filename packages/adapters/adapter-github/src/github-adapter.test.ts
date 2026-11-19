@@ -13,6 +13,141 @@ const template = "## What\n\n## Why\n";
 const test1 = repoFullNameSchema.parse("fake-org/test1");
 const test2 = repoFullNameSchema.parse("fake-org/test2");
 
+/** A big patch, over GitHub's 500 KB a file, and 300 small ones: GitHub lists 300 and leaves the big one's patch out. */
+const bigPatch = `@@ -1 +1 @@\n${"+x".repeat(300_000)}\n`;
+const truncatedFiles = [
+  { path: "huge.txt", status: "modified", additions: 300_000, deletions: 0, patch: bigPatch },
+  ...Array.from({ length: 300 }, (_, index) => ({ path: `many/${String(index)}.txt`, status: "added", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+a\n" })),
+];
+
+const compares = [
+  {
+    base: "main",
+    head: "ostra/contract",
+    aheadBy: 2,
+    behindBy: 0,
+    mergeBase: "b".repeat(40),
+    files: [
+      { path: "src/new.ts", status: "added", additions: 3, deletions: 0, patch: "@@ -0,0 +1,3 @@\n+a\n+b\n+c\n" },
+      { path: "src/moved.ts", previousPath: "src/old.ts", status: "renamed", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-a\n+b\n" },
+      { path: "logo.png", status: "modified", additions: 0, deletions: 0 },
+      { path: "gone.md", status: "removed", additions: 0, deletions: 4, patch: "@@ -1,4 +0,0 @@\n-a\n-b\n-c\n-d\n" },
+      { path: "odd.txt", status: "something-new", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+a\n" },
+    ],
+  },
+  { base: "main", head: "ostra/other", aheadBy: 0, behindBy: 3 },
+  { base: "main", head: "ostra/third", aheadBy: 2, behindBy: 1 },
+  { base: "main", head: "ostra/review", aheadBy: 40, behindBy: 0, files: truncatedFiles },
+] as const;
+
+/** A comment's webhook payload, shaped as GitHub sends it (docs.github.com, "Webhook events and payloads"). */
+const issueCommentPayload = (input: { readonly commentId: string; readonly onPullRequest: boolean; readonly body: string }): string =>
+  JSON.stringify({
+    action: "created",
+    installation: { id: 7 },
+    repository: { id: 1001, full_name: "fake-org/test1", owner: { login: "fake-org" } },
+    issue: {
+      number: 5,
+      title: "a PR",
+      ...(input.onPullRequest ? { pull_request: { url: "https://api.github.example/repos/fake-org/test1/pulls/5", html_url: "https://github.example/fake-org/test1/pull/5" } } : {}),
+    },
+    comment: {
+      id: Number(input.commentId),
+      body: input.body,
+      html_url: `https://github.example/fake-org/test1/pull/5#issuecomment-${input.commentId}`,
+      user: { id: 583231, login: "octocat", type: "User" },
+      author_association: "MEMBER",
+    },
+    sender: { id: 583231, login: "octocat" },
+  });
+
+const reviewCommentPayload = (input: { readonly commentId: string; readonly side: "LEFT" | "RIGHT"; readonly line: number | null; readonly subjectType?: "line" | "file" }): string =>
+  JSON.stringify({
+    action: "created",
+    installation: { id: 7 },
+    repository: { id: 1001, full_name: "fake-org/test1" },
+    pull_request: { number: 5, head: { ref: "ostra/contract", sha: "a".repeat(40) } },
+    comment: {
+      id: Number(input.commentId),
+      body: "@ostra rename this",
+      html_url: `https://github.example/fake-org/test1/pull/5#discussion_r${input.commentId}`,
+      user: { id: 583231, login: "octocat" },
+      path: "src/index.ts",
+      line: input.line,
+      original_line: input.line,
+      side: input.side,
+      subject_type: input.subjectType ?? "line",
+      diff_hunk: "@@ -1 +1 @@",
+    },
+  });
+
+const pushPayload = (commits: unknown): string =>
+  JSON.stringify({
+    ref: "refs/heads/main",
+    before: "c".repeat(40),
+    after: "d".repeat(40),
+    installation: { id: 7 },
+    repository: { id: 1001, full_name: "fake-org/test1" },
+    commits,
+    head_commit: null,
+  });
+
+const signed = (fake: FakeGitHub, event: string, body: string): { readonly headers: Readonly<Record<string, string>>; readonly body: string; readonly secret: string } => ({
+  headers: { "x-github-event": event, "x-github-delivery": `delivery-${event}`, "x-hub-signature-256": fake.signWebhook(body) },
+  body,
+  secret: fake.webhookSecret,
+});
+
+const linkedUser = { userId: "583231", login: "octocat" };
+const linkRedirect = "https://ostra.example.test/api/github/link/callback";
+
+const milestone3Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "compare" | "commentWebhooks" | "comment" | "userLink"> => {
+  const issueCommentId = fake.addComment("fake-org/test1", "issue");
+  const reviewCommentId = fake.addComment("fake-org/test1", "review");
+  return {
+    compare: {
+      ahead: { base: "main", head: "ostra/contract", aheadBy: 2, behindBy: 0 },
+      behind: { base: "main", head: "ostra/other", aheadBy: 0, behindBy: 3 },
+      diverged: { base: "main", head: "ostra/third", aheadBy: 2, behindBy: 1 },
+      truncated: { base: "main", head: "ostra/review", path: "huge.txt" },
+    },
+    commentWebhooks: {
+      issueComment: {
+        input: signed(fake, "issue_comment", issueCommentPayload({ commentId: issueCommentId, onPullRequest: true, body: "@ostra fix the test" })),
+        number: 5,
+        commentId: issueCommentId,
+        authorId: "583231",
+        body: "@ostra fix the test",
+      },
+      reviewComment: {
+        input: signed(fake, "pull_request_review_comment", reviewCommentPayload({ commentId: reviewCommentId, side: "RIGHT", line: 12 })),
+        number: 5,
+        commentId: reviewCommentId,
+        path: "src/index.ts",
+        line: 12,
+        side: "new",
+      },
+      push: {
+        input: signed(fake, "push", pushPayload([{ added: ["a.ts"], removed: ["pnpm-lock.yaml"], modified: ["b.ts"] }, { added: [], removed: [], modified: ["b.ts", "c.ts"] }])),
+        ref: "refs/heads/main",
+        after: "d".repeat(40),
+        changedPaths: ["a.ts", "pnpm-lock.yaml", "b.ts", "c.ts"],
+      },
+    },
+    comment: { kind: "issue", commentId: issueCommentId },
+    userLink: {
+      client: fake.oauthClient,
+      code: fake.issueUserCode(linkedUser, { redirectUri: linkRedirect }),
+      redirectUri: linkRedirect,
+      user: linkedUser,
+      revokedTokens: fake.revokedUserTokens,
+      failNextRevocation: () => {
+        fake.failRevocations(1);
+      },
+    },
+  };
+};
+
 const startFake = (): Promise<FakeGitHub> =>
   createFakeGitHub({
     repos: [
@@ -26,13 +161,14 @@ const startFake = (): Promise<FakeGitHub> =>
           ".github/pull_request_template.md": template,
           "src/index.ts": "export {};\n",
         },
-        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open"],
+        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open", "ostra/drafts", "ostra/closing", "ostra/draft-token"],
         protectedBranches: ["ostra/classic"],
         rulesets: {
           main: ["deletion", "required_signatures"],
           "ostra/review": ["pull_request"],
         },
         refs: ["refs/ostra/wip/task-contract"],
+        compares,
       },
       { id: 1002, owner: "fake-org", name: "test2", defaultBranch: "main", files: { "secret.txt": "other repo\n" }, branches: ["main"] },
       // Private, in a free organization: rulesets and rules answer 403 "Upgrade to GitHub Pro".
@@ -96,6 +232,7 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
       { branch: "ostra/review", expected: { protected: true, requiresSignedCommits: false } },
       { branch: "ostra/classic", expected: { protected: true, requiresSignedCommits: "unknown" } },
     ],
+    ...milestone3Fixture(fake),
   };
 };
 
@@ -106,7 +243,7 @@ defineCodeHostContractSuite({
   create: async () => {
     suiteFake = await startFake();
     return {
-      adapter: new GitHubAdapter({ apiUrl: suiteFake.apiUrl, webUrl: suiteFake.webUrl }),
+      adapter: new GitHubAdapter({ apiUrl: suiteFake.apiUrl, webUrl: suiteFake.webUrl, oauthUrl: suiteFake.apiUrl }),
       fixture: fixtureOf(suiteFake),
       dispose: () => suiteFake?.close() ?? Promise.resolve(),
     };
@@ -121,7 +258,7 @@ describe("the GitHub adapter", () => {
 
   beforeAll(async () => {
     fake = await startFake();
-    adapter = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl }, context);
+    adapter = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl, oauthUrl: fake.apiUrl }, context);
     fixture = fixtureOf(fake);
   });
   afterAll(async () => {
@@ -541,9 +678,9 @@ describe("the GitHub adapter", () => {
     });
 
     it("answers other for an event it doesn't act on, without reading its body", () => {
-      expect(adapter.parseWebhook({ headers: { "x-github-event": "push" }, body: "not json at all", secret: "" })).toEqual({
+      expect(adapter.parseWebhook({ headers: { "x-github-event": "check_suite" }, body: "not json at all", secret: "" })).toEqual({
         ok: true,
-        value: { kind: "other", event: "push" },
+        value: { kind: "other", event: "check_suite" },
       });
     });
 
@@ -669,6 +806,225 @@ describe("the GitHub adapter", () => {
     });
   });
 
+  describe("compare (F-027, F-070)", () => {
+    it("F-027: reads each file's status, rename, counts and patch, a binary file as whole, and the merge base", async () => {
+      const compared = await adapter.compare(fixture.access, "main", "ostra/contract");
+      if (!compared.ok) throw new Error(compared.error.message);
+      expect(compared.value).toMatchObject({ aheadBy: 2, behindBy: 0, mergeBase: "b".repeat(40), filesTruncated: false, limits: { maxFiles: 300, maxPatchBytes: 512_000 } });
+      expect(compared.value.files).toEqual([
+        { path: "src/new.ts", previousPath: null, status: "added", additions: 3, deletions: 0, patch: "@@ -0,0 +1,3 @@\n+a\n+b\n+c\n", truncated: false },
+        { path: "src/moved.ts", previousPath: "src/old.ts", status: "renamed", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-a\n+b\n", truncated: false },
+        { path: "logo.png", previousPath: null, status: "modified", additions: 0, deletions: 0, patch: null, truncated: false },
+        { path: "gone.md", previousPath: null, status: "removed", additions: 0, deletions: 4, patch: "@@ -1,4 +0,0 @@\n-a\n-b\n-c\n-d\n", truncated: false },
+        // A status GitHub adds later reads as `changed`, never an error.
+        { path: "odd.txt", previousPath: null, status: "changed", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+a\n", truncated: false },
+      ]);
+    });
+
+    it("F-027: reports GitHub's limits: a patch it left out over 500 KB is truncated, and a list of 300 files is cut", async () => {
+      const compared = await adapter.compare(fixture.access, "main", "ostra/review");
+      if (!compared.ok) throw new Error(compared.error.message);
+      expect(compared.value.filesTruncated).toBe(true);
+      expect(compared.value.files).toHaveLength(300);
+      expect(compared.value.files[0]).toEqual({ path: "huge.txt", previousPath: null, status: "modified", additions: 300_000, deletions: 0, patch: null, truncated: true });
+      expect(compared.value.files.slice(1).every((file) => !file.truncated && file.patch !== null)).toBe(true);
+    });
+
+    it("F-027, F-070: compares with a read-only token for the one repo, reads how far behind a branch is, slashes in its name included", async () => {
+      const fresh = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl });
+      const before = fake.tokens.size;
+      expect(await fresh.compare(fixture.access, "main", "ostra/third")).toMatchObject({ ok: true, value: { aheadBy: 2, behindBy: 1, files: [] } });
+      const minted = [...fake.tokens.values()].slice(before);
+      expect(minted.length).toBeGreaterThan(0);
+      for (const scope of minted) {
+        expect(scope.repos).toEqual(["test1"]);
+        expect(scope.permissions).toEqual({ contents: "read", metadata: "read" });
+      }
+      expect(fake.requests.some((request) => request.path.startsWith("/repos/fake-org/test1/compare/"))).toBe(true);
+    });
+
+    it("F-027: refuses a ref that could change what's compared, and reports a missing one as not found", async () => {
+      for (const ref of ["", "main...evil", "a..b", "x y", "a:b", "a\u0000b"]) {
+        expect(await adapter.compare(fixture.access, ref, "main"), JSON.stringify(ref)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      }
+      expect(await adapter.compare(fixture.access, "main", "no-such-branch")).toMatchObject({ ok: false, error: { code: "not-found" } });
+    });
+  });
+
+  describe("drafts (F-054)", () => {
+    it("F-054: makes a PR a draft and ready again through GraphQL, and an asked-for state already there writes nothing", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/drafts", base: "main", title: "drafts", body: "", draft: false });
+      if (!opened.ok) throw new Error(opened.error.message);
+      const { number } = opened.value;
+      const before = fake.draftChanges();
+      expect(await adapter.setPullRequestDraft(fixture.access, number, false)).toMatchObject({ ok: true, value: { number, draft: false } });
+      expect(fake.draftChanges()).toBe(before);
+      expect(await adapter.setPullRequestDraft(fixture.access, number, true)).toMatchObject({ ok: true, value: { number, draft: true } });
+      expect(await adapter.setPullRequestDraft(fixture.access, number, true)).toMatchObject({ ok: true, value: { draft: true } });
+      expect(fake.draftChanges()).toBe(before + 1);
+      expect(fake.pulls.find((pr) => pr.number === number)?.draft).toBe(true);
+      // The PR reads as a draft wherever it's read.
+      expect(await adapter.findPullRequest(fixture.access, "ostra/drafts")).toMatchObject({ ok: true, value: { number, draft: true } });
+      expect(await adapter.setPullRequestDraft(fixture.access, number, false)).toMatchObject({ ok: true, value: { draft: false } });
+      expect(fake.draftChanges()).toBe(before + 2);
+    });
+
+    it("F-054: switches with a token that can write contents and PRs, as GitHub's mutations need, and reads a refusal as forbidden", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/draft-token", base: "main", title: "draft token", body: "", draft: false });
+      if (!opened.ok) throw new Error(opened.error.message);
+      const fresh = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl });
+      const before = fake.tokens.size;
+      expect(await fresh.setPullRequestDraft(fixture.access, opened.value.number, true)).toMatchObject({ ok: true, value: { draft: true } });
+      const minted = [...fake.tokens.values()].slice(before);
+      expect(minted.map((scope) => scope.permissions)).toEqual([{ contents: "write", pull_requests: "write", metadata: "read" }]);
+      expect(minted[0]?.repos).toEqual(["test1"]);
+      // GitHub's GraphQL refuses with 200 and an error of type FORBIDDEN: the App's permissions, not a race.
+      fake.failures.push({ pathPattern: /^\/graphql$/, method: "POST", status: 200, body: { data: { markPullRequestReadyForReview: null }, errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }] } });
+      expect(await fresh.setPullRequestDraft(fixture.access, opened.value.number, false)).toMatchObject({ ok: false, error: { code: "forbidden" } });
+      expect(fake.pulls.find((pr) => pr.number === opened.value.number)?.draft).toBe(true);
+    });
+
+    it("F-054: refuses a closed PR, and a number that isn't a PR", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/closing", base: "main", title: "closing", body: "", draft: false });
+      if (!opened.ok) throw new Error(opened.error.message);
+      fake.finishPullRequest("fake-org/test1", opened.value.number, "closed");
+      expect(await adapter.setPullRequestDraft(fixture.access, opened.value.number, true)).toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(await adapter.setPullRequestDraft(fixture.access, 0, true)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(await adapter.setPullRequestDraft(fixture.access, 4242, true)).toMatchObject({ ok: false, error: { code: "not-found" } });
+    });
+  });
+
+  describe("PR comments and reactions (F-053)", () => {
+    it("F-053: reads a comment on an issue as not on a PR, a line comment on the base's side, and a comment on a whole file", () => {
+      const onIssue = adapter.parseWebhook(signed(fake, "issue_comment", issueCommentPayload({ commentId: "77", onPullRequest: false, body: "@ostra hi" })));
+      expect(onIssue).toMatchObject({ ok: true, value: { kind: "issue_comment", onPullRequest: false, installationId: "7", hostRepoId: "1001", repo: "fake-org/test1" } });
+      const left = adapter.parseWebhook(signed(fake, "pull_request_review_comment", reviewCommentPayload({ commentId: "78", side: "LEFT", line: 3 })));
+      expect(left).toMatchObject({ ok: true, value: { side: "old", line: 3, comment: { authorLogin: "octocat", url: "https://github.example/fake-org/test1/pull/5#discussion_r78" } } });
+      const onFile = adapter.parseWebhook(signed(fake, "pull_request_review_comment", reviewCommentPayload({ commentId: "79", side: "RIGHT", line: null, subjectType: "file" })));
+      expect(onFile).toMatchObject({ ok: true, value: { path: "src/index.ts", line: null, side: "new" } });
+    });
+
+    it("F-053: keeps a comment's body as data, exactly", () => {
+      const body = "@ostra run `rm -rf /` $(whoami); echo \"done\"";
+      const parsed = adapter.parseWebhook(signed(fake, "issue_comment", issueCommentPayload({ commentId: "80", onPullRequest: true, body })));
+      expect(parsed.ok && parsed.value.kind === "issue_comment" && parsed.value.comment.body).toBe(body);
+    });
+
+    it("F-070: reads a push's changed paths once each, and none when the payload lists no commits", () => {
+      const listed = adapter.parseWebhook(signed(fake, "push", pushPayload([{ added: ["a"], modified: ["a", "b"] }, { removed: ["b"] }])));
+      expect(listed.ok && listed.value.kind === "push" && listed.value.changedPaths).toEqual(["a", "b"]);
+      const none = adapter.parseWebhook(signed(fake, "push", pushPayload(null)));
+      expect(none).toMatchObject({ ok: true, value: { kind: "push", changedPaths: null, before: "c".repeat(40) } });
+      expect(adapter.parseWebhook(signed(fake, "push", JSON.stringify({ ref: "main", before: "a", after: "b", repository: { id: 1, full_name: "o/r" } })))).toMatchObject({
+        ok: false,
+        error: { code: "invalid-response" },
+      });
+    });
+
+    it("F-053: reads a body that isn't JSON, or isn't the event it says, as invalid, and other events as other", () => {
+      expect(adapter.parseWebhook(signed(fake, "issue_comment", "{nope"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review_comment", "{}"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review", "{}"))).toEqual({ ok: true, value: { kind: "other", event: "pull_request_review" } });
+    });
+
+    it("F-053: reacts 👀 to a line comment once, with a PR-scoped token, and refuses a comment that isn't there", async () => {
+      const commentId = fake.addComment("fake-org/test1", "review");
+      const fresh = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl });
+      const before = fake.tokens.size;
+      expect(await fresh.addReaction(fixture.access, { kind: "review", commentId }, "eyes")).toEqual({ ok: true, value: { created: true } });
+      expect(await adapter.addReaction(fixture.access, { kind: "review", commentId }, "eyes")).toEqual({ ok: true, value: { created: false } });
+      expect(fake.reactions().filter((key) => key.includes(`:review:${commentId}:`))).toEqual([`fake-org/test1:review:${commentId}:eyes`]);
+      for (const scope of [...fake.tokens.values()].slice(before)) {
+        expect(scope.permissions).toEqual({ pull_requests: "write", metadata: "read" });
+      }
+      // A conversation comment and a line comment are told apart: the same ID on the other kind isn't there.
+      expect(await adapter.addReaction(fixture.access, { kind: "issue", commentId }, "eyes")).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await adapter.addReaction(fixture.access, { kind: "issue", commentId: "../1" }, "eyes")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+  });
+
+  describe("the verified link (F-119)", () => {
+    it("F-119: sends the member to GitHub's sign-in with the App's client ID, the state and the callback, and no scope or secret", () => {
+      const url = adapter.userAuthorizeUrl(fake.oauthClient, "state-abc", linkRedirect);
+      if (!url.ok) throw new Error(url.error.message);
+      const parsed = new URL(url.value);
+      expect(`${parsed.origin}${parsed.pathname}`).toBe("https://github.example/login/oauth/authorize");
+      expect(Object.fromEntries(parsed.searchParams)).toEqual({ client_id: fake.oauthClient.clientId, redirect_uri: linkRedirect, state: "state-abc", allow_signup: "false" });
+      expect(url.value).not.toContain(fake.oauthClient.clientSecret);
+      expect(adapter.userAuthorizeUrl(fake.oauthClient, "", linkRedirect)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(adapter.userAuthorizeUrl(fake.oauthClient, "s", "javascript:alert(1)")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("F-119: answers the account's ID and login, and holds no token after: the one it got is revoked", async () => {
+      const code = fake.issueUserCode({ userId: "1234", login: "maya" }, { singleUse: true });
+      const live = fake.liveUserTokens();
+      const revoked = fake.revokedUserTokens();
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toEqual({ ok: true, value: { userId: "1234", login: "maya" } });
+      expect(fake.liveUserTokens()).toBe(live);
+      expect(fake.revokedUserTokens()).toBe(revoked + 1);
+      // GitHub's code is used once.
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+    });
+
+    it("F-119: revokes the token even when reading the account fails, and links nothing", async () => {
+      const code = fake.issueUserCode({ userId: "1235", login: "noor" });
+      const live = fake.liveUserTokens();
+      fake.failures.push({ pathPattern: /^\/user$/, method: "GET", status: 500 });
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unavailable" } });
+      expect(fake.liveUserTokens()).toBe(live);
+    });
+
+    it("F-119: links nothing when the revocation fails, or the client or the callback is wrong", async () => {
+      const code = fake.issueUserCode({ userId: "1236", login: "ida" }, { redirectUri: linkRedirect });
+      fake.failRevocations(1);
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unavailable" } });
+      // A refusal that isn't a server failure links nothing either.
+      fake.failRevocations(1, 422);
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unavailable" } });
+      expect(await adapter.exchangeUserCode({ ...fake.oauthClient, clientSecret: "wrong" }, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, "https://elsewhere.example/cb")).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+      expect(await adapter.exchangeUserCode(fake.oauthClient, "bad code!", linkRedirect)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("F-119: keeps the code, the client secret and the token out of every answer and log line", async () => {
+      const code = fake.issueUserCode({ userId: "1237", login: "lee" });
+      const answers = [await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)];
+      fake.failRevocations(1);
+      answers.push(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect));
+      const everything = JSON.stringify([answers, context.logger.records]);
+      expect(everything).not.toContain(code);
+      expect(everything).not.toContain(fake.oauthClient.clientSecret);
+      expect(everything).not.toContain("ghu_");
+    });
+
+    it("F-119: puts the link's callback in a new App's manifest", () => {
+      const { manifest } = adapter.appManifest({
+        name: "ostra acme",
+        homepageUrl: "https://ostra.acme.dev/",
+        webhookUrl: "https://ostra.acme.dev/hooks/github/abc",
+        redirectUrl: "https://ostra.acme.dev/setup/github/callback",
+        ownerLogin: "acme",
+      });
+      expect(manifest["callback_urls"]).toEqual(["https://ostra.acme.dev/api/auth/callback/github", "https://ostra.acme.dev/api/github/link/callback"]);
+    });
+
+    it("F-119: reads the member's ID and login from `GET /user` alone, and the App asks for no `email_addresses`", async () => {
+      const code = fake.issueUserCode({ userId: "1238", login: "ana" });
+      const before = fake.requests.length;
+      expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toEqual({ ok: true, value: { userId: "1238", login: "ana" } });
+      expect(fake.requests.slice(before).map((request) => `${request.method} ${request.path}`)).toEqual([
+        "POST /login/oauth/access_token",
+        "GET /user",
+        `DELETE /applications/${fake.oauthClient.clientId}/token`,
+      ]);
+      const { manifest } = adapter.appManifest({ name: "ostra", homepageUrl: "https://ostra.acme.dev", webhookUrl: "https://ostra.acme.dev/hooks/github/abc", redirectUrl: "https://ostra.acme.dev/setup/github/callback", ownerLogin: null });
+      expect(manifest["default_permissions"]).toMatchObject({ pull_requests: "write" });
+      expect(manifest["default_permissions"]).not.toHaveProperty("email_addresses");
+      const url = adapter.userAuthorizeUrl(fake.oauthClient, "state", linkRedirect);
+      expect(url.ok && new URL(url.value).searchParams.has("scope")).toBe(false);
+    });
+  });
+
   describe("webhooks", () => {
     it("refuses a missing, malformed or wrong signature, and an empty secret", () => {
       const { webhook } = fixture;
@@ -681,17 +1037,17 @@ describe("the GitHub adapter", () => {
   });
 
   describe("capabilities", () => {
-    it("declares check runs, PR templates and exactly the LFS hosts of Q119", () => {
+    it("declares check runs, PR templates, exactly the LFS hosts of Q119, and milestone 3's compare, drafts, PR comments and link", () => {
       expect(adapter.capabilities).toEqual({
         checkRuns: true,
         prTemplates: true,
         lfsActionHosts: ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"],
         branchRules: true,
-        // Milestone 3's ticket 09 builds these and turns them on.
-        compare: false,
-        draftPullRequests: false,
-        prComments: false,
-        userLink: false,
+        // Milestone 3 (ticket 09).
+        compare: true,
+        draftPullRequests: true,
+        prComments: true,
+        userLink: true,
       });
     });
   });

@@ -56,6 +56,7 @@ export const treeSchema = z.looseObject({
 export const userSchema = z.looseObject({ id: z.number().int(), login: z.string() });
 
 export const pullRequestSchema = z.looseObject({
+  draft: z.boolean().optional(),
   number: z.number().int().positive(),
   html_url: z.string().min(1),
   state: z.enum(["open", "closed"]),
@@ -96,3 +97,89 @@ export const pullRequestWebhookSchema = z.looseObject({
   repository: z.looseObject({ id: z.number().int(), full_name: z.string().min(1) }),
   pull_request: pullRequestDetailsSchema,
 });
+
+// ---------- milestone 3 (ADR 0051, ADR 0052) ----------
+
+/** `GET /repos/{o}/{r}/compare/{base}...{head}`: the counts, the merge base and the files (on the first page only). */
+export const compareSchema = z.looseObject({
+  ahead_by: z.number().int().nonnegative(),
+  behind_by: z.number().int().nonnegative(),
+  merge_base_commit: z.looseObject({ sha: z.string().min(1) }).nullish(),
+  files: z
+    .array(
+      z.looseObject({
+        filename: z.string().min(1),
+        previous_filename: z.string().nullish(),
+        status: z.string(),
+        additions: z.number().int().nonnegative(),
+        deletions: z.number().int().nonnegative(),
+        changes: z.number().int().nonnegative().optional(),
+        patch: z.string().nullish(),
+      }),
+    )
+    .optional(),
+});
+
+/** A PR as the draft switch reads it: its GraphQL node ID and whether it's a draft. */
+export const pullRequestNodeSchema = pullRequestSchema.extend({ node_id: z.string().min(1) });
+
+/** GraphQL's answer to the draft mutations: errors come with 200. */
+export const graphqlAnswerSchema = z.looseObject({
+  data: z.unknown().optional(),
+  errors: z.array(z.looseObject({ message: z.string().optional(), type: z.string().optional() })).nullish(),
+});
+
+const commentUserSchema = z.looseObject({ id: z.number().int(), login: z.string().min(1) });
+const webhookRepositorySchema = z.looseObject({ id: z.number().int(), full_name: z.string().min(1) });
+const webhookInstallationSchema = z.looseObject({ id: z.number().int() }).nullish();
+
+/** An `issue_comment` webhook: a comment on an issue, or on a PR's conversation when `issue.pull_request` is there. */
+export const issueCommentWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+  issue: z.looseObject({ number: z.number().int().positive(), pull_request: z.looseObject({}).nullish() }),
+  comment: z.looseObject({ id: z.number().int(), body: z.string().nullish(), html_url: z.string().min(1), user: commentUserSchema }),
+});
+
+/** A `pull_request_review_comment` webhook: a comment on a line (or a file) of a PR's diff. */
+export const reviewCommentWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+  pull_request: z.looseObject({ number: z.number().int().positive() }),
+  comment: z.looseObject({
+    id: z.number().int(),
+    body: z.string().nullish(),
+    html_url: z.string().min(1),
+    user: commentUserSchema,
+    path: z.string().min(1),
+    line: z.number().int().nullish(),
+    original_line: z.number().int().nullish(),
+    side: z.string().nullish(),
+    subject_type: z.string().nullish(),
+  }),
+});
+
+/** A `push` webhook. Each commit lists the paths it added, removed and changed. */
+export const pushWebhookSchema = z.looseObject({
+  ref: z.string().min(1),
+  before: z.string().min(1),
+  after: z.string().min(1),
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+  commits: z
+    .array(
+      z.looseObject({
+        added: z.array(z.string()).optional(),
+        removed: z.array(z.string()).optional(),
+        modified: z.array(z.string()).optional(),
+      }),
+    )
+    .nullish(),
+});
+
+/** `POST https://github.com/login/oauth/access_token` with `Accept: application/json`: a token, or an error with 200. */
+export const userTokenSchema = z
+  .looseObject({ access_token: z.string().min(1).optional(), error: z.string().min(1).optional() })
+  .refine((answer) => answer.access_token !== undefined || answer.error !== undefined, "neither a token nor an error");
