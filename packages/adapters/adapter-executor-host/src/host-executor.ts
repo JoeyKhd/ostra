@@ -165,6 +165,12 @@ const keptMarkers = async (dataDir: string): Promise<readonly string[]> => {
   return markers;
 };
 
+/** A failure's code (EBUSY, EPERM) or its name: never its message, which can hold a path. */
+const errorCode = (error: unknown): string => {
+  const code: unknown = Reflect.get(Object(error), "code");
+  return typeof code === "string" ? code : error instanceof Error ? error.name : "unknown";
+};
+
 export class HostExecutor extends ExecutorAdapter {
   readonly name = "host";
   readonly capabilities: ExecutorCapabilities;
@@ -282,7 +288,7 @@ export class HostExecutor extends ExecutorAdapter {
       await this.#writeTaskGitConfig(record);
     } catch (error) {
       record.state = "failed";
-      return adapterError("unavailable", `couldn't make the task's folder (${error instanceof Error ? error.name : "unknown"})`);
+      return adapterError("unavailable", `couldn't make the task's folder (${errorCode(error)})`);
     }
     this.plumbing.logger.info("box created", { taskId: input.taskId, boxId: input.boxId, repos: input.spec.repos.length });
     return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
@@ -446,7 +452,7 @@ export class HostExecutor extends ExecutorAdapter {
     try {
       await rm(record.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch (error) {
-      return adapterError("unavailable", `couldn't remove the task's folder (${error instanceof Error ? error.name : "unknown"})`);
+      return adapterError("unavailable", `couldn't remove the task's folder (${errorCode(error)})`);
     }
     record.state = "released";
     this.#boxes.delete(boxKey(box));
@@ -609,7 +615,7 @@ export class HostExecutor extends ExecutorAdapter {
     try {
       return ok(await readdir(record.workspaceDir));
     } catch (error) {
-      return adapterError("unavailable", `couldn't list the workspace (${error instanceof Error ? error.name : "unknown"})`);
+      return adapterError("unavailable", `couldn't list the workspace (${errorCode(error)})`);
     }
   }
 

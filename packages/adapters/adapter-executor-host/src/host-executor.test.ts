@@ -247,7 +247,7 @@ describe("the host executor", () => {
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
     if (!created.ok) {
-      throw new Error("create failed");
+      throw new Error(`create failed: ${created.error.message}`);
     }
     await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
     const dirA = path.join(created.value.workspaceDir, "test1");
@@ -291,7 +291,7 @@ describe("the host executor", () => {
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
     if (!created.ok) {
-      throw new Error("create failed");
+      throw new Error(`create failed: ${created.error.message}`);
     }
     await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
     const pidFile = path.join(created.value.agentDir, "child.pid");
@@ -442,7 +442,7 @@ describe("the executor's git, where the agent controls the checkout", () => {
     const spec = twoRepoSpec(box, null);
     const created = await recorded.create({ ...box, spec, proxies });
     if (!created.ok) {
-      throw new Error("create failed");
+      throw new Error(`create failed: ${created.error.message}`);
     }
     await recorded.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
     await writeFile(path.join(created.value.workspaceDir, "test1", "seam.txt"), "x\n");
@@ -474,7 +474,7 @@ describe("the executor's git, where the agent controls the checkout", () => {
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
     if (!created.ok) {
-      throw new Error("create failed");
+      throw new Error(`create failed: ${created.error.message}`);
     }
     await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
     const dirA = path.join(created.value.workspaceDir, "test1");
