@@ -426,7 +426,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               error: errorText(reopen.error),
             }}
           />
-          {ticketClosed === undefined ? null : <TicketClosedBlock taskId={taskId} status={ticketClosed.summary} />}
+          {ticketClosed === undefined ? null : <TicketClosedBlock taskId={taskId} summary={ticketClosed.summary} />}
           {conflict === undefined ? null : (
             <RestoreConflict
               savedWorkUrl={null}

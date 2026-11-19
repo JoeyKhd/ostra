@@ -2574,7 +2574,6 @@
     "ticketClosed": {
       "title": "Needs you · ticket closed",
       "body": "The ticket was closed while the task ran, so its turn was interrupted.",
-      "bodyStatus": "The ticket moved to {status} while the task ran, so its turn was interrupted.",
       "stop": "Stop the task",
       "keep": "Keep working"
     },

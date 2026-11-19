@@ -439,7 +439,7 @@ export const WatcherBar = ({ driver, onTakeOver, takingOver }: { readonly driver
 );
 
 /** A ticket closed or cancelled while the task ran (F-066): stop the task, or keep working. */
-export const TicketClosedBlock = ({ taskId, status }: { readonly taskId: TaskId; readonly status: string | null }) => {
+export const TicketClosedBlock = ({ taskId, summary }: { readonly taskId: TaskId; readonly summary: string | null }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const settle = { onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) };
@@ -460,7 +460,8 @@ export const TicketClosedBlock = ({ taskId, status }: { readonly taskId: TaskId;
       }
       footer={<Refused message={failed === null ? null : errorText(failed)} />}
     >
-      <p>{status === null ? t("taskAnswers.ticketClosed.body") : t("taskAnswers.ticketClosed.bodyStatus", { status })}</p>
+      {/* The item's summary is core's own sentence about the move; without one, the page's. */}
+      <p>{summary ?? t("taskAnswers.ticketClosed.body")}</p>
     </NeedsYou>
   );
 };
