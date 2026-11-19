@@ -214,6 +214,12 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     "update-hint": (command) => {
       log.info("a newer runner is available", { version: command.body.version });
       return done({ result: "done" });
+    },    // Protocol minor 1. A box is removed when its sidecar exits, so a box not running here is already
+    // gone. Ticket 23 keeps stopped boxes and releases them here.
+    release: (command) => {
+      const held = running.has(command.body.boxId);
+      log.info("release asked", { taskId: command.body.taskId, boxId: command.body.boxId, reason: command.body.reason, held });
+      return done(held ? { result: "rejected", reason: "box-busy" } : { result: "done", reason: "not-held" });
     },
   };
 

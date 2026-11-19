@@ -9,9 +9,9 @@ import {
   runnerLabelSchema,
   sessionSeqSchema,
 } from "../common.ts";
-import { runnerEventSchema } from "../events/agent-events.ts";
+import { encodeEventForMinor, runnerEventSchema, runnerEventSchemaV0 } from "../events/agent-events.ts";
 import { liveTextFrameSchema } from "../events/live-text.ts";
-import { commandResultSchema, commandSchema } from "./commands.ts";
+import { commandResultSchema, commandSchema, commandSchemaV0 } from "./commands.ts";
 import { runnerLimits } from "./limits.ts";
 import { peerSchema } from "./peer.ts";
 import { createVersionedCodec, PROTOCOL_MINOR } from "./version.ts";
@@ -22,8 +22,10 @@ import type { FrameParse } from "./version.ts";
 // `hello`, the negotiation, which tolerates unknown fields. Ported from
 // spikes/runner-transport/src/protocol/messages.ts.
 //
-// Minor 0 is the only shape so far. When minor 1 adds a field, minor 0's codec stays beside it:
-// its `decode` lifts a minor-0 frame to the current type and its `encode` drops the new field.
+// Minor 1 (milestone 2) adds event kinds and fields, and the `release` command. Minor 0's codec
+// stays beside it: its `decode` refuses what minor 1 added, and its `encode` drops the new fields.
+// A new kind is never encoded down: the sender checks `eventKindSupportedAt` and
+// `commandKindSupportedAt` before it makes one.
 
 const count = z.number().int().nonnegative();
 const positive = z.number().int().positive();
@@ -73,6 +75,11 @@ export const eventsFrameSchema = z.strictObject({
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
 
+/** Minor 0's `events` frame: its events refuse minor 1's kinds and fields. */
+const eventsFrameSchemaV0 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV0).min(1).max(runnerLimits.eventsPerFrameMax),
+});
+
 export const commandAckItemSchema = z.strictObject({
   id: commandIdSchema,
   seq: commandSeqSchema,
@@ -114,14 +121,21 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV0 = z.discriminatedUnion("type", [
+const upFrameV1 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV0>;
+const upFrameV0 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV0,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+]);
+export type UpFrame = z.infer<typeof upFrameV1>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -217,7 +231,7 @@ export const evictSchema = z.strictObject({
 });
 export type Evict = z.infer<typeof evictSchema>;
 
-const downFrameV0 = z.discriminatedUnion("type", [
+const downFrameV1 = z.discriminatedUnion("type", [
   welcomeSchema,
   ackSchema,
   creditSchema,
@@ -226,19 +240,39 @@ const downFrameV0 = z.discriminatedUnion("type", [
   errorFrameSchema,
   evictSchema,
 ]);
-export type DownFrame = z.infer<typeof downFrameV0>;
+const downFrameV0 = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV0,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+export type DownFrame = z.infer<typeof downFrameV1>;
 export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
 
+/** An up frame in minor 0's shape: an `events` frame's events lose minor 1's fields. */
+const encodeUpFrameV0 = (frame: UpFrame): unknown =>
+  frame.type === "events"
+    ? { ...frame, events: frame.events.map((item) => ({ ...item, event: encodeEventForMinor(item.event, 0) })) }
+    : frame;
+
 /** Up frames, one codec per kept minor. */
 export const upFrameCodec = createVersionedCodec<UpFrame>([
-  { minor: 0, decode: upFrameV0, encode: (frame) => frame },
+  { minor: 0, decode: upFrameV0, encode: encodeUpFrameV0 },
+  { minor: 1, decode: upFrameV1, encode: (frame) => frame },
 ]);
 
-/** Down frames, one codec per kept minor. */
+/**
+ * Down frames, one codec per kept minor. No down frame changed shape in minor 1; only the
+ * `release` command is new, and minor 0's decode refuses it.
+ */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: (frame) => frame },
+  { minor: 1, decode: downFrameV1, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

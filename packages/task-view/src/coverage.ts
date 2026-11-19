@@ -42,4 +42,8 @@ export const foldCoverage = {
   "usage.recorded": "assistant message usage",
   "session.usage": "assistant message context",
   "provider.rate_limited": "no row (the server holds new dispatches)",
+  // Protocol minor 1: no row until the M2 task page (ticket 36) designs them.
+  "session.saved": "no row (ticket 36)",
+  "session.limit_reached": "no row (its needs-you item shows it; ticket 36)",
+  "ticket.files_ready": "no row (ticket 36)",
 } as const satisfies Record<TaskEventKind, string>;

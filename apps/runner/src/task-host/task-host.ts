@@ -92,6 +92,12 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
     "update-hint": (command) => {
       log.info("a newer runner is available", { version: command.body.version });
       return done({ result: "done" });
+    },    // Protocol minor 1. Milestone 1's host releases the workspace after every session, so a box
+    // this runner no longer runs is already gone. Ticket 23 keeps idle boxes and releases them here.
+    release: (command) => {
+      const held = [...runs.values()].some((run) => run.dispatch.boxId === command.body.boxId);
+      log.info("release asked", { taskId: command.body.taskId, boxId: command.body.boxId, reason: command.body.reason, held });
+      return done(held ? { result: "rejected", reason: "box-busy" } : { result: "done", reason: "not-held" });
     },
   };
 

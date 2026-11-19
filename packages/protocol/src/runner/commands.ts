@@ -79,6 +79,29 @@ export const drainBodySchema = z.strictObject({});
 /** `update-hint`: a newer runner version is available for this server. */
 export const updateHintBodySchema = z.strictObject({ version: z.string().min(1).max(64) });
 
+/** Why a box is released (F-079, ADR 0039). */
+export const boxReleaseReasonSchema = z.enum([
+  /** The task's last PR merged or closed. */
+  "prs-closed",
+  /** The box sat stopped for `OSTRA_BOX_RELEASE_IDLE_DAYS`. */
+  "idle-expired",
+  /** The task was deleted, or retention removed it. */
+  "task-deleted",
+  /** An admin or a script asked for it. */
+  "requested",
+]);
+export type BoxReleaseReason = z.infer<typeof boxReleaseReasonSchema>;
+
+/**
+ * `release` (minor 1): remove the box and its workspace. The hidden ref is deleted by core, on the
+ * code host. Sent only to a peer at minor 1 or above (`commandKindSupportedAt`).
+ */
+export const releaseBodySchema = z.strictObject({
+  taskId: taskIdSchema,
+  boxId: boxIdSchema,
+  reason: boxReleaseReasonSchema,
+});
+
 /** Each command kind's body, for the outbox to validate a body by its kind. */
 export const commandBodySchemas = {
   dispatch: dispatchBodySchema,
@@ -88,6 +111,7 @@ export const commandBodySchemas = {
   "approval-answer": approvalAnswerBodySchema,
   drain: drainBodySchema,
   "update-hint": updateHintBodySchema,
+  release: releaseBodySchema,
 } as const;
 
 export const commandKindSchema = z.enum([
@@ -98,9 +122,32 @@ export const commandKindSchema = z.enum([
   "approval-answer",
   "drain",
   "update-hint",
+  "release",
 ]);
 export type CommandKind = z.infer<typeof commandKindSchema>;
 export type CommandBody<K extends CommandKind> = z.infer<(typeof commandBodySchemas)[K]>;
+
+/** The lowest minor that carries a command kind. The outbox never sends one to a lower peer. */
+export const commandKindMinMinor = (kind: CommandKind): number => {
+  switch (kind) {
+    case "release":
+      return 1;
+    case "dispatch":
+    case "steer":
+    case "interrupt":
+    case "stop":
+    case "approval-answer":
+    case "drain":
+    case "update-hint":
+      return 0;
+    default:
+      return kind satisfies never;
+  }
+};
+
+/** Whether a peer at `minor` can take a command of `kind`. */
+export const commandKindSupportedAt = (kind: CommandKind, minor: number): boolean =>
+  commandKindMinMinor(kind) <= minor;
 
 const envelope = {
   type: z.literal("command"),
@@ -110,7 +157,7 @@ const envelope = {
   notAfter: epochMsSchema,
 };
 
-export const commandSchema = z.discriminatedUnion("kind", [
+const sharedCommandOptions = [
   z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("interrupt"), body: interruptBodySchema }),
@@ -118,9 +165,18 @@ export const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("drain"), body: drainBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("update-hint"), body: updateHintBodySchema }),
+] as const;
+
+/** Commands at the current minor (1). */
+export const commandSchema = z.discriminatedUnion("kind", [
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("release"), body: releaseBodySchema }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
+
+/** Minor 0's commands, kept for the down codec: no `release`. */
+export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOptions]);
 
 /** How a peer answers a command (ADR 0034). */
 export const commandResultSchema = z.enum([

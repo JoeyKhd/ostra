@@ -31,20 +31,55 @@ export const runnerPaths = {
   httpHello: `${RUNNER_PATH_PREFIX}/hello`,
   httpUp: `${RUNNER_PATH_PREFIX}/up`,
   httpDown: `${RUNNER_PATH_PREFIX}/down`,
+  // The bulk path (minor 1, ADR 0043): `blobs.ts` holds the bodies.
+  /** `POST`: start or resume an upload. */
+  taskBlobs: (taskId: string): string => `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/blobs`,
+  /** `PUT ?offset=&leaseEpoch=`: one chunk. */
+  taskBlobUpload: (taskId: string, uploadId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/blobs/${encodeURIComponent(uploadId)}`,
+  /** `POST`: seal the upload, checking its size and digest. */
+  taskBlobUploadFinish: (taskId: string, uploadId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/blobs/${encodeURIComponent(uploadId)}/finish`,
+  /** `GET ?leaseEpoch=`: a blob of the task, as bytes. */
+  taskBlob: (taskId: string, blobId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/blobs/${encodeURIComponent(blobId)}`,
 } as const;
 
 /** Headers the HTTP carrier uses (ADR 0034). */
 export const runnerHeaders = {
-  /** The negotiated minor, on every HTTP carrier request. */
+  /**
+   * The negotiated minor, on every HTTP carrier request. Minor 1: also on the spec request, so
+   * core answers in that minor's shape. A request without it is read as minor 0.
+   */
   minor: "x-ostra-minor",
   /** The connection epoch from `welcome`; a newer connection answers `409`. */
   connectionEpoch: "x-ostra-connection-epoch",
 } as const;
 
+/** The minor a runner's HTTP request speaks: its `x-ostra-minor` header, or 0 when it's missing or bad. */
+export const minorFromHeader = (value: string | null | undefined): number => {
+  if (value === null || value === undefined || !/^\d{1,4}$/.test(value)) {
+    return 0;
+  }
+  return Number(value);
+};
+
 /** Any runner endpoint's error body. */
 export const runnerHttpErrorSchema = z.strictObject({
   error: z.strictObject({
-    code: z.enum([...protocolErrorCodeSchema.options, "not-found", "bad-request", "conflict"]),
+    code: z.enum([
+      ...protocolErrorCodeSchema.options,
+      "not-found",
+      "bad-request",
+      "conflict",
+      // Minor 1, the bulk path (ADR 0043):
+      /** A chunk's `offset` isn't the bytes the upload holds: ask the start endpoint where to resume. */
+      "offset-mismatch",
+      /** The finished upload's size or SHA-256 isn't the one it started with. The upload is dropped. */
+      "digest-mismatch",
+      /** Over the blob cap, or a chunk over the chunk cap. */
+      "too-large",
+    ]),
     message: z.string().max(2000),
     currentEpoch: leaseEpochSchema.optional(),
   }),
@@ -161,6 +196,10 @@ export const taskSpecQuerySchema = z.strictObject({
 });
 export type TaskSpecQuery = z.infer<typeof taskSpecQuerySchema>;
 
+/**
+ * The spec at this build's minor. A minor-0 runner reads it with minor 0's schema, so core answers
+ * it with `encodeTaskSpecForMinor` (`taskSpecResponseSchemaFor`, in `task/spec.ts`).
+ */
 export const taskSpecResponseSchema = taskSpecSchema;
 
 /**

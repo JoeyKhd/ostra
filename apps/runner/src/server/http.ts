@@ -25,6 +25,8 @@ export type CallInput<Schema extends z.ZodType> = {
   readonly body?: unknown;
   /** Sent as `Authorization: Bearer <token>`. Never logged. */
   readonly bearer?: string;
+  /** Extra headers, such as the negotiated minor. Never a secret: `bearer` carries the token. */
+  readonly headers?: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 };
@@ -44,7 +46,7 @@ const describeNetworkError = (error: unknown): string => {
 
 /** Calls the server and parses its JSON answer. Never throws. */
 export const callJson = async <Schema extends z.ZodType>(input: CallInput<Schema>): Promise<CallResult<z.infer<Schema>>> => {
-  const headers: Record<string, string> = { "user-agent": userAgent(), accept: "application/json" };
+  const headers: Record<string, string> = { ...input.headers, "user-agent": userAgent(), accept: "application/json" };
   if (input.body !== undefined) {
     headers["content-type"] = "application/json";
   }

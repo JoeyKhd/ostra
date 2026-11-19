@@ -23,8 +23,8 @@ describe("negotiate", () => {
     });
   });
 
-  it("speaks minor 0 with a newer peer at milestone 1, and never goes below 0", () => {
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 0 });
+  it("a server at minor 0 speaks minor 0 with a newer peer, and never goes below 0", () => {
+    expect(negotiate(0, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 0 });
     expect(minorWindow(0)).toEqual({ min: 0, max: 1 });
     expect(negotiate(0, PROTOCOL_MAJOR, -1)).toMatchObject({ ok: false });
   });

@@ -43,6 +43,7 @@ export const commandKindToDb = {
   "approval-answer": "approval_answer",
   drain: "drain",
   "update-hint": "update_hint",
+  release: "release",
 } as const satisfies Record<CommandKind, DbCommandKind>;
 export const commandKindFromDb = {
   dispatch: "dispatch",
@@ -52,6 +53,7 @@ export const commandKindFromDb = {
   approval_answer: "approval-answer",
   drain: "drain",
   update_hint: "update-hint",
+  release: "release",
 } as const satisfies Record<DbCommandKind, CommandKind>;
 
 export const commandResultToDb = {

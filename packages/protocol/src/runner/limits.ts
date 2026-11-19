@@ -68,6 +68,22 @@ export const runnerLimits = {
   longPollMs: 25 * SECOND,
   /** ADR 0035: partial text goes out at most this often per segment. */
   liveTextIntervalMs: 250,
+
+  // ---- milestone 2, protocol minor 1 ----
+  /** ADR 0039, F-096: a box with no turn for this long stops its agent (`OSTRA_BOX_IDLE_MINUTES`). */
+  idleMinutes: 15,
+  /** ADR 0037, F-068: a session's longest life, timed by core (`OSTRA_SESSION_MAX_MINUTES`). */
+  sessionMaxMinutes: 120,
+  /** ADR 0037, F-068: this long with no agent event, and core stops the session (`OSTRA_SESSION_STALL_MINUTES`). */
+  stallMinutes: 10,
+  /** ADR 0043: the largest chunk of one `PUT` on the bulk path. */
+  uploadChunkMaxBytes: 1 * MiB,
+  /** ADR 0043, ADR 0039: the blob cap, and so the session archive's. Over it, the next reopen uses the template. */
+  archiveMaxBytes: 64 * MiB,
+  /** Spec section 11, item 9: the most ticket images copied into one task's workspace. */
+  ticketFilesMax: 20,
+  /** Spec section 11, item 9: the largest ticket image copied into the workspace. */
+  ticketFileMaxBytes: 10 * MiB,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;

@@ -1,4 +1,10 @@
-import { runnerPaths, taskCredentialsResponseSchema, taskSpecResponseSchema } from "@ostra/protocol";
+import {
+  PROTOCOL_MINOR,
+  runnerHeaders,
+  runnerPaths,
+  taskCredentialsResponseSchema,
+  taskSpecResponseSchema,
+} from "@ostra/protocol";
 import type { LeaseEpoch, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
 import { callJson, describeFailure, joinUrl } from "../server/http.ts";
@@ -50,6 +56,9 @@ export const runnerServerLink = (input: {
         method: "GET",
         schema: taskSpecResponseSchema,
         bearer: token.token,
+        // The spec in this build's shape. A minor-0 server ignores the header and sends minor 0's,
+        // which this minor's schema reads, since every minor-1 field is optional.
+        headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
         timeoutMs: 30_000,
       });
       return result.ok ? { ok: true, value: result.value } : { ok: false, failure: failureOf(result.failure) };

@@ -1288,6 +1288,8 @@ enum CommandKind {
   approval_answer
   drain
   update_hint
+  /// Protocol minor 1: remove the box and its workspace (milestone 2).
+  release
 }
 
 enum CommandResult {

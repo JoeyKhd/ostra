@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   approvalIdSchema,
+  blobIdSchema,
   clientMessageIdSchema,
   memberIdSchema,
   modelIdSchema,
@@ -24,6 +25,8 @@ import {
   sessionSeqSchema,
   taskSeqSchema,
 } from "../common.ts";
+import { blobRefSchema } from "../runner/blobs.ts";
+import { runnerLimits } from "../runner/limits.ts";
 import { toolKindSchema } from "./tools.ts";
 
 // ostra's event union (ADR 0018, ADR 0035, ADR 0036): one thing the agent or ostra did in a
@@ -104,15 +107,128 @@ export const RATE_LIMIT_HOLD_DEFAULT_SECONDS = 30;
 /** The largest piece of setup output in one event; longer output is split. */
 export const SETUP_OUTPUT_MAX_CHARS = 16_384;
 
-export const taskEventSchema = z.discriminatedUnion("kind", [
+// ---------- protocol minor 1's vocabularies (milestone 2) ----------
+
+/**
+ * How a reopened session came back (ADR 0039's three steps): the same box (`resumed`), a fresh box
+ * from the session archive and the hidden ref (`restored`), or the rebuild template (`rebuilt`).
+ */
+export const restoreOriginSchema = z.enum(["resumed", "restored", "rebuilt"]);
+export type RestoreOrigin = z.infer<typeof restoreOriginSchema>;
+
+/** What happened to the saved work in progress on a restore (ADR 0039, Q150). */
+export const hiddenRefOutcomeSchema = z.enum([
+  /** The hidden ref was restored, and the branch's newer commits merged in. */
+  "applied",
+  /** There was no hidden ref to restore. */
+  "none",
+  /** Merging the branch's newer commits conflicted: nothing restored, the branch's head checked out. */
+  "conflict",
+]);
+export type HiddenRefOutcome = z.infer<typeof hiddenRefOutcomeSchema>;
+
+/** What became of the box the task ran on before, so the thread can say why it moved. */
+export const previousBoxSchema = z.enum(["kept", "released", "lost"]);
+export type PreviousBox = z.infer<typeof previousBoxSchema>;
+
+/** Why a session crashed (F-047): the agent's process died, or the box itself went away. */
+export const crashCauseSchema = z.enum(["agent_exited", "box_lost"]);
+export type CrashCause = z.infer<typeof crashCauseSchema>;
+
+/** The runaway limits (F-068). Core times the first two; the runner's key proxy enforces the third. */
+export const sessionLimitSchema = z.enum(["max-duration", "stall", "spend-cap"]);
+export type SessionLimit = z.infer<typeof sessionLimitSchema>;
+
+/** A file name inside the ticket folder: one segment, no `..`, no separators. */
+export const ticketFileNameSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^(?!\.{1,2}$)[A-Za-z0-9._ -]+$/, "one file name inside the ticket folder");
+
+/** The workspace folder ticket files are written to; the workspace's git excludes it (spec section 11, item 9). */
+export const TICKET_FILES_DIR = ".ostra/ticket";
+
+/** One repo's state after a turn, in `session.saved`. */
+export const savedRepoSchema = z.strictObject({
+  repoId: repoIdSchema,
+  /** The branch's head after the push, or `null` when nothing was ever committed or the push failed. */
+  headSha: gitShaSchema.nullable(),
+  /** Whether the branch is ahead of its base. */
+  ahead: z.boolean(),
+  /** The commit `refs/ostra/wip/<taskId>` points at, or `null` when the save failed. */
+  hiddenRefSha: gitShaSchema.nullable(),
+});
+export type SavedRepo = z.infer<typeof savedRepoSchema>;
+
+// ---------- the events whose shape changed in minor 1 ----------
+
+const userMessageV0 = z.strictObject({
+  kind: z.literal("user.message"),
+  memberId: memberIdSchema,
+  clientMessageId: clientMessageIdSchema,
+  /** The member's text. Never logged. */
+  text: z.string(),
+  delivery: messageDeliverySchema,
+});
+
+const userMessage = userMessageV0.extend({
+  /** Minor 1: the member's message a lost box never answered, replayed as a new session's first prompt. */
+  replayed: z.literal(true).optional(),
+  /** Minor 1: the message a reopen wrote, for the thread's reopen tag. */
+  reopen: z.literal(true).optional(),
+});
+
+const sessionRestoredV0 = z.strictObject({ kind: z.literal("session.restored") });
+
+const sessionRestored = sessionRestoredV0.extend({
+  /** Minor 1: which of ADR 0039's steps brought the session back. Missing on a minor-0 event. */
+  origin: restoreOriginSchema.optional(),
+  /** Minor 1: how many `session/load` updates were replay, never stored as new events. */
+  replayedUpdates: z.number().int().nonnegative().optional(),
+  /** Minor 1: what became of the saved work in progress. */
+  hiddenRef: hiddenRefOutcomeSchema.optional(),
+  /** Minor 1: what became of the box before this one. */
+  previousBox: previousBoxSchema.optional(),
+});
+
+const sessionCrashedV0 = z.strictObject({ kind: z.literal("session.crashed"), error: z.string().max(4000) });
+
+const sessionCrashed = sessionCrashedV0.extend({
+  /** Minor 1: whether the agent died or the box went away. */
+  cause: crashCauseSchema.optional(),
+});
+
+// ---------- the events new in minor 1 ----------
+
+const sessionSaved = z.strictObject({
+  kind: z.literal("session.saved"),
+  /** The turn this save followed, from 1 within the session. */
+  turnOrdinal: z.number().int().positive(),
+  repos: z.array(savedRepoSchema),
+  /** The uploaded session archive, or `null` when its export or upload failed. That never fails the turn. */
+  archive: blobRefSchema.nullable(),
+});
+
+const sessionLimitReached = z.strictObject({
+  kind: z.literal("session.limit_reached"),
+  limit: sessionLimitSchema,
+  /** What was measured: minutes, micro-USD or tokens. A number, never content. */
+  observed: z.number().nonnegative(),
+});
+
+const ticketFilesReady = z.strictObject({
+  kind: z.literal("ticket.files_ready"),
+  /** Each file written under `TICKET_FILES_DIR`, by its name there and its blob. */
+  files: z
+    .array(z.strictObject({ path: ticketFileNameSchema, blobId: blobIdSchema }))
+    .max(runnerLimits.ticketFilesMax),
+});
+
+// ---------- the events minor 0 and minor 1 share ----------
+
+const sharedEventOptions = [
   // ---- members and turns ----
-  z.strictObject({
-    kind: z.literal("user.message"),
-    memberId: memberIdSchema,
-    clientMessageId: clientMessageIdSchema,
-    text: z.string(),
-    delivery: messageDeliverySchema,
-  }),
   z.strictObject({ kind: z.literal("turn.started"), turnId: turnIdSchema }),
   z.strictObject({ kind: z.literal("turn.ended"), turnId: turnIdSchema, stopReason: stopReasonSchema }),
   z.strictObject({ kind: z.literal("turn.failed"), turnId: turnIdSchema, error: z.string().max(4000) }),
@@ -206,8 +322,6 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("driver.changed"), memberId: memberIdSchema, byMemberId: memberIdSchema }),
   z.strictObject({ kind: z.literal("runner.connected"), runnerId: runnerIdSchema }),
   z.strictObject({ kind: z.literal("runner.lost"), runnerId: runnerIdSchema }),
-  z.strictObject({ kind: z.literal("session.restored") }),
-  z.strictObject({ kind: z.literal("session.crashed"), error: z.string().max(4000) }),
   z.strictObject({
     kind: z.literal("pr.opened"),
     repoId: repoIdSchema,
@@ -278,10 +392,77 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
     contextUsed: tokenCount,
     contextSize: tokenCount,
   }),
+] as const;
+
+/** The event union at the current minor (1). */
+export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessage,
+  sessionRestored,
+  sessionCrashed,
+  sessionSaved,
+  sessionLimitReached,
+  ticketFilesReady,
+  ...sharedEventOptions,
 ]);
+
+/**
+ * Minor 0's event union, kept for the codecs (ADR 0034): a minor-0 peer's events parse with it,
+ * and it refuses minor 1's kinds and fields.
+ */
+export const taskEventSchemaV0 = z.discriminatedUnion("kind", [
+  userMessageV0,
+  sessionRestoredV0,
+  sessionCrashedV0,
+  ...sharedEventOptions,
+]);
+
 export type TaskEvent = z.infer<typeof taskEventSchema>;
 export type TaskEventKind = TaskEvent["kind"];
 export type TaskEventOf<K extends TaskEventKind> = Extract<TaskEvent, { kind: K }>;
+
+/**
+ * The kinds minor 1 added. A sender never makes one for a peer at a lower minor: the runner
+ * checks the negotiated minor before it records one, so its session numbers stay gap-free.
+ */
+export const minor1EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>([
+  "session.saved",
+  "session.limit_reached",
+  "ticket.files_ready",
+]);
+
+/** The lowest minor that carries an event kind. */
+export const eventKindMinMinor = (kind: TaskEventKind): number => (minor1EventKinds.has(kind) ? 1 : 0);
+
+/** Whether a peer at `minor` can read an event of `kind`. */
+export const eventKindSupportedAt = (kind: TaskEventKind, minor: number): boolean =>
+  eventKindMinMinor(kind) <= minor;
+
+/**
+ * An event as a peer at `minor` reads it: below minor 1, the fields minor 1 added are dropped.
+ * A kind the minor lacks is returned as it is, and that peer refuses it: senders check
+ * `eventKindSupportedAt` first.
+ */
+export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
+  if (minor >= 1) {
+    return event;
+  }
+  if (event.kind === "user.message") {
+    return {
+      kind: event.kind,
+      memberId: event.memberId,
+      clientMessageId: event.clientMessageId,
+      text: event.text,
+      delivery: event.delivery,
+    };
+  }
+  if (event.kind === "session.restored") {
+    return { kind: event.kind };
+  }
+  if (event.kind === "session.crashed") {
+    return { kind: event.kind, error: event.error };
+  }
+  return event;
+};
 
 export const taskEventKinds: readonly TaskEventKind[] = taskEventSchema.options.map(
   (option) => option.shape.kind.value,
@@ -360,3 +541,10 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 0's `runnerEventSchema`, for the up codec of a minor-0 peer. */
+export const runnerEventSchemaV0 = runnerEventSchema.extend({
+  event: taskEventSchemaV0.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});

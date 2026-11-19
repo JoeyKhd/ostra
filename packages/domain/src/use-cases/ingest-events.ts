@@ -251,6 +251,11 @@ const applyEffects = async (
       case "environment.setup_output":
       case "environment.setup_finished":
       case "session.usage":
+      // Protocol minor 1: stored for now. Tickets 17 (saved work), 19 (limits) and 26 (ticket files)
+      // give them their reactions.
+      case "session.saved":
+      case "session.limit_reached":
+      case "ticket.files_ready":
         // Stored for the task page; nothing else moves.
         break;
       default:

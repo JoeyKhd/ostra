@@ -5,7 +5,15 @@ import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { issueTaskCredentials } from "@ostra/domain";
 import type { AuditLog, Clock, ServerAdapters } from "@ostra/domain";
-import { RUNNER_PATH_PREFIX, taskCredentialsRequestSchema, taskIdSchema, taskSpecQuerySchema } from "@ostra/protocol";
+import {
+  encodeTaskSpecForMinor,
+  minorFromHeader,
+  RUNNER_PATH_PREFIX,
+  runnerHeaders,
+  taskCredentialsRequestSchema,
+  taskIdSchema,
+  taskSpecQuerySchema,
+} from "@ostra/protocol";
 import type { LeaseEpoch, TaskId } from "@ostra/protocol";
 
 import { bearerToken } from "../gateway/access-token.ts";
@@ -70,8 +78,11 @@ export const handleTaskEndpoint =
         { taskId: taskId.data, runnerId: claims.runnerId, leaseEpoch: query.data.leaseEpoch },
       );
       if (result.ok) {
-        logger.info("task.spec-sent", { leaseEpoch: query.data.leaseEpoch });
-        sendJson(response, 200, result.spec);
+        // A minor-0 runner sends no minor header, and gets minor 0's shape (protocol minor 1).
+        const header = request.headers[runnerHeaders.minor];
+        const minor = minorFromHeader(typeof header === "string" ? header : undefined);
+        logger.info("task.spec-sent", { leaseEpoch: query.data.leaseEpoch, minor });
+        sendJson(response, 200, encodeTaskSpecForMinor(result.spec, minor));
         return true;
       }
       switch (result.error) {

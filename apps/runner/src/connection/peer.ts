@@ -509,6 +509,8 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         return handlers.drain(command);
       case "update-hint":
         return handlers["update-hint"](command);
+      case "release":
+        return handlers.release(command);
       default:
         return command satisfies never;
     }

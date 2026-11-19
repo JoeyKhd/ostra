@@ -15,8 +15,12 @@ import { runnerLimits } from "./limits.ts";
 /** The protocol's major version, in the URL. */
 export const PROTOCOL_MAJOR = 1;
 
-/** This build's minor. Milestone 1 ships minor 0. */
-export const PROTOCOL_MINOR = 0;
+/**
+ * This build's minor. Milestone 1 shipped minor 0. Milestone 2 ships minor 1: sessions across
+ * turns, the bulk path, the `release` command, restores and limits. A minor-0 peer still works
+ * inside the window: it's never sent `release` or the new spec fields, and it sends no new event.
+ */
+export const PROTOCOL_MINOR = 1;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

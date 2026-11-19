@@ -214,6 +214,9 @@ export const deriveTaskState = (
         if (activity.kind === "runner-lost")
           activity = running ? current({ kind: "thinking" }) : { kind: "idle" };
         break;
+      case "session.saved":
+      case "session.limit_reached":
+      case "ticket.files_ready":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

@@ -43,6 +43,7 @@ const commands: { readonly [K in CommandKind]: Extract<Command, { kind: K }> } =
   },
   drain: { ...envelope, seq: 6, kind: "drain", body: {} },
   "update-hint": { ...envelope, seq: 7, kind: "update-hint", body: { version: "0.2.0" } },
+  release: { ...envelope, seq: 8, kind: "release", body: { taskId: ids.task, boxId: ids.box, reason: "prs-closed" } },
 };
 
 const upFrames: { readonly [T in UpFrameType]: Extract<UpFrame, { type: T }> } = {

@@ -19,5 +19,6 @@ export * from "./runner/version.ts";
 export * from "./runner/peer.ts";
 export * from "./runner/commands.ts";
 export * from "./runner/messages.ts";
+export * from "./runner/blobs.ts";
 export * from "./runner/http.ts";
 export * from "./runner/config.ts";

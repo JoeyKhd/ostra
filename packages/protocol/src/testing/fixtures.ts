@@ -1,6 +1,7 @@
 import {
   agentProfileIdSchema,
   approvalIdSchema,
+  blobIdSchema,
   boxIdSchema,
   clientMessageIdSchema,
   commandIdSchema,
@@ -17,10 +18,12 @@ import {
   segmentIdSchema,
   sessionIdSchema,
   taskIdSchema,
+  ticketKeySchema,
   toolCallIdSchema,
   turnIdSchema,
+  uploadIdSchema,
 } from "../ids.ts";
-import type { TaskEventKind, TaskEventOf } from "../events/agent-events.ts";
+import type { TaskEvent, TaskEventKind, TaskEventOf } from "../events/agent-events.ts";
 import { taskCredentialsSchema } from "../task/credentials.ts";
 import type { TaskCredentials } from "../task/credentials.ts";
 import type { TaskSpec } from "../task/spec.ts";
@@ -52,9 +55,23 @@ export const fixtureIds = {
   clientMessage: clientMessageIdSchema.parse("client-msg-1"),
   option: optionIdSchema.parse("allow-once"),
   replica: replicaIdSchema.parse("replica-1"),
+  // Minor 1 (milestone 2).
+  blob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000010"),
+  ticketFileBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000011"),
+  upload: uploadIdSchema.parse("0196f1a0-0000-7000-8000-000000000012"),
+  ticketKey: ticketKeySchema.parse("OST-12"),
+  replayedMessage: clientMessageIdSchema.parse("client-msg-2"),
 } as const;
 
 const ids = fixtureIds;
+
+/** A fake SHA-256 digest and two commits, valid by shape only. */
+export const fixtureDigests = {
+  sha256: "a".repeat(64),
+  headSha: "0123456789abcdef0123456789abcdef01234567",
+  hiddenRefSha: "89abcdef0123456789abcdef0123456789abcdef",
+  baseSha: "fedcba9876543210fedcba9876543210fedcba98",
+} as const;
 
 /** One valid example of every event kind. A missing kind is a type error. */
 export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = {
@@ -162,7 +179,48 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
   },
   "session.usage": { kind: "session.usage", contextUsed: 12_000, contextSize: 200_000 },
   "provider.rate_limited": { kind: "provider.rate_limited", providerId: ids.provider, retryAfterSeconds: 30 },
+  // Minor 1 (milestone 2).
+  "session.saved": {
+    kind: "session.saved",
+    turnOrdinal: 1,
+    repos: [
+      { repoId: ids.repo, headSha: fixtureDigests.headSha, ahead: true, hiddenRefSha: fixtureDigests.hiddenRefSha },
+    ],
+    archive: { blobId: ids.blob, size: 48_213, sha256: fixtureDigests.sha256 },
+  },
+  "session.limit_reached": { kind: "session.limit_reached", limit: "spend-cap", observed: 25_000_000 },
+  "ticket.files_ready": { kind: "ticket.files_ready", files: [{ path: "screenshot-1.png", blobId: ids.ticketFileBlob }] },
 };
+
+/**
+ * Minor 1's optional fields, present: the events whose shape grew in minor 1, with every new
+ * field set. `eventFixtures` holds the same kinds without them, as a minor-0 peer sends them.
+ */
+export const minor1FieldFixtures = {
+  "user.message": {
+    kind: "user.message",
+    memberId: ids.member,
+    clientMessageId: ids.replayedMessage,
+    text: "Also add today's date at the top.",
+    delivery: "immediate",
+    replayed: true,
+    reopen: true,
+  },
+  "session.restored": {
+    kind: "session.restored",
+    origin: "restored",
+    replayedUpdates: 42,
+    hiddenRef: "applied",
+    previousBox: "lost",
+  },
+  "session.crashed": { kind: "session.crashed", error: "the box went away", cause: "box_lost" },
+  "session.saved, nothing saved": {
+    kind: "session.saved",
+    turnOrdinal: 2,
+    repos: [{ repoId: ids.repo, headSha: null, ahead: false, hiddenRefSha: null }],
+    archive: null,
+  },
+} as const satisfies Readonly<Record<string, TaskEvent>>;
 
 /** A full task spec for `ostra-test/test1`. */
 export const taskSpecFixture: TaskSpec = {
@@ -210,6 +268,32 @@ export const taskSpecFixture: TaskSpec = {
   gitIdentity: { name: "ostra-test-app[bot]", email: "5821041+ostra-test-app[bot]@users.noreply.github.com" },
   coAuthors: [{ name: "Admin", email: "admin@example.com" }],
   limits: { turnMaxMinutes: 60 },
+};
+
+/** A ticket task's spec at minor 1, reopened on a fresh box: every minor-1 field set. */
+export const taskSpecMinor1Fixture: TaskSpec = {
+  ...taskSpecFixture,
+  title: "OST-12: Add today's date to the README",
+  prompt: "<ticket>\nAdd today's date to the README\n</ticket>",
+  branchName: "ostra/ost-12-00000004-add-todays-date",
+  leaseEpoch: 2,
+  limits: {
+    turnMaxMinutes: 60,
+    idleMinutes: 15,
+    spendCap: {
+      capMicroUsd: 25_000_000,
+      spentMicroUsd: 1_250_000,
+      prices: { inputPerMTok: 3_000_000, outputPerMTok: 15_000_000, cacheReadPerMTok: 300_000, cacheWritePerMTok: 3_750_000 },
+    },
+  },
+  ticket: { key: ids.ticketKey, title: "Add today's date to the README", url: "https://linear.app/ostra-test/issue/OST-12" },
+  contextFiles: [{ blobId: ids.ticketFileBlob, path: "screenshot-1.png", contentType: "image/png", size: 20_480 }],
+  restore: {
+    origin: "restored",
+    archive: { blobId: ids.blob, size: 48_213, sha256: fixtureDigests.sha256 },
+    hiddenRefs: [{ repoId: ids.repo, sha: fixtureDigests.hiddenRefSha, baseSha: fixtureDigests.baseSha }],
+    pendingMessages: [{ clientMessageId: ids.replayedMessage, text: "Also add today's date at the top." }],
+  },
 };
 
 /** A full set of task credentials. Every value is fake. */

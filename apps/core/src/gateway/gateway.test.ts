@@ -72,8 +72,8 @@ describe("info", () => {
     const info = infoResponseSchema.parse(await response.json());
     expect(info).toEqual({
       protocolMajor: 1,
-      serverMinor: 0,
-      supported: { min: 0, max: 1 },
+      serverMinor: 1,
+      supported: { min: 0, max: 2 },
       serverVersion: "0.0.0",
       panelUrl: "http://localhost:3000",
       deviceClientId: "ostra-runner",
@@ -168,7 +168,7 @@ describe("the WebSocket", () => {
   it("says welcome, marks the runner online and holds its presence", async () => {
     const peer = track(await connect(harness, runner));
     const welcome = await peer.next("welcome");
-    expect(welcome).toMatchObject({ minor: 0, creditFrames: 256, creditBytes: 4 * 1024 * 1024, pingMs: 20_000 });
+    expect(welcome).toMatchObject({ minor: 1, creditFrames: 256, creditBytes: 4 * 1024 * 1024, pingMs: 20_000 });
     const row = await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
     expect(row.state).toBe("online");
     const presence = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId: runner.runnerId } });

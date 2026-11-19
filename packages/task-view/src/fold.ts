@@ -749,6 +749,12 @@ export const foldTaskEvents = (
       case "provider.rate_limited":
         // The server holds new dispatches on the provider; the thread has nothing to show.
         break;
+      case "session.saved":
+      case "session.limit_reached":
+      case "ticket.files_ready":
+        // Protocol minor 1. No row until the milestone 2 task page (ticket 36) designs them: a limit
+        // shows through its needs-you item, saved work and ticket files on the task header.
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":
