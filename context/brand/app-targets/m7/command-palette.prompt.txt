@@ -1,0 +1,38 @@
+# Generation 1 (kept: command-palette.webp, the only one). References: the approved 2048 original of app-targets/m4/search-palette, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode, of "ostra", a self-hosted control panel for coding agents. The FIRST attached reference is this same app's approved search palette over its Home page: keep the page underneath EXACTLY as it is there (sidebar, top bar, "Acme Corp" heading, Needs you rows, Projects table, Recent activity, right panel), DIMMED under a flat black scrim at 55% opacity. Over it, the COMMAND PALETTE is open, now with ACTIONS: this is the subject, fully bright, crisp and legible. Keep the palette's frame, size and style from the reference: 680px wide, centred on the 1440px window, top edge 134px from the top, #131416 fill, 1px #2A2C30 border, radius 12px, no shadow.
+
+THE PALETTE, top to bottom:
+1) QUERY ROW 52px, padding 0 16px: a muted search icon, then the empty input with faint 15px placeholder "Type a command, or search tasks" and a thin off-white caret at its start; far right a key cap "esc".
+2) A hairline. Then GROUPS. Each group has a label row 28px, padding 0 16px, faint 12px weight 500. Each item is a 36px row, padding 0 16px: a 15px grey Lucide icon in a 28px column, the label in bright 14px, then far right its shortcut as key caps. Rows have no hairlines between them inside a group; a hairline separates groups.
+
+GROUP "On this page" (label) — and on its right, faint 12px: "Home":
+ - row SELECTED (#1A1B1E fill, radius 8px, inset 6px from the palette's sides): check icon, "Approve…", then faint 13px "3 waiting"; far right a key cap "a", then a small faint chevron-right icon (it opens a second step).
+ - x icon, "Deny…", faint "3 waiting"; right: key cap "d", faint chevron-right.
+ - message-square-reply icon, "Answer…", faint "1 question"; right: key cap "r", faint chevron-right.
+ - rotate-ccw icon, "Reopen a task…"; right: faint chevron-right only (no key cap).
+GROUP "Actions":
+ - plus icon, "New task"; right: key cap "c".
+ - folder-plus icon, "New project"; no key cap.
+ - sun icon, "Switch to the light theme"; no key cap.
+ - arrow-left-right icon, "Switch organization…"; right: faint chevron-right.
+GROUP "Go to":
+ - hand icon, "Needs you"; right: TWO key caps "g" and "n" with a tiny faint word "then" between them.
+ - house icon, "Home"; right: key cap "g", faint "then", key cap "h".
+ - list-checks icon, "Tasks"; right: key cap "g", faint "then", key cap "t".
+GROUP "Recent tasks":
+ - faint mono "CALC-174" in a 72px column, bright "Keep a history of results", right: 8px teal square + muted "calculator", faint mono "58m".
+ - faint mono "BIL-88", bright "Prorate seat changes", right: 8px violet square + muted "billing-platform", faint mono "2h".
+3) A hairline, then a FOOTER 36px, padding 0 16px, faint 12px hints, each key cap then a word, 14px apart: key caps "↑" "↓" "Move", key cap "↵" "Run", key cap "→" "Next step", key cap "?" "All shortcuts", key cap "esc" "Close". Far right faint 12px: "Signed in as an admin".
+
+No amber inside the palette. Amber appears only on the dimmed page underneath (the Needs you dot, the "5" pill).
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the palette and dialogs, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders and key-cap borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286; errors and failures red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji, no third-party logos.
+
+TYPE: page titles Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, versions, digests, package names, commands, file paths, counts, times and keyboard keys. KEY CAPS: a small rounded rectangle (radius 4px, 1px #2A2C30 border, #0D0E10 fill, 20px tall, min 20px wide) holding one mono 11.5px faint key. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+The attached hinge logo mark (a rounded square split by one diagonal channel) is drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar beside "Acme Corp"; never the word "ostra" as a logo.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's or Raycast's command menu in a dark pro console. Everything aligned on a strict grid, crisp small legible text, every column aligned, every word spelled exactly as written above.

@@ -1,0 +1,32 @@
+# Generation 1 (kept: command-palette-phone.webp, the only one). References: the approved 2048 original of app-targets/m3/phone-approval, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp image of TWO phone-width screens of the same dark web app side by side, each 390x844 CSS pixels at 2x, on a flat #0A0B0C backdrop with wide even gaps, no device frames, no shadows, no perspective (like two browser screenshots at phone width placed side by side). The app is "ostra", a self-hosted control panel for coding agents. The FIRST attached reference is this app's approved pair of phone screens: copy its two-phone layout, backdrop, gaps, phone top bar, bottom-sheet style (grabber, dimmed page behind) and type scale exactly. The palette inside the sheet uses the desktop palette's surface #131416 and density, made for touch.
+
+LEFT SCREEN — the command palette at phone width as a BOTTOM SHEET:
+- Behind it, dimmed under a 55% black scrim: the phone top bar (a hamburger icon, "Home"), the heading "Acme Corp", and the top of the Needs you list.
+- The sheet rises from the bottom edge to 64px under the top: #131416, 1px #2A2C30 top border, top corners radius 14px, a 36x4 grey grabber centred at its top.
+- Query row 52px: search icon, faint 16px placeholder "Type a command, or search tasks", and on the right a teal text button "Cancel".
+- Groups, faint 12px labels, rows 48px tall (touch size), 15px icon then bright 15px label, NO key caps anywhere on the phone:
+  "On this page": "Approve…" faint "3 waiting" with a chevron-right; "Deny…" faint "3 waiting" with a chevron-right; "Answer…" faint "1 question" with a chevron-right; "Reopen a task…" with a chevron-right.
+  "Actions": "New task"; "Switch to the light theme".
+  "Go to": "Needs you"; "Home"; "Tasks".
+- No footer of key hints on the phone.
+
+RIGHT SCREEN — the SECOND STEP of "Reopen a task…", in the same bottom sheet:
+- Same dimmed page and sheet frame, grabber.
+- Query row: a back chevron-left icon, then a chip (24px, radius 5px, 1px #2A2C30 border, #0D0E10 fill, 12.5px) "Reopen", then the bright text "CALC-161" as the chosen task.
+- Under it, padding 16px: faint mono "CALC-161" + muted "calculator", then bright 16px semibold "Persist results across reloads", then muted 13px "Stopped 1h ago by Alex Kim · its worktree is kept".
+- Label faint 12px "Message to the agent", then a text area 120px tall (#0D0E10, 1px #2A2C30 border, radius 8px, padding 12px) holding bright 15px "carry on, and add a test for the empty history".
+- Under it faint 12.5px: "It resumes on the same worktree, from its own session."
+- A full-width primary button 44px, filled off-white #F3F0E8 with dark text "Reopen task" and a corner-down-left icon.
+- Under it, a full-width outline button 44px "Back".
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the palette and dialogs, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders and key-cap borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286; errors and failures red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji, no third-party logos.
+
+TYPE: page titles Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, versions, digests, package names, commands, file paths, counts, times and keyboard keys. KEY CAPS: a small rounded rectangle (radius 4px, 1px #2A2C30 border, #0D0E10 fill, 20px tall, min 20px wide) holding one mono 11.5px faint key. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+The attached hinge logo mark (a rounded square split by one diagonal channel) is drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar beside "Acme Corp"; never the word "ostra" as a logo.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's or Raycast's command menu in a dark pro console. Everything aligned on a strict grid, crisp small legible text, every column aligned, every word spelled exactly as written above.

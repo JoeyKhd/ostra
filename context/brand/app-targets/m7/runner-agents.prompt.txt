@@ -1,0 +1,39 @@
+# Generation 1 (kept: runner-agents.webp, the only one). References: the approved 2048 original of app-targets/m5/runner, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode, of "ostra", a self-hosted control panel for coding agents: ONE RUNNER's page. The FIRST attached image is this same product's approved runner page: copy its sidebar, top bar with "Drain" and "Revoke" outline buttons, title line, lede, hairline key/value status rows, section heads, table style and right properties panel EXACTLY, at the same small, dense scale. This version of the page adds an "Agents" section right under the status rows.
+
+1. SIDEBAR exactly as the first reference, "Runners" selected with "21". Bottom: avatar "AK" "Alex Kim".
+
+2. TOP BAR: breadcrumb "Acme Corp  ›  Runners  ›  build-fleet  ›  build-03" (last part white mono). Right: outline "Drain" (pause-circle icon) and outline "Revoke" (ban icon, red text, grey border).
+
+3. MAIN COLUMN, padding 28px 36px:
+- Title "build-03" + small green dot + muted "online".
+- Muted lede: "A docker runner in build-fleet. 2 of 4 slots busy."
+- Status rows, 40px, hairlines, key column 160px muted, white values:
+  Connection | green dot "Connected 5h 02m"
+  Carrier | mono "WebSocket"
+  Version | mono "v0.6.0" then faint mono "server v0.6.0 · protocol 1.6"
+  Executor | mono "docker"
+  Containment | "Container" then muted "each task in its own box"
+- 28px lower, SECTION HEAD "Agents" (semibold) + faint mono count "2", and on the same line far right faint 12px "Prepares agents when a task needs them". A table with NO box, header row faint 12px: "Agent", "Version", "State", "Image". Rows with hairlines:
+  ROW 1, 40px: white "OpenCode" | mono "2.3.2" | small green dot + white "Ready" | faint "base image " + mono white "sha256:9c41e2a…"
+  ROW 2, taller, three lines: white "Claude Code" | mono "0.108.1" | a small grey loader icon + white "Preparing" | faint mono "building"
+     second line, indented to the Version column, faint 12.5px: "Building the agent image from base " + mono "sha256:9c41e2a" + " · step 4 of 6: npm install, then the SHA-256 check · 1m 12s"
+     third line, same indent, a small faint info icon then faint 12.5px: "Claude Code is downloaded from npm under Anthropic's terms. ostra's images don't include it."
+- 28px lower, SECTION HEAD "Capacity" and two meter rows as the reference: "Slots" meter 50% "2 of 4 busy"; "CPU" meter 27% "4 of 15 vCPU".
+- 28px lower, SECTION HEAD "History", 26px rows, faint mono time in a 120px column then muted sans sentence:
+  "19 Nov 16:12" "Preparing Claude Code 0.108.1 again, by Alex Kim"
+  "19 Nov 16:03" "Claude Code 0.108.1 failed to build: the npm registry didn't answer"
+  "19 Nov 15:58" "A task asked for Claude Code: preparing 0.108.1"
+
+4. RIGHT PROPERTIES PANEL 320px exactly as the reference: "Runner": "Pool" mono "build-fleet"; "Host" mono "build-03.acme.internal"; "System" mono "Linux · x64"; "Last seen" "now". hairline. "Agent images": "Base" mono "sha256:9c41e2a…"; "Built here" "1"; "Prepare" mono "auto". hairline. "Labels": outline mono chips "tier:fast" "region:eu", then faint chips "executor:docker" "os:linux" "arch:x64". hairline. Faint 12.5px: "Draining lets its 2 tasks finish and takes no new ones. Revoking stops them at once."
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the palette and dialogs, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders and key-cap borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286; errors and failures red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji, no third-party logos.
+
+TYPE: page titles Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, versions, digests, package names, commands, file paths, counts, times and keyboard keys. KEY CAPS: a small rounded rectangle (radius 4px, 1px #2A2C30 border, #0D0E10 fill, 20px tall, min 20px wide) holding one mono 11.5px faint key. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+The attached hinge logo mark (a rounded square split by one diagonal channel) is drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar beside "Acme Corp"; never the word "ostra" as a logo.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's or Raycast's command menu in a dark pro console. Everything aligned on a strict grid, crisp small legible text, every column aligned, every word spelled exactly as written above.

@@ -1,0 +1,46 @@
+# Generation 1 (kept: agent-profile-claude-code.webp, the only one). References: the approved 2048 original of app-targets/m3/agent-profile, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode, of "ostra", a self-hosted control panel for coding agents. The FIRST attached image is this same product's approved agent profile editor: copy its sidebar, top bar, heading style, section style (a semibold title line with an inline muted note, hairline rows, no boxes), field style and right properties panel EXACTLY, at the same small, dense scale. This is the same editor with the agent "Claude Code" chosen.
+
+1. SIDEBAR exactly as the first reference, "Agent profiles" selected. Bottom: avatar "AK" "Alex Kim".
+
+2. TOP BAR: breadcrumbs "Acme Corp  ›  Agent profiles  ›  Claude Code" (last part white medium). Right: ONE primary button, filled off-white, "Save profile".
+
+3. MAIN COLUMN, padding 28px 40px, content max 720px:
+- Eyebrow faint mono 12px "Agent profile · saved 2h ago"; title Manrope Bold 24px "Claude Code"; one-line muted 13.5px lede: "Its rules and MCP servers apply to every task, and the repo's own Claude settings are set aside. Its instructions and skills sit beside the repo's."
+- SECTION "Agent and model" (semibold title):
+  * label muted 12px "Agent", then a SEGMENTED CONTROL 32px tall, 300px wide, #131416 with 1px #2A2C30 border, radius 7px, two equal halves: "OpenCode" (muted) and "Claude Code" (SELECTED: #1A1B1E fill, white text, a small check icon before it). Faint 12px under it: "Runs through ostra's ACP driver on your provider's key. No Claude subscription is used."
+  * then one row of two fields 12px apart, labels muted 12px above: "Name" an input 220px showing "Claude Code" in sans; "Model" a select (flex) showing "Claude Sonnet 5.5" in sans white, then faint "Anthropic", then chevron-down.
+  * under the Model field, faint 12px with a tiny info icon: "Only providers in Anthropic's Messages format are listed. Set apart: OpenRouter and Local vLLM, which are OpenAI-compatible."
+- SECTION "What Claude Code does here" + inline muted note "as the agent suite proved it on 0.108.1". Rows 34px with hairlines: a 15px grey check icon, a white 14px name in a 170px column, a muted 13px description:
+  "Steering" | "Your messages reach the turn that's running."
+  "Plan first" | "The first turn runs in its plan mode; its to-do list shows as the plan."
+  "Approvals" | "Claude Code and the runner both check the rules. A denied call goes back to the agent."
+  "Questions" | "It asks as a form you answer in the panel."
+  "Reopening" | "It resumes its own session, in place or on a fresh box."
+  "Skills and MCP" | "Skills from its own config folder; MCP servers over HTTP and stdio."
+  "Memory" | "ostra's memory tools. Its own auto memory is off."
+  and ONE DIFFERENT LAST ROW, its icon a grey minus-circle (not red): "Repo config" | muted "The repo's " + mono ".claude/settings.json" + muted " and " + mono ".mcp.json" + muted " are set aside for each task, so this profile wins."
+- SECTION "Options": one row, left white 14px "Strip pre-release API features", under it muted 13px "For a gateway that refuses Anthropic's beta headers. Claude Code then sends only stable features."; on the far right a toggle SWITCH, OFF (#2A2C30 track, grey knob).
+- SECTION "Instructions" + inline muted note "written to CLAUDE.md in the task's own config folder, beside the repo's": an editor box (#131416, 1px #2A2C30, radius 8px) with mono 12.5px "Run npm test before you open a pull request." and a second line "Never edit files under vendor/."
+
+4. RIGHT PROPERTIES PANEL 340px, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels, 30px key/value rows, hairlines between groups, no boxes:
+- "Profile": "Status" green dot "Active"; "Created" "19 Nov by Alex Kim"; "Used by" "3 tasks".
+- "Plan first" label with a toggle switch OFF on its right; faint help "The first turn only reads and proposes a plan. The driver approves it before anything changes."
+- "Ready on" label, then 30px rows: mono white runner name, faint mono executor, then the state on the right:
+   "alex-mbp" "host" | green dot "Ready"
+   "build-fleet" "docker" | muted "4 of 5 ready"
+   "k8s-autoscale" "kubernetes" | small grey spinner icon + muted "Preparing"
+   "mac-minis" "host" | faint "On first task"
+  faint 12px help: "A runner without Claude Code prepares it when a task first needs it."
+- "Who may use it": radio "Everyone" (selected), radio "Only these members".
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the palette and dialogs, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders and key-cap borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286; errors and failures red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji, no third-party logos.
+
+TYPE: page titles Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, versions, digests, package names, commands, file paths, counts, times and keyboard keys. KEY CAPS: a small rounded rectangle (radius 4px, 1px #2A2C30 border, #0D0E10 fill, 20px tall, min 20px wide) holding one mono 11.5px faint key. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+The attached hinge logo mark (a rounded square split by one diagonal channel) is drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar beside "Acme Corp"; never the word "ostra" as a logo.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's or Raycast's command menu in a dark pro console. Everything aligned on a strict grid, crisp small legible text, every column aligned, every word spelled exactly as written above.

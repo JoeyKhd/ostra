@@ -1,0 +1,39 @@
+# Generation 1 (kept: shortcut-sheet.webp, the only one). References: the approved 2048 original of app-targets/m4/search-palette, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode, of "ostra", a self-hosted control panel for coding agents. The FIRST attached reference is this same app's approved search palette over its Home page: keep the page underneath EXACTLY as it is there (sidebar, top bar, "Acme Corp" heading, Needs you rows, Projects table, Recent activity, right panel), DIMMED under a flat black scrim at 55% opacity. Over it, instead of the palette, the KEYBOARD SHORTCUTS SHEET is open (opened by pressing "?"): this is the subject, fully bright, crisp and legible. Same dialog style as the reference's palette: #131416 fill, 1px #2A2C30 border, radius 12px, no shadow; 760px wide, centred on the 1440px window, top edge 120px from the top.
+
+THE SHEET, top to bottom:
+1) HEADER ROW 52px, padding 0 20px, a hairline under it: bright 15px semibold "Keyboard shortcuts"; far right a key cap "esc" then faint 12px "Close".
+2) BODY, padding 16px 20px, TWO COLUMNS 340px each with a 40px gap. Each scope has a faint 12px weight-500 label, then 34px rows separated by hairlines: the action in bright 14px on the left, its keys as key caps on the right. A SEQUENCE is two key caps with a tiny faint 11px word "then" between them. A chord is two key caps side by side with no word.
+
+LEFT COLUMN, label "Anywhere":
+ - "Open the command palette" | key caps "⌘" "K"
+ - "Search tasks" | key cap "/"
+ - "New task" | key cap "c"
+ - "Go to Needs you" | key cap "g", faint "then", key cap "n"
+ - "Go to Home" | key cap "g", faint "then", key cap "h"
+ - "Go to Tasks" | key cap "g", faint "then", key cap "t"
+ - "Show these shortcuts" | key cap "?"
+
+RIGHT COLUMN, label "On a needs-you item" (and after it faint 12px "focused in a list"):
+ - "Approve" | key cap "a"
+ - "Deny" | key cap "d"
+ - "Reply or answer" | key cap "r"
+then 20px lower, label "On a task":
+ - "Reopen" | key cap "o"
+ - "Take over" | key cap "t"
+ - "Stop" + faint 12.5px " asks to confirm" | key cap "s"
+
+3) A hairline, then a FOOTER 44px, padding 0 20px: on the left a small faint info icon and faint 12.5px "Shortcuts don't fire while you type in a field or the composer."; on the right teal 13px "Every action is in the command palette" followed by key caps "⌘" "K".
+
+No amber inside the sheet. Amber appears only on the dimmed page underneath.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the palette and dialogs, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders and key-cap borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286; errors and failures red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji, no third-party logos.
+
+TYPE: page titles Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, versions, digests, package names, commands, file paths, counts, times and keyboard keys. KEY CAPS: a small rounded rectangle (radius 4px, 1px #2A2C30 border, #0D0E10 fill, 20px tall, min 20px wide) holding one mono 11.5px faint key. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+The attached hinge logo mark (a rounded square split by one diagonal channel) is drawn small (20px) in off-white #F3F0E8 at the top-left of the sidebar beside "Acme Corp"; never the word "ostra" as a logo.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's or Raycast's command menu in a dark pro console. Everything aligned on a strict grid, crisp small legible text, every column aligned, every word spelled exactly as written above.
