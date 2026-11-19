@@ -24,3 +24,4 @@ Two Apache-2.0 packages, each with one class that extends `NotificationAdapter`,
 - [x] Committed as `✨ add panel and tracker notifications`.
 
 ## Comments
+- 2026-11-19, adapters: done in `✨ add panel and tracker notifications` (6a56a35). `PanelNotificationAdapter` (`panel`, `edits`) writes through the `PanelNotificationRows` port with an in-memory implementation; `TrackerNotificationAdapter` (`tracker`, `edits`) posts one comment per key through any `TrackerAdapter` with `comment` and `updateComment` (Linear fake and the Jira fake), edits it on `update`, mentions only the recipients that have a mention, and builds its text with a pure renderer that puts the task title in quotes and never takes agent output. Both pass the notification contract suite. Re-checked 2026-11-19: typecheck, lint and test green; break-it checks on the tracker (the idempotent post removed, a mention made for a recipient without one) each fail their tests.
