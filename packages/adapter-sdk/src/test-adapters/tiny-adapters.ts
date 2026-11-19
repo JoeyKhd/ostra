@@ -44,6 +44,8 @@ import type {
   Reaction,
   HostRepo,
   Installation,
+  InstallationAccount,
+  InstallationRepo,
   OpenPullRequestInput,
   PullRequest,
   PullRequestDetails,
@@ -341,7 +343,12 @@ export type MemoryHostWorld = {
     readonly client: CodeHostOAuthClient;
     readonly users: readonly { readonly code: string; readonly user: LinkedUser }[];
   };
+  /** Milestone 4 (F-136): installations on other accounts than the owner's, such as a stranger's. */
+  readonly otherInstallations?: readonly Installation[];
 };
+
+/** The tiny host's own installation's account: the App's owner (F-136). */
+const TINY_OWNER = { login: "test-org", accountId: "5001" } as const;
 
 /** The memory host's limits when the world names none: GitHub's. */
 const DEFAULT_COMPARE_LIMITS = { maxFiles: 300, maxPatchBytes: 1024 * 1024 } as const;
@@ -372,6 +379,7 @@ export class TinyCodeHost extends CodeHostAdapter {
     prComments: true,
     userLink: true,
     reviews: true,
+    installableByOtherAccounts: true,
   };
   /** Milestone 4, for tests: the PRs' reviews, the check runs and branch protection. */
   readonly reviewsAndChecks = new FakeReviewsAndChecks();
@@ -379,6 +387,10 @@ export class TinyCodeHost extends CodeHostAdapter {
   readonly #prs: TinyPullRequest[] = [];
   readonly #refs = new Map<string, Set<string>>();
   readonly #reactions = new Set<string>();
+  /** Milestone 4 (F-136): installations the App was removed from. */
+  readonly #removedInstallations = new Set<string>();
+  /** Milestone 4, for tests: how many times `removeInstallation` reached the host. */
+  installationRemovals = 0;
   /** Milestone 3, for tests: the user tokens a sign-in got, and how many were revoked (F-119). */
   readonly userTokens = { issued: 0, revoked: 0 };
   /** Milestone 3, for tests: the next revocation fails, as a host that's down would. */
@@ -415,7 +427,7 @@ export class TinyCodeHost extends CodeHostAdapter {
       return adapterError("unauthorized", "the App's credentials were refused");
     }
     const repo = this.#world.repos.find((candidate) => candidate.fullName === access.repo);
-    return repo !== undefined && access.installationId === this.#world.installationId
+    return repo !== undefined && access.installationId === this.#world.installationId && !this.#removedInstallations.has(access.installationId)
       ? ok(repo)
       : adapterError("not-found", "no such repo in the installation");
   }
@@ -425,10 +437,13 @@ export class TinyCodeHost extends CodeHostAdapter {
   }
 
   appManifest(input: AppManifestInput): AppManifest {
+    const isPublic = input.public === true;
     return {
       manifest: {
         name: input.name,
-        url: input.homepageUrl,
+        // A public App's page is the project's, not the install's address (F-136).
+        url: isPublic ? "https://code-host.invalid/ostra" : input.homepageUrl,
+        public: isPublic,
         hook_attributes: { url: input.webhookUrl },
         redirect_url: input.redirectUrl,
         default_permissions: { contents: "write", pull_requests: "write", checks: "write", actions: "read" },
@@ -452,6 +467,7 @@ export class TinyCodeHost extends CodeHostAdapter {
         name: this.#world.app.name,
         permissions: { contents: "write", pull_requests: "write", checks: "write", actions: "read" },
         events: ["pull_request"],
+        owner: { ...TINY_OWNER },
       }),
     );
   }
@@ -460,20 +476,34 @@ export class TinyCodeHost extends CodeHostAdapter {
     if (!this.#authorized(app)) {
       return Promise.resolve(adapterError("unauthorized", "the App's credentials were refused"));
     }
-    return Promise.resolve(
-      ok([
-        {
-          installationId: this.#world.installationId,
-          accountLogin: "test-org",
-          accountKind: "organization",
-          repositorySelection: "selected",
-        },
-      ]),
-    );
+    const all: Installation[] = [
+      {
+        installationId: this.#world.installationId,
+        accountLogin: TINY_OWNER.login,
+        accountId: TINY_OWNER.accountId,
+        accountKind: "organization",
+        repositorySelection: "selected",
+      },
+      ...(this.#world.otherInstallations ?? []),
+    ];
+    return Promise.resolve(ok(all.filter((installation) => !this.#removedInstallations.has(installation.installationId))));
+  }
+
+  override removeInstallation(app: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<void>> {
+    if (!this.#authorized(app)) {
+      return Promise.resolve(adapterError("unauthorized", "the App's credentials were refused"));
+    }
+    this.installationRemovals += 1;
+    const known = installationId === this.#world.installationId || (this.#world.otherInstallations ?? []).some((item) => item.installationId === installationId);
+    if (!known || this.#removedInstallations.has(installationId)) {
+      return Promise.resolve(adapterError("not-found", "no such installation"));
+    }
+    this.#removedInstallations.add(installationId);
+    return Promise.resolve(ok(undefined));
   }
 
   listRepos(app: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<readonly HostRepo[]>> {
-    if (!this.#authorized(app) || installationId !== this.#world.installationId) {
+    if (!this.#authorized(app) || installationId !== this.#world.installationId || this.#removedInstallations.has(installationId)) {
       return Promise.resolve(adapterError("unauthorized", "the App's credentials were refused"));
     }
     return Promise.resolve(
@@ -605,7 +635,15 @@ export class TinyCodeHost extends CodeHostAdapter {
 
   override parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
     const event = input.headers["x-github-event"] ?? "unknown";
-    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push" && event !== "pull_request_review") {
+    if (
+      event !== "pull_request" &&
+      event !== "issue_comment" &&
+      event !== "pull_request_review_comment" &&
+      event !== "push" &&
+      event !== "pull_request_review" &&
+      event !== "installation" &&
+      event !== "installation_repositories"
+    ) {
       return ok({ kind: "other", event });
     }
     let body: unknown;
@@ -616,6 +654,9 @@ export class TinyCodeHost extends CodeHostAdapter {
     }
     if (event === "pull_request_review") {
       return parseReview(body);
+    }
+    if (event === "installation" || event === "installation_repositories") {
+      return parseInstallationEvent(event, body);
     }
     if (event !== "pull_request") {
       return parseCommentOrPush(event, body);
@@ -1406,3 +1447,48 @@ export class TinySecretStore extends SecretStoreAdapter {
     return ok(undefined);
   }
 }
+
+// ---------- milestone 4 (F-136): the installation webhooks, in GitHub's shape, read loosely ----------
+
+const installationAccountSchema = z.looseObject({ id: z.number(), login: z.string(), type: z.string().optional() });
+const installationRepoSchema = z.looseObject({ id: z.number(), full_name: z.string() });
+const installationEventSchema = z.looseObject({
+  action: z.string(),
+  installation: z.looseObject({ id: z.number(), account: installationAccountSchema }),
+  repositories_added: z.array(installationRepoSchema).optional(),
+  repositories_removed: z.array(installationRepoSchema).optional(),
+});
+
+const installationReposOf = (list: readonly z.infer<typeof installationRepoSchema>[] | undefined): InstallationRepo[] | null => {
+  const read: InstallationRepo[] = [];
+  for (const item of list ?? []) {
+    const fullName = repoFullNameSchema.safeParse(item.full_name);
+    if (!fullName.success) {
+      return null;
+    }
+    read.push({ hostRepoId: String(item.id), fullName: fullName.data });
+  }
+  return read;
+};
+
+const parseInstallationEvent = (event: "installation" | "installation_repositories", body: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = installationEventSchema.safeParse(body);
+  if (!parsed.success) {
+    return adapterError("invalid-response", `the ${event} event couldn't be read`);
+  }
+  const { action, installation } = parsed.data;
+  const account: InstallationAccount = {
+    accountId: String(installation.account.id),
+    login: installation.account.login,
+    kind: installation.account.type === "Organization" ? "organization" : "user",
+  };
+  if (event === "installation") {
+    return ok({ kind: "installation", action, installationId: String(installation.id), account });
+  }
+  const added = installationReposOf(parsed.data.repositories_added);
+  const removed = installationReposOf(parsed.data.repositories_removed);
+  if (added === null || removed === null) {
+    return adapterError("invalid-response", "the installation_repositories event names a repo that couldn't be read");
+  }
+  return ok({ kind: "installation_repositories", action, installationId: String(installation.id), account, reposAdded: added, reposRemoved: removed });
+};

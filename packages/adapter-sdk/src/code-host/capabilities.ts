@@ -26,4 +26,10 @@ export type CodeHostCapabilities = {
   // ---- milestone 4 (F-104, ADR 0040) ----
   /** `listReviews` and the `pull_request_review` webhook. Check runs are `checkRuns`. */
   readonly reviews: boolean;
+  // ---- milestone 4 (F-136, ADR 0065) ----
+  /**
+   * Accounts other than the App's owner can install it (a public App), `removeInstallation`
+   * uninstalls one, and the webhooks carry `installation` and `installation_repositories`.
+   */
+  readonly installableByOtherAccounts: boolean;
 };

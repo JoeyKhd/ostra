@@ -79,6 +79,10 @@ export const githubWebhookHandler =
       // Milestone 4 (F-104): the independent-review check reads reviews (ticket 18).
       return { outcome: "ignored", reason: "reviews aren't read here yet" };
     }
+    if (event.kind === "installation" || event.kind === "installation_repositories") {
+      // Milestone 4 (F-136): installations on other accounts are linked by ticket 49.
+      return { outcome: "ignored", reason: "installations aren't read here yet" };
+    }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.event.slice(0, 64)})` };
     }

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  AppManifest,
+  AppOwner,
   BranchRules,
   CheckRunInput,
   CodeHostAdapter,
+  CodeHostWebhookEvent,
   CodeHostAppCredentials,
   CodeHostOAuthClient,
   CommentRef,
@@ -95,7 +98,35 @@ export type CodeHostFixture = {
     readonly dismissed: { readonly input: WebhookInput; readonly number: number; readonly reviewId: string };
     readonly synchronize: { readonly input: WebhookInput; readonly number: number; readonly headSha: string };
   };
+  // ---- milestone 4 (ticket 47, F-136): installations on other accounts ----
+  /** Reads the host's manifest format: whether it makes a public App, and the App's homepage. Absent: skipped. */
+  readonly manifestVisibility?: (manifest: AppManifest["manifest"]) => { readonly public: boolean; readonly homepage: string };
+  /** The App's owner, and an installation on another account than the owner's (a stranger's). Absent: skipped. */
+  readonly installations?: {
+    readonly owner: AppOwner;
+    readonly stranger: { readonly installationId: string; readonly accountLogin: string; readonly accountId: string };
+  };
+  /** An installation the suite may remove, one the host never had, and how many removals reached the host. Absent: skipped. */
+  readonly removal?: { readonly installationId: string; readonly unknownInstallationId: string; readonly calls: () => number };
+  /**
+   * Signed `installation` (created, deleted, suspend, unsuspend) and `installation_repositories`
+   * (added, removed) webhooks, each with what it must read as. Absent: skipped.
+   */
+  readonly installationWebhooks?: readonly { readonly input: WebhookInput; readonly expected: InstallationEvent }[];
 };
+
+/** Milestone 4 (F-136): the two installation webhooks, as the suite expects them read. */
+export type InstallationEvent = Extract<CodeHostWebhookEvent, { readonly kind: "installation" | "installation_repositories" }>;
+
+/** Every action the suite needs an installation webhook for, as `<kind>:<action>`. */
+export const installationWebhookActions = [
+  "installation:created",
+  "installation:deleted",
+  "installation:suspend",
+  "installation:unsuspend",
+  "installation_repositories:added",
+  "installation_repositories:removed",
+] as const;
 
 /** Milestone 4: a check run as the fake host holds it, for the suite to read back. */
 export type CheckRunView = CheckRunInput & { readonly checkRunId: string };
@@ -128,6 +159,7 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       prComments: "boolean",
       userLink: "boolean",
       reviews: "boolean",
+      installableByOtherAccounts: "boolean",
     });
 
     it("builds a manifest that points the App's webhooks at the given address", () => {
@@ -521,6 +553,86 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
         ok: true,
         value: { kind: "pull_request", action: "synchronize", number: hooks.synchronize.number, headSha: hooks.synchronize.headSha },
       });
+    });
+
+    // ---- milestone 4 (ticket 47, F-136, ADR 0065): a public App, and installations on other accounts ----
+
+    it("F-136: makes a private App by default and a public one when asked, and a public App's homepage isn't the install's address", (context) => {
+      const { adapter, fixture } = subject();
+      const read = fixture.manifestVisibility;
+      if (read === undefined) {
+        context.skip();
+        return;
+      }
+      const input = {
+        name: "ostra-contract",
+        homepageUrl: "https://ostra.acme.example",
+        webhookUrl: "https://ostra.acme.example/hooks/abc",
+        redirectUrl: "https://ostra.acme.example/setup/github/callback",
+        ownerLogin: null,
+      };
+      expect(read(adapter.appManifest(input).manifest)).toEqual({ public: false, homepage: input.homepageUrl });
+      expect(read(adapter.appManifest({ ...input, public: false }).manifest)).toEqual({ public: false, homepage: input.homepageUrl });
+      if (!adapter.capabilities.installableByOtherAccounts) {
+        return;
+      }
+      const shown = read(adapter.appManifest({ ...input, public: true }).manifest);
+      expect(shown.public).toBe(true);
+      expect(shown.homepage).toMatch(/^https:\/\//);
+      expect(shown.homepage).not.toContain("acme.example");
+    });
+
+    it("F-136: reads the App's owner, and each installation's account ID beside its login, a stranger's included", async (context) => {
+      const { adapter, fixture } = subject();
+      const known = fixture.installations;
+      if (known === undefined) {
+        context.skip();
+        return;
+      }
+      expect(await adapter.readApp(fixture.app)).toMatchObject({ ok: true, value: { owner: known.owner } });
+      const listed = await adapter.listInstallations(fixture.app);
+      if (!listed.ok) throw new Error(listed.error.message);
+      expect(listed.value.every((installation) => (installation.accountId ?? "").length > 0)).toBe(true);
+      expect(listed.value).toContainEqual(expect.objectContaining({ installationId: fixture.installationId, accountLogin: known.owner.login, accountId: known.owner.accountId }));
+      expect(listed.value).toContainEqual(expect.objectContaining(known.stranger));
+    });
+
+    it("F-136: removes an installation with one call, and an unknown one, or one already removed, is not-found", async (context) => {
+      const { adapter, fixture } = subject();
+      const removal = fixture.removal;
+      if (!adapter.capabilities.installableByOtherAccounts) {
+        expect(await adapter.removeInstallation(fixture.app, removal?.installationId ?? "1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      if (removal === undefined) {
+        context.skip();
+        return;
+      }
+      const before = removal.calls();
+      expect(await adapter.removeInstallation(fixture.app, removal.installationId)).toEqual({ ok: true, value: undefined });
+      expect(removal.calls()).toBe(before + 1);
+      const listed = await adapter.listInstallations(fixture.app);
+      expect(listed.ok && listed.value.map((installation) => installation.installationId)).not.toContain(removal.installationId);
+      expect(await adapter.removeInstallation(fixture.app, removal.installationId)).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await adapter.removeInstallation(fixture.app, removal.unknownInstallationId)).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect((await adapter.removeInstallation(fixture.wrongApp, removal.unknownInstallationId)).ok).toBe(false);
+    });
+
+    it("F-136: reads the installation and installation_repositories webhooks, each with its installation and account", (context) => {
+      const { adapter, fixture } = subject();
+      const hooks = fixture.installationWebhooks;
+      if (!adapter.capabilities.installableByOtherAccounts || hooks === undefined) {
+        context.skip();
+        return;
+      }
+      const covered = new Set(hooks.map(({ expected }) => `${expected.kind}:${expected.action}`));
+      for (const action of installationWebhookActions) {
+        expect(covered, `a webhook for ${action}`).toContain(action);
+      }
+      for (const { input, expected } of hooks) {
+        expect(adapter.verifyWebhook(input), `${expected.kind}:${expected.action}`).toBe(true);
+        expect(adapter.parseWebhook(input), `${expected.kind}:${expected.action}`).toEqual({ ok: true, value: expected });
+      }
     });
 
     it("verifies a webhook's signature and refuses a tampered body", () => {

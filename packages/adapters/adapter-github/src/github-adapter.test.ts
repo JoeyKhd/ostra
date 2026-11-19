@@ -1147,6 +1147,7 @@ describe("the GitHub adapter", () => {
         userLink: true,
         // Milestone 4 (ticket 08).
         reviews: true,
+        installableByOtherAccounts: false,
       });
     });
   });

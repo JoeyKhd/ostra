@@ -230,6 +230,8 @@ export class GitHubAdapter extends CodeHostAdapter {
       userLink: true,
       // Milestone 4 (ticket 08): `listReviews`, the `pull_request_review` webhook, and check runs.
       reviews: true,
+      // Milestone 4 (ticket 47): a public App, its installation events and removing one.
+      installableByOtherAccounts: false,
     };
   }
 

@@ -28,6 +28,13 @@ export type AppManifestInput = {
   readonly redirectUrl: string;
   /** The account the App is created on: an organization's login, or `null` for the admin's own. */
   readonly ownerLogin: string | null;
+  /**
+   * Milestone 4 (F-136, ADR 0065): whether accounts other than the owner may install the App.
+   * Absent is `false`, the default, since a host may not let a public App become private again
+   * once another account installed it. A public App's homepage is ostra's project page, so its
+   * public page doesn't name the install's address; a private App's stays `homepageUrl`.
+   */
+  readonly public?: boolean;
 };
 
 export type AppManifest = {
@@ -56,13 +63,44 @@ export type AppInfo = {
   readonly events: readonly string[];
   /** The App's OAuth client ID, for the verified link (F-119); absent when the host does not say. */
   readonly clientId?: string;
+  /**
+   * Milestone 4 (F-136): the account that owns the App. Absent when the host doesn't say (or an
+   * adapter from before milestone 4): optional, so the contract only grows.
+   */
+  readonly owner?: AppOwner;
+};
+
+/** The account that owns an App (F-136): a private App installs only there. */
+export type AppOwner = {
+  readonly login: string;
+  /** The host's own ID of the account, which survives a rename. */
+  readonly accountId: string;
+};
+
+/** The account an installation is on (F-136): the App's owner's own, or another account's. */
+export type InstallationAccount = {
+  /** The host's own ID of the account, which survives a rename. */
+  readonly accountId: string;
+  readonly login: string;
+  readonly kind: "organization" | "user";
 };
 
 export type Installation = {
   readonly installationId: string;
   readonly accountLogin: string;
+  /**
+   * Milestone 4 (F-136): the account's ID beside its login, which survives a rename. Absent when the
+   * host doesn't say (or an adapter from before milestone 4): optional, so the contract only grows.
+   */
+  readonly accountId?: string;
   readonly accountKind: "organization" | "user";
   readonly repositorySelection: "all" | "selected";
+};
+
+/** A repo an `installation_repositories` webhook names as added or removed (F-136). */
+export type InstallationRepo = {
+  readonly hostRepoId: string;
+  readonly fullName: RepoFullName;
 };
 
 /** A repo as the host lists it. */
@@ -229,6 +267,25 @@ export type CodeHostWebhookEvent =
       /** The PR's head when the review was sent, so a review of an older head is told apart. */
       readonly headSha: string;
       readonly review: PullRequestReview;
+    }
+    // ---- milestone 4 (F-136, ADR 0065): installations on the App's own account and on others' ----
+  /** The App installed on an account, removed from it, suspended or unsuspended. */
+  | {
+      readonly kind: "installation";
+      /** `created`, `deleted`, `suspend`, `unsuspend`, or another the host adds (`new_permissions_accepted`). */
+      readonly action: string;
+      readonly installationId: string;
+      readonly account: InstallationAccount;
+    }
+  /** Repos added to an installation, or removed from it. */
+  | {
+      readonly kind: "installation_repositories";
+      /** `added`, `removed`. */
+      readonly action: string;
+      readonly installationId: string;
+      readonly account: InstallationAccount;
+      readonly reposAdded: readonly InstallationRepo[];
+      readonly reposRemoved: readonly InstallationRepo[];
     }
   /** Every other event: recorded and not acted on. */
   | { readonly kind: "other"; readonly event: string };
@@ -522,5 +579,14 @@ export abstract class CodeHostAdapter {
   updateCheckRun(access: RepoAccess, checkRunId: string, input: CheckRunInput): Promise<AdapterResult<void>> {
     this.plumbing.logger.debug("updateCheckRun is not supported", { repo: access.repo, idLength: checkRunId.length, status: input.status });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't update a check run`));
+  }
+
+  /**
+   * Uninstalls the App from an installation's account, as the App (F-136, ADR 0065). An unknown
+   * installation is `not-found`. Needs the capability `installableByOtherAccounts`.
+   */
+  removeInstallation(app: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("removeInstallation is not supported", { appId: app.appId, installationId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't remove an installation`));
   }
 }

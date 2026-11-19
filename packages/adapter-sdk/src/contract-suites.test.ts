@@ -136,6 +136,31 @@ const synchronizeBody = JSON.stringify({
   pull_request: { number: 3, state: "open", merged: false, updated_at: "2026-11-19T10:05:00Z", head: { ref: "ostra/contract", sha: "5".repeat(40) } },
 });
 
+// Milestone 4 (ticket 47, F-136): a stranger's installation, in GitHub's shape.
+const strangerAccount = { login: "stranger-co", id: 9_100, node_id: "O_stranger", type: "Organization", site_admin: false };
+const installationBody = (action: string, id: number, account: Readonly<Record<string, unknown>>) =>
+  JSON.stringify({
+    action,
+    installation: { id, account, repository_selection: "selected", app_id: 1, target_type: "Organization", suspended_at: action === "suspend" ? "2026-11-19T10:00:00Z" : null },
+    repositories: [{ id: 3001, node_id: "R_3001", name: "app", full_name: "stranger-co/app", private: true }],
+    requester: null,
+    sender: { login: "stranger-admin", id: 9_101, type: "User" },
+  });
+const installationReposBody = (action: "added" | "removed", id: number, account: Readonly<Record<string, unknown>>) => {
+  const repos = [{ id: 3002, node_id: "R_3002", name: "api", full_name: "stranger-co/api", private: true }];
+  return JSON.stringify({
+    action,
+    installation: { id, account, repository_selection: "selected" },
+    repository_selection: "selected",
+    repositories_added: action === "added" ? repos : [],
+    repositories_removed: action === "removed" ? repos : [],
+    requester: null,
+    sender: { login: "stranger-admin", id: 9_101, type: "User" },
+  });
+};
+const strangerRead = { accountId: "9100", login: "stranger-co", kind: "organization" } as const;
+const strangerRepo = { hostRepoId: "3002", fullName: repoFullNameSchema.parse("stranger-co/api") };
+
 const signed = (event: string, body: string) => ({
   headers: { "x-hub-signature-256": signWebhook("hook-secret", body), "x-github-event": event },
   body,
@@ -183,6 +208,10 @@ defineCodeHostContractSuite({
       // Small limits, so the suite can see them applied.
       compareLimits: { maxFiles: 2, maxPatchBytes: 1024 },
       oauth: { client: oauthClient, users: [{ code: "sign-in-code", user: linkedUser }] },
+      otherInstallations: [
+        { installationId: "91", accountLogin: "stranger-co", accountId: "9100", accountKind: "organization", repositorySelection: "selected" },
+        { installationId: "92", accountLogin: "another-co", accountId: "9200", accountKind: "organization", repositorySelection: "all" },
+      ],
     });
     // Milestone 4: a PR with reviews: a changes request later dismissed, a bot's comment and an approval.
     const reviewed = await host.openPullRequest({
@@ -277,6 +306,26 @@ defineCodeHostContractSuite({
           dismissed: { input: signed("pull_request_review", reviewBody("dismissed", 6002, "dismissed")), number: 3, reviewId: "6002" },
           synchronize: { input: signed("pull_request", synchronizeBody), number: 3, headSha: "5".repeat(40) },
         },
+        manifestVisibility: (manifest) => ({ public: manifest["public"] === true, homepage: String(manifest["url"]) }),
+        installations: {
+          owner: { login: "test-org", accountId: "5001" },
+          stranger: { installationId: "91", accountLogin: "stranger-co", accountId: "9100" },
+        },
+        removal: { installationId: "92", unknownInstallationId: "404404", calls: () => host.installationRemovals },
+        installationWebhooks: [
+          ...(["created", "deleted", "suspend", "unsuspend"] as const).map((action) => ({
+            input: signed("installation", installationBody(action, 91, strangerAccount)),
+            expected: { kind: "installation" as const, action, installationId: "91", account: strangerRead },
+          })),
+          {
+            input: signed("installation_repositories", installationReposBody("added", 91, strangerAccount)),
+            expected: { kind: "installation_repositories" as const, action: "added", installationId: "91", account: strangerRead, reposAdded: [strangerRepo], reposRemoved: [] },
+          },
+          {
+            input: signed("installation_repositories", installationReposBody("removed", 91, strangerAccount)),
+            expected: { kind: "installation_repositories" as const, action: "removed", installationId: "91", account: strangerRead, reposAdded: [], reposRemoved: [strangerRepo] },
+          },
+        ],
       },
     };
   },
