@@ -185,6 +185,17 @@ describe("a member's answer", () => {
     expect(results.filter((result) => !result.ok)).toMatchObject([{ ok: false, error: "already-answered", message: "Someone answered this first" }]);
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "approval.answered" } })).toBe(1);
     expect(await test.db.auditEntry.count({ where: { action: "approval.answered", entityId: approvalId } })).toBe(1);
+    // The audit entry names the member whose answer won, and that answer's decision.
+    const winner = results[0].ok ? { member: fixture.a.member, decision: "allow_once" } : { member: fixture.a.insider, decision: "deny" };
+    expect(await test.db.approval.findUniqueOrThrow({ where: { id: approvalId } })).toMatchObject({ answeredByMemberId: winner.member.id, decision: winner.decision });
+    expect(await test.db.auditEntry.findFirstOrThrow({ where: { action: "approval.answered", entityId: approvalId } })).toMatchObject({
+      organizationId: fixture.a.organization.id,
+      projectId: fixture.a.openProject.id,
+      actorKind: "member",
+      actorId: winner.member.id,
+      entity: "approval",
+      data: { decision: winner.decision },
+    });
     expect((await commandsOf(task.taskId)).filter((command) => command.kind === "approval_answer")).toHaveLength(1);
     const item = await test.db.needsYouItem.findFirstOrThrow({ where: { approvalId } });
     expect(item.state).toBe("answered");
