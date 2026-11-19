@@ -1,0 +1,52 @@
+# Generation 1 (kept: runner-approval.webp, the only one). References: app-targets/m3/needs-you.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Needs you" page of ostra, a self-hosted control panel for coding agents, seen by an organization admin: a new runner (a machine that runs agent tasks) has joined a pool and waits for the admin to approve it. The FIRST attached image is the approved Needs you page of this product: copy its sidebar, top bar, title, lede, tabs, grey group bands, 40px hairline rows, aligned columns and outline buttons EXACTLY, at the same small dense scale. The only change in structure: the right properties panel is wider (380px) and holds the approval for the selected row. Copy every label exactly as written below.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR as described at the end ("Needs you" is the selected row).
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  Needs you" ("Needs you" white). Right: one outline button with a check-check icon: "Mark all as read".
+
+3) MAIN COLUMN, padding 28px 36px:
+- title "Needs you" (Manrope Bold 26px)
+- muted line: "What waits on you across your projects. 4 unread."
+- underline tabs: "Open" with faint mono "6" (selected, white with a white underline), and "Done" (muted). A hairline under the tabs.
+- The list, grouped. Each group starts with a 30px grey band (#131416 fill, 6px radius) holding the group name semibold and a faint mono count. Rows 40px with hairlines, one column grid for every row: a 6px off-white unread dot (or nothing) | mono faint key 80px | title | reason (muted, 230px) | mono faint age | a 26px outline button 104px wide.
+  Group band with a small grey server icon instead of a colour square: "Runners" and "2".
+    Row (SELECTED: the whole row has background #1A1B1E): unread dot | "build-01" | white medium "build-01 wants to join build-fleet" | "Runner approval" | "4m" | button "Review"
+    Row: no dot | "gpu-01" | muted "gpu-01 joined Default" | "Joined, no approval needed" | "1h" | button "Open runner"
+  Group band with a teal square: "calculator" and "2".
+    Row: unread dot | "CALC-150" | "Export history as CSV" | "Question: keep the old CSV header?" | "12m" | button "Answer"
+    Row: no dot | "CALC-139" | muted "Cache parsed expressions" | "Setup failed: " then mono "pnpm install" | "1h" | button "Open task"
+  Group band with a violet square: "billing-platform" and "1".
+    Row: unread dot | "BIL-88" | "Prorate seat changes" | "Plan ready for review" | "11m" | button "Review plan"
+  Group band with an orange square: "web-storefront" and "1".
+    Row: unread dot | "WEB-311" | "Fix cart badge count" | "Draft PR #2213 ready" | "18m" | button "Review PR"
+
+4) RIGHT PROPERTIES PANEL, 380px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px. It holds the runner approval, drawn as ONE block with a 2px amber #FFB224 left rule and 12px left padding (no box, no fill):
+- title line: a small amber hand icon and amber semibold text "Needs you · runner approval"
+- then a row: a hollow grey ring icon, mono semibold white 15px "build-01", faint "joining"
+- secondary text, two lines: "Wants to join build-fleet. It gets no task until an admin approves it."
+- key/value rows 30px, key secondary in a 100px column, value white:
+  Host | mono "build-01.acme.internal"
+  System | mono "Linux · x64"
+  Executor | mono "docker"
+  Labels | one small grey outline chip in mono "tier:fast"
+  Version | mono "v0.5.0" then faint "current"
+  Token | mono "ci-bootstrap" then faint "by Alex Kim"
+  Joined | mono "19 Nov 09:12" then faint "4 min ago"
+  Key | mono "SHA256:Xb4N…2kQe"
+  Connection | small green dot and "connected"
+- two buttons 30px tall, 8px apart: an outline button "Reject" and a filled amber button "Approve" (#FFB224 fill, dark #0C1D21 semibold text)
+- faint small footnote, two lines: "Any admin of Acme Corp can answer. Rejecting revokes its key, and the join stays in the audit log."
+Amber appears ONLY on: the sidebar "Needs you" pill, the small amber dots next to projects in the sidebar, the panel block's left rule and title, and the one "Approve" button.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs, code boxes and group bands #131416 with a 1px #2A2C30 border and 7px radius; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; green #4FB286 only for the small "online"/"connected" status dots; teal #6FB8AA only for inline links; red #E5675C only where written below; meter bars: a track #1F2023 with a flat fill in pale mist #CFD8D4; primary button filled off-white #F3F0E8 with dark text #0C1D21; outline buttons #131416 fill, 1px #2A2C30 border, white text, 30px tall, 7px radius. Amber #FFB224 means "needs you" and appears ONLY where written below. No gradients, no glow, no purple, no blue UI, no shadows, no illustrations, no emoji.
+
+FONTS: page title in Manrope Bold 26px. UI text IBM Plex Sans 14px (section titles semibold, table headers 12px faint). IBM Plex Mono for runner names, versions, numbers, tokens, fingerprints, labels like tier:fast, host names and times. Icons are thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SIDEBAR (exactly like the first reference's sidebar, 234px, #0A0B0C, a 1px #1F2023 line on its right): the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small off-white square "+" button beside it. Rows 28px with icons: "Home"; "Needs you" (hand icon) with a small amber pill "4"; "My tasks" with a faint "7". Small faint label "Projects": "calculator" (tiny teal square), "billing-platform" (violet square), "web-storefront" (orange square), "mobile-app" (blue square), "data-pipeline" (pink square), "··· 13 more". Small faint label "Organization": "Runners" (server icon) with a faint count "21", "Box sizes" (box icon), "Registry" (package icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub", "Linear", "Members", "Spend", "Audit log", "Settings". The "Needs you" row is SELECTED, background #1A1B1E, white text. Small amber dots sit at the right of "calculator", "billing-platform" and "web-storefront". At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word and number spelled exactly as written. Render at the exact scale and density of the FIRST attached screenshot.

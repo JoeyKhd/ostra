@@ -1,0 +1,57 @@
+# Generation 1 (kept: runner.webp, the only one). References: app-targets/m1/runners.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is ONE RUNNER's page in ostra, a self-hosted control panel for coding agents: a runner is a machine that runs agent tasks in boxes. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense type, hairline rows, few boxes. The FIRST attached image is the approved Runners page; this page is what opens when you click one runner row there. Copy every label exactly as written below.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR as described at the end ("Runners" is the selected row).
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  Runners  >  build-fleet  >  build-03" (the last part white medium mono, the rest muted). Right: two outline buttons side by side: "Drain" (with a small pause-circle icon) and "Revoke" (with a small ban icon, its text red #E5675C). No filled button.
+
+3) MAIN PAGE COLUMN, padding 28px top, 36px left:
+- Page title "build-03" (Manrope Bold 26px), and on the same line after it a small green dot and the word "online" in secondary text.
+- A muted lede, one line: "A docker runner in build-fleet. 3 of 4 slots busy, on HTTP since 14:02."
+- 24px lower, NO box: key/value rows 40px tall split by 1px hairlines, key column 160px in secondary grey, value in white:
+  Connection  |  small green dot, "Connected 2h 14m"
+  Carrier  |  mono "HTTP", then secondary text "WebSocket was refused at 14:02, so it fell back. It tries WebSocket again every 10 min."
+  Version  |  mono "v0.4.2", then a small grey outline chip "outdated", then faint mono "server v0.5.0 · protocol 1.3 of 1.4"
+  Executor  |  mono "docker"
+  Containment  |  "Container" then faint "each task in its own box"
+  Install  |  "Runner image"
+- Directly under the Version row's block, a fix line with a 2px #2A2C30 grey left rule (no box, no fill), secondary text, two lines: "One minor behind the server: it runs tasks, but gets no resume command and doesn't enforce box sizes. It came from the runner image, so it doesn't update itself: run the v0.5.0 image and restart it." followed by a teal link "How to update".
+- 28px lower, section head "Capacity" (semibold). Three rows, 34px each, a key column 160px, then a meter 220px wide and 6px tall (track #1F2023, mist fill #CFD8D4), then mono numbers:
+  Slots  | meter 75% | "3 of 4 busy"
+  CPU  | meter 53% | "8 of 15 vCPU"
+  Memory  | meter 53% | "16 of 30 GiB"
+  then faint small text: "What it offers after keeping 1 vCPU and 2 GiB for itself."
+- 28px lower, section head "Boxes" and a faint mono count "3". A table with NO box, header row with faint small labels: "Task", "Project", "Size", "Running". Rows 40px with hairlines:
+  mono "CALC-212" then white "Retry failed uploads" | teal square "calculator" | mono "small · 2 vCPU · 4 GiB" | mono "14m"
+  mono "BIL-91" then white "Prorate seat changes" | violet square "billing-platform" | mono "medium · 4 vCPU · 8 GiB" | mono "38m"
+  mono "WEB-318" then white "Fix cart badge count" | orange square "web-storefront" | mono "small · 2 vCPU · 4 GiB" | mono "1h 05m"
+- 28px lower, section head "History". Three faint small lines, 26px apart, mono dates on the left:
+  "17 Nov 16:40   Resumed by Alex Kim"
+  "17 Nov 15:02   Drained by Alex Kim"
+  "12 Nov 14:20   Approved by Alex Kim"
+
+4) RIGHT PROPERTIES PANEL, 320px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px. No boxes. Key/value rows 30px, key secondary in a 110px column, value white:
+- small faint group label "Runner"
+  Pool | "build-fleet"
+  Host | mono "build-03.acme.internal"
+  System | mono "Linux · x64"
+  Last seen | "now"
+- a hairline, small faint group label "Labels", then a row of small grey outline chips in mono: "tier:fast", "region:eu", and fainter chips "executor:docker", "os:linux", "arch:x64"
+- a hairline, small faint group label "Joined"
+  Token | mono "ci-bootstrap"
+  Joined | mono "12 Nov 14:08"
+  Approved by | "Alex Kim · 12 Nov"
+  Key | mono "SHA256:q7Hc…9fLm"
+- a hairline, then faint small text: "Draining lets its 3 tasks finish and takes no new ones. Revoking stops them at once."
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs, code boxes and group bands #131416 with a 1px #2A2C30 border and 7px radius; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; green #4FB286 only for the small "online"/"connected" status dots; teal #6FB8AA only for inline links; red #E5675C only where written below; meter bars: a track #1F2023 with a flat fill in pale mist #CFD8D4; primary button filled off-white #F3F0E8 with dark text #0C1D21; outline buttons #131416 fill, 1px #2A2C30 border, white text, 30px tall, 7px radius. Amber #FFB224 means "needs you" and appears ONLY where written below. No gradients, no glow, no purple, no blue UI, no shadows, no illustrations, no emoji.
+
+FONTS: page title in Manrope Bold 26px. UI text IBM Plex Sans 14px (section titles semibold, table headers 12px faint). IBM Plex Mono for runner names, versions, numbers, tokens, fingerprints, labels like tier:fast, host names and times. Icons are thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SIDEBAR (exactly like the first reference's sidebar, 234px, #0A0B0C, a 1px #1F2023 line on its right): the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small off-white square "+" button beside it. Rows 28px with icons: "Home"; "Needs you" (hand icon) with a small amber pill "2"; "My tasks" with a faint "7". Small faint label "Projects": "calculator" (tiny teal square), "billing-platform" (violet square), "web-storefront" (orange square), "mobile-app" (blue square), "data-pipeline" (pink square), "··· 13 more". Small faint label "Organization": "Runners" (server icon) with a faint count "21", "Box sizes" (box icon), "Registry" (package icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub", "Linear", "Members", "Spend", "Audit log", "Settings". The "Runners" row is SELECTED, background #1A1B1E, white text. At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word and number spelled exactly as written. Render at the exact scale and density of the FIRST attached screenshot.

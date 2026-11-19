@@ -1,0 +1,42 @@
+# Generation 1 (kept: box-sizes.webp, the only one). References: app-targets/m2/storage-settings.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Box sizes" page of ostra's organization settings, a self-hosted control panel for coding agents: the three named sizes (CPU and memory) a task's box can get. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense type, hairline rows, few boxes. The FIRST attached image is the approved Storage settings page: copy its layout, title, lede, section title lines, 40px hairline rows and right properties panel at the same scale. Copy every label exactly as written below.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR as described at the end ("Box sizes" is the selected row).
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  Box sizes" ("Box sizes" white medium). Right: the one primary off-white button "Save sizes".
+
+3) MAIN PAGE COLUMN, padding 28px top, 36px left, content max 760px wide, left-aligned:
+- Page title "Box sizes" (Manrope Bold 26px).
+- A muted lede, two lines: "The CPU and memory a task's box gets on docker and kubernetes runners, enforced as limits. Every task gets its project's default size."
+- 28px lower, section title "Sizes" (semibold) and a faint mono count "3". A table with NO box: header row 30px with faint small labels "Size", "vCPU", "Memory", "Default for", "Boxes now". Body rows 48px split by 1px hairlines:
+  Row 1: mono white "small" | a small input 72px wide, 34px tall (#131416 fill, #2A2C30 border, 7px radius) holding mono "2" | an input holding mono "4" followed by faint "GiB" | secondary text "calculator, web-storefront, +13" | a 6px mist bar 120px long, fully filled, then mono "14"
+  Row 2: mono white "medium" | input "4" | input "8" then faint "GiB" | secondary text "billing-platform, mobile-app, data-pipeline" | a mist bar filled to about one third, then mono "5"
+  Row 3: mono white "large" | input "8" | input "32" with a brighter #B4B7BB border (it was just edited) then faint "GiB" and faint small "was 16" | faint "No project" | an empty track, then mono "0"
+- Under the table, 12px lower, one secondary line with a small faint circle-alert icon: "No runner offers 32 GiB yet: the most is 30 GiB, on build-01. A task on large would wait."
+- 24px lower, a note with a 2px #2A2C30 grey left rule and 12px left padding (no box, no fill), secondary text, two lines: "host runners count slots only. A task there gets no CPU or memory limit, so its size is shown but not enforced."
+- 16px lower, faint small text: "A change applies to boxes made after it. Changes are recorded in the audit log."
+
+4) RIGHT PROPERTIES PANEL, 320px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no boxes. Key/value rows 30px, key secondary in a 130px column, value white:
+- small faint group label "Where sizes apply"
+  docker | "Limits on each box"
+  kubernetes | "Requests and limits"
+  host | faint "Slots only"
+- a hairline, small faint group label "Runners"
+  Enforce sizes | mono "18"
+  Slots only | mono "3"
+  then faint small text, two lines: "2 host runners, and build-03, which is one minor behind." with "build-03" as a teal link
+- a hairline, small faint group label "Bounds"
+  Smallest | mono "0.5 vCPU · 1 GiB"
+- a hairline, small faint group label "Last change", then secondary text: "Large set to 8 vCPU · 16 GiB by Alex Kim, 12 Nov"
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs, code boxes and group bands #131416 with a 1px #2A2C30 border and 7px radius; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; green #4FB286 only for the small "online"/"connected" status dots; teal #6FB8AA only for inline links; red #E5675C only where written below; meter bars: a track #1F2023 with a flat fill in pale mist #CFD8D4; primary button filled off-white #F3F0E8 with dark text #0C1D21; outline buttons #131416 fill, 1px #2A2C30 border, white text, 30px tall, 7px radius. Amber #FFB224 means "needs you" and appears ONLY where written below. No gradients, no glow, no purple, no blue UI, no shadows, no illustrations, no emoji.
+
+FONTS: page title in Manrope Bold 26px. UI text IBM Plex Sans 14px (section titles semibold, table headers 12px faint). IBM Plex Mono for runner names, versions, numbers, tokens, fingerprints, labels like tier:fast, host names and times. Icons are thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SIDEBAR (exactly like the first reference's sidebar, 234px, #0A0B0C, a 1px #1F2023 line on its right): the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small off-white square "+" button beside it. Rows 28px with icons: "Home"; "Needs you" (hand icon) with a small amber pill "2"; "My tasks" with a faint "7". Small faint label "Projects": "calculator" (tiny teal square), "billing-platform" (violet square), "web-storefront" (orange square), "mobile-app" (blue square), "data-pipeline" (pink square), "··· 13 more". Small faint label "Organization": "Runners" (server icon) with a faint count "21", "Box sizes" (box icon), "Registry" (package icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub", "Linear", "Members", "Spend", "Audit log", "Settings". The "Box sizes" row is SELECTED, background #1A1B1E, white text. At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word and number spelled exactly as written. Render at the exact scale and density of the FIRST attached screenshot.
