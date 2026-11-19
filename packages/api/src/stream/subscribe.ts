@@ -161,6 +161,22 @@ export async function* openStream(ctx: OpenContext, input: StreamInput, signal: 
 
     // ---- the live tail ----
     const visibleProjects = new Map<ProjectId, boolean>();
+    /** Which of the organization's projects the member can open now. */
+    const sightOf = async (): Promise<ReadonlyMap<ProjectId, boolean>> => {
+      const rows = await db.project.findMany({ where: { organizationId: scope.organizationId }, select: { id: true, access: true } });
+      return new Map(
+        rows.map((row) => {
+          const id = projectIdSchema.parse(row.id);
+          return [id, requireProjectAccess(scope, { id, organizationId: scope.organizationId, access: row.access }, "read").ok] as const;
+        }),
+      );
+    };
+    let sight = await sightOf();
+    /**
+     * Projects the member could open and no longer can (F-087): their next notice still reaches the
+     * member, once, so the panel drops the project at once. It names only a project they could see.
+     */
+    const lost = new Set<ProjectId>();
     const canSee = async (projectId: ProjectId): Promise<boolean> => {
       const known = visibleProjects.get(projectId);
       if (known !== undefined) {
@@ -202,6 +218,11 @@ export async function* openStream(ctx: OpenContext, input: StreamInput, signal: 
         }
         scope = member.scope;
         visibleProjects.clear();
+        const before = sight;
+        sight = await sightOf();
+        for (const [projectId, could] of before) {
+          if (could && sight.get(projectId) !== true) lost.add(projectId);
+        }
         if (taskProjectId !== null) {
           await loadProjectAccess(db, scope, taskProjectId, "read").catch(() => {
             throw new TRPCError({ code: "FORBIDDEN", message: "You may no longer open this task" });
@@ -251,6 +272,9 @@ export async function* openStream(ctx: OpenContext, input: StreamInput, signal: 
             }
             const visible = notice.projectId === null ? true : await canSee(notice.projectId);
             if (!visible) {
+              if (notice.projectId !== null && notice.entity === "project" && lost.delete(notice.projectId)) {
+                yield { type: "change", entity: notice.entity, entityId: notice.entityId, projectId: notice.projectId } satisfies StreamMessage;
+              }
               continue;
             }
             yield { type: "change", entity: notice.entity, entityId: notice.entityId, projectId: notice.projectId } satisfies StreamMessage;

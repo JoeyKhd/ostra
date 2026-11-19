@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { loadEmailConfig, loadEmailRow, lockingSettingNames, sendTestMail, viewEmail } from "../services/email.ts";
-import { instanceAdminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
+import { instanceAdminProcedure, memberProcedure, publicProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-115 (ticket 37; ADR 0050): the install's email. `status` is for every member (the panel says
 // "Mail is off on this install" from it); the rest is the instance admin's. A key or a password is
@@ -31,6 +31,13 @@ const saveInput = z.discriminatedUnion("provider", [
 ]);
 
 export const emailRouter = router({
+  /**
+   * Whether the install sends account mail, for the pages before sign-in (F-002, ticket 32): the
+   * sign-in page's "Forgot your password?", `/reset` and `/reset/new`. One boolean, nothing of the
+   * settings behind it.
+   */
+  on: publicProcedure.output(z.object({ on: z.boolean() })).query(async ({ ctx }) => ({ on: await ctx.deps.emailOn() })),
+
   /** Whether the install sends mail: the panel's "Mail is off on this install" comes from it. For any member. */
   status: memberProcedure.query(async ({ ctx }) => {
     const row = await loadEmailRow(ctx.deps.db);

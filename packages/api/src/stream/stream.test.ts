@@ -379,3 +379,25 @@ describe("two web processes on one database (ADR 0035)", () => {
     }
   });
 });
+
+describe("a project restricted under a member", () => {
+  it("F-087: reaches the member once as a change to that project, so the panel drops it at once, and nothing of it after", async () => {
+    const { a } = harness.fixture;
+    const project = await harness.test.db.project.create({ data: { organizationId: a.organization.id, name: "soon-restricted", slug: `soon-restricted-${randomUUID().slice(0, 6)}`, access: "open" } });
+    const member = watch(await harness.contextOf(a.member), {});
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const ids = () => member.seen.flatMap((entry) => (entry.message.type === "change" ? [entry.message.entityId] : []));
+
+    await harness.test.db.project.update({ where: { id: project.id }, data: { access: "restricted" } });
+    await harness.test.db.changeNotice.create({ data: { organizationId: a.organization.id, projectId: project.id, entity: "project", entityId: project.id } });
+    await member.waitFor(() => ids().includes(project.id));
+
+    // After that one notice the project is out of sight: neither its tasks nor its next change reach them.
+    await harness.test.db.changeNotice.create({ data: { organizationId: a.organization.id, projectId: project.id, entity: "task", entityId: "hidden-task" } });
+    await harness.test.db.changeNotice.create({ data: { organizationId: a.organization.id, projectId: project.id, entity: "project", entityId: project.id } });
+    await harness.test.db.changeNotice.create({ data: { organizationId: a.organization.id, projectId: null, entity: "organization", entityId: "after" } });
+    await member.waitFor(() => ids().includes("after"));
+    expect(ids()).toEqual([project.id, "after"]);
+    await member.stop();
+  });
+});

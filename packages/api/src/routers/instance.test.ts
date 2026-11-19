@@ -62,6 +62,7 @@ describe("the instance admin role", () => {
     const someone = userIdSchema.parse(harness.fixture.a.member.userId);
     const calls: Record<string, (caller: AppCaller) => Promise<unknown>> = {
       "instance.accounts.search": (c) => c.instance.accounts.search({ query: "" }),
+      "instance.admins": (c) => c.instance.admins(),
       "instance.grantAdmin": (c) => c.instance.grantAdmin({ userId: someone }),
       "instance.revokeAdmin": (c) => c.instance.revokeAdmin({ userId: someone }),
       "instance.saveRetention": (c) => c.instance.saveRetention({ days: 30 }),

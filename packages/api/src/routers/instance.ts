@@ -105,6 +105,24 @@ export const instanceRouter = router({
       }),
   }),
 
+  /**
+   * The install's instance admins (instance admin only, F-003, ticket 33): the Accounts page's
+   * "Instance admins" section, by name, each with when it got the role.
+   */
+  admins: instanceAdminProcedure
+    .output(z.array(z.object({ userId: userIdSchema, name: z.string(), email: z.string(), since: z.number().int() })))
+    .query(async ({ ctx }) => {
+      const { db } = ctx.deps;
+      const rows = await db.user.findMany({ where: { role: "admin" }, orderBy: [{ name: "asc" }, { id: "asc" }], select: { id: true, name: true, email: true, createdAt: true } });
+      const grants = await db.auditEntry.groupBy({
+        by: ["entityId"],
+        where: { action: "instance.admin-granted", entity: "user", entityId: { in: rows.map((row) => row.id) } },
+        _max: { createdAt: true },
+      });
+      const grantedAt = new Map(grants.map((row) => [row.entityId, row._max.createdAt] as const));
+      return rows.map((row) => ({ userId: userIdSchema.parse(row.id), name: row.name, email: row.email, since: (grantedAt.get(row.id) ?? row.createdAt).getTime() }));
+    }),
+
   /** Makes an account an instance admin (instance admin only). Audited. */
   grantAdmin: instanceAdminProcedure
     .input(z.strictObject({ userId: userIdSchema }))

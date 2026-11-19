@@ -67,7 +67,15 @@ export const hashResetToken = (token: string): string => createHash("sha256").up
 /** Where better-auth's reset callback puts the link for the instance admin who asked for it. */
 export type ResetLinkSink = { readonly createdBy: UserId; link: { readonly url: string; readonly token: string } | null };
 
-const sinks = new AsyncLocalStorage<ResetLinkSink>();
+/**
+ * One store for the whole process. Next bundles each route on its own, so this module can load more
+ * than once, while the auth instance (cached on `globalThis` by the panel's deps) keeps the copy that
+ * made it: a store per copy would leave the tRPC route's sink invisible to the auth's mail callback.
+ */
+declare global {
+  var ostraResetLinkSinks: AsyncLocalStorage<ResetLinkSink> | undefined;
+}
+const sinks = (globalThis.ostraResetLinkSinks ??= new AsyncLocalStorage<ResetLinkSink>());
 
 /** The sink of the request that runs now, if an instance admin's "Create reset link" opened one. */
 export const currentResetLinkSink = (): ResetLinkSink | undefined => sinks.getStore();

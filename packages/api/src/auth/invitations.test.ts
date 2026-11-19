@@ -343,7 +343,7 @@ describe("a reset link", () => {
 
     const created = await admin.accounts.createResetLink({ userId: target.userId });
     expect(created.expiresAt - Date.now()).toBeGreaterThan(24 * 60 * 60 * 1000 - 60_000);
-    const token = new URL(created.link).pathname.split("/").at(-1) ?? "";
+    const token = new URL(created.link).searchParams.get("token") ?? "";
     expect(token).not.toBe("");
     expect(await harness.test.db.resetLinkGrant.findUniqueOrThrow({ where: { tokenHash: hashResetToken(token) } })).toMatchObject({
       kind: "admin_link",
@@ -367,7 +367,7 @@ describe("a reset link", () => {
 
     // And within 24 hours: a link a day and a minute old is refused.
     const later = await admin.accounts.createResetLink({ userId: target.userId });
-    const laterToken = new URL(later.link).pathname.split("/").at(-1) ?? "";
+    const laterToken = new URL(later.link).searchParams.get("token") ?? "";
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + DAY + 60_000 });
     expect(await call("POST", "/reset-password", { token: laterToken, newPassword: "yet-another-passphrase-2" })).toMatchObject({ status: 400, body: { code: "INVALID_TOKEN" } });
   });
@@ -416,7 +416,7 @@ describe("what never reaches a log line or a job", () => {
     const invited = await inviteOf(who.email);
     await signUp({ ...who, invitationId: invited.invitationId });
     const reset = await admin.accounts.createResetLink({ userId: harness.fixture.a.member.userId });
-    const token = new URL(reset.link).pathname.split("/").at(-1) ?? "";
+    const token = new URL(reset.link).searchParams.get("token") ?? "";
     const logged = JSON.stringify(harness.logs);
     const queued = JSON.stringify(harness.fakes.jobs.jobs);
     for (const value of [invited.link, reset.link, token, who.email]) {
