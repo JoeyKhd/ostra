@@ -47,8 +47,8 @@ export type FakeResendApi = {
   restrictedKey: boolean;
   /** With it on, `POST /emails` answers 403 for a `from` on a domain that isn't verified (`resend.dev` always sends). */
   enforceDomains: boolean;
-  /** The next call, whatever it is, answers this status and error name (an outage, a refused key). */
-  readonly failNext: (status: number, name: string) => void;
+  /** The call after `skip` more calls (default none) answers this status and error name, once. */
+  readonly failNext: (status: number, name: string, skip?: number) => void;
   readonly close: () => Promise<void>;
 };
 
@@ -101,7 +101,7 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string; re
   const refuse = new Set<string>();
   let rateLimit: number | null = null;
   let calls = 0;
-  let fault: { readonly status: number; readonly name: string } | null = null;
+  let fault: { readonly status: number; readonly name: string; skip: number } | null = null;
   const domains: { name: string; status: ResendDomainStatus }[] = (options.domains ?? ["example.com"]).map((name) => ({ name, status: "verified" }));
   const controls = { restrictedKey: false, enforceDomains: false };
   const stored = new Map<string, ResendReceived>();
@@ -120,7 +120,9 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string; re
         resendError(response, 401, "missing_api_key", "API key is invalid");
         return;
       }
-      if (fault !== null) {
+      if (fault !== null && fault.skip > 0) {
+        fault.skip -= 1;
+      } else if (fault !== null) {
         const { status, name } = fault;
         fault = null;
         resendError(response, status, name, "The fake was told to fail this call.");
@@ -232,8 +234,8 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string; re
     set enforceDomains(value: boolean) {
       controls.enforceDomains = value;
     },
-    failNext: (status, name) => {
-      fault = { status, name };
+    failNext: (status, name, skip = 0) => {
+      fault = { status, name, skip };
     },
     close: () =>
       new Promise((resolve) => {

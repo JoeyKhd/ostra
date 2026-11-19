@@ -106,6 +106,11 @@ describe("the fake Resend API", () => {
     api.failNext(503, "application_error");
     expect((await post(api, email)).status).toBe(503);
     expect((await post(api, email)).status).toBe(200);
+    // Or a later call: the second one from now.
+    api.failNext(429, "rate_limit_exceeded", 1);
+    expect((await post(api, email)).status).toBe(200);
+    expect((await post(api, email)).status).toBe(429);
+    expect((await post(api, email)).status).toBe(200);
   });
 });
 
