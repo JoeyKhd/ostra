@@ -50,8 +50,15 @@ const dispatchOf = (boxId: string) => {
   return dispatch;
 };
 
-const waitFor = async (ready: () => boolean | Promise<boolean>): Promise<void> => {
-  for (let attempt = 0; attempt < 100 && !(await ready()); attempt += 1) {
+// Until the condition holds. It used to give up after 2 s and carry on as if it held: on a busy
+// machine the box's containers came later, `exitAll` missed them, and the case hung on a sidecar
+// that never exited. Now a condition that never holds fails here, and says so.
+const waitFor = async (ready: () => boolean | Promise<boolean>, timeoutMs = 20_000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await ready())) {
+    if (Date.now() > deadline) {
+      throw new Error(`the condition didn't hold within ${String(timeoutMs)} ms`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 };
