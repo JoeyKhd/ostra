@@ -1,0 +1,70 @@
+name: Docs
+
+# The docs site (apps/docs, ADR 0063): built as a static export and published to GitHub Pages.
+# By hand (`gh workflow run Docs`) and on each published release; never on push, and never in
+# ci.yml (the maintainer's CI scope, 2026-11-19). ci.yml only typechecks and lints apps/docs.
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Publish to GitHub Pages (off: build and check only)"
+        type: boolean
+        default: true
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# One publish at a time; a newer run waits rather than cancelling one that is deploying.
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The version chip falls back to the newest tag.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The docs carry the version they describe: the release's tag, when a release started the run.
+      - run: pnpm --filter @ostra/docs build
+        env:
+          OSTRA_DOCS_VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+
+      # The checked build (F-058): every route is a file, the search index is in the export, and the
+      # configuration reference lists every setting of docs/configuration.md.
+      - run: pnpm --filter @ostra/docs check:export
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: apps/docs/out
+
+  deploy:
+    needs: build
+    if: github.event_name == 'release' || inputs.deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "fumadocs-mdx:collections/*": ["./.source/*"]
+    },
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["src", "scripts", "markdown", "*.ts", ".source"],
+  "exclude": ["node_modules", ".next", "out", "next-env.d.ts"]
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Using ostra",
+  "icon": "list-checks",
+  "description": "Tasks, steering, approvals, reopening, automations.",
+  "pages": [
+    "tasks",
+    "task-kinds",
+    "steering",
+    "approvals",
+    "reopening",
+    "review-loops",
+    "automations",
+    "memory",
+    "budgets"
+  ]
+}

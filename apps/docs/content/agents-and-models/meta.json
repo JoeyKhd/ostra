@@ -1,0 +1,12 @@
+{
+  "title": "Agents and models",
+  "icon": "cpu",
+  "description": "Providers, OpenCode, agent profiles.",
+  "pages": [
+    "model-providers",
+    "opencode",
+    "agent-profiles",
+    "approval-rules",
+    "plan-first"
+  ]
+}

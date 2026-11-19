@@ -112,7 +112,7 @@ Coding agents working in this repo follow [`AGENTS.md`](AGENTS.md).
 
 ostra is source-available, not open source. The code is public, and anyone can self-host it for their own team. Two licenses apply ([ADR 0048](context/decisions/0048-license-sustainable-use-and-apache.md)):
 - **The Sustainable Use License, version 1.0**, for the server, the web app and every package that isn't Apache-2.0: [`LICENSE`](LICENSE)
-- **Apache-2.0** for the runner, the protocol, the adapter SDK and the adapters, so companies can run runners and write adapters freely. Each of those packages carries its own `LICENSE`.
+- **Apache-2.0** for the runner, the protocol, the adapter SDK, the adapters and the docs site (`apps/docs`), so companies can run runners, write adapters and copy the guides freely. Each of those packages carries its own `LICENSE`.
 
 In short, you may self-host ostra for your own team, or use it for personal and non-commercial purposes, for free. Nobody else may sell the server or the panel, or offer them as a paid service; sharing is allowed only free of charge, for non-commercial purposes. The Apache-2.0 packages carry no such limit. ostra is an app you host yourself: there is no hosted version, and none is planned. Read the license itself for the exact terms.
 

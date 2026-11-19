@@ -1,0 +1,10 @@
+{
+  "title": "Start",
+  "icon": "book-open",
+  "description": "What ostra is, what you need, the 30-minute path.",
+  "pages": [
+    "what-ostra-is",
+    "before-you-start",
+    "30-minute-path"
+  ]
+}

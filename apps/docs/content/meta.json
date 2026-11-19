@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "start",
+    "install",
+    "runners",
+    "agents-and-models",
+    "using-ostra",
+    "security",
+    "reference",
+    "contributing"
+  ]
+}

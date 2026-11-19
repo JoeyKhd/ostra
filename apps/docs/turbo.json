@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "generate": {
+      "inputs": ["source.config.ts", "content/**", "markdown/**", "../../docs/**"],
+      "outputs": [".source/**"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["out/**", ".next/**", "!.next/cache/**"]
+    }
+  }
+}

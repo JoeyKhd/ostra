@@ -1,0 +1,12 @@
+{
+  "title": "Security",
+  "icon": "shield",
+  "description": "What the box isolates, the proxies, reporting a flaw.",
+  "pages": [
+    "the-box",
+    "host-executor",
+    "proxies",
+    "review",
+    "reporting"
+  ]
+}

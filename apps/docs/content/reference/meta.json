@@ -1,0 +1,11 @@
+{
+  "title": "Reference",
+  "icon": "sliders-horizontal",
+  "description": "Every setting, the CLI's commands, the ports.",
+  "pages": [
+    "configuration",
+    "cli",
+    "runner-protocol",
+    "ports"
+  ]
+}

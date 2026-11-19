@@ -57,6 +57,9 @@ export default defineConfig(
     "**/.next/**",
     "**/.turbo/**",
     "**/coverage/**",
+    // The docs site's generated collections (fumadocs-mdx) and its static export.
+    "apps/docs/.source/**",
+    "apps/docs/out/**",
     // Prisma's generated client (packages/db), rebuilt by `pnpm db:generate`.
     "**/src/generated/**",
     "spikes/**",
@@ -128,6 +131,7 @@ export default defineConfig(
     files: [
       "**/*.config.{js,mjs,ts}",
       "apps/web/src/app/**/{page,layout,loading,error,not-found,route,template,default}.tsx",
+      "apps/docs/src/app/**/{page,layout,not-found}.tsx",
     ],
     rules: { "no-restricted-exports": "off" },
   },

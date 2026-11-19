@@ -38,6 +38,9 @@ allowBuilds:
   # koffi, the host executor's Windows job object (ADR 0007, Q126): its install script would build
   # from source, and its prebuilt `@koromix/koffi-<platform>` package is enough.
   koffi: false
+  # esbuild, which fumadocs-mdx loads the docs site's source.config.ts with (ADR 0063): its install
+  # script only checks the platform binary that its `@esbuild/<platform>` package already holds.
+  esbuild: false
   "@embedded-postgres/windows-x64": true
   "@embedded-postgres/linux-x64": true
   "@embedded-postgres/linux-arm64": true

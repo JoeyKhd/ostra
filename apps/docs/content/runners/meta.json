@@ -1,0 +1,12 @@
+{
+  "title": "Runners",
+  "icon": "server",
+  "description": "Pools, join tokens, docker, host and kubernetes.",
+  "pages": [
+    "pools",
+    "executors",
+    "personal",
+    "egress",
+    "http-fallback"
+  ]
+}

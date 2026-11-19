@@ -1,0 +1,13 @@
+{
+  "title": "Contributing",
+  "icon": "puzzle",
+  "description": "The adapter guide, the contract suites, the CLA.",
+  "pages": [
+    "adapters",
+    "development",
+    "agents-issue-tracker",
+    "agents-triage-labels",
+    "agents-domain",
+    "contributor-agreement"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Install",
+  "icon": "download",
+  "description": "Docker Compose, the first sign-in, setup, Helm, upgrading.",
+  "pages": [
+    "docker-compose",
+    "first-sign-in",
+    "setup",
+    "linear",
+    "helm",
+    "upgrading"
+  ]
+}
