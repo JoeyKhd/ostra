@@ -17,6 +17,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { adminProcedure, memberProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
+import { inboxCounts } from "./inbox.ts";
 import { agentProfileViewSchema, loadAgentProfileView } from "./agent-profile-view.ts";
 import { detectionViewSchema } from "./environments.ts";
 
@@ -38,6 +39,8 @@ const projectSummarySchema = z.object({
   runningCount: z.number().int(),
   /** Tasks in every state but stopped, merged and done, for the sidebar's Tasks count. */
   activeCount: z.number().int(),
+  /** The open tickets in the Inbox's default filter (the mapped open statuses), for the sidebar's Inbox count. */
+  inboxCount: z.number().int(),
   /** Epoch ms. */
   createdAt: z.number().int(),
 });
@@ -149,6 +152,7 @@ export const projectsRouter = router({
       where: { organizationId, projectId: { in: ids }, state: { notIn: [...finishedStates] } },
       _count: { _all: true },
     });
+    const inbox = await inboxCounts(ctx.deps, organizationId, ids);
     const countOf = (projectId: string, states: readonly string[]): number =>
       counts.filter((row) => row.projectId === projectId && states.includes(row.state)).reduce((sum, row) => sum + row._count._all, 0);
     return visible.map(({ row }) => ({
@@ -160,6 +164,7 @@ export const projectsRouter = router({
       needsYouCount: countOf(row.id, ["needs_you"]),
       runningCount: countOf(row.id, ["running", "preparing"]),
       activeCount: counts.filter((count) => count.projectId === row.id).reduce((sum, count) => sum + count._count._all, 0),
+      inboxCount: inbox.get(row.id) ?? 0,
       createdAt: row.createdAt.getTime(),
     }));
   }),
@@ -195,6 +200,7 @@ export const projectsRouter = router({
         needsYouCount: needsYou,
         runningCount: running,
         activeCount: active,
+        inboxCount: (await inboxCounts(ctx.deps, organizationId, [project.id])).get(project.id) ?? 0,
         createdAt: project.createdAt.getTime(),
         environmentStatus: project.environment === null ? null : project.environment.status,
         pools: project.pools.map((link) => ({ poolId: link.pool.id, name: link.pool.name, isDefault: link.pool.isDefault })),

@@ -3,6 +3,10 @@ import {
   checkProjectRepos,
   createPromptTask,
   createPromptTaskInputSchema,
+  createTicketForTask,
+  createTicketForTaskInputSchema,
+  startTicketTask,
+  startTicketTaskInputSchema,
   waitingFor,
   stopTask,
   taskFromColumns,
@@ -180,6 +184,47 @@ export const tasksRouter = router({
       "repo-unsupported": "PRECONDITION_FAILED",
     });
     return { taskId: created.taskId, sessionId: created.sessionId, branchName: created.branchName };
+  }),
+
+  /**
+   * Starts a code task from a ticket of the project's Inbox (F-010): the project's default agent
+   * profile, the ticket's ID and key, the branch with the key in it. A second active task for the
+   * ticket is refused, and the message names the existing task. The ticket's "started" writes and
+   * the job that reads its full context are sent in the same transaction.
+   */
+  startFromTicket: projectProcedure("read", startTicketTaskInputSchema).mutation(async ({ ctx, input }) => {
+    const { db, ports, settings } = ctx.deps;
+    // F-055: the repos' branch rules are read again as a task starts; a host that can't say never refuses.
+    await checkProjectRepos({ db, clock: ports.clock, adapters: ports.adapters }, { organizationId: ctx.scope.organizationId, projectId: input.projectId, force: true });
+    const result = await db.$transaction((tx) => startTicketTask({ tx, scope: ctx.scope, publicUrl: settings.publicUrl, ...ports }, input));
+    const created = unwrap(result, {
+      "not-found": "NOT_FOUND",
+      forbidden: "FORBIDDEN",
+      "runner-not-yours": "FORBIDDEN",
+      "provider-not-allowed-on-personal-runners": "PRECONDITION_FAILED",
+      "no-agent-profile": "PRECONDITION_FAILED",
+      "no-repo": "PRECONDITION_FAILED",
+      "repo-unsupported": "PRECONDITION_FAILED",
+      "ticket-has-task": "CONFLICT",
+    });
+    return { taskId: created.taskId, sessionId: created.sessionId, branchName: created.branchName };
+  }),
+
+  /**
+   * "Create ticket" (F-097): for a prompt task with no ticket, on one of the project's boards. It
+   * writes the `create` ticket write; when ticket sync has made the ticket, the task holds it and
+   * the ticket holds the task's link. Asking again while one is made or exists is refused.
+   */
+  createTicket: taskProcedure("read", createTicketForTaskInputSchema).mutation(async ({ ctx, input }) => {
+    const { db, ports, settings } = ctx.deps;
+    const result = await db.$transaction((tx) => createTicketForTask({ tx, scope: ctx.scope, publicUrl: settings.publicUrl, ...ports }, input));
+    const made = unwrap(result, {
+      "not-found": "NOT_FOUND",
+      forbidden: "FORBIDDEN",
+      "already-has-ticket": "CONFLICT",
+      "not-a-prompt-task": "PRECONDITION_FAILED",
+    });
+    return { ticketWriteId: made.ticketWriteId };
   }),
 
   /** A project's tasks, grouped by state in the order of the domain model, with what the agent is doing now. */

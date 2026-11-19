@@ -267,6 +267,7 @@ export const seedTicket = async (
     readonly statusCategory?: "open" | "started" | "done" | "cancelled";
     readonly priority?: number | null;
     readonly labels?: readonly string[];
+    readonly assignee?: { readonly id: string; readonly name: string } | null;
     readonly open?: boolean;
     readonly trackerUpdatedAt?: Date;
     readonly removedAt?: Date | null;
@@ -289,6 +290,8 @@ export const seedTicket = async (
       statusCategory: input.statusCategory ?? "open",
       priority: input.priority === undefined ? null : input.priority,
       labels: [...(input.labels ?? [])],
+      assigneeId: input.assignee?.id ?? null,
+      assigneeName: input.assignee?.name ?? null,
       url: `https://linear.app/ostra-test/issue/${key}`,
       open: input.open ?? true,
       trackerUpdatedAt: input.trackerUpdatedAt ?? new Date(),

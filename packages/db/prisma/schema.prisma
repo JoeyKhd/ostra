@@ -865,6 +865,10 @@ model Ticket {
   priority         Int?
   /// The label names, as a JSON array of strings.
   labels           Json                  @default("[]")
+  /// Who the ticket is assigned to, as of the last read (the Inbox filters and shows it); `null`
+  /// when it has no assignee, or the tracker adapter does not say.
+  assigneeId       String?
+  assigneeName     String?
   parentExternalId String?
   url              String
   /// Open on the tracker: not done, cancelled or archived.
