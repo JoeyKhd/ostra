@@ -1,0 +1,69 @@
+# Generation 1. References: the Organizations picture (instance-settings, generation 1), app-targets/m2/storage-settings (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Accounts" page of ostra's instance settings, a self-hosted control panel for coding agents, where the instance admin finds any account on the install, makes a one-time password reset link for it, and chooses who else is an instance admin. It must look like the same product as the first attached screenshot (the "Organizations" page of the same instance settings): the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense 13px type, hairline rows, few boxes, the same right properties panel. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; raised surfaces (the search input, the code box) #131416; selected row and selected nav row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; teal #6FB8AA only for the inline text buttons "Copy"; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations, no avatars except the one at the bottom of the sidebar.
+
+FONTS: page title in Manrope Bold 24px. UI text IBM Plex Sans 13px (section titles semibold 13px). IBM Plex Mono for usernames, the reset link and the setting name OSTRA_OPEN_SIGNUP_ACCOUNTS. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, exactly as in the first attached screenshot, except that under the small faint label "Instance" the row "Accounts" (user-round icon) is now SELECTED (background #1A1B1E, white text) and "Organizations" is a normal row. The rows: "+ New task"; "Home"; "Needs you" with the amber pill "2"; label "Projects": "calculator" (tiny teal square), "billing-platform" (tiny violet-grey square), "+ New project"; label "Organization": "Runners", "Models", "GitHub", "Linear", "Agent profiles", "Members", "Audit log"; label "Instance": "Organizations", "Accounts", "Storage", "Email"; at the bottom avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px tall, a hairline under it. Left: breadcrumb "Instance  >  Accounts" ("Accounts" white medium, "Instance" muted). Right: nothing (no button).
+
+3) MAIN PAGE COLUMN, padding 28px top, 40px left, left-aligned:
+- Page title "Accounts" (Manrope Bold 24px)
+- A muted lede, one line: "Every account on this install, in any organization. Make a reset link, or choose who runs the install."
+- 20px lower, a search input 320px wide, 34px tall, #131416 fill, 1px #2A2C30 border, 7px radius, a small magnifier icon at its left and the faint placeholder "Search by username or address".
+
+- 22px lower, section title "Accounts" (semibold 13px white) with a faint mono count "6". Under it a borderless table, hairline rows 38px tall, column headers in faint 11.5px: "Name", "Username", "Address", "Organizations", "Last signed in".
+  Row 1: "Alex Kim" + a small outlined grey chip "instance admin" | mono "alex" | "alex@acme.dev" | "Acme Corp, Second" | "now"
+  Row 2: "Jordan Lee" | mono "jordan" | "jordan@acme.dev" | "Acme Corp" | "5d ago"
+  Row 3: "Priya Shah" + a small outlined grey chip "instance admin" | mono "priya" | "priya@northwind.io" | "Northwind Labs" | "1d ago"
+  Row 4: "Rae Okafor" | mono "rae" | "rae@second.dev" | "Second" | "3h ago"
+  Row 5 (SELECTED, background #1A1B1E across the row): "Sam Rivera" | mono "sam" | "sam@acme.dev" | "Acme Corp" | "2h ago"
+  Row 6: "Mina Torres" | mono "mina" | "mina@northwind.io" | "Northwind Labs" | "never" in faint grey
+  The usernames, addresses and dates in secondary grey, the names white.
+
+- 32px lower, section title "Sign-up" (semibold 13px). Under it one row: a small toggle switch, OFF (grey track #2A2C30, grey knob on the left), then 10px right the white 13px label "Anyone can create an account", then 10px right faint text "off: accounts come by invitation".
+- Under it, 10px down, faint 12.5px, one line: "OSTRA_OPEN_SIGNUP_ACCOUNTS sets this for the install and locks the switch. It's unset here." with the setting name in mono.
+
+Lots of quiet empty near-black space below.
+
+4) RIGHT PROPERTIES PANEL, 300px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no box. Key/value rows 30px, key muted 12.5px in a 130px column, value white:
+- small faint label "Sam Rivera"
+  Username  |  mono "sam"
+  Address  |  "sam@acme.dev"
+  Verified  |  "Yes"
+  Organizations  |  "Acme Corp"
+  Created  |  "18 Nov"
+  Last signed in  |  "2h ago"
+- hairline
+- small faint label "Reset link"
+  a code box, full panel width, #131416 fill, 1px #1F2023 border, 6px radius, holding mono text "https://ostra.acme.dev/reset/k7Qp…3xWd" in white and at its right end a teal text button "Copy"
+  under it, muted 12px: "Shown once. Works once, for 24 hours."
+  under it, faint 12px: "Mail is off on this install, so Sam can't reset by mail."
+- hairline
+- small faint label "Instance admin"
+  a muted 12.5px line "Sam isn't an instance admin."
+  then a small secondary button, 26px tall, #131416 fill, 1px #2A2C30 border, white 12.5px label "Make instance admin" with a small shield icon before it.
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word spelled exactly as written.
+
+
+# Generation 2 (kept): an edit of generation 1, which had no Instance admins section. References: generation 1 first, then the same three.
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+EDIT THE FIRST ATTACHED IMAGE. Reproduce it exactly, pixel for pixel: the same sidebar, top bar, title, lede, search input, "Accounts 6" table with the same six rows and the selected "Sam Rivera" row, the same right properties panel with the reset link, the same sizes, colours and fonts. Make only this one change:
+
+Between the "Accounts" table and the "Sign-up" section, insert a new section, and move "Sign-up" and its two lines down to make room (keep 32px between sections):
+
+- Section title "Instance admins" (IBM Plex Sans semibold 13px white, exactly like the "Accounts" section title) with a faint mono count "2" after it.
+- Under it two hairline rows, 38px tall, with the same 1px #1F2023 hairlines and the same column positions as the Accounts table above (name under "Name", address under "Address"):
+  Row 1: white "Alex Kim" then faint " (you)" | secondary grey "alex@acme.dev" | secondary grey "since 3 Nov" under "Organizations" | nothing at the right
+  Row 2: white "Priya Shah" | secondary grey "priya@northwind.io" | secondary grey "since 12 Nov" | at the far right of the row a quiet muted text button "Remove" (no border, no fill, grey #9A9DA3)
+- Under the rows, 10px down, faint #64676D 12.5px, one line: "Instance admins create organizations and set email and storage. The role opens nothing inside an organization they're not in, and the last one can't give it up."
+
+No other change anywhere: no new colours, no red, no amber except the existing sidebar pill. Crisp small legible text, every word spelled exactly as written.
