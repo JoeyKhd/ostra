@@ -309,7 +309,7 @@ describe("the task host", () => {
     expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBeNull();
   }, 120_000);
 
-  it("stops a running turn: pushes the hidden ref with the unfinished work, and sends no session.ended", async () => {
+  it("F-025: stops a running turn: the agent's turn ends cancelled, and no session.ended is sent", async () => {
     const { dataDir, dispatch } = await start();
     const { spec } = taskFor("[[fake:silent]]");
     dispatch(spec);
@@ -327,12 +327,41 @@ describe("the task host", () => {
     await gateway.waitFor(() => gateway.acks.some((ack) => ack.results.some((item) => item.id === `stop-${String(counter)}`)), 60_000);
     const stopAck = gateway.acks.flatMap((ack) => ack.results).find((item) => item.id === `stop-${String(counter)}`);
     expect(stopAck?.result).toBe("done");
-    await gateway.waitFor(() => kinds(spec).includes("git.pushed"));
-    expect(await upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toContain("half-done.txt");
-    expect(kinds(spec)).not.toContain("session.ended");
     const ended = eventsOf(spec).find((item) => item.event.kind === "turn.ended")?.event;
     expect(ended).toMatchObject({ stopReason: "cancelled" });
+    await gateway.waitFor(() => host?.running().length === 0);
+    expect(kinds(spec)).not.toContain("session.ended");
+    expect(kinds(spec)).not.toContain("session.crashed");
     expect(everyEventOnce()).toBe(true);
+  }, 120_000);
+
+  it("F-025: a stopped task's branch and hidden ref hold its unfinished work, and stay after its workspace is released", async () => {
+    const { dataDir, dispatch } = await start();
+    const { spec } = taskFor("[[fake:silent]]");
+    dispatch(spec);
+    await waitForKind(spec, "turn.started");
+    await writeFile(path.join(dataDir, "tasks", spec.taskId, "workspace", "test1", "half-done.txt"), "unfinished\n");
+    gateway.sendCommand(
+      makeCommand({
+        seq: counter * 10 + 1,
+        id: `stop-${String(counter)}`,
+        notAfter: Date.now() + 120_000,
+        kind: "stop",
+        body: { taskId: spec.taskId, sessionId: spec.sessionId, leaseEpoch: spec.leaseEpoch, reason: "requested" },
+      }),
+    );
+    await gateway.waitFor(() => gateway.acks.some((ack) => ack.results.some((item) => item.id === `stop-${String(counter)}`)), 60_000);
+    // The run ends and its workspace is released; what it pushed stays upstream, ready to reopen.
+    await gateway.waitFor(() => host?.running().length === 0);
+    expect(await readdir(path.join(dataDir, "tasks"))).toEqual([]);
+    const branch = `refs/heads/${spec.branchName}`;
+    const hiddenRef = `refs/ostra/wip/${spec.taskId}`;
+    const pushes = eventsOf(spec).flatMap((item) => (item.event.kind === "git.pushed" ? [item.event.ref] : []));
+    expect(pushes).toEqual([branch, hiddenRef]);
+    expect(await upstream.treeFiles("ostra-test/test1", branch)).toContain("half-done.txt");
+    expect(await upstream.treeFiles("ostra-test/test1", hiddenRef)).toContain("half-done.txt");
+    expect(await upstream.refSha("ostra-test/test1", hiddenRef)).toBe(await upstream.refSha("ostra-test/test1", branch));
+    expect(await upstream.commitMessage("ostra-test/test1", hiddenRef)).toContain("(stopped: unfinished work)");
   }, 120_000);
 
   it("pushes the hidden ref and sends session.crashed when the agent crashes mid-turn", async () => {

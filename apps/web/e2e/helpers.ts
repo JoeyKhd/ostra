@@ -83,7 +83,7 @@ export const readStack = async (): Promise<z.infer<typeof stackSchema>> => {
 };
 
 /** Seeds a task with a replayed log in the e2e database (`seed-task.ts`) and returns its ID. */
-export const seedTask = async (scenario: "mid-turn" | "rest" | "without-changes" | "long" | "usage" | "estimated-usage", taskId?: TaskId): Promise<TaskId> => {
+export const seedTask = async (scenario: "mid-turn" | "live-edit" | "rest" | "without-changes" | "long" | "usage" | "estimated-usage", taskId?: TaskId): Promise<TaskId> => {
   const { databaseUrl } = await readStack();
   const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-task.ts"), JSON.stringify({ databaseUrl, scenario, ...(taskId === undefined ? {} : { taskId }) })], {
     cwd: path.resolve(import.meta.dirname, ".."),

@@ -5,6 +5,8 @@
 //
 // Scenarios:
 // - `mid-turn`: the recorded session up to a running command, plus partial text in live_text.
+// - `live-edit`: appends an edit of `docs/numbers.md` and a message to a `mid-turn` task's running
+//   turn (`taskId` given), for a file change arriving while the page is open.
 // - `rest`: appends the rest of the recorded session to a `mid-turn` task (`taskId` given).
 // - `without-changes`: a finished session with no changes, in "needs you" with the agent's summary.
 // - `long`: 5,000 events, for the render budget.
@@ -20,7 +22,7 @@ import { z } from "zod";
 
 const argsSchema = z.strictObject({
   databaseUrl: z.string(),
-  scenario: z.enum(["mid-turn", "rest", "without-changes", "long", "usage", "estimated-usage"]),
+  scenario: z.enum(["mid-turn", "live-edit", "rest", "without-changes", "long", "usage", "estimated-usage"]),
   taskId: taskIdSchema.optional(),
 });
 
@@ -118,6 +120,26 @@ const main = async (): Promise<void> => {
         INSERT INTO "ostra_live"."live_text" ("taskId", "segmentId", "organizationId", "projectId", "sessionId", "turnId", "kind", "text")
         VALUES (${taskId}, ${"seg-partial"}, ${session.organizationId}, ${session.projectId}, ${session.id}, ${turn.turnId}, ${"message"}, ${"Halfway through the change, the agent writes"})`;
       process.stdout.write(`${JSON.stringify({ taskId })}\n`);
+      break;
+    }
+    case "live-edit": {
+      if (args.taskId === undefined) throw new Error("live-edit needs a taskId");
+      const last = await db.event.findFirstOrThrow({ where: { taskId: args.taskId, kind: "turn.started" }, orderBy: { seq: "desc" } });
+      const turnId = z.object({ turnId: z.string() }).parse(last.payload).turnId;
+      const toolCallId = "toolu_live_edit_1";
+      await appendEvents(
+        args.taskId,
+        [
+          { kind: "tool.called", turnId, toolCallId, toolKind: "edit", title: "edit", input: { paths: ["docs/numbers.md"] } },
+          {
+            kind: "tool.completed",
+            toolCallId,
+            output: { files: [{ path: "docs/numbers.md", added: 10, removed: 0, patch: "--- /dev/null\n+++ docs/numbers.md\n@@ -0,0 +1,10 @@\n+1\n+2\n+3\n+4\n+5\n+6\n+7\n+8\n+9\n+10\n" }] },
+          },
+          { kind: "agent.message", turnId, segmentId: "seg-live-edit", text: "Added docs/numbers.md with ten lines." },
+        ].map((event) => taskEventSchema.parse(event)),
+      );
+      process.stdout.write(`${JSON.stringify({ taskId: args.taskId })}\n`);
       break;
     }
     case "rest": {

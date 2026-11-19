@@ -7,8 +7,8 @@ import { expectNoHorizontalScroll, seedTask, signIn, watchOrigins } from "./help
 
 test.describe.configure({ mode: "serial" });
 
-test("two tabs show the same thread, live; a reload mid-turn brings back the history and the partial text", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "seeded once");
+// Desktop only: the phone project leaves out tests tagged @desktop-only (playwright.config.ts).
+test("F-023: two tabs show the messages, tool calls and file changes live; a reload mid-turn brings back the history and the partial text", { tag: "@desktop-only" }, async ({ page }) => {
   const origins = watchOrigins(page);
   await signIn(page);
   const taskId = await seedTask("mid-turn");
@@ -26,35 +26,66 @@ test("two tabs show the same thread, live; a reload mid-turn brings back the his
   await second.goto(`/tasks/${taskId}`);
   await expect(second.locator('[data-part="thread"]')).toContainText("Halfway through the change");
 
+  // A file change and a message arrive while both tabs are open: each shows them, with no reload.
+  const editsBefore = await thread.locator('[data-tool-kind="edit"]').count();
+  await seedTask("live-edit", taskId);
+  for (const tab of [page, second]) {
+    const view = tab.locator('[data-part="thread"]');
+    const edit = view.locator('[data-tool-kind="edit"]', { hasText: "docs/numbers.md" });
+    await expect(edit).toBeVisible({ timeout: 10_000 });
+    await expect(edit).toContainText("+10");
+    await expect(view).toContainText("Added docs/numbers.md with ten lines.");
+  }
+  expect(await thread.locator('[data-tool-kind="edit"]').count()).toBe(editsBefore + 1);
+
   // Reload mid-turn: the history and the partial text are back within a second.
   const started = Date.now();
   await page.reload();
   await expect(thread).toContainText("Halfway through the change", { timeout: 5_000 });
   const reloadMs = Date.now() - started;
+  // The history is whole after the reload: the recorded calls, the earlier edit and the live one.
+  await expect(thread.locator('[data-tool-kind="edit"]', { hasText: "README.md" })).toBeVisible();
+  await expect(thread.locator('[data-tool-kind="edit"]', { hasText: "docs/numbers.md" })).toContainText("+10");
+  await expect(thread).toContainText("Added docs/numbers.md with ten lines.");
+  await expect(thread.locator('[data-tool-kind="read"]').first()).toBeVisible();
   console.info(`reload mid-turn to history and partial text: ${String(reloadMs)} ms`);
   expect(reloadMs).toBeLessThan(3_000);
 
-  // The rest of the session arrives live, in both tabs: the edit, the push, the PR.
+  // The rest of the session arrives live, in both tabs: the messages, the push, the PR.
   await seedTask("rest", taskId);
   for (const tab of [page, second]) {
     const view = tab.locator('[data-part="thread"]');
     await expect(view.locator('[data-part="pr"]')).toContainText("#7", { timeout: 10_000 });
     await expect(view.locator('[data-part="session-end"]')).toHaveAttribute("data-outcome", "with-changes");
+    await expect(view).toContainText("t5 done");
     await expect(view).not.toContainText("Halfway through the change");
   }
-  expect(await page.locator('[data-part="thread"] [data-part="tool"]').count()).toBe(await second.locator('[data-part="thread"] [data-part="tool"]').count());
+  const toolRows = await page.locator('[data-part="thread"] [data-part="tool"]').count();
+  expect(await second.locator('[data-part="thread"] [data-part="tool"]').count()).toBe(toolRows);
   await second.close();
+
+  // Afterwards, the full history: a fresh load of the ended task shows every row it showed live.
+  await page.reload();
+  await expect(thread.locator('[data-part="session-end"]')).toHaveAttribute("data-outcome", "with-changes");
+  await expect(thread.locator('[data-part="tool"]')).toHaveCount(toolRows);
+  await expect(thread.locator('[data-tool-kind="edit"]', { hasText: "docs/numbers.md" })).toContainText("+10");
+  await expect(thread).toContainText("Added docs/numbers.md with ten lines.");
+  await expect(thread).toContainText("t5 done");
+  await expect(thread.locator('[data-part="pr"]')).toContainText("#7");
   expect(origins.foreign()).toEqual([]);
 });
 
-test("Stop stops the task, optimistically, and the page shows it stopped", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "seeded once");
+test("F-025: Stop stops the task, optimistically, and the page shows it stopped", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const taskId = await seedTask("mid-turn");
   await page.goto(`/tasks/${taskId}`);
   await page.locator('[data-action="stop"]').click();
   await expect(page.getByTestId("task-doing")).toContainText(/Stopping|Stopped/);
   await expect(page.getByTestId("task-properties")).toContainText("Stopped", { timeout: 10_000 });
+  // Stored, not only shown: a reload still reads it stopped, and offers no Stop.
+  await page.reload();
+  await expect(page.getByTestId("task-properties")).toContainText("Stopped");
+  await expect(page.locator('[data-action="stop"]')).toHaveCount(0);
 });
 
 test("a task that ended without changes shows its needs-you summary", async ({ page }) => {
@@ -66,8 +97,7 @@ test("a task that ended without changes shows its needs-you summary", async ({ p
   await expectNoHorizontalScroll(page);
 });
 
-test("the default view of a 5,000-event task renders, and the time is recorded", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "measured at desktop width");
+test("the default view of a 5,000-event task renders, and the time is recorded", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const taskId = await seedTask("long");
   const started = Date.now();
