@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { OPENCODE_VERSION, pinnedChecksums, platformPackages, resolveOpenCodeBinary, sha256File } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
-import { allowedEnvNames, KEY_ENV } from "./config.ts";
+import { allowedEnvNames, KEY_ENV, selfSetEnv } from "./config.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 
@@ -162,6 +162,16 @@ describe("the OpenCode adapter's launch", () => {
     expect(env["GCM_INTERACTIVE"]).toBe("never");
     expect(env["DATABASE_URL"]).toBe("postgres://local/dev");
     expect(GIT_GUARD_ENV_NAMES.filter((name) => !allowedEnvNames.includes(name))).toEqual([]);
+  });
+
+  it("never passes what OpenCode sets in its own environment, so a live reading tells the two apart", async () => {
+    const { env } = await launch();
+    const fold = (name: string): string => name.toUpperCase();
+    const launched = new Set(Object.keys(env).map(fold));
+    for (const name of Object.keys(selfSetEnv)) {
+      expect(launched.has(fold(name))).toBe(false);
+      expect(allowedEnvNames.map(fold)).not.toContain(fold(name));
+    }
   });
 
   it("refuses a launch with no base URL or key, and passes a refused binary through", async () => {

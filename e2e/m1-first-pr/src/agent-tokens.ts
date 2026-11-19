@@ -23,8 +23,18 @@ export const withinTolerance = (a: number, b: number, tolerance: number = TOKEN_
 const totalsRow = z.object({ input: z.coerce.number(), output: z.coerce.number() });
 const tableRow = z.object({ name: z.string() });
 
-/** The ways OpenCode has stored its counts: a per-session total, or a total in each assistant message. */
+/**
+ * The ways OpenCode has stored its counts: a per-session total, or a total in each assistant
+ * message. OpenCode keeps reasoning tokens apart from its output; a model endpoint bills them as
+ * output (OpenAI's `completion_tokens` holds them), and the key proxy counts them so. So the
+ * agent's output is its output plus its reasoning, where it records reasoning (2.3.2's `session_v2`).
+ */
 const STRATEGIES = [
+  {
+    table: "session_v2",
+    columns: ["tokens_input", "tokens_output", "tokens_reasoning"],
+    sql: "SELECT coalesce(sum(tokens_input), 0) AS input, coalesce(sum(tokens_output + tokens_reasoning), 0) AS output FROM session_v2",
+  },
   { table: "session_v2", columns: ["tokens_input", "tokens_output"], sql: "SELECT coalesce(sum(tokens_input), 0) AS input, coalesce(sum(tokens_output), 0) AS output FROM session_v2" },
   { table: "session", columns: ["tokens_input", "tokens_output"], sql: "SELECT coalesce(sum(tokens_input), 0) AS input, coalesce(sum(tokens_output), 0) AS output FROM session" },
   {

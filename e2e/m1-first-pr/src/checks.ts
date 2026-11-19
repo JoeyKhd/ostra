@@ -3,13 +3,14 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { allowedEnvNames } from "@ostra/adapter-opencode";
+import { allowedEnvNames, selfSetEnv } from "@ostra/adapter-opencode";
 import { devDatabaseUrl, devPgPort } from "@ostra/db/dev";
 import type { TaskId } from "@ostra/protocol";
 import pg from "pg";
 import { z } from "zod";
 
 import { agentLaunches, descendantsOf, listProcesses, namesOutside, readEnvironments } from "./agent-process.ts";
+import type { ProcessEnvironment } from "./agent-process.ts";
 import { agentDatabasePath, readAgentTotals, TOKEN_TOLERANCE, withinTolerance } from "./agent-tokens.ts";
 import type { TokenTotals } from "./agent-tokens.ts";
 import type { DemoGitHub } from "./github.ts";
@@ -169,6 +170,21 @@ const WINDOWS_BASELINE = ["HOMEDRIVE", "HOMEPATH", "LOGONSERVER", "SYSTEMDRIVE",
 /** What the task run adds to the launch (`agentVariables`): the bot as the agent's git identity. */
 const GIT_IDENTITY_NAMES = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"];
 
+/**
+ * The names outside the allowlist that the runner can't account for. A name OpenCode sets in its
+ * own environment once it runs (`selfSetEnv`) is accounted for only with exactly OpenCode's value:
+ * the same name with another value came from the launch. Windows names are not case-sensitive.
+ */
+export const unexplainedNames = (
+  environment: ProcessEnvironment,
+  allowed: readonly string[],
+  selfSet: Readonly<Record<string, string>>,
+): readonly string[] => {
+  const fold = (name: string): string => (process.platform === "win32" ? name.toUpperCase() : name);
+  const expected = new Map(Object.entries(selfSet).map(([name, value]) => [fold(name), value]));
+  return namesOutside(environment, allowed).filter((name) => expected.get(fold(name)) !== environment.get(name));
+};
+
 export type AgentEnvironmentFacts = {
   /** Agent processes found below the runner. */
   readonly launches: number;
@@ -208,7 +224,7 @@ export const checkTaskFolder = async (settings: DemoSettings, taskId: TaskId, ru
         ? "the task's folder wasn't there to search"
         : holding.length > 0
           ? `found in: ${holding.join(", ")}`
-          : `searched ${String(root.files)} files in the task folder and ${String(outputs?.files ?? 0)} tool-output files by value; ${String(unreadable)} unreadable`,
+          : `searched ${String(root.files)} files in the task folder and ${String(outputs?.files ?? 0)} tool-output files by value; ${String(unreadable)} unreadable${unreadable === 0 ? "" : ` (${scans.flatMap((scan) => scan.unreadablePaths).join(", ")})`}`,
   };
   if (runnerPid === null) {
     return [folder, judgeAgentEnvironment({ launches: 0, outside: [], leaking: 0 })];
@@ -222,7 +238,7 @@ export const checkTaskFolder = async (settings: DemoSettings, taskId: TaskId, ru
   for (const launch of launches) {
     const environment = environments.get(launch.pid);
     if (environment === undefined) continue;
-    for (const name of namesOutside(environment, allowed)) outside.add(name);
+    for (const name of unexplainedNames(environment, allowed, selfSetEnv)) outside.add(name);
     if ([...environment.values()].some((value) => textHoldsSecret(value, needles))) leaking += 1;
   }
   return [folder, judgeAgentEnvironment({ launches: launches.length, outside: [...outside].sort(), leaking })];
@@ -273,27 +289,48 @@ export const judgeTokenCounts = (stored: TokenTotals, agent: TokenTotals | null)
   return { name, ok, detail: `key proxy: input ${String(stored.input)}, output ${String(stored.output)}; OpenCode: input ${String(agent.input)}, output ${String(agent.output)}` };
 };
 
-const storedTotalsSchema = z.object({ input: z.coerce.number(), output: z.coerce.number() });
+const usageCallsSchema = z.array(z.object({ input: z.coerce.number(), output: z.coerce.number() }));
 
-const storedTotals = async (taskId: TaskId): Promise<TokenTotals> => {
+/**
+ * The key proxy's totals over the model calls OpenCode has closed: every call but the last. OpenCode
+ * records a call's usage when its step finishes, and a step finishes only once the tool calls it
+ * made return; while the agent waits on its command, the call that asked for the command is still
+ * open, so OpenCode has not counted it yet. `null` when no call is closed.
+ */
+export const closedCallTotals = (calls: readonly TokenTotals[]): TokenTotals | null => {
+  const closed = calls.slice(0, -1);
+  if (closed.length === 0) return null;
+  return closed.reduce((sum, call) => ({ input: sum.input + call.input, output: sum.output + call.output }), { input: 0, output: 0 });
+};
+
+/** The task's `usage.recorded` events, in the order the key proxy emitted them. */
+const usageCalls = async (taskId: TaskId): Promise<readonly TokenTotals[]> => {
   const result = await withDatabase((client) =>
-    client.query(`SELECT coalesce(sum("inputTokens"), 0)::int AS input, coalesce(sum("outputTokens"), 0)::int AS output FROM session WHERE "taskId" = $1`, [taskId]),
+    client.query(
+      `SELECT (payload->>'inputTokens')::int AS input, (payload->>'outputTokens')::int AS output
+         FROM event WHERE "taskId" = $1 AND kind = 'usage.recorded' ORDER BY seq`,
+      [taskId],
+    ),
   );
-  return storedTotalsSchema.parse(result.rows[0]);
+  return usageCallsSchema.parse(result.rows);
 };
 
 /**
- * While the task runs and its agent waits on a command (every model call is done): the stored
- * totals, which the key proxy counted, against OpenCode's own per-task figures. The stored totals
- * lag the calls by the ingest, so the check polls until they agree or `timeoutMs` passes.
+ * While the task runs and its agent waits on a command: the key proxy's count of the calls OpenCode
+ * has closed (`closedCallTotals`) against OpenCode's own per-task figures. The tool call shows in
+ * the panel only after the usage event of the call that made it, so every call is stored by then;
+ * the check still polls until they agree or `timeoutMs` passes, as OpenCode writes its database on
+ * its own schedule.
  */
 export const checkAgentTokenCount = async (settings: DemoSettings, taskId: TaskId, timeoutMs = 60_000): Promise<CheckResult> => {
   const databaseFile = agentDatabasePath(path.join(taskRoot(settings, taskId), "agent"));
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const agent = await readAgentTotals(databaseFile).catch(() => null);
-    const result = judgeTokenCounts(await storedTotals(taskId), agent);
-    if (result.ok || Date.now() > deadline) return result;
+    const calls = await usageCalls(taskId);
+    const result = judgeTokenCounts(closedCallTotals(calls) ?? { input: 0, output: 0 }, agent);
+    const counted = { ...result, detail: `${String(Math.max(0, calls.length - 1))} of ${String(calls.length)} model calls closed; ${result.detail}` };
+    if (counted.ok || Date.now() > deadline) return counted;
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 };
@@ -399,6 +436,37 @@ export const judgeStoppedRefs = (facts: StoppedRefsFacts): CheckResult => {
     ok: facts.branchRefs === 1 && facts.hiddenRefs === 1 && lines === WIP_LINES,
     detail: `branch ${facts.branch}: ${facts.branchRefs === 1 ? "on GitHub" : "missing"}; hidden ref: ${facts.hiddenRefs === 1 ? "on GitHub" : "missing"}; ${WIP_FILE} in it: ${lines === null ? "missing" : `${String(lines)} lines`}`,
   };
+};
+
+export type StoppedMidTurnFacts = {
+  /** The states of the task's sessions. */
+  readonly sessionStates: readonly string[];
+  /** PRs opened from the task's branch. */
+  readonly pullRequests: number;
+};
+
+/**
+ * F-025: Stop ended the session mid-turn. A session that ended on its own (`ended`) means the
+ * agent finished before the Stop, for instance by moving its long command to the background, and
+ * then the refs prove nothing about a stop.
+ */
+export const judgeStoppedMidTurn = (facts: StoppedMidTurnFacts): CheckResult => ({
+  name: "stop ended the session mid-turn, and the stopped task opened no PR",
+  ok: facts.sessionStates.length === 1 && facts.sessionStates[0] === "stopped" && facts.pullRequests === 0,
+  detail: `sessions: ${facts.sessionStates.length === 0 ? "none" : facts.sessionStates.join(", ")}; ${String(facts.pullRequests)} PRs`,
+});
+
+const sessionStatesSchema = z.array(z.object({ state: z.string() }));
+
+/** The stopped task's session was stopped, not ended on its own, and its branch has no PR. */
+export const checkStoppedMidTurn = async (github: DemoGitHub, taskId: TaskId): Promise<CheckResult> => {
+  const sessions = await withDatabase((client) => client.query(`SELECT state::text AS state FROM session WHERE "taskId" = $1 ORDER BY "startedAt"`, [taskId]));
+  const branch = await branchOf(taskId);
+  const pulls = await github.octokit.rest.pulls.list({ owner: github.owner, repo: github.repo, state: "all", per_page: 100 });
+  return judgeStoppedMidTurn({
+    sessionStates: sessionStatesSchema.parse(sessions.rows).map((row) => row.state),
+    pullRequests: pulls.data.filter((pull) => pull.head.ref === branch).length,
+  });
 };
 
 /** The HTTP status of an octokit error, if it has one. */

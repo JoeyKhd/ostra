@@ -66,6 +66,15 @@ describe("scanFolder", () => {
     expect((await scanFolder(root, [TOKEN])).holding).toEqual([".git/config"]);
   });
 
+  it("counts an empty file as read without opening it, as a held lock file can't be", async () => {
+    await mkdir(path.join(root, "agent", "xdg", "state", "opencode", "pty", "p1"), { recursive: true });
+    await writeFile(path.join(root, "agent", "xdg", "state", "opencode", "pty", "p1", "service.lock"), "");
+    const scan = await scanFolder(root, [TOKEN]);
+    expect(scan.files).toBe(1);
+    expect(scan.unreadable).toBe(0);
+    expect(scan.unreadablePaths).toEqual([]);
+  });
+
   it("reports a folder that isn't there", async () => {
     expect((await scanFolder(path.join(root, "missing"), [TOKEN])).exists).toBe(false);
   });

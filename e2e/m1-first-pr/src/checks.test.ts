@@ -3,16 +3,19 @@ import type pg from "pg";
 import { describe, expect, it } from "vitest";
 
 import {
+  closedCallTotals,
   countLines,
   countRows,
   judgeAgentEnvironment,
   judgePullRequest,
+  judgeStoppedMidTurn,
   judgeStoppedRefs,
   judgeTokenCounts,
   MAIN_REFUSAL,
   OTHER_REPO_REFUSAL,
   refusedBy,
   titleFromPrompt,
+  unexplainedNames,
 } from "./checks.ts";
 import type { PullRequestExpectation } from "./checks.ts";
 
@@ -97,6 +100,49 @@ describe("judgePullRequest", () => {
 
   it("fails an answer that isn't a PR", () => {
     expect(judgePullRequest({ nope: 1 }, [goodCommit], expected).ok).toBe(false);
+  });
+});
+
+describe("closedCallTotals", () => {
+  it("sums every call but the last, which OpenCode hasn't closed while its tool runs", () => {
+    expect(closedCallTotals([{ input: 4035, output: 87 }, { input: 140, output: 224 }, { input: 173, output: 173 }])).toEqual({ input: 4175, output: 311 });
+  });
+
+  it("has nothing to compare with one call or none", () => {
+    expect(closedCallTotals([{ input: 10, output: 1 }])).toBeNull();
+    expect(closedCallTotals([])).toBeNull();
+  });
+});
+
+describe("unexplainedNames", () => {
+  const selfSet = { OPENCODE_CLIENT: "acp", NO_PROXY: "127.0.0.1,localhost,::1" };
+  const environment = (entries: Record<string, string>) => new Map(Object.entries(entries));
+
+  it("accounts for what the agent sets itself, with the agent's own value", () => {
+    expect(unexplainedNames(environment({ PATH: "p", OPENCODE_CLIENT: "acp", NO_PROXY: "127.0.0.1,localhost,::1" }), ["PATH"], selfSet)).toEqual([]);
+  });
+
+  it("names a self-set variable whose value the launch changed, and any other stray name", () => {
+    expect(unexplainedNames(environment({ PATH: "p", NO_PROXY: "proxy.internal,127.0.0.1,localhost,::1", AWS_KEY: "x" }), ["PATH"], selfSet)).toEqual([
+      "AWS_KEY",
+      "NO_PROXY",
+    ]);
+  });
+});
+
+describe("judgeStoppedMidTurn", () => {
+  it("passes one stopped session and no PR", () => {
+    expect(judgeStoppedMidTurn({ sessionStates: ["stopped"], pullRequests: 0 }).ok).toBe(true);
+  });
+
+  it("fails a session that ended on its own, as when the agent moved its command to the background", () => {
+    expect(judgeStoppedMidTurn({ sessionStates: ["ended"], pullRequests: 1 }).ok).toBe(false);
+    expect(judgeStoppedMidTurn({ sessionStates: ["ended"], pullRequests: 0 }).ok).toBe(false);
+  });
+
+  it("fails a stopped session whose branch got a PR anyway, or no session at all", () => {
+    expect(judgeStoppedMidTurn({ sessionStates: ["stopped"], pullRequests: 1 }).ok).toBe(false);
+    expect(judgeStoppedMidTurn({ sessionStates: [], pullRequests: 0 }).ok).toBe(false);
   });
 });
 

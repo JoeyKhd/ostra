@@ -145,6 +145,21 @@ export const allowedEnvNames: readonly string[] = [
   KEY_ENV,
 ];
 
+/** The hosts OpenCode adds to NO_PROXY at startup, when the launch passes none of its own. */
+const OPENCODE_LOOPBACK_NO_PROXY = "127.0.0.1,localhost,::1";
+
+/**
+ * What OpenCode sets in its own environment once it runs, with the value it sets: ostra never
+ * passes these. OpenCode 2.3.2's `acp` command sets `OPENCODE_CLIENT=acp`, and its entry point
+ * merges the loopback hosts into `NO_PROXY` and `no_proxy`. Anything that reads the live agent's
+ * environment (not the launch) sees them. Windows keeps one of the two NO_PROXY spellings.
+ */
+export const selfSetEnv: Readonly<Record<string, string>> = {
+  OPENCODE_CLIENT: "acp",
+  NO_PROXY: OPENCODE_LOOPBACK_NO_PROXY,
+  no_proxy: OPENCODE_LOOPBACK_NO_PROXY,
+};
+
 const isGitGuardName = (name: string): boolean => GIT_GUARD_ENV_NAMES.some((guarded) => guarded === name);
 
 /** Git never asks the agent's terminal for a credential. The rest of the git guard comes from the task run. */

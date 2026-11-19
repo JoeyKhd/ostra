@@ -39,6 +39,8 @@ export type FolderScan = {
   readonly files: number;
   /** Files that could not be read: they cannot be called clean. */
   readonly unreadable: number;
+  /** Their paths, relative to the folder (a path holds no secret; the file's content might). */
+  readonly unreadablePaths: readonly string[];
   /** Paths, relative to the folder, of the files that hold a secret. */
   readonly holding: readonly string[];
 };
@@ -55,16 +57,17 @@ const skipDirectory = (relative: string): boolean => {
 /** Every file under `root` (symlinks aren't followed), searched for the needles and the token pattern. */
 export const scanFolder = async (root: string, needles: readonly string[]): Promise<FolderScan> => {
   const rootStat = await stat(root).catch(() => null);
-  if (!rootStat?.isDirectory()) return { exists: false, files: 0, unreadable: 0, holding: [] };
+  if (!rootStat?.isDirectory()) return { exists: false, files: 0, unreadable: 0, unreadablePaths: [], holding: [] };
   let files = 0;
-  let unreadable = 0;
+  const unreadablePaths: string[] = [];
   const holding: string[] = [];
+  const slashed = (relative: string): string => relative.split(path.sep).join("/");
   const walk = async (relative: string): Promise<void> => {
     let entries;
     try {
       entries = await readdir(path.join(root, relative), { withFileTypes: true });
     } catch {
-      unreadable += 1;
+      unreadablePaths.push(`${slashed(relative)}/`);
       return;
     }
     for (const entry of entries) {
@@ -77,17 +80,23 @@ export const scanFolder = async (root: string, needles: readonly string[]): Prom
       try {
         const size = (await stat(path.join(root, child))).size;
         if (size > MAX_FILE_BYTES) {
-          unreadable += 1;
+          unreadablePaths.push(slashed(child));
+          continue;
+        }
+        // An empty file holds nothing, and needn't be opened: a lock file another process holds
+        // exclusively (OpenCode's PTY service keeps one while a shell runs) can be stat'ed, not read.
+        if (size === 0) {
+          files += 1;
           continue;
         }
         const data = await readFile(path.join(root, child));
         files += 1;
-        if (holdsSecret(data, needles)) holding.push(child.split(path.sep).join("/"));
+        if (holdsSecret(data, needles)) holding.push(slashed(child));
       } catch {
-        unreadable += 1;
+        unreadablePaths.push(slashed(child));
       }
     }
   };
   await walk("");
-  return { exists: true, files, unreadable, holding };
+  return { exists: true, files, unreadable: unreadablePaths.length, unreadablePaths, holding };
 };

@@ -24,6 +24,7 @@ import {
   checkNoEmptyPr,
   checkNoTaskFolderLeft,
   checkPullRequest,
+  checkStoppedMidTurn,
   checkStoppedRefs,
   checkTaskFolder,
   checkTokens,
@@ -311,7 +312,7 @@ const stoppedTask = async (
     page,
     settings,
     projectHref,
-    `Create docs/numbers.md listing the numbers one to ten as words, one per line. Then run this shell command, which waits ten minutes: node -e "setTimeout(() => {}, 600000)"`,
+    `Create docs/numbers.md listing the numbers one to ten as words, one per line. Then run this shell command in the foreground and wait for it to finish; it waits ten minutes. Don't move it to the background. node -e "setTimeout(() => {}, 600000)"`,
   );
   // The git proxy lives as long as the task: tried as soon as the agent is at work.
   await page.locator('[data-part="tool"]').first().waitFor({ state: "attached", timeout: 10 * 60_000 });
@@ -379,7 +380,7 @@ const main = async (): Promise<void> => {
       const empty = await emptyTask(page, settings, projectHref);
       checks.push(await checkNoEmptyPr(github, empty));
       const stopped = await stoppedTask(page, settings, github, runner, projectHref);
-      checks.push(...stopped.live, await checkStoppedRefs(github, stopped.taskId));
+      checks.push(...stopped.live, await checkStoppedMidTurn(github, stopped.taskId), await checkStoppedRefs(github, stopped.taskId));
       checks.push(await checkNoCredential(settings, settings.logFiles), await checkNoTaskFolderLeft(settings));
     }
     for (const check of checks) say(`${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}`);
