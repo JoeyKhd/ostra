@@ -194,7 +194,7 @@ const NewAppForm = ({ webhookPossible }: { readonly webhookPossible: boolean | u
 };
 
 /** Where an installation's settings are on GitHub: an org's, or a user's own. */
-const installationSettingsUrl = (installation: Installation): string =>
+export const installationSettingsUrl = (installation: Installation): string =>
   installation.accountKind === "organization"
     ? `https://github.com/organizations/${installation.accountLogin}/settings/installations/${installation.installationId}`
     : `https://github.com/settings/installations/${installation.installationId}`;

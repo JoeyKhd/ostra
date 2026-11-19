@@ -38,7 +38,7 @@ test("Connect GitHub with an existing App, create a project from its repo, and t
   expect(shown).not.toContain(github.webhookSecret);
 
   await page.goto("/projects/new");
-  await page.getByRole("radio", { name: new RegExp(`${e2eRepo.owner}/${e2eRepo.name}`) }).check();
+  await page.getByRole("checkbox", { name: new RegExp(`${e2eRepo.owner}/${e2eRepo.name}`) }).check();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(e2eRepo.name);
   await page.getByRole("button", { name: "Create the project" }).click();
 

@@ -121,6 +121,32 @@ describe("github.installations and github.repos", () => {
   });
 });
 
+describe("github.detect (F-112, before a project exists)", () => {
+  it("drafts a repo's environment from its files and stores nothing", async () => {
+    harness.fakes.codeHost.files.set(
+      "ostra-test/test1",
+      new Map([
+        ["package.json", JSON.stringify({ name: "test1", packageManager: "pnpm@9.12.0" })],
+        ["pnpm-lock.yaml", "lockfileVersion: '9.0'\n"],
+        [".nvmrc", "22\n"],
+      ]),
+    );
+    const projectsBefore = await harness.test.db.project.count();
+    const detection = await (await harness.as(harness.fixture.a.admin)).github.detect({ installationId: "9001", fullName: "ostra-test/test1", ref: "main" });
+    expect(detection.setupLines).toEqual(["corepack enable", "pnpm install --frozen-lockfile"]);
+    expect(detection.tools).toContainEqual({ tool: "node", version: "22", source: ".nvmrc" });
+    expect(detection.reasons.map((reason) => reason.file)).toContain("pnpm-lock.yaml");
+    expect(await harness.test.db.project.count()).toBe(projectsBefore);
+  });
+
+  it("is for admins of an organization that has connected GitHub", async () => {
+    const { a, b } = harness.fixture;
+    const input = { installationId: "9001", fullName: "ostra-test/test1", ref: "main" };
+    await expect((await harness.as(a.member)).github.detect(input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect((await harness.as(b.admin)).github.detect(input)).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  });
+});
+
 describe("github.appRequest", () => {
   it("lists the manifest's permissions in its order, leaves workflows out, and says when no webhook is possible", async () => {
     const request = await (await harness.as(harness.fixture.b.admin)).github.appRequest();

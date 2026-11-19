@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
-import { connectGitHubApp } from "@ostra/domain";
-import { connectionIdSchema, memberIdSchema, organizationIdSchema } from "@ostra/protocol";
+import { connectGitHubApp, detectRepoEnvironment } from "@ostra/domain";
+import { connectionIdSchema, memberIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -10,6 +10,7 @@ import { loginSessionIdSchema } from "../auth/scope.ts";
 import { loadGitHubConnection } from "../services/github-connection.ts";
 import { adapterErrorToTrpc } from "../trpc/errors.ts";
 import { adminProcedure, router, unwrap } from "../trpc/init.ts";
+import { detectionViewSchema } from "./environments.ts";
 
 // F-006, ticket 31: the organization's GitHub App. Admin only, organization scoped. The App's
 // private key, webhook secret and client secret go to the secret store at once and no procedure
@@ -266,6 +267,23 @@ export const githubRouter = router({
         defaultBranch: repo.defaultBranch,
         private: repo.private,
       }));
+    }),
+
+  /**
+   * What detection finds in a repo of an installation, before any project exists (F-112, "Create a
+   * project"): the same draft `projects.create` makes, from the repo's files at `ref`. Nothing is
+   * stored. No agent, no model.
+   */
+  detect: adminProcedure
+    .input(z.strictObject({ installationId: z.string().min(1).max(64), fullName: repoFullNameSchema, ref: z.string().min(1).max(255) }))
+    .output(detectionViewSchema)
+    .query(async ({ ctx, input }) => {
+      const github = await loadGitHubConnection(ctx.deps, ctx.scope);
+      return detectRepoEnvironment(
+        ctx.deps.ports.adapters.codeHost,
+        { app: github.credentials, installationId: input.installationId, repo: input.fullName },
+        input.ref,
+      );
     }),
 });
 

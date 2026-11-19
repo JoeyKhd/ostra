@@ -91,9 +91,18 @@
     "title": "Home",
     "lede": "Your organization's projects and what waits on you.",
     "summary": "{running} across {projects}, {queued} queued. {prs}",
-    "summaryRunning": { "one": "{n} task running", "other": "{n} tasks running" },
-    "summaryProjects": { "one": "{n} project", "other": "{n} projects" },
-    "summaryPrs": { "one": "{n} pull request opened today.", "other": "{n} pull requests opened today." },
+    "summaryRunning": {
+      "one": "{n} task running",
+      "other": "{n} tasks running"
+    },
+    "summaryProjects": {
+      "one": "{n} project",
+      "other": "{n} projects"
+    },
+    "summaryPrs": {
+      "one": "{n} pull request opened today.",
+      "other": "{n} pull requests opened today."
+    },
     "projects": "Projects",
     "noProjects": "No projects yet. An admin creates the first one.",
     "noProjectsAdmin": "No projects yet. Create one from the checklist.",
@@ -160,7 +169,10 @@
     },
     "panel": {
       "prsOpened": "Pull requests opened, last 7 days",
-      "prsToday": { "one": "{n} opened today", "other": "{n} opened today" },
+      "prsToday": {
+        "one": "{n} opened today",
+        "other": "{n} opened today"
+      },
       "today": "today",
       "chart": "Pull requests opened per day, the last 7 days: {counts}",
       "spend": "Spend, {month}",
@@ -341,7 +353,7 @@
     "private": "Private",
     "create": "Create the project",
     "creating": "Reading the repo…",
-    "createHelp": "ostra reads the repo's files and drafts its environment. Nothing runs yet.",
+    "createHelp": "Nothing runs yet. You review the environment next.",
     "access": "Access",
     "open": "Every member",
     "restricted": "Restricted",
@@ -357,7 +369,35 @@
     "created": "Created",
     "repository": "Repository",
     "repoKey": "Repo",
-    "branch": "Default branch"
+    "branch": "Default branch",
+    "cancel": "Cancel",
+    "reposSelected": "{n} selected",
+    "filterRepos": "Filter repositories",
+    "noMatch": "No repository matches “{query}”.",
+    "reposSeen": "The GitHub App sees {n} repositories in {account}.",
+    "reposSeenOne": "The GitHub App sees 1 repository in {account}.",
+    "manageOnGitHub": "Manage on GitHub",
+    "tracker": "Tracker",
+    "optional": "optional",
+    "trackerNone": "None",
+    "trackerNoneHelp": "Tasks start from prompts typed in ostra.",
+    "trackerLinear": "Linear",
+    "trackerLinearHelp": "Tickets on a team's board become tasks.",
+    "trackerLater": "milestone 2",
+    "draftTitle": "Environment draft",
+    "draftEmpty": "Pick a repository to see what ostra finds in it.",
+    "draftReading": "Reading {repo}…",
+    "draftNote": "Read from the repo's files. No agent, no model.",
+    "draftFailed": "You can still create the project and fill in the environment by hand.",
+    "baseImage": "Base image",
+    "tools": "Tools",
+    "foundIn": "Found in",
+    "files": "{n} files",
+    "filesOne": "1 file",
+    "setupScript": "Setup script",
+    "variables": "Variables",
+    "services": "Services",
+    "secret": "Secret"
   },
   "environment": {
     "title": "Environment",

@@ -20,6 +20,8 @@ export type FakeRepo = {
   readonly defaultBranch: string;
   readonly files: Readonly<Record<string, string>>;
   readonly branches: readonly string[];
+  /** Defaults to true. */
+  readonly private?: boolean;
 };
 
 export type FakePullRequest = {
@@ -105,7 +107,11 @@ const bodySchema = z.looseObject({
   draft: z.boolean().optional(),
 });
 
-export const createFakeGitHub = async (options: { readonly repos: readonly FakeRepo[] }): Promise<FakeGitHub> => {
+export const createFakeGitHub = async (options: {
+  readonly repos: readonly FakeRepo[];
+  /** The installation's account login. Defaults to `fake-org`. */
+  readonly org?: string;
+}): Promise<FakeGitHub> => {
   const pair = await generate("rsa", {
     modulusLength: 2048,
     publicKeyEncoding: { type: "spki", format: "pem" },
@@ -121,7 +127,7 @@ export const createFakeGitHub = async (options: { readonly repos: readonly FakeR
   const appSlug = "ostra-fake";
   const botId = 777_001;
   const installationId = 7;
-  const org = "fake-org";
+  const org = options.org ?? "fake-org";
   const webhookSecret = "fake-webhook-secret";
   const requests: FakeRequest[] = [];
   const pulls: FakePullRequest[] = [];
@@ -162,7 +168,7 @@ export const createFakeGitHub = async (options: { readonly repos: readonly FakeR
     id: repo.id,
     full_name: `${repo.owner}/${repo.name}`,
     default_branch: repo.defaultBranch,
-    private: true,
+    private: repo.private ?? true,
     clone_url: `https://github.example/${repo.owner}/${repo.name}.git`,
   });
 
