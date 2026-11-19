@@ -322,6 +322,10 @@ _Avoid_: vendor, LLM, key (alone, when you mean the provider: the key is its tok
 A model as ostra knows it apart from who serves it: its models.dev catalog ID, or, for a model the catalog lacks, the ID its endpoint lists it under. An agent profile names its model this way, and each project serves it from one provider on its list.
 _Avoid_: model ID (that's one provider's listing of the model), model (alone, when you mean the name)
 
+**Reasoning effort**:
+How much a model reasons before it answers, as one of the levels its model has: models.dev's effort values (`none` to `max`), `on` for a model that can only switch reasoning on, or Default, which sends nothing and leaves the endpoint's own. An agent profile sets it for its model; a task starts with its profile's level, its driver changes it for the next turn, and each turn records the level it ran at. A level the model doesn't have is clamped to its nearest, never refused.
+_Avoid_: thinking level, reasoning mode, variant (that's OpenCode's name for how it sends a level)
+
 **Provider list**:
 The model providers a project may use: the organization's default list, which a project follows until it has its own, or the project's own. Only an organization admin edits it. In each project, each model is served by exactly one provider on the list, and a task gets credentials for no provider outside it.
 _Avoid_: allowlist, key ring, fallback (no task ever moves to another provider on its own)
