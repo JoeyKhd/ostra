@@ -6,8 +6,13 @@ This repo is public, so secrets never go in it, nor in its folder on disk. Keep 
 
 ```
 ~/.config/ostra-dev/
-├── linear.env       LINEAR_API_KEY for the test Linear workspace
+├── linear.env       LINEAR_API_KEY (personal, for the test Linear workspace), LINEAR_TEST_TEAM_KEY and
+│                    LINEAR_TEST_TEAM_ID; the Linear app's LINEAR_CLIENT_ID, LINEAR_CLIENT_SECRET and
+│                    LINEAR_WEBHOOK_SECRET; LINEAR_REFRESH_TOKEN once the app is authorized; and
+│                    LINEAR_APP_TOKEN only if the app's client-credentials grant is switched on
 ├── github.env       the test GitHub App's ID, private key path and webhook secret
+├── github-test.env  the test org and repos, the App's installation ID, and GITHUB_TEST_ADMIN_TOKEN
+│                    (administration on test2 only, for the demo's signed-commit ruleset)
 ├── model.env        OSTRA_DEV_MODEL_BASE_URL, OSTRA_DEV_MODEL_API_KEY and OSTRA_DEV_MODEL_ID
 └── tunnel.env       whatever the chosen tunnel needs to give the dev server a public address
 ```

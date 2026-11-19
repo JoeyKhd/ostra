@@ -20,6 +20,14 @@ Pure functions and small calls, so core and api can hold the flow and the state.
 
 `spikes/linear-agent-mode/src/manifest.ts`, `oauth.ts`, `token-store.ts` (the app-user check), `webhook-verify.ts`, `webhook-schema.ts`.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **The manifest asks for `authorization_code` only** (spec section 11, item 3). A client-credentials token would silently replace the consented installation, and it has no refresh token (`context/research/linear-app-token-without-consent.md`).
+- **`clientCredentialsToken({ clientId, clientSecret, scopes })`, a development helper.** It sends `POST /oauth/token` with `grant_type=client_credentials`, and returns the token and its 30-day expiry, with no refresh token. It turns `unauthorized_client` ("Client does not support the client_credentials grant type") into a typed `grant-disabled` error. Test it on the fake Linear server. Nothing in the product calls it. A developer may use it once the app's "Client credentials" setting is on, to save `LINEAR_APP_TOKEN` in `linear.env`. Today the `ostra-test` app answers `unauthorized_client` (ticket 40).
+- **`checkAppToken`** also returns the workspace's key and name and the app user's name, for `linear.status` (ticket 27).
+
 ## Done when
 
 - [ ] Tests against the fake Linear server: the manifest's parameters; each pre-check refusal; authorize, exchange, refresh and a retried refresh; a token that isn't the app's refused; a signature off by one byte, a stale timestamp and a body re-serialized after parsing all refused; an unknown event type ignored; extra fields tolerated.

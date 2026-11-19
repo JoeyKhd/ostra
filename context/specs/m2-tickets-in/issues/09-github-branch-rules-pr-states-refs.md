@@ -17,6 +17,16 @@ The code host operations of ticket 04, on milestone 1's adapter.
 - **`deleteRef`:** deletes `refs/ostra/wip/<taskId>` with the installation token, idempotent: a ref already gone is success.
 - Each call goes through the rate budget and retries with the shared plumbing. Every request carries a `User-Agent`.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **No new App permission.** `administration` stays out. ADR 0040 fixes the App's seven permissions, and what follows needs none beyond them, so the ticket doesn't stop to ask. `readBranchRules` reads:
+  - `protected`: `true` when `branches/{b}.protected` is true, or when `rules/branches/{b}` holds a `deletion`, `non_fast_forward`, `pull_request` or `update` rule.
+  - `requiresSignedCommits`: `true` when `rules/branches/{b}` holds `required_signatures`. When `branches/{b}.protected` is `false`, classic protection can't require signatures, so it counts as `false`. When classic protection is on, its `required_signatures` needs `administration: read`, so the answer is `"unknown"` with that reason, unless a ruleset already answers `true`.
+  - **A plan that has no rules:** GitHub answers 403 "Upgrade to GitHub Pro or make this repository public" for a private repo in a free org. It is `false` for both, with the reason `GitHub doesn't offer branch rules on this repo's plan, so none apply.` It is never `"unknown"`. Seen on `ostra-test/test1` and `test2` on 2026-11-19.
+- Ticket 40 asks the maintainer to protect `test1` with a ruleset, so the live case can answer both checks with the App's current permissions.
+
 ## Done when
 
 - [ ] The code host suite passes against the fake.

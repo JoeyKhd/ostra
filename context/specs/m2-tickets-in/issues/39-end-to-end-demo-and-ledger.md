@@ -13,6 +13,16 @@ Spec: `../spec.md`, section 3
 - **The run, by hand, once,** in a real browser, following section 3 step by step: Connect Linear for real, and the reopen at least 24 hours after the PR. What was seen goes in `demo.md` (times, the ticket's and the PR's URLs, the archive's size and the after-turn time per turn, the restore time, anything that surprised), with screenshots as milestone 1's demo has them, secrets masked.
 - **The ledger:** in the same commit as the record, set each row of section 2 to the status its "At M2's end" column says, if and only if every condition in its "done when" holds. Rows that wait for Linux, for milestone 4's invites or milestone 7's second agent stay `building`, each with a short dated note naming what's left.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **Two runs, recorded apart** (spec section 3, "Until the maintainer authorizes the Linear app"):
+  - **The overnight run** seeds the connection with `e2e/m2-tickets-in/seed-linear.ts` from `LINEAR_API_KEY`. It registers a workspace webhook on the tunnel with `webhookCreate`, and deletes the webhook when the run ends. It runs steps 2 to 7 and 9, the checks, and the failure suite.
+  - **The morning run** does step 1 by hand, then steps 8 and 9.
+- **The repo checks** wait on ticket 40's step 3: public repos or a paid plan, `test1`'s ruleset, `test2`'s `ostra-demo-signed-commits` ruleset, and `GITHUB_TEST_ADMIN_TOKEN`. Until then they're recorded as waiting, not as failed.
+- **"Starts no CI" (F-096)** is checked again on the demo's own hidden ref: 0 workflow runs for its commit within 60 s.
+
 ## Done when
 
 - [ ] `pnpm e2e:m2` passes on this machine twice in a row from an empty data folder.

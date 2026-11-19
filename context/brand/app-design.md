@@ -28,8 +28,8 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 1. **Sidebar, 232px, always there:**
    - The organization switcher, then search (⌘K) and a "+" for a new task.
    - Personal views: **Home**, **Needs you** (an amber count) and **My tasks**.
-   - **Projects:** the member's pinned projects, each with an 8px colour square. An amber dot marks a project where something waits on them. The open project expands into Tasks, Inbox, Environment, Automations, Memory, Repos and Settings. "N more" opens the full list.
-   - **Organization:** Runner pools (busy count), Models, Agent profiles, Insights, Memory, Members, Audit log, Background work and Settings. Agent profiles are F-021. Background work lists queues and stuck jobs, with retry and cancel (ADR 0037).
+   - **Projects:** the member's pinned projects, each with an 8px colour square. An amber dot marks a project where something waits on them. The open project expands into Tasks, Inbox, Environment, Boards, Automations, Memory, Repos and Settings. "N more" opens the full list. Boards (F-007) sits after Environment. Settings holds the ticket template from milestone 2 on, and project admins see it.
+   - **Organization:** Runner pools (busy count), Models, GitHub, Linear, Storage, Agent profiles, Insights, Memory, Members, Audit log, Background work and Settings. Agent profiles are F-021. Background work lists queues and stuck jobs, with retry and cancel (ADR 0037). GitHub and Linear are the organization's connections, and only its admins see them. Storage (F-114, F-079) is for instance admins. *Rows added 2026-11-19 for milestone 2 (ticket 40's decisions).*
    - **Memory** is a page for the project and another for the organization (F-109, ADR 0044). Each carries a count of its proposals (F-111), in the plain count style, never amber.
    - The signed-in member at the bottom.
 2. **Top bar, 44px:** breadcrumbs on the left (`calculator › Tasks › CALC-161`), the page's actions on the right. At most one primary (Shell) button per page.

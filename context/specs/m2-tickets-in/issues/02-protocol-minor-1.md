@@ -19,6 +19,16 @@ Every change is additive. The schema is written once, Zod first; the types are `
 - **Named working values** in `limits.ts`: idle 15 min, session maximum 120 min, stall 10 min, upload chunk 1 MiB, archive cap 64 MiB.
 - The schemas' descriptions say what's never logged: an archive's bytes, ticket text, the pending messages' text.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **Three more optional event fields,** for the reopen and limits targets (spec section 5.1):
+  - `session.restored.previousBox: "kept" | "released" | "lost"`
+  - `user.message.reopen: true` on the message a reopen wrote
+  - `session.crashed.cause: "agent_exited" | "box_lost"`
+  Each is optional, and the fixtures cover both the present and the missing case.
+
 ## Done when
 
 - [ ] Tests: every new shape round-trips; a minor-0 spec still parses, and a minor-0 peer's codec drops the new fields; a strict object refuses an unknown field; an unknown event kind reads as `unsupported`; the fixtures in `src/testing/` cover each new kind.

@@ -16,6 +16,16 @@ Spec: `../spec.md`, sections 4 ("A ticket becomes a task", "Reopen") and 11 (ite
 - **The task spec for minor 1** gains `ticket`, `contextFiles` and the new `limits`; a minor-0 runner gets milestone 1's shape and the reopen falls back to `rebuilt`.
 - **`session.restored`** (ingest): store the origin on the session; `hiddenRef: "conflict"` raises the `restore_conflict` needs-you item (spec section 11, item 7) and the task carries on from the branch's head.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **A merged task isn't reopened in milestone 2.** `reopenTask` refuses a task in `merged` with the reason `merged_reopen_later` (F-066, milestone 3, brings the fresh branch). The lifecycle still allows the input. The refusal is the use case's, so milestone 3 removes it in one place. `done` (refine and review) reopens as before.
+- **A restore conflict leaves the task running** (ticket 06): on `session.restored` with `hiddenRef: "conflict"`, raise the `restore_conflict` item for the driver, and don't move the task.
+- **The member who reopens becomes the driver,** as the targets show. F-002's handover rules may refine this in milestone 4.
+- **A reopen with no text** (the one-click Reopen from a limit or a crash) writes `reopenCarryOnText` (ticket 06) as the member's own `user.message`, so the thread shows exactly what the agent got. One exception: when the restore spec already carries a replayed, unanswered message from a lost box, nothing more is added.
+- **The new event fields of ticket 02:** core writes `reopen: true` on a reopen's `user.message`, `previousBox` on `session.restored` (`lost` when the dispatch found the box gone), and `cause: "box_lost"` on the `session.crashed` it records for a lost box.
+
 ## Done when
 
 - [ ] Tests: each of the three steps is chosen when it should be; a reopen raises the epoch and a write from the old box is refused; a lost box's unanswered message is in the next spec's pending messages exactly once; a deleted archive gives `rebuilt`; the rendered prompt keeps ticket text inside its blocks; a second active task for one ticket is refused.

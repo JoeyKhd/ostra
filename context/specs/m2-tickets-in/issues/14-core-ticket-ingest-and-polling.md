@@ -15,6 +15,13 @@ Spec: `../spec.md`, sections 4 ("A ticket change") and 11 (item 10)
 - **The rate budget:** every call goes through the connection's budget, so polling many boards never spends the hour's 5,000 requests (ticket 15 backs the store).
 - **The mode switch:** a connection whose webhooks go silent while polling still finds changes is flagged in the panel ("webhooks silent since …"), never switched off on its own.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **No own-echo filter without an app user.** A connection with `appUserId` null (the `api_key` seed) has no own-echo filter. The cache upsert always happens either way, since the filter only skips reactions. Ticket 15's marker lookups keep writes from looping.
+- **`webhook.process` sets `WebhookDelivery.ticketKey`** once it has read the ticket.
+
 ## Done when
 
 - [ ] Tests against the fake Linear server: a webhook hint fetches and upserts; a change by the app's own user isn't acted on; a moved ticket keeps its row and gets its new key; polling with webhooks off finds a change within one interval; a cut in the middle of a page loses nothing and stores nothing twice; the cursor survives a restart; the token refreshes before it expires, and a refused refresh fails visibly.

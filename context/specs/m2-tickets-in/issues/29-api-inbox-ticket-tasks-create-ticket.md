@@ -15,6 +15,12 @@ Spec: `../spec.md`, sections 3 (steps 3 and 4) and 11 (items 10 and 12)
 - **`tasks.createTicket`:** for a prompt task with no ticket, on one of the project's boards: writes ticket 15's `create` row, and when it's done the task holds the ticket and the ticket the task's link.
 - An Inbox read never calls Linear; the cache answers, and its age shows.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **`projects.list` gains `inboxCount`,** the open tickets in the default filter per project, for the sidebar's Inbox count. It's one grouped query, not one per project. There's no separate `inbox.count`.
+
 ## Done when
 
 - [ ] Tests: filters and paging; the existing task shows; starting twice is refused; a member of another project, or a restricted project's non-member, sees nothing; "Create ticket" links both ways once.

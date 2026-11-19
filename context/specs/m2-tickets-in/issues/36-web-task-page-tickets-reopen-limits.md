@@ -20,6 +20,17 @@ To the approved targets for screens 5, 6, 7 and 11.
 - **"Create ticket"** on a prompt task when the project has a board.
 - Milestone 1's gap: Stop no longer shows on a task in review.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **The one-click Reopen** on a limit or a crash calls `tasks.reopen` with no text. The thread then shows `Carry on from where you stopped.` as the member's message, tagged as a reopen (ticket 30).
+- **A merged task:** the composer shows no Reopen. The hint reads `Its pull requests are merged. Start a new task from the ticket to change it again.` (new key `taskPage.composer.mergedHint`), and links to the ticket in the Inbox when there is one.
+- **A restore conflict:** the status line reads `Running`. The conflict block shows in the thread and in Needs you, with `Show the saved work` and `Carry on without it` (`tasks.dismissNeedsYou`). `Stop` follows the running state.
+- **The lost-box line and the reopen tag** read `session.restored.previousBox`, `session.crashed.cause` and `user.message.reopen` (ticket 02). When those fields are missing, the page shows milestone 1's crash line and no tag.
+- **The driver after a reopen** is the member who reopened (ticket 18).
+- **The reconnecting status** is `--muted` with `loader-circle` on every width, not amber.
+
 ## Done when
 
 - [ ] The fold's tests run on recorded streams with every new kind, and nothing is dropped silently.

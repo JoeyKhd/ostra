@@ -18,6 +18,15 @@ To the approved targets for screens 4 and 11.
 - **Live:** a change notice refreshes the list, so a ticket made in Linear shows without a reload.
 - "Inbox" in the project's navigation (`app-design.md`). At phone width: one column, the preview as a sheet.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **`cmdk` is allowed** for the filters' `Command` (ticket 34 adds it first; whoever lands first adds it, pinned, with the lockfile).
+- **The sidebar's Inbox count** reads `projects.list`'s `inboxCount` (ticket 29).
+- **Start task and New task share the `Run on` logic:** pull it out of `new-task-form.tsx`, don't copy it.
+- **Below `xl`,** the ticket panel opens as a right `Sheet`. At phone width it's a bottom `Sheet`, a side `components/ui/sheet.tsx` gains (`phone-inbox.md`).
+
 ## Done when
 
 - [ ] Component tests: rows, filters in the URL, the existing task, start, the empty state ("no boards yet" and "nothing open").

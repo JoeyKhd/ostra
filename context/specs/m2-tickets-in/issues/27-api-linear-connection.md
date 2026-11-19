@@ -19,6 +19,28 @@ Every procedure is for organization admins only, and checks the organization (AD
 - **`linear.disconnect`:** revokes the token at Linear, deletes the secrets, sets the connection `revoked`, and removes its boards' schedules. Its boards and tickets stay, read-only.
 - One Linear connection per organization in milestone 2; a second `start` while one is active is refused.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **Every `linear.*` procedure stays admin-only,** `linear.status` included. A member doesn't get the Linear page. It's `AdminOnly`, like GitHub's, and the sidebar shows Linear to admins only. Members see what they need of the connection on the boards and the Inbox (tickets 28 and 29).
+- **`linear.status` is one discriminated union.** With no connection, or a `revoked` one, it answers `{ state: "none", mode, modeReason }` from the address pre-check, so the page shows the mode before `linear.start`. No separate `linear.mode` query.
+- **`linear.status` fields, for every other state:**
+  - `state`, `mode`, `credentialKind`
+  - the workspace's key and name, the app user's name, `activatedAt`
+  - the last event: its time, type and ticket key, from the newest `WebhookDelivery`; with only `lastEventAt`, the time alone
+  - the access token's expiry, and `silentSince`
+  - the poll interval and the reconcile interval, from `OSTRA_TRACKER_POLL_SECONDS` and `OSTRA_RECONCILE_MINUTES`, read-only
+  - for a pending row: when it started, and which admin started it
+  An `api_key` connection says so, and the page labels it `Personal API key (development)`.
+- **`linear.refresh-token`** runs only for `app_oauth` connections. `app_client_credentials` is re-requested on a 401. `api_key` never refreshes.
+- **The checklist's skip** (home-first-run target, item 2):
+  - `setup.skip({ step: "linear" })`, admin only, writes `OrganizationSetting.linearSkippedAt` and `linearSkippedByMemberId`.
+  - `setup.status`'s steps change from `done: boolean` to `state: "done" | "skipped" | "open"`. The Linear step adds `pending` and `failed` from the connection.
+  - `next` is the first `open` step, and the progress counts done and skipped steps.
+  - An `active` connection makes the step `done`, whether or not it was skipped.
+  - Every caller of `setup.status` is updated in the same commit.
+
 ## Done when
 
 - [ ] Tests against the fake Linear server: the whole flow from `start` to `active`; a callback with another admin's state, an old state or a reused state is refused; a token that isn't the app's is refused; polling mode on a private address; a member who isn't an admin is refused everywhere; secrets never come back from any procedure.

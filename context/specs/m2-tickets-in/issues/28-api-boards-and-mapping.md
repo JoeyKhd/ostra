@@ -17,6 +17,17 @@ Project admins only, checked per project (ADR 0026).
 - **`boards.detach`:** removes the board's schedule. Its tickets stay cached and its tasks keep their links, but no new task starts from it.
 - A team may be attached to more than one project, each a board of its own, as `domain-model.md` says.
 
+## Decided 2026-11-19 (ticket 40)
+
+The lead, on the maintainer's delegation, settled the open points the milestone 2 targets (`context/brand/app-targets/m2/`) and ticket 40 left. They're part of what to build:
+
+- **`boards.get` carries what the boards page shows a member,** so nobody needs `linear.status`:
+  - the board's key, its open-ticket count, its last poll and its last event
+  - the connection's workspace name and mode
+  - the integration check: `installed`, `not_installed` or `unknown`
+  - the statuses grouped by category
+- **`boards.saveMapping`** saves `magicWord` with the mapping.
+
 ## Done when
 
 - [ ] Tests against the fake Linear server and the Jira fake: attach drafts the mapping each tracker's statuses give; an edited mapping is saved and checked; detach stops polling; a member, and another project's admin, are refused.
