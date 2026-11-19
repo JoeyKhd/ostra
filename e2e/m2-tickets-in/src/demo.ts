@@ -10,6 +10,7 @@
 // Secrets come from the environment (model.env, github.env, github-test.env, linear.env and the
 // tunnel's address) and are typed into forms or stored in the secret store only: never printed.
 
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -41,7 +42,7 @@ import type { M2Settings } from "./settings.ts";
 // ---------- the run's own state, so a second run picks up where the last one stopped ----------
 
 const runStateSchema = z.object({
-  ticket: z.object({ id: z.string(), identifier: z.string(), url: z.string(), createdAt: z.number() }).nullable().default(null),
+  ticket: z.object({ id: z.string(), identifier: z.string(), url: z.string(), createdAt: z.number(), title: z.string(), file: z.string() }).nullable().default(null),
   taskId: z.string().nullable().default(null),
   pr: z.object({ number: z.number(), url: z.string() }).nullable().default(null),
   released: z.boolean().default(false),
@@ -101,27 +102,29 @@ const attachBoard = async (page: Page, settings: M2Settings, projectHref: string
   await screenshot(page, settings, "board-attached");
 };
 
-const TICKET_TITLE = "Add a GREETING.md that says hello from ostra";
 
 /** Step 3: a real ticket in OST, made the way a person makes one: a description with an image, a label, a comment. */
-const createTicket = async (tool: LinearTool, settings: M2Settings): Promise<CreatedIssue & { readonly createdAt: number }> => {
+const createTicket = async (tool: LinearTool, settings: M2Settings): Promise<CreatedIssue & { readonly createdAt: number; readonly title: string; readonly file: string }> => {
+  // Each run's own file: an earlier run's merged PR left its file on the default branch.
+  const file = `GREETING-${randomBytes(2).toString("hex")}.md`;
+  const title = `Add ${file} that says hello from ostra`;
   const assetUrl = await uploadImage(tool, "greeting-sketch.png");
   const labelId = await ensureLabel(tool, settings.linearTeamId, "ostra-demo");
   const createdAt = Date.now();
   const issue = await createIssue(tool, {
     teamId: settings.linearTeamId,
-    title: TICKET_TITLE,
+    title,
     description: [
       "We want a friendly file at the root of the repo.",
       "",
-      "Create `GREETING.md` with a level-one heading `Hello from ostra` and one sentence saying which ticket asked for it.",
+      `Create \`${file}\` with a level-one heading \`Hello from ostra\` and one sentence saying which ticket asked for it.`,
       "",
       `![greeting-sketch.png](${assetUrl})`,
     ].join("\n"),
     labelIds: [labelId],
   });
   await addComment(tool, issue.id, "Keep it short: the heading and one sentence are enough.");
-  return { ...issue, createdAt };
+  return { ...issue, createdAt, title, file };
 };
 
 /** Step 4: the ticket in the Inbox, then "Start task" on it, on the given runner. */
@@ -357,7 +360,7 @@ const main = async (): Promise<void> => {
         const text = rows.map((row) => JSON.stringify(row.payload)).join("\n");
         return text === "" ? null : text;
       }, 5000);
-      check("step 8: the agent answers about its first turn", answer.includes("GREETING.md"), answer.includes("GREETING.md") ? "its answer names GREETING.md, the file its first turn created" : "its answer doesn't name its first turn's file");
+      check("step 8: the agent answers about its first turn", answer.includes(ticket.file), answer.includes(ticket.file) ? `its answer names ${ticket.file}, the file its first turn created` : "its answer doesn't name its first turn's file");
       run.reopened = true;
       await saveRunState(stateFile, run);
     }
@@ -408,7 +411,8 @@ const main = async (): Promise<void> => {
     checks.push(await checkOutbox(db, taskId));
     check("cleanup after the merge (F-079)", !hidden && box.every((one) => one.state === "released"), `hidden ref ${hidden ? "still there" : "deleted"}, boxes ${box.map((one) => one.state).join(", ")}`);
     // The Linear key never reaches the runner (spec section 2): searched by value, never printed.
-    checks.push(await checkNoCredential(settings, settings.logFiles, [settings.linearApiKey]));
+    const credential = await checkNoCredential(settings, settings.logFiles, [settings.linearApiKey]);
+    check(credential.name, credential.ok, credential.detail);
     const scanned = [];
     for (const root of [settings.runnerDataDir, settings.secondRunner.runnerDataDir]) scanned.push(await scanFolder(root, [settings.linearApiKey]));
     const holding = scanned.flatMap((scan) => scan.holding);
@@ -432,8 +436,8 @@ const main = async (): Promise<void> => {
       // Webhooks off: the seed's webhook goes first. Then the drift poll, then polling mode.
       await removeSeedWebhook(tool, seeded.webhookId);
       seeded = { ...seeded, webhookId: null };
-      checks.push(await checkDrift(db, tool, ticket, TICKET_TITLE, settings.reconcileMinutes));
-      checks.push(await checkPolling(db, tool, seeded.connectionId, ticket, TICKET_TITLE));
+      checks.push(await checkDrift(db, tool, ticket, ticket.title, settings.reconcileMinutes));
+      checks.push(await checkPolling(db, tool, seeded.connectionId, ticket, ticket.title));
       checks.push({ name: "repo checks (F-055, F-060)", ok: true, detail: "waiting on ticket 40: test1 and test2 are private repos on a free plan, so no ruleset can be read or switched" });
       say("WAIT repo checks (F-055, F-060): waiting on ticket 40's steps 1 to 4");
       if (!process.argv.includes("--keep-second")) await cleanUpSecondTask(github, tool, second.prNumber, second.ticketKey);
