@@ -1,5 +1,5 @@
 import { FakeAgentAdapter, fakeMarker } from "@ostra/adapter-sdk/testing";
-import type { EffortModel } from "@ostra/adapter-sdk";
+import type { EffortModel, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import { orderedEffortLevels } from "@ostra/adapter-sdk";
 import { boxIdSchema, clientMessageIdSchema, gitShaSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, EffortLevel, ExecutorKind, Peer, ReasoningControls, TaskEvent, TaskSpec, TaskSpecRestore } from "@ostra/protocol";
@@ -31,7 +31,22 @@ const noneButAdvertising: AgentFactory = (driver) => {
   return agent;
 };
 
+/** Every launch's model, as the runner handed it to `prepareLaunch`. */
+const launchedModels: PrepareLaunchInput["model"][] = [];
+
+/** A `session-option` fake that records the model each launch is prepared with. */
+const recordingLaunch: AgentFactory = (driver) => {
+  const agent = new FakeAgentAdapter("rich", driver, undefined, "mcp", "session-option");
+  const prepare = agent.prepareLaunch.bind(agent);
+  agent.prepareLaunch = (input: PrepareLaunchInput) => {
+    launchedModels.push(input.model);
+    return prepare(input);
+  };
+  return agent;
+};
+
 const agents = createAgentRegistry({
+  "fake-acp-agent-recording-launch": recordingLaunch,
   ...harnessAgents,
   "fake-acp-agent-rich-effort": (driver) => new FakeAgentAdapter("rich", driver, undefined, "mcp", "session-option"),
   "fake-acp-agent-plain-effort": (driver) => new FakeAgentAdapter("plain", driver, undefined, "mcp", "session-option"),
@@ -127,6 +142,29 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     await h.waitForKind(spec, "session.saved");
     expect(messages(h, spec)).toContain("effort: max set: max");
     expect(h.ofKind(spec, "turn.started")[0]).toMatchObject({ effort: "max", adjustedFrom: "xhigh" });
+  }, 120_000);
+
+  it("F-137: the launch gets the model's own controls and real limits from the spec, and none it doesn't carry", async () => {
+    const { h, taskId, boxId } = await runnerFor(placement);
+    const limits = { contextWindow: 1_000_000, maxOutputTokens: 128_000 };
+    const spec = h.taskFor(fakeMarker("effort"), {
+      taskId,
+      agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-recording-launch", apiFormat: "anthropic-messages", effort: "high", reasoning: MODEL_LEVELS, limits },
+    }).spec;
+    const before = launchedModels.length;
+    h.dispatch(spec, boxId);
+    await h.waitForKind(spec, "session.saved");
+    expect(launchedModels.slice(before)).toEqual([expect.objectContaining({ reasoning: MODEL_LEVELS, limits })]);
+
+    // A spec without them (a custom model with no limits): the launch carries none, and the adapter keeps its fixed ones.
+    const other = await runnerFor(placement);
+    const bare = other.h.taskFor(fakeMarker("effort"), { taskId: other.taskId, agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-recording-launch", apiFormat: "anthropic-messages" } }).spec;
+    const mark = launchedModels.length;
+    other.h.dispatch(bare, other.boxId);
+    await other.h.waitForKind(bare, "session.saved");
+    const [launched] = launchedModels.slice(mark);
+    expect(launched).toBeDefined();
+    expect(launched).not.toHaveProperty("limits");
   }, 120_000);
 
   it("F-137: Default sets nothing on a new session; the turn runs at the agent's default", async () => {

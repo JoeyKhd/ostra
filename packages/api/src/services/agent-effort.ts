@@ -1,17 +1,15 @@
+import { openCodeEffort } from "@ostra/adapter-opencode/effort";
 import { effectiveReasoning } from "@ostra/domain";
 import { apiFormatFromDb } from "@ostra/db";
 import type { DbOrTx } from "@ostra/db";
-import { EFFORT_SCALE, effortLevelSchema, reasoningControlsSchema } from "@ostra/protocol";
+import { effortLevelSchema, reasoningControlsSchema } from "@ostra/protocol";
 import type { ApiFormat, EffortLevel, OrganizationId, ReasoningControls } from "@ostra/protocol";
 import { z } from "zod";
 
-// F-137 (ADR 0066, ticket 61): the levels a model offers, as far as its agent can send them. The
-// agent adapter owns that mapping (ticket 57's `effortLevels` and `reasoningEffort` capability);
-// the API asks it through this port, so the panel offers exactly what a turn will send. Until the
-// adapters declare it, `controlsAgentEffort` reads the levels off the model's controls: an effort
-// list gives those levels, a toggle `none` and `on`, a budget `high` and `max` (research
-// `opencode-reasoning-effort.md`, sections 1.3 and 1.4), and an agent that takes none gives
-// `default` alone.
+// F-137 (ADR 0066, tickets 57 and 61): the levels a model offers, as far as its agent can send
+// them. The agent adapter owns that mapping (its `reasoningEffort` capability and `effortLevels`);
+// the API and core ask it through this port, so the panel offers, and the dispatch sends, exactly
+// what a turn will send. An agent no adapter declares offers `default` alone.
 
 /** How an agent takes a level (ADR 0066): over an ACP session option, by a relaunch, or not at all. */
 export type ReasoningEffortCapability = "session-option" | "relaunch" | "none";
@@ -30,33 +28,23 @@ export type AgentEffort = {
   readonly levelsFor: (adapter: string, input: EffortLevelsInput) => readonly EffortLevel[];
 };
 
-const scaleOrder = (levels: readonly EffortLevel[]): EffortLevel[] => EFFORT_SCALE.filter((level) => levels.includes(level));
-
-/** A model's levels from its controls alone. A model that doesn't reason, or has no control, offers `default` alone. */
-export const levelsFromControls = (controls: ReasoningControls): readonly EffortLevel[] => {
-  if (!controls.supported) {
-    return ["default"];
-  }
-  if (controls.effort !== undefined) {
-    return ["default", ...scaleOrder(controls.effort)];
-  }
-  if (controls.toggle === true) {
-    return ["default", "none", "on"];
-  }
-  if (controls.budget !== undefined) {
-    return ["default", "high", "max"];
-  }
-  return ["default"];
+/** What the port reads off an agent adapter: its declared capability and its levels per model. */
+export type EffortAgent = {
+  readonly capabilities: { readonly reasoningEffort: ReasoningEffortCapability };
+  readonly effortLevels: (model: EffortLevelsInput) => readonly EffortLevel[];
 };
 
-/** The agents that declare a session option today: OpenCode (ADR 0066). */
-const SESSION_OPTION_AGENTS: ReadonlySet<string> = new Set(["opencode"]);
+/** The port over the agent adapters' own declarations, by adapter name. */
+export const adapterAgentEffort = (agents: ReadonlyMap<string, EffortAgent>): AgentEffort => ({
+  capabilityOf: (adapter) => agents.get(adapter)?.capabilities.reasoningEffort ?? "none",
+  levelsFor: (adapter, input) => {
+    const agent = agents.get(adapter);
+    return agent === undefined || agent.capabilities.reasoningEffort === "none" ? ["default"] : agent.effortLevels(input);
+  },
+});
 
-/** The default port, until the agent adapters declare their own levels (ticket 57). */
-export const controlsAgentEffort: AgentEffort = {
-  capabilityOf: (adapter) => (SESSION_OPTION_AGENTS.has(adapter) ? "session-option" : "none"),
-  levelsFor: (adapter, input) => (SESSION_OPTION_AGENTS.has(adapter) ? levelsFromControls(input.reasoning) : ["default"]),
-};
+/** The shipped agents: OpenCode, whose levels are a port of its own `Variant.resolve` (ticket 57). */
+export const shippedAgentEffort: AgentEffort = adapterAgentEffort(new Map([["opencode", openCodeEffort]]));
 
 // ---------- the views ----------
 

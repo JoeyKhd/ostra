@@ -118,3 +118,19 @@ const levelOfVariant = (variant: string): EffortLevel | undefined => {
 export const openCodeEffortLevels = (model: EffortModel): readonly EffortLevel[] =>
   orderedEffortLevels(openCodeVariants(model).flatMap((variant) => levelOfVariant(variant) ?? []));
 
+/**
+ * How OpenCode takes a level: its ACP `effort` option, of category `thought_level` (research
+ * section 3). The adapter's capability reads this, and so does `openCodeEffort`.
+ */
+export const OPENCODE_REASONING_EFFORT = "session-option";
+
+/**
+ * OpenCode's reasoning effort as the server reads it, without the adapter's process code: the
+ * capability and the levels per model, from this one file (`@ostra/adapter-opencode/effort`). The
+ * panel and core offer and dispatch exactly what the adapter sends.
+ */
+export const openCodeEffort = {
+  capabilities: { reasoningEffort: OPENCODE_REASONING_EFFORT },
+  effortLevels: openCodeEffortLevels,
+} as const;
+

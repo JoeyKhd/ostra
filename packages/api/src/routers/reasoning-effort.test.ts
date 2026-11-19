@@ -357,3 +357,67 @@ describe("the task page (F-137)", () => {
     await expect(driver.tasks.setEffort({ taskId: task.taskId, level: "low" })).resolves.toMatchObject({ changed: false });
   });
 });
+
+describe("the agent's own levels (F-137)", () => {
+  it("F-137: the levels are the ones OpenCode sends for the model, not the controls read alone", async () => {
+    const a = await admin();
+    // An OpenAI-compatible model whose only control is a toggle: OpenCode's chat package sends no
+    // level for it, so the panel offers Default alone, not Off and On.
+    await a.providers.updateModel({ modelId: catalogModelId, reasoning: { supported: true, toggle: true } });
+    try {
+      expect(levelsOf((await a.agentProfiles.effortLevels({ adapter: "opencode", modelId: catalogModelId })).levels)).toEqual(["default"]);
+      const listed = (await a.providers.models({ providerId: catalogProviderId })).find((model) => model.id === catalogModelId);
+      expect(levelsOf(listed?.reasoning.levels ?? [])).toEqual(["default"]);
+      await expect(a.agentProfiles.save(profileInput({ effort: "on" }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    } finally {
+      await a.providers.updateModel({ modelId: catalogModelId, reasoning: null });
+    }
+
+    // A manual-thinking Claude (4.5) with an effort list: OpenCode sends a thinking budget, High or Max.
+    const url = "https://claude-manual.example.com/v1";
+    const token = "sk-effort-claude-token-0123456789abcdef";
+    harness.fakes.modelProvider.endpoints.set(url, {
+      token,
+      apiFormat: "anthropic-messages",
+      authScheme: "x-api-key",
+      models: [{ endpointModelId: "claude-sonnet-4-5", displayName: "Claude Sonnet 4.5", contextWindow: 200_000 }],
+    });
+    const provider = await a.providers.create({
+      name: "Manual Claude",
+      baseUrl: url,
+      apiFormat: "anthropic-messages",
+      authScheme: "x-api-key",
+      sessionsAtOnce: null,
+      allowOnPersonalRunners: false,
+      token,
+    });
+    const [claude] = await a.providers.models({ providerId: providerIdSchema.parse(provider.providerId) });
+    if (claude === undefined) {
+      throw new Error("the Claude model wasn't listed");
+    }
+    const claudeId = modelIdSchema.parse(claude.id);
+    await a.providers.updateModel({ modelId: claudeId, reasoning: { supported: true, effort: ["low", "medium", "high"] } });
+    expect(levelsOf((await a.agentProfiles.effortLevels({ adapter: "opencode", modelId: claudeId })).levels)).toEqual(["default", "high", "max"]);
+    await expect(a.agentProfiles.save(profileInput({ modelId: claudeId, effort: "low" }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await a.agentProfiles.save(profileInput({ modelId: claudeId, effort: "max" }))).profileId).toBeTypeOf("string");
+  });
+});
+
+describe("an agent that takes no level (F-137)", () => {
+  it("F-137: a task whose agent declares none offers Default alone on the task page, and a level is refused", async () => {
+    const a = await admin();
+    // No shipped agent declares none, and a profile names only an installed one: the row is moved
+    // to an agent no adapter declares, which the port reads as none.
+    const none = await a.agentProfiles.save(profileInput());
+    await harness.test.db.agentProfile.update({ where: { id: none.profileId }, data: { adapter: "claude-code" } });
+    const task = await restrictedTask();
+    await harness.test.db.session.update({ where: { id: task.sessionId }, data: { agentProfileId: none.profileId } });
+    const driver = await harness.as(harness.fixture.a.insider);
+    const seen = await driver.tasks.get({ taskId: task.taskId });
+    // The model reasons (GPT-5.5's five levels), but the agent sends none of them.
+    expect(levelsOf(seen.effort.levels)).toEqual(["default"]);
+    expect(seen.effort.level).toBe("default");
+    await expect(driver.tasks.setEffort({ taskId: task.taskId, level: "low" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).effort).toBe("default");
+  });
+});

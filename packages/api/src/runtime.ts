@@ -9,7 +9,7 @@ import type { OstraAuth } from "./auth/create-auth.ts";
 import { ensureFirstAdmin } from "./auth/first-admin.ts";
 import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
-import { controlsAgentEffort } from "./services/agent-effort.ts";
+import { shippedAgentEffort } from "./services/agent-effort.ts";
 import type { AgentEffort } from "./services/agent-effort.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
 import { accountMailIsOn, noEmailDirectory } from "./services/email.ts";
@@ -93,7 +93,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     logger: input.logger,
     hashPassword,
     catalog: input.catalog,
-    agentEffort: input.agentEffort ?? controlsAgentEffort,
+    agentEffort: input.agentEffort ?? shippedAgentEffort,
     blobStore: input.blobStore,
     linear: createLinearAppKit(input.linearEndpoints === undefined ? {} : { endpoints: input.linearEndpoints }),
     trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),

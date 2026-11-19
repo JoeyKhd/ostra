@@ -24,7 +24,7 @@ import type { ApprovalRequestSubject, EffortLevel } from "@ostra/protocol";
 import { ARCHIVE_VERIFIED_VERSIONS, OPENCODE_VERSION, resolveOpenCodeBinary } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
 import { buildAgentEnv, buildCliEnv, launchFiles, taskDirs } from "./config.ts";
-import { OPENCODE_ON_VARIANT, openCodeEffortLevels } from "./effort.ts";
+import { OPENCODE_ON_VARIANT, OPENCODE_REASONING_EFFORT, openCodeEffortLevels } from "./effort.ts";
 import { OSTRA_MCP_SERVER } from "./permissions.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 import type { TodoTracker } from "./todo-plan.ts";
@@ -117,7 +117,7 @@ export class OpenCodeAdapter extends AgentAdapter {
     // Milestone 4 (ADR 0066, ticket 57): OpenCode's ACP `effort` option, of category `thought_level`,
     // set with `session/set_config_option` and kept with the session (research section 3). Its
     // values are the variants the config's `capabilities.reasoning` gives (`effortLevels`).
-    reasoningEffort: "session-option",
+    reasoningEffort: OPENCODE_REASONING_EFFORT,
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */

@@ -778,6 +778,9 @@ importers:
       '@ostra/adapter-model-endpoint':
         specifier: workspace:*
         version: link:../adapters/adapter-model-endpoint
+      '@ostra/adapter-opencode':
+        specifier: workspace:*
+        version: link:../adapters/adapter-opencode
       '@ostra/adapter-sdk':
         specifier: workspace:*
         version: link:../adapter-sdk

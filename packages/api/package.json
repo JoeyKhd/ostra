@@ -18,6 +18,7 @@
   "dependencies": {
     "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
+    "@ostra/adapter-opencode": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/db": "workspace:*",
     "@ostra/domain": "workspace:*",

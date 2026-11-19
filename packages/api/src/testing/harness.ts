@@ -13,7 +13,7 @@ import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, loginSessionIdSchema } from "../auth/scope.ts";
 import type { SessionUser } from "../auth/scope.ts";
 import { createCatalogSource } from "../catalog/catalog-source.ts";
-import { controlsAgentEffort } from "../services/agent-effort.ts";
+import { shippedAgentEffort } from "../services/agent-effort.ts";
 import type { AgentEffort } from "../services/agent-effort.ts";
 import { appRouter } from "../routers/app-router.ts";
 import { createLinearAppKit } from "../services/linear-app.ts";
@@ -210,7 +210,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       logger: silentLogger,
     }),
     email: emailDirectory,
-    agentEffort: options.agentEffort ?? controlsAgentEffort,
+    agentEffort: options.agentEffort ?? shippedAgentEffort,
     emailOn,
     stream: hub,
   };
