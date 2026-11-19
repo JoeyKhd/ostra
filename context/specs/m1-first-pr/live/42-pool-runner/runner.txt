@@ -1,0 +1,4 @@
+info runner registered runnerId=01a1f1a1-9968-76b8-86cc-63fee44a3dfc kind=pool
+Signed in. This is runner 01a1f1a1-9968-76b8-86cc-63fee44a3dfc (pool).
+Runner 01a1f1a1-9968-76b8-86cc-63fee44a3dfc (pool, docker, a box per task) is connecting to http://localhost:9001. Press Ctrl-C to stop.
+info connected runnerId=01a1f1a1-9968-76b8-86cc-63fee44a3dfc minor=1 connectionEpoch=1 replicaId=core:6918de1c-f9b8-43ad-a68b-0ad754d055a2

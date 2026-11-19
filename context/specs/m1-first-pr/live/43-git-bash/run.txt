@@ -1,0 +1,32 @@
+# Ticket 43, live, 2026-11-19: ostra runner from PowerShell 5.1, with no bash on PATH and no OSTRA_RUNNER_SHELL.
+# The demo (e2e/m1-first-pr, OSTRA_E2E_SETUP_SCRIPT set) was started from the PowerShell below; it starts the runner
+# as node apps/runner/src/main.ts runner (what pnpm ostra runner runs), with this environment. Lines are kept as printed.
+
+## The PowerShell's environment
+PowerShell 5.1.26100.9711
+bash on PATH: 
+git on PATH: C:\Program Files\Git\cmd\git.exe
+OSTRA_RUNNER_SHELL set: False
+
+## The setup script saved in the project's environment
+echo "setup: bash $BASH_VERSION at $BASH"
+echo "setup: system $(uname -s)"
+echo "setup: repo $OSTRA_REPO"
+
+## The runner (the health check runs before it connects)
+[runner] Signed in. This is runner 01a1f1ac-54f2-730b-bada-fbd7f921ab36 (personal).
+[runner] Runner 01a1f1ac-54f2-730b-bada-fbd7f921ab36 (personal, host, not isolated, process-tree containment) is connecting to http://localhost:9001. Press Ctrl-C to stop.
+[runner] info connected runnerId=01a1f1ac-54f2-730b-bada-fbd7f921ab36 minor=1 connectionEpoch=1 replicaId=core:6918de1c-f9b8-43ad-a68b-0ad754d055a2
+[runner] info dispatch accepted runnerId=01a1f1ac-54f2-730b-bada-fbd7f921ab36 component=task-host taskId=01a1f1ac-5a94-70fd-9f14-32384ade13fb sessionId=01a1f1ac-5a9c-756e-85ea-aa5581bd764e leaseEpoch=1
+[runner] info box created runnerId=01a1f1ac-54f2-730b-bada-fbd7f921ab36 adapterKind=executor adapter=host taskId=01a1f1ac-5a94-70fd-9f14-32384ade13fb boxId=01a1f1ac-5f5e-736d-b872-8216c463fb35 repos=1
+[runner] info box ready runnerId=01a1f1ac-54f2-730b-bada-fbd7f921ab36 adapterKind=executor adapter=host taskId=01a1f1ac-5a94-70fd-9f14-32384ade13fb boxId=01a1f1ac-5f5e-736d-b872-8216c463fb35 setupExitCode=0
+[runner] info agent started runnerId=01a1f1ac-54f2-730b-bada-fbd7f921ab36 adapterKind=executor adapter=host taskId=01a1f1ac-5a94-70fd-9f14-32384ade13fb boxId=01a1f1ac-5f5e-736d-b872-8216c463fb35 pid=34804 containment=process-tree
+
+## The task's setup events, as core stored them (table event, task 01a1f1ac-5a94-70fd-9f14-32384ade13fb)
+2 environment.setup_started {"kind":"environment.setup_started"}
+3 environment.setup_output {"kind":"environment.setup_output","text":"setup: bash 5.2.37(1)-release at /usr/bin/bash\n","stream":"stdout"}
+4 environment.setup_output {"kind":"environment.setup_output","text":"setup: system MINGW64_NT-10.0-26200\n","stream":"stdout"}
+5 environment.setup_output {"kind":"environment.setup_output","text":"setup: repo ostra-test/test1\n","stream":"stdout"}
+6 environment.setup_finished {"kind":"environment.setup_finished","exitCode":0,"durationMs":61}
+
+## The task's PR (closed after the run): https://github.com/ostra-test/test1/pull/33
