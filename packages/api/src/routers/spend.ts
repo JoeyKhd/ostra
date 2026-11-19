@@ -9,6 +9,7 @@ import type { BudgetLevel } from "@ostra/domain";
 import type { DbOrTx } from "@ostra/db";
 import { budgetIdSchema, modelIdSchema, projectIdSchema, providerIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId } from "@ostra/protocol";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import {
@@ -74,6 +75,14 @@ const budgetViewSchema = z.object({
   /** Spend past the budget, which the page shows. */
   overshootMicroUsd: z.number(),
   updatedAt: z.number(),
+  /** Ticket 36 (the Spend page): when this month's 80% and 100% notices went out, epoch ms. */
+  warnedAt: z.number().nullable(),
+  reachedAt: z.number().nullable(),
+  /** The turns it holds now: tasks queued at dispatch, and every other origin's turns. */
+  queuedTasks: z.number().int(),
+  heldTurns: z.number().int(),
+  /** Who last set it, and when. */
+  setBy: z.object({ name: z.string(), at: z.number() }).nullable(),
 });
 export type BudgetView = z.infer<typeof budgetViewSchema>;
 
@@ -82,6 +91,9 @@ const modelLineSchema = figuresSchema.extend({
   name: z.string(),
   providerId: providerIdSchema,
   providerName: z.string(),
+  /** Ticket 36: a model with no catalog entry, and the catalog's logo on ostra's own server. */
+  custom: z.boolean(),
+  logoPath: z.string().nullable(),
 });
 
 const providerLineSchema = figuresSchema.extend({ providerId: providerIdSchema, name: z.string() });
@@ -101,6 +113,28 @@ export const spendMonthViewSchema = z.object({
 });
 export type SpendMonthView = z.infer<typeof spendMonthViewSchema>;
 
+export const modelPriceViewSchema = z.object({
+  modelId: modelIdSchema,
+  name: z.string(),
+  endpointModelId: z.string(),
+  custom: z.boolean(),
+  logoPath: z.string().nullable(),
+  providerName: z.string(),
+  /** `null`: nobody priced it yet. */
+  priceSource: z.enum(["endpoint", "catalog", "admin"]).nullable(),
+  priceChangedAt: z.number().nullable(),
+  /** US dollars per million tokens; `null` where that kind has no price. */
+  prices: z.object({
+    inputPerMTok: z.number().nullable(),
+    outputPerMTok: z.number().nullable(),
+    cacheReadPerMTok: z.number().nullable(),
+    cacheWritePerMTok: z.number().nullable(),
+  }),
+  /** Its tokens in the month that no price counted. */
+  unpricedTokens: z.number(),
+});
+export type ModelPriceView = z.infer<typeof modelPriceViewSchema>;
+
 type SpendRow = {
   readonly projectId: string;
   readonly modelId: string;
@@ -108,6 +142,7 @@ type SpendRow = {
   readonly modelName: string;
   readonly providerId: string;
   readonly providerName: string;
+  readonly catalogId: string | null;
 };
 
 const loadRows = async (
@@ -128,6 +163,7 @@ const loadRows = async (
         select: {
           displayName: true,
           endpointModelId: true,
+          catalogId: true,
           provider: { select: { id: true, name: true } },
         },
       },
@@ -139,6 +175,7 @@ const loadRows = async (
     modelName: row.model.displayName ?? row.model.endpointModelId,
     providerId: row.model.provider.id,
     providerName: row.model.provider.name,
+    catalogId: row.model.catalogId,
     figures: {
       inputTokens: Number(row.inputTokens),
       outputTokens: Number(row.outputTokens),
@@ -150,6 +187,45 @@ const loadRows = async (
   }));
 };
 
+type BudgetExtras = Pick<BudgetView, "warnedAt" | "reachedAt" | "queuedTasks" | "heldTurns" | "setBy">;
+
+/** This month's notices, the turns each budget holds now, and who set it (ticket 36). */
+const loadBudgetExtras = async (
+  db: DbOrTx,
+  organizationId: OrganizationId,
+  month: string,
+  rows: readonly { readonly id: string; readonly updatedByMemberId: string | null; readonly updatedAt: Date }[],
+): Promise<ReadonlyMap<string, BudgetExtras>> => {
+  const ids = rows.map((row) => row.id);
+  const memberIds = [...new Set(rows.flatMap((row) => (row.updatedByMemberId === null ? [] : [row.updatedByMemberId])))];
+  const [notices, held, members] = await Promise.all([
+    db.budgetNotice.findMany({ where: { organizationId, budgetId: { in: ids }, month }, select: { budgetId: true, threshold: true, sentAt: true } }),
+    db.heldTurn.findMany({ where: { organizationId, budgetId: { in: ids }, releasedAt: null }, select: { budgetId: true, origin: true, taskId: true } }),
+    db.member.findMany({ where: { organizationId, id: { in: memberIds } }, select: { id: true, user: { select: { name: true } } } }),
+  ]);
+  const names = new Map(members.map((member) => [member.id, member.user.name] as const));
+  return new Map(
+    rows.map((row) => {
+      const own = held.filter((turn) => turn.budgetId === row.id);
+      const at = (threshold: "warn" | "reached"): number | null =>
+        notices.find((notice) => notice.budgetId === row.id && notice.threshold === threshold)?.sentAt.getTime() ?? null;
+      const name = row.updatedByMemberId === null ? undefined : names.get(row.updatedByMemberId);
+      return [
+        row.id,
+        {
+          warnedAt: at("warn"),
+          reachedAt: at("reached"),
+          queuedTasks: new Set(own.filter((turn) => turn.origin === "dispatch").map((turn) => turn.taskId)).size,
+          heldTurns: own.filter((turn) => turn.origin !== "dispatch").length,
+          setBy: name === undefined ? null : { name, at: row.updatedAt.getTime() },
+        },
+      ] as const;
+    }),
+  );
+};
+
+const noExtras: BudgetExtras = { warnedAt: null, reachedAt: null, queuedTasks: 0, heldTurns: 0, setBy: null };
+
 const budgetView = (
   row: {
     readonly id: string;
@@ -160,6 +236,7 @@ const budgetView = (
   spent: bigint,
   line: ProjectLine | null,
   warnPercent: number,
+  extras: BudgetExtras,
 ): BudgetView | null => {
   if (row.projectId !== null && line?.kind !== "project") {
     return null;
@@ -177,6 +254,7 @@ const budgetView = (
     state: budgetLevel(spent, monthly, warnPercent),
     overshootMicroUsd: Number(budgetOvershoot(spent, monthly)),
     updatedAt: row.updatedAt.getTime(),
+    ...extras,
   };
 };
 
@@ -208,7 +286,7 @@ export const loadSpendMonth = async (
         ? {}
         : { OR: [{ projectId: null }, { projectId: input.projectId }] }),
     },
-    select: { id: true, projectId: true, monthlyMicroUsd: true, updatedAt: true },
+    select: { id: true, projectId: true, monthlyMicroUsd: true, updatedAt: true, updatedByMemberId: true },
     orderBy: { createdAt: "asc" },
   });
   // A budget's spend is the whole organization's or the whole project's, whatever this view covers.
@@ -218,6 +296,11 @@ export const loadSpendMonth = async (
     organizationRows.reduce((sum, row) => sum + row.figures.spentMicroUsd, 0),
   );
   const perProject = sumBy(organizationRows, (row) => row.projectId);
+  const [extras, catalog] = await Promise.all([
+    loadBudgetExtras(db, organizationId, input.month, budgetRows),
+    ctx.deps.catalog.entries(),
+  ]);
+  const logos = new Map(catalog.map((entry) => [entry.catalogId, entry.logoPath] as const));
 
   let total = zero;
   for (const row of rows) {
@@ -229,11 +312,14 @@ export const loadSpendMonth = async (
   );
   const byModel = [...sumBy(rows, (row) => row.modelId)].map(([modelId, figures]) => {
     const row = models.get(modelId);
+    const catalogId = row?.catalogId ?? null;
     return {
       modelId: modelIdSchema.parse(modelId),
       name: row?.modelName ?? modelId,
       providerId: providerIdSchema.parse(row?.providerId),
       providerName: row?.providerName ?? "",
+      custom: catalogId === null,
+      logoPath: catalogId === null ? null : (logos.get(catalogId) ?? null),
       ...figures,
     };
   });
@@ -249,7 +335,7 @@ export const loadSpendMonth = async (
       row.projectId === null
         ? organizationSpent
         : BigInt((perProject.get(row.projectId) ?? zero).spentMicroUsd);
-    const view = budgetView(row, spent, line, warnPercent);
+    const view = budgetView(row, spent, line, warnPercent, extras.get(row.id) ?? noExtras);
     if (view !== null) {
       budgets.push(view);
     }
@@ -309,6 +395,63 @@ export const spendRouter = router({
         { month: input.month, projectId: access.projectId },
         await loadProjectFolding(ctx.deps.db, ctx.scope),
       );
+    }),
+
+  /**
+   * Ticket 36: one model's four prices for the Spend page's price form, where they came from, and
+   * its tokens this month that no price counted. Organization admins, who set prices.
+   */
+  modelPrice: adminProcedure
+    .input(z.strictObject({ modelId: modelIdSchema, month: budgetMonthSchema }))
+    .output(modelPriceViewSchema)
+    .query(async ({ ctx, input }) => {
+      const { db } = ctx.deps;
+      const organizationId = ctx.scope.organizationId;
+      const model = await db.model.findFirst({
+        where: { id: input.modelId, organizationId },
+        select: {
+          id: true,
+          endpointModelId: true,
+          displayName: true,
+          catalogId: true,
+          inputPricePerMTok: true,
+          outputPricePerMTok: true,
+          cacheReadPricePerMTok: true,
+          cacheWritePricePerMTok: true,
+          priceSource: true,
+          priceChangedAt: true,
+          provider: { select: { name: true } },
+        },
+      });
+      if (model === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No such model" });
+      }
+      const bounds = budgetMonthBounds(input.month);
+      const [unpriced, catalog] = await Promise.all([
+        db.spendDaily.aggregate({
+          where: { organizationId, modelId: model.id, day: { gte: new Date(bounds.start), lt: new Date(bounds.end) } },
+          _sum: { unpricedTokens: true },
+        }),
+        ctx.deps.catalog.entries(),
+      ]);
+      const price = (value: { toNumber: () => number } | null): number | null => (value === null ? null : value.toNumber());
+      return {
+        modelId: modelIdSchema.parse(model.id),
+        name: model.displayName ?? model.endpointModelId,
+        endpointModelId: model.endpointModelId,
+        custom: model.catalogId === null,
+        logoPath: model.catalogId === null ? null : (catalog.find((entry) => entry.catalogId === model.catalogId)?.logoPath ?? null),
+        providerName: model.provider.name,
+        priceSource: model.priceSource,
+        priceChangedAt: model.priceChangedAt?.getTime() ?? null,
+        prices: {
+          inputPerMTok: price(model.inputPricePerMTok),
+          outputPerMTok: price(model.outputPricePerMTok),
+          cacheReadPerMTok: price(model.cacheReadPricePerMTok),
+          cacheWritePerMTok: price(model.cacheWritePricePerMTok),
+        },
+        unpricedTokens: Number(unpriced._sum.unpricedTokens ?? 0n),
+      };
     }),
 
   /** The current month, in UTC, as the server's clock has it. */

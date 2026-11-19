@@ -86,6 +86,11 @@ const modelViewSchema = z.object({
   maxOutputTokens: z.number().int().nullable(),
   inputPricePerMTok: z.number().nullable(),
   outputPricePerMTok: z.number().nullable(),
+  /** Ticket 36 (F-037): the cache prices, where the four came from (`null`: none yet), and when they changed. */
+  cacheReadPricePerMTok: z.number().nullable(),
+  cacheWritePricePerMTok: z.number().nullable(),
+  priceSource: z.enum(["endpoint", "catalog", "admin"]).nullable(),
+  priceChangedAt: z.number().nullable(),
   logoPath: z.string().nullable(),
   /**
    * F-137 (ADR 0066): the controls the model runs with (an admin's, else the catalog's, else none),
@@ -332,6 +337,10 @@ export const providersRouter = router({
           maxOutputTokens: model.maxOutputTokens,
           inputPricePerMTok: model.inputPricePerMTok === null ? null : model.inputPricePerMTok.toNumber(),
           outputPricePerMTok: model.outputPricePerMTok === null ? null : model.outputPricePerMTok.toNumber(),
+          cacheReadPricePerMTok: row.cacheReadPricePerMTok === null ? null : row.cacheReadPricePerMTok.toNumber(),
+          cacheWritePricePerMTok: row.cacheWritePricePerMTok === null ? null : row.cacheWritePricePerMTok.toNumber(),
+          priceSource: row.priceSource,
+          priceChangedAt: row.priceChangedAt?.getTime() ?? null,
           logoPath: entry?.logoPath ?? null,
           reasoning: {
             controls: reasoning.controls,
