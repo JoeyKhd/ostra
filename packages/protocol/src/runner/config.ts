@@ -171,7 +171,7 @@ export const runnerConfigFields = {
     flag: "k8s-namespace",
     env: "OSTRA_K8S_NAMESPACE",
     default: "the service account's namespace",
-    description: "The namespace a kubernetes runner makes its boxes' pods in.",
+    description: "The namespace a kubernetes runner makes its boxes' pods in. The cluster must run Kubernetes 1.29 or later, for native sidecars.",
   },
   k8sBuildNamespace: {
     flag: "k8s-build-namespace",

@@ -72,7 +72,7 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--pin` | `OSTRA_RUNNER_PIN` | true | Whether a runner installed from npm installs its server's version at start (ADR 0034). false keeps the installed one, inside the version window. |
 | `--npm-registry` | `OSTRA_RUNNER_NPM_REGISTRY` | https://registry.npmjs.org | The npm registry the pin installs the ostra CLI from, such as a company mirror. |
 | `--host-pool-agent-user` | `OSTRA_HOST_POOL_AGENT_USER` | (none: a host pool runner refuses to start without it) | The OS user a host pool runner runs the agent as, separate from the runner's own (Linux and macOS). |
-| `--k8s-namespace` | `OSTRA_K8S_NAMESPACE` | the service account's namespace | The namespace a kubernetes runner makes its boxes' pods in. |
+| `--k8s-namespace` | `OSTRA_K8S_NAMESPACE` | the service account's namespace | The namespace a kubernetes runner makes its boxes' pods in. The cluster must run Kubernetes 1.29 or later, for native sidecars. |
 | `--k8s-build-namespace` | `OSTRA_K8S_BUILD_NAMESPACE` | &lt;namespace&gt;-builds | The namespace a kubernetes runner builds snapshots in, with BuildKit. |
 | `--k8s-node-wait-minutes` | `OSTRA_K8S_NODE_WAIT_MINUTES` | 15 | How long a kubernetes box waits for a node before it fails and its task is queued again. |
 | `--k8s-runtime-class` | `OSTRA_K8S_RUNTIME_CLASS` | (none) | The RuntimeClass a kubernetes box's pod runs with, such as gvisor. |

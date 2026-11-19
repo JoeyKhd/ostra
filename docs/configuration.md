@@ -131,7 +131,7 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 | `OSTRA_RUNNER_PIN` | `--pin` | `true` | Whether a runner installed from npm installs its server's version at start (ADR 0034). `false` keeps the installed one, inside the version window. |
 | `OSTRA_RUNNER_NPM_REGISTRY` | `--npm-registry` | `https://registry.npmjs.org` | The npm registry the pin installs the `ostra` CLI from, such as a company mirror. |
 | `OSTRA_HOST_POOL_AGENT_USER` | `--host-pool-agent-user` | (none: a `host` pool runner refuses to start without it) | The OS user a `host` pool runner runs the agent as, separate from the runner's own (Linux and macOS). |
-| `OSTRA_K8S_NAMESPACE` | `--k8s-namespace` | the service account's namespace | The namespace a `kubernetes` runner makes its boxes' pods in. |
+| `OSTRA_K8S_NAMESPACE` | `--k8s-namespace` | the service account's namespace | The namespace a `kubernetes` runner makes its boxes' pods in. The cluster must run Kubernetes 1.29 or later, for native sidecars. |
 | `OSTRA_K8S_BUILD_NAMESPACE` | `--k8s-build-namespace` | `<namespace>-builds` | The namespace a `kubernetes` runner builds snapshots in, with BuildKit. |
 | `OSTRA_K8S_NODE_WAIT_MINUTES` | `--k8s-node-wait-minutes` | `15` | How long a `kubernetes` box waits for a node before it fails and its task is queued again. |
 | `OSTRA_K8S_RUNTIME_CLASS` | `--k8s-runtime-class` | (none) | The RuntimeClass a `kubernetes` box's pod runs with, such as `gvisor`. |

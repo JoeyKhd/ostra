@@ -3,3 +3,5 @@
 export * from "./fake-api.ts";
 export * from "./process-mode.ts";
 export { parseQuantity, parseSelector } from "./selectors.ts";
+export * from "./cluster.ts";
+export * from "./surface.ts";
