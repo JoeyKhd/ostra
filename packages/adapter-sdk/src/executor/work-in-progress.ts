@@ -64,11 +64,25 @@ type Run = (args: readonly string[], env?: Readonly<Record<string, string>>) => 
 
 class WipFailure extends Error {}
 
+const PUSH_REJECTED = /! \[(?:remote rejected|rejected)\][^(\n]*\(([^)\n]{1,200})\)/;
+
+/**
+ * Why git refused a push, from its own `! [rejected] <ref> (<reason>)` line: the reason only, such
+ * as `stale info` or `fetch first`, which names no path and no URL. Any other line of git's
+ * output can hold the proxy's address, whose path is a secret, so nothing else is kept. `null`
+ * when git named no reason.
+ */
+export const pushRefusalReason = (output: string): string | null => {
+  const reason = PUSH_REJECTED.exec(output)?.[1]?.trim();
+  return reason === undefined || reason === "" || reason.includes("://") ? null : reason;
+};
+
 /** git that throws `WipFailure` with the step's name (never git's output, which can hold paths). */
 const runner = (git: WipGit): Run => async (args, env) => {
   const result = await git(args, env);
   if (result.code !== 0) {
-    throw new WipFailure(`git ${args[0] ?? ""} failed (exit ${String(result.code)})`);
+    const reason = args[0] === "push" ? pushRefusalReason(`${result.stdout}\n${result.stderr}`) : null;
+    throw new WipFailure(`git ${args[0] ?? ""} failed (exit ${String(result.code)}${reason === null ? "" : `: ${reason}`})`);
   }
   return result.stdout.trim();
 };

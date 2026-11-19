@@ -5,7 +5,7 @@ import path from "node:path";
 import { taskIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { hiddenRefFor, localWipFiles, localWipGit, restoreWorkInProgressIn, saveWorkInProgressIn } from "./work-in-progress.ts";
+import { hiddenRefFor, localWipFiles, localWipGit, pushRefusalReason, restoreWorkInProgressIn, saveWorkInProgressIn } from "./work-in-progress.ts";
 import type { WipDeps } from "./work-in-progress.ts";
 
 // The hidden ref against real git (ADR 0039, Q150), on a local bare remote: what comes back on a
@@ -184,4 +184,19 @@ describe("the hidden ref", () => {
     expect(await run(fresh.dir, "status", "--porcelain=v1", "--untracked-files=all")).toBe("");
     expect(await read(fresh.dir, "a.txt")).toBe("a, from review\n");
   }, 60_000);
+});
+
+describe("a refused save", () => {
+  it("names git's own reason for a refused push, and nothing else of its output", () => {
+    const output = [
+      "To http://127.0.0.1:52001/s3cr3t-proxy-path/ostra-test/test1.git",
+      " ! [remote rejected] 0de3db5 -> refs/ostra/wip/task-1 (stale info)",
+      "error: failed to push some refs to 'http://127.0.0.1:52001/s3cr3t-proxy-path/ostra-test/test1.git'",
+    ].join("\n");
+    expect(pushRefusalReason(output)).toBe("stale info");
+    expect(pushRefusalReason(" ! [rejected]        abc -> refs/ostra/wip/task-1 (fetch first)")).toBe("fetch first");
+    // Only the reason in brackets, never a line that holds the proxy's address.
+    expect(pushRefusalReason("fatal: unable to access 'http://127.0.0.1:52001/s3cr3t-proxy-path/': Failed to connect")).toBeNull();
+    expect(pushRefusalReason(" ! [remote rejected] a -> b (see http://x.invalid/y)")).toBeNull();
+  });
 });
