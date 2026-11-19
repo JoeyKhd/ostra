@@ -1,5 +1,5 @@
 import { fakeMarker } from "@ostra/adapter-sdk/testing";
-import { planText } from "@ostra/protocol";
+import { planText, repoIdSchema } from "@ostra/protocol";
 import type { TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -161,6 +161,28 @@ describe("plan answers and plan mode failing (F-063)", () => {
     expect(h.kinds(spec)).not.toContain("git.pushed");
     expect(h.kinds(spec)).not.toContain("session.saved");
     expect(await shared.upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "leaked.txt")).toBeNull();
+  }, 120_000);
+
+  it("F-063: a plan turn that writes at the workspace root, outside every repo, is plan mode failing too", async () => {
+    await shared.upstream.createRepo("ostra-test/test2", { "README.md": "# test2\n" }).catch(() => undefined);
+    const h = await start();
+    const [first] = taskSpecFixture.repos;
+    if (first === undefined) throw new Error("no fixture repo");
+    const second = { ...first, repoId: repoIdSchema.parse("repo-test2"), fullName: "ostra-test/test2", cloneUrl: "https://github.com/ostra-test/test2.git", checkoutDir: "test2" };
+    // Two repos: the agent starts at the workspace root, and writes there, beside both checkouts.
+    const { spec } = h.taskFor(fakeMarker("write", "plan-notes.txt"), {
+      agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-plain", apiFormat: "anthropic-messages", planFirst: true },
+      firstTurnMode: "plan",
+      repos: [first, second],
+      environment: { ...taskSpecFixture.environment, setupScript: null, repos: [...taskSpecFixture.environment.repos, { repoId: second.repoId, variables: [], files: [], envFile: ".env" }] },
+    });
+    h.dispatch(spec);
+    await h.waitForKind(spec, "session.crashed");
+    const failed = h.ofKind(spec, "turn.failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.error).toContain("plan-notes.txt");
+    expect(h.kinds(spec)).not.toContain("plan.proposed");
+    expect(h.kinds(spec)).not.toContain("git.pushed");
   }, 120_000);
 
   it("F-063: reads every path of git's porcelain status, a rename's both sides", () => {
