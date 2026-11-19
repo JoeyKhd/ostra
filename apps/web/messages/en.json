@@ -1665,5 +1665,180 @@
     "set": "Set",
     "notSet": "Not set",
     "replace": "Replace"
+  },
+  "taskTabs": {
+    "label": "Task views",
+    "activity": "Activity",
+    "changes": "Changes",
+    "checks": "Checks",
+    "checksFailing": "{n} failing",
+    "checksPassed": "All passed",
+    "checksRunning": "Running"
+  },
+  "checks": {
+    "seconds": "{n} s",
+    "minutes": "{n} min",
+    "minutesSeconds": "{m} min {s} s",
+    "live": "{n} s",
+    "turn": "Turn {n}",
+    "running": "running",
+    "status": {
+      "waiting": "waiting",
+      "running": "running",
+      "passed": "passed",
+      "failed": "failed · exit {code}",
+      "failedNoCode": "failed",
+      "timedOut": "timed out after {limit}",
+      "error": "couldn't run"
+    },
+    "summary": {
+      "failed": "{n} failed",
+      "timedOut": "{n} timed out",
+      "error": "{n} couldn't run",
+      "passed": "{n} passed"
+    },
+    "outputLast": "Output, last 40 lines",
+    "outputLines": {
+      "one": "Output, {n} line",
+      "other": "Output, {n} lines"
+    },
+    "showAll": "Show all {n} lines",
+    "noOutput": "No output.",
+    "download": "Download the full output",
+    "notSaved": "The full output wasn't saved.",
+    "fixButton": "Ask the agent to fix",
+    "sending": "Sending…",
+    "takeOver": "Take over",
+    "sent": "Asked {agent} to fix it at {time}.",
+    "seeActivity": "See it in Activity",
+    "fix": {
+      "one": "Sends this check's output to {agent} as the next turn.",
+      "several": "Sends the {n} failing checks' output to {agent} as the next turn.",
+      "afterTurn": "Sends it to {agent} after the current turn.",
+      "reopen": "Sending reopens the task with the output.",
+      "driving": "{name} is driving."
+    },
+    "pr": {
+      "name": "PR #{n}",
+      "nameIn": "PR #{n} in {repo}",
+      "isDraft": "{pr} is a draft",
+      "isReady": "{pr} is ready for review",
+      "draftByOstra": " because a check failed after turn {n}. ostra marks it ready when every check passes.",
+      "readyByOstra": ": every check passed after turn {n}.",
+      "draftByPerson": " on GitHub, so it stays one when the checks pass.",
+      "open": "Open on GitHub"
+    },
+    "footnote": "Checks run after every turn that changes the code, before the push. They come from the project's environment.",
+    "edit": "Edit checks",
+    "none": "No checks for this project.",
+    "noneBody": "Checks are commands from the project's environment that run after every turn that changes the code.",
+    "add": "Add checks",
+    "notYet": "Checks run after the first turn that changes the code.",
+    "oldRunner": "This task's runner doesn't run checks. Update the runner to get them.",
+    "loadFailed": "The checks couldn't be loaded: {error}",
+    "tryAgain": "Try again",
+    "property": "Checks",
+    "propertyFailing": "{n} failed",
+    "propertyPassed": " · {n} passed",
+    "propertyAll": "All {n} passed",
+    "propertyRunning": "Running",
+    "draft": " · draft"
+  },
+  "takeLocal": {
+    "button": "Take it local",
+    "title": "Take it local",
+    "lede": "Check out this task's branches on your machine. Git fetches them with your own access; ostra hands out no token.",
+    "cli": "With the ostra CLI",
+    "firstTime": "First time on this machine? Run {command}, then approve its code in the browser.",
+    "git": "With git, in each repo",
+    "gitOne": "With git",
+    "merged": "PR #{n} is merged. GitHub may have deleted its branch.",
+    "reopen": "Reopening the task starts from the branches as they are, your commits included.",
+    "nothingPushed": "Nothing to check out yet. A branch appears after the first turn with changes.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyRefused": "Select the text and copy it"
+  },
+  "account": {
+    "title": "Account",
+    "lede": "Your GitHub account, and the machines where you ran ostra login. Only you see this page.",
+    "loadFailed": "Couldn't load your account.",
+    "github": {
+      "title": "GitHub",
+      "note": "for co-author credit, and for @ostra on a pull request",
+      "linked": "Linked",
+      "notLinked": "Not linked",
+      "idLine": "ID {id} · {date}",
+      "unlink": "Unlink",
+      "link": "Link GitHub account",
+      "helpLinked": "ostra kept your GitHub login and ID, and revoked the sign-in token at once.",
+      "credits": "Commits from your tasks credit ",
+      "helpNotLinked": "Link the GitHub account you work with. ostra keeps only your login and ID, and revokes the sign-in token at once. Until then, commits from your tasks credit your ostra name and email, and @ostra from your GitHub account isn't answered.",
+      "notConnected": "GitHub isn't connected to this install yet.",
+      "connect": "Connect GitHub",
+      "askAdmin": "Ask an admin to connect GitHub.",
+      "back": {
+        "linked": "Linked as @{login}.",
+        "taken": "That GitHub account is linked to another ostra account. Unlink it there first.",
+        "revokeFailed": "GitHub didn't confirm the token was revoked, so ostra stored nothing. Try again.",
+        "failed": "The link didn't finish. Nothing was stored."
+      },
+      "unlinkTitle": "Unlink @{login}?",
+      "unlinkBody": "@ostra from this GitHub account stops reaching the agent, and new commits credit your ostra name and email. You can link again at any time.",
+      "unlinking": "Unlinking…",
+      "unlinked": "Unlinked."
+    },
+    "cli": {
+      "title": "CLI sessions",
+      "note": {
+        "one": "made by ostra login, valid for {n} day",
+        "other": "made by ostra login, valid for {n} days"
+      },
+      "machine": "Machine",
+      "created": "Created",
+      "lastUsed": "Last used",
+      "expires": "Expires",
+      "revoke": "Revoke",
+      "never": "never",
+      "ago": "{age} ago",
+      "inDays": {
+        "one": "in {n} day",
+        "other": "in {n} days"
+      },
+      "today": "today",
+      "unnamed": "Unnamed machine",
+      "none": "No CLI sessions. Run the line below on a machine to start one.",
+      "another": "Sign in another machine: run this in a clone of ostra, then approve the code it prints.",
+      "first": "Sign in a machine: run this in a clone of ostra, then approve the code it prints.",
+      "footnote": "A CLI session reads only a task's branches and clone URLs. Git uses your own access: ostra hands out no token.",
+      "revokeTitle": "Revoke the CLI session on {machine}?",
+      "revokeBody": "ostra checkout on that machine stops working until it runs ostra login again.",
+      "revoking": "Revoking…",
+      "revoked": "Revoked."
+    },
+    "panel": {
+      "you": "You",
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "admin": "Admin of {organization}",
+      "member": "Member of {organization}",
+      "password": "Password",
+      "change": "Change",
+      "githubLink": "GitHub link",
+      "login": "Login",
+      "linkedOn": "Linked",
+      "token": "Token",
+      "tokenRevoked": "Revoked at link time",
+      "cli": "CLI sessions",
+      "active": "Active",
+      "validFor": "Valid for",
+      "days": {
+        "one": "{n} day",
+        "other": "{n} days"
+      },
+      "canRead": "Can read",
+      "canReadValue": "Branches and clone URLs"
+    }
   }
 }

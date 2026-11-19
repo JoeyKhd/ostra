@@ -7,13 +7,14 @@ import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 
-// shadcn/ui's sheet: a drawer from the left (the sidebar at phone width) or the right (a form).
+// shadcn/ui's sheet: a drawer from the left (the sidebar at phone width), the right (a form) or the
+// bottom (a popover's contents at phone width: take it local).
 export const Sheet = Dialog.Root;
 export const SheetTrigger = Dialog.Trigger;
 export const SheetClose = Dialog.Close;
 
 export type SheetContentProps = ComponentProps<typeof Dialog.Content> & {
-  readonly side?: "left" | "right";
+  readonly side?: "left" | "right" | "bottom";
   readonly title: string;
   /** The close button in the corner. The sidebar drawer leaves it out: its own header sits there. */
   readonly closeButton?: boolean;
@@ -26,8 +27,9 @@ export const SheetContent = ({ side = "right", title, closeButton = true, classN
     <Dialog.Content
       aria-describedby={undefined}
       className={cn(
-        "fixed inset-y-0 z-50 flex w-[min(340px,88vw)] flex-col border-line bg-side shadow-xl focus:outline-none",
-        side === "left" ? "left-0 border-r" : "right-0 border-l",
+        "fixed z-50 flex flex-col border-line bg-side shadow-xl focus:outline-none",
+        side === "bottom" ? "inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-[10px] border-t" : "inset-y-0 w-[min(340px,88vw)]",
+        side === "left" ? "left-0 border-r" : side === "right" ? "right-0 border-l" : null,
         className,
       )}
       {...props}

@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Sheet } from "@/components/ui/sheet";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/status";
+import { cliLine } from "@/lib/cli-line";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -40,7 +41,7 @@ const RunnerSkeleton = () => <SkeletonRows rows={3} bars={["w-[90px]", "w-[80px]
 
 /** Your machine: the member's own runners, then the command that connects one (everyone sees it). */
 const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: string; readonly mine: readonly Runner[] | undefined; readonly now: number }) => {
-  const command = `pnpm ostra runner --server ${corePublicUrl}`;
+  const command = cliLine(`runner --server ${corePublicUrl}`);
   return (
     <Section title={t("runners.yourMachine")} {...(mine === undefined ? {} : { count: mine.length })}>
       <div className="overflow-x-auto">
