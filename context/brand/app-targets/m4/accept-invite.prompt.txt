@@ -1,0 +1,42 @@
+# Final prompts for the accept-invite target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high).
+# accept-invite.webp: an edit of ../m1/sign-in.png (the 2048x1360 original); refs ../m1/sign-in.png, ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png. Generation 1 of 1. The right column was then replaced by ../../files/web/sign-in-illustration.webp and the tagline, as on ../m1/sign-in.webp.
+
+EDIT the first reference image (the ostra sign-in screen). Keep its frame exactly: the two columns, the 1px vertical hairline at the same x, the ostra lockup top-left, the "ostra v0.1.0" footer, and the whole right column pixel for pixel unchanged. Same palette, same type, same sizes, same guides. Change ONLY the form block in the left column, which becomes the page an invitation link opens: a sign-up form to join an organization called "Demo".
+
+The new form block, 360px wide, at the same left edge and with its title on the same y guide as the old "Sign in" title (level with "CALC-161 · from Linear" on the right), growing downwards:
+- Title "Join Demo on ostra" in Manrope Bold 24px #EDEDEE (one line).
+- 6px below, the lede in IBM Plex Sans 13.5px #9A9DA3, wrapping onto two lines inside the 360px block: "Alex Kim invited you to Demo as a member. Choose a username and a password to join."
+- 28px below: label "Email" (12px, weight 500, #9A9DA3), 6px gap, then a READ-ONLY input 36px tall, radius 7px, with NO fill (the page colour #0D0E10 shows through) and a 1px #1F2023 border, holding "sam@acme.dev" in 13px #9A9DA3 (dimmer than a normal value), 10px left padding, and a small 13px Lucide "lock" icon in #64676D at its right end, 12px in. It looks locked and quiet, not disabled-grey.
+- 14px below: label "Username", a normal input 36px tall, radius 7px, fill #131416, 1px border #2A2C30, holding "sam" in 13px #EDEDEE.
+- 14px below: label "Password", a normal input of the same size holding fourteen masked dots in #EDEDEE, with a small 15px Lucide "eye" icon in #64676D at its right end, 12px in.
+- 6px under the password input, a rule line in 12px: a small 13px green #4FB286 check icon, then "At least 12 characters." in faint #64676D.
+- 20px below: a full-width primary button, 36px tall, radius 7px, solid flat #F3F0E8, label "Join Demo" in 13px semibold #0C1D21.
+- 16px below, 12px #64676D: "Already have an account? " followed by "Sign in to accept" in teal #6FB8AA, weight 500.
+
+Remove the old "Sign in" title, its lede, the "Username or email" field, the old password field and its error line, the old button and the "Forgot your password?" line. No red anywhere: this form has no error.
+
+PALETTE (exact hex): left background #0D0E10, right background #0A0B0C, input fill #131416, hairlines #1F2023, input borders #2A2C30, text #EDEDEE, secondary #9A9DA3, faint #64676D, error red #E5675C, success green #4FB286, teal link #6FB8AA, primary button #F3F0E8 with #0C1D21 text. No amber, no orange, no yellow anywhere. No blue, no purple.
+
+FONTS: the title in Manrope Bold. UI text IBM Plex Sans. Icons: Lucide line icons, 1.75 stroke.
+
+A flat, straight-on, pixel-crisp screenshot, not a mockup: no device frame, no perspective, no drop shadow, no glow or soft halo behind any letters, no texture on the button, no gradients, no noise. Labels are clearly dimmer (#9A9DA3) than input values (#EDEDEE). The form is the brightest thing on screen. Every text crisp and spelled exactly as written, with straight apostrophes. Nothing else is written anywhere in the left column.
+
+# accept-invite-inbox.webp: the same base, refs and compositing. Generation 1 of 1.
+
+EDIT the first reference image (the ostra sign-in screen). Keep its frame exactly: the two columns, the 1px vertical hairline at the same x, the ostra lockup top-left, the "ostra v0.1.0" footer, and the whole right column pixel for pixel unchanged. Same palette, same type, same sizes, same guides. Change ONLY the form block in the left column, which becomes a quiet message: the invitee signed up and must now open the link mailed to them.
+
+The new block, 360px wide, at the same left edge as the old form, its top on the same y guide as the old "Sign in" title (level with "CALC-161 · from Linear" on the right):
+- A 40px square tile, radius 9px, fill #131416, 1px border #2A2C30, holding a centred 20px Lucide "mail" line icon in #9A9DA3. Left-aligned with the block.
+- 20px below the tile: title "Check your inbox" in Manrope Bold 24px #EDEDEE.
+- 6px below, the lede in IBM Plex Sans 13.5px #9A9DA3, wrapping onto two lines inside 360px: "We sent a link to sam@acme.dev. Open it to finish joining Demo." where "sam@acme.dev" is #EDEDEE.
+- 28px below, a 1px hairline #1F2023 across the block's 360px width.
+- 16px below the hairline, 12.5px #64676D: "Didn't get it? " followed by "Send it again" in teal #6FB8AA, weight 500.
+- 8px below, 12.5px #64676D: "Wrong address? Ask Alex Kim for a new invitation."
+
+There are NO input fields and NO button in this block. Remove the old "Sign in" title, its lede, both fields, the error line, the button and the "Forgot your password?" line. No red anywhere.
+
+PALETTE (exact hex): left background #0D0E10, right background #0A0B0C, input fill #131416, hairlines #1F2023, input borders #2A2C30, text #EDEDEE, secondary #9A9DA3, faint #64676D, error red #E5675C, success green #4FB286, teal link #6FB8AA, primary button #F3F0E8 with #0C1D21 text. No amber, no orange, no yellow anywhere. No blue, no purple.
+
+FONTS: the title in Manrope Bold. UI text IBM Plex Sans. Icons: Lucide line icons, 1.75 stroke.
+
+A flat, straight-on, pixel-crisp screenshot, not a mockup: no device frame, no perspective, no drop shadow, no glow or soft halo behind any letters, no texture on the button, no gradients, no noise. Labels are clearly dimmer (#9A9DA3) than input values (#EDEDEE). The form is the brightest thing on screen. Every text crisp and spelled exactly as written, with straight apostrophes. Nothing else is written anywhere in the left column.
