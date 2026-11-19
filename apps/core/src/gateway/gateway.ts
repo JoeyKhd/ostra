@@ -15,6 +15,7 @@ import type { Connections } from "./connections.ts";
 import { ackingHooks, defaultTimers } from "./context.ts";
 import type { GatewayContext, GatewayHooks, GatewayTimers } from "./context.ts";
 import type { DeviceSessions } from "./device-sessions.ts";
+import { createTaskTokens } from "./task-token.ts";
 import { handleRunnerEndpoint } from "./endpoints.ts";
 
 // The runner gateway (ticket 24, ADR 0034): `/runner/v1/*` on core. The HTTP endpoints and the
@@ -62,6 +63,7 @@ export const createGateway = (options: GatewayOptions): Gateway => {
     panelUrl: options.panelUrl,
     deviceClientId: RUNNER_CLIENT_ID,
     tokens: createAccessTokens(options.signingKey),
+    taskTokens: createTaskTokens(options.signingKey),
     nonces: createNonceCache(),
     deviceSessions: options.deviceSessions,
     ports: options.ports,

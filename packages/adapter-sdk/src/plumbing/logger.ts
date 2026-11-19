@@ -44,6 +44,8 @@ const tokenPatterns: readonly RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{8,}/g,
   /\blin_(?:api|oauth)_[A-Za-z0-9]{16,}\b/g,
   /\bostra-(?:fake|runner|join|setup)-[A-Za-z0-9_-]+/g,
+  // A task token (ADR 0034): its body and its MAC, joined by a dot.
+  /\bostra-task-[A-Za-z0-9_.-]+/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 

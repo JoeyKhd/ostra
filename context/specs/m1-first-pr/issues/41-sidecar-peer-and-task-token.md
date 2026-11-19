@@ -1,6 +1,6 @@
 # 41: Core takes a box's sidecar as a peer, with a token for its one task
 
-Status: ready-for-agent
+Status: done
 Builder: core (lead), runner
 Blocked by: none (22, 24 and 26 are in)
 Features: F-017, F-015, F-089, F-090, F-045
@@ -25,14 +25,25 @@ A follow-up from the demo, settled as Q129 on 2026-11-19 (`context/open-question
 
 ## Done when
 
-- [ ] Against the fake peer: a sidecar connects with its task token, sends its task's events, receives a `stop` and fetches its credentials. The same token is refused for another task's spec, credentials and events, for another organization, and after its lease ended by a stop, by the grace and by a new dispatch.
-- [ ] A runner's token gets no credentials for a boxed lease, and still gets them for a `host` lease. A second connection of a box evicts the first.
-- [ ] The runner's connection is closed while a fake sidecar stays connected: the task carries on, no grace starts, and the token file is never rewritten.
-- [ ] A test proves the task token reaches no log line.
-- [ ] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
-- [ ] The whole-repo checks pass (spec section 9: credentials, the runner protocol).
-- [ ] Committed as `✨ add the task token and the sidecar peer`.
+- [x] Against the fake peer: a sidecar connects with its task token, sends its task's events, receives a `stop` and fetches its credentials. The same token is refused for another task's spec, credentials and events, for another organization, and after its lease ended by a stop, by the grace and by a new dispatch.
+- [x] A runner's token gets no credentials for a boxed lease, and still gets them for a `host` lease. A second connection of a box evicts the first.
+- [x] The runner's connection is closed while a fake sidecar stays connected: the task carries on, no grace starts, and the token file is never rewritten.
+- [x] A test proves the task token reaches no log line.
+- [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
+- [x] The whole-repo checks pass (spec section 9: credentials, the runner protocol).
+- [x] Committed as `✨ add the task token and the sidecar peer`.
 
 A real box still waits for the Linux machine, with F-017.
 
 ## Comments
+
+**2026-11-19:** built.
+- `packages/protocol`: `POST /runner/v1/tasks/:taskId/token` (`taskTokenRequestSchema`, `taskTokenResponseSchema`, `TASK_TOKEN_PREFIX`), strict; the log guard redacts `ostra-task-`.
+- `apps/core/src/gateway/task-token.ts`: the token, an HMAC under core's key over the organization, task, epoch, box and runner, with no clock; `checkTaskLease` reads the lease at every use. The endpoint answers only the runner holding the current, active lease, and a `host` lease gets `400`.
+- `apps/core/src/gateway/sidecars.ts`: the `sidecar` peer, on the same `/runner/v1/connect` upgrade, picked by the bearer's prefix. Presence and the connection epoch are columns on `box`, and a sidecar's commands are rows of the new `sidecar_command` table, numbered per box. The outbox routes a boxed task's `steer`, `interrupt`, `stop` and approval answers there. A stale lease gets `409` at the upgrade and on HTTP, and `error stale-lease` and a 4403 close on the socket.
+- The grace: a runner's connection holds its `host` leases only; a box's task's grace starts and stops with its sidecar's connection.
+- Task endpoints: the task token reads its own task's spec and credentials; the runner's token is refused a boxed lease's credentials and still reads its spec.
+- `apps/runner`: `box-dispatcher` asks once (`fetchTaskToken`) and writes the file once; the refresher is gone.
+- Migration `20261119235500_sidecar_peer`, additive.
+
+Tests: `apps/core/src/gateway/sidecar.test.ts` (8) and `apps/runner/src/box-dispatcher.test.ts` (2 new). Each was broken on purpose and restored, as `context/proof/F-015.md` and `F-045.md` list. One break, removing the `ostra-task-` pattern alone, left the log test green, because the guard's long-run rule redacts the token's body too. Turning the guard off failed it. Whole-repo checks passed.

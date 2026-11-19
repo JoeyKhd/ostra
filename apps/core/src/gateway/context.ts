@@ -3,12 +3,14 @@ import type { Db, Tx } from "@ostra/db";
 import type { Ports } from "@ostra/domain";
 import { runnerLimits } from "@ostra/protocol";
 import type {
+  BoxId,
   CommandId,
   CommandKind,
   CommandResult,
   CommandSeq,
   DownFrame,
   EventsFrame,
+  LeaseEpoch,
   LiveText,
   OrganizationId,
   ReplicaId,
@@ -20,6 +22,7 @@ import type {
 import type { AccessTokens } from "./access-token.ts";
 import type { NonceCache } from "./assertion.ts";
 import type { DeviceSessions } from "./device-sessions.ts";
+import type { TaskTokens } from "./task-token.ts";
 
 // What the gateway is built from. The parts later tickets fill in are hooks: event ingest and live
 // text (ticket 25), and what a command's result does (tickets 26 and 27). Until they're wired, the
@@ -48,8 +51,21 @@ export type GatewayHooks = {
   readonly onCommandResultsInTx: (tx: Tx, runner: RunnerRef, results: readonly AckedCommand[]) => Promise<void>;
   /** A runner's connection was accepted (its grace timers stop). */
   readonly onConnectedInTx: (tx: Tx, runner: RunnerRef) => Promise<void>;
-  /** A runner's newest connection closed (its tasks' grace starts). */
+  /** A runner's newest connection closed (its tasks' grace starts, except a box's, whose sidecar holds it). */
   readonly onDisconnectedInTx: (tx: Tx, runner: RunnerRef) => Promise<void>;
+  /** A box's sidecar connected (its task's grace stops). */
+  readonly onSidecarConnectedInTx: (tx: Tx, lease: SidecarLease) => Promise<void>;
+  /** A box's sidecar's newest connection closed (its task's grace starts, F-045). */
+  readonly onSidecarDisconnectedInTx: (tx: Tx, lease: SidecarLease) => Promise<void>;
+};
+
+/** The lease a sidecar's task token names, checked. */
+export type SidecarLease = {
+  readonly organizationId: OrganizationId;
+  readonly taskId: TaskId;
+  readonly leaseEpoch: LeaseEpoch;
+  readonly boxId: BoxId;
+  readonly runnerId: RunnerId;
 };
 
 /** The gateway's timers, from the protocol's working values; a test shortens them. */
@@ -81,6 +97,8 @@ export type GatewayContext = {
   readonly panelUrl: string;
   readonly deviceClientId: string;
   readonly tokens: AccessTokens;
+  /** The task tokens a box's sidecar connects with (ADR 0034, Q129). */
+  readonly taskTokens: TaskTokens;
   readonly nonces: NonceCache;
   readonly deviceSessions: DeviceSessions;
   readonly ports: Pick<Ports, "notices" | "audit" | "clock">;
@@ -105,4 +123,6 @@ export const ackingHooks: GatewayHooks = {
   onCommandResultsInTx: () => Promise.resolve(),
   onConnectedInTx: () => Promise.resolve(),
   onDisconnectedInTx: () => Promise.resolve(),
+  onSidecarConnectedInTx: () => Promise.resolve(),
+  onSidecarDisconnectedInTx: () => Promise.resolve(),
 };

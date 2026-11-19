@@ -4,6 +4,7 @@ import {
   runnerPaths,
   taskCredentialsResponseSchema,
   taskSpecResponseSchema,
+  taskTokenResponseSchema,
 } from "@ostra/protocol";
 import type { LeaseEpoch, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
@@ -34,6 +35,28 @@ const failureOf = (failure: Parameters<typeof describeFailure>[0]): LinkFailure 
   failure.kind === "refused" && failure.status === 409
     ? { kind: "stale-lease", message: "the server says the lease epoch is stale" }
     : { kind: "unavailable", message: describeFailure(failure) };
+
+/**
+ * The task token a `docker` or `kubernetes` box's sidecar connects with (ADR 0034, Q129), asked with
+ * the runner's own access token. Never logged.
+ */
+export const fetchTaskToken =
+  (input: { readonly serverUrl: string; readonly tokens: TokenSource }) =>
+  async (taskId: TaskId, leaseEpoch: LeaseEpoch): Promise<LinkResult<string>> => {
+    const token = await input.tokens.get();
+    if (!token.ok) {
+      return { ok: false, failure: { kind: "unavailable", message: token.message } };
+    }
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, runnerPaths.taskToken(taskId)),
+      method: "POST",
+      schema: taskTokenResponseSchema,
+      body: { leaseEpoch },
+      bearer: token.token,
+      timeoutMs: 30_000,
+    });
+    return result.ok ? { ok: true, value: result.value.taskToken } : { ok: false, failure: failureOf(result.failure) };
+  };
 
 /** The runner's own link: its connection for events, and HTTP with its access token for the rest. */
 export const runnerServerLink = (input: {

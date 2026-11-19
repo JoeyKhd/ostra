@@ -8,7 +8,7 @@ import { silentLogger } from "@ostra/adapter-sdk";
 import { boxIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBoxDispatcher, detectTokenAccess, TOKEN_REFRESH_MS } from "./box-dispatcher.ts";
+import { createBoxDispatcher, detectTokenAccess } from "./box-dispatcher.ts";
 import type { TokenAccess } from "./box-dispatcher.ts";
 import { exitCodes, runCli } from "./cli/cli.ts";
 import { createCapturingTerminal } from "./cli/terminal.ts";
@@ -31,7 +31,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const ACCESS_TOKEN = "ostra-runner-box-dispatcher-token";
+const ACCESS_TOKEN = "ostra-task-box-dispatcher-token";
 
 const posix = process.platform !== "win32";
 const modeOf = async (file: string): Promise<number> => (await stat(file)).mode & 0o777;
@@ -60,6 +60,7 @@ type DispatcherExtra = {
   readonly tokenAccess: TokenAccess;
   readonly chown?: (path: string, uid: number, gid: number) => Promise<void>;
   readonly nextToken?: () => string;
+  readonly asked?: { taskId: string; leaseEpoch: number }[];
 };
 
 const makeDispatcher = (extra: DispatcherExtra) => {
@@ -67,9 +68,9 @@ const makeDispatcher = (extra: DispatcherExtra) => {
   return createBoxDispatcher({
     boxes,
     link: { fetchSpec: () => Promise.resolve({ ok: true, value: taskSpecFixture }), statusChanged: () => undefined },
-    tokens: {
-      get: () => Promise.resolve({ ok: true, token: extra.nextToken?.() ?? ACCESS_TOKEN, expiresAt: Date.now() + 600_000 }),
-      invalidate: () => undefined,
+    taskToken: (taskId, leaseEpoch) => {
+      extra.asked?.push({ taskId, leaseEpoch });
+      return Promise.resolve({ ok: true, value: extra.nextToken?.() ?? ACCESS_TOKEN });
     },
     dataDir: root,
     serverUrl: "http://ostra-server:8787",
@@ -165,25 +166,30 @@ describe("the box dispatcher", () => {
     expect(dispatcher.status().freeSlots).toBe(1);
   });
 
-  // Windows can't rename over a read-only file, which is what a 0440 token is there: POSIX only.
-  it.skipIf(!posix)("rewrites the token whole and in place, with the same access, before the old one expires", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  it("F-015: asks for the box's task token once, with its lease epoch, and never rewrites the token file", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     try {
       let issued = 0;
+      const asked: { taskId: string; leaseEpoch: number }[] = [];
       const dispatcher = makeDispatcher({
         tokenAccess: { kind: "group", gid: 4242 },
+        asked,
         nextToken: () => {
           issued += 1;
           return `${ACCESS_TOKEN}-${String(issued)}`;
         },
       });
-      await dispatcher.handlers.dispatch(dispatchOf("box-refresh"));
+      await dispatcher.handlers.dispatch(dispatchOf("box-once"));
       await waitFor(() => engine.containers.size >= 2);
-      const file = path.join(root, "boxes", "box-refresh", "token");
+      const file = path.join(root, "boxes", "box-once", "token");
       expect(await readFile(file, "utf8")).toBe(`${ACCESS_TOKEN}-1`);
-      await vi.advanceTimersByTimeAsync(TOKEN_REFRESH_MS);
-      await waitFor(async () => (await readFile(file, "utf8")) === `${ACCESS_TOKEN}-2`);
-      expect(await readFile(file, "utf8")).toBe(`${ACCESS_TOKEN}-2`);
+      const written = (await stat(file)).mtimeMs;
+      // An hour on the box: the old runner rewrote its 10-minute token every 4 minutes.
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(await readFile(file, "utf8")).toBe(`${ACCESS_TOKEN}-1`);
+      expect((await stat(file)).mtimeMs).toBe(written);
+      expect(issued).toBe(1);
+      expect(asked).toEqual([{ taskId: taskSpecFixture.taskId, leaseEpoch: taskSpecFixture.leaseEpoch }]);
       if (posix) {
         expect(await modeOf(file)).toBe(0o440);
       }
@@ -194,6 +200,25 @@ describe("the box dispatcher", () => {
       vi.useRealTimers();
     }
   }, 30_000);
+
+  it("F-015: makes no box when core gives no task token", async () => {
+    const boxes = createDockerBoxes(createEngine(engine.address), { images: { base: "ostra/base:test", runner: "ostra/runner:test" } });
+    const dispatcher = createBoxDispatcher({
+      boxes,
+      link: { fetchSpec: () => Promise.resolve({ ok: true, value: taskSpecFixture }), statusChanged: () => undefined },
+      taskToken: () => Promise.resolve({ ok: false, failure: { kind: "stale-lease", message: "stale" } }),
+      dataDir: root,
+      serverUrl: "http://ostra-server:8787",
+      capacity: 1,
+      labels: [],
+      logger: silentLogger,
+      tokenAccess: { kind: "group", gid: 4242 },
+    });
+    await dispatcher.handlers.dispatch(dispatchOf("box-no-token"));
+    await Promise.all(dispatcher.boxes());
+    expect(engine.containers.size).toBe(0);
+    expect(await readdir(root)).toEqual([]);
+  });
 });
 
 describe("detectTokenAccess", () => {

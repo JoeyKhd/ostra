@@ -7,7 +7,7 @@ import type { JobContext, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 
-import type { RunnerRef } from "../gateway/context.ts";
+import type { RunnerRef, SidecarLease } from "../gateway/context.ts";
 
 // The task grace (ADR 0034, F-045): when a runner's connection goes, each task it holds a lease of
 // gets a delayed `task.grace` job at 10 minutes. A reconnect before then cancels it. When it fires
@@ -15,6 +15,10 @@ import type { RunnerRef } from "../gateway/context.ts";
 // refused), and the task stops cleanly: stopped, ready to reopen in milestone 2. The runner learns
 // it from a `stop` command when it comes back. Ported from spikes/runner-transport's `graceSweep`,
 // moved onto the queue (ADR 0037).
+//
+// A `docker` or `kubernetes` box's task is its sidecar's (Q129, ticket 41): its grace starts when
+// the sidecar's connection goes, and a reconnect of the sidecar cancels it. The runner's own
+// connection doesn't touch it, so a pool runner that stops or upgrades doesn't interrupt its boxes.
 
 export type GraceDeps = {
   readonly jobs: Jobs;
@@ -26,18 +30,49 @@ export type GraceDeps = {
   readonly graceMs?: number;
 };
 
+/** The runner's active leases on `host`: the ones whose grace its own connection holds. */
 const activeLeases = (tx: Tx, runner: RunnerRef) =>
   tx.lease.findMany({
-    where: { runnerId: runner.runnerId, organizationId: runner.organizationId, state: "active" },
+    where: { runnerId: runner.runnerId, organizationId: runner.organizationId, state: "active", box: { executor: "host" } },
     select: { taskId: true, epoch: true, organizationId: true, projectId: true },
   });
+
+/** A sidecar's lease, while it's still active: the one task whose grace its connection holds. */
+const sidecarLease = (tx: Tx, lease: SidecarLease) =>
+  tx.lease.findMany({
+    where: {
+      taskId: lease.taskId,
+      organizationId: lease.organizationId,
+      epoch: lease.leaseEpoch,
+      boxId: lease.boxId,
+      runnerId: lease.runnerId,
+      state: "active",
+    },
+    select: { taskId: true, epoch: true, organizationId: true, projectId: true },
+  });
+
+type GraceLease = Awaited<ReturnType<typeof activeLeases>>[number];
 
 const activeSession = (tx: Tx, taskId: string) =>
   tx.session.findFirst({ where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } }, orderBy: { startedAt: "desc" } });
 
-/** Starts the grace of every task the runner holds, and says so on each task's page. */
+/** Starts the grace of every task the runner holds on `host`, and says so on each task's page. */
 export const startGraceInTx = async (deps: GraceDeps, tx: Tx, runner: RunnerRef): Promise<void> => {
-  for (const lease of await activeLeases(tx, runner)) {
+  await startGraceOf(deps, tx, runner, await activeLeases(tx, runner));
+};
+
+/** Starts the grace of a box's task when its sidecar's connection goes (F-045). */
+export const startSidecarGraceInTx = async (deps: GraceDeps, tx: Tx, lease: SidecarLease): Promise<void> => {
+  await startGraceOf(deps, tx, { runnerId: lease.runnerId, organizationId: lease.organizationId }, await sidecarLease(tx, lease));
+};
+
+/** Cancels the grace of a box's task when its sidecar comes back. */
+export const cancelSidecarGraceInTx = async (deps: GraceDeps, tx: Tx, lease: SidecarLease): Promise<void> => {
+  await cancelGraceOf(deps, tx, { runnerId: lease.runnerId, organizationId: lease.organizationId }, await sidecarLease(tx, lease));
+};
+
+const startGraceOf = async (deps: GraceDeps, tx: Tx, runner: RunnerRef, leases: readonly GraceLease[]): Promise<void> => {
+  for (const lease of leases) {
     const payload: JobPayload<"task.grace"> = {
       organizationId: organizationIdSchema.parse(lease.organizationId),
       taskId: taskIdSchema.parse(lease.taskId),
@@ -58,9 +93,13 @@ export const startGraceInTx = async (deps: GraceDeps, tx: Tx, runner: RunnerRef)
   }
 };
 
-/** Cancels the grace of every task the runner holds; a task whose grace was running hears it's back. */
+/** Cancels the grace of every task the runner holds on `host`; a task whose grace was running hears it's back. */
 export const cancelGraceInTx = async (deps: GraceDeps, tx: Tx, runner: RunnerRef): Promise<void> => {
-  for (const lease of await activeLeases(tx, runner)) {
+  await cancelGraceOf(deps, tx, runner, await activeLeases(tx, runner));
+};
+
+const cancelGraceOf = async (deps: GraceDeps, tx: Tx, runner: RunnerRef, leases: readonly GraceLease[]): Promise<void> => {
+  for (const lease of leases) {
     const payload: JobPayload<"task.grace"> = {
       organizationId: organizationIdSchema.parse(lease.organizationId),
       taskId: taskIdSchema.parse(lease.taskId),
@@ -99,10 +138,18 @@ export const endGraceInTx = async (
   if (lease === null) {
     return "lease-ended";
   }
-  const presence = await tx.runnerPresence.findUnique({ where: { runnerId: lease.runnerId } });
-  if (presence !== null && presence.disconnectedAt === null) {
-    // It came back and the cancel was missed: nothing to do.
-    return "runner-back";
+  const box = await tx.box.findUnique({ where: { id: lease.boxId }, select: { executor: true, sidecarConnectionEpoch: true, sidecarDisconnectedAt: true } });
+  if (box !== null && box.executor !== "host") {
+    // A box's task is its sidecar's: it came back and the cancel was missed.
+    if (box.sidecarConnectionEpoch > 0 && box.sidecarDisconnectedAt === null) {
+      return "runner-back";
+    }
+  } else {
+    const presence = await tx.runnerPresence.findUnique({ where: { runnerId: lease.runnerId } });
+    if (presence !== null && presence.disconnectedAt === null) {
+      // It came back and the cancel was missed: nothing to do.
+      return "runner-back";
+    }
   }
   const at = new Date(deps.clock.now());
   await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: at, endReason: "grace-expired" } });

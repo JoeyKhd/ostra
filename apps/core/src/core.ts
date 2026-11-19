@@ -22,7 +22,7 @@ import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
 import type { Gateway } from "./gateway/gateway.ts";
 import { loadRunnerTokenKey, RUNNER_TOKEN_KEY_FILE } from "./gateway/keys.ts";
-import { cancelGraceInTx, graceHandler, startGraceInTx } from "./ingest/grace.ts";
+import { cancelGraceInTx, cancelSidecarGraceInTx, graceHandler, startGraceInTx, startSidecarGraceInTx } from "./ingest/grace.ts";
 import type { GraceDeps } from "./ingest/grace.ts";
 import { createIngest } from "./ingest/ingest.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
@@ -114,6 +114,8 @@ export const startCore = async (
       liveText: liveText.write,
       onConnectedInTx: (tx, runner) => cancelGraceInTx(graceDeps, tx, runner),
       onDisconnectedInTx: (tx, runner) => startGraceInTx(graceDeps, tx, runner),
+      onSidecarConnectedInTx: (tx, lease) => cancelSidecarGraceInTx(graceDeps, tx, lease),
+      onSidecarDisconnectedInTx: (tx, lease) => startSidecarGraceInTx(graceDeps, tx, lease),
       onCommandResultsInTx: async (tx, runner, results) => {
         await applyOfferResultsInTx(dispatcherDeps, tx, runner, results);
         await applyStopResultsInTx(reactionDeps, tx, runner, results);
@@ -137,6 +139,7 @@ export const startCore = async (
   const taskEndpoints = handleTaskEndpoint({
     db,
     tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
     adapters,
     audit: postgresAuditLog,
     clock: systemClock,

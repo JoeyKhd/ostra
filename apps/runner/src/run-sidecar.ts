@@ -30,7 +30,7 @@ const isInside = (parent: string, child: string): boolean => {
 export const sidecarEnvSchema = z
   .object({
     OSTRA_SERVER_URL: httpUrlSchema,
-    /** The access token for this task, in a file the runner keeps fresh (read-only mount). */
+    /** The task token (ADR 0034, Q129), in a file the runner wrote once (read-only mount). Never logged. */
     OSTRA_SIDECAR_TOKEN_FILE: z.string().min(1),
     OSTRA_TASK_ID: taskIdSchema,
     OSTRA_SESSION_ID: sessionIdSchema,

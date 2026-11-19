@@ -27,6 +27,8 @@ export const runnerPaths = {
   taskSpec: (taskId: string): string => `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/spec`,
   taskCredentials: (taskId: string): string =>
     `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/credentials`,
+  /** `POST`: the task token a `docker` or `kubernetes` box's sidecar connects with (ADR 0034, Q129). */
+  taskToken: (taskId: string): string => `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/token`,
   // The HTTP fallback carrier (milestone 5).
   httpHello: `${RUNNER_PATH_PREFIX}/hello`,
   httpUp: `${RUNNER_PATH_PREFIX}/up`,
@@ -228,6 +230,32 @@ export const snapshotCredentialsRequestSchema = z.strictObject({ snapshotId: sna
 export type SnapshotCredentialsRequest = z.infer<typeof snapshotCredentialsRequestSchema>;
 
 export const snapshotCredentialsResponseSchema = snapshotCredentialsSchema;
+
+// ---------- POST /runner/v1/tasks/:taskId/token (ADR 0034, "The task token", Q129) ----------
+
+/**
+ * The runner asks once, when it makes a `docker` or `kubernetes` box, with its own access token.
+ * Core answers only the runner that holds the task's current, active lease at this epoch; a stale
+ * epoch gets `409` with `stale-lease`, and a `host` lease gets `400` (its runner is its sidecar).
+ */
+export const taskTokenRequestSchema = z.strictObject({
+  leaseEpoch: leaseEpochSchema,
+});
+export type TaskTokenRequest = z.infer<typeof taskTokenRequestSchema>;
+
+/** The prefix of every task token, which the log guard redacts. */
+export const TASK_TOKEN_PREFIX = "ostra-task-";
+
+export const taskTokenResponseSchema = z.strictObject({
+  /**
+   * The box's sidecar connects, and reads its task's spec and credentials, with this as
+   * `Authorization: Bearer <taskToken>`. Valid exactly as long as the lease is the task's current,
+   * active one: it has no clock. The runner writes it to a file only the sidecar's container mounts;
+   * it is never in an environment variable, an argument or a log line.
+   */
+  taskToken: z.string().startsWith(TASK_TOKEN_PREFIX).min(TASK_TOKEN_PREFIX.length + 1).max(4096),
+});
+export type TaskTokenResponse = z.infer<typeof taskTokenResponseSchema>;
 
 // ---------- the HTTP fallback carrier (milestone 5) ----------
 

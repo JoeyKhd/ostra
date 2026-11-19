@@ -51,6 +51,7 @@ beforeAll(async () => {
     handleTaskEndpoint({
       db: test.db,
       tokens: gateway.context.tokens,
+      taskTokens: gateway.context.taskTokens,
       adapters: { codeHost, secretStore, modelProvider: new FakeModelProvider() },
       audit: postgresAuditLog,
       clock: systemClock,

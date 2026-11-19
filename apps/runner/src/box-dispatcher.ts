@@ -3,22 +3,22 @@ import path from "node:path";
 import { SIDECAR_GID, SIDECAR_UID } from "@ostra/adapter-executor-docker";
 import type { DockerBoxes } from "@ostra/adapter-executor-docker";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { BoxId, RunnerLabel, SessionId } from "@ostra/protocol";
-import type { CommandHandlers, CommandOutcome, PeerStatus, TokenSource } from "./connection/peer.ts";
-import type { ServerLink } from "./task-host/server-link.ts";
+import type { BoxId, LeaseEpoch, RunnerLabel, SessionId, TaskId } from "@ostra/protocol";
+import type { CommandHandlers, CommandOutcome, PeerStatus } from "./connection/peer.ts";
+import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 
 // A pool runner on the `docker` executor (ADR 0029): it only creates and removes boxes. On a
 // dispatch it makes the box, whose sidecar then connects to the server itself and runs the task;
 // when the sidecar exits, the runner removes the box. Commands for a task go to its sidecar.
 //
-// The sidecar's access token: the protocol has no task-scoped token yet (it's the runner's
-// 10-minute one, written to a file the sidecar reads and the runner rewrites every few minutes).
-// A token for one task, tied to its lease, is the contract change this waits on.
-//
-// Until then the file is the one thing on the pool host that can act as the runner, so only the
-// sidecar may read it: mode 0400 in a 0500 folder, owned by the sidecar's uid (the runner is root),
-// or, when the runner isn't root and can't hand a file to another uid, owned by the runner with its
-// group (0440 in a 0750 folder), which the sidecar's container joins as a supplementary group.
+// The sidecar's token is the task token (ADR 0034, Q129, ticket 41): the runner asks core for it
+// once, when it makes the box, and writes it to the box's token file, which the sidecar reads when
+// it starts and when it reconnects. It names one lease and is valid exactly as long as that lease,
+// with no clock, so the runner never rewrites it, and a runner that stops takes nothing from its
+// boxes. It still speaks for that task, so only the sidecar may read it: mode 0400 in a 0500
+// folder, owned by the sidecar's uid (the runner is root), or, when the runner isn't root and can't
+// hand a file to another uid, owned by the runner with its group (0440 in a 0750 folder), which the
+// sidecar's container joins as a supplementary group.
 
 /** How the sidecar, and only the sidecar, gets to read the token file. */
 export type TokenAccess =
@@ -39,13 +39,11 @@ export const detectTokenAccess = (): TokenAccess => {
   return gid === undefined ? { kind: "none" } : { kind: "group", gid };
 };
 
-/** How often the runner rewrites a box's token file: well inside the token's 10 minutes. */
-export const TOKEN_REFRESH_MS = 4 * 60_000;
-
 export type BoxDispatcherOptions = {
   readonly boxes: DockerBoxes;
   readonly link: Pick<ServerLink, "fetchSpec" | "statusChanged">;
-  readonly tokens: TokenSource;
+  /** The task token for a box's sidecar: `POST /runner/v1/tasks/:taskId/token`, asked once per box. */
+  readonly taskToken: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<string>>;
   /** Where box token folders go: `<dataDir>/boxes/<boxId>`. */
   readonly dataDir: string;
   /** Core's address as a box's sidecar reaches it. */
@@ -98,21 +96,17 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     }
   };
 
-  /** Writes the token with the file's final mode from the first byte, then swaps it in whole. */
-  const writeToken = async (file: string): Promise<boolean> => {
-    const token = await options.tokens.get();
-    if (!token.ok) {
-      return false;
-    }
+  /** Writes the token with the file's final mode from the first byte, then moves it into place. */
+  const writeToken = async (file: string, token: string): Promise<void> => {
     const staging = `${file}.next`;
     await rm(staging, { force: true });
     switch (access.kind) {
       case "owner":
-        await writeFile(staging, token.token, { mode: 0o400, flag: "wx" });
+        await writeFile(staging, token, { mode: 0o400, flag: "wx" });
         await handOver(staging, access.uid, access.gid);
         break;
       case "group":
-        await writeFile(staging, token.token, { mode: 0o440, flag: "wx" });
+        await writeFile(staging, token, { mode: 0o440, flag: "wx" });
         break;
       case "none":
         throw new Error("no way to restrict the token file");
@@ -120,13 +114,11 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
         access satisfies never;
     }
     await rename(staging, file);
-    return true;
   };
 
   const runBox = async (body: Parameters<CommandHandlers["dispatch"]>[0]["body"]): Promise<void> => {
     const boxLog = log.child({ taskId: body.taskId, boxId: body.boxId, leaseEpoch: body.leaseEpoch });
     const tokenDir = path.join(options.dataDir, "boxes", body.boxId);
-    let refresher: ReturnType<typeof setInterval> | undefined;
     try {
       const spec = await options.link.fetchSpec(body.taskId, body.leaseEpoch);
       if (!spec.ok) {
@@ -137,17 +129,14 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
         boxLog.error("this host can't restrict the sidecar's token file to the sidecar: no box");
         return;
       }
-      await makeTokenDir(tokenDir);
-      const tokenFile = path.join(tokenDir, "token");
-      if (!(await writeToken(tokenFile))) {
-        boxLog.warn("no access token for the box's sidecar: no box");
+      // The task token, once: it lasts as long as the lease, and is never renewed.
+      const token = await options.taskToken(body.taskId, body.leaseEpoch);
+      if (!token.ok) {
+        boxLog.warn("no task token for the box's sidecar: no box", { reason: token.failure.kind });
         return;
       }
-      refresher = setInterval(() => {
-        writeToken(tokenFile).catch((error: unknown) => {
-          boxLog.warn("rewriting the sidecar's token file failed", { error: error instanceof Error ? error.name : "unknown" });
-        });
-      }, TOKEN_REFRESH_MS);
+      await makeTokenDir(tokenDir);
+      await writeToken(path.join(tokenDir, "token"), token.value);
       const created = await options.boxes.createBox({
         taskId: body.taskId,
         sessionId: body.sessionId,
@@ -166,9 +155,6 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       const exitCode = await options.boxes.waitForSidecar(body.boxId);
       boxLog.info("the box's sidecar exited", { exitCode });
     } finally {
-      if (refresher !== undefined) {
-        clearInterval(refresher);
-      }
       const removed = await options.boxes.removeBox(body.boxId);
       if (!removed.ok) {
         boxLog.warn("removing the box failed", { status: removed.error.status });

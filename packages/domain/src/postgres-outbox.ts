@@ -1,7 +1,7 @@
 import { commandKindToDb, notifyChannels, NOTIFY_PAYLOAD_MAX_BYTES } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { commandBodySchemas, commandIdSchema, commandSeqSchema, runnerIdSchema } from "@ostra/protocol";
-import type { CommandKind, OrganizationId, RunnerId } from "@ostra/protocol";
+import { boxIdSchema, commandBodySchemas, commandIdSchema, commandSeqSchema, runnerIdSchema, stopBodySchema } from "@ostra/protocol";
+import type { BoxId, CommandKind, OrganizationId, RunnerId } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { CommandOutbox, OutboxCommand } from "./ports.ts";
@@ -21,11 +21,16 @@ const positive = z.number().int().positive();
  * - `connected`: a new connection of the runner, with its epoch: every other replica closes an
  *   older one with `4409`.
  * - `revoked`: the runner was revoked: the replica holding it sends `evict` and closes with `4403`.
+ * - `sidecar-command`: a command for a box's sidecar committed (ADR 0034, Q129).
+ * - `sidecar-connected`: a new connection of a box's sidecar: every other replica closes an older
+ *   one with `4409`.
  */
 export const runnerNotificationSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("command"), runnerId: runnerIdSchema }),
   z.strictObject({ kind: z.literal("connected"), runnerId: runnerIdSchema, connectionEpoch: positive }),
   z.strictObject({ kind: z.literal("revoked"), runnerId: runnerIdSchema }),
+  z.strictObject({ kind: z.literal("sidecar-command"), boxId: boxIdSchema }),
+  z.strictObject({ kind: z.literal("sidecar-connected"), boxId: boxIdSchema, connectionEpoch: positive }),
 ]);
 export type RunnerNotification = z.infer<typeof runnerNotificationSchema>;
 
@@ -39,6 +44,41 @@ export const notifyRunnerInTx = async (tx: Tx, notification: RunnerNotification)
 };
 
 const counterRowSchema = z.strictObject({ commandSeq: commandSeqSchema });
+const sidecarCounterRowSchema = z.strictObject({ sidecarCommandSeq: commandSeqSchema });
+
+/** The kinds a `docker` or `kubernetes` box's sidecar takes for its task, instead of the runner (Q129): the driver's answers too. */
+const sidecarKinds: ReadonlySet<CommandKind> = new Set<CommandKind>(["steer", "interrupt", "stop", "approval-answer", "question-answer", "plan-answer"]);
+
+/**
+ * The box whose sidecar takes this command, or `null` when the runner does: the task's lease on
+ * this runner (the stop's own epoch for a stop, else the newest), when its box is on `docker` or
+ * `kubernetes`. On `host` the runner is the sidecar.
+ */
+const sidecarBoxOf = async <K extends CommandKind>(
+  tx: Tx,
+  organizationId: OrganizationId,
+  runnerId: RunnerId,
+  command: OutboxCommand<K>,
+): Promise<{ readonly boxId: BoxId; readonly taskId: string; readonly projectId: string } | null> => {
+  if (command.task === null || !sidecarKinds.has(command.kind)) {
+    return null;
+  }
+  const stop = command.kind === "stop" ? stopBodySchema.safeParse(command.body) : undefined;
+  const lease = await tx.lease.findFirst({
+    where: {
+      taskId: command.task.taskId,
+      organizationId,
+      runnerId,
+      ...(stop?.success === true ? { epoch: stop.data.leaseEpoch } : {}),
+    },
+    orderBy: { epoch: "desc" },
+    select: { boxId: true, taskId: true, projectId: true, box: { select: { executor: true } } },
+  });
+  if (lease === null || lease.box.executor === "host") {
+    return null;
+  }
+  return { boxId: boxIdSchema.parse(lease.boxId), taskId: lease.taskId, projectId: lease.projectId };
+};
 const jsonObjectSchema = z.record(z.string(), z.json());
 
 export const postgresCommandOutbox: CommandOutbox = {
@@ -50,6 +90,30 @@ export const postgresCommandOutbox: CommandOutbox = {
   ) => {
     // Validated against its kind here, so a bad body never reaches a runner.
     const body: unknown = commandBodySchemas[command.kind].parse(command.body);
+    const box = await sidecarBoxOf(tx, organizationId, runnerId, command);
+    if (box !== null) {
+      // The box's own counter, under its row's lock: the sidecar's commands are gap-free too.
+      const boxCounters = await tx.$queryRaw<readonly unknown[]>`
+        UPDATE "box" SET "sidecarCommandSeq" = "sidecarCommandSeq" + 1, "updatedAt" = now()
+        WHERE "id" = ${box.boxId} AND "organizationId" = ${organizationId}
+        RETURNING "sidecarCommandSeq"`;
+      const boxCounter = sidecarCounterRowSchema.parse(boxCounters[0]);
+      const sidecarRow = await tx.sidecarCommand.create({
+        data: {
+          organizationId,
+          projectId: box.projectId,
+          taskId: box.taskId,
+          boxId: box.boxId,
+          seq: boxCounter.sidecarCommandSeq,
+          kind: commandKindToDb[command.kind],
+          body: jsonObjectSchema.parse(body),
+          notAfter: new Date(command.notAfter),
+        },
+        select: { id: true },
+      });
+      await notifyRunnerInTx(tx, { kind: "sidecar-command", boxId: box.boxId });
+      return { commandId: commandIdSchema.parse(sidecarRow.id), seq: boxCounter.sidecarCommandSeq };
+    }
     // The runner's counter, under its row's lock, scoped by organization: another organization's
     // runner is no runner at all.
     const counters = await tx.$queryRaw<readonly unknown[]>`

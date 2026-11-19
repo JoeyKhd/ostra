@@ -28,6 +28,8 @@ import { z } from "zod";
 import { bearerToken, runnerIsLive } from "./access-token.ts";
 import type { AckedCommand, GatewayContext, RunnerRef } from "./context.ts";
 import { databaseErrorCodes } from "./database-error.ts";
+import { createSidecars } from "./sidecars.ts";
+import { isTaskToken } from "./task-token.ts";
 
 // The runner's WebSocket session (ADR 0034) on one replica of core. Ported from
 // spikes/runner-transport/src/server/replica.ts:
@@ -106,6 +108,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
   const peers = new Map<RunnerId, Peer>();
   const statuses = new Map<RunnerId, Status>();
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: runnerLimits.frameMaxBytes });
+  const sidecars = createSidecars(context);
   let running = false;
   const pending = new Set<ReturnType<typeof setTimeout>>();
   let listener: pg.Client | null = null;
@@ -604,6 +607,11 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       return;
     }
     const token = bearerToken(request.headers.authorization);
+    if (token !== null && isTaskToken(token)) {
+      // A box's sidecar, with its task token (ADR 0034, Q129).
+      sidecars.handleUpgrade(request, socket, head, token);
+      return;
+    }
     const claims = token === null ? null : context.tokens.verify(token, now());
     if (claims === null) {
       rejectUpgrade(socket, 401, "unauthorized", "a valid access token is required (POST /runner/v1/token)");
@@ -637,6 +645,10 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     const json = parseJson(payload ?? "");
     const notification = json.ok ? runnerNotificationSchema.safeParse(json.value) : undefined;
     if (notification?.success !== true) {
+      return;
+    }
+    if (notification.data.kind === "sidecar-command" || notification.data.kind === "sidecar-connected") {
+      sidecars.onNotification(notification.data);
       return;
     }
     // Every replica listens and ignores the runners it doesn't hold.
@@ -694,6 +706,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
   };
 
   const sweep = async (): Promise<void> => {
+    await sidecars.sweep();
     const ids = [...peers.keys()];
     if (ids.length === 0) {
       return;
@@ -723,6 +736,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
   };
 
   const writePresence = async (): Promise<void> => {
+    await sidecars.writePresence();
     const held = [...peers.values()].filter((peer) => !peer.closed);
     for (const peer of held) {
       await db.$executeRaw`
@@ -735,6 +749,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
   };
 
   const ping = (): Promise<void> => {
+    sidecars.ping();
     const at = now();
     for (const peer of peers.values()) {
       if (peer.closed) {
@@ -793,6 +808,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     },
     stop: async () => {
       running = false;
+      await sidecars.stop();
       for (const timer of pending) {
         clearTimeout(timer);
       }

@@ -65,6 +65,8 @@ export type ConnectOptions = {
   readonly sessions?: Hello["sessions"];
   /** Don't send hello (to test the handshake). */
   readonly skipHello?: boolean;
+  /** Who hello says this is: the runner by default, or a box's sidecar (ticket 41). */
+  readonly peer?: Hello["peer"];
 };
 
 export const helloFrame = (runnerId: RunnerId, options: ConnectOptions = {}): Hello => ({
@@ -72,7 +74,7 @@ export const helloFrame = (runnerId: RunnerId, options: ConnectOptions = {}): He
   protocolMajor: PROTOCOL_MAJOR,
   protocolMinor: options.minor ?? PROTOCOL_MINOR,
   runnerVersion: "0.0.0",
-  peer: { kind: "runner", runnerId },
+  peer: options.peer ?? { kind: "runner", runnerId },
   carrier: "websocket",
   lastCommandSeq: options.lastCommandSeq ?? 0,
   sessions: options.sessions ?? [],

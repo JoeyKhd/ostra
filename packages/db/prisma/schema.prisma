@@ -1015,6 +1015,7 @@ model Task {
   turns         Turn[]
   events        Event[]
   commands      Command[]
+  sidecarCommands SidecarCommand[]
   approvals     Approval[]
   needsYouItems NeedsYouItem[]
   ticketWrites  TicketWrite[]
@@ -1104,9 +1105,19 @@ model Box {
   releasedAt     DateTime?
   releaseReason  BoxReleaseReason?
   updatedAt      DateTime          @updatedAt
+  /// The sidecar's connection, for a `docker` or `kubernetes` box (ADR 0034, Q129): which replica
+  /// holds it, and a connection epoch, so a second connection of the box evicts the first (4409).
+  sidecarReplicaId       String?
+  sidecarConnectionEpoch Int       @default(0)
+  sidecarConnectedAt     DateTime?
+  sidecarLastSeenAt      DateTime?
+  sidecarDisconnectedAt  DateTime?
+  /// The counter the sidecar's commands are numbered from, taken under this row's lock.
+  sidecarCommandSeq      Int       @default(0)
 
-  leases   Lease[]
-  sessions Session[]
+  leases          Lease[]
+  sessions        Session[]
+  sidecarCommands SidecarCommand[]
 
   @@unique([id, taskId])
   @@index([taskId])
@@ -1115,6 +1126,31 @@ model Box {
 
 /// The server's grant that lets one box work on the task, with its epoch (ADR 0034, F-045). At
 /// most one lease per task is active.
+/// A command for a box's sidecar (ADR 0034, Q129): a `docker` or `kubernetes` box's task's `steer`,
+/// `interrupt`, `stop` and approval answers go to its sidecar, numbered per box, not to the runner.
+model SidecarCommand {
+  id             String         @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  taskId         String
+  task           Task           @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  boxId          String
+  box            Box            @relation(fields: [boxId, taskId], references: [id, taskId], onDelete: Cascade)
+  seq            Int
+  kind           CommandKind
+  /// The command's body, as `@ostra/protocol`'s `commandBodySchemas[kind]` parses it.
+  body           Json
+  notAfter       DateTime
+  createdAt      DateTime       @default(now())
+  ackedAt        DateTime?
+  result         CommandResult?
+  reason         String?
+
+  @@unique([boxId, seq])
+  @@index([taskId])
+  @@map("sidecar_command")
+}
+
 model Lease {
   id             String     @id @default(uuid(7))
   organizationId String

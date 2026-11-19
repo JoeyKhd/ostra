@@ -9,7 +9,7 @@ import { startConnection } from "./connection/peer.ts";
 import type { CommandHandlers, ConnectionHooks, PeerStatus, RunnerConnection } from "./connection/peer.ts";
 import { updateStatus } from "./identity/store.ts";
 import { defaultAgents } from "./task-host/agents.ts";
-import { runnerServerLink } from "./task-host/server-link.ts";
+import { fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
 import { RUNNER_VERSION } from "./version.ts";
 
@@ -115,7 +115,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       const dispatcher = createBoxDispatcher({
         boxes,
         link,
-        tokens: signedIn.tokens,
+        taskToken: fetchTaskToken({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
         dataDir: path.resolve(dataDir),
         serverUrl: config.boxServerUrl ?? config.serverUrl,
         capacity: config.capacity,
