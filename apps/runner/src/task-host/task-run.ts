@@ -15,7 +15,17 @@ import type {
   RepoPushResult,
 } from "@ostra/adapter-sdk";
 import { approvalIdSchema, questionIdSchema, runnerLimits, turnIdSchema } from "@ostra/protocol";
-import type { CommandBody, StopReason, TaskCredentials, TaskEvent, TaskSpec, TurnId } from "@ostra/protocol";
+import type {
+  CommandBody,
+  HiddenRefOutcome,
+  RestoreOrigin,
+  SessionId,
+  StopReason,
+  TaskCredentials,
+  TaskEvent,
+  TaskSpec,
+  TurnId,
+} from "@ostra/protocol";
 import type { CommandOutcome, SessionChannel } from "../connection/peer.ts";
 import { startGitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import type { GitProxy } from "../sidecar/git-proxy/git-proxy.ts";
@@ -28,7 +38,7 @@ import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
-import { saveSessionArchive } from "./session-archive.ts";
+import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
 import { writeTicketFiles } from "./ticket-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
 import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
@@ -50,6 +60,13 @@ import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 // hidden ref, export the session and upload the archive, then `session.saved`; the agent waits
 // for the next turn. A failed export or hidden ref never fails the turn. The box stays when the
 // session ends. A minor-0 spec keeps milestone 1's one turn and `session.ended`.
+//
+// A reopen (ticket 24) follows the spec's `restore.origin`, and never chooses the step itself:
+// `resumed` takes the box this runner kept and loads the agent's own session in it; `restored`
+// makes a fresh box, restores each repo's hidden ref and imports the session archive; `rebuilt`
+// restores the hidden refs and sends the rebuild template (the spec's `prompt`) as the first turn.
+// A step that can't be done falls back to `rebuilt` and says why. Then each pending message is a
+// turn of its own, in order.
 
 /** Why milestone 1 answers every permission itself (F-026 brings rules and the panel's answer). */
 export const NO_RULES_YET = "no rules until F-026";
@@ -79,6 +96,11 @@ export type TaskRunDeps = {
   readonly now?: () => number;
   /** The idle timer's clock (spec section 8: tests run it in seconds). Default: the real one. */
   readonly timers?: TaskTimers;
+  /**
+   * Ticket 24, `resumed`: the box a session of this task left kept on this runner, handed to the
+   * new session (a session still waiting in it ends first). `undefined` when there's none.
+   */
+  readonly claimKeptBox?: (box: BoxRef, sessionId: SessionId) => Promise<KeptBox | undefined>;
 };
 
 /** A timer port: `after` calls `fire` once, `ms` from now, unless the answer is called first. */
@@ -212,6 +234,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   const timers = deps.timers ?? realTimers;
   /** Set when the run ends with its box kept. */
   let kept: KeptBox | undefined;
+  /** How a reopened session came back (ticket 24), for `session.restored`. `undefined` for a new one. */
+  let restored:
+    | {
+        origin: RestoreOrigin;
+        hiddenRef: HiddenRefOutcome;
+        previousBox: "kept" | undefined;
+        fallbackReason: string | undefined;
+        /** The agent's own session to load: the kept box's, or the imported archive's. */
+        resumeId: string | undefined;
+      }
+    | undefined;
+  /** A reopen's pending messages, each a turn of its own, in order (F-047). Never logged. */
+  const pending: string[] = [];
   /** The idle limit of a session across turns, in ms. */
   const idleMs = (taskSpec: TaskSpec): number => (taskSpec.limits.idleMinutes ?? runnerLimits.idleMinutes) * 60_000;
   /** Wakes the session waiting between turns: a message came, or the session is ending. */
@@ -531,8 +566,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return { pushError: pushed.ok ? null : pushed.error };
   };
 
-  /** The messages queued while a turn ran, as the next turn's prompt. */
-  const takeQueued = (): string | undefined => (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
+  /** The next turn's prompt: a reopen's pending message, one at a time, then the messages queued while a turn ran. */
+  const takeQueued = (): string | undefined => pending.shift() ?? (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
 
   /**
    * Between turns: the next turn's text, or `undefined` once the session is ending. The idle timer
@@ -585,7 +620,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   /** Milestone 2's session: turn after turn, the work saved after each, until the session ends. */
   const runAcrossTurns = async (taskSpec: TaskSpec): Promise<void> => {
-    let next: string | undefined = taskSpec.prompt;
+    // A new or rebuilt session starts with the spec's prompt (the rebuild template for `rebuilt`); a
+    // resumed or restored one carries on from its own history, with the pending messages.
+    let next: string | undefined = restored === undefined || restored.origin === "rebuilt" ? taskSpec.prompt : takeQueued();
     while (ending === undefined) {
       next ??= await nextTurn(taskSpec);
       if (next === undefined) {
@@ -793,11 +830,22 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         void emit(event);
       },
     });
-    const created = await deps.executor.create({
-      ...box,
-      spec: taskSpec,
-      proxies: { gitBaseUrl: gitProxy.baseUrl, modelBaseUrl: keyProxy.baseUrl, mcpUrl: mcp.url },
-    });
+    const proxies = { gitBaseUrl: gitProxy.baseUrl, modelBaseUrl: keyProxy.baseUrl, mcpUrl: mcp.url };
+    const step = acrossTurns ? (taskSpec.restore?.origin ?? "new") : "new";
+    if (step !== "new") {
+      restored = { origin: step === "resumed" ? "rebuilt" : step, hiddenRef: "none", previousBox: undefined, fallbackReason: undefined, resumeId: undefined };
+      pending.push(...(taskSpec.restore?.pendingMessages ?? []).map((message) => message.text));
+    }
+    if (step === "resumed") {
+      const resumed = await resumeKeptBox(taskSpec, proxies);
+      if (resumed.ok) {
+        restored = { origin: "resumed", hiddenRef: "none", previousBox: "kept", fallbackReason: undefined, resumeId: resumed.agentSessionId };
+        await placeTicketFiles(taskSpec);
+        return { ok: true, spec: taskSpec };
+      }
+      fallBack(resumed.reason);
+    }
+    const created = await deps.executor.create({ ...box, spec: taskSpec, proxies });
     if (!created.ok) {
       return { ok: false, error: `couldn't create the workspace: ${created.error.message}` };
     }
@@ -826,8 +874,141 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       }
     }
     boxPrepared = true;
+    if (restored !== undefined) {
+      await restoreOntoFreshBox(taskSpec);
+    }
     await placeTicketFiles(taskSpec);
     return { ok: true, spec: taskSpec };
+  };
+
+  // ---------- a reopen: the same box, or a fresh one (ticket 24, ADR 0039) ----------
+
+  /** The step can't be done: the session is rebuilt from the template, and says why in words. */
+  const fallBack = (reason: string): void => {
+    log.warn("the restore falls back to the rebuild template", { reason: reason.slice(0, 300) });
+    if (restored !== undefined) {
+      restored.origin = "rebuilt";
+      restored.resumeId = undefined;
+      restored.previousBox = undefined;
+      restored.fallbackReason = reason.slice(0, 500);
+    }
+  };
+
+  /** `resumed`: the box this runner kept takes the new session's proxies. */
+  const resumeKeptBox = async (
+    taskSpec: TaskSpec,
+    proxies: { readonly gitBaseUrl: string; readonly modelBaseUrl: string; readonly mcpUrl: string },
+  ): Promise<{ readonly ok: true; readonly agentSessionId: string | undefined } | { readonly ok: false; readonly reason: string }> => {
+    const keptBox = await deps.claimKeptBox?.(box, dispatch.sessionId);
+    if (keptBox === undefined) {
+      return { ok: false, reason: "the box to resume isn't kept on this runner any more" };
+    }
+    if (keptBox.agentAdapter !== taskSpec.agent.adapter) {
+      await deps.executor.release(box, "requested");
+      return { ok: false, reason: "the kept box ran another agent" };
+    }
+    const resumed = await deps.executor.resumeBox({ ...box, spec: taskSpec, proxies });
+    if (!resumed.ok) {
+      // A box half resumed can't take a fresh one's place: it goes first.
+      await deps.executor.release(box, "requested");
+      return { ok: false, reason: `the kept box couldn't take the session: ${resumed.error.message}` };
+    }
+    boxCreated = true;
+    boxPrepared = true;
+    dirsCache = resumed.value;
+    return { ok: true, agentSessionId: keptBox.agentSessionId ?? undefined };
+  };
+
+  /** `restored` and `rebuilt`, on the fresh box: each repo's hidden ref, then the archive for `restored`. */
+  const restoreOntoFreshBox = async (taskSpec: TaskSpec): Promise<void> => {
+    const state = restored;
+    const refs = taskSpec.restore?.hiddenRefs ?? [];
+    if (state === undefined) {
+      return;
+    }
+    if (refs.length > 0) {
+      const applied = await deps.executor.restoreWorkInProgress({ box, refs });
+      if (applied.ok) {
+        const outcomes = applied.value.map((repo) => repo.outcome);
+        state.hiddenRef = outcomes.includes("conflict") ? "conflict" : outcomes.includes("applied") ? "applied" : "none";
+      } else {
+        log.warn("restoring the hidden refs failed", { code: applied.error.code });
+        state.hiddenRef = "conflict";
+      }
+    }
+    if (state.origin !== "restored") {
+      return;
+    }
+    const archive = taskSpec.restore?.archive ?? null;
+    if (archive === null) {
+      fallBack("the spec names no session archive");
+      return;
+    }
+    const adapter = makeAgent(taskSpec);
+    const context = adapter === undefined ? undefined : archiveContext(taskSpec);
+    if (context === undefined) {
+      fallBack("this runner can't run the task's agent");
+      return;
+    }
+    const loaded = await loadSessionArchive(context, archive);
+    if (!loaded.ok) {
+      fallBack(loaded.reason);
+      return;
+    }
+    state.resumeId = loaded.agentSessionId;
+  };
+
+  /** The task's agent adapter, made once per agent process. */
+  const makeAgent = (taskSpec: TaskSpec): AgentAdapter | undefined => {
+    agent ??= deps.agents.create(taskSpec.agent.adapter, {
+      onLiveText: (delta) => {
+        channel?.appendLiveText({ turnId: delta.turnId, segmentId: delta.segmentId, kind: delta.kind }, delta.text);
+      },
+    });
+    return agent;
+  };
+
+  /**
+   * The agent, started for the session: with a resume, it loads its own session. A load that fails
+   * starts the agent again on a new session, rebuilt from the template.
+   */
+  const startAgentFor = async (taskSpec: TaskSpec): Promise<string | null> => {
+    const resumeId = restored?.resumeId;
+    const first = await startAgent(taskSpec, resumeId);
+    if (first.ok || resumeId === undefined || first.stage !== "session" || ending !== undefined) {
+      return first.ok ? null : first.error;
+    }
+    fallBack(`the agent couldn't load its session: ${first.error}`);
+    // Its process goes, and the box is made ready again for a new one.
+    await endAgent();
+    agent = undefined;
+    const proxies = keyProxy === undefined || gitProxy === undefined || mcp === undefined ? undefined : { gitBaseUrl: gitProxy.baseUrl, modelBaseUrl: keyProxy.baseUrl, mcpUrl: mcp.url };
+    if (proxies === undefined) {
+      return "the task's proxies aren't running";
+    }
+    const again = await deps.executor.resumeBox({ ...box, spec: taskSpec, proxies });
+    if (!again.ok) {
+      return `the box couldn't take a new agent: ${again.error.message}`;
+    }
+    const second = await startAgent(taskSpec, undefined);
+    return second.ok ? null : second.error;
+  };
+
+  /** `session.restored`: how the session came back, once the agent runs. Replayed updates were never sent. */
+  const reportRestored = async (): Promise<void> => {
+    const state = restored;
+    if (state === undefined || session === undefined) {
+      return;
+    }
+    await emit({
+      kind: "session.restored",
+      origin: state.origin,
+      replayedUpdates: state.origin === "rebuilt" ? 0 : session.replayedUpdates,
+      hiddenRef: state.hiddenRef,
+      ...(state.previousBox === undefined ? {} : { previousBox: state.previousBox }),
+      ...(state.fallbackReason === undefined ? {} : { fallbackReason: state.fallbackReason }),
+    });
+    log.info("session restored", { origin: state.origin, hiddenRef: state.hiddenRef, replayedUpdates: session.replayedUpdates, fellBack: state.fallbackReason !== undefined, pending: pending.length });
   };
 
   /**
@@ -850,23 +1031,21 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     await emit({ kind: "ticket.files_ready", files: [...placed.files], ...(placed.skipped.length > 0 ? { skipped: [...placed.skipped] } : {}) });
   };
 
-  const startAgent = async (taskSpec: TaskSpec): Promise<string | null> => {
+  type AgentStart = { readonly ok: true } | { readonly ok: false; readonly error: string; readonly stage: "launch" | "session" };
+
+  const startAgent = async (taskSpec: TaskSpec, resumeAgentSessionId: string | undefined): Promise<AgentStart> => {
+    const failed = (error: string, stage: "launch" | "session" = "launch"): AgentStart => ({ ok: false, error, stage });
     const held = credentials;
     if (keyProxy === undefined || mcp === undefined || held === undefined) {
-      return "the task's proxies aren't running";
+      return failed("the task's proxies aren't running");
     }
-    const created = deps.agents.create(taskSpec.agent.adapter, {
-      onLiveText: (delta) => {
-        channel?.appendLiveText({ turnId: delta.turnId, segmentId: delta.segmentId, kind: delta.kind }, delta.text);
-      },
-    });
+    const created = makeAgent(taskSpec);
     if (created === undefined) {
-      return `this runner has no agent adapter "${taskSpec.agent.adapter.slice(0, 64)}"`;
+      return failed(`this runner has no agent adapter "${taskSpec.agent.adapter.slice(0, 64)}"`);
     }
-    agent = created;
     const state = await deps.executor.state(box);
     if (!state.ok || state.value !== "ready") {
-      return "the workspace isn't ready";
+      return failed("the workspace isn't ready");
     }
     const dirs = workspaceOf();
     const launch = await created.prepareLaunch({
@@ -880,7 +1059,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       extraEnv: agentVariables(taskSpec),
     });
     if (!launch.ok) {
-      return `the agent couldn't be launched: ${launch.error.message}`;
+      return failed(`the agent couldn't be launched: ${launch.error.message}`);
     }
     // ADR 0029: git run by the agent outside a checkout reads the task's config, not the machine's
     // system or global one (on Git for Windows, the system config names the member's credential
@@ -893,11 +1072,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const checked = checkLaunchEnvironment(guarded.env, held);
     if (!checked.ok) {
       log.error("the agent's environment held a credential: refusing to start it", { variable: checked.variable });
-      return `the agent's environment held ${checked.holds} (in ${checked.variable}): refused to start it`;
+      return failed(`the agent's environment held ${checked.holds} (in ${checked.variable}): refused to start it`);
     }
     const started = await deps.executor.startAgent(box, guarded);
     if (!started.ok) {
-      return `the agent didn't start: ${started.error.message}`;
+      return failed(`the agent didn't start: ${started.error.message}`);
     }
     agentProcess = started.value;
     const opened = await created.startSession({
@@ -913,12 +1092,13 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       },
       onPermission,
       onQuestion,
+      ...(resumeAgentSessionId === undefined ? {} : { resumeAgentSessionId }),
     });
     if (!opened.ok) {
-      return `the agent's session didn't start: ${opened.error.message}`;
+      return failed(`the agent's session didn't start: ${opened.error.message}`, "session");
     }
     session = opened.value;
-    return null;
+    return { ok: true };
   };
 
   const workspaceOf = (): { readonly workspaceDir: string; readonly agentDir: string; readonly gitConfig: string } => {
@@ -936,9 +1116,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     const taskSpec = spec;
     if (ending === undefined && taskSpec !== undefined) {
-      const failed = await startAgent(taskSpec);
+      const failed = await startAgentFor(taskSpec);
       if (failed !== null) {
         end({ kind: "crashed", error: failed });
+      } else {
+        await reportRestored();
       }
     }
     if (taskSpec !== undefined && acrossTurns) {

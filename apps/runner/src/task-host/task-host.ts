@@ -1,5 +1,5 @@
 import os from "node:os";
-import type { Logger } from "@ostra/adapter-sdk";
+import type { BoxRef, Logger } from "@ostra/adapter-sdk";
 import type { BoxId, ExecutorKind, RunnerLabel, SessionId } from "@ostra/protocol";
 import type { CommandHandlers, CommandOutcome, PeerStatus, SessionRef } from "../connection/peer.ts";
 import { removeAgentLeftovers } from "./leftovers.ts";
@@ -40,6 +40,8 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
   const runs = new Map<SessionId, TaskRun>();
   /** Boxes kept after their session ended (ADR 0039), by box. On `host` the worktree stays until a release. */
   const keptBoxes = new Map<BoxId, KeptBox>();
+  /** Runs whose kept box a release or the next session already took: their end doesn't keep it again. */
+  const handedOver = new WeakSet<TaskRun>();
   let draining = false;
   const log: Logger = options.logger.child({ component: "task-host" });
   const tempDir = options.tempDir ?? os.tmpdir();
@@ -50,7 +52,7 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
     void run.done.finally(() => {
       runs.delete(run.dispatch.sessionId);
       const left = run.keptBox();
-      if (left !== undefined) {
+      if (left !== undefined && !handedOver.has(run)) {
         keptBoxes.set(left.box.boxId, left);
         log.info("box kept", { taskId: left.box.taskId, boxId: left.box.boxId });
       }
@@ -65,9 +67,13 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
    */
   const release = async (body: Parameters<CommandHandlers["release"]>[0]["body"]): Promise<CommandOutcome> => {
     const live = [...runs.values()].find((run) => run.dispatch.boxId === body.boxId && run.dispatch.taskId === body.taskId);
-    if (live !== undefined && !(await live.endBetweenTurns())) {
-      log.info("release refused: the box's turn is running", { taskId: body.taskId, boxId: body.boxId });
-      return { result: "rejected", reason: "box-busy" };
+    if (live !== undefined) {
+      handedOver.add(live);
+      if (!(await live.endBetweenTurns())) {
+        handedOver.delete(live);
+        log.info("release refused: the box's turn is running", { taskId: body.taskId, boxId: body.boxId });
+        return { result: "rejected", reason: "box-busy" };
+      }
     }
     const left = keptBoxes.get(body.boxId) ?? live?.keptBox();
     const released = await options.executor.release({ taskId: body.taskId, boxId: body.boxId }, body.reason);
@@ -83,6 +89,30 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
 
   const done = (outcome: CommandOutcome): Promise<CommandOutcome> => Promise.resolve(outcome);
 
+  /**
+   * `resumed` (ticket 24): the box a session of the task left kept here, for the new session. A
+   * session still waiting in it ends first, as its idle timer would; one whose turn runs keeps it.
+   */
+  const claimKeptBox = async (box: BoxRef, sessionId: SessionId): Promise<KeptBox | undefined> => {
+    const live = [...runs.values()].find((run) => run.dispatch.boxId === box.boxId && run.dispatch.taskId === box.taskId && run.dispatch.sessionId !== sessionId);
+    if (live !== undefined) {
+      handedOver.add(live);
+      if (!(await live.endBetweenTurns())) {
+        handedOver.delete(live);
+        return undefined;
+      }
+      keptBoxes.delete(box.boxId);
+      return live.keptBox();
+    }
+    const held = keptBoxes.get(box.boxId);
+    if (held?.box.taskId !== box.taskId) {
+      return undefined;
+    }
+    keptBoxes.delete(box.boxId);
+    log.info("kept box resumed", { taskId: box.taskId, boxId: box.boxId });
+    return held;
+  };
+
   const handlers: CommandHandlers = {
     dispatch: (command) => {
       const body = command.body;
@@ -92,11 +122,13 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       if (draining) {
         return done({ result: "rejected", reason: "draining" });
       }
-      if (runs.size >= options.capacity) {
+      // A session of the same box takes the slot of the one waiting in it (a resume, ticket 24).
+      const sameBox = [...runs.values()].some((run) => run.dispatch.boxId === body.boxId && run.dispatch.taskId === body.taskId);
+      if (runs.size >= options.capacity && !sameBox) {
         return done({ result: "rejected", reason: "no-capacity" });
       }
       log.info("dispatch accepted", { taskId: body.taskId, sessionId: body.sessionId, leaseEpoch: body.leaseEpoch });
-      track(startTaskRun(options, body));
+      track(startTaskRun({ ...options, claimKeptBox }, body));
       return done({ result: "accepted" });
     },
     stop: (command) => {
