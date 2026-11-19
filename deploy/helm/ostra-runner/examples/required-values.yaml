@@ -1,0 +1,13 @@
+# Only the required values, for a server installed by the ostra-server chart in this cluster (its
+# release named ostra, in the namespace ostra). The join token is a secret an admin made from the
+# pool's token: kubectl create secret generic ostra-join-token --from-literal=join-token=<token>
+server:
+  url: http://ostra-ostra-server-core.ostra.svc.cluster.local:8787
+  egress:
+    namespace: ostra
+    podLabels:
+      app.kubernetes.io/name: ostra-server
+      app.kubernetes.io/component: core
+    port: 8787
+joinToken:
+  existingSecret: ostra-join-token

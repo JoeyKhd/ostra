@@ -1,0 +1,24 @@
+# A server outside the cluster, reached at one address; a private model endpoint the boxes may
+# reach; labels for the profiles that ask for them; gVisor; and the registry and package hosts a
+# snapshot build reaches.
+server:
+  url: https://core.ostra.example.com
+  egress:
+    cidr: 203.0.113.10
+    port: 443
+joinToken:
+  existingSecret: ostra-join-token
+  key: token
+runner:
+  name: gpu-pool-a
+  labels: [gpu, region:eu]
+  slots: 40
+  runtimeClass: gvisor
+egress:
+  allow: [10.20.0.15, 10.30.0.0/24]
+build:
+  registry:
+    addresses: [203.0.113.50]
+    port: 443
+  packageHosts: [104.16.0.0/13]
+  codeHosts: [140.82.112.0/20]

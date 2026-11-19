@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ostra-server
+description: The ostra server (the panel and core) on Kubernetes, against a Postgres you provide (ADR 0060).
+type: application
+# Versioned with the release: the chart, its appVersion and the server image's tag move together.
+version: 0.0.0
+appVersion: "0.0.0"
+# Native sidecar containers, which the runner chart's boxes need, arrived in Kubernetes 1.29.
+kubeVersion: ">=1.29.0-0"

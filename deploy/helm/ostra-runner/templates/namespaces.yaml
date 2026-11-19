@@ -1,0 +1,12 @@
+{{- /* The box namespace and its build namespace (ADR 0060). The runner itself runs in the release's. */ -}}
+{{- if .Values.namespaces.create }}
+{{- range $namespace := list .Values.namespaces.boxes .Values.namespaces.builds }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace }}
+  labels:
+    {{- include "ostra-runner.labels" $ | nindent 4 }}
+{{- end }}
+{{- end }}

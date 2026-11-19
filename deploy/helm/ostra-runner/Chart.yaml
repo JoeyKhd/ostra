@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ostra-runner
+description: A kubernetes pool runner for ostra, with its box and build namespaces, a role in those namespaces only, and their egress policies (ADR 0060).
+type: application
+# Versioned with the release: the chart, its appVersion and the runner image's tag move together.
+version: 0.0.0
+appVersion: "0.0.0"
+# A box's sidecar and services are native sidecar containers, which arrived in Kubernetes 1.29.
+kubeVersion: ">=1.29.0-0"

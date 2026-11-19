@@ -1,0 +1,108 @@
+{{- /*
+The egress baseline for boxes (F-116, ADR 0060), the same policy as `baselineEgressPolicy` in
+packages/adapters/adapter-executor-kubernetes/src/egress.ts, which `pnpm check:helm` compares the
+render with: the box pods reach DNS at the cluster's resolver, the ostra server's address on its
+port, the addresses egress.allow names, and the internet without the private ranges (the one list,
+EGRESS_BLOCKED_V4 and EGRESS_BLOCKED_V6 in @ostra/adapter-sdk). Nothing may open a connection to a
+box. The executor never writes it, and refuses to start boxes without it.
+*/ -}}
+{{- $egress := .Values.server.egress }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ostra-egress-baseline
+  namespace: {{ .Values.namespaces.boxes }}
+  labels:
+    {{- include "ostra-runner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      ostra.dev/role: box
+  policyTypes: ["Egress", "Ingress"]
+  egress:
+    {{- include "ostra-runner.dnsRule" . | nindent 4 }}
+    - to:
+        {{- if hasKey $egress "cidr" }}
+        - ipBlock:
+            cidr: {{ include "ostra-runner.cidr" $egress.cidr }}
+        {{- else }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ required "server.egress needs cidr, or namespace with podLabels" $egress.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $egress.podLabels | nindent 14 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $egress.port }}
+    {{- with .Values.egress.allow }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ include "ostra-runner.cidr" . }}
+        {{- end }}
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 192.0.0.0/24
+              - 198.18.0.0/15
+              - 224.0.0.0/4
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - fc00::/7
+              - fe80::/10
+              - ::1/128
+              - ff00::/8
+  ingress: []
+---
+{{- /*
+The build namespace's own policy (ADR 0038), as `buildEgressPolicy`: a snapshot build reaches DNS,
+the registry on its port, and the package and code hosts on HTTPS, by address, and nothing else.
+*/}}
+{{- $build := .Values.build }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ostra-build-egress
+  namespace: {{ .Values.namespaces.builds }}
+  labels:
+    {{- include "ostra-runner.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      ostra.dev/role: snapshot-build
+  policyTypes: ["Egress", "Ingress"]
+  egress:
+    {{- include "ostra-runner.dnsRule" . | nindent 4 }}
+    {{- with $build.registry.addresses }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ include "ostra-runner.cidr" . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $build.registry.port }}
+    {{- end }}
+    {{- $hosts := concat $build.packageHosts $build.codeHosts }}
+    {{- with $hosts }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ include "ostra-runner.cidr" . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+  ingress: []

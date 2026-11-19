@@ -846,6 +846,12 @@ importers:
 
   packages/deploy-checks:
     dependencies:
+      '@kubernetes/client-node':
+        specifier: 2.0.2
+        version: 2.0.2(bare-buffer@3.7.3)
+      '@ostra/adapter-executor-kubernetes':
+        specifier: workspace:*
+        version: link:../adapters/adapter-executor-kubernetes
       '@ostra/adapter-opencode':
         specifier: workspace:*
         version: link:../adapters/adapter-opencode

@@ -1,0 +1,85 @@
+{{- /*
+The panel (`web`) and core (`core`): two deployments of the one server image (ADR 0046), each with
+its replicas. Core runs the migrations at start; several cores starting at once take Prisma's lock.
+*/ -}}
+{{- range $role := list "web" "core" }}
+{{- $process := get $.Values $role }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ostra-server.fullname" $ }}-{{ $role }}
+  labels:
+    {{- include "ostra-server.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+spec:
+  replicas: {{ $process.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ostra-server.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $role }}
+  template:
+    metadata:
+      labels:
+        {{- include "ostra-server.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $role }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "ostra-server.podSecurity" $ | nindent 8 }}
+      containers:
+        - name: {{ $role }}
+          image: {{ include "ostra-server.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: [{{ $role | quote }}]
+          ports:
+            - name: http
+              containerPort: {{ $process.port }}
+          env:
+            {{- include "ostra-server.env" $ | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ ternary "/healthz" "/" (eq $role "core") }}
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ ternary "/healthz" "/" (eq $role "core") }}
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            {{- toYaml $process.resources | nindent 12 }}
+          securityContext:
+            {{- include "ostra-server.containerSecurity" $ | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/ostra
+      volumes:
+        # The keys come from the shared secret; this holds what a process makes for itself.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ostra-server.fullname" $ }}-{{ $role }}
+  labels:
+    {{- include "ostra-server.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+spec:
+  type: {{ $.Values.service.type }}
+  selector:
+    {{- include "ostra-server.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+  ports:
+    - name: http
+      port: {{ $process.port }}
+      targetPort: http
+{{- end }}

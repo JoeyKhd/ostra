@@ -246,4 +246,11 @@ describe("snapshots on kubernetes (ticket 08)", () => {
     expect(egress.every((rule) => arrayOf(rule["to"]).length > 0)).toBe(true);
     expect(JSON.stringify(policy)).not.toContain("0.0.0.0/0");
   });
+
+  it("F-116: with no registry address and no hosts, the build policy allows DNS only: an empty peer list would allow every destination", () => {
+    const policy = buildEgressPolicy({ namespace: BUILDS, registry: { addresses: [], port: 443 }, packageHosts: [], codeHosts: [] });
+    const egress = arrayOf(recordOf(policy.spec)["egress"]);
+    expect(egress).toHaveLength(1);
+    expect(egress.every((rule) => arrayOf(rule["to"]).length > 0)).toBe(true);
+  });
 });

@@ -31,6 +31,7 @@ describe("the configuration reference's parser", () => {
       ["Code hosts and Git LFS", null],
       ["The runner", "runner"],
       ["Development and tests only", "dev"],
+      ["The Helm charts", null],
       ["Removed settings", null],
     ]);
     const runner = settingsOf(reference).filter((row) => row.readBy === "runner");

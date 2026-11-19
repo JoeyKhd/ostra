@@ -1,0 +1,63 @@
+{{- /*
+The runner's service account, and a Role with its RoleBinding in the box and build namespaces only:
+no cluster role (ADR 0060). The rights are the executor's NEEDED_ACCESS (`kubernetes-executor.ts`):
+pods and their logs and events, secrets, the quotas it reads its room from, the network policies it
+checks are there (read only: the right to change them is the right to remove the baseline), and
+its own namespace, which a RoleBinding in that namespace grants.
+*/ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "ostra-runner.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ostra-runner.labels" . | nindent 4 }}
+{{- range $namespace := list .Values.namespaces.boxes .Values.namespaces.builds }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ostra-runner.fullname" $ }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "ostra-runner.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "list", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
+    verbs: ["list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    resourceNames: [{{ $namespace | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ostra-runner.fullname" $ }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "ostra-runner.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ostra-runner.fullname" $ }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ostra-runner.fullname" $ }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}

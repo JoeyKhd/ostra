@@ -1,0 +1,73 @@
+# A kubernetes pool runner's values (docs/configuration.md, "The Helm charts"). values.schema.json
+# is generated from packages/deploy-checks/src/helm/values.ts; `pnpm check:helm` checks both.
+#
+# Required, with no default here:
+#   server.url                 core's address as the runner reaches it (OSTRA_SERVER_URL)
+#   server.egress              where the server is, the egress baseline's one exception: either
+#                                {cidr, port} or {namespace, podLabels, port} for a server in this cluster
+#   joinToken.existingSecret   the secret holding the pool's join token, under joinToken.key
+#
+# The cluster needs Kubernetes 1.29 or later (native sidecars) and a network plugin that enforces
+# NetworkPolicy: without one, the baseline below is written and nothing enforces it.
+
+image:
+  repository: ostra/runner
+  # Empty: the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# The base image a box's agent runs in (OSTRA_BOX_BASE_IMAGE). Empty tag: the chart's appVersion.
+boxImage:
+  repository: ostra/base
+  tag: ""
+
+server:
+  # OSTRA_BOX_SERVER_URL: core's address as a box's sidecar reaches it. Empty: server.url.
+  boxUrl: ""
+
+joinToken:
+  key: join-token
+
+runner:
+  # Empty: the release's name.
+  name: ""
+  labels: []
+  slots: 20
+  nodeWaitMinutes: 15
+  # Such as gvisor. Empty: the cluster's default runtime.
+  runtimeClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+namespaces:
+  # false: the namespaces exist already, made by an admin who may.
+  create: true
+  boxes: ostra-boxes
+  builds: ostra-builds
+
+# OSTRA_EGRESS_ALLOW: private addresses or CIDRs a box may reach besides the server's, such as a
+# private model endpoint.
+egress:
+  allow: []
+
+# The build namespace's policy: what a snapshot build may reach, by address. With no registry
+# address a build reaches DNS only, so set it before the pool builds snapshots.
+build:
+  registry:
+    addresses: []
+    port: 443
+  packageHosts: []
+  codeHosts: []
+
+# The runner's key pair and spool. Disabled: an emptyDir, and the runner joins again as a new
+# runner after every restart, with a join token that hasn't expired.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClassName: ""

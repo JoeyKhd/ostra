@@ -170,6 +170,84 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 
 Variables named `OSTRA_SPIKE_*` belong to the spikes in `spikes/`. The server neither reads nor refuses them, so the dev env files can be loaded before `pnpm dev`.
 
+## The Helm charts
+
+Two charts in `deploy/helm/`, versioned with the release (ADR 0060): `ostra-server` runs the panel and core against a Postgres you provide, and `ostra-runner` runs a `kubernetes` pool runner. They're often in different clusters. Each value below has its default in the chart's `values.yaml`; only the ones marked (required) have none, and Helm refuses an install without them. Each chart's `values.schema.json` is generated from `packages/deploy-checks/src/helm/values.ts`, so Helm also refuses a mistyped key. `examples/` in each chart holds working values files, one with only the required values.
+
+**The cluster.** Both charts need Kubernetes 1.29 or later, for native sidecar containers (`kubeVersion: ">=1.29.0-0"`; F-093), and the runner chart needs a network plugin that enforces NetworkPolicy, such as Calico or Cilium: without one, its egress baseline is written and nothing enforces it (F-116).
+
+**The server's keys.** Every server process gets the same `OSTRA_SECRETS_KEY`, `BETTER_AUTH_SECRET` and `OSTRA_RUNNER_TOKEN_KEY` (above, "Several server processes") from one secret. Without `secrets.existingSecret` the chart makes it once, on install, keeps its values on every upgrade (Helm's `lookup`), and never deletes it, uninstall included (`helm.sh/resource-policy: keep`). Back it up: without `OSTRA_SECRETS_KEY` the stored secrets can't be read.
+
+**The runner's rights.** The runner's service account gets a Role in the box namespace and one in the build namespace, and nothing else: no cluster role. It may make and delete pods and secrets there, read their events, logs and quotas, and list the network policies, never change them (ADR 0060).
+
+`pnpm check:helm` checks both charts: the schemas, the defaults, the examples and this reference everywhere, and where `helm` is on the PATH also `helm lint` and `helm template` with every example and the rendered manifests.
+
+### `ostra-server`
+
+| Value | Default | What it does |
+|---|---|---|
+| `image.repository` | `ostra/server` | The server image (ADR 0046). |
+| `image.tag` | the chart's `appVersion` | The image's tag. |
+| `image.pullPolicy` | `IfNotPresent` | Kubernetes' pull policy for it. |
+| `imagePullSecrets` | `[]` | The names of secrets to pull the image with. |
+| `publicUrl` | (empty: the server's default) | `OSTRA_PUBLIC_URL`, the panel's address as browsers reach it. |
+| `corePublicUrl` | (empty: the server's default) | `OSTRA_CORE_PUBLIC_URL`, core's address as runners and webhooks reach it. |
+| `database.url` | (required: this or `database.existingSecret`) | The Postgres URL (`DATABASE_URL`). The chart keeps it in a secret of its own. |
+| `database.existingSecret` | (required: this or `database.url`) | A secret you made that holds the Postgres URL. |
+| `database.existingSecretKey` | `DATABASE_URL` | The key the URL is under, in either secret. |
+| `secrets.existingSecret` | (empty: the chart makes one) | A secret you made holding `OSTRA_SECRETS_KEY`, `BETTER_AUTH_SECRET` and `OSTRA_RUNNER_TOKEN_KEY`. Set, the chart makes none. |
+| `web.replicas` | `2` | How many panel processes run. |
+| `web.port` | `3000` | The panel's port (`OSTRA_WEB_PORT`). |
+| `web.resources` | 250m CPU and 512Mi requested, 1Gi memory limit | The panel's container's requests and limits. |
+| `core.replicas` | `2` | How many core processes run. Any replica serves any request (ADR 0034). |
+| `core.port` | `8787` | Core's port (`OSTRA_CORE_PORT`), which runners connect to. |
+| `core.resources` | 250m CPU and 512Mi requested, 1Gi memory limit | Core's container's requests and limits. |
+| `service.type` | `ClusterIP` | The type of the panel's and core's services. |
+| `ingress.enabled` | `false` | Whether the chart makes an ingress. |
+| `ingress.className` | (empty: the cluster's default) | The ingress class. |
+| `ingress.webHost` | (empty; needed when `ingress.enabled`) | The panel's host name. |
+| `ingress.coreHost` | (empty: no rule for core) | Core's host name. Runners outside the cluster need it. |
+| `ingress.tlsSecretName` | (empty: no TLS) | The secret with the TLS certificate for both hosts. |
+| `ingress.idleTimeoutSeconds` | `3600` | How long a quiet connection stays open through the ingress, raised for runners' and the panel's WebSockets (ADR 0034). Written as ingress-nginx's annotations. |
+| `ingress.annotations` | `{}` | More annotations, such as another controller's timeouts. |
+| `env` | `{}` | Any other server setting, by name (above, "The server"), such as `OSTRA_EMAIL_PROVIDER`. |
+
+### `ostra-runner`
+
+| Value | Default | What it does |
+|---|---|---|
+| `image.repository` | `ostra/runner` | The runner image: the runner, and each box's sidecar (ADR 0046). |
+| `image.tag` | the chart's `appVersion` | The image's tag, which is the runner's pin (ADR 0034). |
+| `image.pullPolicy` | `IfNotPresent` | Kubernetes' pull policy for it. |
+| `imagePullSecrets` | `[]` | The names of secrets to pull the runner image with. |
+| `boxImage.repository` | `ostra/base` | The base image a box's agent runs in, for an environment that names none (`OSTRA_BOX_BASE_IMAGE`). |
+| `boxImage.tag` | the chart's `appVersion` | Its tag. |
+| `server.url` | (required) | Core's address as the runner reaches it (`OSTRA_SERVER_URL`). |
+| `server.boxUrl` | (empty: `server.url`) | Core's address as a box's sidecar reaches it (`OSTRA_BOX_SERVER_URL`). |
+| `server.egress.cidr` | (required: this or `server.egress.namespace`) | The server's address or CIDR: the egress baseline's one exception (ADR 0060). |
+| `server.egress.namespace` | (required: this or `server.egress.cidr`) | The namespace of a server in this cluster, for the exception. |
+| `server.egress.podLabels` | (required with `server.egress.namespace`) | The labels of core's pods there, such as `app.kubernetes.io/component: core`. |
+| `server.egress.port` | (required) | Core's port, the only one the exception opens. |
+| `joinToken.existingSecret` | (required) | The secret holding the pool's join token, which the runner reads as a file (`OSTRA_JOIN_TOKEN_FILE`). |
+| `joinToken.key` | `join-token` | The key the token is under. |
+| `runner.name` | (empty: the release's name) | The runner's name in the panel (`OSTRA_RUNNER_NAME`). |
+| `runner.labels` | `[]` | Labels profiles can ask for (`OSTRA_RUNNER_LABELS`). |
+| `runner.slots` | `20` | How many boxes it holds at once (`OSTRA_RUNNER_SLOTS`). |
+| `runner.nodeWaitMinutes` | `15` | How long a box waits for a node (`OSTRA_K8S_NODE_WAIT_MINUTES`). |
+| `runner.runtimeClass` | (empty: the cluster's default) | The RuntimeClass boxes run with, such as `gvisor` (`OSTRA_K8S_RUNTIME_CLASS`). |
+| `runner.resources` | 250m CPU and 256Mi requested, 512Mi memory limit | The runner's container's requests and limits. |
+| `namespaces.create` | `true` | Whether the chart makes the two namespaces. `false`: an admin made them. |
+| `namespaces.boxes` | `ostra-boxes` | Where boxes' pods run (`OSTRA_K8S_NAMESPACE`), with the egress baseline. |
+| `namespaces.builds` | `ostra-builds` | Where snapshots are built (`OSTRA_K8S_BUILD_NAMESPACE`), with its own policy. |
+| `egress.allow` | `[]` | Private addresses or CIDRs a box may reach besides the server's, such as a private model endpoint (`OSTRA_EGRESS_ALLOW`). |
+| `build.registry.addresses` | `[]` | The registry's addresses, which a snapshot build pushes to. Empty: a build reaches DNS only. |
+| `build.registry.port` | `443` | The registry's port. |
+| `build.packageHosts` | `[]` | Addresses or CIDRs of the package hosts a build installs from, on HTTPS. |
+| `build.codeHosts` | `[]` | Addresses or CIDRs of the code hosts a build clones from, on HTTPS. |
+| `persistence.enabled` | `true` | A volume for the runner's key pair and spool. `false`: an emptyDir, and the runner joins again after a restart. |
+| `persistence.size` | `1Gi` | The volume's size. |
+| `persistence.storageClassName` | (empty: the cluster's default) | The volume's storage class. |
+
 ## Removed settings
 
 Settings ostra no longer reads. A server that still finds one in its environment starts anyway and ignores it: core and the panel each log one `settings.retired_ignored` warning for it at start, with its name, the date it was removed and why, never its value. Remove it from your environment to quiet the warning.

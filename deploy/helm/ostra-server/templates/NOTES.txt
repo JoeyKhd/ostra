@@ -1,0 +1,12 @@
+ostra {{ .Chart.AppVersion }}: {{ .Values.web.replicas }} panel and {{ .Values.core.replicas }} core replicas.
+
+The panel:  {{ include "ostra-server.fullname" . }}-web, port {{ .Values.web.port }}
+Core:       {{ include "ostra-server.fullname" . }}-core, port {{ .Values.core.port }} (runners connect here)
+
+Every server process reads the same three keys from the secret {{ include "ostra-server.keysSecret" . }}.
+{{- if not .Values.secrets.existingSecret }}
+The chart made it on install and keeps it on upgrade and uninstall. Back it up: without
+OSTRA_SECRETS_KEY the stored secrets can't be read.
+{{- end }}
+
+The first account: see "The first admin" in docs/configuration.md.

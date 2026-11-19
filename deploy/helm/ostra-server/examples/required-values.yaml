@@ -1,0 +1,3 @@
+# Only the required values: the database. `helm install ostra deploy/helm/ostra-server -f this-file`.
+database:
+  url: postgres://ostra@postgres.ostra.svc.cluster.local:5432/ostra

@@ -116,7 +116,11 @@ export const buildEgressPolicy = (input: BuildPolicyInput): V1NetworkPolicy => (
     policyTypes: ["Egress", "Ingress"],
     egress: [
       dnsRule(),
-      { to: input.registry.addresses.map((address) => ({ ipBlock: { cidr: asCidr(address) } })), ports: [{ protocol: "TCP", port: input.registry.port }] },
+      // A rule with no peers allows every destination, so no address means no rule (the runner chart
+      // renders the same policy before an admin names the registry's addresses).
+      ...(input.registry.addresses.length === 0
+        ? []
+        : [{ to: input.registry.addresses.map((address) => ({ ipBlock: { cidr: asCidr(address) } })), ports: [{ protocol: "TCP", port: input.registry.port }] }]),
       ...(input.packageHosts.length + input.codeHosts.length === 0
         ? []
         : [{ to: [...input.packageHosts, ...input.codeHosts].map((address) => ({ ipBlock: { cidr: asCidr(address) } })), ports: [{ protocol: "TCP", port: 443 }] }]),

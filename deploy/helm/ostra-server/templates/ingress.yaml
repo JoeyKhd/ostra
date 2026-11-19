@@ -1,0 +1,59 @@
+{{- /*
+The panel's ingress, and core's when ingress.coreHost names it (runners outside the cluster connect
+to core). Runners and the panel hold WebSockets open (ADR 0034): the upgrade passes, and the idle
+timeout is raised past the proxy's default of a minute. The annotations are ingress-nginx's; another
+controller takes its own through ingress.annotations.
+*/ -}}
+{{- if .Values.ingress.enabled }}
+{{- $host := required "ingress.webHost is required when ingress.enabled is true" .Values.ingress.webHost }}
+{{- $timeout := .Values.ingress.idleTimeoutSeconds | toString }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ostra-server.fullname" . }}
+  labels:
+    {{- include "ostra-server.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ $timeout | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ $timeout | quote }}
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tlsSecretName }}
+  tls:
+    - secretName: {{ . }}
+      hosts:
+        - {{ $host }}
+        {{- with $.Values.ingress.coreHost }}
+        - {{ . }}
+        {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ $host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ostra-server.fullname" . }}-web
+                port:
+                  name: http
+    {{- with .Values.ingress.coreHost }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ostra-server.fullname" $ }}-core
+                port:
+                  name: http
+    {{- end }}
+{{- end }}

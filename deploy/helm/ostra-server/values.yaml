@@ -1,0 +1,64 @@
+# The ostra server's values (docs/configuration.md, "The Helm charts"). values.schema.json is
+# generated from packages/deploy-checks/src/helm/values.ts; `pnpm check:helm` checks both.
+#
+# Required, with no default here: `database`, either
+#   database.url: postgres://user:password@host:5432/ostra
+# or
+#   database.existingSecret: <a secret with the URL under database.existingSecretKey>
+
+image:
+  repository: ostra/server
+  # Empty: the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# OSTRA_PUBLIC_URL and OSTRA_CORE_PUBLIC_URL; empty leaves the server's defaults.
+publicUrl: ""
+corePublicUrl: ""
+
+database:
+  existingSecretKey: DATABASE_URL
+
+# The one secret every server process shares: OSTRA_SECRETS_KEY, BETTER_AUTH_SECRET and
+# OSTRA_RUNNER_TOKEN_KEY. Empty: the chart makes it once on install and keeps it on upgrade.
+secrets:
+  existingSecret: ""
+
+web:
+  replicas: 2
+  port: 3000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+core:
+  replicas: 2
+  port: 8787
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  className: ""
+  webHost: ""
+  # Empty: no rule for core. Runners outside the cluster need one.
+  coreHost: ""
+  tlsSecretName: ""
+  # Runners and the panel hold WebSockets open (ADR 0034): the proxy's idle timeout is raised.
+  idleTimeoutSeconds: 3600
+  annotations: {}
+
+# Any other server setting, by name (docs/configuration.md, "The server").
+env: {}

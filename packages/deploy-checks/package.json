@@ -14,6 +14,8 @@
     "test": "vitest run --maxWorkers=4"
   },
   "dependencies": {
+    "@kubernetes/client-node": "2.0.2",
+    "@ostra/adapter-executor-kubernetes": "workspace:*",
     "@ostra/adapter-opencode": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "zod": "4.6.7"

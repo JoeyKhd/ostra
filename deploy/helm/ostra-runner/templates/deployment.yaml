@@ -1,0 +1,123 @@
+{{- /*
+The pool runner: one replica of the runner image, `ostra runner --executor kubernetes`, its join
+token read from the secret an admin made (joinToken.existingSecret), never from a value.
+*/ -}}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion }}
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ostra-runner.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ostra-runner.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ostra-runner.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ostra-runner.labels" . | nindent 4 }}
+spec:
+  # One runner per key pair: a second replica would be a second runner on the same data.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ostra-runner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ostra-runner.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "ostra-runner.fullname" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: {{ printf "%s:%s" .Values.image.repository $tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["runner", "--executor", "kubernetes"]
+          env:
+            - name: OSTRA_SERVER_URL
+              value: {{ .Values.server.url | quote }}
+            - name: OSTRA_BOX_SERVER_URL
+              value: {{ .Values.server.boxUrl | default .Values.server.url | quote }}
+            - name: OSTRA_JOIN_TOKEN_FILE
+              value: {{ printf "/var/run/ostra/join-token/%s" .Values.joinToken.key | quote }}
+            - name: OSTRA_RUNNER_NAME
+              value: {{ .Values.runner.name | default .Release.Name | quote }}
+            - name: OSTRA_RUNNER_DATA_DIR
+              value: /var/lib/ostra-runner
+            - name: OSTRA_RUNNER_SLOTS
+              value: {{ .Values.runner.slots | quote }}
+            {{- with .Values.runner.labels }}
+            - name: OSTRA_RUNNER_LABELS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: OSTRA_K8S_NAMESPACE
+              value: {{ .Values.namespaces.boxes | quote }}
+            - name: OSTRA_K8S_BUILD_NAMESPACE
+              value: {{ .Values.namespaces.builds | quote }}
+            - name: OSTRA_K8S_NODE_WAIT_MINUTES
+              value: {{ .Values.runner.nodeWaitMinutes | quote }}
+            {{- with .Values.runner.runtimeClass }}
+            - name: OSTRA_K8S_RUNTIME_CLASS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.egress.allow }}
+            - name: OSTRA_EGRESS_ALLOW
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: OSTRA_BOX_BASE_IMAGE
+              value: {{ printf "%s:%s" .Values.boxImage.repository (.Values.boxImage.tag | default .Chart.AppVersion) | quote }}
+            - name: OSTRA_BOX_RUNNER_IMAGE
+              value: {{ printf "%s:%s" .Values.image.repository $tag | quote }}
+          resources:
+            {{- toYaml .Values.runner.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: join-token
+              mountPath: /var/run/ostra/join-token
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/ostra-runner
+      volumes:
+        - name: join-token
+          secret:
+            secretName: {{ .Values.joinToken.existingSecret }}
+            items:
+              - key: {{ .Values.joinToken.key }}
+                path: {{ .Values.joinToken.key }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "ostra-runner.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

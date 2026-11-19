@@ -18,6 +18,7 @@
     "check:licenses": "node scripts/check-licenses.ts",
     "check:proof": "node scripts/check-proof.ts",
     "check:images": "node packages/deploy-checks/src/check-images.ts",
+    "check:helm": "node packages/deploy-checks/src/check-helm.ts",
     "proof:new": "node scripts/proof-new.ts",
     "format": "prettier --write .",
     "db:dev": "node packages/db/scripts/dev-postgres.ts",

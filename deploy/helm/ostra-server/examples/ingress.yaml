@@ -1,0 +1,20 @@
+# The panel and core behind an ingress (ingress-nginx), with their public addresses, three panel and
+# three core replicas, and email by SMTP.
+database:
+  existingSecret: ostra-database
+publicUrl: https://ostra.example.com
+corePublicUrl: https://core.ostra.example.com
+web:
+  replicas: 3
+core:
+  replicas: 3
+ingress:
+  enabled: true
+  className: nginx
+  webHost: ostra.example.com
+  coreHost: core.ostra.example.com
+  tlsSecretName: ostra-tls
+env:
+  OSTRA_EMAIL_PROVIDER: smtp
+  OSTRA_EMAIL_FROM: ostra@example.com
+  OSTRA_SMTP_HOST: smtp.example.com

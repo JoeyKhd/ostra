@@ -1,0 +1,9 @@
+ostra runner {{ .Chart.AppVersion }} ({{ .Values.runner.name | default .Release.Name }}), on the kubernetes executor.
+
+Boxes run in {{ .Values.namespaces.boxes }}, snapshot builds in {{ .Values.namespaces.builds }}. The
+runner's role reaches those two namespaces only.
+
+The egress baseline is a NetworkPolicy: it holds only on a network plugin that enforces NetworkPolicy
+(Calico, Cilium and the like). The cluster needs Kubernetes 1.29 or later, for native sidecars.
+On kubernetes a box's agent shares its pod's network, so it can reach the server's address too; it
+holds no token there (ADR 0060).

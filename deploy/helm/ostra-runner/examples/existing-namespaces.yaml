@@ -1,0 +1,16 @@
+# Namespaces an admin made already, and no persistent volume (the runner joins again after a restart).
+server:
+  url: http://ostra-core.ostra.svc:8787
+  egress:
+    namespace: ostra
+    podLabels:
+      app.kubernetes.io/component: core
+    port: 8787
+joinToken:
+  existingSecret: ostra-join-token
+namespaces:
+  create: false
+  boxes: team-a-boxes
+  builds: team-a-builds
+persistence:
+  enabled: false
