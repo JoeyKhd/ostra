@@ -10,6 +10,7 @@ import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import { writeTicketStepsInTx } from "../tickets/ticket-writes.ts";
 import { moveTaskInTx } from "./moves.ts";
 import { lastAgentMessageInTx } from "./record-session-end.ts";
 import { appendServerEvent } from "./server-events.ts";
@@ -150,6 +151,9 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
         event: { kind: "pr.opened", repoId, url: pr.url, number: pr.number },
         at: deps.clock.now(),
       });
+      // A ticket task's ticket links the PR, moves to in review at the first one, and its
+      // progress comment is edited (F-031); each write is keyed, so a rerun writes nothing new.
+      await writeTicketStepsInTx({ tx }, { taskId: task.id, trigger: { kind: "pr-opened", repoId, url: pr.url } });
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId,

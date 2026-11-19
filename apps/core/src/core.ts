@@ -8,7 +8,15 @@ import { LinearAdapter } from "@ostra/adapter-linear";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import {
+  organizationOfGitHubKey,
+  postgresAuditLog,
+  postgresChangeNotices,
+  postgresCommandOutbox,
+  postgresIdempotencyStore,
+  postgresRateBudgetStore,
+  systemClock,
+} from "@ostra/domain";
 import type { ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
@@ -38,6 +46,8 @@ import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } fr
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
+import { createConnectionTrackers } from "./tracker/connections.ts";
+import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { recordOnlyHandler, webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
@@ -50,16 +60,25 @@ export const CORE_VERSION = "0.0.0";
 
 export { RUNNER_TOKEN_KEY_FILE };
 
+/** How often the tracker writer's outbox is drained into `ticket.sync` jobs. */
+const TICKET_DRAIN_MS = 2_000;
+
 /** How often queued tasks with no offer out get a fresh dispatch. */
 const REQUEUE_MS = 5_000;
 
 /** The adapters core holds (ADR 0025): the code host, the model provider and the secret store. */
 export const createServerAdapters = async (db: Db, settings: ServerSettings, logger: Logger): Promise<ServerAdapters> => {
   const context: AdapterContext = { logger, clock: adapterClock };
+  // The App's rate budgets and idempotency keys in Postgres, under the organization whose App it is (F-046).
+  const githubContext: AdapterContext = {
+    ...context,
+    rateBudgets: postgresRateBudgetStore(db, organizationOfGitHubKey(db)),
+    idempotency: postgresIdempotencyStore(db, organizationOfGitHubKey(db)),
+  };
   // Before anything else: a key that can't read the database's secrets stops the start (Q136).
   const secretStore = await openSecretStore(db, settings, context);
   return {
-    codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}`, apiUrl: settings.githubApiUrl, lfsActionHosts: settings.githubLfsHosts }, context),
+    codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}`, apiUrl: settings.githubApiUrl, lfsActionHosts: settings.githubLfsHosts }, githubContext),
     modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
     secretStore,
   };
@@ -217,6 +236,16 @@ export const startCore = async (
     github: recordOnlyHandler("PR states are not wired yet"),
   };
   await jobs.work("webhook.process", webhookProcessHandler({ db, clock: systemClock, handlers: webhookHandlers }));
+  // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
+  // written where no queue was at hand (a task's move), every 2 s.
+  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger });
+  await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
+  const drain = setInterval(() => {
+    drainTicketWrites({ db, jobs, clock: systemClock }).catch((error: unknown) => {
+      logger.warn("ticket.drain-failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
+  }, TICKET_DRAIN_MS);
+  drain.unref();
   const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
@@ -269,6 +298,7 @@ export const startCore = async (
     stop: async () => {
       clearTimeout(bootstrapTimer);
       clearInterval(requeue);
+      clearInterval(drain);
       clearInterval(scheduleTimer);
       await gateway.stop();
       await server.close();

@@ -7,6 +7,7 @@ import type { SessionInput } from "../lifecycles/session.ts";
 import { transitionTask } from "../lifecycles/task.ts";
 import type { TaskInput } from "../lifecycles/task.ts";
 import type { ChangeNotices } from "../ports.ts";
+import { recordTicketProgressInTx } from "../tickets/ticket-writes.ts";
 
 // Moving a task or a session by its lifecycle's transition, in the caller's transaction: the row is
 // written only when the transition allows the input. A refusal is an expected answer (a late event,
@@ -37,7 +38,7 @@ export const moveTaskInTx = async (deps: MoveDeps, task: TaskRow, input: TaskInp
     return false;
   }
   const columns = taskToColumns(moved.state);
-  await deps.tx.task.update({
+  const updated = await deps.tx.task.update({
     where: { id: task.id },
     data: {
       state: columns.state,
@@ -45,7 +46,12 @@ export const moveTaskInTx = async (deps: MoveDeps, task: TaskRow, input: TaskInp
       needsYouReason: columns.needsYouReason,
       stoppedReason: columns.stoppedReason,
     },
+    select: { ticketId: true },
   });
+  if (updated.ticketId !== null) {
+    // A ticket task's progress comment shows every move (F-031): its edit commits with the move.
+    await recordTicketProgressInTx(deps.tx, task.id, columns.state);
+  }
   await deps.notices.emitInTx(deps.tx, {
     organizationId: task.organizationId,
     projectId: task.projectId,
