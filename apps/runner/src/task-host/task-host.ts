@@ -171,9 +171,12 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "no-pending-question" }) : run.answerQuestion(command.body);
     },
-    // Protocol minor 2. Plans are answered with ticket 31; the `host` executor builds no snapshot
-    // image (ADR 0038), so it refuses a build.
-    "plan-answer": () => done({ result: "rejected", reason: "no-pending-plan" }),
+    // Protocol minor 2 (F-063, ticket 31): the driver's answer to a plan turn's plan.
+    "plan-answer": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "no-pending-plan" }) : run.answerPlan(command.body);
+    },
+    // The `host` executor builds no snapshot image (ADR 0038), so it refuses a build.
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };
 

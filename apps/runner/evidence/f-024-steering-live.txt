@@ -1,0 +1,13 @@
+# F-024: steering on the real model (ticket 31, ADR 0032)
+#
+# Run 2026-11-19 on Windows 11, host executor, the pinned OpenCode 2.3.2 and the development model in
+# ~/.config/ostra-dev/model.env (an OpenRouter model, anthropic-messages), with the real key proxy.
+# Command: set -a; . ~/.config/ostra-dev/model.env; set +a; npx vitest run src/task-host/steering.live.test.ts --reporter=verbose
+# (in apps/runner). The recorder in front of the provider keeps only each call's time, whether it
+# offered tools, and which marker it held: never a body. No token is in this output.
+
+live steer: {"callsAfterSteer":1,"carried":true}
+live interrupt: {"cancelledInMs":102,"carried":true}
+ ✓ src/task-host/steering.live.test.ts > steering on the real model, live with OpenCode (F-024) > F-024: a steer mid-turn during a tool step reaches the next model call, and an interrupt cancels within 5 s and starts the next turn with the message 29230ms
+      Tests  1 passed (1)
+   Duration  29.79s (tests 98%, import 1%)

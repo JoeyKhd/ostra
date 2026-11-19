@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { GIT_GUARD_ENV_NAMES, gitGuardEnv, toApprovalOptions } from "@ostra/adapter-sdk";
+import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, ok, toApprovalOptions } from "@ostra/adapter-sdk";
 import type {
+  AdapterResult,
   AgentAdapter,
+  AgentIo,
   AgentLaunch,
   AgentProcess,
   AgentSession,
@@ -15,7 +17,21 @@ import type {
   QuestionRequest,
   RepoPushResult,
 } from "@ostra/adapter-sdk";
-import { approvalIdSchema, denyPrompt, firstMatchingTaskRule, questionIdSchema, runnerLimits, serviceNameSchema, turnIdSchema } from "@ostra/protocol";
+import {
+  approvalIdSchema,
+  approvedPlanPrompt,
+  denyPrompt,
+  firstMatchingTaskRule,
+  PLAN_MODE_REFUSED_LINE,
+  planRevisionPrompt,
+  planText,
+  planTurnPrompt,
+  questionIdSchema,
+  runnerLimits,
+  serviceNameSchema,
+  truncateBytes,
+  turnIdSchema,
+} from "@ostra/protocol";
 import type {
   ApprovalId,
   ApprovalOption,
@@ -23,6 +39,7 @@ import type {
   CheckId,
   CheckStatus,
   CommandBody,
+  PlanEntry,
   QuestionId,
   RuleContext,
   TaskRule,
@@ -115,6 +132,9 @@ const RATE_LIMIT_REPORT_STEP_MS = 5_000;
 
 const STOP_DEADLINE_MS = 120_000;
 
+/** How many times a plan turn that ended on a refused request is re-prompted before its plan is proposed as it stands. */
+const PLAN_REFUSAL_REPROMPTS = 3;
+
 export type TaskRunDeps = {
   readonly link: ServerLink;
   readonly executor: ExecutorAdapter;
@@ -175,6 +195,8 @@ export type TaskRun = {
   readonly answerApproval: (body: CommandBody<"approval-answer">) => Promise<CommandOutcome>;
   /** Minor 2 (ticket 30): the driver's answer to a held question. */
   readonly answerQuestion: (body: CommandBody<"question-answer">) => Promise<CommandOutcome>;
+  /** Minor 2 (ticket 31): the driver's answer to the plan a plan turn proposed. */
+  readonly answerPlan: (body: CommandBody<"plan-answer">) => Promise<CommandOutcome>;
   /** The self-fence: end the agent, keep the workspace, send nothing more. */
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
@@ -211,6 +233,26 @@ const ACROSS_TURNS_KEY_TTL_MS = 24 * 60 * 60_000;
 /** A session spans turns from minor 1 (ADR 0039): its spec carries the idle timer, and the server reads `session.saved`. */
 const spansTurns = (taskSpec: TaskSpec, channel: SessionChannel | undefined): boolean =>
   taskSpec.limits.idleMinutes !== undefined && channel?.supports("session.saved") === true;
+
+/** The paths `git status --porcelain=v1 -z` names: a rename's both sides. Never logged. */
+export const porcelainPaths = (output: string): readonly string[] => {
+  const fields = output.split("\0").filter((field) => field !== "");
+  const paths: string[] = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index] ?? "";
+    const status = field.slice(0, 2);
+    paths.push(field.slice(3));
+    // A rename or a copy carries its source in the next field.
+    if (status.includes("R") || status.includes("C")) {
+      index += 1;
+      const source = fields[index];
+      if (source !== undefined) {
+        paths.push(source);
+      }
+    }
+  }
+  return paths;
+};
 
 const errorName = (error: unknown): string => (error instanceof Error ? error.name : "unknown");
 
@@ -343,8 +385,23 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * plan's answer (ticket 31). Never logged.
    */
   let ownPrompt: string | undefined;
-  /** The session's mode (F-063): plan mode comes with ticket 31. */
-  const mode: TurnMode = "build";
+  /**
+   * The session's mode (F-063, ticket 31): `plan` from the first turn of a plan-first task's first
+   * session until the driver approves the plan, then `build`.
+   */
+  let mode: TurnMode = "build";
+  /** The plan turn's result, while it waits on the driver's `plan-answer`. Never logged. */
+  let proposedPlan: { readonly text: string } | undefined;
+  /** The running plan turn refused a request (F-063). */
+  let planRefusedInTurn = false;
+  /** The next plan turn is a refusal's re-prompt, carrying on the same plan. */
+  let planContinues = false;
+  /** How many refusal re-prompts the current plan has had. */
+  let planRefusals = 0;
+  /** The mode an answered plan switches the session to, before the next turn. */
+  let switchTo: TurnMode | undefined;
+  /** What the running turn showed of its plan: the latest entries, and its last agent message. Never logged. */
+  let turnPlan: { entries: PlanEntry[]; message: string } = { entries: [], message: "" };
   const waitMs = runnerLimits.approvalWaitMinutes * 60_000;
 
   /** What the rules read from the spec: the MCP servers and which are read-only. */
@@ -407,6 +464,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const shown = subject === null ? {} : { subject: { kind: subject.subject.kind, value: subject.subject.value.slice(0, 8192) } };
     switch (decision.kind) {
       case "refuse-in-plan":
+        planRefusedInTurn = true;
         log.info("a plan turn's request was refused", { tool: subject?.tool ?? null, toolKind: request.toolKind ?? null });
         return Promise.resolve(rejectOnce(options));
       case "allow":
@@ -585,11 +643,133 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return Promise.resolve({ result: "done" });
   };
 
+  // ---------- plan first (F-063, ticket 31) ----------
+
+  /**
+   * `plan-answer` (ADR 0049): "approve" ends plan mode and prompts with the plan as approved, as
+   * data; "revise" prompts again in plan mode with the driver's request. Only while a plan waits.
+   */
+  const answerPlan = (body: CommandBody<"plan-answer">): Promise<CommandOutcome> => {
+    const plan = proposedPlan;
+    if (plan === undefined || turnRunning || ending !== undefined) {
+      return Promise.resolve({ result: "rejected", reason: "no-pending-plan" });
+    }
+    proposedPlan = undefined;
+    switch (body.decision) {
+      case "approve": {
+        const edited = body.text.trim() !== plan.text.trim();
+        ownPrompt = approvedPlanPrompt({ text: body.text, edited });
+        switchTo = "build";
+        log.info("plan approved: switching to build mode", { edited });
+        break;
+      }
+      case "revise":
+        ownPrompt = planRevisionPrompt(body.text);
+        log.info("plan sent back for changes");
+        break;
+      default:
+        return Promise.resolve(body.decision satisfies never);
+    }
+    nudge();
+    return Promise.resolve({ result: "done" });
+  };
+
+  /**
+   * Switches the session's mode before the next turn: ACP's `session/set_mode`, or the base class's
+   * relaunch with `session/load` (the runner's `relaunchAgent`). An agent with no plan mode of its
+   * own had every request of the plan turn checked by the runner, so only the runner's mode changes.
+   */
+  const switchMode = async (target: TurnMode): Promise<string | null> => {
+    if (agent === undefined || session === undefined) {
+      return "the agent isn't running";
+    }
+    if (agent.capabilities.planMode === "none") {
+      mode = target;
+      return null;
+    }
+    const previous = mode;
+    // A relaunch writes the new mode's launch: the runner's mode is the one `prepareLaunch` reads.
+    mode = target;
+    const switched = await agent.setMode(session, target);
+    if (!switched.ok) {
+      mode = previous;
+      return `the agent couldn't switch to ${target} mode: ${switched.error.message}`.slice(0, ERROR_MAX);
+    }
+    session = switched.value;
+    log.info("session mode switched", { mode: target, planMode: agent.capabilities.planMode });
+    return null;
+  };
+
+  /**
+   * What a plan turn changed in the working tree: each repo's `git status` and the workspace root's
+   * new names. A plan turn changes nothing; a change is plan mode failing, and is never committed.
+   * Paths only, never logged.
+   */
+  const planTurnChanges = async (currentSpec: TaskSpec, outsideBefore: ReadonlySet<string>): Promise<readonly string[]> => {
+    if (dirsCache === undefined) {
+      return [];
+    }
+    const dirs = dirsCache;
+    const changed: string[] = [];
+    for (const repo of currentSpec.repos) {
+      const checkout = path.join(dirs.workspaceDir, repo.checkoutDir);
+      const status = await deps.executor.runAgentCommand({
+        box,
+        command: {
+          command: "git",
+          args: ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+          cwd: checkout,
+          env: { PATH: process.env["PATH"] ?? "", ...gitGuardEnv(dirs.gitConfig), GIT_CEILING_DIRECTORIES: path.dirname(checkout) },
+        },
+        timeoutMs: 60_000,
+      });
+      if (!status.ok || status.value.exitCode !== 0) {
+        changed.push(`${repo.checkoutDir}/ (its status couldn't be read)`);
+        continue;
+      }
+      changed.push(...porcelainPaths(status.value.stdout).map((entry) => `${repo.checkoutDir}/${entry}`));
+    }
+    const listed = await deps.executor.listWorkspaceRoot(box);
+    if (listed.ok) {
+      const found = filesOutsideRepos(listed.value, currentSpec);
+      changed.push(...found.paths.filter((name) => !outsideBefore.has(name)));
+    }
+    return changed;
+  };
+
+  /** The workspace root's names outside every repo now, so a plan turn's new ones show. */
+  const outsideNow = async (currentSpec: TaskSpec): Promise<ReadonlySet<string>> => {
+    const listed = await deps.executor.listWorkspaceRoot(box);
+    return new Set(listed.ok ? filesOutsideRepos(listed.value, currentSpec).paths : []);
+  };
+
+  /**
+   * After a plan turn: `plan.proposed` with the turn's latest plan entries and its last agent
+   * message, or `turn.failed` with the paths when it changed a file. Nothing is committed or pushed.
+   * `false` when plan mode failed and the session must end.
+   */
+  const finishPlanTurn = async (currentSpec: TaskSpec, turnId: TurnId, outsideBefore: ReadonlySet<string>): Promise<boolean> => {
+    unsaved = false;
+    const changed = await planTurnChanges(currentSpec, outsideBefore);
+    if (changed.length > 0) {
+      log.warn("a plan turn changed the working tree: plan mode failed", { changed: changed.length });
+      const listed = changed.slice(0, 20).join(", ");
+      await emit({ kind: "turn.failed", turnId, error: `plan mode changed files, which is never committed: ${listed}${changed.length > 20 ? ", …" : ""}`.slice(0, ERROR_MAX) });
+      return false;
+    }
+    const entries = turnPlan.entries.slice(0, runnerLimits.planEntriesMax);
+    const message = truncateBytes(turnPlan.message, runnerLimits.planMessageMaxBytes);
+    proposedPlan = { text: planText(entries, message) };
+    await emit({ kind: "plan.proposed", turnId, entries, message });
+    log.info("plan proposed", { entries: entries.length });
+    return true;
+  };
+
   // ---------- one turn ----------
 
-  const runTurn = async (text: string, currentSpec: TaskSpec): Promise<{ readonly crashed: string | null }> => {
+  const runTurn = async (text: string, currentSpec: TaskSpec): Promise<{ readonly crashed: string | null; readonly turnId: TurnId; readonly stopReason: StopReason | null }> => {
     if (agent === undefined || session === undefined || agentProcess === undefined) {
-      return { crashed: "the agent isn't running" };
+      return { crashed: "the agent isn't running", turnId: turnIdSchema.parse(randomUUID()), stopReason: null };
     }
     // The agent adapter's base class writes the turn's own events (`turn.started`, `turn.ended`,
     // `turn.failed`) with the agent's; the task host writes them only when the agent's process died
@@ -599,6 +779,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     turnOrdinal += 1;
     unsaved = true;
     turnRunning = true;
+    planRefusedInTurn = false;
+    // A refusal's re-prompt carries on the plan its turn began: the entries stay, the message is new.
+    turnPlan = { entries: planContinues ? turnPlan.entries : [], message: "" };
+    planContinues = false;
     const thisTurn = new AbortController();
     turnAbort = thisTurn;
     const runningAgent = agent;
@@ -614,7 +798,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     );
     timer.unref();
     try {
-      return await promptTurn(text, turnId, runningAgent, runningSession, agentProcess);
+      const result = await promptTurn(text, turnId, runningAgent, runningSession, agentProcess);
+      return { ...result, turnId };
     } finally {
       clearTimeout(timer);
       // Nothing outlives its turn: a request the agent left open is closed with it.
@@ -630,9 +815,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     runningAgent: AgentAdapter,
     runningSession: AgentSession,
     runningProcess: AgentProcess,
-  ): Promise<{ readonly crashed: string | null }> => {
+  ): Promise<{ readonly crashed: string | null; readonly stopReason: StopReason | null }> => {
     const exited = runningProcess.exited.then((exit) => ({ kind: "exited" as const, exit }));
-    const prompted = runningAgent.prompt(runningSession, turnId, text).then((result) => ({ kind: "prompted" as const, result }));
+    // Minor 2 (F-063): the turn says its mode, for the thread's plan marker. A minor-1 peer's codec drops it.
+    const modeOption = channel?.supports("plan.proposed") === true ? { mode } : {};
+    const prompted = runningAgent.prompt(runningSession, turnId, text, modeOption).then((result) => ({ kind: "prompted" as const, result }));
     const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
       Promise.race([
         promise,
@@ -650,16 +837,16 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       if ((await within(prompted, 5_000)) === null) {
         await emit({ kind: "turn.failed", turnId, error });
       }
-      return { crashed: error };
+      return { crashed: error, stopReason: null };
     }
     if (!outcome.result.ok) {
       // The connection to the agent failed: did its process exit too?
       const gone = (await within(exited, 1_000)) !== null;
-      return { crashed: gone ? "the agent's process exited mid-turn" : `the turn failed: ${outcome.result.error.message}`.slice(0, ERROR_MAX) };
+      return { crashed: gone ? "the agent's process exited mid-turn" : `the turn failed: ${outcome.result.error.message}`.slice(0, ERROR_MAX), stopReason: null };
     }
     const stopReason: StopReason = outcome.result.value.stopReason;
-    log.info("turn ended", { stopReason });
-    return { crashed: null };
+    log.info("turn ended", { stopReason, mode });
+    return { crashed: null, stopReason };
   };
 
   // ---------- files outside every repo (Q133) ----------
@@ -721,6 +908,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   /** The turn within the session, from 1. */
   let turnOrdinal = 0;
+  /** Plan mode failed (F-063): the box isn't kept for a reopen. */
+  let discardBox = false;
   /** A turn ran since the work was last saved. */
   let unsaved = false;
   /** Each repo's head and whether it's ahead after the last push, for `session.ended`. */
@@ -912,12 +1101,30 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   const runAcrossTurns = async (taskSpec: TaskSpec): Promise<void> => {
     // A new or rebuilt session starts with the spec's prompt (the rebuild template for `rebuilt`); a
     // resumed or restored one carries on from its own history, with the pending messages.
-    let next: string | undefined = restored === undefined || restored.origin === "rebuilt" ? taskSpec.prompt : takeQueued();
+    const opening = restored === undefined || restored.origin === "rebuilt" ? taskSpec.prompt : takeQueued();
+    // F-063: a plan turn's prompt is the plan-mode preamble, then the task's own.
+    let next: string | undefined = opening !== undefined && mode === "plan" && restored === undefined ? planTurnPrompt(opening) : opening;
     while (ending === undefined) {
       next ??= await nextTurn(taskSpec);
       if (next === undefined) {
         break;
       }
+      // An answered plan changes the mode before the turn that carries its prompt.
+      const target = switchTo;
+      switchTo = undefined;
+      if (target !== undefined && target !== mode) {
+        const failed = await switchMode(target);
+        if (failed !== null) {
+          end({ kind: "crashed", error: failed });
+          break;
+        }
+      }
+      const planTurn = mode === "plan";
+      if (planTurn) {
+        // A new plan turn proposes again: the last plan can't be answered while it runs, or after.
+        proposedPlan = undefined;
+      }
+      const outsideBefore = planTurn ? await outsideNow(taskSpec) : new Set<string>();
       const result = await runTurn(next, taskSpec);
       next = undefined;
       if (result.crashed !== null) {
@@ -927,6 +1134,37 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       const current = endingNow();
       if (current?.kind === "fenced" || current?.kind === "abandoned") {
         break;
+      }
+      if (planTurn) {
+        // Nothing of a plan turn is committed or pushed, whatever ended it (ADR 0049).
+        unsaved = false;
+        if (endingNow() !== undefined) {
+          break;
+        }
+        // An agent without reject-and-continue ends its turn on a refused request (OpenCode does):
+        // the runner says why and lets it finish the plan, a few times at most (ADR 0032).
+        const refusedEnd = result.stopReason === "cancelled" && planRefusedInTurn && ownPrompt === undefined && steers.length === 0;
+        if (refusedEnd && planRefusals < PLAN_REFUSAL_REPROMPTS) {
+          planRefusals += 1;
+          planContinues = true;
+          ownPrompt = PLAN_MODE_REFUSED_LINE;
+          log.info("a plan turn ended on a refused request: re-prompting", { planRefusals });
+          next = takeQueued();
+          continue;
+        }
+        // A plan turn cancelled otherwise (an interrupt) proposes nothing: the next message is planned again.
+        const proposes = result.stopReason !== "cancelled" || refusedEnd;
+        if (proposes) {
+          planRefusals = 0;
+        }
+        if (proposes && !(await finishPlanTurn(taskSpec, result.turnId, outsideBefore))) {
+          // The box goes with the session: what plan mode left must never reach a later build turn.
+          discardBox = true;
+          end({ kind: "crashed", error: "plan mode changed files" });
+          break;
+        }
+        next = takeQueued();
+        continue;
       }
       await scanOutsideRepos(taskSpec);
       // A stopped or crashed turn's work is saved too: the hidden ref holds it.
@@ -1349,19 +1587,44 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   type AgentStart = { readonly ok: true } | { readonly ok: false; readonly error: string; readonly stage: "launch" | "session" };
 
-  const startAgent = async (taskSpec: TaskSpec, resumeAgentSessionId: string | undefined): Promise<AgentStart> => {
-    const failed = (error: string, stage: "launch" | "session" = "launch"): AgentStart => ({ ok: false, error, stage });
+  /** What the running turn shows of its plan (F-063): the latest plan entries and the last agent message. */
+  const notePlan = (event: TaskEvent): void => {
+    if (event.kind === "plan.updated" && event.turnId === turn) {
+      turnPlan.entries = [...event.entries];
+    } else if (event.kind === "agent.message" && event.turnId === turn && event.text.trim() !== "") {
+      turnPlan.message = event.text;
+    }
+  };
+
+  /**
+   * F-063, a `relaunch` adapter's mode switch: the agent's process ends, the box is made ready
+   * again, and the agent starts with the launch `prepareLaunch` gives for the new mode. The base
+   * class then loads its session on the new stdio.
+   */
+  const relaunchAgent = async (taskSpec: TaskSpec, next: TurnMode): Promise<AdapterResult<AgentIo>> => {
+    const proxies = keyProxy === undefined || gitProxy === undefined || mcp === undefined ? undefined : { gitBaseUrl: gitProxy.baseUrl, modelBaseUrl: keyProxy.baseUrl, mcpUrl: mcp.url };
+    if (proxies === undefined) {
+      return adapterError("unavailable", "the task's proxies aren't running");
+    }
+    await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
+    const again = await deps.executor.resumeBox({ ...box, spec: taskSpec, proxies });
+    if (!again.ok) {
+      return again;
+    }
+    dirsCache = again.value;
+    mode = next;
+    const launched = await launchAgentProcess(taskSpec);
+    return launched.ok ? ok(launched.io) : adapterError("unavailable", launched.error);
+  };
+
+  /** The agent's process, started in the box with the launch for the session's mode, checked for credentials. */
+  const launchAgentProcess = async (
+    taskSpec: TaskSpec,
+  ): Promise<{ readonly ok: true; readonly io: AgentIo; readonly cwd: string } | { readonly ok: false; readonly error: string }> => {
     const held = credentials;
-    if (keyProxy === undefined || mcp === undefined || held === undefined) {
-      return failed("the task's proxies aren't running");
-    }
-    const created = makeAgent(taskSpec);
-    if (created === undefined) {
-      return failed(`this runner has no agent adapter "${taskSpec.agent.adapter.slice(0, 64)}"`);
-    }
-    const state = await deps.executor.state(box);
-    if (!state.ok || state.value !== "ready") {
-      return failed("the workspace isn't ready");
+    const created = agent;
+    if (keyProxy === undefined || mcp === undefined || held === undefined || created === undefined) {
+      return { ok: false, error: "the task's proxies aren't running" };
     }
     const dirs = workspaceOf();
     const launch = await created.prepareLaunch({
@@ -1381,7 +1644,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       repoDirs: taskSpec.repos.map((repo) => repo.checkoutDir),
     });
     if (!launch.ok) {
-      return failed(`the agent couldn't be launched: ${launch.error.message}`);
+      return { ok: false, error: `the agent couldn't be launched: ${launch.error.message}` };
     }
     // ADR 0029: git run by the agent outside a checkout reads the task's config, not the machine's
     // system or global one (on Git for Windows, the system config names the member's credential
@@ -1394,26 +1657,49 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const checked = checkLaunchEnvironment(guarded.env, held);
     if (!checked.ok) {
       log.error("the agent's environment held a credential: refusing to start it", { variable: checked.variable });
-      return failed(`the agent's environment held ${checked.holds} (in ${checked.variable}): refused to start it`);
+      return { ok: false, error: `the agent's environment held ${checked.holds} (in ${checked.variable}): refused to start it` };
     }
     const started = await deps.executor.startAgent(box, guarded);
     if (!started.ok) {
-      return failed(`the agent didn't start: ${started.error.message}`);
+      return { ok: false, error: `the agent didn't start: ${started.error.message}` };
     }
     agentProcess = started.value;
+    return { ok: true, io: { stdin: started.value.stdin, stdout: started.value.stdout, stderr: started.value.stderr }, cwd };
+  };
+
+  const startAgent = async (taskSpec: TaskSpec, resumeAgentSessionId: string | undefined): Promise<AgentStart> => {
+    const failed = (error: string, stage: "launch" | "session" = "launch"): AgentStart => ({ ok: false, error, stage });
+    if (keyProxy === undefined || mcp === undefined || credentials === undefined) {
+      return failed("the task's proxies aren't running");
+    }
+    const created = makeAgent(taskSpec);
+    if (created === undefined) {
+      return failed(`this runner has no agent adapter "${taskSpec.agent.adapter.slice(0, 64)}"`);
+    }
+    const state = await deps.executor.state(box);
+    if (!state.ok || state.value !== "ready") {
+      return failed("the workspace isn't ready");
+    }
+    const launched = await launchAgentProcess(taskSpec);
+    if (!launched.ok) {
+      return failed(launched.error);
+    }
+    const { cwd } = launched;
     const opened = await created.startSession({
       taskId: taskSpec.taskId,
       sessionId: taskSpec.sessionId,
-      io: { stdin: started.value.stdin, stdout: started.value.stdout, stderr: started.value.stderr },
+      io: launched.io,
       cwd,
       mcpServers: [{ name: "ostra", url: mcp.url, headers: { authorization: `Bearer ${mcp.bearer}` } }],
       onEvents: (events) => {
         for (const event of events) {
+          notePlan(event);
           void emit(event);
         }
       },
       onPermission,
       onQuestion,
+      relaunch: (next) => relaunchAgent(taskSpec, next),
       ...(resumeAgentSessionId === undefined ? {} : { resumeAgentSessionId }),
     });
     if (!opened.ok) {
@@ -1437,6 +1723,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       end({ kind: "crashed", error: prepared.error });
     }
     const taskSpec = spec;
+    // F-063: a plan-first task's first session starts in plan mode, with a peer that reads the plan.
+    if (taskSpec !== undefined && acrossTurns && restored === undefined && taskSpec.firstTurnMode === "plan" && channel.supports("plan.proposed")) {
+      mode = "plan";
+    }
     if (ending === undefined && taskSpec !== undefined) {
       const failed = await startAgentFor(taskSpec);
       if (failed !== null) {
@@ -1452,7 +1742,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       const how: Ending = ending ?? { kind: "idle" };
       await finishAcrossTurns(taskSpec, how);
       // The box stays for the next session, unless it never got ready or the server refused the lease.
-      const keep = how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned");
+      const keep = how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned" && !discardBox);
       await cleanUp(keep);
       if (keep && boxCreated) {
         kept = { box, agentAdapter: taskSpec.agent.adapter, agentSessionId: lastAgentSessionId ?? null };
@@ -1559,6 +1849,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       if (agent === undefined || session === undefined || ending !== undefined) {
         return { result: "rejected", reason: "session-not-running" };
       }
+      // Minor 2: the message's intent is core's `user.message` marker; the runner only names it, never the text.
+      log.info("a message for the session", { delivery: body.delivery, intent: body.intent ?? "message", turnRunning, mode });
       if (!turnRunning) {
         // Between turns (milestone 2): the message is the next turn.
         steers.push(body.text);
@@ -1588,6 +1880,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     },
     answerApproval,
     answerQuestion,
+    answerPlan,
     endBetweenTurns: async () => {
       if (turnRunning) {
         return false;
