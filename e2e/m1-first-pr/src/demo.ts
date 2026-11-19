@@ -17,9 +17,21 @@ import { taskIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
-import { checkGitProxy, checkNoCredential, checkNoEmptyPr, checkStoppedRefs, checkTokens, taskCheckout } from "./checks.ts";
+import {
+  checkAgentTokenCount,
+  checkGitProxy,
+  checkNoCredential,
+  checkNoEmptyPr,
+  checkNoTaskFolderLeft,
+  checkPullRequest,
+  checkStoppedRefs,
+  checkTaskFolder,
+  checkTokens,
+  taskCheckout,
+} from "./checks.ts";
 import type { CheckResult } from "./checks.ts";
 import { cleanUp, demoGitHub } from "./github.ts";
+import type { DemoGitHub } from "./github.ts";
 import { demoSettings, repoRoot } from "./settings.ts";
 import type { DemoSettings } from "./settings.ts";
 import { startRunner } from "./runner.ts";
@@ -269,8 +281,14 @@ const emptyTask = async (page: Page, settings: DemoSettings, projectHref: string
   return taskId;
 };
 
-/** A task stopped mid-turn; while it runs, the git proxy is tried from its checkout. */
-const stoppedTask = async (page: Page, settings: DemoSettings, projectHref: string): Promise<{ readonly taskId: TaskId; readonly proxy: readonly CheckResult[] }> => {
+/** A task stopped mid-turn; while it runs, the git proxy is tried from its checkout, and its folders, its agent's environment and its token count are checked. */
+const stoppedTask = async (
+  page: Page,
+  settings: DemoSettings,
+  github: DemoGitHub,
+  runner: RunningRunner,
+  projectHref: string,
+): Promise<{ readonly taskId: TaskId; readonly live: readonly CheckResult[] }> => {
   const taskId = await startTask(
     page,
     settings,
@@ -280,16 +298,19 @@ const stoppedTask = async (page: Page, settings: DemoSettings, projectHref: stri
   // The git proxy lives as long as the task: tried as soon as the agent is at work.
   await page.locator('[data-part="tool"]').first().waitFor({ state: "attached", timeout: 10 * 60_000 });
   await waitForPath(taskCheckout(settings, taskId), 60_000);
-  const proxy = await checkGitProxy(settings, taskId);
+  const proxy = await checkGitProxy(github, settings, taskId);
   // Stopped while the agent's command waits, after it wrote the file: the unfinished work the hidden ref keeps.
   await page.locator('[data-part="tool"]', { hasText: "setTimeout" }).first().waitFor({ timeout: 10 * 60_000 });
+  // Every model call is done: the agent waits on its command. Its folders and environment still exist.
+  const folder = await checkTaskFolder(settings, taskId, runner.pid);
+  const tokens = await checkAgentTokenCount(settings, taskId);
   await screenshot(page, settings, "before-stop");
   await page.locator('[data-action="stop"]').click();
   await page.getByText("Stopped").first().waitFor({ timeout: 5 * 60_000 });
   // The hidden ref is pushed as the run ends.
   await page.waitForTimeout(10_000);
   await screenshot(page, settings, "stopped");
-  return { taskId, proxy };
+  return { taskId, live: [...proxy, ...folder, tokens] };
 };
 
 const waitForPath = async (target: string, timeoutMs: number): Promise<void> => {
@@ -329,19 +350,24 @@ const main = async (): Promise<void> => {
     const taskId = await startTask(page, settings, projectHref, settings.prompt);
     const pr = await watchUntilPullRequest(context, page, settings, 20 * 60_000);
     say(`pull request: ${pr}`);
+    const prNumber = pullNumber(pr);
+    if (!Number.isInteger(prNumber)) throw new Error("the PR link has no number");
+    checks.push(
+      await checkPullRequest(github, prNumber, { botLogin: github.botLogin, adminUsername: settings.adminUsername, publicUrl: settings.publicUrl, taskId, prompt: settings.prompt }),
+    );
     checks.push(await checkTokens(taskId));
 
     if (process.argv.includes("--checks")) {
       const empty = await emptyTask(page, settings, projectHref);
       checks.push(await checkNoEmptyPr(github, empty));
-      const stopped = await stoppedTask(page, settings, projectHref);
-      checks.push(...stopped.proxy, await checkStoppedRefs(github, stopped.taskId));
-      checks.push(await checkNoCredential(settings, settings.logFiles));
+      const stopped = await stoppedTask(page, settings, github, runner, projectHref);
+      checks.push(...stopped.live, await checkStoppedRefs(github, stopped.taskId));
+      checks.push(await checkNoCredential(settings, settings.logFiles), await checkNoTaskFolderLeft(settings));
     }
     for (const check of checks) say(`${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}`);
     await writeFile(path.join(settings.dataDir, "e2e-m1", "result.json"), JSON.stringify({ taskId, pullRequest: pr, checks }, null, 2));
     if (process.argv.includes("--clean-up")) {
-      const cleaned = await cleanUp(github, new Set([pullNumber(pr)]));
+      const cleaned = await cleanUp(github, new Set([prNumber]));
       say(`clean-up: closed ${String(cleaned.closed)} PRs, deleted ${String(cleaned.deleted)} refs; kept ${pr}`);
     }
     if (checks.some((check) => !check.ok)) process.exitCode = 1;

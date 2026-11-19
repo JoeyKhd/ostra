@@ -21,6 +21,7 @@ const envSchema = z.object({
   GITHUB_TEST_OTHER_REPO: z.string().min(1),
   GITHUB_TEST_MEMBER_LOGIN: z.string().min(1).optional(),
   OSTRA_E2E_PANEL_URL: z.url().default("http://localhost:3000"),
+  OSTRA_PUBLIC_URL: z.url().optional(),
   OSTRA_E2E_CORE_URL: z.url().default("http://localhost:8787"),
   OSTRA_E2E_STACK_LOG: z.string().min(1).optional(),
   OSTRA_E2E_PROMPT: z.string().min(1).default("Add a CONTRIBUTING.md with a short section on how to run the tests"),
@@ -29,6 +30,8 @@ const envSchema = z.object({
 export type DemoSettings = {
   readonly panelUrl: string;
   readonly coreUrl: string;
+  /** The panel's address as the stack was told (OSTRA_PUBLIC_URL), which PR bodies link the task with. */
+  readonly publicUrl: string;
   readonly dataDir: string;
   /**
    * The runner's folder, outside the repo: an agent on the host executor can read the folders
@@ -68,6 +71,7 @@ export const demoSettings = (env: Readonly<Record<string, string | undefined>>):
   return {
     panelUrl: value.OSTRA_E2E_PANEL_URL,
     coreUrl: value.OSTRA_E2E_CORE_URL,
+    publicUrl: (value.OSTRA_PUBLIC_URL ?? value.OSTRA_E2E_PANEL_URL).replace(/\/+$/, ""),
     dataDir,
     runnerDataDir: path.join(os.tmpdir(), "ostra-e2e-m1", "runner"),
     logFiles: [path.join(dataDir, "e2e-m1", "runner.log"), ...(value.OSTRA_E2E_STACK_LOG === undefined ? [] : [value.OSTRA_E2E_STACK_LOG])],

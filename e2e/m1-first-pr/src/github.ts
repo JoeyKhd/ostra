@@ -11,20 +11,25 @@ import type { DemoSettings } from "./settings.ts";
 
 const installationsSchema = z.array(z.looseObject({ id: z.number(), account: z.looseObject({ login: z.string() }).nullable() }));
 
+const appSchema = z.looseObject({ slug: z.string().min(1) });
+
 export type DemoGitHub = {
   readonly octokit: Octokit;
   readonly owner: string;
   readonly repo: string;
+  /** The App's bot as GitHub names it (`<slug>[bot]`): the author of every PR and commit ostra makes. */
+  readonly botLogin: string;
 };
 
 export const demoGitHub = async (settings: DemoSettings): Promise<DemoGitHub> => {
   const privateKey = await readFile(settings.githubPrivateKeyPath, "utf8");
   const asApp = new Octokit({ authStrategy: createAppAuth, auth: { appId: settings.githubAppId, privateKey } });
+  const app = appSchema.parse((await asApp.rest.apps.getAuthenticated()).data);
   const installations = installationsSchema.parse((await asApp.rest.apps.listInstallations()).data);
   const installation = installations.find((item) => item.account?.login === settings.githubOrg);
   if (installation === undefined) throw new Error(`the App isn't installed on ${settings.githubOrg}`);
   const octokit = new Octokit({ authStrategy: createAppAuth, auth: { appId: settings.githubAppId, privateKey, installationId: installation.id } });
-  return { octokit, owner: settings.githubOrg, repo: settings.githubRepo };
+  return { octokit, owner: settings.githubOrg, repo: settings.githubRepo, botLogin: `${app.slug}[bot]` };
 };
 
 /** The demo's refs: `ostra/*` branches and `refs/ostra/wip/*` hidden refs. */

@@ -3,12 +3,17 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { allowedEnvNames } from "@ostra/adapter-opencode";
 import { devDatabaseUrl, devPgPort } from "@ostra/db/dev";
 import type { TaskId } from "@ostra/protocol";
 import pg from "pg";
 import { z } from "zod";
 
+import { agentLaunches, descendantsOf, listProcesses, namesOutside, readEnvironments } from "./agent-process.ts";
+import { agentDatabasePath, readAgentTotals, TOKEN_TOLERANCE, withinTolerance } from "./agent-tokens.ts";
+import type { TokenTotals } from "./agent-tokens.ts";
 import type { DemoGitHub } from "./github.ts";
+import { scanFolder, secretNeedles, textHoldsSecret } from "./scan.ts";
 import type { DemoSettings } from "./settings.ts";
 
 // The checks after the run (spec section 3). Each returns a line for demo.md and whether it held.
@@ -32,29 +37,74 @@ const runGit = (args: readonly string[], cwd: string, home: string): Promise<Git
     });
   });
 
-/** The task's checkout of the demo repo, while the task runs on the host executor. */
-export const taskCheckout = (settings: DemoSettings, taskId: TaskId): string =>
-  path.join(settings.runnerDataDir, "tasks", taskId, "workspace", settings.githubRepo);
+/** The task's root on the runner: its checkout, its agent's folders and its git config (host executor). */
+export const taskRoot = (settings: DemoSettings, taskId: TaskId): string => path.join(settings.runnerDataDir, "tasks", taskId);
 
-/** From the task's checkout, pushes to `main` and to another repo must be refused by the git proxy. */
-export const checkGitProxy = async (settings: DemoSettings, taskId: TaskId): Promise<readonly CheckResult[]> => {
+/** The task's checkout of the demo repo, while the task runs on the host executor. */
+export const taskCheckout = (settings: DemoSettings, taskId: TaskId): string => path.join(taskRoot(settings, taskId), "workspace", settings.githubRepo);
+
+/** The proxy's own words for a push to a ref that isn't the task's (`policy.ts`), and for one to another repo. */
+export const MAIN_REFUSAL = "ostra: only the task";
+export const OTHER_REPO_REFUSAL = "ostra: this task";
+
+/** The branch the other-repo probe would create: it must not exist afterwards. */
+const PROBE_BRANCH = "ostra/e2e-probe";
+
+/** A push the proxy itself refused: a non-zero exit alone could be a network error, or GitHub's own refusal. */
+export const refusedBy = (run: GitRun, words: string): boolean => run.code !== 0 && run.output.includes(words);
+
+const refusalDetail = (run: GitRun, words: string): string =>
+  run.output
+    .split(/\r?\n/)
+    .find((line) => line.includes(words))
+    ?.trim() ?? `exit ${String(run.code)}, and no refusal from the proxy`;
+
+const refSchema = z.looseObject({ object: z.looseObject({ sha: z.string() }) });
+const refsSchema = z.array(z.looseObject({ ref: z.string(), object: z.looseObject({ sha: z.string() }) }));
+
+const mainSha = async (github: DemoGitHub): Promise<string> =>
+  refSchema.parse((await github.octokit.rest.git.getRef({ owner: github.owner, repo: github.repo, ref: "heads/main" })).data).object.sha;
+
+/**
+ * From the task's checkout, pushes to `main` and to another repo must be refused by the git proxy,
+ * with its own words, and GitHub must show nothing changed: `main` is the same commit, and the
+ * other repo has no probe branch.
+ */
+export const checkGitProxy = async (github: DemoGitHub, settings: DemoSettings, taskId: TaskId): Promise<readonly CheckResult[]> => {
   const checkout = taskCheckout(settings, taskId);
   const home = await mkdtemp(path.join(os.tmpdir(), "ostra-e2e-git-"));
   try {
+    const before = await mainSha(github);
     // A new commit object (the branch and the working tree are left alone), so the push has something to send.
     const probe = await runGit(["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "ostra e2e: a push the proxy must refuse"], checkout, home);
-    const sha = probe.output.trim().split("\n").at(-1) ?? "HEAD";
+    const sha = probe.output.trim().split("\n").at(-1) ?? "";
+    if (!/^[0-9a-f]{40,64}$/.test(sha)) {
+      const detail = `the probe commit couldn't be made (exit ${String(probe.code)})`;
+      return [
+        { name: "git proxy refuses a push to main", ok: false, detail },
+        { name: "git proxy refuses a push to another repo", ok: false, detail },
+      ];
+    }
     const main = await runGit(["push", "origin", `${sha}:refs/heads/main`], checkout, home);
-    const other = await runGit(["push", `https://github.com/${settings.githubOrg}/${settings.githubOtherRepo}.git`, `${sha}:refs/heads/ostra/e2e-probe`], checkout, home);
-    const reason = (run: GitRun): string => run.output.split("\n").find((line) => /ostra|refus|denied|not allowed|forbidden/i.test(line))?.trim() ?? `exit ${String(run.code)}`;
+    const other = await runGit(["push", `https://github.com/${github.owner}/${settings.githubOtherRepo}.git`, `${sha}:refs/heads/${PROBE_BRANCH}`], checkout, home);
+    const after = await mainSha(github);
+    const probeRefs = await github.octokit.rest.git.listMatchingRefs({ owner: github.owner, repo: settings.githubOtherRepo, ref: `heads/${PROBE_BRANCH}` });
     return [
-      { name: "git proxy refuses a push to main", ok: main.code !== 0, detail: reason(main) },
-      { name: "git proxy refuses a push to another repo", ok: other.code !== 0, detail: reason(other) },
+      { name: "git proxy refuses a push to main", ok: refusedBy(main, MAIN_REFUSAL), detail: refusalDetail(main, MAIN_REFUSAL) },
+      { name: "git proxy refuses a push to another repo", ok: refusedBy(other, OTHER_REPO_REFUSAL), detail: refusalDetail(other, OTHER_REPO_REFUSAL) },
+      {
+        name: "nothing the proxy refused reached GitHub",
+        ok: before === after && probeRefs.data.length === 0,
+        detail: `${github.repo}/main ${before === after ? "is the same commit" : "moved"}; ${settings.githubOtherRepo} has ${probeRefs.data.length === 0 ? "no" : "a"} ${PROBE_BRANCH} branch`,
+      },
     ];
   } finally {
     await rm(home, { recursive: true, force: true });
   }
 };
+
+/** `TOKEN_PATTERN` in Postgres's regex dialect (\b there is a backspace). */
+const SQL_TOKEN_PATTERN = "gh[pousr]_[A-Za-z0-9]{30,}";
 
 const withDatabase = async <T,>(run: (client: pg.Client) => Promise<T>): Promise<T> => {
   const client = new pg.Client({ connectionString: process.env["DATABASE_URL"] ?? devDatabaseUrl(devPgPort(process.env)) });
@@ -81,28 +131,101 @@ const branchOf = async (taskId: TaskId): Promise<string> => {
   return row.data.name;
 };
 
-/** The real model token and any GitHub token or key appear in no event, no log line and no task folder left behind. */
+/** No event payload and no log line holds the real model token, a line of the App's key, or a GitHub token. */
 export const checkNoCredential = async (settings: DemoSettings, logFiles: readonly string[]): Promise<CheckResult> => {
-  const privateKey = await readFile(settings.githubPrivateKeyPath, "utf8");
-  const keyLine = privateKey.split("\n").find((line) => line.length > 40 && !line.startsWith("-----")) ?? privateKey;
-  const needles = [settings.modelApiKey, keyLine];
-  // GitHub's installation tokens start with ghs_, its other tokens with gh*_ (a pattern, not a value).
-  const tokenPattern = /\bgh[pousr]_[A-Za-z0-9]{30,}/;
+  const needles = await secretNeedles(settings);
   const found: string[] = [];
-  const events = await withDatabase((client) =>
-    client.query("SELECT count(*)::int AS n FROM event WHERE strpos(payload::text, $1) > 0 OR strpos(payload::text, $2) > 0 OR payload::text ~ 'gh[pousr]_[A-Za-z0-9]{30,}'", needles),
-  );
-  if (countRows(events) > 0) found.push("the event log");
+  let events = 0;
+  for (const needle of needles) {
+    const result = await withDatabase((client) => client.query("SELECT count(*)::int AS n FROM event WHERE strpos(payload::text, $1) > 0", [needle]));
+    events += countRows(result);
+  }
+  const tokens = await withDatabase((client) => client.query(`SELECT count(*)::int AS n FROM event WHERE payload::text ~ '${SQL_TOKEN_PATTERN}'`));
+  if (events + countRows(tokens) > 0) found.push("the event log");
   for (const file of logFiles) {
     const text = await readFile(file, "utf8").catch(() => "");
-    if (needles.some((needle) => text.includes(needle)) || tokenPattern.test(text)) found.push(path.basename(file));
+    if (textHoldsSecret(text, needles)) found.push(path.basename(file));
   }
+  return {
+    name: "no credential reached the event log or a log line",
+    ok: found.length === 0,
+    detail: found.length === 0 ? `searched the event log and ${String(logFiles.length)} logs for ${String(needles.length)} values and the GitHub token pattern` : `found in: ${found.join(", ")}`,
+  };
+};
+
+/** Once the tasks ended, the runner's data folder holds no task folder: the worktrees were released. */
+export const checkNoTaskFolderLeft = async (settings: DemoSettings): Promise<CheckResult> => {
   const leftover = await readdir(path.join(settings.runnerDataDir, "tasks")).catch(() => []);
   return {
-    name: "no credential reached the agent, the event log or a log line",
-    ok: found.length === 0 && leftover.length === 0,
-    detail: found.length === 0 ? `searched the event log and ${String(logFiles.length)} logs by value; ${String(leftover.length)} task folders left` : `found in: ${found.join(", ")}`,
+    name: "no task folder left behind",
+    ok: leftover.length === 0,
+    detail: `${String(leftover.length)} task folders left in the runner's data folder`,
   };
+};
+
+/** Names a process gets from Windows itself, whatever it is launched with: not the runner's doing. */
+const WINDOWS_BASELINE = ["HOMEDRIVE", "HOMEPATH", "LOGONSERVER", "SYSTEMDRIVE", "USERDOMAIN", "USERNAME", "WINDIR", "USERPROFILE", "TEMP"];
+
+/** What the task run adds to the launch (`agentVariables`): the bot as the agent's git identity. */
+const GIT_IDENTITY_NAMES = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"];
+
+export type AgentEnvironmentFacts = {
+  /** Agent processes found below the runner. */
+  readonly launches: number;
+  /** Names outside the allowlist, over all of them. */
+  readonly outside: readonly string[];
+  /** Launches with a value that holds a secret. */
+  readonly leaking: number;
+};
+
+/** The agent's environment holds only the allowlist (the fake key and the proxy URLs among it) and no secret value. */
+export const judgeAgentEnvironment = (facts: AgentEnvironmentFacts): CheckResult => ({
+  name: "the agent's environment holds only the allowlist, the fake key and the proxy URLs",
+  ok: facts.launches > 0 && facts.outside.length === 0 && facts.leaking === 0,
+  detail:
+    facts.launches === 0
+      ? "no agent process found below the runner, or its environment couldn't be read on this system"
+      : `${String(facts.launches)} agent process: ${facts.outside.length === 0 ? "every name is allowed" : `names outside the allowlist: ${facts.outside.join(", ")}`}; ${String(facts.leaking)} values hold a secret`,
+});
+
+/**
+ * While the task runs: its whole folder (the worktree, OpenCode's home, data, config and temp
+ * folders), and OpenCode's tool outputs in the machine's temp folder, searched by value for the
+ * model token and the App's key; and the live agent's environment.
+ */
+export const checkTaskFolder = async (settings: DemoSettings, taskId: TaskId, runnerPid: number | null): Promise<readonly CheckResult[]> => {
+  const needles = await secretNeedles(settings);
+  const folders = [taskRoot(settings, taskId), path.join(os.tmpdir(), "opencode", "tool-outputs", taskId)];
+  const scans = await Promise.all(folders.map((folder) => scanFolder(folder, needles)));
+  const [root, outputs] = scans;
+  const holding = scans.flatMap((scan, index) => scan.holding.map((file) => `${index === 0 ? "task folder" : "tool outputs"}/${file}`));
+  const unreadable = scans.reduce((sum, scan) => sum + scan.unreadable, 0);
+  const folder: CheckResult = {
+    name: "no credential in the task's folders: worktree, OpenCode's directories, tool outputs",
+    ok: root?.exists === true && root.files > 0 && holding.length === 0 && unreadable === 0,
+    detail:
+      root?.exists !== true
+        ? "the task's folder wasn't there to search"
+        : holding.length > 0
+          ? `found in: ${holding.join(", ")}`
+          : `searched ${String(root.files)} files in the task folder and ${String(outputs?.files ?? 0)} tool-output files by value; ${String(unreadable)} unreadable`,
+  };
+  if (runnerPid === null) {
+    return [folder, judgeAgentEnvironment({ launches: 0, outside: [], leaking: 0 })];
+  }
+  const below = descendantsOf(await listProcesses(), runnerPid);
+  const environments = await readEnvironments(below.map((item) => item.pid));
+  const launches = agentLaunches(below, environments);
+  const allowed = [...allowedEnvNames, ...GIT_IDENTITY_NAMES, ...(process.platform === "win32" ? WINDOWS_BASELINE : [])];
+  const outside = new Set<string>();
+  let leaking = 0;
+  for (const launch of launches) {
+    const environment = environments.get(launch.pid);
+    if (environment === undefined) continue;
+    for (const name of namesOutside(environment, allowed)) outside.add(name);
+    if ([...environment.values()].some((value) => textHoldsSecret(value, needles))) leaking += 1;
+  }
+  return [folder, judgeAgentEnvironment({ launches: launches.length, outside: [...outside].sort(), leaking })];
 };
 
 const tokensRowSchema = z.object({
@@ -115,7 +238,11 @@ const tokensRowSchema = z.object({
 });
 const zeroTokens: z.infer<typeof tokensRowSchema> = { in: 0, out: 0, cache: 0, eventsIn: 0, eventsOut: 0, calls: 0 };
 
-/** The key proxy's counts are stored with the session, and equal the sum of its usage events. */
+/**
+ * The session's stored counts equal the sum of its `usage.recorded` events. Both come from the key
+ * proxy, so this shows the counts reached the database whole, not that they are right: the check
+ * against the agent's own count is `checkAgentTokenCount`.
+ */
 export const checkTokens = async (taskId: TaskId): Promise<CheckResult> =>
   withDatabase(async (client) => {
     const result = await client.query(
@@ -132,11 +259,107 @@ export const checkTokens = async (taskId: TaskId): Promise<CheckResult> =>
     const row = found ? tokensRowSchema.parse(result.rows[0]) : zeroTokens;
     const ok = found && row.calls > 0 && row.in === row.eventsIn && row.out === row.eventsOut && row.out > 0;
     return {
-      name: "tokens counted by the key proxy and stored with the session",
+      name: "the session's stored token counts equal the sum of the key proxy's usage events",
       ok,
       detail: `${String(row.calls)} model calls; input ${String(row.in)}, output ${String(row.out)}, cache read ${String(row.cache)}`,
     };
   });
+
+/** The key proxy's totals (stored with the session) against OpenCode's own, within ADR 0042's 2%. */
+export const judgeTokenCounts = (stored: TokenTotals, agent: TokenTotals | null): CheckResult => {
+  const name = `the session's token counts are within ${String(TOKEN_TOLERANCE * 100)}% of the agent's own`;
+  if (agent === null) return { name, ok: false, detail: "OpenCode's own token counts couldn't be read from its database" };
+  const ok = stored.output > 0 && agent.output > 0 && withinTolerance(stored.input, agent.input) && withinTolerance(stored.output, agent.output);
+  return { name, ok, detail: `key proxy: input ${String(stored.input)}, output ${String(stored.output)}; OpenCode: input ${String(agent.input)}, output ${String(agent.output)}` };
+};
+
+const storedTotalsSchema = z.object({ input: z.coerce.number(), output: z.coerce.number() });
+
+const storedTotals = async (taskId: TaskId): Promise<TokenTotals> => {
+  const result = await withDatabase((client) =>
+    client.query(`SELECT coalesce(sum("inputTokens"), 0)::int AS input, coalesce(sum("outputTokens"), 0)::int AS output FROM session WHERE "taskId" = $1`, [taskId]),
+  );
+  return storedTotalsSchema.parse(result.rows[0]);
+};
+
+/**
+ * While the task runs and its agent waits on a command (every model call is done): the stored
+ * totals, which the key proxy counted, against OpenCode's own per-task figures. The stored totals
+ * lag the calls by the ingest, so the check polls until they agree or `timeoutMs` passes.
+ */
+export const checkAgentTokenCount = async (settings: DemoSettings, taskId: TaskId, timeoutMs = 60_000): Promise<CheckResult> => {
+  const databaseFile = agentDatabasePath(path.join(taskRoot(settings, taskId), "agent"));
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const agent = await readAgentTotals(databaseFile).catch(() => null);
+    const result = judgeTokenCounts(await storedTotals(taskId), agent);
+    if (result.ok || Date.now() > deadline) return result;
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+};
+
+/** What the checks read of a PR: its author, title and body, and its commits' authors and messages. */
+const pullSchema = z.looseObject({
+  title: z.string(),
+  body: z.string().nullable(),
+  user: z.looseObject({ login: z.string() }).nullable(),
+});
+const personSchema = z.looseObject({ name: z.string(), email: z.string() });
+const commitsSchema = z.array(z.looseObject({ commit: z.looseObject({ message: z.string(), author: personSchema.nullable(), committer: personSchema.nullable() }) }));
+
+export type PullRequestExpectation = {
+  /** `<slug>[bot]`. */
+  readonly botLogin: string;
+  /** The admin who prompted: the commits' co-author. */
+  readonly adminUsername: string;
+  /** OSTRA_PUBLIC_URL: the PR's body links `<it>/tasks/<taskId>`. */
+  readonly publicUrl: string;
+  readonly taskId: TaskId;
+  readonly prompt: string;
+};
+
+/** The task's title as ostra makes it from a prompt: its first non-empty line, kept to 120 characters (`titleFromPrompt`). */
+export const titleFromPrompt = (prompt: string): string => {
+  const first = prompt.split(/\r?\n/).find((line) => line.trim() !== "") ?? prompt;
+  const trimmed = first.trim().replace(/\s+/g, " ");
+  return trimmed.length <= 120 ? trimmed : `${trimmed.slice(0, 117).trimEnd()}...`;
+};
+
+/** Spec step 10 and ticket 39: the App's bot opened it, authored every commit, the admin co-authored, the prompt is the title, the body links the task. */
+export const judgePullRequest = (pull: unknown, commits: unknown, expected: PullRequestExpectation): CheckResult => {
+  const name = "the PR is the bot's, with the admin as co-author, the prompt as title and a link to the task";
+  const parsedPull = pullSchema.safeParse(pull);
+  const parsedCommits = commitsSchema.safeParse(commits);
+  if (!parsedPull.success || !parsedCommits.success) return { name, ok: false, detail: "GitHub's answer for the PR or its commits wasn't what was expected" };
+  const problems: string[] = [];
+  if (parsedPull.data.user?.login !== expected.botLogin) problems.push(`opened by ${parsedPull.data.user?.login ?? "no one"}, not ${expected.botLogin}`);
+  if (parsedPull.data.title !== titleFromPrompt(expected.prompt)) problems.push("the title isn't the prompt");
+  const link = `${expected.publicUrl.replace(/\/+$/, "")}/tasks/${expected.taskId}`;
+  if (parsedPull.data.body?.includes(link) !== true) problems.push("the body doesn't link the task");
+  if (parsedCommits.data.length === 0) problems.push("the PR has no commits");
+  const noreply = `${expected.botLogin}@users.noreply.github.com`;
+  const byBot = (person: z.infer<typeof personSchema> | null): boolean => person !== null && person.name === expected.botLogin && person.email.endsWith(noreply);
+  const trailer = `Co-authored-by: ${expected.adminUsername} <`;
+  parsedCommits.data.forEach((item, index) => {
+    const number = `commit ${String(index + 1)}`;
+    if (!byBot(item.commit.author)) problems.push(`${number}: the author isn't the bot`);
+    if (!byBot(item.commit.committer)) problems.push(`${number}: the committer isn't the bot`);
+    if (!item.commit.message.split(/\r?\n/).some((line) => line.startsWith(trailer))) problems.push(`${number}: no Co-authored-by ${expected.adminUsername}`);
+  });
+  return {
+    name,
+    ok: problems.length === 0,
+    detail: problems.length === 0 ? `opened by ${expected.botLogin}; ${String(parsedCommits.data.length)} commits by the bot, each with Co-authored-by ${expected.adminUsername}` : problems.join("; "),
+  };
+};
+
+/** Reads PR `prNumber` of the demo repo through octokit and judges it. */
+export const checkPullRequest = async (github: DemoGitHub, prNumber: number, expected: PullRequestExpectation): Promise<CheckResult> => {
+  const { owner, repo } = github;
+  const pull = await github.octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+  const commits = await github.octokit.rest.pulls.listCommits({ owner, repo, pull_number: prNumber, per_page: 100 });
+  return judgePullRequest(pull.data, commits.data, expected);
+};
 
 /** A task that ended without changes opened no PR and has an open needs-you item with the agent's summary. */
 export const checkNoEmptyPr = async (github: DemoGitHub, taskId: TaskId): Promise<CheckResult> => {
@@ -153,14 +376,52 @@ export const checkNoEmptyPr = async (github: DemoGitHub, taskId: TaskId): Promis
   };
 };
 
-/** A stopped task left its branch and its hidden ref on GitHub. */
-export const checkStoppedRefs = async (github: DemoGitHub, taskId: TaskId): Promise<CheckResult> => {
-  const branch = await branchOf(taskId);
-  const branches = await github.octokit.rest.git.listMatchingRefs({ owner: github.owner, repo: github.repo, ref: `heads/${branch}` });
-  const hidden = await github.octokit.rest.git.listMatchingRefs({ owner: github.owner, repo: github.repo, ref: `ostra/wip/${taskId}` });
+/** The file the stopped task wrote before it was stopped, and the lines it must have (the prompt asks for one to ten, a line each). */
+export const WIP_FILE = "docs/numbers.md";
+export const WIP_LINES = 10;
+
+/** The number of non-empty lines in the text. */
+export const countLines = (text: string): number => text.split(/\r?\n/).filter((line) => line.trim() !== "").length;
+
+export type StoppedRefsFacts = {
+  readonly branch: string;
+  readonly branchRefs: number;
+  readonly hiddenRefs: number;
+  /** The hidden ref's copy of `WIP_FILE`: its text, or `null` when the file isn't in it. */
+  readonly wipFile: string | null;
+};
+
+/** F-025: the hidden ref holds the unfinished work, not only a ref's name. */
+export const judgeStoppedRefs = (facts: StoppedRefsFacts): CheckResult => {
+  const lines = facts.wipFile === null ? null : countLines(facts.wipFile);
   return {
-    name: "stop left the branch and the hidden ref on GitHub",
-    ok: branches.data.length === 1 && hidden.data.length === 1,
-    detail: `branch ${branch}: ${branches.data.length === 1 ? "on GitHub" : "missing"}; hidden ref refs/ostra/wip/${taskId}: ${hidden.data.length === 1 ? "on GitHub" : "missing"}`,
+    name: "stop left the branch and the hidden ref with the unfinished work on GitHub",
+    ok: facts.branchRefs === 1 && facts.hiddenRefs === 1 && lines === WIP_LINES,
+    detail: `branch ${facts.branch}: ${facts.branchRefs === 1 ? "on GitHub" : "missing"}; hidden ref: ${facts.hiddenRefs === 1 ? "on GitHub" : "missing"}; ${WIP_FILE} in it: ${lines === null ? "missing" : `${String(lines)} lines`}`,
   };
+};
+
+/** The HTTP status of an octokit error, if it has one. */
+const statusOf = (error: unknown): unknown => (typeof error === "object" && error !== null ? Reflect.get(error, "status") : undefined);
+
+const fileSchema = z.looseObject({ type: z.literal("file"), encoding: z.literal("base64"), content: z.string() });
+
+/** A stopped task left its branch and its hidden ref on GitHub, and the hidden ref holds `docs/numbers.md`. */
+export const checkStoppedRefs = async (github: DemoGitHub, taskId: TaskId): Promise<CheckResult> => {
+  const { owner, repo } = github;
+  const branch = await branchOf(taskId);
+  const branches = await github.octokit.rest.git.listMatchingRefs({ owner, repo, ref: `heads/${branch}` });
+  const hidden = refsSchema.parse((await github.octokit.rest.git.listMatchingRefs({ owner, repo, ref: `ostra/wip/${taskId}` })).data);
+  const ref = hidden.find((item) => item.ref === `refs/ostra/wip/${taskId}`);
+  let wipFile: string | null = null;
+  if (ref !== undefined) {
+    // The contents API reads a commit, so the hidden ref is asked for its commit first.
+    try {
+      const content = fileSchema.parse((await github.octokit.rest.repos.getContent({ owner, repo, path: WIP_FILE, ref: ref.object.sha })).data);
+      wipFile = Buffer.from(content.content, "base64").toString("utf8");
+    } catch (error) {
+      if (statusOf(error) !== 404) throw error;
+    }
+  }
+  return judgeStoppedRefs({ branch, branchRefs: branches.data.length, hiddenRefs: ref === undefined ? 0 : 1, wipFile });
 };

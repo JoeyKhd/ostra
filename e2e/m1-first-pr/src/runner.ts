@@ -15,6 +15,8 @@ export type RunningRunner = {
   readonly deviceCode: Promise<string | null>;
   /** Resolves once the runner is signed in and connecting. */
   readonly online: Promise<void>;
+  /** The runner process's ID, whose descendants include the agents it launches. */
+  readonly pid: number | null;
   readonly stop: () => Promise<void>;
 };
 
@@ -82,5 +84,5 @@ export const startRunner = async (settings: DemoSettings): Promise<RunningRunner
     await exited;
     log.end();
   };
-  return { deviceCode, online, stop };
+  return { deviceCode, online, pid: child.pid ?? null, stop };
 };

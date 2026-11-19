@@ -233,6 +233,9 @@ importers:
       '@octokit/rest':
         specifier: 22.0.1
         version: 22.0.1
+      '@ostra/adapter-opencode':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-opencode
       '@ostra/db':
         specifier: workspace:*
         version: link:../../packages/db
