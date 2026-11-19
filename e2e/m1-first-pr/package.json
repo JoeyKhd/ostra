@@ -5,6 +5,15 @@
   "private": true,
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
+  "exports": {
+    "./checks": "./src/checks.ts",
+    "./database": "./src/database.ts",
+    "./github": "./src/github.ts",
+    "./runner": "./src/runner.ts",
+    "./scan": "./src/scan.ts",
+    "./settings": "./src/settings.ts",
+    "./setup": "./src/setup.ts"
+  },
   "scripts": {
     "demo": "node src/demo.ts",
     "clean-up": "node src/clean-up.ts",

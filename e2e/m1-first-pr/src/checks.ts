@@ -144,9 +144,12 @@ const branchOf = async (taskId: TaskId): Promise<string> => {
   return row.data.name;
 };
 
-/** No event payload and no log line holds the real model token, a line of the App's key, or a GitHub token. */
-export const checkNoCredential = async (settings: DemoSettings, logFiles: readonly string[]): Promise<CheckResult> => {
-  const needles = await secretNeedles(settings);
+/**
+ * No event payload and no log line holds the real model token, a line of the App's key, or a GitHub
+ * token. `extraNeedles`: other values a later demo adds, such as the Linear key (milestone 2).
+ */
+export const checkNoCredential = async (settings: DemoSettings, logFiles: readonly string[], extraNeedles: readonly string[] = []): Promise<CheckResult> => {
+  const needles = [...(await secretNeedles(settings)), ...extraNeedles];
   const found: string[] = [];
   let events = 0;
   for (const needle of needles) {

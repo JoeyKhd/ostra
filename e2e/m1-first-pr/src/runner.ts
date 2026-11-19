@@ -20,10 +20,10 @@ export type RunningRunner = {
   readonly stop: () => Promise<void>;
 };
 
-export const startRunner = async (settings: DemoSettings): Promise<RunningRunner> => {
-  const folder = path.join(settings.dataDir, "e2e-m1");
-  await mkdir(folder, { recursive: true });
-  const log = createWriteStream(path.join(folder, "runner.log"), { flags: "a" });
+/** `logFile`: where its output goes; milestone 1's `.ostra-dev/e2e-m1/runner.log` by default. */
+export const startRunner = async (settings: DemoSettings, logFile: string = path.join(settings.dataDir, "e2e-m1", "runner.log")): Promise<RunningRunner> => {
+  await mkdir(path.dirname(logFile), { recursive: true });
+  const log = createWriteStream(logFile, { flags: "a" });
   const child = spawn(
     process.execPath,
     [
