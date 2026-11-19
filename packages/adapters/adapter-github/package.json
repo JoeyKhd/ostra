@@ -12,7 +12,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --maxWorkers=4 --passWithNoTests"
   },
   "dependencies": {
     "@octokit/auth-app": "8.3.1",

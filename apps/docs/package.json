@@ -15,7 +15,7 @@
     "check:export": "vitest run --config vitest.export.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0 --ignore-pattern next-env.d.ts",
-    "test": "vitest run"
+    "test": "vitest run --maxWorkers=4"
   },
   "dependencies": {
     "fumadocs-core": "16.19.4",

@@ -15,7 +15,7 @@
     "generate": "node scripts/generate.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
     "db:dev": "node scripts/dev-postgres.ts",
     "db:migrate": "node scripts/migrate.ts",
     "dev:reset": "node scripts/reset.ts"

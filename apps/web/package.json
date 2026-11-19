@@ -11,7 +11,7 @@
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0 --ignore-pattern next-env.d.ts",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
     "test:e2e": "next build && playwright test"
   },
   "dependencies": {

@@ -13,7 +13,7 @@
     "start": "node src/main.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --maxWorkers=4 --passWithNoTests"
   },
   "dependencies": {
     "@ostra/adapter-blob-postgres": "workspace:*",
