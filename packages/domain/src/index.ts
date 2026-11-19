@@ -57,6 +57,7 @@ export * from "./use-cases/boards.ts";
 export * from "./use-cases/tickets.ts";
 export * from "./use-cases/reopen.ts";
 export * from "./use-cases/sessions-m2.ts";
+export * from "./use-cases/spend.ts";
 export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";
 export * from "./use-cases/repo-checks.ts";

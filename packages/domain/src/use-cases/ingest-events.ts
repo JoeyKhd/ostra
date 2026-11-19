@@ -13,7 +13,8 @@ import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { releaseLeaseInTx } from "./record-session-end.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
-import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
+import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
+import { modelTokenPrices, priceTokens } from "./spend.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 
 // ADR 0034, ADR 0035, F-045: one `events` frame, saved in one transaction. Idempotent on
@@ -54,7 +55,7 @@ export type SessionIngestOutcome =
 
 export type IngestEventsResult = { readonly outcomes: readonly SessionIngestOutcome[] };
 
-export type IngestEventsDeps = Pick<Ports, "jobs" | "notices" | "clock"> & {
+export type IngestEventsDeps = Pick<Ports, "jobs" | "notices" | "clock"> & Partial<Pick<Ports, "outbox">> & {
   readonly tx: Tx;
   /** Where refused transitions are logged, with IDs only. */
   readonly logger?: Logger;
@@ -170,8 +171,9 @@ const applyEffects = async (
           const starting = current.state === "starting";
           const moved = await moveSessionInTx(moveDeps, current, { type: starting ? "agent_ready" : "turn_started" });
           await reloadSession();
-          if (moved && starting) {
-            // The session's maximum duration starts with its first turn (F-068).
+          if (moved) {
+            // The session's maximum duration counts from its first turn (F-068); a turn after an
+            // earlier window ran out while it idled gets a fresh one (one job per session key).
             await startSessionTimersInTx(deps, tx, sessionRef);
           }
         }
@@ -208,7 +210,15 @@ const applyEffects = async (
         // The completed text is the event: its partial text is gone (ADR 0035).
         await tx.$executeRaw`DELETE FROM ${Prisma.raw(LIVE_TEXT_TABLE)} WHERE "taskId" = ${task.id} AND "segmentId" = ${event.segmentId}`;
         break;
-      case "usage.recorded":
+      case "usage.recorded": {
+        // F-068, Q163: priced on its four kinds with the model's prices; a model with no price is
+        // counted in tokens only. Clamped to the column, so a runaway count can't refuse the event.
+        const model = await tx.model.findFirst({
+          where: { id: event.modelId, organizationId },
+          select: { inputPricePerMTok: true, outputPricePerMTok: true, cacheReadPricePerMTok: true, cacheWritePricePerMTok: true },
+        });
+        const prices = model === null ? null : modelTokenPrices(model);
+        const cost = prices === null ? 0 : priceTokens(prices, event);
         await tx.session.update({
           where: { id: session.id },
           data: {
@@ -218,7 +228,12 @@ const applyEffects = async (
             cacheWriteTokens: { increment: event.cacheWriteTokens },
           },
         });
+        if (cost > 0) {
+          await tx.$executeRaw`UPDATE "session" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${session.id}`;
+          await tx.$executeRaw`UPDATE "task" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${task.id}`;
+        }
         break;
+      }
       case "provider.rate_limited": {
         // F-088, F-089: the key proxy saw a rate limit, so new dispatches wait on that provider. A
         // runner can only hold the provider its own session's model runs on, never another one.
@@ -316,6 +331,23 @@ const applyEffects = async (
         await reloadTask();
         break;
       }
+      case "session.limit_reached": {
+        // The runner's key proxy stopped the session at the spend cap (ticket 19, F-068).
+        if (deps.outbox === undefined) {
+          deps.logger?.warn("ingest.limit-without-outbox", { taskId: task.id, sessionId: session.id });
+          break;
+        }
+        const reached = await recordLimitReached(
+          { tx, outbox: deps.outbox, jobs: deps.jobs, notices: deps.notices, clock: deps.clock, timers: deps.timers, logger: deps.logger },
+          { organizationId, taskId: task.id, sessionId: sessionRef.sessionId, limit: event.limit, observed: event.observed, by: "runner" },
+        );
+        if (!reached.ok) {
+          deps.logger?.info("ingest.limit-refused", { taskId: task.id, sessionId: session.id, error: reached.error });
+        }
+        await reloadSession();
+        await reloadTask();
+        break;
+      }
       case "user.message":
       case "turn.cancel_requested":
       case "agent.content":
@@ -343,9 +375,7 @@ const applyEffects = async (
       case "environment.setup_output":
       case "environment.setup_finished":
       case "session.usage":
-      // Protocol minor 1: stored for now. Tickets 19 (limits) and 26 (ticket files) give them their
-      // reactions.
-      case "session.limit_reached":
+      // Protocol minor 1: stored for now. Ticket 26 (ticket files) gives it its reaction.
       case "ticket.files_ready":
       // Protocol minor 2 (milestone 3): stored for now. Tickets 18 (plans), 23 (checks), 26
       // (snapshots) and 27 (services) give them their reactions; the server-only ones never come

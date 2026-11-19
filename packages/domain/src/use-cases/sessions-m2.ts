@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import { mapTask } from "@ostra/db";
+import { mapTask, sessionLimitToDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { boxIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
+import { boxIdSchema, leaseEpochSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits } from "@ostra/protocol";
 import type { BoxId, OrganizationId, SessionId, SessionLimit, TaskEventOf, TaskId, TaskSeq } from "@ostra/protocol";
 
 import type { JobName, JobPayload } from "../jobs.ts";
@@ -9,11 +9,12 @@ import { transitionBox } from "../lifecycles/box.ts";
 import type { BoxInput, BoxLifecycle } from "../lifecycles/box.ts";
 import { boxFromColumns, boxToColumns, taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
+import { limitReason } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
-import { notYet } from "./common.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { lastAgentMessageInTx } from "./record-session-end.ts";
+import { appendCoreEvent } from "./server-events.ts";
 
 // A session that lives across turns (F-096, F-068; spec section 4, "After every turn" and "The idle
 // timer"). Both run in the ingest transaction of the event that caused them.
@@ -260,7 +261,27 @@ export type RecordLimitReachedResult = UseCaseResult<
   "not-found" | "not-running"
 >;
 
-export type RecordLimitReachedDeps = Pick<Ports, "outbox" | "jobs" | "notices" | "clock"> & { readonly tx: Tx };
+export type RecordLimitReachedDeps = Pick<Ports, "outbox" | "jobs" | "notices" | "clock"> & {
+  readonly tx: Tx;
+  readonly timers?: SessionTimers | undefined;
+  readonly logger?: Logger | undefined;
+};
+
+/** The needs-you item's words for a limit: the limit and the number, never content. */
+export const limitSummary = (limit: SessionLimit, observed: number): string => {
+  switch (limit) {
+    case "max-duration":
+      return `The session ran for ${String(Math.round(observed))} minutes, the longest a session may run, so ostra stopped it.`;
+    case "stall":
+      return `The agent sent nothing for ${String(Math.round(observed))} minutes, so ostra stopped the session.`;
+    case "spend-cap":
+      return "The task reached its spend cap, so ostra stopped the session. A reopen waits until the cap is raised.";
+    default:
+      return limit satisfies never;
+  }
+};
+
+const ACTIVE_SESSION_STATES: ReadonlySet<string> = new Set(["starting", "running", "waiting", "idle"]);
 
 /**
  * Stops the session (`limitReached` on its row; a core-timed limit also records its own
@@ -269,4 +290,73 @@ export type RecordLimitReachedDeps = Pick<Ports, "outbox" | "jobs" | "notices" |
  */
 export type RecordLimitReached = (deps: RecordLimitReachedDeps, input: RecordLimitReachedInput) => Promise<RecordLimitReachedResult>;
 
-export const recordLimitReached: RecordLimitReached = () => notYet("19");
+export const recordLimitReached: RecordLimitReached = async (deps, input) => {
+  const { tx } = deps;
+  // The same lock strength as ingest's, which may hold it already in this transaction (no upgrade).
+  const locked = await tx.$queryRaw<readonly unknown[]>`
+    SELECT 1 FROM "task" WHERE "id" = ${input.taskId} AND "organizationId" = ${input.organizationId} FOR NO KEY UPDATE`;
+  if (locked.length === 0) {
+    return { ok: false, error: "not-found", message: "no such task" };
+  }
+  const task = mapTask(await tx.task.findUniqueOrThrow({ where: { id: input.taskId } }));
+  const session = await tx.session.findFirst({ where: { id: input.sessionId, taskId: task.id } });
+  if (session === null) {
+    return { ok: false, error: "not-found", message: "no such session of the task" };
+  }
+  if (!ACTIVE_SESSION_STATES.has(session.state)) {
+    return { ok: false, error: "not-running", message: "the session already ended" };
+  }
+  const now = deps.clock.now();
+  const organizationId = organizationIdSchema.parse(task.organizationId);
+  const projectId = projectIdSchema.parse(task.projectId);
+  const moveDeps = { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+
+  // A limit core times is its own event: the runner never saw it (ADR 0037).
+  if (input.by === "core") {
+    await appendCoreEvent(tx, {
+      organizationId,
+      projectId,
+      taskId: task.id,
+      sessionId: input.sessionId,
+      event: { kind: "session.limit_reached", limit: input.limit, observed: input.observed },
+      at: now,
+    });
+  }
+  await tx.session.update({ where: { id: session.id }, data: { limitReached: sessionLimitToDb[input.limit] } });
+  await moveSessionInTx(moveDeps, session, { type: "limit_reached" });
+  await endSessionTimersInTx(deps, tx, { organizationId, taskId: task.id, sessionId: input.sessionId });
+
+  // The runner ends the agent, and pushes the branch and the hidden ref (ADR 0039).
+  const lease = await tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { runnerId: true, epoch: true } });
+  if (lease !== null) {
+    await deps.outbox.enqueueInTx(tx, organizationId, runnerIdSchema.parse(lease.runnerId), {
+      kind: "stop",
+      body: {
+        taskId: task.id,
+        sessionId: input.sessionId,
+        leaseEpoch: leaseEpochSchema.parse(lease.epoch),
+        reason: input.limit === "spend-cap" ? "spend-cap" : "runaway",
+      },
+      notAfter: now + runnerLimits.graceMs,
+      task: { taskId: task.id, projectId },
+    });
+  }
+
+  // The task needs its driver: stalled (the stall, the maximum duration) or the spend cap.
+  const moved = await moveTaskInTx(moveDeps, task, { type: "limit_reached", limit: input.limit });
+  if (moved) {
+    await tx.needsYouItem.create({
+      data: {
+        organizationId,
+        projectId,
+        taskId: task.id,
+        reason: limitReason(input.limit),
+        audience: "driver",
+        summary: limitSummary(input.limit, input.observed),
+      },
+    });
+  }
+  await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+  deps.logger?.info("session.limit-reached", { taskId: task.id, sessionId: input.sessionId, limit: input.limit, by: input.by, taskMoved: moved });
+  return { ok: true, stopped: true };
+};

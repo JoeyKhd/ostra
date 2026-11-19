@@ -2,7 +2,9 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskSpecSchema } from "@ostra/protocol";
+import { modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import type { SpendCapSettings } from "@ostra/domain";
+import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
 import { agentInstructions } from "./agent-instructions.ts";
 
@@ -22,10 +24,42 @@ export type SpecFailure =
 
 export type SpecResult = { readonly ok: true; readonly spec: TaskSpec } | SpecFailure;
 
+/**
+ * The settings the spec carries to a minor-1 runner (milestone 2): the idle timer (F-096) and the
+ * spend cap (F-068). Without them the spec has milestone 1's limits only.
+ */
+export type TaskSpecSettings = {
+  /** `OSTRA_BOX_IDLE_MINUTES`. */
+  readonly idleMinutes: number;
+  readonly spendCap: SpendCapSettings;
+};
+
 export type SpecDeps = {
   readonly db: Db;
   readonly codeHost: CodeHostAdapter;
   readonly secretStore: SecretStoreAdapter;
+  readonly settings?: TaskSpecSettings;
+};
+
+/**
+ * The spec's `limits`: the turn's longest run, and for milestone 2 the idle timer and the spend
+ * cap with what the task already spent in every session, so the cap holds across a reopen. The
+ * maximum duration and the stall are core's own timers, so the runner isn't told them.
+ */
+export const specLimits = async (
+  deps: Pick<SpecDeps, "db" | "settings">,
+  task: { readonly id: string; readonly spentMicroUsd: number },
+  model: Parameters<typeof modelTokenPrices>[0],
+): Promise<Record<string, unknown>> => {
+  if (deps.settings === undefined) {
+    return { turnMaxMinutes: TURN_MAX_MINUTES };
+  }
+  const tokens = await taskTokensInTx(deps.db, taskIdSchema.parse(task.id));
+  return {
+    turnMaxMinutes: TURN_MAX_MINUTES,
+    idleMinutes: deps.settings.idleMinutes,
+    spendCap: spendCapFor(deps.settings.spendCap, modelTokenPrices(model), { microUsd: task.spentMicroUsd, tokens }),
+  };
 };
 
 const appCredentials = async (
@@ -165,7 +199,7 @@ export const buildTaskSpec = async (
     },
     gitIdentity,
     coAuthors,
-    limits: { turnMaxMinutes: TURN_MAX_MINUTES },
+    limits: await specLimits(deps, task, model),
   });
   return { ok: true, spec };
 };

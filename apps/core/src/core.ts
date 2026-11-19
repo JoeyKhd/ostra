@@ -31,6 +31,8 @@ import { loadRunnerTokenKey, RUNNER_TOKEN_KEY_FILE } from "./gateway/keys.ts";
 import { cancelGraceInTx, cancelSidecarGraceInTx, graceHandler, startGraceInTx, startSidecarGraceInTx } from "./ingest/grace.ts";
 import type { GraceDeps } from "./ingest/grace.ts";
 import { createIngest } from "./ingest/ingest.ts";
+import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler } from "./limits/limits.ts";
+import type { LimitDeps } from "./limits/limits.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
@@ -134,7 +136,7 @@ export const startCore = async (
     deviceSessions: postgresDeviceSessions(db),
     ports: { notices, audit: postgresAuditLog, clock: systemClock },
     hooks: {
-      ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers }),
+      ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox }),
       liveText: liveText.write,
       onConnectedInTx: (tx, runner) => cancelGraceInTx(graceDeps, tx, runner),
       onDisconnectedInTx: (tx, runner) => startGraceInTx(graceDeps, tx, runner),
@@ -152,6 +154,19 @@ export const startCore = async (
   await jobs.work("task.offer-timeout", offerTimeoutHandler(dispatcherDeps));
   await jobs.work("task.session-ended", sessionEndedHandler(reactionDeps));
   await jobs.work("task.open-pull-requests", openPullRequestsHandler(reactionDeps));
+  // Runaway protection on the server (ticket 19): the maximum duration and the stall sweep.
+  const limitDeps: LimitDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    clock: systemClock,
+    logger,
+    timers,
+    stallMs: settings.sessionStallMinutes * 60_000,
+  };
+  await jobs.work("session.max-duration", maxDurationHandler(limitDeps));
+  await jobs.work("session.stall-sweep", stallSweepHandler(limitDeps), { localConcurrency: 1 });
   const catalogDeps = { db, dataDir: settings.dataDir, catalogFetch: settings.catalogFetch, logger };
   await jobs.work("catalog.refresh", catalogRefreshHandler(catalogDeps), { localConcurrency: 1 });
   await jobs.work(
@@ -169,6 +184,10 @@ export const startCore = async (
     clock: systemClock,
     signingKey,
     logger,
+    specSettings: {
+      idleMinutes: settings.boxIdleMinutes,
+      spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
+    },
   });
   const blobs = createBlobService({ db, settings: settings.blobStore, context: { logger, clock: adapterClock } });
   const blobEndpoints = handleBlobEndpoint({
@@ -223,6 +242,9 @@ export const startCore = async (
     });
     await ensureBlobGcSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "blob.gc", error: error instanceof Error ? error.name : "unknown" });
+    });
+    await ensureStallSweepSchedule(jobs).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "session.stall-sweep", error: error instanceof Error ? error.name : "unknown" });
     });
   };
   await schedules();

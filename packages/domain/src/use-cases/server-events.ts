@@ -1,6 +1,6 @@
 import type { Tx } from "@ostra/db";
 import { notifyChannels } from "@ostra/db";
-import type { OrganizationId, ProjectId, SessionId, TaskEvent, TaskId, TaskSeq } from "@ostra/protocol";
+import type { OrganizationId, ProjectId, SessionId, TaskEvent, TaskEventKind, TaskId, TaskSeq } from "@ostra/protocol";
 import { serverOnlyKinds, taskEventSchema, taskSeqSchema } from "@ostra/protocol";
 
 import { storableEvent } from "./storable-event.ts";
@@ -31,6 +31,25 @@ export const appendServerEvent = async (tx: Tx, input: AppendServerEventInput): 
   if (!serverOnlyKinds.has(input.event.kind)) {
     throw new Error(`appendServerEvent: ${input.event.kind} is written by a runner, not by the server`);
   }
+  return append(tx, input);
+};
+
+/**
+ * The runner's kinds core also records itself, when it's core that saw it happen (milestone 2): a
+ * runaway limit core times (the maximum duration, the stall: ADR 0037), and the crash of a box the
+ * dispatch found gone (F-047). Stored like a server event, with no session number.
+ */
+export const coreRecordedKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(["session.limit_reached", "session.crashed"]);
+
+/** Appends one event of a `coreRecordedKinds` kind, as `appendServerEvent` does. */
+export const appendCoreEvent = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> => {
+  if (!coreRecordedKinds.has(input.event.kind)) {
+    throw new Error(`appendCoreEvent: core doesn't record ${input.event.kind} itself`);
+  }
+  return append(tx, input);
+};
+
+const append = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> => {
   const event = taskEventSchema.parse(input.event);
   const counter = await tx.task.update({
     where: { id: input.taskId },

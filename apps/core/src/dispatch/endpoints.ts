@@ -26,6 +26,7 @@ import { checkTaskLease, isTaskToken } from "../gateway/task-token.ts";
 import type { TaskTokenClaims, TaskTokens } from "../gateway/task-token.ts";
 import { readJsonBody, sendError, sendJson } from "../http.ts";
 import { buildTaskSpec } from "./task-spec.ts";
+import type { TaskSpecSettings } from "./task-spec.ts";
 
 // The task endpoints beside the runner's WebSocket (ADR 0034, ticket 26): the spec and the
 // credentials, each for the runner holding the task's current lease, authenticated by its access
@@ -62,6 +63,8 @@ export type TaskEndpointDeps = {
   readonly clock: Clock;
   readonly signingKey: Buffer;
   readonly logger: Logger;
+  /** Milestone 2: what the spec tells a minor-1 runner (the idle timer, the spend cap). */
+  readonly specSettings?: TaskSpecSettings;
 };
 
 export const handleTaskEndpoint =
@@ -168,7 +171,12 @@ export const handleTaskEndpoint =
         return true;
       }
       const result = await buildTaskSpec(
-        { db: deps.db, codeHost: deps.adapters.codeHost, secretStore: deps.adapters.secretStore },
+        {
+          db: deps.db,
+          codeHost: deps.adapters.codeHost,
+          secretStore: deps.adapters.secretStore,
+          ...(deps.specSettings === undefined ? {} : { settings: deps.specSettings }),
+        },
         { taskId: taskId.data, runnerId: caller.runnerId, leaseEpoch: query.data.leaseEpoch },
       );
       if (result.ok) {

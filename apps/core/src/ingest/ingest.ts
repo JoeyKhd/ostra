@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { ingestEvents } from "@ostra/domain";
-import type { ChangeNotices, Clock, JobQueue, SessionIngestOutcome, SessionTimers } from "@ostra/domain";
+import type { ChangeNotices, Clock, CommandOutbox, JobQueue, SessionIngestOutcome, SessionTimers } from "@ostra/domain";
 import { lockTask } from "@ostra/jobs";
 import {
   epochMsSchema,
@@ -205,6 +205,8 @@ export const createIngest = (options: {
   readonly logger: Logger;
   /** Milestone 2: the session's and the box's timers (tickets 17, 19, 20). */
   readonly timers?: SessionTimers;
+  /** Milestone 2: the outbox, for the `stop` a runner's `session.limit_reached` asks for (ticket 19). */
+  readonly outbox?: CommandOutbox;
 }): Ingest => {
   const logger = options.logger.child({ component: "ingest" });
 
@@ -218,6 +220,7 @@ export const createIngest = (options: {
           clock: options.clock,
           logger,
           ...(options.timers === undefined ? {} : { timers: options.timers }),
+          ...(options.outbox === undefined ? {} : { outbox: options.outbox }),
         },
         { runnerId: runner.runnerId, events: [...events] },
       );
