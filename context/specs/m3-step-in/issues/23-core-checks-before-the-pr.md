@@ -30,3 +30,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **Turn numbers aren't renumbered** (point 2). A turn without changes runs no checks, so the Checks tab can skip from `Turn 3` to `Turn 1`, and `CheckRun.turnOrdinal` keeps the real number.
 
 ## Comments
+
+- 2026-11-19: done in `6c2dbd8` (`✨ add checks before the PR`), on `b28d9f7`, which adds an optional `body` to the code host's `PullRequestDetails` so a later turn edits the checks section in the description as it is now and keeps a person's edits; a host that doesn't return it gets the description rebuilt from ostra's parts. GitHub's `getPullRequest` should return `body` and `draft` (ticket 09). "Ask the agent to fix" is `askAgentToFixChecks`; on a task in review with an idle session it reopens, as the composer does. `Check.timeoutSeconds` is never null, so `OSTRA_CHECK_TIMEOUT_SECONDS` is the default a check's editor (ticket 48) writes. Proved against the fake code host; the live run on `ostra-test` waits for ticket 09's GitHub compare, drafts and comments.
