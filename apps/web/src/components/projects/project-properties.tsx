@@ -1,6 +1,6 @@
 "use client";
 
-import { BanIcon, BotIcon, BoxIcon, GitBranchIcon, ServerIcon, TriangleAlertIcon } from "lucide-react";
+import { BanIcon, BotIcon, BoxIcon, GitBranchIcon, ServerIcon, SquareKanbanIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
@@ -15,7 +15,7 @@ type Project = RouterOutputs["projects"]["get"];
 const dayOf = (epochMs: number): string => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(epochMs);
 
 /** A project's properties panel (project.md): its access, its repo, and where and how its tasks run (F-086). */
-export const ProjectProperties = ({ project }: { readonly project: Project }) => (
+export const ProjectProperties = ({ project, boardKeys }: { readonly project: Project; readonly boardKeys?: readonly string[] | undefined }) => (
   <div data-testid="project-properties">
     <PropGroup title={t("projects.title")}>
       <PropRow label={t("projects.access")}>{project.access === "open" ? t("projects.open") : t("projects.restricted")}</PropRow>
@@ -46,6 +46,16 @@ export const ProjectProperties = ({ project }: { readonly project: Project }) =>
         <Link href={`/projects/${project.id}/environment`} className="text-teal hover:underline">
           {project.environmentStatus === "saved" ? t("projects.envSaved") : t("projects.envDraft")}
         </Link>
+      </PropRow>
+      <PropRow label={t("projects.boards")}>
+        <SquareKanbanIcon aria-hidden />
+        {boardKeys === undefined || boardKeys.length === 0 ? (
+          "–"
+        ) : (
+          <Link href={`/projects/${project.id}/boards`} className="truncate font-mono text-teal hover:underline">
+            {boardKeys.join(", ")}
+          </Link>
+        )}
       </PropRow>
       <PropRow label={t("projects.pools")}>
         <ServerIcon aria-hidden />

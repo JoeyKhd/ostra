@@ -57,7 +57,8 @@
     "linear": "Linear",
     "storage": "Storage",
     "repos": "Repos",
-    "settings": "Settings"
+    "settings": "Settings",
+    "boards": "Boards"
   },
   "signIn": {
     "title": "Sign in",
@@ -416,7 +417,8 @@
     "setupScript": "Setup script",
     "variables": "Variables",
     "services": "Services",
-    "secret": "Secret"
+    "secret": "Secret",
+    "boards": "Boards"
   },
   "environment": {
     "title": "Environment",
@@ -1199,6 +1201,102 @@
       "attach": "Attach a board",
       "note": "Rendered on the server for this page only. Never logged.",
       "ticket": "The ticket to preview on"
+    }
+  },
+  "boards": {
+    "title": "Boards",
+    "lede": "Linear teams whose tickets reach this project's Inbox. Each board maps ostra's steps to the team's statuses.",
+    "readOnly": "Only the project's admins change boards.",
+    "save": "Save mapping",
+    "saved": "Mapping saved.",
+    "noConnection": "This organization isn't connected to Linear yet.",
+    "connectLinear": "Connect Linear",
+    "askAdmin": "Ask an admin to connect Linear.",
+    "attached": {
+      "title": "Attached",
+      "none": "No boards yet. Attach a team, and its open tickets fill the Inbox.",
+      "tickets": {
+        "one": "open ticket",
+        "other": "open tickets"
+      },
+      "lastEvent": "Last event",
+      "polled": "Polled",
+      "neverPolled": "Not polled yet",
+      "ago": "{age} ago",
+      "detach": "Detach",
+      "detachTitle": "Detach {name}?",
+      "detachBody": "ostra stops polling {key}. Its tickets stay in the Inbox's history and its tasks keep their links, but no new task starts from it.",
+      "attachLabel": "Attach a team",
+      "pick": "Pick a team",
+      "noTeams": "Every team is attached",
+      "alreadyAttached": "attached",
+      "alsoOn": "also on {name}",
+      "attach": "Attach",
+      "attaching": "Attaching…",
+      "justAttached": "Attached. The first poll is filling the Inbox."
+    },
+    "mapping": {
+      "title": "Status mapping",
+      "note": "Drafted from Linear's status types. Every status of the team is in each picker.",
+      "noMapping": "This board has no mapping yet. Pick a status for each step.",
+      "statusesError": "Couldn't read the team's statuses: {reason}",
+      "open": "Open",
+      "openHint": "Tickets the Inbox shows",
+      "openEmpty": "Pick at least one status, or the Inbox stays empty.",
+      "started": "Started",
+      "startedHint": "When the task starts",
+      "inReview": "In review",
+      "inReviewHint": "At the task's first PR",
+      "done": "Done",
+      "doneHint": "When the last PR merges",
+      "doneBy": "Done is moved by",
+      "integration": "Linear's GitHub integration",
+      "ostra": "ostra",
+      "installed": "Integration installed",
+      "notInstalled": "Integration not installed",
+      "unknown": "Couldn't check the integration",
+      "magicWord": "Magic word",
+      "magicWordHint": "In each PR's body",
+      "gone": "This status is gone from Linear. Pick another.",
+      "pickStatus": "Pick a status",
+      "addStatus": "Add a status",
+      "remove": "Remove {name}"
+    },
+    "next": {
+      "title": "What the next task does on the ticket",
+      "started": "When the task starts, ostra moves it to {status} and comments once with a link to the task.",
+      "inReview": "At the first PR, ostra moves it to {status} and links the PR.",
+      "inReviewSame": "At the first PR, the ticket stays in {status}, and ostra links the PR.",
+      "doneIntegration": "When the last PR merges, Linear's GitHub integration moves it to {status}. ostra doesn't.",
+      "doneOstra": "When the last PR merges, ostra moves it to {status}."
+    },
+    "panel": {
+      "board": "Board",
+      "team": "Team",
+      "key": "Key",
+      "tickets": "Tickets",
+      "openCount": "{n} open",
+      "mode": "Mode",
+      "webhooks": "Webhooks",
+      "polling": "Polling every {seconds} s",
+      "lastEvent": "Last event",
+      "attached": "Attached",
+      "linear": "Linear",
+      "workspace": "Workspace",
+      "github": "GitHub",
+      "installed": "Installed",
+      "notInstalled": "Not installed",
+      "unknown": "Couldn't check",
+      "statusesIn": "Statuses in {key}"
+    },
+    "type": {
+      "triage": "Triage",
+      "backlog": "Backlog",
+      "unstarted": "Unstarted",
+      "started": "Started",
+      "completed": "Completed",
+      "canceled": "Canceled",
+      "other": "Other"
     }
   }
 }

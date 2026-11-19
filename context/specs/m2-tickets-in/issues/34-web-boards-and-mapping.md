@@ -1,6 +1,6 @@
 # 34: Web: boards and the status mapping
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: 28, 32 (the targets' approval, for the UI)
 Features: F-007, F-031
@@ -27,7 +27,14 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Component tests: the drafted mapping, an edit, a status that disappeared, read-only for members.
-- [ ] Committed as `✨ add the boards screen`.
+- [x] Component tests: the drafted mapping, an edit, a status that disappeared, read-only for members.
+- [x] Committed as `✨ add the boards screen`.
 
 ## Comments
+
+- 2026-11-19, web: done in `✨ add the boards screen`, to `project-boards`, against ticket 28's router. Checked side by side at 1440×956 against the real ostra-test workspace (a dev `api_key` connection; team `OST` attached from the page, its mapping drafted by the server).
+  - `components/boards/`: `board-words.ts` (statuses grouped by Linear's type, `duplicate` with canceled; the mapping's problems; the next task's sentences, rebuilt from the unsaved mapping), `boards-view.tsx` (Attached rows with `?board=` selection and Detach behind an `AlertDialog`, the Attach line from `boards.available` with `attached` and `also on …`, the mapping form, the sentences, the panel). Tested: the drafted mapping, an edit, an empty Open, a status that disappeared, a member's read-only view, the panel.
+  - New UI pieces: `ui/popover.tsx`, `ui/toggle-group.tsx` and `SelectLabel`, all on `radix-ui`. **No new dependency:** the Open picker is a `Popover` with a checklist instead of `cmdk`'s `Command`, and `Mapping saved.` is an inline `role="status"` line instead of a `sonner` toast. Either can be swapped in later without changing the page's data.
+  - The project's navigation gains `Boards` (`square-kanban`) before `Repos`; the project's panel gains a `Boards` row (the keys, a teal link here), read from `boards.get`.
+  - Not built: the "Discard the changes to the mapping?" prompt when leaving with unsaved edits.
+

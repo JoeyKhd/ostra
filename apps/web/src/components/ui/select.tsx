@@ -63,3 +63,8 @@ export const SelectItem = ({ className, children, ...props }: ComponentProps<typ
 export const SelectSeparator = ({ className, ...props }: ComponentProps<typeof SelectPrimitive.Separator>) => (
   <SelectPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-line", className)} {...props} />
 );
+
+/** A group's label inside a select: 12px 500 `--faint`. */
+export const SelectLabel = ({ className, ...props }: ComponentProps<typeof SelectPrimitive.Label>) => (
+  <SelectPrimitive.Label className={cn("px-2 pb-1 pt-2 text-xs font-medium text-faint", className)} {...props} />
+);

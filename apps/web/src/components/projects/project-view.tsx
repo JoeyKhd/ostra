@@ -208,6 +208,7 @@ const LoadingList = () => (
 export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) => {
   const trpc = useTRPC();
   const project = useQuery(trpc.projects.get.queryOptions({ projectId }));
+  const boards = useQuery(trpc.boards.get.queryOptions({ projectId }));
   const groups = useQuery(trpc.tasks.list.queryOptions({ projectId }));
   const now = useNow(30_000);
   const shown = groups.data?.filter((group) => group.tasks.length > 0) ?? [];
@@ -216,7 +217,7 @@ export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) =>
   return (
     <PageFrame
       crumbs={[{ label: project.data?.name ?? "" }, { label: t("shell.tasks") }]}
-      properties={project.data === undefined ? undefined : <ProjectProperties project={project.data} />}
+      properties={project.data === undefined ? undefined : <ProjectProperties project={project.data} boardKeys={boards.data?.boards.map((board) => board.key ?? board.name)} />}
     >
       {project.error === null ? null : <p role="alert" className="text-red">{errorText(project.error)}</p>}
       {project.data === undefined ? (
