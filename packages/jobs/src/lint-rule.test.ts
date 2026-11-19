@@ -6,14 +6,27 @@ import { describe, expect, it } from "vitest";
 
 // ADR 0037, Q78: only packages/jobs imports pg-boss. The repo's own ESLint config refuses it in a
 // test file of another package, and allows it here.
+//
+// It lints with the repo's real config and runs only the rule it covers, without type information.
+// With it, the parser builds the whole TypeScript program of the package each path falls in
+// (apps/core's is over 2,000 files with the Prisma client), which took seconds here and timed out
+// on CI. `no-restricted-imports` reads only the file's syntax.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const source = 'import { PgBoss } from "pg-boss";\n\nexport const boss = PgBoss;\n';
 
+const eslint = new ESLint({
+  cwd: repoRoot,
+  ruleFilter: ({ ruleId }) => ruleId === "no-restricted-imports",
+  overrideConfig: { languageOptions: { parserOptions: { projectService: false } } },
+});
+
 const restrictedImports = async (relativePath: string): Promise<readonly string[]> => {
-  const eslint = new ESLint({ cwd: repoRoot });
   const [result] = await eslint.lintText(source, { filePath: path.join(repoRoot, relativePath) });
-  return (result?.messages ?? [])
+  const messages = result?.messages ?? [];
+  // A parse error or an ignored file has no rule ID, and would let the last test pass for nothing.
+  expect(messages.filter((message) => message.ruleId === null)).toEqual([]);
+  return messages
     .filter((message) => message.ruleId === "no-restricted-imports")
     .map((message) => message.message);
 };
