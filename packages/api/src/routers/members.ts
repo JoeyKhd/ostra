@@ -1,14 +1,16 @@
-import { invitationHandleOf, invitationLifecycleOf, inviteMember, projectGrantsSchema, revokeInvitation } from "@ostra/domain";
-import { invitationIdSchema, projectIdSchema } from "@ostra/protocol";
+import { invitationHandleOf, invitationLifecycleOf, inviteMember, projectGrantsSchema, removeMember, revokeInvitation, setMemberRole, visibleProjects } from "@ostra/domain";
+import type { MemberScope } from "@ostra/domain";
+import type { DbOrTx } from "@ostra/db";
+import { invitationIdSchema, memberIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { organizationRoleNames } from "../auth/roles.ts";
-import { adminProcedure, router, unwrap } from "../trpc/init.ts";
+import { highestRole, organizationRoleNames } from "../auth/roles.ts";
+import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
 
-// F-002 (ADR 0053, ticket 22): the organization's invitations. An organization admin invites an
-// address with a role and, optionally, projects with a role each. The link is the invitation's ID,
-// which is its secret: `invite` returns it once, and no later read does.
+// F-002, F-003 (ADR 0053, tickets 22 and 23): the organization's members and its invitations. An
+// organization admin invites an address with a role and, optionally, projects with a role each. The
+// link is the invitation's ID, which is its secret: `invite` returns it once, and no later read does.
 
 const roleSchema = z.enum(organizationRoleNames);
 
@@ -33,10 +35,131 @@ const invitationViewSchema = z.object({
   revokedAt: z.number().int().nullable(),
 });
 
+/** A member as the Members page shows them (F-003, ticket 23). */
+export const memberViewSchema = z.object({
+  memberId: memberIdSchema,
+  userId: userIdSchema,
+  /** The account's name; a removed member's ends in "(removed)", so history keeps reading. */
+  name: z.string(),
+  username: z.string().nullable(),
+  /** Admins only: members don't see each other's addresses. */
+  email: z.string().nullable(),
+  role: roleSchema,
+  state: z.enum(["active", "pending_verification", "removed"]),
+  /** The restricted projects they're listed on, with the role on each: those the caller can open. */
+  projects: z.array(z.object({ projectId: projectIdSchema, name: z.string(), role: z.enum(["admin", "member"]) })),
+  /** Epoch ms. */
+  joinedAt: z.number().int(),
+  /** Their newest sign-in's last activity, epoch ms; `null` when they have none. */
+  lastActiveAt: z.number().int().nullable(),
+  removedAt: z.number().int().nullable(),
+});
+export type MemberView = z.infer<typeof memberViewSchema>;
+
+/**
+ * The organization's members, oldest first: active and waiting ones, and removed ones when asked
+ * (history's names). Addresses for organization admins only; restricted projects only as far as the
+ * caller can open them.
+ */
+export const loadMembers = async (db: DbOrTx, scope: MemberScope, input: { readonly includeRemoved: boolean }): Promise<MemberView[]> => {
+  const organizationId = scope.organizationId;
+  const rows = await db.member.findMany({
+    where: { organizationId, ...(input.includeRemoved ? {} : { state: { not: "removed" } }) },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      userId: true,
+      role: true,
+      state: true,
+      createdAt: true,
+      removedAt: true,
+      user: { select: { name: true, username: true, email: true } },
+      projectMemberships: { select: { role: true, project: { select: { id: true, name: true, access: true } } } },
+    },
+  });
+  const sessions = await db.authSession.groupBy({ by: ["userId"], where: { userId: { in: rows.map((row) => row.userId) } }, _max: { updatedAt: true } });
+  const lastActive = new Map(sessions.map((row) => [row.userId, row._max.updatedAt] as const));
+  const isAdmin = scope.role === "admin";
+  return rows.map((row) => {
+    const listed = visibleProjects(
+      scope,
+      row.projectMemberships.map((membership) => ({
+        id: projectIdSchema.parse(membership.project.id),
+        organizationId,
+        access: membership.project.access,
+        name: membership.project.name,
+        role: membership.role,
+      })),
+    ).filter((project) => project.access === "restricted");
+    return {
+      memberId: memberIdSchema.parse(row.id),
+      userId: userIdSchema.parse(row.userId),
+      name: row.state === "removed" ? `${row.user.name} (removed)` : row.user.name,
+      username: row.user.username,
+      email: isAdmin ? row.user.email : null,
+      role: highestRole(row.role),
+      state: row.state,
+      projects: listed.map((project) => ({ projectId: project.id, name: project.name, role: project.role })),
+      joinedAt: row.createdAt.getTime(),
+      lastActiveAt: lastActive.get(row.userId)?.getTime() ?? null,
+      removedAt: row.removedAt?.getTime() ?? null,
+    };
+  });
+};
+
 /** How many past invitations the page lists after the pending ones. */
 const PAST_INVITATIONS = 20;
 
 export const membersRouter = router({
+  /** The members (any member). Removed ones on request, for history; addresses for admins only. */
+  list: memberProcedure
+    .input(z.strictObject({ includeRemoved: z.boolean().default(false) }).default({ includeRemoved: false }))
+    .output(z.array(memberViewSchema))
+    .query(({ ctx, input }) => loadMembers(ctx.deps.db, ctx.scope, input)),
+
+  /** Changes a member's role (organization admin). The last active admin can't be demoted. */
+  setRole: adminProcedure
+    .input(z.strictObject({ memberId: memberIdSchema, role: roleSchema }))
+    .output(z.object({ memberId: memberIdSchema, role: roleSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const result = unwrap(await setMemberRole({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+        "last-admin": "CONFLICT",
+      });
+      return { memberId: input.memberId, role: result.role };
+    }),
+
+  /**
+   * Removes a member (organization admin, ADR 0053): kept as removed, with their project roles,
+   * personal runners, CLI sessions, driving, drafts and pending invitations ended in one transaction.
+   * Never yourself, and never the last admin.
+   */
+  remove: adminProcedure
+    .input(z.strictObject({ memberId: memberIdSchema }))
+    .output(
+      z.object({
+        removedAt: z.number().int(),
+        counts: z.object({
+          projectRoles: z.number().int(),
+          runnersRevoked: z.number().int(),
+          cliSessionsRevoked: z.number().int(),
+          tasksUndriven: z.number().int(),
+          draftsDeleted: z.number().int(),
+          invitationsRevoked: z.number().int(),
+        }),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = unwrap(await removeMember({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+        "last-admin": "CONFLICT",
+        self: "BAD_REQUEST",
+      });
+      return { removedAt: result.removedAt, counts: result.counts };
+    }),
+
   /**
    * Invites an address (organization admin). Returns the link once: the invitation's ID is its
    * secret, so it's never stored readable and no other read returns it. With email set up it's

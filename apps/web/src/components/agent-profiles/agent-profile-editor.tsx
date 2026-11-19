@@ -374,7 +374,8 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
   };
   const newSkill = (): SkillDraft => ({ key: nextKey("skill"), name: "", body: "", files: [] });
   const title = current.name.trim() === "" ? (profileId === null ? t("agentProfiles.editor.newTitle") : (data?.name ?? "")) : current.name;
-  const memberList = (members.data ?? []).map((member) => ({ memberId: member.memberId, name: member.name, email: member.email }));
+  // A removed member can be granted nothing (ADR 0053): the list keeps them for history only.
+  const memberList = (members.data ?? []).filter((member) => member.state !== "removed").map((member) => ({ memberId: member.memberId, name: member.name, email: member.email }));
 
   return (
     <PageFrame

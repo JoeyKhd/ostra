@@ -6,14 +6,16 @@ import {
   createProjectInputSchema,
   parseTicketTemplate,
   renderTicketPrompt,
+  setProjectAccess,
   setProjectDefaultProfile,
+  setProjectMember,
   TICKET_TEMPLATE_MAX_CHARS,
   ticketTemplateFor,
   ticketTemplateVocabulary,
   visibleProjects,
 } from "@ostra/domain";
 import type { RepoChecked, TicketPromptContext } from "@ostra/domain";
-import { agentProfileIdSchema, environmentIdSchema, poolIdSchema, projectIdSchema, repoIdSchema, taskKindSchema, ticketIdSchema, ticketKeySchema } from "@ostra/protocol";
+import { agentProfileIdSchema, environmentIdSchema, memberIdSchema, poolIdSchema, projectIdSchema, repoIdSchema, taskKindSchema, ticketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -115,6 +117,14 @@ const ticketTemplateView = (saved: string | null) => ({
     Object.entries(ticketTemplateVocabulary).map(([scope, vocabulary]) => [scope, { placeholders: [...vocabulary.placeholders], sections: [...vocabulary.sections] }]),
   ),
   maxChars: TICKET_TEMPLATE_MAX_CHARS,
+});
+
+/** A project's access and its listed members (F-087). */
+const projectAccessViewSchema = z.object({
+  access: z.enum(["open", "restricted"]),
+  /** The caller's role on it. */
+  role: z.enum(["admin", "member"]),
+  members: z.array(z.object({ memberId: memberIdSchema, name: z.string(), username: z.string().nullable(), role: z.enum(["admin", "member"]) })),
 });
 
 export const projectsRouter = router({
@@ -340,6 +350,70 @@ export const projectsRouter = router({
         task: { branch: previewBranchOf(ticket.key) },
       };
       return { rendered: true as const, prompt: renderTicketPrompt(template, context) };
+    }),
+
+  // ---------- access (F-087, ADR 0026, ticket 23) ----------
+
+  /**
+   * Who may open the project: open or restricted, and the members listed on it with their roles
+   * (anyone who can open it). Organization admins are admins of every project, listed or not.
+   */
+  access: projectProcedure("read", z.strictObject({ projectId: projectIdSchema }))
+    .output(projectAccessViewSchema)
+    .query(async ({ ctx, input }) => {
+      const { db } = ctx.deps;
+      const organizationId = ctx.scope.organizationId;
+      const [project, listed] = await Promise.all([
+        db.project.findFirstOrThrow({ where: { id: input.projectId, organizationId }, select: { access: true } }),
+        db.projectMember.findMany({
+          where: { organizationId, projectId: input.projectId, member: { state: "active" } },
+          orderBy: { createdAt: "asc" },
+          select: { memberId: true, role: true, member: { select: { user: { select: { name: true, username: true } } } } },
+        }),
+      ]);
+      return {
+        access: project.access,
+        role: ctx.project.role,
+        members: listed.map((row) => ({ memberId: memberIdSchema.parse(row.memberId), name: row.member.user.name, username: row.member.user.username, role: row.role })),
+      };
+    }),
+
+  /** Opens or restricts the project (project admin). Restricting lists the member who does it as an admin. */
+  setAccess: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, access: z.enum(["open", "restricted"]) }))
+    .output(z.object({ access: z.enum(["open", "restricted"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      const result = unwrap(await setProjectAccess({ db, ...ports }, ctx.scope, { projectId: input.projectId, access: input.access }), {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+      });
+      return { access: result.access };
+    }),
+
+  /** Lists an existing member on the project with a role, or changes it (project admin). Never an invitation. */
+  setMember: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, memberId: memberIdSchema, role: z.enum(["admin", "member"]) }))
+    .output(z.object({ role: z.enum(["admin", "member"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      unwrap(await setProjectMember({ db, ...ports }, ctx.scope, { projectId: input.projectId, memberId: input.memberId, role: input.role }), {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+        "not-a-member": "NOT_FOUND",
+      });
+      return { role: input.role };
+    }),
+
+  /** Takes a member off the project's list (project admin). */
+  removeMember: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, memberId: memberIdSchema }))
+    .output(z.object({ removed: z.literal(true) }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      unwrap(await setProjectMember({ db, ...ports }, ctx.scope, { projectId: input.projectId, memberId: input.memberId, role: null }), {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+        "not-a-member": "NOT_FOUND",
+      });
+      return { removed: true as const };
     }),
 });
 

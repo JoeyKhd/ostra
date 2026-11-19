@@ -4,7 +4,7 @@ import type { Db, Tx } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { postgresAuditLog, recordAudit, sweepRetention, SYSTEM_ACTOR_NAME } from "@ostra/domain";
 import type { AuditAction } from "@ostra/domain";
-import { approvalIdSchema, memberIdSchema, organizationIdSchema, poolIdSchema, repoFullNameSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, memberIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, repoFullNameSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -94,6 +94,12 @@ const runningTask = async (): Promise<Record<string, string>> => {
   const task = await seedTask(harness, { organizationId: orgA(), projectId, state: "running", driverMemberId: harness.fixture.a.member.id });
   await seedLease(harness, task, orgA(), projectId, runnerId);
   return { taskId: task.taskId, runnerId };
+};
+
+/** A new member of organization A, with its own account. */
+const newMember = async (): Promise<string> => {
+  const user = await harness.test.db.user.create({ data: { id: randomUUID(), name: "Someone", email: `${unique("someone")}@example.com`, username: unique("someone") } });
+  return (await harness.test.db.member.create({ data: { id: randomUUID(), organizationId: orgA(), userId: user.id, role: "member", createdAt: new Date() } })).id;
 };
 
 const newPool = async (): Promise<string> => (await (await harness.as(admin())).pools.create({ name: unique("pool") })).poolId;
@@ -234,13 +240,36 @@ const cases: readonly Case[] = [
     setup: async () => ({ profileId: (await (await harness.as(admin())).agentProfiles.save(profileInput(unique("Profile")))).profileId }),
     act: (caller, made) => caller.agentProfiles.archive({ profileId: need(made, "profileId") }),
   },
-  // ---- milestone 4: invitations (ticket 22) ----
+  // ---- milestone 4: members, invitations, and project access (tickets 22, 23) ----
   { action: "invitation.created", actor: admin, setup: () => Promise.resolve({ email: `${unique("invitee")}@example.com` }), act: (caller, made) => caller.members.invite({ email: need(made, "email"), role: "member", projectGrants: [] }) },
   {
     action: "invitation.revoked",
     actor: admin,
     setup: async () => ({ handle: (await (await harness.as(admin())).members.invite({ email: `${unique("invitee")}@example.com`, role: "member", projectGrants: [] })).handle }),
     act: (caller, made) => caller.members.revokeInvitation({ handle: need(made, "handle") }),
+  },
+  { action: "member.removed", actor: admin, setup: async () => ({ memberId: await newMember() }), act: (caller, made) => caller.members.remove({ memberId: memberIdSchema.parse(need(made, "memberId")) }) },
+  {
+    action: "project.access-changed",
+    actor: admin,
+    setup: async () => ({ projectId: (await harness.test.db.project.create({ data: { organizationId: orgA(), name: unique("p"), slug: unique("p"), access: "open" } })).id }),
+    act: (caller, made) => caller.projects.setAccess({ projectId: projectIdSchema.parse(need(made, "projectId")), access: "restricted" }),
+  },
+  {
+    action: "project.member-set",
+    actor: admin,
+    setup: async () => ({ memberId: await newMember() }),
+    act: (caller, made) => caller.projects.setMember({ projectId: harness.fixture.a.restrictedProject.id, memberId: memberIdSchema.parse(need(made, "memberId")), role: "member" }),
+  },
+  {
+    action: "project.member-removed",
+    actor: admin,
+    setup: async () => {
+      const memberId = await newMember();
+      await harness.test.db.projectMember.create({ data: { organizationId: orgA(), projectId: harness.fixture.a.restrictedProject.id, memberId, role: "member" } });
+      return { memberId };
+    },
+    act: (caller, made) => caller.projects.removeMember({ projectId: harness.fixture.a.restrictedProject.id, memberId: memberIdSchema.parse(need(made, "memberId")) }),
   },
 ];
 

@@ -184,7 +184,17 @@ export async function* openStream(ctx: OpenContext, input: StreamInput, signal: 
         return;
       }
 
-      if (Date.now() >= nextCheck) {
+      // A change to this member, or to a project's access, is looked at at once, not on the timer:
+      // a removed member's streams end, and a restricted project's records stop (ADR 0053, F-087).
+      const accessChanged =
+        result.kind === "item" &&
+        result.item.kind === "changes" &&
+        result.item.notices.some(
+          (notice) =>
+            notice.organizationId === scope.organizationId &&
+            ((notice.entity === "member" && notice.entityId === scope.memberId) || notice.entity === "project"),
+        );
+      if (accessChanged || Date.now() >= nextCheck) {
         // An open SSE response outlives a revoked session or membership: look again.
         const member = await ctx.revalidate();
         if (member?.scope.organizationId !== scope.organizationId) {
