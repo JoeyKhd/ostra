@@ -29,7 +29,7 @@ The design targets for milestone 2's screens (`context/specs/m2-tickets-in/spec.
 ## Rules
 
 Milestone 1's rules hold (`../m1/README.md`):
-- the spec wins over the picture
+- the spec wins over the picture on copy, states, components and behaviour; the picture's scale wins on size, spacing and contrast (`../m1/README.md`, "Scale", which has the measured values)
 - one sidebar, built from the shared shell, never from a picture
 - real data only
 - the brand's fonts and logo

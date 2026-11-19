@@ -37,7 +37,7 @@ export const NewPoolSheet = ({ onCreated }: { readonly onCreated: (poolId: strin
   return (
     <SheetContent title={t("runners.newPoolTitle")}>
       <form onSubmit={submit} noValidate className="flex h-full flex-col px-[18px] py-5">
-        <h2 className="mb-4 text-[15px] font-semibold">{t("runners.newPoolTitle")}</h2>
+        <h2 className="mb-4 text-[16.5px] font-semibold">{t("runners.newPoolTitle")}</h2>
         <Field id="pool-name" label={t("runners.poolName")} error={clash ? t("runners.poolNameTaken") : null}>
           <Input
             id="pool-name"
@@ -56,7 +56,7 @@ export const NewPoolSheet = ({ onCreated }: { readonly onCreated: (poolId: strin
         <Field id="pool-max" label={t("runners.poolMaxBoxes")} help={t("runners.poolMaxBoxesHelp")}>
           <Input id="pool-max" inputMode="numeric" className="font-mono" value={maxBoxes} onChange={(e) => { setMaxBoxes(e.target.value.replace(/\D/g, "")); }} placeholder={t("runners.noLimit")} />
         </Field>
-        {create.error === null || clash ? null : <p role="alert" className="mb-3 text-[12.5px] text-red">{errorText(create.error)}</p>}
+        {create.error === null || clash ? null : <p role="alert" className="mb-3 text-ui text-red">{errorText(create.error)}</p>}
         <div className="mt-1 flex gap-2">
           <SheetClose asChild>
             <Button type="button">{t("common.cancel")}</Button>

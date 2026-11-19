@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 // - `primary`: the Shell fill, at most one per page.
 // - `amber`: only the one action that answers what needs you (an approval), never anything else.
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-medium transition-colors disabled:opacity-50 [&_svg]:size-[14px] [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-medium transition-colors disabled:opacity-50 [&_svg]:size-[15px] [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -22,12 +22,12 @@ export const buttonVariants = cva(
         link: "h-auto border-transparent bg-transparent p-0 text-teal hover:underline",
       },
       size: {
-        default: "h-7 px-[11px] text-[12.5px]",
-        sm: "h-6 rounded-sm px-[9px] text-sm",
-        lg: "h-8 px-3.5 text-body",
+        default: "h-[30px] px-3 text-ui",
+        sm: "h-[26px] rounded-sm px-2.5 text-sm",
+        lg: "h-[34px] px-3.5 text-body",
         // The auth pages' one full-width button (sign-in.md): 36px.
         xl: "h-[36px] px-[14px] text-body",
-        icon: "size-7 p-0",
+        icon: "size-[30px] p-0",
       },
     },
     defaultVariants: { variant: "outline", size: "default" },

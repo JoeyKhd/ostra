@@ -146,6 +146,8 @@ Milestone 1's loading and error states hold. While the ticket's context is being
 
 ## Tokens and components
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 Tokens: `app-concepts/html/graphite.css`, as `../m1/task.md` lists them. No new tokens. Amber stays off this page unless the task needs you.
 
 | Part | Component |

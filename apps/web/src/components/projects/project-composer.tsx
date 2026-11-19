@@ -88,7 +88,7 @@ export const ProjectComposer = ({ projectId }: { readonly projectId: ProjectId }
             {runners.data?.map((runner) => (
               <SelectItem key={runner.id} value={runner.id} disabled={runner.state !== "online"}>
                 <LaptopIcon aria-hidden />
-                <span className="font-mono text-[12.5px] text-text">{runner.name}</span>
+                <span className="font-mono text-ui text-text">{runner.name}</span>
                 <span className="truncate text-muted">
                   {t("newTask.yours", { state: runnerStateText(runner.state) })}
                   {runner.isolated ? "" : ` · ${t("runners.notIsolated")}`}
@@ -102,13 +102,13 @@ export const ProjectComposer = ({ projectId }: { readonly projectId: ProjectId }
           </SelectContent>
         </Select>
         <span className="ml-auto flex items-center gap-3">
-          <Kbd aria-hidden className="text-[12px]">{t("newTask.kbd")}</Kbd>
+          <Kbd aria-hidden className="text-sm">{t("newTask.kbd")}</Kbd>
           <Button type="submit" variant="primary" disabled={create.isPending || prompt.trim() === ""}>
             <SendIcon aria-hidden /> {create.isPending ? t("newTask.starting") : t("newTask.start")}
           </Button>
         </span>
       </div>
-      {create.error === null ? null : <p role="alert" className="mt-2 text-[12.5px] text-red">{errorText(create.error)}</p>}
+      {create.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(create.error)}</p>}
     </form>
   );
 };

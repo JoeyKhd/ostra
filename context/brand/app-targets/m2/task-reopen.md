@@ -100,6 +100,8 @@ A needs-you item for the driver (`restore_conflict`, spec section 11, item 7). A
 
 ## Tokens and components
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 Tokens: `app-concepts/html/graphite.css`; nothing new. Icons (Lucide, 14px in the thread): `archive`, `moon`, `box`, `square-play`, `history`, `layers`, `corner-down-right`, `triangle-alert`, `git-merge`, `rotate-ccw`.
 
 | Part | Component |

@@ -47,9 +47,9 @@ const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: str
       <div className="overflow-x-auto">
         <div className="min-w-[800px]">{mine === undefined ? <RunnerSkeleton /> : <MyRunnerRows runners={mine} now={now} />}</div>
       </div>
-      <p className="mb-3 mt-4 text-[12.5px] text-muted">{mine !== undefined && mine.length > 0 ? t("runners.connectAnother") : t("runners.connectFirst")}</p>
+      <p className="mb-3 mt-4 text-ui text-muted">{mine !== undefined && mine.length > 0 ? t("runners.connectAnother") : t("runners.connectFirst")}</p>
       <div className="flex min-h-10 items-center gap-3 rounded-lg border border-line bg-surface px-4 py-2">
-        <code className="min-w-0 flex-1 break-all font-mono text-[13px] text-text">{command}</code>
+        <code className="min-w-0 flex-1 break-all font-mono text-body text-text">{command}</code>
         <CopyLink text={command} />
       </div>
       <p className="mt-3 flex items-start gap-2 text-sm text-faint">
@@ -145,7 +145,7 @@ export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: 
               {...(runners.data === undefined ? {} : { count: others.length })}
               end={
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="flex items-center gap-1 text-[12.5px] text-muted hover:text-text" aria-label={t("runners.filter")}>
+                  <DropdownMenuTrigger className="flex items-center gap-1 text-ui text-muted hover:text-text" aria-label={t("runners.filter")}>
                     {filterLabel} <ChevronDownIcon aria-hidden className="size-[13px] stroke-[1.75]" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-[180px]">

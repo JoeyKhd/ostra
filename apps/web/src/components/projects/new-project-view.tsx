@@ -49,9 +49,9 @@ const GitHubMark = () => (
 /** A section of the form: a 28px title line, then its body (graphite.css `.section`). */
 const FormSection = ({ title, note, end, children }: { readonly title: string; readonly note?: ReactNode; readonly end?: ReactNode; readonly children: ReactNode }) => (
   <section className="mt-[26px]">
-    <div className="mb-2 flex h-7 items-center gap-2">
+    <div className="mb-2 flex h-[30px] items-center gap-2">
       <h2 className="text-body font-semibold">{title}</h2>
-      {note === undefined ? null : <span className="font-mono text-[11.5px] text-faint">{note}</span>}
+      {note === undefined ? null : <span className="font-mono text-[12.5px] text-faint">{note}</span>}
       {end === undefined ? null : <div className="ml-auto flex items-center">{end}</div>}
     </div>
     {children}
@@ -59,7 +59,7 @@ const FormSection = ({ title, note, end, children }: { readonly title: string; r
 );
 
 const ErrorLine = ({ children }: { readonly children: ReactNode }) => (
-  <p role="alert" className="mb-2 flex items-center gap-1.5 text-[12.5px] text-red">
+  <p role="alert" className="mb-2 flex items-center gap-1.5 text-ui text-red">
     <CircleAlertIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />
     {children}
   </p>
@@ -205,7 +205,7 @@ export const NewProjectView = () => {
                   value={installation?.installationId ?? ""}
                   onValueChange={(value) => { setInstallationId(value); setFullName(null); }}
                 >
-                  <SelectTrigger aria-label={t("projects.installation")} className="h-8 w-[200px] shrink-0 bg-surface">
+                  <SelectTrigger aria-label={t("projects.installation")} className="h-[34px] w-[200px] shrink-0 bg-surface">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent align="start">
@@ -218,7 +218,7 @@ export const NewProjectView = () => {
                   </SelectContent>
                 </Select>
               ) : installation === null ? null : (
-                <span className="flex h-8 shrink-0 items-center gap-2 px-1 text-muted" aria-label={t("projects.installation")}>
+                <span className="flex h-[34px] shrink-0 items-center gap-2 px-1 text-muted" aria-label={t("projects.installation")}>
                   <GitHubMark />
                   {installation.accountLogin}
                 </span>
@@ -252,7 +252,7 @@ export const NewProjectView = () => {
                         <li key={repo.hostRepoId} data-repo={repo.fullName}>
                           <label className={cn("flex h-[38px] cursor-pointer items-center gap-3 px-3 hover:bg-raise", checked && "bg-sel hover:bg-sel")}>
                             <Checkbox checked={checked} onCheckedChange={(value) => { pick(repo.fullName, value === true); }} />
-                            <span className="min-w-0 truncate font-mono text-[12.5px] text-text">{repo.fullName}</span>
+                            <span className="min-w-0 truncate font-mono text-ui text-text">{repo.fullName}</span>
                             {repo.private ? <LockIcon aria-label={t("projects.private")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}
                             <span className="ml-auto shrink-0 font-mono text-sm text-faint">{repo.defaultBranch}</span>
                           </label>
@@ -293,7 +293,7 @@ export const NewProjectView = () => {
                 {busy ? <LoaderCircleIcon aria-hidden className="size-[13px] animate-spin" /> : null}
                 {busy ? t("projects.creating") : t("projects.create")}
               </Button>
-              <span className="text-[12.5px] text-muted">{t("projects.createHelp")}</span>
+              <span className="text-ui text-muted">{t("projects.createHelp")}</span>
             </div>
           </div>
         </fieldset>

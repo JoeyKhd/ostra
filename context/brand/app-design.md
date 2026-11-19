@@ -10,11 +10,13 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 
 1. **Neutral chrome.** The background, panels and lines are near-black graphite with no hue. Brand colours appear only as accents (below). The blue-green Abyss made the whole app look muddy.
 2. **Dense, like a tool people work in all day:**
-   - body text 13px
-   - secondary text 12–12.5px
-   - page titles 24px
-   - nav rows 26px
+   - body text 14.5px
+   - secondary text 13–14px
+   - page titles 26px
+   - nav rows 28px
    - list and table rows 38–40px
+
+   These are the approved pictures' scale, which wins over `graphite.css` on size, spacing and contrast (`app-targets/m1/README.md`, "Scale", decided 2026-11-19). The concepts were drawn at 13px.
 3. **Few boxes.**
    - A section is a title line and rows separated by hairlines.
    - Boxes only for code, form fields, the composer and the selected row.
@@ -25,16 +27,16 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 
 ## Layout
 
-1. **Sidebar, 232px, always there:**
+1. **Sidebar, 234px, always there:**
    - The organization switcher, then search (⌘K) and a "+" for a new task.
    - Personal views: **Home**, **Needs you** (an amber count) and **My tasks**.
    - **Projects:** the member's pinned projects, each with an 8px colour square. An amber dot marks a project where something waits on them. The open project expands into Tasks, Inbox, Environment, Boards, Automations, Memory, Repos and Settings. "N more" opens the full list. Boards (F-007) sits after Environment. Settings holds the ticket template from milestone 2 on, and project admins see it.
    - **Organization:** Runner pools (busy count), Models, GitHub, Linear, Storage, Agent profiles, Insights, Memory, Members, Audit log, Background work and Settings. Agent profiles are F-021. Background work lists queues and stuck jobs, with retry and cancel (ADR 0037). GitHub and Linear are the organization's connections, and only its admins see them. Storage (F-114, F-079) is for instance admins. *Rows added 2026-11-19 for milestone 2 (ticket 40's decisions).*
    - **Memory** is a page for the project and another for the organization (F-109, ADR 0044). Each carries a count of its proposals (F-111), in the plain count style, never amber.
    - The signed-in member at the bottom.
-2. **Top bar, 44px:** breadcrumbs on the left (`calculator › Tasks › CALC-161`), the page's actions on the right. At most one primary (Shell) button per page.
-3. **The page:** a title (Manrope 700, 24px), a one-line lede in muted text, optional underline tabs, then sections.
-4. **The properties panel, 300px on the right** (340px when it holds a form). Every resource has one: a task, a project, an environment, a pool, a provider. It holds key/value rows, grouped under small labels. A list with a selected row shows that row's properties here.
+2. **Top bar, 46px:** breadcrumbs on the left (`calculator › Tasks › CALC-161`), the page's actions on the right. At most one primary (Shell) button per page.
+3. **The page:** a title (Manrope 700, 26px), a one-line lede in muted text, optional underline tabs, then sections.
+4. **The properties panel, 320px on the right** (380px when it holds a form). Every resource has one: a task, a project, an environment, a pool, a provider. It holds key/value rows, grouped under small labels. A list with a selected row shows that row's properties here.
 5. **Lists are grouped by lifecycle state**, in the order of `domain-model.md`: Needs you, Running, Queued, In review. Each group gets a quiet header band with a count. A row shows:
    - state, key, title
    - what the agent is doing now
@@ -52,7 +54,7 @@ The values live in `app-concepts/html/graphite.css` until milestone 1 turns them
 | Raised surface (inputs, code, group bands) | `#131416` |
 | Selected row or nav item | `#1A1B1E` |
 | Lines | `#1F2023`; control borders `#2A2C30` |
-| Text, secondary, faint | `#EDEDEE`, `#9A9DA3`, `#64676D` |
+| Text, sidebar rows, secondary, faint | `#F2F3F4`, `#D6D8DB`, `#B4B7BB`, `#8B8E93` (the pictures' contrast; the concepts used `#EDEDEE`, `#9A9DA3`, `#64676D`) |
 | **Needs you** (only this) | Buoy Amber `#FFB224`, with Abyss `#0C1D21` text on amber fills |
 | Healthy, success, additions | `#4FB286`, always with an icon or label |
 | Errors and deletions | `#E5675C`. Never amber |

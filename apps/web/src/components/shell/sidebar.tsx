@@ -17,7 +17,7 @@ type Me = RouterOutputs["me"]["get"];
 
 const noop = (): void => undefined;
 
-/** A group label: Plex Sans 500 11px `--faint` (graphite.css `.sec`). */
+/** A group label: Plex Sans 500 12px `--faint` (graphite.css `.sec`, at the pictures' scale). */
 const SectionLabel = ({ children }: { readonly children: string }) => (
   <div className="px-2 pb-1 pt-3.5 text-xs font-medium leading-[1.45] text-faint">{children}</div>
 );
@@ -28,12 +28,12 @@ const OrganizationSwitcher = ({ me }: { readonly me: Me }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="flex w-full items-center gap-[9px] rounded-md px-2 py-1.5 text-left hover:bg-sel data-[state=open]:bg-sel"
+        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-sel data-[state=open]:bg-sel"
         aria-label={t("shell.switchOrganization")}
       >
-        <img src="/brand/ostra-mark-fit.svg" alt="" width={20} height={20} className="size-5 shrink-0" />
-        <b className="min-w-0 truncate font-semibold text-text">{name}</b>
-        <ChevronsUpDownIcon aria-hidden className="ml-auto size-[13px] shrink-0 stroke-[1.75] text-faint" />
+        <img src="/brand/ostra-mark-fit.svg" alt="" width={22} height={22} className="size-[22px] shrink-0" />
+        <b className="min-w-0 truncate text-[15px] font-semibold text-text">{name}</b>
+        <ChevronsUpDownIcon aria-hidden className="ml-auto size-[14px] shrink-0 stroke-[1.75] text-faint" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[212px]">
         <DropdownMenuLabel>{t("shell.organizations")}</DropdownMenuLabel>
@@ -55,9 +55,10 @@ export type SidebarProps = {
 };
 
 /**
- * The 232px sidebar (app-targets/m1/README.md, "One sidebar"; graphite.css and shell.js). Milestone 1
+ * The 234px sidebar (app-targets/m1/README.md, "One sidebar"; graphite.css and shell.js). Milestone 1
  * holds only what works: Home; the projects, each with Tasks and Environment, and New project; the
- * organization's Runners, Models and GitHub. Rows are 26px, type 13px.
+ * organization's Runners, Models and GitHub. Rows are 28px, type 14.5px, the search box 30px: the
+ * approved pictures' scale (app-targets/m1/README.md, "Scale").
  */
 export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
   const admin = me.organization?.role === "admin";
@@ -72,20 +73,20 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           onClick={() => {
             setSearching(true);
           }}
-          className="flex h-7 min-w-0 flex-1 items-center gap-[7px] rounded-md border border-line bg-surface px-[9px] text-faint hover:border-line-2 hover:text-muted"
+          className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-faint hover:border-line-2 hover:text-muted"
         >
-          <SearchIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75]" />
+          <SearchIcon aria-hidden className="size-4 shrink-0 stroke-[1.75]" />
           {t("shell.search")}
-          <kbd className="ml-auto font-mono text-[10.5px] font-medium text-faint">⌘K</kbd>
+          <kbd className="ml-auto font-mono text-[11.5px] font-medium text-faint">⌘K</kbd>
         </button>
         <Link
           href="/tasks/new"
           onClick={onNavigate}
           aria-label={t("shell.newTask")}
           title={t("shell.newTask")}
-          className="grid size-7 shrink-0 place-items-center rounded-md bg-shell text-ink hover:bg-[#e6e2d8]"
+          className="grid size-[30px] shrink-0 place-items-center rounded-md bg-shell text-ink hover:bg-[#e6e2d8]"
         >
-          <PlusIcon aria-hidden className="size-[15px] stroke-[1.75]" />
+          <PlusIcon aria-hidden className="size-4 stroke-[1.75]" />
         </Link>
       </div>
       <CommandMenu

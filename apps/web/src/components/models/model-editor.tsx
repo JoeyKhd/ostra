@@ -70,7 +70,7 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
   return (
     <div data-testid="model-editor">
       <h2 className="mb-1 text-xs font-medium text-faint">{t("models.model")}</h2>
-      <div className="mb-1 text-[15px] font-semibold">{model.displayName ?? model.endpointModelId}</div>
+      <div className="mb-1 text-[16.5px] font-semibold">{model.displayName ?? model.endpointModelId}</div>
       <div className="mb-4 font-mono text-sm text-faint">{model.endpointModelId}</div>
       <div className="mb-4">
         {isDefault ? (

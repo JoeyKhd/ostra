@@ -6,11 +6,11 @@ import { cn } from "@/lib/cn";
 export type NeedsYouProps = {
   /** The title line, such as `Needs you · approval`. The one amber text where it shows. */
   readonly title: string;
-  /** What waits: the message, the command, the question. 13px `--text`. */
+  /** What waits: the message, the command, the question. Body text, `--text`. */
   readonly children?: ReactNode;
   /** The answer: the buttons (Deny first, the one `amber` action last), 12px above. */
   readonly actions?: ReactNode;
-  /** A line under the actions, 12px `--faint`: who can answer, or what went wrong. */
+  /** A line under the actions, 13px `--faint`: who can answer, or what went wrong. */
   readonly footer?: ReactNode;
   readonly className?: string;
   readonly "data-testid"?: string;

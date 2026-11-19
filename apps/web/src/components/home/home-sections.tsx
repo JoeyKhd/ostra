@@ -27,7 +27,7 @@ const Parts = ({ parts }: { readonly parts: readonly Part[] }) => (
   <>
     {parts.map((part, i) =>
       part.code === true ? (
-        <code key={i} className="font-mono text-[12.5px] text-text">
+        <code key={i} className="font-mono text-ui text-text">
           {part.text}
         </code>
       ) : (
@@ -67,7 +67,7 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
   const reason = reasonParts(row.detail);
   return (
     <li
-      className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:grid-cols-[80px_minmax(0,1fr)_130px_230px_36px_104px] md:py-0"
+      className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:grid-cols-[76px_minmax(0,1fr)_124px_212px_36px_100px] md:py-0"
       data-testid="needs-you-row"
     >
       <div className="col-span-2 flex min-w-0 items-center gap-2 md:contents">
@@ -88,7 +88,7 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
       </span>
       <Link
         href={`/tasks/${row.taskId}`}
-        className={cn(buttonVariants({ variant: amber ? "amber" : "outline", size: "sm" }), "h-[26px] w-[104px] justify-self-end text-[12.5px]", !amber && "font-normal")}
+        className={cn(buttonVariants({ variant: amber ? "amber" : "outline", size: "sm" }), "h-7 w-[100px] justify-self-end text-ui", !amber && "font-normal")}
       >
         {t(actionKey(row.detail.reason))}
       </Link>
@@ -138,13 +138,13 @@ export const ProjectsSection = ({ load, admin, now }: { readonly load: Load<Over
         <Table data-testid="home-projects">
           <TableHeader>
             <TableRow className="border-t">
-              <TableHead className="md:w-[167px]">{t("home.table.project")}</TableHead>
+              <TableHead className="md:w-[160px]">{t("home.table.project")}</TableHead>
               <TableHead className="hidden md:table-cell">{t("home.table.repo")}</TableHead>
-              <TableHead num className="w-[78px]">{t("home.table.running")}</TableHead>
-              <TableHead num className="hidden w-[82px] md:table-cell">{t("home.table.queued")}</TableHead>
+              <TableHead num className="w-[72px]">{t("home.table.running")}</TableHead>
+              <TableHead num className="hidden w-[76px] md:table-cell">{t("home.table.queued")}</TableHead>
               <TableHead num className="w-[92px]">{t("home.table.needsYou")}</TableHead>
-              <TableHead num className="hidden w-[125px] md:table-cell">{t("home.table.prs")}</TableHead>
-              <TableHead num className="hidden w-[116px] md:table-cell" suppressHydrationWarning>
+              <TableHead num className="hidden w-[116px] md:table-cell">{t("home.table.prs")}</TableHead>
+              <TableHead num className="hidden w-[104px] md:table-cell" suppressHydrationWarning>
                 {t("home.table.spend", { month: monthShort(now) })}
               </TableHead>
             </TableRow>
@@ -164,7 +164,7 @@ export const ProjectsSection = ({ load, admin, now }: { readonly load: Load<Over
                     <span className="truncate">{project.name}</span>
                   </Link>
                 </TableCell>
-                <TableCell className="hidden truncate pr-3 font-mono text-[12.5px] text-faint md:table-cell" title={project.repos.join(", ")}>
+                <TableCell className="hidden truncate pr-3 font-mono text-ui text-faint md:table-cell" title={project.repos.join(", ")}>
                   {project.repos.join(", ")}
                 </TableCell>
                 <TableCell num>{project.running}</TableCell>

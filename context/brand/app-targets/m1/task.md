@@ -77,6 +77,8 @@ Group labels (`Properties`, `Code`, `Changes`): 11px weight 500 `--faint`, not b
 
 ## Tokens (`app-concepts/html/graphite.css`)
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 ```css
 --bg: #0D0E10; --side: #0A0B0C; --surface: #131416; --raise: #17181B; --line: #1F2023; --line-2: #2A2C30;
 --text: #EDEDEE; --muted: #9A9DA3; --faint: #64676D;

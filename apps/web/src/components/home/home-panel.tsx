@@ -47,11 +47,11 @@ export const PrChart = ({ days }: { readonly days: readonly Day[] }) => {
           <g key={day.day}>
             {h === 0 ? null : <rect x={x} y={base - h} width={bar} height={h} rx={2} fill={today ? "var(--line-2)" : "var(--mist)"} />}
             {labelled ? (
-              <text x={x + bar / 2} y={base - h - 4} textAnchor="middle" className="fill-muted font-mono text-[11px]">
+              <text x={x + bar / 2} y={base - h - 4} textAnchor="middle" className="fill-muted font-mono text-xs">
                 {day.count}
               </text>
             ) : null}
-            <text x={x + bar / 2} y={base + 13} textAnchor="middle" className="fill-faint font-mono text-[11px]">
+            <text x={x + bar / 2} y={base + 13} textAnchor="middle" className="fill-faint font-mono text-xs">
               {today ? t("home.panel.today") : dayLetter(day.day)}
             </text>
           </g>
@@ -80,8 +80,8 @@ export const HomePanel = ({ overview, now }: { readonly overview: Overview | und
   return (
     <div data-testid="home-panel">
       <PropGroup title={t("home.panel.prsOpened")}>
-        <div className="font-title text-[28px] leading-[1.15] font-bold tracking-[-0.015em]">{overview === undefined ? "–" : formatCount(overview.prsOpened.total)}</div>
-        <div className="mt-0.5 text-[12.5px] text-muted">
+        <div className="font-title text-[31px] leading-[1.15] font-bold tracking-[-0.015em]">{overview === undefined ? "–" : formatCount(overview.prsOpened.total)}</div>
+        <div className="mt-0.5 text-ui text-muted">
           {overview === undefined ? "–" : plural(overview.summary.prsToday, "home.panel.prsToday.one", "home.panel.prsToday.other")}
         </div>
         {overview === undefined ? null : <PrChart days={overview.prsOpened.days} />}
@@ -91,7 +91,7 @@ export const HomePanel = ({ overview, now }: { readonly overview: Overview | und
           <h3 className="text-xs font-medium text-faint" suppressHydrationWarning>
             {t("home.panel.spend", { month: monthLong(now) })}
           </h3>
-          <span className="font-mono text-[12.5px] text-text">{overview === undefined ? "–" : formatSpend(overview.spendMonth)}</span>
+          <span className="font-mono text-ui text-text">{overview === undefined ? "–" : formatSpend(overview.spendMonth)}</span>
         </div>
       </Group>
       <Group>
@@ -102,7 +102,7 @@ export const HomePanel = ({ overview, now }: { readonly overview: Overview | und
           </span>
         </div>
         {overview === undefined ? null : overview.runners.length === 0 ? (
-          <p className="py-1 text-[12.5px] text-faint">{t("home.panel.noRunners")}</p>
+          <p className="py-1 text-ui text-faint">{t("home.panel.noRunners")}</p>
         ) : (
           <ul className="space-y-2.5 pt-1" data-testid="home-runners">
             {overview.runners.map((runner) => (
@@ -112,7 +112,7 @@ export const HomePanel = ({ overview, now }: { readonly overview: Overview | und
                   <Status tone={runner.online ? "green" : "grey"} className="text-sm text-muted">
                     {runner.online ? t("home.panel.online") : t("home.panel.offline")}
                   </Status>
-                  <span className="ml-auto font-mono text-[12.5px] text-muted tabular-nums">
+                  <span className="ml-auto font-mono text-ui text-muted tabular-nums">
                     {runner.running} / {runner.capacity}
                   </span>
                 </div>

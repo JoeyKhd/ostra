@@ -108,7 +108,7 @@ const Disclosure = ({ open, onToggle, children }: { readonly open: boolean; read
   </button>
 );
 
-const Mono = ({ children }: { readonly children: ReactNode }) => <span className="min-w-0 break-all font-mono text-[12.5px] text-text">{children}</span>;
+const Mono = ({ children }: { readonly children: ReactNode }) => <span className="min-w-0 break-all font-mono text-ui text-text">{children}</span>;
 
 /** A tool's verb while it runs ("Running", "Editing") and after ("Ran", "Edited"). */
 const runningVerb = (running: boolean, now: string, then: string): string => (running ? now : then);
@@ -126,7 +126,7 @@ const ToolStatus = ({ part }: { readonly part: ToolLikePart }) => {
 
 /** A unified diff, as text: additions green, deletions red, never HTML. */
 const Diff = ({ patch }: { readonly patch: string }) => (
-  <pre className="my-1 ml-[104px] max-h-80 overflow-auto rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-[1.6]">
+  <pre className="my-1 ml-[104px] max-h-80 overflow-auto rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm leading-[1.6]">
     {patch.split("\n").map((line, i) => (
       <div key={i} className={line.startsWith("+") && !line.startsWith("+++") ? "text-green" : line.startsWith("-") && !line.startsWith("---") ? "text-red" : "text-muted"}>
         {line === "" ? " " : line}
@@ -136,7 +136,7 @@ const Diff = ({ patch }: { readonly patch: string }) => (
 );
 
 const Output = ({ text, truncated }: { readonly text: string; readonly truncated: boolean }) => (
-  <pre data-part="command-output" className="my-1 ml-[104px] max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-[1.6] text-muted">
+  <pre data-part="command-output" className="my-1 ml-[104px] max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm leading-[1.6] text-muted">
     {text === "" ? t("task.tool.noOutput") : text}
     {truncated ? `\n${t("task.tool.truncated")}` : ""}
   </pre>
@@ -176,7 +176,7 @@ const ApprovalNote = ({ part }: { readonly part: ToolLikePart }) => {
         <div data-part="approval" data-state="pending">
           {summary === null ? null : <p className="whitespace-pre-wrap">{summary}</p>}
           {subject === null ? null : (
-            <code className="mt-2 inline-block max-w-full break-all rounded-sm border border-line bg-surface px-2.5 py-1.5 font-mono text-[12.5px] leading-[1.4] text-text">{subject}</code>
+            <code className="mt-2 inline-block max-w-full break-all rounded-sm border border-line bg-surface px-2.5 py-1.5 font-mono text-ui leading-[1.4] text-text">{subject}</code>
           )}
         </div>
       </NeedsYou>

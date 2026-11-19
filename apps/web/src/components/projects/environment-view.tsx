@@ -103,17 +103,17 @@ const kindIcon = { variable: VariableIcon, secret: KeyRoundIcon, file: FileIcon 
 
 /** An input that reads as text at rest: no border and no fill until hovered or focused. */
 const quietInput =
-  "h-7 w-full rounded-md border border-transparent bg-transparent px-2 font-mono text-body text-text placeholder:text-faint outline-none hover:border-line-2 hover:bg-surface focus-visible:border-faint focus-visible:bg-surface read-only:hover:border-transparent read-only:hover:bg-transparent";
+  "h-[30px] w-full rounded-md border border-transparent bg-transparent px-2 font-mono text-body text-text placeholder:text-faint outline-none hover:border-line-2 hover:bg-surface focus-visible:border-faint focus-visible:bg-surface read-only:hover:border-transparent read-only:hover:bg-transparent";
 
 /** A section of the page: a 28px title line with an inline note or a right-hand end, then its body. */
 const EnvSection = ({ title, count, note, end, children }: { readonly title: ReactNode; readonly count?: number; readonly note?: ReactNode; readonly end?: ReactNode; readonly children: ReactNode }) => (
   <section className="mt-[26px]">
-    <div className="mb-2 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="mb-2 flex min-h-[30px] flex-wrap items-center gap-x-3 gap-y-1">
       <h2 className="flex items-baseline gap-2 text-body font-semibold">
         {title}
-        {count === undefined ? null : <span className="font-mono text-[11.5px] font-normal text-faint">{count}</span>}
+        {count === undefined ? null : <span className="font-mono text-[12.5px] font-normal text-faint">{count}</span>}
       </h2>
-      {note === undefined ? null : <span className="text-[12.5px] text-muted">{note}</span>}
+      {note === undefined ? null : <span className="text-ui text-muted">{note}</span>}
       {end === undefined ? null : <div className="ml-auto flex items-center gap-2">{end}</div>}
     </div>
     {children}
@@ -124,7 +124,7 @@ const EnvSection = ({ title, count, note, end, children }: { readonly title: Rea
 const ScriptEditor = ({ value, readOnly, onChange }: { readonly value: string; readonly readOnly: boolean; readonly onChange: (value: string) => void }) => {
   const lines = Math.max(3, value.split("\n").length);
   return (
-    <div className="flex rounded-lg border border-line-2 bg-surface px-3.5 py-2.5 font-mono text-[12.5px] leading-[1.75] focus-within:border-faint">
+    <div className="flex rounded-lg border border-line-2 bg-surface px-3.5 py-2.5 font-mono text-ui leading-[1.75] focus-within:border-faint">
       <div aria-hidden className="w-6 shrink-0 select-none text-right text-faint">
         {Array.from({ length: lines }, (_, i) => <div key={i}>{i + 1}</div>)}
       </div>
@@ -155,7 +155,7 @@ const Properties = ({ view, rows, detected, detecting }: { readonly view: View |
     <PropGroup title={t("environment.group")}>
       {view === undefined ? (
         [0, 1, 2].map((i) => (
-          <div key={i} className="grid h-[30px] grid-cols-[96px_minmax(0,1fr)] items-center gap-2">
+          <div key={i} className="grid h-8 grid-cols-[92px_minmax(0,1fr)] items-center gap-2">
             <Skeleton className="w-14" />
             <Skeleton className="w-28" />
           </div>
@@ -190,9 +190,9 @@ const Properties = ({ view, rows, detected, detecting }: { readonly view: View |
         <div key={repoId} data-testid="detection-reasons">
           <PropGroup title={t("environment.foundIn", { repo: fullName })}>
             {detection.reasons.length === 0 ? (
-              <p className="text-[12.5px] text-muted">{t("environment.nothingFound")}</p>
+              <p className="text-ui text-muted">{t("environment.nothingFound")}</p>
             ) : (
-              <ul className="space-y-1.5 text-[12.5px]">
+              <ul className="space-y-1.5 text-ui">
                 {detection.reasons.map((reason, i) => (
                   <li key={`${reason.file}-${String(i)}`}>
                     <span className="block font-mono text-text">{reason.file}</span>
@@ -215,10 +215,10 @@ const Properties = ({ view, rows, detected, detecting }: { readonly view: View |
             <PropGroup title={t("environment.services")}>
               <ul>
                 {detection.services.map((service) => (
-                  <li key={service.name} className="flex h-[30px] items-center gap-3 text-[12.5px]">
+                  <li key={service.name} className="flex h-[30px] items-center gap-3 text-ui">
                     <span className="font-mono text-text">{service.name}</span>
                     {service.image === null ? null : <span className="min-w-0 truncate font-mono text-faint">{service.image}</span>}
-                    <Badge className="ml-auto text-[11px]">{t("environment.notOnHost")}</Badge>
+                    <Badge className="ml-auto text-xs">{t("environment.notOnHost")}</Badge>
                   </li>
                 ))}
               </ul>
@@ -239,7 +239,7 @@ const SecretValue = ({ row, admin, onChange }: { readonly row: Extract<Row, { ki
         type="password"
         autoComplete="off"
         aria-label={t("environment.secretValue")}
-        className="h-7 w-[240px] min-w-0 rounded-md border border-line-2 bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint outline-none focus-visible:border-faint"
+        className="h-[30px] w-[240px] min-w-0 rounded-md border border-line-2 bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint outline-none focus-visible:border-faint"
         value={row.value}
         placeholder={row.hasValue ? t("environment.secretSet") : t("environment.secretEmpty")}
         onChange={(e) => { onChange(e.target.value); }}
@@ -365,16 +365,16 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           title={t("environment.title")}
           lede={created && view?.status === "draft" ? t("environment.createdLede") : t("environment.lede")}
         />
-        {save.error === null ? null : <p role="alert" className="mt-2 text-[12.5px] text-red">{errorText(save.error)}</p>}
+        {save.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(save.error)}</p>}
         {save.data === undefined ? null : (
-          <div className="mt-2 space-y-1 text-[12.5px]" role="status">
+          <div className="mt-2 space-y-1 text-ui" role="status">
             <p className="flex items-center gap-1.5 text-green"><CheckIcon aria-hidden className="size-[13px] stroke-[2]" />{t("environment.saved")}</p>
             {save.data.warnings.map((warning) => (
               <p key={warning} className="flex items-start gap-1.5 text-muted"><TriangleAlertIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />{warning}</p>
             ))}
           </div>
         )}
-        {environment.error === null ? null : <p role="alert" className="mt-4 text-[12.5px] text-red">{errorText(environment.error)}</p>}
+        {environment.error === null ? null : <p role="alert" className="mt-4 text-ui text-red">{errorText(environment.error)}</p>}
 
         {view === undefined ? (
           environment.isPending ? (
@@ -382,7 +382,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
               <Skeleton className="w-24" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="mt-6 w-40" />
-              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-7 w-full" />)}
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-[30px] w-full" />)}
             </div>
           ) : null
         ) : (
@@ -401,7 +401,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                   count={repoRows.length}
                   end={
                     <>
-                      <label htmlFor={envFileId} className="text-[12.5px] text-muted">{t("environment.writtenTo")}</label>
+                      <label htmlFor={envFileId} className="text-ui text-muted">{t("environment.writtenTo")}</label>
                       <input
                         id={envFileId}
                         className="h-[26px] w-[82px] rounded-md border border-line-2 bg-surface px-2 font-mono text-sm text-text outline-none focus-visible:border-faint"
@@ -542,7 +542,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
               <span id={baseImageHelpId} className="sr-only">{t("environment.baseImageHelp")}</span>
             </EnvSection>
 
-            <p className="mt-[22px] flex items-start gap-2 text-[12.5px] text-muted">
+            <p className="mt-[22px] flex items-start gap-2 text-ui text-muted">
               <ShieldCheckIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75] text-faint" />
               {t("environment.footnote")}
             </p>
@@ -569,7 +569,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
               <Label htmlFor="file-content">{t("environment.content")}</Label>
               <Textarea
                 id="file-content"
-                className="min-h-[calc(12*1.6em)] flex-1 font-mono text-[12.5px]"
+                className="min-h-[calc(12*1.6em)] flex-1 font-mono text-ui"
                 spellCheck={false}
                 value={editedFile.content}
                 readOnly={!admin}

@@ -98,6 +98,8 @@ Copy comes from `apps/web/messages/en.json` (`signIn.*`). Two keys change, `sign
 
 ## Tokens (from `../../app-concepts/html/graphite.css`, already in `globals.css` as `--color-*`)
 
+> **Scale.** This page keeps the sizes and colours below: its picture was matched at `graphite.css`'s scale, and `.auth-scale` holds it there while the panel moved to the pictures' larger scale (`README.md`, "Scale").
+
 | Token | Hex | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | form column |

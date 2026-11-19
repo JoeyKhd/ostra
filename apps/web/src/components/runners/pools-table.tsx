@@ -21,13 +21,13 @@ const Meter = ({ value, max }: { readonly value: number; readonly max: number })
     aria-valuemin={0}
     aria-valuemax={max}
     aria-valuenow={value}
-    className="relative inline-block h-1 w-24 shrink-0 overflow-hidden rounded-full bg-line-2"
+    className="relative inline-block h-1 w-[76px] shrink-0 overflow-hidden rounded-full bg-line-2"
   >
     <span className="absolute inset-y-0 left-0 rounded-full bg-muted" style={{ width: `${String(max === 0 ? 0 : Math.min(100, (value / max) * 100))}%` }} />
   </span>
 );
 
-const th = "h-[30px] pr-3 text-left text-[11.5px] font-medium text-faint";
+const th = "h-[30px] pr-3 text-left text-[12.5px] font-medium text-faint";
 
 /** Organization › Runners › Pools: a selectable row per pool (runners.md, "Pools"). */
 export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: readonly Pool[]; readonly selectedId: string | null; readonly onSelect: (poolId: string) => void }) => {
@@ -41,12 +41,12 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse text-body">
         <colgroup>
-          <col className="w-[200px]" />
+          <col className="w-[190px]" />
           <col className="w-[82px]" />
           <col className="w-[104px]" />
-          <col className="w-[170px]" />
+          <col className="w-[164px]" />
           <col className="w-[96px]" />
-          <col className="w-[76px]" />
+          <col className="w-[72px]" />
           <col />
         </colgroup>
         <thead>
@@ -86,7 +86,7 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
                     {poolIsolated(pool) ? null : <Chip className="shrink-0">{t("runners.notIsolated")}</Chip>}
                   </span>
                 </td>
-                <td className="pr-3 font-mono text-[12.5px]">{pool.executors.length === 0 ? "—" : pool.executors.join(", ")}</td>
+                <td className="pr-3 font-mono text-ui">{pool.executors.length === 0 ? "—" : pool.executors.join(", ")}</td>
                 <td className="pr-3 text-text">{t("runners.onlineCount", { online: pool.onlineCount, total: pool.runnerCount })}</td>
                 <td className="pr-3">
                   {pool.slots === 0 ? (
@@ -94,15 +94,15 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
                   ) : (
                     <span className="flex items-center gap-3">
                       <Meter value={pool.busy} max={pool.slots} />
-                      <span className="font-mono text-[12.5px]">{pool.busy} / {pool.slots}</span>
+                      <span className="shrink-0 whitespace-nowrap font-mono text-ui">{pool.busy} / {pool.slots}</span>
                     </span>
                   )}
                 </td>
                 <td className="pr-3">
                   {pool.activeJoinTokens === 0 ? <span className="text-faint">{t("runners.noTokens")}</span> : t("runners.activeTokens", { n: pool.activeJoinTokens })}
                 </td>
-                <td className="pr-3 font-mono text-[12.5px]">{pool.projectCount}</td>
-                <td className="pr-2.5 font-mono text-[12.5px]">{versionRange(pool.versions)}</td>
+                <td className="pr-3 font-mono text-ui">{pool.projectCount}</td>
+                <td className="pr-2.5 font-mono text-ui">{versionRange(pool.versions)}</td>
               </tr>
             );
           })}

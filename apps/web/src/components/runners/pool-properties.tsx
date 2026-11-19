@@ -69,17 +69,17 @@ export const PoolProperties = ({ pool, shown, onShown }: { readonly pool: Pool; 
       <PropRow label={t("runners.prop.maxBoxes")}>{pool.maxBoxes === null ? t("runners.noLimit") : <span className="font-mono">{pool.maxBoxes}</span>}</PropRow>
       <Sep />
       <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-[12.5px] text-muted">{t("runners.joinTokens")}</h3>
-        {active === undefined ? null : <span className="font-mono text-[11.5px] text-faint">{active}</span>}
+        <h3 className="text-ui text-muted">{t("runners.joinTokens")}</h3>
+        {active === undefined ? null : <span className="font-mono text-[12.5px] text-faint">{active}</span>}
         <Button size="sm" className="ml-auto" disabled={create.isPending} onClick={() => { create.mutate({ poolId: pool.id, expiresInDays: 30 }); }}>
           <PlusIcon className="stroke-[1.75]" /> {t("runners.newToken")}
         </Button>
       </div>
-      {failure === null ? null : <p role="alert" className="mb-2 text-[12.5px] text-red">{errorText(failure)}</p>}
+      {failure === null ? null : <p role="alert" className="mb-2 text-ui text-red">{errorText(failure)}</p>}
       {shown === null ? null : (
         <div className="mb-3" data-testid="join-token">
           <div className="flex items-start gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
-            <code className="min-w-0 flex-1 select-all break-all font-mono text-[12.5px] leading-[1.6] text-text">{shown}</code>
+            <code className="min-w-0 flex-1 select-all break-all font-mono text-ui leading-[1.6] text-text">{shown}</code>
             <CopyLink text={shown} />
           </div>
           <p className="mt-1.5 text-sm text-muted">{t("runners.shownOnce")}</p>
@@ -98,7 +98,7 @@ export const PoolProperties = ({ pool, shown, onShown }: { readonly pool: Pool; 
             <li key={token.id} className="flex min-h-[50px] items-center gap-3 py-1.5">
               <div className="min-w-0 flex-1">
                 <div className={cn("truncate", revoked ? "text-faint line-through" : "text-text")}>{token.label ?? t("runners.joinToken")}</div>
-                <div className="font-mono text-[11.5px] leading-[1.5] text-faint">{tokenDetail(token, now)}</div>
+                <div className="font-mono text-[12.5px] leading-[1.5] text-faint">{tokenDetail(token, now)}</div>
               </div>
               {revoked ? null : (
                 <AlertDialog>

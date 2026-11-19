@@ -40,11 +40,11 @@ const busyText = (runner: Pick<Listed, "state" | "busy" | "capacity">): string =
 const Row = ({ runner, where, now }: { readonly runner: Listed | Mine; readonly where: ReactNode; readonly now: number }) => (
   <li data-runner={runner.name} className={cn(runnerGrid, "h-[38px] px-2")}>
     <RunnerStatus state={runner.state} />
-    <span className="truncate pr-3 font-mono text-[12.5px] text-text" title={runner.name}>{runner.name}</span>
+    <span className="truncate pr-3 font-mono text-ui text-text" title={runner.name}>{runner.name}</span>
     <span className="flex min-w-0 items-center gap-2 pr-3 text-muted">{where}</span>
-    <span className="font-mono text-[12.5px] text-text">{runner.executor}</span>
-    <span className="font-mono text-[12.5px] text-muted">{busyText(runner)}</span>
-    <span className="font-mono text-[12.5px] text-muted">v{runner.version}</span>
+    <span className="font-mono text-ui text-text">{runner.executor}</span>
+    <span className="font-mono text-ui text-muted">{busyText(runner)}</span>
+    <span className="font-mono text-ui text-muted">v{runner.version}</span>
     <span className="truncate text-right text-muted">{runnerAge(runner.state, runner.lastSeenAt, now)}</span>
   </li>
 );

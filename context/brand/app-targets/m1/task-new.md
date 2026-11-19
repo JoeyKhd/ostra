@@ -76,6 +76,8 @@ Group labels use `.props h5` (11px IBM Plex Sans 500, `--faint`); groups split b
 
 ## Tokens (`app-concepts/html/graphite.css`)
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 | Token | Value | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | page and panel background |

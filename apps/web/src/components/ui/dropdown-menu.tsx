@@ -5,7 +5,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui's dropdown menu, restyled to graphite: a `--raise` panel, `--line-2` border, 26px rows.
+// shadcn/ui's dropdown menu, restyled to graphite: a `--raise` panel, `--line-2` border, 28px rows.
 export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
 

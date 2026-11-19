@@ -144,7 +144,7 @@ export const ModelsView = () => {
                   >
                     <ServerIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />
                     <span className="w-[150px] shrink-0 truncate">{provider.name}</span>
-                    <span className="hidden min-w-0 flex-1 truncate font-mono text-[12.5px] text-faint md:block" title={provider.baseUrl}>{provider.baseUrl}</span>
+                    <span className="hidden min-w-0 flex-1 truncate font-mono text-ui text-faint md:block" title={provider.baseUrl}>{provider.baseUrl}</span>
                     <span className="ml-auto shrink-0 text-muted">{plural(provider.modelCount, "models.countOne", "models.countMany")}</span>
                     {provider.allowOnPersonalRunners ? <Chip className="ml-1 hidden sm:inline-flex">{t("models.personalAllowed")}</Chip> : null}
                     <Status tone="green" className="ml-2 shrink-0">{t("models.connectedShort")}</Status>
@@ -166,7 +166,7 @@ export const ModelsView = () => {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-body">
               <thead>
-                <tr className="h-[30px] border-b border-line text-left text-[11.5px] font-medium text-faint">
+                <tr className="h-[30px] border-b border-line text-left text-[12.5px] font-medium text-faint">
                   <th className="pr-3 font-medium">{t("models.model")}</th>
                   <th className="pr-3 font-medium">{t("models.provider")}</th>
                   <th className="pr-3 text-right font-medium">{t("models.context")}</th>
@@ -189,7 +189,7 @@ export const ModelsView = () => {
                           <ModelLogo path={model.logoPath} />
                           <button
                             type="button"
-                            className={cn("truncate text-left", model.displayName === null && "font-mono text-[12.5px]")}
+                            className={cn("truncate text-left", model.displayName === null && "font-mono text-ui")}
                             onClick={(event) => {
                               event.stopPropagation();
                               setSelection({ kind: "model", providerId: provider.id, modelId: model.id });
@@ -202,9 +202,9 @@ export const ModelsView = () => {
                         </span>
                       </td>
                       <td className="pr-3 text-muted">{provider.name}</td>
-                      <td className="pr-3 text-right font-mono text-[12.5px]">{formatTokens(model.contextWindow)}</td>
-                      <td className="pr-3 text-right font-mono text-[12.5px]">{formatPrice(model.inputPricePerMTok)}</td>
-                      <td className="pr-3 text-right font-mono text-[12.5px]">{formatPrice(model.outputPricePerMTok)}</td>
+                      <td className="pr-3 text-right font-mono text-ui">{formatTokens(model.contextWindow)}</td>
+                      <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.inputPricePerMTok)}</td>
+                      <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.outputPricePerMTok)}</td>
                     </tr>
                   );
                 })}

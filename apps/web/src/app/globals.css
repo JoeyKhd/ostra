@@ -1,9 +1,14 @@
 @import "tailwindcss";
 
 /*
- * The graphite console (context/brand/app-design.md), dark first. The values are graphite.css's,
- * as Tailwind 4 theme tokens. A light theme is left for later: it redefines the same variables
- * under [data-theme="light"].
+ * The graphite console (context/brand/app-design.md), dark first, as Tailwind 4 theme tokens. A
+ * light theme is left for later: it redefines the same variables under [data-theme="light"].
+ *
+ * Sizes and contrast follow the approved pictures in context/brand/app-targets/, which are drawn
+ * larger and brighter than graphite.css: where a picture and its .md disagree on size, spacing or
+ * contrast, the picture wins (app-targets/m1/README.md, "Scale"). The values were measured from the
+ * pictures; the sign-in and change-password pages keep the scale their own pictures were matched at
+ * (`.auth-scale`).
  */
 
 :root {
@@ -13,9 +18,11 @@
   --raise: #17181b;
   --line: #1f2023;
   --line-2: #2a2c30;
-  --text: #ededee;
-  --muted: #9a9da3;
-  --faint: #64676d;
+  --text: #f2f3f4;
+  /* The sidebar's rows: between the page's text and its secondary text. */
+  --text-2: #d6d8db;
+  --muted: #b4b7bb;
+  --faint: #8b8e93;
   --sel: #1a1b1e;
   --teal: #6fb8aa;
   --green: #4fb286;
@@ -24,6 +31,14 @@
   --shell: #f3f0e8;
   --ink: #0c1d21;
   --mist: #cfd8d4;
+
+  /* The type scale. Body is 14.5px, secondary 13px, small 12px; mono uses the same steps. */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-ui: 14px;
+  --fs-body: 14.5px;
+  --fs-lede: 15px;
+  --fs-title: 26px;
   color-scheme: dark;
 }
 
@@ -35,6 +50,7 @@
   --color-line: var(--line);
   --color-line-2: var(--line-2);
   --color-text: var(--text);
+  --color-text-2: var(--text-2);
   --color-muted: var(--muted);
   --color-faint: var(--faint);
   --color-sel: var(--sel);
@@ -51,15 +67,18 @@
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
   --font-title: var(--font-manrope), var(--font-plex-sans), sans-serif;
 
-  --text-xs: 11px;
+  --text-xs: var(--fs-xs);
   --text-xs--line-height: 1.45;
-  --text-sm: 12px;
+  --text-sm: var(--fs-sm);
   --text-sm--line-height: 1.5;
-  --text-body: 13px;
+  /* Dense rows: tables, properties, buttons and fields. */
+  --text-ui: var(--fs-ui);
+  --text-ui--line-height: 1.5;
+  --text-body: var(--fs-body);
   --text-body--line-height: 1.5;
-  --text-lede: 13.5px;
+  --text-lede: var(--fs-lede);
   --text-lede--line-height: 1.5;
-  --text-title: 24px;
+  --text-title: var(--fs-title);
   --text-title--line-height: 1.25;
 
   --radius-sm: 6px;
@@ -69,7 +88,7 @@
 
 @layer base {
   /* The root keeps the browser's 16px, so Tailwind's rem spacing (h-8 = 32px) means what the
-     targets say; the body's text is 13px. */
+     targets say; the body's text is 14.5px. */
   html,
   body {
     background: var(--bg);
@@ -77,10 +96,23 @@
     -webkit-font-smoothing: antialiased;
   }
   body {
-    font: 400 13px/1.5 var(--font-sans);
+    font: 400 var(--fs-body)/1.5 var(--font-sans);
   }
   * {
     border-color: var(--line);
+  }
+  /* Sign-in and change-password were matched to their own pictures at graphite.css's scale. */
+  .auth-scale {
+    --text: #ededee;
+    --muted: #9a9da3;
+    --faint: #64676d;
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-ui: 12.5px;
+    --fs-body: 13px;
+    --fs-lede: 13.5px;
+    --fs-title: 24px;
+    font-size: var(--fs-body);
   }
   :focus-visible {
     outline: 2px solid var(--teal);
@@ -95,9 +127,9 @@
 }
 
 @layer components {
-  /* A page title: Manrope 700, 24px. */
+  /* A page title: Manrope 700, 26px. */
   .page-title {
-    font: 700 24px/1.25 var(--font-title);
+    font: 700 var(--fs-title)/1.25 var(--font-title);
     letter-spacing: -0.015em;
   }
   /* Lucide icons: 15px, stroke 1.75. */
@@ -135,7 +167,7 @@
   }
   .agent-md code {
     font-family: var(--font-mono);
-    font-size: 12.5px;
+    font-size: 0.93em;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 4px;

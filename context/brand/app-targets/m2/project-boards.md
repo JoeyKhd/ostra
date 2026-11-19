@@ -114,6 +114,8 @@ The demo data in the image (fixtures, not real): boards `Calculator` (`CALC`, 38
 
 ## Tokens (`app-concepts/html/graphite.css`)
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 `--bg #0D0E10`, `--side #0A0B0C`, `--surface #131416` (selects, chips, the toggle groups), `--raise #17181B` (row hover), `--sel #1A1B1E` (selected board, the toggle's chosen option), `--line #1F2023`, `--line-2 #2A2C30` (control borders), `--text #EDEDEE`, `--muted #9A9DA3`, `--faint #64676D`, `--green #4FB286` (webhooks dot, installed check), `--teal #6FB8AA` (`Connect Linear →`), `--red #E5675C` (a status that's gone, errors, Detach's confirm), `--shell #F3F0E8` / `--ink #0C1D21` (`Save mapping`). **No amber on this page**: nothing here waits on the member. Radii: 7px controls, 6px selected row and chips, 8px popovers.
 
 Type: body 13px Plex Sans; descriptions and panel 12–12.5px; title Manrope 700 24px; section titles Plex Sans 600 13px; step names 500; keys, counts, ages, dates and the magic-word sample in Plex Mono.

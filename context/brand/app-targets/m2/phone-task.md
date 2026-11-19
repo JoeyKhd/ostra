@@ -94,6 +94,8 @@ From the repo: `PageFrame`, `Status`, `Button`, the task thread and composer (`t
 
 ## Tokens
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 As `inbox.md` and `../m1/task.md`. On the phone, green is only the done sync steps and a Running dot, always with words. Amber is only a needs-you item. Teal is only links (`Open in Linear`, `#483`, `Retry sync`).
 
 ## Differences from the current code (`components/tasks/task-view.tsx`, `task/task-thread.tsx`)

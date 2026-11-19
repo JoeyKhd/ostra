@@ -19,14 +19,14 @@ export const TableRow = ({ className, ...props }: ComponentProps<"tr">) => (
 
 export const TableHead = ({ className, num = false, ...props }: ComponentProps<"th"> & { readonly num?: boolean }) => (
   <th
-    className={cn("h-[30px] px-0 text-left align-middle text-[11.5px] font-medium text-faint", num && "text-right", className)}
+    className={cn("h-[30px] px-0 text-left align-middle text-[12.5px] font-medium text-faint", num && "text-right", className)}
     {...props}
   />
 );
 
 export const TableCell = ({ className, num = false, ...props }: ComponentProps<"td"> & { readonly num?: boolean }) => (
   <td
-    className={cn("h-[38px] px-0 align-middle", num && "text-right font-mono text-[12.5px] tabular-nums", className)}
+    className={cn("h-[38px] px-0 align-middle", num && "text-right font-mono text-ui tabular-nums", className)}
     {...props}
   />
 );

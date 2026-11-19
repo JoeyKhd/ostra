@@ -128,6 +128,8 @@ The same checks, where a task is started (F-060: "on the project and when a task
 
 ## Tokens (`app-concepts/html/graphite.css`)
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 `--bg #0D0E10`, `--side #0A0B0C`, `--surface #131416` (the notice), `--raise #17181B` (hover), `--sel #1A1B1E` (selected repo), `--line #1F2023`, `--line-2 #2A2C30` (the outline button), `--text #EDEDEE`, `--muted #9A9DA3`, `--faint #64676D`, `--green #4FB286` (passing checks, always with their text), `--red #E5675C` (the signed-commit block: notice rule, icon, verdict, "not supported yet"), `--teal #6FB8AA` (links).
 
 - **No amber.** A repo check doesn't wait on the member, so it never takes "needs you"'s colour. A warning has no colour of its own: its `triangle-alert` icon and its words carry it. Red is kept for the one case that stops tasks.

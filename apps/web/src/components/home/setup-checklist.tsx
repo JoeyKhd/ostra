@@ -27,7 +27,7 @@ const steps: Readonly<Record<StepId, StepView>> = {
 const Tick = ({ done, n }: { readonly done: boolean; readonly n: number }) => (
   <span
     className={cn(
-      "inline-grid size-[22px] shrink-0 place-items-center rounded-full border font-mono text-[11px]",
+      "inline-grid size-[22px] shrink-0 place-items-center rounded-full border font-mono text-xs",
       done ? "border-green bg-green text-ink" : "border-line-2 text-muted",
     )}
   >
@@ -61,7 +61,7 @@ export const SetupChecklist = ({ admin }: { readonly admin: boolean }) => {
                 <Link
                   href={view.href}
                   className={cn(
-                    "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-[11px] text-[12.5px] font-medium",
+                    "inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-md border px-3 text-ui font-medium",
                     next ? "border-shell bg-shell font-semibold text-ink" : "border-line-2 bg-surface text-text hover:bg-sel",
                   )}
                 >
@@ -73,7 +73,7 @@ export const SetupChecklist = ({ admin }: { readonly admin: boolean }) => {
           );
         })}
         <li data-step="linear" className="flex min-h-[52px] items-center gap-3 py-2.5 text-faint">
-          <span className="inline-grid size-[22px] shrink-0 place-items-center rounded-full border border-dashed border-line-2 font-mono text-[11px]">–</span>
+          <span className="inline-grid size-[22px] shrink-0 place-items-center rounded-full border border-dashed border-line-2 font-mono text-xs">–</span>
           <div className="min-w-0 flex-1">
             <div className="font-medium">{t("checklist.linear.title")}</div>
             <div className="text-sm">{t("checklist.linear.body")}</div>

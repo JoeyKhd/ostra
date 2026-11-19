@@ -71,7 +71,7 @@ export const ProviderSettings = ({ provider }: { readonly provider: Provider }) 
       <h2 className="mb-1 text-xs font-medium text-faint">{t("models.provider")}</h2>
       <div className="mb-4 flex items-center gap-2">
         <ServerIcon className="size-[15px] text-muted" />
-        <span className="text-[15px] font-semibold">{provider.name}</span>
+        <span className="text-[16.5px] font-semibold">{provider.name}</span>
       </div>
       <PropGroup title={t("models.endpoint")}>
         <PropRow label={t("models.baseUrl")}>

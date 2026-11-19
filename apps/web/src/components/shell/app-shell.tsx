@@ -22,7 +22,7 @@ const ShellContextValue = createContext<ShellContext>({ openNavigation: () => un
 export const useShell = (): ShellContext => useContext(ShellContextValue);
 
 /**
- * The panel's frame (app-design.md, Layout): the 232px sidebar beside the page. At phone width the
+ * The panel's frame (app-design.md, Layout): the 234px sidebar beside the page. At phone width the
  * sidebar is a drawer, opened from the top bar.
  */
 export const AppShell = ({ me, children }: { readonly me: RouterOutputs["me"]["get"]; readonly children: ReactNode }) => {
@@ -30,12 +30,12 @@ export const AppShell = ({ me, children }: { readonly me: RouterOutputs["me"]["g
   return (
     <StreamProvider>
     <ShellContextValue.Provider value={{ openNavigation: () => { setOpen(true); }, passwordChange: me.passwordChange }}>
-      <div className="min-h-dvh lg:grid lg:h-dvh lg:grid-cols-[232px_minmax(0,1fr)] lg:overflow-hidden">
+      <div className="min-h-dvh lg:grid lg:h-dvh lg:grid-cols-[234px_minmax(0,1fr)] lg:overflow-hidden">
         <aside className="hidden border-r border-line bg-side lg:block lg:min-h-0 lg:overflow-y-auto">
           <Sidebar me={me} />
         </aside>
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" title={t("shell.navigation")} closeButton={false} className="w-[232px] lg:hidden">
+          <SheetContent side="left" title={t("shell.navigation")} closeButton={false} className="w-[234px] lg:hidden">
             <Sidebar me={me} onNavigate={() => { setOpen(false); }} />
           </SheetContent>
         </Sheet>

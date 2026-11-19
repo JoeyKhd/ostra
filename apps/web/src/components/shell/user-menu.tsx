@@ -32,7 +32,7 @@ export const UserMenu = ({ me }: { readonly me: RouterOutputs["me"]["get"] }) =>
   return (
     <DropdownMenu>
       <DropdownMenuTrigger data-testid="user-menu" className="flex w-full items-center gap-[9px] rounded-md p-2 text-left text-muted hover:bg-sel hover:text-text data-[state=open]:bg-sel">
-        <span aria-hidden className="inline-grid size-[22px] shrink-0 place-items-center rounded-full bg-line-2 text-[10px] font-semibold text-text">
+        <span aria-hidden className="inline-grid size-[22px] shrink-0 place-items-center rounded-full bg-line-2 text-[11px] font-semibold text-text">
           {initials(me.name)}
         </span>
         <span className="min-w-0 truncate">{me.name}</span>

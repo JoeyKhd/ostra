@@ -6,7 +6,7 @@ export const fieldClass =
   "w-full rounded-md border border-line-2 bg-surface px-2.5 text-body text-text placeholder:text-faint focus-visible:border-faint focus-visible:outline-none aria-invalid:border-red disabled:opacity-60";
 
 export const Input = ({ className, ...props }: ComponentProps<"input">) => (
-  <input className={cn(fieldClass, "h-8", className)} {...props} />
+  <input className={cn(fieldClass, "h-[34px]", className)} {...props} />
 );
 
 export const Textarea = ({ className, ...props }: ComponentProps<"textarea">) => (

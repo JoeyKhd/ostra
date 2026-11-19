@@ -15,7 +15,7 @@ export const SelectGroup = SelectPrimitive.Group;
 export const SelectTrigger = ({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) => (
   <SelectPrimitive.Trigger
     className={cn(
-      "inline-flex h-7 min-w-0 items-center gap-2 rounded-md border border-line-2 bg-transparent px-2.5 text-left text-body text-text outline-none hover:bg-raise focus-visible:border-faint disabled:opacity-50 data-[placeholder]:text-faint [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+      "inline-flex h-[30px] min-w-0 items-center gap-2 rounded-md border border-line-2 bg-transparent px-2.5 text-left text-body text-text outline-none hover:bg-raise focus-visible:border-faint disabled:opacity-50 data-[placeholder]:text-faint [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
       className,
     )}
     {...props}
@@ -46,7 +46,7 @@ export const SelectContent = ({ className, children, position = "popper", sideOf
 export const SelectItem = ({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) => (
   <SelectPrimitive.Item
     className={cn(
-      "relative flex h-7 cursor-default select-none items-center gap-2 rounded-sm pl-2 pr-7 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      "relative flex h-[30px] cursor-default select-none items-center gap-2 rounded-sm pl-2 pr-7 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
       className,
     )}
     {...props}

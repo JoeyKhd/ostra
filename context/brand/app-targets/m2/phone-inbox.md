@@ -76,6 +76,8 @@ As `inbox.md`, plus `Sheet` with a new `side="bottom"` (with the grab handle as 
 
 ## Tokens
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 As `inbox.md`. Phone sizes: body 13–14px, controls 32px (filters) and 40px (selects), the primary button 44px, rows 56px, 16px gutters.
 
 ## Differences from the current code

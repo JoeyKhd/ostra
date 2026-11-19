@@ -19,7 +19,7 @@ export type NavLinkProps = {
   readonly onNavigate?: () => void;
 };
 
-/** A sidebar row, 26px (app-design.md): the current page is the selected row. */
+/** A sidebar row, 28px (the approved pictures' scale): the current page is the selected row. */
 export const NavLink = ({ href, icon, children, end, exact = false, also = [], sub = false, onNavigate }: NavLinkProps) => {
   const pathname = usePathname();
   const active = (exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)) || also.includes(pathname);
@@ -29,8 +29,8 @@ export const NavLink = ({ href, icon, children, end, exact = false, also = [], s
       {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-[26px] items-center gap-[9px] whitespace-nowrap rounded-sm px-2 font-medium text-muted hover:text-text [&_svg]:size-[15px] [&_svg]:stroke-[1.75]",
-        sub && "h-[25px] pl-7",
+        "flex h-7 items-center gap-2.5 whitespace-nowrap rounded-sm px-2 font-medium text-text-2 hover:text-text [&_svg]:size-4 [&_svg]:stroke-[1.75]",
+        sub && "h-[27px] pl-[30px]",
         active && "bg-sel text-text",
       )}
     >

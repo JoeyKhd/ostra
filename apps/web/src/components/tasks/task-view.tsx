@@ -47,12 +47,12 @@ const useNow = (): number => {
 const Sep = () => <span aria-hidden className="text-faint">·</span>;
 
 const Mono = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (
-  <span className={cn("truncate font-mono text-[12.5px]", className)}>{children}</span>
+  <span className={cn("truncate font-mono text-ui", className)}>{children}</span>
 );
 
 /** The 18px avatar beside the driver's name: the only marker a value may carry besides the status dot. */
 const Avatar = ({ name }: { readonly name: string }) => (
-  <span aria-hidden className="inline-grid size-[18px] shrink-0 place-items-center rounded-full bg-line-2 text-[8.5px] font-semibold text-text">
+  <span aria-hidden className="inline-grid size-[18px] shrink-0 place-items-center rounded-full bg-line-2 text-[9.5px] font-semibold text-text">
     {initials(name)}
   </span>
 );
@@ -113,7 +113,7 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver }: {
           {task.capabilities.takeOver ? (
             <>
               {task.driver === null ? null : <Sep />}
-              <Button variant="link" className="text-[12.5px] font-normal" onClick={onTakeOver} disabled={takingOver} data-action="take-over">{t("taskPage.takeOver")}</Button>
+              <Button variant="link" className="text-ui font-normal" onClick={onTakeOver} disabled={takingOver} data-action="take-over">{t("taskPage.takeOver")}</Button>
             </>
           ) : null}
         </PropRow>
@@ -153,11 +153,11 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver }: {
             <div key={repo.repoId}>
               <PropRow label={t("taskPage.repo")}><Mono>{repo.fullName}</Mono></PropRow>
               <PropRow label={t("taskPage.branch")}>
-                <span className="truncate font-mono text-[12.5px]" title={repo.branchName}>{repo.branchName}</span>
+                <span className="truncate font-mono text-ui" title={repo.branchName}>{repo.branchName}</span>
               </PropRow>
               <PropRow label={t("taskPage.pr")}>
                 {repo.pr === null || href === null ? <span className="text-faint">{t("taskPage.noPr")}</span> : (
-                  <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-[12.5px] text-teal hover:underline" data-testid="pr-link">
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-ui text-teal hover:underline" data-testid="pr-link">
                     #{repo.pr.number}
                   </a>
                 )}
@@ -278,7 +278,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             <Sep />
             <span className="text-muted">
               {t("taskPage.started", { age: formatElapsed(data.createdAt, now) })}
-              {data.runner === null ? null : <> {t("taskPage.on")} <span className="font-mono text-[12.5px] text-faint">{data.runner.name}</span></>}
+              {data.runner === null ? null : <> {t("taskPage.on")} <span className="font-mono text-ui text-faint">{data.runner.name}</span></>}
             </span>
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>

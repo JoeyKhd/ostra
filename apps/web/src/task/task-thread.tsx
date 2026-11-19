@@ -37,7 +37,7 @@ import type { TaskContextValue } from "./task-context";
 // render-only parts. ostra's own store feeds it: the fold of the task's events, the partial text
 // and the driver's unsent messages. This folder is the only place that imports assistant-ui.
 
-/** One mono 12px `--faint` fact in a message header, after a ` · ` when it isn't the first. */
+/** One mono 13px `--faint` fact in a message header, after a ` · ` when it isn't the first. */
 const Meta = ({ children, dot = true, className }: { readonly children: string; readonly dot?: boolean; readonly className?: string }) => (
   <span className={cn("font-mono text-sm text-faint", className)}>
     {dot ? <span className="text-faint"> · </span> : null}
@@ -46,7 +46,7 @@ const Meta = ({ children, dot = true, className }: { readonly children: string; 
 );
 
 /**
- * A message's header (task.md, "Message header"): the author (13px, 600), then the time in mono
+ * A message's header (task.md, "Message header"): the author (14.5px, 600), then the time in mono
  * `--faint`; the agent's adds its model and a status word, a member's how it was delivered.
  */
 const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {

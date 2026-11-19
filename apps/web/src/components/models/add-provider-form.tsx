@@ -92,8 +92,8 @@ export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId
   return (
     <form onSubmit={submit} noValidate aria-label={t("models.addTitle")}>
       <p className="mb-1 text-xs font-medium text-faint">{t("models.addEyebrow")}</p>
-      <h2 className="mb-1 text-[15px] font-semibold text-text">{t("models.addTitle")}</h2>
-      <p className="mb-4 text-[12.5px] text-muted">{t("models.addLede")}</p>
+      <h2 className="mb-1 text-[16.5px] font-semibold text-text">{t("models.addTitle")}</h2>
+      <p className="mb-4 text-ui text-muted">{t("models.addLede")}</p>
       <Field id="provider-name" label={t("models.name")}>
         <Input id="provider-name" value={name} onChange={(e) => { setName(e.target.value); }} placeholder="anthropic" />
       </Field>
@@ -145,7 +145,7 @@ export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId
             <div className="relative">
             <select
               id="provider-format"
-              className={cn(fieldClass, "h-8 appearance-none pr-8")}
+              className={cn(fieldClass, "h-[34px] appearance-none pr-8")}
               value={apiFormat ?? tested.apiFormat}
               onChange={(e) => {
                 const next = formats.find((format) => format === e.target.value);
@@ -188,7 +188,7 @@ const TestResult = ({ tested }: { readonly tested: Tested }) => {
   }
   return (
     <div className="mb-4" data-testid="test-result">
-      <div className="mb-2 flex items-center gap-2 text-[12.5px] text-green">
+      <div className="mb-2 flex items-center gap-2 text-ui text-green">
         <CircleCheckIcon className="size-[14px] shrink-0 stroke-[1.75]" />
         <span>
           {t("models.connected", { format: formatLabel(tested.apiFormat) })} · {plural(tested.models.length, "models.foundOne", "models.foundMany")}
@@ -197,7 +197,7 @@ const TestResult = ({ tested }: { readonly tested: Tested }) => {
       <ul className="rows max-h-56 overflow-y-auto text-sm">
         {tested.models.map((model) => (
           <li key={model.endpointModelId} className="flex h-[31px] items-center gap-3">
-            <span className="min-w-0 max-w-[60%] shrink-0 truncate font-mono text-[12.5px] text-text" title={model.endpointModelId}>{model.endpointModelId}</span>
+            <span className="min-w-0 max-w-[60%] shrink-0 truncate font-mono text-ui text-text" title={model.endpointModelId}>{model.endpointModelId}</span>
             <span className="min-w-0 flex-1 truncate text-faint">
               {model.match.kind === "catalog" ? model.match.name : t("models.custom")}
             </span>

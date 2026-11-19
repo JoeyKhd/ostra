@@ -4,7 +4,7 @@ import { Tooltip as TooltipPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
 
 /**
- * shadcn/ui's tooltip, graphite: a `--raise` panel with a `--line-2` border, 12px text. It repeats
+ * shadcn/ui's tooltip, graphite: a `--raise` panel with a `--line-2` border, 13px text. It repeats
  * what the page already says elsewhere (an `aria-describedby`, a title): it never holds the only copy.
  */
 export const Tooltip = ({ content, children }: { readonly content: ReactNode; readonly children: ReactNode }) => (

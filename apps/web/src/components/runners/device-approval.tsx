@@ -47,7 +47,7 @@ const withCommand = (text: string): ReactNode => {
   return (
     <>
       {before}
-      <code className="font-mono text-[12.5px]">{command}</code>
+      <code className="font-mono text-ui">{command}</code>
       {rest.join(command)}
     </>
   );
@@ -65,7 +65,7 @@ const CodeBox = ({ code }: { readonly code: string }) => (
   <div className="mt-[22px]">
     <div className="mb-1.5 text-sm font-medium text-muted">{t("device.code")}</div>
     <div className="flex h-16 items-center rounded-lg border border-line bg-surface px-5">
-      <span className="select-text font-mono text-[28px] font-medium tracking-[0.18em] text-text" data-testid="device-code">
+      <span className="select-text font-mono text-[31px] font-medium tracking-[0.18em] text-text" data-testid="device-code">
         {formatUserCode(code)}
       </span>
     </div>
@@ -199,7 +199,7 @@ export const DeviceApproval = () => {
       )}
       <PropGroup title={t("device.props.signsInAs")}>
         <PropRow label={t("device.props.member")}>
-          <span aria-hidden className="inline-grid size-[18px] shrink-0 place-items-center rounded-full bg-line-2 text-[9px] font-semibold text-text">
+          <span aria-hidden className="inline-grid size-[18px] shrink-0 place-items-center rounded-full bg-line-2 text-[10px] font-semibold text-text">
             {initials(me.data?.name ?? "")}
           </span>
           <span className="truncate">{me.data?.name ?? "–"}</span>
@@ -231,7 +231,7 @@ export const DeviceApproval = () => {
               spellCheck={false}
               aria-invalid={step.kind === "enter" && step.error !== null}
               aria-describedby="user-code-help"
-              className="h-10 font-mono text-[20px] uppercase tracking-[0.2em] placeholder:tracking-[0.2em]"
+              className="h-10 font-mono text-[22px] uppercase tracking-[0.2em] placeholder:tracking-[0.2em]"
               value={code}
               onChange={(event) => {
                 setCode(event.target.value);

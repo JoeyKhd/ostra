@@ -9,10 +9,11 @@ import webPackage from "../../../package.json";
  * lockup, the form and the version, and beside it the "Deep water" illustration with the tagline.
  * The form block's top sits on one guide, the top of a 300px box centred in the column's middle
  * row, so moving from sign-in to the forced password change changes the form and nothing else.
- * Under 960px the illustration column goes, and with it the tagline.
+ * Under 960px the illustration column goes, and with it the tagline. It keeps the scale its own
+ * pictures were matched at (`.auth-scale` in globals.css), which the panel's larger scale leaves alone.
  */
 export const AuthFrame = ({ children }: { readonly children: ReactNode }) => (
-  <div className="grid h-dvh min-[960px]:grid-cols-[clamp(440px,41%,600px)_minmax(0,1fr)]">
+  <div className="auth-scale grid h-dvh min-[960px]:grid-cols-[clamp(440px,41%,600px)_minmax(0,1fr)]">
     <div className="flex min-h-0 min-w-0 flex-col bg-bg min-[960px]:border-r min-[960px]:border-line">
       <header className="shrink-0 px-[16px] pt-[16px] min-[420px]:px-[32px] min-[420px]:pt-[32px]">
         <img src="/brand/lockup-horizontal-shell.svg" alt="ostra" className="block h-[22px] w-auto" />

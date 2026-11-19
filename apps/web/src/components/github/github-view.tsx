@@ -54,7 +54,7 @@ const postManifest = (createUrl: string, state: string, manifest: Readonly<Recor
 
 /** An error in words with its `triangle-alert`: no box, `--red` (github.md, "Errors"). */
 const ErrorLine = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (
-  <p role="alert" className={cn("flex items-start gap-2 text-[12.5px] text-red", className)}>
+  <p role="alert" className={cn("flex items-start gap-2 text-ui text-red", className)}>
     <TriangleAlertIcon aria-hidden className="mt-0.5 size-[14px] shrink-0 stroke-[1.75]" />
     <span className="min-w-0 break-words">{children}</span>
   </p>
@@ -72,13 +72,13 @@ const OutLink = ({ href, children }: { readonly href: string; readonly children:
 const PanelLabel = ({ children, count }: { readonly children: ReactNode; readonly count?: number }) => (
   <h3 className="mb-1.5 flex items-center text-xs font-medium text-faint">
     {children}
-    {count === undefined ? null : <span className="ml-auto font-mono text-[11px]">{count}</span>}
+    {count === undefined ? null : <span className="ml-auto font-mono text-xs">{count}</span>}
   </h3>
 );
 
 /** A permission and its level: name mono `--muted` left, level mono `--text` right, one left edge. */
 const PermissionRow = ({ name, level, levelClass }: { readonly name: string; readonly level: string; readonly levelClass?: string }) => (
-  <li className="flex h-[30px] items-center justify-between gap-3 font-mono text-[12.5px]">
+  <li className="flex h-[30px] items-center justify-between gap-3 font-mono text-ui">
     <span className="truncate text-muted">{name}</span>
     <span className={cn("shrink-0 text-text", levelClass)}>{level}</span>
   </li>
@@ -121,7 +121,7 @@ const ExistingAppForm = () => {
         <label htmlFor="private-key" className="mb-1.5 block text-sm font-medium text-muted">{t("github.privateKey")}</label>
         <Textarea
           id="private-key"
-          className="min-h-24 font-mono text-[12.5px]"
+          className="min-h-24 font-mono text-ui"
           spellCheck={false}
           autoComplete="off"
           disabled={busy}
@@ -174,11 +174,11 @@ const NewAppForm = ({ webhookPossible }: { readonly webhookPossible: boolean | u
         </Field>
       </div>
       {webhookPossible === false ? (
-        <p className="mb-4 flex max-w-[560px] items-start gap-2.5 text-[12.5px] text-muted">
+        <p className="mb-4 flex max-w-[560px] items-start gap-2.5 text-ui text-muted">
           <InfoIcon aria-hidden className="mt-px size-[15px] shrink-0 stroke-[1.75]" />
           <span>
             {before}
-            <code className="font-mono text-[12px]">OSTRA_CORE_PUBLIC_URL</code>
+            <code className="font-mono text-sm">OSTRA_CORE_PUBLIC_URL</code>
             {after}
           </span>
         </p>
@@ -206,7 +206,7 @@ const Repositories = ({ installation }: { readonly installation: Installation })
     <Section
       title={t("github.repositories")}
       {...(repos.data === undefined ? {} : { count: repos.data.length })}
-      end={<span className="font-mono text-[11.5px] text-faint">{t("github.fromAccount", { login: installation.accountLogin })}</span>}
+      end={<span className="font-mono text-[12.5px] text-faint">{t("github.fromAccount", { login: installation.accountLogin })}</span>}
     >
       {repos.isPending ? <SkeletonRows /> : null}
       {repos.error === null ? null : <ErrorLine className="border-t border-line py-3">{t("github.reposFailed")}</ErrorLine>}
@@ -215,9 +215,9 @@ const Repositories = ({ installation }: { readonly installation: Installation })
           <li key={repo.hostRepoId} className="grid h-[38px] grid-cols-[minmax(0,58%)_minmax(0,1fr)_auto] items-center gap-3 px-2.5">
             <span className="flex min-w-0 items-center gap-3">
               {repo.private ? <LockIcon aria-hidden className="size-[15px] stroke-[1.75] text-muted" /> : <GlobeIcon aria-hidden className="size-[15px] stroke-[1.75] text-muted" />}
-              <span className="truncate font-mono text-[12.5px] text-text">{repo.fullName}</span>
+              <span className="truncate font-mono text-ui text-text">{repo.fullName}</span>
             </span>
-            <span className="flex min-w-0 items-center gap-2 font-mono text-[12.5px] text-faint">
+            <span className="flex min-w-0 items-center gap-2 font-mono text-ui text-faint">
               <GitBranchIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />
               <span className="truncate">{repo.defaultBranch}</span>
             </span>
@@ -275,7 +275,7 @@ const Installations = ({ slug }: { readonly slug: string | null }) => {
                   <UserIcon aria-hidden className="size-[15px] stroke-[1.75] text-muted" />
                 )}
                 <span className="truncate font-medium">{installation.accountLogin}</span>
-                <span className="hidden font-mono text-[12.5px] text-faint sm:inline">{installation.accountKind === "organization" ? t("github.organization") : t("github.user")}</span>
+                <span className="hidden font-mono text-ui text-faint sm:inline">{installation.accountKind === "organization" ? t("github.organization") : t("github.user")}</span>
                 <span className="ml-auto whitespace-nowrap text-muted">{installation.repositorySelection === "all" ? t("github.allRepos") : t("github.selectedRepos")}</span>
                 <span className="relative ml-6 sm:ml-[120px]">
                   <OutLink href={installationSettingsUrl(installation)}>{t("github.configure")}</OutLink>
@@ -300,7 +300,7 @@ const BotName = ({ name, email }: { readonly name: string; readonly email: strin
           <span tabIndex={0} className="truncate font-mono">{name}</span>
         </Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content side="bottom" sideOffset={6} className="z-50 rounded-md border border-line-2 bg-surface px-2 py-1 font-mono text-[11.5px] text-text shadow-lg">
+          <Tooltip.Content side="bottom" sideOffset={6} className="z-50 rounded-md border border-line-2 bg-surface px-2 py-1 font-mono text-[12.5px] text-text shadow-lg">
             {email}
           </Tooltip.Content>
         </Tooltip.Portal>
@@ -357,12 +357,12 @@ const RequestProperties = () => {
       </ul>
       <p className="mt-1 text-sm text-faint">
         {workflowsBefore}
-        <code className="font-mono text-[11.5px]">.github/workflows/</code>
+        <code className="font-mono text-[12.5px]">.github/workflows/</code>
         {workflowsAfter}
       </p>
       <Sep />
       <PanelLabel>{t("github.events")}</PanelLabel>
-      <div className="flex h-[30px] items-center justify-between gap-3 text-[12.5px]">
+      <div className="flex h-[30px] items-center justify-between gap-3 text-ui">
         <span className="text-muted">{t("github.webhook")}</span>
         <span className="text-text">{webhookPossible ? t("github.webhookOn") : t("github.webhookOff")}</span>
       </div>
@@ -443,7 +443,7 @@ export const GitHubView = () => {
           <Section title={t("github.connection")}>
             <div className="flex h-10 items-center gap-3 border-y border-line px-2.5">
               <Status tone="green" className="w-[140px] text-green">{t("github.connected")}</Status>
-              <span className="font-mono text-[12.5px] text-text">{connected.slug ?? "–"}</span>
+              <span className="font-mono text-ui text-text">{connected.slug ?? "–"}</span>
               {justConnected ? (
                 <span className="ml-auto flex items-center gap-1.5 text-faint">
                   <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />

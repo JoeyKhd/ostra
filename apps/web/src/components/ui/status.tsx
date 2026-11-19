@@ -43,7 +43,7 @@ export const Chip = ({ children, className }: { readonly children: ReactNode; re
 export const Code = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (
   <pre
     className={cn(
-      "overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3.5 py-2.5 font-mono text-[12.5px] leading-[1.75] text-text",
+      "overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3.5 py-2.5 font-mono text-ui leading-[1.75] text-text",
       className,
     )}
   >

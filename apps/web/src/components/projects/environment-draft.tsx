@@ -25,7 +25,7 @@ const Sep = () => <hr className="my-3.5 border-line" />;
 
 /** A key/value row (`.row2`): an 84px key column, 30px tall, 12.5px. */
 const KeyValue = ({ label, children }: { readonly label: string; readonly children: ReactNode }) => (
-  <div className="grid min-h-[30px] grid-cols-[84px_minmax(0,1fr)] items-center gap-2 text-[12.5px]">
+  <div className="grid min-h-[30px] grid-cols-[84px_minmax(0,1fr)] items-center gap-2 text-ui">
     <span className="text-muted">{label}</span>
     <span className="min-w-0 truncate font-mono text-text">{children}</span>
   </div>
@@ -46,7 +46,7 @@ export const EnvironmentDraft = ({ repo }: { readonly repo: DraftRepo | null }) 
     return (
       <div data-testid="environment-draft">
         <Label>{t("projects.draftTitle")}</Label>
-        <p className="text-[12.5px] text-faint">{t("projects.draftEmpty")}</p>
+        <p className="text-ui text-faint">{t("projects.draftEmpty")}</p>
       </div>
     );
   }
@@ -61,7 +61,7 @@ export const EnvironmentDraft = ({ repo }: { readonly repo: DraftRepo | null }) 
             <Skeleton className="w-32" />
           </div>
         ))}
-        <p className="mt-2 text-[12.5px] text-faint">{t("projects.draftReading", { repo: repo.fullName })}</p>
+        <p className="mt-2 text-ui text-faint">{t("projects.draftReading", { repo: repo.fullName })}</p>
       </div>
     );
   }
@@ -69,8 +69,8 @@ export const EnvironmentDraft = ({ repo }: { readonly repo: DraftRepo | null }) 
     return (
       <div data-testid="environment-draft">
         {header}
-        <p role="alert" className="text-[12.5px] text-red">{errorText(detection.error)}</p>
-        <p className="mt-1.5 text-[12.5px] text-faint">{t("projects.draftFailed")}</p>
+        <p role="alert" className="text-ui text-red">{errorText(detection.error)}</p>
+        <p className="mt-1.5 text-ui text-faint">{t("projects.draftFailed")}</p>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export const EnvironmentDraft = ({ repo }: { readonly repo: DraftRepo | null }) 
       <div data-testid="environment-draft">
         {header}
         {baseImage}
-        <p className="mt-2 text-[12.5px] text-faint">{t("environment.nothingFound")}</p>
+        <p className="mt-2 text-ui text-faint">{t("environment.nothingFound")}</p>
       </div>
     );
   }
@@ -121,8 +121,8 @@ export const EnvironmentDraft = ({ repo }: { readonly repo: DraftRepo | null }) 
           <Label end={draft.variables.length}>{t("projects.variables")}</Label>
           <ul>
             {draft.variables.map((variable) => (
-              <li key={variable.name} className="flex h-7 items-center gap-2 border-t border-line first:border-t-0">
-                <span className="min-w-0 truncate font-mono text-[12.5px] text-text">{variable.name}</span>
+              <li key={variable.name} className="flex h-[30px] items-center gap-2 border-t border-line first:border-t-0">
+                <span className="min-w-0 truncate font-mono text-ui text-text">{variable.name}</span>
                 <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-sm text-faint">
                   {variable.secret ? <LockIcon aria-label={t("projects.secret")} className="size-3 stroke-[1.75]" /> : null}
                   {variable.source}
@@ -138,9 +138,9 @@ export const EnvironmentDraft = ({ repo }: { readonly repo: DraftRepo | null }) 
           <Label end={draft.services.length}>{t("projects.services")}</Label>
           <ul>
             {draft.services.map((service) => (
-              <li key={service.name} title={t("environment.servicesHelp")} className="flex h-7 items-center gap-2.5 border-t border-line first:border-t-0">
+              <li key={service.name} title={t("environment.servicesHelp")} className="flex h-[30px] items-center gap-2.5 border-t border-line first:border-t-0">
                 <Dot tone="grey" />
-                <span className="min-w-0 truncate font-mono text-[12.5px] text-text">{service.image ?? service.name}</span>
+                <span className="min-w-0 truncate font-mono text-ui text-text">{service.image ?? service.name}</span>
                 <span className="ml-auto shrink-0 font-mono text-sm text-faint">{t("environment.notOnHost")}</span>
               </li>
             ))}

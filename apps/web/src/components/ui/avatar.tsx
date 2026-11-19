@@ -7,7 +7,7 @@ export const Avatar = ({ name, className }: { readonly name: string; readonly cl
     role="img"
     aria-label={name}
     title={name}
-    className={cn("inline-grid size-[22px] shrink-0 place-items-center rounded-full bg-line-2 text-[10px] font-semibold text-text", className)}
+    className={cn("inline-grid size-[22px] shrink-0 place-items-center rounded-full bg-line-2 text-[11px] font-semibold text-text", className)}
   >
     {initials(name)}
   </span>

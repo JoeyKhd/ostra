@@ -51,7 +51,7 @@ const useNow = (everyMs: number): number => {
 
 /** One grid for every row of every group, so the columns line up (project.md, "Wrong in the image"). */
 const rowGrid =
-  "grid items-center grid-cols-[28px_88px_minmax(0,1fr)_40px] md:grid-cols-[28px_88px_minmax(0,26fr)_minmax(0,30fr)_128px_22px_48px]";
+  "grid items-center grid-cols-[28px_88px_minmax(0,1fr)_40px] md:grid-cols-[28px_84px_minmax(0,30fr)_minmax(0,26fr)_120px_22px_44px]";
 
 const markIcon = "size-[13px] stroke-[1.75]";
 const bandIcon = "size-[15px] stroke-[1.75]";
@@ -84,7 +84,7 @@ const Doing = ({ segments }: { readonly segments: readonly Segment[] }) =>
     segment.style === "plain" ? (
       <Fragment key={i}>{segment.text}</Fragment>
     ) : (
-      <span key={i} className={cn("text-text", segment.style === "code" && "font-mono text-[12.5px]")}>
+      <span key={i} className={cn("text-text", segment.style === "code" && "font-mono text-ui")}>
         {segment.text}
       </span>
     ),
@@ -100,7 +100,7 @@ const Row = ({ task, now }: { readonly task: TaskRow; readonly now: number }) =>
         <Mark mark={taskMark(task.state)} />
         <span className="sr-only">{taskStateText(task.state)}</span>
       </span>
-      <span className="truncate font-mono text-[12.5px] text-faint">{task.key}</span>
+      <span className="truncate font-mono text-ui text-faint">{task.key}</span>
       <span className="truncate pr-4 text-text">{task.title}</span>
       <span className="hidden truncate pr-4 text-muted md:block">
         <Doing segments={doingNow(task)} />
@@ -113,12 +113,12 @@ const Row = ({ task, now }: { readonly task: TaskRow; readonly now: number }) =>
             ) : (
               <ServerIcon aria-hidden className={cn(markIcon, "shrink-0 text-faint")} />
             )}
-            <span className="truncate font-mono text-[12.5px] text-muted">{task.runner.name}</span>
+            <span className="truncate font-mono text-ui text-muted">{task.runner.name}</span>
           </>
         )}
       </span>
       <span className="hidden md:block">{task.driver === null ? null : <Avatar name={task.driver.name} />}</span>
-      <span className="text-right font-mono text-[12.5px] text-faint">{formatAge(task.createdAt, now)}</span>
+      <span className="text-right font-mono text-ui text-faint">{formatAge(task.createdAt, now)}</span>
     </Link>
   </li>
 );
@@ -140,7 +140,7 @@ const BandIcon = ({ group, open }: { readonly group: TaskGroup; readonly open: b
   }
 };
 
-const bandClass = "flex h-8 w-full items-center gap-2 rounded-sm bg-surface px-3 text-left";
+const bandClass = "flex h-[34px] w-full items-center gap-2 rounded-sm bg-surface px-3 text-left";
 
 const BandLabel = ({ group, count, open }: { readonly group: TaskGroup; readonly count: number; readonly open: boolean }) => (
   <>
@@ -148,7 +148,7 @@ const BandLabel = ({ group, count, open }: { readonly group: TaskGroup; readonly
       <BandIcon group={group} open={open} />
     </span>
     <span className="font-semibold text-text">{groupText(group)}</span>
-    <span className="font-mono text-[11.5px] font-normal text-faint">{count}</span>
+    <span className="font-mono text-[12.5px] font-normal text-faint">{count}</span>
   </>
 );
 
@@ -233,7 +233,7 @@ export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) =>
             {project.data.repos.map((repo, i) => (
               <Fragment key={repo.repoId}>
                 {i > 0 ? ", " : null}
-                <span className="font-mono text-[13px] text-text">{repo.fullName}</span>
+                <span className="font-mono text-body text-text">{repo.fullName}</span>
               </Fragment>
             ))}
             {counts.map((count) => <Fragment key={count}>{` · ${count}`}</Fragment>)}

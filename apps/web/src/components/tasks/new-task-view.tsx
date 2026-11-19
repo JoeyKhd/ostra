@@ -63,7 +63,7 @@ const Trigger = ({ className, children, chevron = true, ...props }: ComponentPro
   <button
     type="button"
     className={cn(
-      "inline-flex h-7 min-w-0 items-center gap-[7px] rounded-md px-2 text-[12.5px] font-medium text-text enabled:hover:bg-raise disabled:cursor-default data-[state=open]:bg-raise [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      "inline-flex h-[30px] min-w-0 items-center gap-[7px] rounded-md px-2 text-ui font-medium text-text enabled:hover:bg-raise disabled:cursor-default data-[state=open]:bg-raise [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
       className,
     )}
     {...props}
@@ -87,7 +87,7 @@ const ErrorLine = ({ text }: { readonly text: string }) => {
   const word = "Models";
   const linked = text.endsWith(` ${word}`);
   return (
-    <p role="alert" className="mt-2 flex items-start gap-1.5 text-[12.5px] text-red" data-testid="new-task-error">
+    <p role="alert" className="mt-2 flex items-start gap-1.5 text-ui text-red" data-testid="new-task-error">
       <CircleAlertIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75]" />
       <span>
         {linked ? text.slice(0, -word.length) : text}
@@ -140,7 +140,7 @@ const ProjectPicker = ({ projects, project, onPick, disabled }: {
                 pick(first.id);
               }
             }}
-            className="mb-1 h-7 w-full border-b border-line bg-transparent px-2 text-body text-text outline-none placeholder:text-faint focus-visible:outline-none"
+            className="mb-1 h-[30px] w-full border-b border-line bg-transparent px-2 text-body text-text outline-none placeholder:text-faint focus-visible:outline-none"
           />
           <ul role="listbox" aria-label={t("newTask.pickProject")}>
             {shown.map((item) => (
@@ -148,7 +148,7 @@ const ProjectPicker = ({ projects, project, onPick, disabled }: {
                 <button
                   type="button"
                   onClick={() => { pick(item.id); }}
-                  className={cn("flex h-7 w-full items-center gap-[9px] rounded-sm px-2 text-left hover:bg-sel", item.id === project.id && "bg-sel")}
+                  className={cn("flex h-[30px] w-full items-center gap-[9px] rounded-sm px-2 text-left hover:bg-sel", item.id === project.id && "bg-sel")}
                 >
                   <ProjectDot projectId={item.id} />
                   <span className="truncate">{item.name}</span>
@@ -177,7 +177,7 @@ const ProfileTrigger = ({ profile }: { readonly profile: ProjectDetail["defaultC
         </Trigger>
       </Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content side="bottom" sideOffset={6} className="z-50 max-w-[260px] rounded-md border border-line-2 bg-surface px-2 py-1 text-[12px] text-text shadow-lg">
+        <Tooltip.Content side="bottom" sideOffset={6} className="z-50 max-w-[260px] rounded-md border border-line-2 bg-surface px-2 py-1 text-sm text-text shadow-lg">
           {t("newTask.profileReadOnly")}
         </Tooltip.Content>
       </Tooltip.Portal>
@@ -212,7 +212,7 @@ const RunOnPicker = ({ runners, runner, onPick, disabled }: {
       {(runners ?? []).map((item) => (
         <DropdownMenuItem key={item.id} onSelect={() => { onPick(item.id); }} data-runner={item.name}>
           <LaptopIcon aria-hidden />
-          <span className="font-mono text-[12.5px]">{item.name}</span>
+          <span className="font-mono text-ui">{item.name}</span>
           <span className="text-muted">· {t("newTask.yoursShort")}</span>
           <span className="ml-auto pl-3 text-sm">
             {item.state === "online" ? <Status tone="green" className="text-muted">{t("newTask.online")}</Status> : <span className="text-faint">{runnerStateText(item.state)}</span>}
@@ -230,7 +230,7 @@ const RunOnPicker = ({ runners, runner, onPick, disabled }: {
 
 // ---------- below the composer ----------
 
-const Code = ({ children }: { readonly children: ReactNode }) => <span className="font-mono text-[12.5px] text-text">{children}</span>;
+const Code = ({ children }: { readonly children: ReactNode }) => <span className="font-mono text-ui text-text">{children}</span>;
 
 /** A message with nodes in its `{name}` placeholders (repo names and branches in mono). */
 const fill = (template: string, parts: Readonly<Record<string, ReactNode>>): ReactNode[] =>
@@ -267,7 +267,7 @@ const WhatHappensNext = ({ project, agentName, runner, slug }: {
           {slug === null ? t("newTask.nextBranchEmpty", { agent: agentName }) : (
             <>
               {t("newTask.nextBranch", { agent: agentName })}{" "}
-              <span className="font-mono text-[12.5px] text-text" data-testid="branch-preview">ostra/<span className="text-faint">…</span>-{slug}</span>
+              <span className="font-mono text-ui text-text" data-testid="branch-preview">ostra/<span className="text-faint">…</span>-{slug}</span>
             </>
           )}
         </NextRow>
@@ -332,7 +332,7 @@ const Recent = ({ project, tasks, agentName, now }: {
             <Link href={`/tasks/${task.id}`} className="flex h-[38px] items-center gap-3 text-body">
               <span className="w-[110px] shrink-0"><RecentState task={task} /></span>
               <span className="min-w-0 flex-1 truncate text-text">{task.title}</span>
-              <span className="hidden min-w-0 max-w-[40%] truncate text-[12.5px] text-muted sm:block"><RecentWhat task={task} agentName={agentName} /></span>
+              <span className="hidden min-w-0 max-w-[40%] truncate text-ui text-muted sm:block"><RecentWhat task={task} agentName={agentName} /></span>
               <span className="w-8 shrink-0 text-right font-mono text-sm text-faint">{formatAge(task.updatedAt, now)}</span>
             </Link>
           </li>
@@ -349,7 +349,7 @@ const PanelSkeleton = () => (
     {[t("newTask.thisTask"), t("newTask.agentProfile"), t("newTask.runsOn")].map((title) => (
       <PropGroup key={title} title={title}>
         {[0, 1, 2].map((row) => (
-          <div key={row} className="grid h-[30px] grid-cols-[96px_minmax(0,1fr)] items-center gap-2">
+          <div key={row} className="grid h-8 grid-cols-[92px_minmax(0,1fr)] items-center gap-2">
             <Skeleton className="w-[56px]" />
             <Skeleton className="w-[120px]" />
           </div>
@@ -372,8 +372,8 @@ const Properties = ({ project, detail, runner }: {
         <PropRow label={t("newTask.keyProject")}><ProjectDot projectId={project.id} /><span className="truncate">{project.name}</span></PropRow>
         {repo === undefined ? null : (
           <>
-            <PropRow label={t("newTask.keyRepo")}><span className="truncate font-mono text-[12.5px]">{repo.fullName}</span></PropRow>
-            <PropRow label={t("newTask.keyBase")}><span className="truncate font-mono text-[12.5px]">{repo.defaultBranch}</span></PropRow>
+            <PropRow label={t("newTask.keyRepo")}><span className="truncate font-mono text-ui">{repo.fullName}</span></PropRow>
+            <PropRow label={t("newTask.keyBase")}><span className="truncate font-mono text-ui">{repo.defaultBranch}</span></PropRow>
           </>
         )}
         <PropRow label={t("newTask.keyBranch")}><span className="text-muted">{t("newTask.branchLater")}</span></PropRow>
@@ -405,7 +405,7 @@ const Properties = ({ project, detail, runner }: {
           <>
             <PropRow label={t("newTask.keyRunner")}>
               <LaptopIcon aria-hidden />
-              <span className="truncate font-mono text-[12.5px]">{runner.name}</span>
+              <span className="truncate font-mono text-ui">{runner.name}</span>
               <span className="shrink-0 text-muted">· {t("newTask.yoursShort")}</span>
             </PropRow>
             <PropRow label={t("newTask.keyState")}>
@@ -515,7 +515,7 @@ export const NewTaskView = () => {
             autoFocus
             readOnly={starting}
             disabled={loading}
-            className="block max-h-[50vh] min-h-[150px] w-full flex-1 resize-none bg-transparent text-[14px] leading-[1.6] text-text outline-none [field-sizing:content] placeholder:text-faint focus-visible:outline-none"
+            className="block max-h-[50vh] min-h-[150px] w-full flex-1 resize-none bg-transparent text-[15.5px] leading-[1.6] text-text outline-none [field-sizing:content] placeholder:text-faint focus-visible:outline-none"
             placeholder={t("newTask.placeholder")}
             value={prompt}
             onChange={(event) => { setPrompt(event.target.value); }}

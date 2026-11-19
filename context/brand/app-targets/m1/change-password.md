@@ -134,6 +134,8 @@ So the band is neutral: a raised graphite fill, a white lead sentence, the teal 
 
 ## Tokens (from `../../app-concepts/html/graphite.css`)
 
+> **Scale.** This page keeps the sizes and colours below: its picture was matched at `graphite.css`'s scale, and `.auth-scale` holds it there while the panel moved to the pictures' larger scale (`README.md`, "Scale").
+
 | Token | Hex | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | form column, page |

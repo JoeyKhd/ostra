@@ -31,7 +31,7 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
             <Link
               href={`/projects/${project.id}`}
               onClick={onNavigate}
-              className={cn("flex h-[26px] items-center gap-[9px] whitespace-nowrap rounded-sm px-2 font-medium text-muted hover:text-text", open && "text-text")}
+              className={cn("flex h-7 items-center gap-2.5 whitespace-nowrap rounded-sm px-2 font-medium text-text-2 hover:text-text", open && "text-text")}
             >
               <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(project.id) }} />
               <span className="min-w-0 truncate">{project.name}</span>
@@ -48,7 +48,7 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
                   icon={<ListChecksIcon />}
                   onNavigate={onNavigate}
                   {...(project.activeCount > 0
-                    ? { end: <span className="font-mono text-[11px] font-medium text-faint" aria-label={t("shell.activeTasks", { n: project.activeCount })}>{project.activeCount}</span> }
+                    ? { end: <span className="font-mono text-xs font-medium text-faint" aria-label={t("shell.activeTasks", { n: project.activeCount })}>{project.activeCount}</span> }
                     : {})}
                 >
                   {t("shell.tasks")}

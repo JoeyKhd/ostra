@@ -137,6 +137,8 @@ While the reopen is in flight, both buttons read `Reopening…`, disabled. On su
 
 ## Components (shadcn/ui names) and tokens
 
+> **Scale.** The sizes and colours below are `graphite.css`'s. The panel is built at the approved pictures' scale, which wins on size, spacing and contrast: body 14.5px, dense rows 14px, secondary 13px, small 12px, title 26px, `--muted` `#B4B7BB`, `--faint` `#8B8E93`, buttons 30px, a 46px top bar and a 320px properties panel (380px with a form). The measured values are in `../m1/README.md`, "Scale".
+
 | Part | Component |
 |---|---|
 | Needs-you block | plain markup (the existing `data-testid="needs-you"` block), `Button` with an `amber` variant (as the approval's `Approve once`), `Collapsible` for `Show the error` |
