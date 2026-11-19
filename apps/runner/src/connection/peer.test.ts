@@ -323,6 +323,31 @@ describe("a runner killed between spool write and ack", () => {
   }, 30_000);
 });
 
+describe("a runner restarted while a session waits between turns", () => {
+  it("still names the session as restored, though every event was acked, and its next event follows on", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    const first = await connect(fake);
+    const channel = await first.openSession({ taskId, sessionId, leaseEpoch });
+    await emitMany(channel, 0, 3);
+    await channel.drained();
+    // The turn is over and every event is acked; the session stays open, idle, until the runner stops.
+    expect(first.report().sessions).toEqual([{ sessionId, lastSeq: 3, ackedUpTo: 3, state: "open" }]);
+    await first.stop();
+    connections.splice(connections.indexOf(first), 1);
+
+    const restarted = await connect(fake);
+    // Its agent is gone with the old process: the task host reports it, so the server isn't left
+    // with a session that is idle forever.
+    expect(restarted.restoredSessions().map((ref) => ref.sessionId)).toEqual([sessionId]);
+    const again = await restarted.openSession({ taskId, sessionId, leaseEpoch });
+    await again.emit({ kind: "session.crashed", error: "the runner restarted while the session was running" });
+    again.close();
+    await gw.waitFor(() => restarted.report().sessions.length === 0);
+    expect(storedTexts(gw)).toEqual(["line 0", "line 1", "line 2", "session.crashed"]);
+    expect(gw.protocolErrors).toEqual([]);
+  });
+});
+
 describe("commands", () => {
   const countingHandlers = (calls: string[]): CommandHandlers => ({
     ...rejectAllHandlers,

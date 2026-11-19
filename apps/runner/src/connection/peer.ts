@@ -362,6 +362,13 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   }
   await persist();
   for (const session of [...sessions.values()]) {
+    // A session that was open is kept, even with every event acked, until its producer reopens it:
+    // the task host to report that its agent is gone (`restoredSessions`), or a sidecar's dispatch
+    // of the same session. An idle session between turns has nothing unacked, and dropping it here
+    // left the server holding it idle forever; a reopen also continues its spool's sequence.
+    if (session.restored) {
+      continue;
+    }
     await settleDrained(session);
   }
 
