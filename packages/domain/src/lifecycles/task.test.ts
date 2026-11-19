@@ -63,6 +63,15 @@ describe("milestone 1's path for a code task", () => {
     });
   });
 
+  it("F-047 (ticket 38): a crash in review needs you only while a member's message is owed", () => {
+    expect(go(code({ state: "in_review", subState: "waiting_for_reviewer" }), { type: "crashed", unanswered: true })).toEqual({
+      ok: true,
+      task: code({ state: "needs_you", reason: "crashed" }),
+    });
+    expect(go(code({ state: "in_review", subState: "waiting_for_reviewer" }), { type: "crashed", unanswered: false }).ok).toBe(false);
+    expect(go(code({ state: "in_review", subState: "waiting_for_reviewer" }), { type: "crashed" }).ok).toBe(false);
+  });
+
   it("stops from queued, preparing and running (F-025)", () => {
     for (const status of [{ state: "queued" }, { state: "preparing" }, { state: "running" }] satisfies CodeTaskState[]) {
       expect(go(code(status), { type: "stop", reason: "requested" })).toEqual({

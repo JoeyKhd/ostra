@@ -65,8 +65,11 @@ export type TaskInput =
   /** The box is ready and the session started. */
   | { readonly type: "box_ready" }
   | { readonly type: "setup_failed" }
-  /** The session, the box or the environment crashed. */
-  | { readonly type: "crashed" }
+  /**
+   * The session, the box or the environment crashed. `unanswered`: a member's message is still owed
+   * (the crashed turn was answering it), so a code task in review needs you as well (F-047).
+   */
+  | { readonly type: "crashed"; readonly unanswered?: boolean }
   /** Something a person must act on came up while the task ran (a question, an approval, a stall…). */
   | { readonly type: "needs_you"; readonly reason: Exclude<NeedsYouReason, "setup_failed" | "crashed" | "no_changes"> }
   /** A member answered, approved, steered or reopened. `boxWarm`: the box is still there, so the task runs at once. */
@@ -265,8 +268,10 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
         ? moveTo({ state: "in_review", subState: "waiting_for_reviewer" })
         : refuse(input, from);
     case "crashed":
-      // A fixing round runs a session in a box, so it can crash while the task is in review.
-      if (status.state === "in_review" && (status.subState === "fixing_ci" || status.subState === "fixing_findings")) {
+      // A fixing round runs a session in a box, so it can crash while the task is in review. So can
+      // a reopen's turn, once the save after the failed turn moved the task back to review: its
+      // message is still owed, and one click must carry on (F-047, ticket 38).
+      if (status.state === "in_review" && (status.subState === "fixing_ci" || status.subState === "fixing_findings" || input.unanswered === true)) {
         return moveTo({ state: "needs_you", reason: "crashed" });
       }
       break;

@@ -14,6 +14,7 @@ import { recordPlanProposedInTx, recordQuestionAskedInTx } from "./plans-questio
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx, setNeedsYouSummaryInTx } from "./needs-you-items.ts";
 import { releaseLeaseInTx } from "./record-session-end.ts";
+import { unansweredMessagesInTx } from "./reopen.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
@@ -339,7 +340,10 @@ const applyEffects = async (
         await moveSessionInTx(moveDeps, current, { type: "crash" });
         await reloadSession();
         await endSessionTimersInTx(deps, tx, sessionRef);
-        const moved = await moveTaskInTx(moveDeps, taskRow, { type: "crashed" });
+        // A reopen's turn that crashed after its save moved the task back to review still owes its
+        // message: the task needs you, and the one-click reopen replays it (F-047).
+        const unanswered = taskRow.state === "in_review" && (await unansweredMessagesInTx(tx, taskIdSchema.parse(task.id))).length > 0;
+        const moved = await moveTaskInTx(moveDeps, taskRow, { type: "crashed", unanswered });
         await reloadTask();
         if (moved) {
           await createNeedsYouItemInTx(deps, tx, {

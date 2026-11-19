@@ -5,8 +5,8 @@ import path from "node:path";
 import { silentLogger } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { parseServerSettings } from "@ostra/domain";
-import { segmentIdSchema, turnIdSchema } from "@ostra/protocol";
+import { appendServerEvent, parseServerSettings } from "@ostra/domain";
+import { clientMessageIdSchema, gitShaSchema, memberIdSchema, repoIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { DownFrame, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -129,6 +129,42 @@ describe("a task that crashes", () => {
       await sendEvents(peer, second, [{ kind: "turn.started", turnId }]);
       expect(await test.db.task.findUniqueOrThrow({ where: { id: second.taskId } })).toMatchObject({ state: "running" });
       expect(await test.db.session.findUniqueOrThrow({ where: { id: second.sessionId } })).toMatchObject({ state: "running" });
+    } finally {
+      peer.close();
+    }
+  }, 60_000);
+
+  it("F-047 (ticket 38): a reopen's turn that crashes after its save moved the task to review still needs you, and owes its message", async () => {
+    const runner: RegisteredRunner = await registerPersonal(harness, test.db, fixture.a.member);
+    const peer = await connect(harness, runner);
+    try {
+      await peer.next("welcome");
+      const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+      // The member's message, as a reopen writes it: the turn below answers it.
+      await core.db.$transaction((tx) =>
+        appendServerEvent(tx, {
+          organizationId: task.organizationId,
+          projectId: world.projectId,
+          taskId: task.taskId,
+          sessionId: task.sessionId,
+          at: Date.now(),
+          event: { kind: "user.message", memberId: memberIdSchema.parse(fixture.a.member.id), clientMessageId: clientMessageIdSchema.parse("crash-after-save-1"), text: "Add a second file.", delivery: "queued" },
+        }),
+      );
+      await core.db.$transaction((tx) => core.jobs.sendInTx(tx, "task.dispatch", dispatchPayload(task)));
+      await acceptNextDispatch(peer, task);
+      // The agent dies mid-turn; the runner still saves the work, which moves the task to review,
+      // and only then says the session crashed (the order the live run showed).
+      const repoId = repoIdSchema.parse(world.repoId);
+      await sendEvents(peer, task, [
+        { kind: "turn.started", turnId },
+        { kind: "turn.failed", turnId, error: "the agent's process exited mid-turn" },
+        { kind: "session.saved", turnOrdinal: 1, repos: [{ repoId, headSha: gitShaSchema.parse("c".repeat(40)), ahead: true, hiddenRefSha: null }], archive: null },
+      ]);
+      await waitFor("the save's move to review", async () => (await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state === "in_review");
+      await sendEvents(peer, task, [{ kind: "session.crashed", error: "the agent's process exited mid-turn" }], 4);
+      expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
+      expect(await test.db.needsYouItem.findMany({ where: { taskId: task.taskId, reason: "crashed" } })).toMatchObject([{ state: "open" }]);
     } finally {
       peer.close();
     }
