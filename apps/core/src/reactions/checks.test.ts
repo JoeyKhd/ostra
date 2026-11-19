@@ -268,6 +268,25 @@ describe("checks before the PR (F-054)", () => {
     expect(await test.db.checkRun.count({ where: { taskId: task.taskId } })).toBe(6);
   });
 
+  it("F-054: a check that timed out, or couldn't run, fails the PR as a failure does: a draft, its output shown, ready once it passes", async () => {
+    const task = await runningTask();
+    // Every other check passed: the timeout alone makes the PR a draft.
+    await turn(task, 1, [{ repoId: repo(), head: "slow-1" }], [lint("passed"), unit("timed-out", "still running after 300 s")]);
+    let pull = pullOf(task);
+    expect(pull.draft).toBe(true);
+    expect(pull.body).toContain("- **test**: ⏱️ timed out");
+    expect(pull.body).toContain("still running after 300 s");
+    expect(await test.db.taskPullRequest.findFirst({ where: { taskRepo: { taskId: task.taskId } } })).toMatchObject({ draft: true, draftByOstra: true });
+    // Passing again marks it ready; then a check that couldn't run makes it a draft once more.
+    await turn(task, 2, [{ repoId: repo(), head: "slow-2" }], [lint("passed"), unit("passed")]);
+    expect(pullOf(task).draft).toBe(false);
+    await turn(task, 3, [{ repoId: repo(), head: "slow-3" }], [lint("error", "the check's command couldn't start"), unit("passed")]);
+    pull = pullOf(task);
+    expect(pull.draft).toBe(true);
+    expect(pull.body).toContain("the check's command couldn't start");
+    expect(await test.db.taskPullRequest.findFirst({ where: { taskRepo: { taskId: task.taskId } } })).toMatchObject({ draft: true, draftByOstra: true });
+  });
+
   it("F-054: a PR a person made a draft stays a draft when the checks pass, and a person's edit of the description stays", async () => {
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: "person-1" }], [lint("passed"), unit("passed")]);
