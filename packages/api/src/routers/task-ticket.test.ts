@@ -217,13 +217,19 @@ describe("F-033, F-068: capabilities", () => {
     expect((await caps(await ticketTask("ENG-27", "needs_you"))).stop).toBe(true);
   });
 
-  it("offers a reopen from stopped, in review, done and the waiting reasons; a merged task says why not; one-click only for a limit or a crash", async () => {
+  it("F-066: offers a reopen from stopped, in review, done, merged with a merged repo and the waiting reasons; a merged task with no merged repo says why not; one-click only for a limit or a crash", async () => {
     expect(await caps(await ticketTask("ENG-30", "stopped"))).toMatchObject({ reopen: true, reopenBlocked: null, reopenWithoutText: false });
     expect(await caps(await ticketTask("ENG-31", "in_review"))).toMatchObject({ reopen: true, reopenWithoutText: false });
     expect(await caps(await ticketTask("ENG-32", "running"))).toMatchObject({ reopen: false, reopenBlocked: null });
     const merged = await ticketTask("ENG-33", "in_review");
     await harness.test.db.task.update({ where: { id: merged.taskId }, data: { state: "merged", subState: null } });
     expect(await caps(merged)).toMatchObject({ reopen: false, reopenBlocked: "merged_reopen_later" });
+    // F-066: once a repo records its merge, the merged task reopens on a fresh branch from its base.
+    const mergedRepo = await harness.test.db.repo.findFirstOrThrow({ where: { organizationId } });
+    await harness.test.db.taskRepo.create({
+      data: { organizationId, projectId, taskId: merged.taskId, repoId: mergedRepo.id, branchName: "ostra/eng-33-zzzzzzzz-c", baseBranch: "main", state: "merged", prNumber: 9, prUrl: "https://github.com/ostra-test/test1/pull/9" },
+    });
+    expect(await caps(merged)).toMatchObject({ reopen: true, reopenBlocked: null });
 
     const crashed = await ticketTask("ENG-34", "needs_you");
     await harness.test.db.task.update({ where: { id: crashed.taskId }, data: { needsYouReason: "crashed" } });

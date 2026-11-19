@@ -297,9 +297,12 @@ export const tasksRouter = router({
         : await db.task.count({
             where: { organizationId, projectId: task.projectId, ticketId: task.ticketId, kind: "code", id: { not: task.id }, state: { notIn: [...finishedTaskStates] } },
           });
-    const reopenState = isOneOf(REOPEN_FROM, state) || (state === "needs_you" && isOneOf(REOPEN_FROM_NEEDS_YOU, task.needsYouReason));
+    // F-066 (ticket 24): a merged task reopens on a fresh branch from each merged repo's base; one
+    // whose repos record no merge has no base to start from, and stays blocked as before.
+    const mergedRepo = task.repos.some((repo) => repo.state === "merged");
+    const reopenState = isOneOf(REOPEN_FROM, state) || (state === "merged" && mergedRepo) || (state === "needs_you" && isOneOf(REOPEN_FROM_NEEDS_YOU, task.needsYouReason));
     const reopenBlocked =
-      state === "merged"
+      state === "merged" && !mergedRepo
         ? ("merged_reopen_later" as const)
         : reopenState && otherActive > 0
           ? ("ticket_has_task" as const)
