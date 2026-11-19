@@ -1,0 +1,46 @@
+A flat, straight-on, pixel-precise screenshot of one desktop web app screen, 1440x960 CSS pixels at 2x, dark mode. Not a mockup, no device frame, no perspective, no shadows, no gradients, no glow, no purple, no illustrations, no emoji, no cards. It is the project "Memory" page of "ostra", a self-hosted control panel for coding agents: the short notes a project keeps for its agents (conventions, commands, gotchas), which every new task receives. The FIRST attached image is the approved project Inbox screen of this product: copy its sidebar, top bar, title and lede, the filter row, the 40px hairline list with ONE SELECTED ROW, and the 340px right properties panel EXACTLY, at the same small, dense scale. It must look like another page of the same product. Use the attached logo mark (a rounded shell split by one diagonal channel) in the sidebar's top-left, small, off-white.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, the code chip) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; link teal #6FB8AA; primary button filled warm off-white #F3F0E8 with near-black #0C1D21 text. Amber #FFB224 appears ONLY on the small project dot in the sidebar, nowhere else. The proposals count is a plain faint number, never amber. Kind icons are grey, never coloured.
+
+TYPE: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles 600); IBM Plex Mono for task keys, commands, versions, counts and ages. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1. SIDEBAR, 232px wide, #0A0B0C, a 1px right hairline. Top: logo mark + "Acme Corp" semibold + up-down chevron. A search field "Search" with "⌘K" and a small square off-white button with a black "+". Nav row "Home" (house icon). Faint label "Projects", then "calculator" with an 8px teal square and a small amber dot at the right end; it is expanded, and under it, indented: "Tasks" (list-checks icon, faint "8"), "Inbox" (inbox icon, faint "9"), "Environment" (box icon), "Boards" (kanban icon), "Memory" (book icon, SELECTED: row background #1A1B1E, white text, faint mono count "3"), "Insights" (bar-chart icon), "Repos" (git-branch icon), "Settings" (gear icon). Then "billing-platform" with an 8px violet square. Then "New project" with a plus icon, muted. Faint label "Organization", then: "Runners" (server icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "Members" (users icon), "Insights" (bar-chart icon), "Memory" (book icon), "Audit log" (scroll icon). At the very bottom: a round grey avatar "AK" and "Alex Kim".
+2. TOP BAR, 44px, a 1px bottom hairline: breadcrumbs "calculator  ›  Memory" with "Memory" white. On the far right two buttons 28px tall, 8px apart: an outline button (#131416 fill, 1px #2A2C30 border) with a lightbulb icon, "Proposals" and a faint mono "3"; then the page's one primary button, filled off-white #F3F0E8 with near-black text weight 600: [plus icon] "New note".
+3. MAIN COLUMN (padding 28px 40px):
+   - title "Memory" (Manrope Bold 24px, white)
+   - one muted 13.5px line: "What calculator's agents get before they start, and can search while they work."
+   - 16px below, underline tabs, 32px tall: "Project" white weight 500 with faint mono "10" after it and a 2px white underline; "Organization" muted with faint mono "7"; "Archived" muted with faint mono "2". A 1px hairline under the whole tab row.
+   - 16px below, ONE FILTER ROW, all controls 28px tall with 7px radius: a search input 260px wide (background #131416, 1px #2A2C30 border, a search icon and faint placeholder "Search notes"), then two compact outline filter buttons each ending in a faint chevron-down: "Kind: All" (with "All" in white) and "Source"; then an outline toggle button with a pin icon "Always only". On the far right of the row, faint mono "10 notes".
+   - 14px below, the list: rows 40px, no boxes, 1px #1F2023 hairlines between rows, no header row. One grid so every column lines up: kind icon (16px, grey) | title (13px white, flexible, one line) then, for "always" notes only, a tiny outline chip right after the title: pin icon + "Always" (22px tall, 1px #2A2C30 border, 6px radius, muted 12px) | kind word (muted 12.5px, 100px) | source (150px: a faint mono task key, or a small round avatar + a member's name in muted) | last used (faint mono, right-aligned, 70px).
+     The FOURTH row is SELECTED: #1A1B1E fill with a 6px radius across the whole row, no border.
+     Rows, top to bottom:
+     [ruler icon] "Percent math uses decimal.js, never floats" [Always chip] | "Convention" | avatar "SR" "Sam Rivera" | "4m"
+     [terminal icon] "Run the parser tests with pnpm test:parser" [Always chip] | "Command" | mono "CALC-142" | "12m"
+     [triangle-alert icon] "Regenerate the grammar before the parser tests" | "Gotcha" | mono "CALC-139" | "1h"
+     [terminal icon] "Check JavaScript with node" | "Command" | avatar "AK" "Alex Kim" | "2h"     <- selected row
+     [gavel icon] "Display rounding happens only in format.ts" | "Decision" | mono "CALC-120" | "5h"
+     [ruler icon] "Keypad keys are named after the key, not the symbol" | "Convention" | avatar "AK" "Alex Kim" | "1d"
+     [thumbs-up icon] "Esc clears, Backspace deletes one digit" | "Preference" | avatar "SR" "Sam Rivera" | "2d"
+     [book-a icon] "RPN means reverse Polish notation mode" | "Term" | avatar "PS" "Priya Shah" | "3d"
+     [gavel icon] "Never mock the evaluator in UI tests" | "Decision" | mono "CALC-131" | "6d"
+     [ruler icon] "Snapshots live next to the test file" | "Convention" | avatar "SR" "Sam Rivera" | "Never"
+   - below the last row, empty page background.
+4. PROPERTIES PANEL on the far right, 340px wide, a 1px left hairline, padding 20px 18px. It shows the selected note. Group labels small faint 11px; rows 30px tall with a muted key column (96px) and a white value column, 12.5px; groups split by a hairline.
+   - first line: grey terminal icon + muted "Command" on the left; on the far right a small teal link "Edit"
+   - the note title in white 15px semibold: "Check JavaScript with node"
+   - the note body in #EDEDEE 13px with 1.6 line height: "Run " + an inline mono code chip "node --check <file>" (background #131416, 1px #1F2023 border, 5px radius) + " on every JavaScript file you change, before you finish."
+   - hairline, then rows:
+     Scope      Project · calculator
+     Always     a small off switch (grey track #2A2C30, knob grey) + muted "Off"
+     Source     avatar "AK" Alex Kim
+     Version    mono "2" + muted " · merged from a diff comment on " + teal mono "CALC-180"
+     Edited     mono "3h ago" + muted " by Sam Rivera"
+     Last used  mono "2h ago" + muted " in " + teal mono "CALC-184"
+     Used       mono "41" + muted " sessions"
+   - hairline, small faint label "Versions", then 2 rows 28px, faint mono version number, muted text, faint mono age on the right:
+     "v2"  "Sam Rivera merged a proposal"  "3h"
+     "v1"  "Alex Kim wrote it"  "6d"
+   - then a small teal link "Archive note" at the bottom of the panel, nothing else.
+
+The overall feel: calm, precise, dense, like Linear's issue list inside a quiet graphite console; the eye goes from the selected row to the panel. Clean, crisp, perfectly legible text, every word spelled exactly as written above, aligned to a strict grid, nothing decorative.

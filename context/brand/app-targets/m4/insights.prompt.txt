@@ -1,0 +1,45 @@
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no shadows, no gradients, no glow, no purple, no illustrations, no emoji, no cards. It is the organization's "Insights" page of "ostra", a self-hosted control panel for coding agents: what the agents shipped over a chosen period, how long they waited on people, and what it cost. The FIRST attached image is the approved Home screen of this product: copy its sidebar, top bar, title and lede style, section header lines, hairline rows, the right panel's small bar chart and 4px meters, and its 300px right properties panel EXACTLY, at the same small, dense scale. It must look like another page of the same product. Use the attached logo mark (a rounded shell split by one diagonal channel) in the sidebar's top-left, small, off-white.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (the segmented period control, inputs) #131416; selected nav item and the selected segment #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; link teal #6FB8AA. ALL chart marks are Mist #CFD8D4 (bars, sparklines, meters), with a second, quieter series in dim grey #4A4D52 only in the pull-requests chart. Meter tracks #2A2C30. Amber #FFB224 appears ONLY as the small project dots in the sidebar and the sidebar's "Needs you" count pill; nowhere in the page or the charts. No green or red anywhere on this page.
+
+TYPE: page title Manrope Bold 24px; big figures Manrope Bold 26px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles weight 600); IBM Plex Mono 12px for numbers in tables, token counts, money in tables, day labels and the "computed" time. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT:
+1. SIDEBAR 232px, #0A0B0C, right hairline, as in the first reference: logo mark + "Acme Corp" semibold + up-down chevron; search field "Search" with "⌘K" and a small off-white "+" button. Rows: "Home" (house icon), "Needs you" (hand icon) with an amber pill badge "5", "My tasks" (user-circle icon) faint "7". Faint label "Projects": "calculator" (teal square #6FB8AA) amber dot, "billing-platform" (violet square #8C7CF0) amber dot, "web-storefront" (ochre square #E0A458) amber dot, "mobile-app" (blue square #5FA8E8) amber dot, "data-pipeline" (rose square #C27BA0) no dot, "··· 13 more". Faint label "Organization": "Runner pools" (server icon) faint "238", "Models" (cpu icon), "Agent profiles" (sliders icon), "Members" (users icon), "Spend" (wallet icon), "Insights" (bar-chart icon) SELECTED (row background #1A1B1E, white text), "Memory" (book icon) faint "2", "Audit log" (scroll icon), "Settings" (gear icon). Bottom: grey circle avatar "AK" and "Alex Kim".
+2. TOP BAR 44px with a bottom hairline: breadcrumbs "Acme Corp  ›  Insights" ("Insights" white). Nothing on the right.
+3. MAIN COLUMN (padding 28px 40px), no cards, no boxes:
+   - title "Insights"
+   - one muted 13.5px line: "What the agents shipped across 18 projects, and what it cost."
+   - 16px below, ONE ROW: on the left a segmented control 28px tall (background #131416, 1px #2A2C30 border, 7px radius) with four segments "7 days", "30 days" (SELECTED: #1A1B1E fill, white text), "90 days", and a calendar icon + "Dates"; to its right, faint text "19 Oct – 17 Nov" in mono. On the far right of the row, faint 12px text with a small clock icon: "Computed 3 min ago".
+   - 20px below, SIX FIGURES in a grid of 3 columns x 2 rows, no boxes: the cells are separated by 1px #1F2023 hairlines (one horizontal hairline between the two rows, vertical hairlines between columns). Each cell is about 86px tall with 16px padding: a muted 12.5px label on top, a big white Manrope Bold 26px figure under it, a faint 12px line under that, and on the right side of the cell a small Mist #CFD8D4 sparkline (2px line, 96px wide, 28px tall, no axes, a small 4px dot at its last point).
+     cell 1: label "PRs opened", figure "1,042", faint line "across 23 repos"
+     cell 2: label "PRs merged", figure "849", faint line "28 a day on average"
+     cell 3: label "Merge rate", figure "87%", faint line "of 976 PRs closed"
+     cell 4: label "Median time to a first PR", figure "23 min", faint line "over 612 tasks"
+     cell 5: label "Time waiting on people", figure "41 h", faint line "9 min median per item"
+     cell 6: label "Tokens and spend", figure "$4,212", faint line "182.4M tokens"
+   - 26px below, SECTION "Pull requests by day": a header line with "Pull requests by day" semibold 13px on the left, and on the right a small legend: a 8px dim grey #4A4D52 square + muted "Opened", a 8px Mist #CFD8D4 square + muted "Merged". Under it a bar chart 150px tall across the column: 30 days, each day a PAIR of thin bars side by side (the left one dim grey #4A4D52 = opened, the right one Mist #CFD8D4 = merged, merged always a bit shorter), 4px rounded tops, 2px gap inside a pair, standing on one #1F2023 baseline. Weekends are visibly lower. The last pair (today) is drawn at half opacity because the day is partial. No gridlines, no y axis numbers. Faint mono day labels under the baseline only every 7 days: "19 Oct", "26 Oct", "2 Nov", "9 Nov", "today". Direct labels in faint mono only above the tallest pair ("58") and above today's pair ("21").
+   - 26px below, SECTION "Waiting on people, by reason": header line with "Waiting on people, by reason" semibold on the left and faint mono "318 items" on the right. Then 4 rows, 34px tall, separated by hairlines, one grid so columns align: reason (muted 13px, 180px) | a horizontal Mist #CFD8D4 bar, 8px tall, 4px rounded right end, on a #2A2C30 track (flexible width) | total in white mono, right-aligned, 70px | items in faint mono, right-aligned, 80px | median in faint mono, right-aligned, 110px:
+     "Approvals"            bar 100%   "17.6 h"   "142 items"   "6 min median"
+     "Plans"                bar 62%    "10.9 h"   "51 items"    "11 min median"
+     "Questions"            bar 41%    "7.2 h"    "64 items"    "5 min median"
+     "Draft PRs to review"  bar 30%    "5.3 h"    "61 items"    "4 min median"
+4. RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px 18px, no cards, groups split by hairlines. Group labels are IBM Plex Sans 11px medium in faint #64676D.
+   - group 1 label "Spend, last 30 days". Under it "$4,212" in Manrope Bold 28px white. Under it a muted 12.5px line "182.4M tokens · 3 models".
+     Then rows 26px, muted keys 12.5px on the left, white mono values right-aligned:
+       "Fresh input"   "61.2M"
+       "Output"        "9.8M"
+       "Cache reads"   "104.1M"
+       "Cache writes"  "7.3M"
+   - hairline, group label "By project" with faint mono "18" on the right. One row per project, 13px: 8px colour square + name on the left, white mono money on the right, and under each row a full-width 4px Mist meter on a #2A2C30 track:
+       "web-storefront" (ochre) "$1,380" meter 100%
+       "billing-platform" (violet) "$1,104" meter 80%
+       "calculator" (teal) "$612" meter 44%
+       "mobile-app" (blue) "$498" meter 36%
+       then one muted row without a square: "13 more" "$618" meter 45%
+   - hairline, group label "By model". Rows the same way, model names in mono:
+       "claude-sonnet-5-5" "$2,904" meter 100%
+       "gpt-5.1-codex" "$1,061" meter 37%
+       "qwen3-coder-480b" "$247" meter 9%
+
+The overall feel: calm, precise, dense, like Linear's analytics inside a quiet graphite console; numbers first, charts small and single-colour Mist, no decoration. Every word and number spelled exactly as written above, crisp and legible, aligned to a strict grid.
