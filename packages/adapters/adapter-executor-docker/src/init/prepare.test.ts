@@ -143,7 +143,8 @@ describe("the init's prepare frame", () => {
       expect(message).not.toContain("missing-dir");
     } finally {
       bridge.close();
-      if (init.pid !== undefined) {
+      // Only while it runs: an exited init's PID may be another process's by now.
+      if (init.pid !== undefined && init.exitCode === null && init.signalCode === null) {
         await killTree(init.pid);
       }
     }

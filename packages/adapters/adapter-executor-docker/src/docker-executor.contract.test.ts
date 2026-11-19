@@ -109,7 +109,8 @@ defineExecutorContractSuite({
       },
       dispose: async () => {
         bridge.close();
-        if (init.pid !== undefined) {
+        // Only while it runs: an exited init's PID may be another process's by now.
+        if (init.pid !== undefined && init.exitCode === null && init.signalCode === null) {
           await killTree(init.pid);
         }
         await upstream.close();

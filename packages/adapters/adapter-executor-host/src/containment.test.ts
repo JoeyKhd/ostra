@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { isAlive } from "@ostra/adapter-sdk";
 import { afterEach, describe, expect, it } from "vitest";
-import { cgroupContainment, detectContainment, ownCgroupPath } from "./containment.ts";
+import type { ProcessInfo } from "@ostra/adapter-sdk";
+import { cgroupContainment, detectContainment, jobObjectContainment, ownCgroupPath } from "./containment.ts";
+import type { JobObjects } from "./job-object.ts";
 
 // The containment seam (ADR 0029, Q126). The cgroup unit runs only on a Linux runner with a
 // delegated cgroup; here it's checked against a folder that stands in for one.
@@ -56,5 +58,47 @@ describe("containment", () => {
     await exited;
     expect(isAlive(pid)).toBe(false);
     await unit.dispose();
+  });
+});
+
+describe("a Windows job's adoption", () => {
+  // A job and a process listing faked: what's checked is which PIDs adoption puts in the job.
+  const fakeJobs = (assigned: number[]): JobObjects => ({
+    create: () => ({
+      assign: (pid) => {
+        assigned.push(pid);
+        return true;
+      },
+      pids: () => [],
+      terminate: () => true,
+      close: () => undefined,
+    }),
+  });
+  const proc = (pid: number, ppid: number, startedAt: number): ProcessInfo => ({ pid, ppid, name: "node.exe", startedAt });
+  const adopt = async (listing: (adoptedAt: number) => readonly ProcessInfo[], exited?: Promise<{ readonly code: number | null; readonly signal: null }>): Promise<number[]> => {
+    const assigned: number[] = [];
+    let adoptedAt = 0;
+    const unit = await jobObjectContainment(fakeJobs(assigned), {
+      sweep: () => Promise.resolve(0),
+      listProcesses: () => Promise.resolve(listing(adoptedAt)),
+    }).create("task", "ostra-unit-0123456789abcdef01234567");
+    adoptedAt = Date.now();
+    await unit.adopt(100, exited === undefined ? {} : { exited });
+    return assigned;
+  };
+
+  it("F-014: puts in the job what the process started before it was assigned, and no older process that names its PID as a parent", async () => {
+    const assigned = await adopt((at) => [proc(100, 1, at - 20), proc(101, 100, at - 10), proc(102, 101, at - 5), proc(103, 100, at - 60_000)]);
+    // 103 names 100 as its parent but is older than it: the child of an earlier process with that PID.
+    expect(assigned).toEqual([100, 101, 102]);
+  });
+
+  it("F-014: assigns nothing more when the PID is another process's by the listing, or the process has exited", async () => {
+    // The process at PID 100 was born after the adoption: ours exited, and Windows gave the PID on.
+    expect(await adopt((at) => [proc(100, 1, at + 2_000), proc(101, 100, at + 2_100)])).toEqual([100]);
+    // Ours exited before the listing came back.
+    expect(await adopt((at) => [proc(100, 1, at - 20), proc(101, 100, at - 10)], Promise.resolve({ code: 3, signal: null }))).toEqual([100]);
+    // And a listing without it.
+    expect(await adopt(() => [proc(101, 100, 1)])).toEqual([100]);
   });
 });

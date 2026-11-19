@@ -258,7 +258,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         secrets: [],
         onSetupOutput: () => undefined,
       });
-      expect(prepared.ok && prepared.value.setup !== null && prepared.value.setup.exitCode !== 0).toBe(true);
+      expect(prepared.ok && prepared.value.setup !== null && prepared.value.setup.exitCode !== 0, JSON.stringify(prepared)).toBe(true);
       await adapter.release(box, "requested");
     }, CASE_TIMEOUT_MS);
 
@@ -269,16 +269,18 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       const agent = await adapter.startAgent(box, helper.launch(created));
       expect(agent.ok).toBe(true);
       const pid = await pollFor(() => helper.readPid(created), 10_000);
+      let gone = false;
       try {
         expect(pid, "the helper wrote its PID").not.toBeNull();
         if (pid === null) {
           return;
         }
         await adapter.stop({ box, graceMs: 500 });
-        const gone = await waitFor(async () => !(await helper.isAlive(pid)), 5_000);
+        gone = await waitFor(async () => !(await helper.isAlive(pid)), 5_000);
         expect(gone, "a detached helper outlived the task's stop").toBe(true);
       } finally {
-        if (pid !== null) {
+        // Only a helper still seen alive: a dead one's PID may already be another process's.
+        if (pid !== null && !gone) {
           await helper.kill(pid);
         }
         await adapter.release(box, "requested");

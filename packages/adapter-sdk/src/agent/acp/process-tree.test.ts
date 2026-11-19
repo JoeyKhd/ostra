@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isAlive, killTree, watchProcessTree } from "./process-tree.ts";
+import { isAlive, watchProcessTree } from "./process-tree.ts";
 
 // A cancelled turn's reap (ticket 42): the processes born during the turn end, and with a unit
 // that can list its processes (a Windows job, a cgroup), the ones that left the agent's tree too.
@@ -31,11 +31,10 @@ const goneWithin = async (pid: number, timeoutMs: number): Promise<boolean> => {
   return !isAlive(pid);
 };
 
-afterEach(async () => {
+afterEach(() => {
+  // Through each child's own handle: a reaped child's PID may already be another process's.
   for (const child of started.splice(0)) {
-    if (child.pid !== undefined) {
-      await killTree(child.pid);
-    }
+    child.kill("SIGKILL");
   }
 });
 
@@ -77,5 +76,29 @@ describe("a cancelled turn's reap", () => {
     expect(await goneWithin(pidOf(inTurn), 5_000)).toBe(true);
     expect(isAlive(pidOf(later))).toBe(true);
     expect(isAlive(pidOf(agent))).toBe(true);
+  }, 30_000);
+});
+
+describe("a watched root whose PID another process took", () => {
+  it("F-014: ends neither the process that has the root's PID now nor its children", async () => {
+    // A process born well after the watch's root was last alive is another one at that PID, as
+    // Windows hands a PID on within moments. Its child stands for what it started.
+    const impostor = spawn(
+      process.execPath,
+      ["-e", "const c = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); console.log(c.pid); setInterval(() => {}, 1000);"],
+      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
+    );
+    started.push(impostor);
+    const child = await new Promise<number>((resolve) => {
+      impostor.stdout.once("data", (chunk: Buffer) => {
+        resolve(Number(chunk.toString("utf8").trim()));
+      });
+    });
+    const watch = watchProcessTree(pidOf(impostor), Date.now() - 60_000);
+    await watch.snapshot();
+    await watch.killAll();
+    expect(isAlive(pidOf(impostor)), "the process that has the root's PID").toBe(true);
+    expect(isAlive(child), "its child").toBe(true);
+    process.kill(child, "SIGKILL");
   }, 30_000);
 });

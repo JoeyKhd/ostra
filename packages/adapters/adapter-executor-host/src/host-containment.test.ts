@@ -59,11 +59,24 @@ const goneWithin = async (pid: number, timeoutMs: number): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!isAlive(pid)) {
+      forget(pid);
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  return !isAlive(pid);
+  if (isAlive(pid)) {
+    return false;
+  }
+  forget(pid);
+  return true;
+};
+
+/** A stray seen gone isn't one any more: its PID may be another process's by the time afterEach runs. */
+const forget = (pid: number): void => {
+  const at = strays.indexOf(pid);
+  if (at >= 0) {
+    strays.splice(at, 1);
+  }
 };
 
 beforeAll(async () => {

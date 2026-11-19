@@ -4,7 +4,7 @@ import { access, mkdir, readdir, readFile, rmdir, stat, writeFile } from "node:f
 import path from "node:path";
 import { promisify } from "node:util";
 import { descendantsOf, listProcesses, watchProcessTree } from "@ostra/adapter-sdk";
-import type { ExecutorCapabilities, TreeWatch } from "@ostra/adapter-sdk";
+import type { ExecutorCapabilities, ProcessInfo, TreeWatch } from "@ostra/adapter-sdk";
 import { loadJobObjects } from "./job-object.ts";
 import type { JobObjects, JobObjectsLoaderOptions } from "./job-object.ts";
 
@@ -284,14 +284,20 @@ export const cgroupContainment = (parent: string, options: { readonly prefix?: s
 /** How long `killAll` waits for a job's process list to empty. */
 const JOB_DRAIN_MS = 5_000;
 
+export type JobObjectOptions = ProcessTreeOptions & {
+  /** Every process on the machine. Default: this machine's listing. */
+  readonly listProcesses?: () => Promise<readonly ProcessInfo[]>;
+};
+
 /** The Windows unit: one job object per task (`job-object.ts`). */
-export const jobObjectContainment = (jobs: JobObjects, options: ProcessTreeOptions = {}): Containment => ({
+export const jobObjectContainment = (jobs: JobObjects, options: JobObjectOptions = {}): Containment => ({
   kind: "job-object",
   create: async (name, given) => {
     const job = jobs.create();
     // For a process the job refused while it ran (it can't happen on Windows 8 and later, which
     // nest jobs): its tree, so it still ends with the task.
-    const refused = await processTreeContainment(options).create(name, given);
+    const refused = await processTreeContainment(options.sweep === undefined ? {} : { sweep: options.sweep }).create(name, given);
+    const list = options.listProcesses ?? listProcesses;
     const drain = async (): Promise<void> => {
       const deadline = Date.now() + JOB_DRAIN_MS;
       while (job.pids().length > 0 && Date.now() < deadline) {
@@ -302,16 +308,31 @@ export const jobObjectContainment = (jobs: JobObjects, options: ProcessTreeOptio
       kind: "job-object",
       marker: refused.marker,
       pids: () => Promise.resolve(job.pids()),
-      adopt: (pid, adoptOptions) => {
+      adopt: (pid, adoptOptions = {}) => {
+        const adoptedAt = Date.now();
         // Synchronously, before anything awaits: the same tick as `spawn`.
         if (!job.assign(pid)) {
           return refused.adopt(pid, adoptOptions);
         }
-        // Anything it started before it was assigned: one tree snapshot, each assigned too.
-        return listProcesses().then(
+        let exited = false;
+        void adoptOptions.exited?.then(() => {
+          exited = true;
+        });
+        // Anything it started before it was assigned: one tree snapshot, each assigned too. Only
+        // while the listing still shows the process we started: one that exits at once (a setup
+        // script's `exit 3`) leaves its PID to the next process Windows starts, and the processes
+        // that name that PID as their parent are another program's. Put in this job, they would
+        // end with the task: another test run's database, on a busy machine.
+        return list().then(
           (all) => {
+            const self = all.find((p) => p.pid === pid);
+            if (exited || self === undefined || self.startedAt === 0 || self.startedAt > adoptedAt) {
+              return;
+            }
             for (const child of descendantsOf(pid, all)) {
-              job.assign(child.pid);
+              if (child.startedAt >= self.startedAt) {
+                job.assign(child.pid);
+              }
             }
           },
           () => undefined,

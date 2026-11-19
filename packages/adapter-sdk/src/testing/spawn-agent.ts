@@ -33,7 +33,11 @@ export const spawnAgentProcess = async (launch: AgentLaunch): Promise<StartedAge
   return {
     io: { stdin: child.stdin, stdout: child.stdout, stderr: child.stderr, pid },
     stop: async () => {
-      await killTree(pid);
+      // Only while the agent runs: once it has exited, Windows hands its PID to the next process
+      // that starts (another test's database, say), and a tree kill by that PID would end it.
+      if (child.exitCode === null && child.signalCode === null) {
+        await killTree(pid);
+      }
     },
   };
 };

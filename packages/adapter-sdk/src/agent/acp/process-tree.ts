@@ -281,10 +281,23 @@ const bornSince = (p: ProcessInfo, since: number, skewMs: number): boolean =>
 /** Whether a process was born by `until`, with the same 50 ms of slack (macOS's whole second rounds down). */
 const bornBy = (p: ProcessInfo, until: number, skewMs: number): boolean => (isWindows || isLinux ? p.startedAt + skewMs <= until + 50 : p.startedAt <= until);
 
-export const watchProcessTree = (rootPid: number): TreeWatch => {
+/**
+ * Watches the tree of `rootPid`, a process alive at `aliveAt` (by default now: its caller has just
+ * started it), so born by then. A process at its PID born later is another one that got the PID
+ * after the root exited, as Windows hands a PID on within moments: neither it nor what it started is
+ * the root's.
+ */
+export const watchProcessTree = (rootPid: number, aliveAt: number = Date.now()): TreeWatch => {
+  const watchedFrom = aliveAt;
+  // A second of slack, for a clock that steps back: a root mistaken for another would outlive us.
+  const impostorIn = (list: readonly ProcessInfo[]): ProcessInfo | undefined =>
+    list.find((p) => p.pid === rootPid && p.startedAt !== 0 && p.startedAt > watchedFrom + 1000);
   const known = new Map<number, ProcessKey>();
   const remember = (list: readonly ProcessInfo[]): ProcessInfo[] => {
-    const below = descendantsOf(rootPid, list);
+    const impostor = impostorIn(list);
+    // The root's orphans keep its PID as their parent's, so they're still found: by their birth,
+    // before the process that now has that PID.
+    const below = descendantsOf(rootPid, list).filter((p) => impostor === undefined || (p.startedAt !== 0 && p.startedAt < impostor.startedAt));
     for (const p of below) {
       known.set(p.pid, { pid: p.pid, name: p.name, startedAt: p.startedAt });
     }
@@ -332,8 +345,13 @@ export const watchProcessTree = (rootPid: number): TreeWatch => {
       return targets.size;
     },
     killAll: async () => {
-      remember(await list());
-      await killTree(rootPid);
+      const before = await list();
+      remember(before);
+      // A tree kill by a PID that's another process's now would end that process and its children.
+      // An empty list is a listing that failed: the root is ended by its PID then, as it always was.
+      if (before.length === 0 || (before.some((p) => p.pid === rootPid) && impostorIn(before) === undefined)) {
+        await killTree(rootPid);
+      }
       for (const p of await list()) {
         const seen = known.get(p.pid);
         if (seen !== undefined && sameProcess(seen, p)) {
