@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 
 import * as acp from "@agentclientprotocol/sdk/unstable";
+import { approvalRulesSchema, firstMatchingRule, mcpSubjectValue, readMarkedBlocks } from "@ostra/protocol";
+import type { ApprovalRequestSubject, ApprovalRule } from "@ostra/protocol";
 import { z } from "zod";
 
 import { loadFakeSession, saveFakeSession } from "./archive.ts";
@@ -17,6 +19,14 @@ import { loadFakeSession, saveFakeSession } from "./archive.ts";
 // - `rich` declares what OpenCode lacks, native plan updates and reject-and-continue, and
 //   advertises mid-turn steering.
 // - `plain` declares none of them: no native plan, a deny ends the turn, no steering.
+//
+// Milestone 3 (ADR 0049) adds the profile's side, with the same split:
+// - `rich` writes the rules into its own settings and asks only for what a rule covers
+//   (`native`), has session modes (`session/set_mode`), reads skills from a folder, speaks MCP
+//   over HTTP and stdio, and its task config wins over the repo's.
+// - `plain` asks for every request and leaves the rules to the runner (`runner-only`), changes
+//   mode only by a relaunch, takes skills as instructions, speaks MCP over HTTP only, and obeys
+//   a repo's own config, so the runner must hide it.
 
 export type FakeAgentProfile = "rich" | "plain";
 
@@ -25,12 +35,59 @@ export type FakeAgentCapabilities = {
   readonly sessionLoad: boolean;
   readonly nativePlan: boolean;
   readonly rejectAndContinue: boolean;
+  // Milestone 3.
+  readonly permissionRules: "native" | "runner-only";
+  readonly planMode: "session-mode" | "relaunch";
+  readonly skills: boolean;
+  readonly mcp: { readonly http: boolean; readonly stdio: boolean };
+  readonly projectConfigOverride: boolean;
 };
 
 export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentCapabilities>> = {
-  rich: { steerMidTurn: true, sessionLoad: true, nativePlan: true, rejectAndContinue: true },
-  plain: { steerMidTurn: false, sessionLoad: true, nativePlan: false, rejectAndContinue: false },
+  rich: {
+    steerMidTurn: true,
+    sessionLoad: true,
+    nativePlan: true,
+    rejectAndContinue: true,
+    permissionRules: "native",
+    planMode: "session-mode",
+    skills: true,
+    mcp: { http: true, stdio: true },
+    projectConfigOverride: true,
+  },
+  plain: {
+    steerMidTurn: false,
+    sessionLoad: true,
+    nativePlan: false,
+    rejectAndContinue: false,
+    permissionRules: "runner-only",
+    planMode: "relaunch",
+    skills: false,
+    mcp: { http: true, stdio: false },
+    projectConfigOverride: false,
+  },
 };
+
+/** The task config the fake adapter writes (`FAKE_AGENT_CONFIG`): the profile's side, read at each session. */
+export const fakeAgentConfigSchema = z.looseObject({
+  mode: z.enum(["plan", "build"]).optional(),
+  approvalRules: z.unknown().optional(),
+  skills: z.array(z.looseObject({ name: z.string(), dir: z.string() })).optional(),
+  instructions: z.string().nullish(),
+  mcpServers: z.array(z.looseObject({ name: z.string(), transport: z.enum(["http", "stdio"]), readOnly: z.boolean() })).optional(),
+});
+export type FakeAgentConfig = z.infer<typeof fakeAgentConfigSchema>;
+
+/** The file a repo's own config for the fake lives in; `{ "permission": "allow" }` allows everything. */
+export const FAKE_AGENT_REPO_CONFIG = ".fake-agent.json";
+
+/** A permission request's answer, read loosely: the client's shape, as the agent sees it. */
+const permissionAnswerSchema = z.looseObject({
+  outcome: z.looseObject({ outcome: z.string(), optionId: z.string().optional() }),
+});
+
+/** The tool `[[fake:plan-turn]]` calls on each MCP server. */
+export const FAKE_AGENT_MCP_TOOL = "list";
 
 export type FakeAgentOptions = {
   readonly profile: FakeAgentProfile;
@@ -74,6 +131,23 @@ export const fakeScripts = [
   "long",
   /** Ticket 44: moves a file inside the session's folder. */
   "move",
+  // Milestone 3 (ADR 0049).
+  /** Asks to edit the path given, and writes it when allowed. */
+  "ask-path",
+  /** Asks to run the command given, and says it ran when allowed. */
+  "ask-command",
+  /** Asks to edit `pair-a.txt` and `pair-b.txt` at once. */
+  "ask-pair",
+  /** A plan: plan entries, a write attempted, a tool called on each MCP server, and a message. */
+  "plan-turn",
+  /** Says the session's mode. */
+  "mode",
+  /** Says the skills it was given, with each `SKILL.md`'s first line. */
+  "skills",
+  /** Says the MCP servers it was given. */
+  "mcp",
+  /** Says each marked block of the prompt: what the runner's prompts reach it as. */
+  "read-blocks",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -83,6 +157,10 @@ const MARKER = /\[\[fake:([a-z-]+)(?:\s+([^\]]*))?\]\]/;
 
 const parsePrompt = (text: string): { readonly script: string; readonly args: string } => {
   const match = MARKER.exec(text);
+  if (match === null && readMarkedBlocks(text).length > 0) {
+    // A runner's own prompt (a deny's re-prompt, an approved plan): say what reached the agent.
+    return { script: "read-blocks", args: "" };
+  }
   return { script: match?.[1] ?? "say", args: (match?.[2] ?? "").trim() };
 };
 
@@ -93,6 +171,12 @@ type Session = {
   readonly id: string;
   /** The session's folder, from `session/new`: where the `write` script writes. */
   readonly cwd: string | null;
+  /** Milestone 3: the session's mode, from the task config, then `session/set_mode`. */
+  mode: "plan" | "build";
+  /** Milestone 3: the repo's own config allows everything, and this agent obeys it. */
+  repoAllowsAll: boolean;
+  /** Milestone 3: the MCP servers `session/new` named. */
+  readonly sessionMcp: readonly string[];
   /** What the agent said, so `session/load` can replay it. */
   readonly history: string[];
   cancel: AbortController;
@@ -130,6 +214,61 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
   const sessions = new Map<string, Session>();
   let counter = 0;
 
+  /** The task config, read once per session: the adapter writes it before the launch. */
+  const readConfig = async (): Promise<FakeAgentConfig> => {
+    const file = options.env["FAKE_AGENT_CONFIG"];
+    if (file === undefined) {
+      return {};
+    }
+    try {
+      const parsed = fakeAgentConfigSchema.safeParse(JSON.parse(await readFile(file, "utf8")));
+      return parsed.success ? parsed.data : {};
+    } catch {
+      return {};
+    }
+  };
+
+  /** Whether the repo's own config allows everything, and this agent lets it. */
+  const repoAllowsAll = async (cwd: string | null): Promise<boolean> => {
+    if (cwd === null || capabilities.projectConfigOverride) {
+      return false;
+    }
+    try {
+      const parsed = z.looseObject({ permission: z.string() }).safeParse(JSON.parse(await readFile(path.join(cwd, FAKE_AGENT_REPO_CONFIG), "utf8")));
+      return parsed.success && parsed.data.permission === "allow";
+    } catch {
+      return false;
+    }
+  };
+
+  const newSession = async (id: string, cwd: string | null, mcp: readonly string[], history: string[]): Promise<Session> => {
+    const config = await readConfig();
+    return {
+      id,
+      cwd,
+      mode: config.mode ?? "build",
+      repoAllowsAll: await repoAllowsAll(cwd),
+      sessionMcp: mcp,
+      history,
+      cancel: new AbortController(),
+      steer: undefined,
+      running: false,
+    };
+  };
+
+  const mcpNamesOf = (params: unknown): readonly string[] => {
+    const parsed = z.array(z.looseObject({ name: z.string() })).safeParse(Reflect.get(Object(params), "mcpServers"));
+    return parsed.success ? parsed.data.map((server) => server.name) : [];
+  };
+
+  const modes = (current: "plan" | "build") => ({
+    currentModeId: current,
+    availableModes: [
+      { id: "plan", name: "Plan", description: "Reads and searches; changes nothing" },
+      { id: "build", name: "Build", description: "Works" },
+    ],
+  });
+
   const sessionOf = (id: string): Session => {
     const found = sessions.get(id);
     if (found === undefined) {
@@ -146,12 +285,14 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       agentCapabilities: { loadSession: capabilities.sessionLoad, promptCapabilities: {} },
       ...(capabilities.steerMidTurn ? { _meta: { steering: { supported: true } } } : {}),
     }))
-    .onRequest(acp.methods.agent.session.new, (ctx) => {
+    .onRequest(acp.methods.agent.session.new, async (ctx) => {
       counter += 1;
       const id = `fake-session-${String(counter)}`;
       const cwd: unknown = Reflect.get(Object(ctx.params), "cwd");
-      sessions.set(id, { id, cwd: typeof cwd === "string" ? cwd : null, history: [], cancel: new AbortController(), steer: undefined, running: false });
-      return { sessionId: id };
+      const session = await newSession(id, typeof cwd === "string" ? cwd : null, mcpNamesOf(ctx.params), []);
+      sessions.set(id, session);
+      // Only an agent with session modes says it has them (ADR 0049).
+      return capabilities.planMode === "session-mode" ? { sessionId: id, modes: modes(session.mode) } : { sessionId: id };
     })
     .onRequest(acp.methods.agent.session.load, async (ctx) => {
       const id = ctx.params.sessionId;
@@ -163,14 +304,12 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       if (boundTo !== null && cwd !== null && path.resolve(boundTo) !== path.resolve(cwd)) {
         throw acp.RequestError.invalidParams(undefined, "the session belongs to another directory");
       }
-      const session = sessions.get(id) ?? {
-        id,
-        cwd: kept?.cwd ?? cwd,
-        history: kept === undefined ? ["(an earlier turn)"] : [...kept.history],
-        cancel: new AbortController(),
-        steer: undefined,
-        running: false,
-      };
+      const session =
+        sessions.get(id) ?? (await newSession(id, kept?.cwd ?? cwd, mcpNamesOf(ctx.params), kept === undefined ? ["(an earlier turn)"] : [...kept.history]));
+      if (capabilities.planMode === "relaunch") {
+        // A relaunch carries the new mode in the task config: a loaded session takes it.
+        session.mode = (await readConfig()).mode ?? "build";
+      }
       sessions.set(id, session);
       // A real agent replays the session's history as updates, before it answers.
       for (const line of session.history) {
@@ -189,6 +328,17 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       sessions.get(ctx.params.sessionId)?.cancel.abort();
     });
 
+  if (capabilities.planMode === "session-mode") {
+    app.onRequest(acp.methods.agent.session.setMode, (ctx) => {
+      const session = sessionOf(ctx.params.sessionId);
+      if (ctx.params.modeId !== "plan" && ctx.params.modeId !== "build") {
+        throw acp.RequestError.invalidParams(undefined, "unknown mode");
+      }
+      session.mode = ctx.params.modeId;
+      return {};
+    });
+  }
+
   if (capabilities.steerMidTurn) {
     app.onRequest(
       "_session/steering",
@@ -206,7 +356,8 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
 
   app.onRequest(acp.methods.agent.session.prompt, async (ctx) => {
     const session = sessionOf(ctx.params.sessionId);
-    const { script, args } = parsePrompt(promptText(ctx.params.prompt));
+    const text = promptText(ctx.params.prompt);
+    const { script, args } = parsePrompt(text);
     session.cancel = new AbortController();
     session.running = true;
     const { signal } = session.cancel;
@@ -225,7 +376,10 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       );
     };
     try {
-      return { stopReason: await play(script, args, { say, update, signal, session, ctx }) };
+      const stopReason = await play(script, args, { say, update, signal, session, ctx, text });
+      // A cancelled turn ends `cancelled`, whatever the script was doing (ACP), but for the agent
+      // that ignores a cancel on purpose.
+      return { stopReason: signal.aborted && script !== "silent-deaf" ? "cancelled" : stopReason };
     } finally {
       session.running = false;
       session.steer = undefined;
@@ -241,11 +395,221 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     readonly signal: AbortSignal;
     readonly session: Session;
     readonly ctx: { readonly client: acp.AgentContext };
+    /** The turn's whole prompt text. */
+    readonly text: string;
+  };
+
+  const promptTextOf = (io: Play): string => io.text;
+
+  type Ask = {
+    readonly toolCallId: string;
+    readonly title: string;
+    readonly kind: "edit" | "execute" | "fetch" | "other";
+    readonly rawInput: Record<string, unknown>;
+    readonly locations?: readonly string[];
+    /** What the request touches, as the fake's own settings read it. */
+    readonly subject: ApprovalRequestSubject;
+  };
+
+  /** How the agent itself treats a request before asking anyone (ADR 0049). */
+  const ask = async (io: Play, request: Ask): Promise<"allowed" | "denied" | "refused"> => {
+    const config = await readConfig();
+    const mcpServers = (config.mcpServers ?? []).map((server) => ({ name: server.name, readOnly: server.readOnly }));
+    const readOnlyMcp =
+      request.subject.tool === "mcp" && mcpServers.some((server) => server.readOnly && request.subject.subject.value.startsWith(`${server.name}/`));
+    if (io.session.mode === "plan" && capabilities.planMode === "session-mode" && !readOnlyMcp) {
+      // A native plan mode refuses a write, a command, a fetch or a writing MCP tool itself.
+      return "refused";
+    }
+    if (io.session.repoAllowsAll) {
+      // The repo's own config allows everything, and this agent obeys it: the hole the runner closes.
+      return "allowed";
+    }
+    if (capabilities.permissionRules === "native") {
+      const rules: readonly ApprovalRule[] = approvalRulesSchema.catch([]).parse(config.approvalRules ?? []);
+      if (firstMatchingRule(rules, request.subject, { mcpServers }) === null) {
+        // No rule covers it: a native agent goes on without asking.
+        return "allowed";
+      }
+    }
+    const answer = await io.ctx.client.request(acp.methods.client.session.requestPermission, {
+      sessionId: io.session.id,
+      toolCall: {
+        toolCallId: request.toolCallId,
+        title: request.title,
+        kind: request.kind,
+        status: "pending",
+        rawInput: request.rawInput,
+        ...(request.locations === undefined ? {} : { locations: request.locations.map((location) => ({ path: location })) }),
+      },
+      options: [
+        { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+        { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+      ],
+    });
+    const read = permissionAnswerSchema.safeParse(answer);
+    return read.success && read.data.outcome.outcome === "selected" && (read.data.outcome.optionId ?? "").startsWith("allow") ? "allowed" : "denied";
+  };
+
+  /** A tool call through `ask`, reported as the agent would: completed, or failed with why. */
+  const askedTool = async (io: Play, request: Ask, onAllowed: () => Promise<void>): Promise<"allowed" | "denied" | "refused"> => {
+    await io.update({
+      sessionUpdate: "tool_call",
+      toolCallId: request.toolCallId,
+      title: request.title,
+      kind: request.kind,
+      status: "pending",
+      rawInput: request.rawInput,
+      ...(request.locations === undefined ? {} : { locations: request.locations.map((location) => ({ path: location })) }),
+    });
+    const outcome = await ask(io, request);
+    if (outcome === "allowed") {
+      await onAllowed();
+      await io.update({ sessionUpdate: "tool_call_update", toolCallId: request.toolCallId, status: "completed" });
+    } else {
+      const why = outcome === "refused" ? "refused in plan mode" : "rejected";
+      await io.update({ sessionUpdate: "tool_call_update", toolCallId: request.toolCallId, status: "failed", content: [{ type: "content", content: { type: "text", text: why } }] });
+    }
+    return outcome;
+  };
+
+  /** Writes a file inside the session's folder; a path that leaves it is refused. */
+  const writeInside = async (session: Session, relative: string): Promise<void> => {
+    if (session.cwd === null) {
+      return;
+    }
+    const target = path.resolve(session.cwd, relative);
+    if (!target.startsWith(`${path.resolve(session.cwd)}${path.sep}`)) {
+      return;
+    }
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, "Written by the fake agent.\n");
+  };
+
+  const editRequest = (id: string, relative: string): Ask => ({
+    toolCallId: id,
+    title: `Edit ${relative}`,
+    kind: "edit",
+    rawInput: { filePath: relative },
+    locations: [relative],
+    subject: { tool: "edit", subject: { kind: "path", value: relative } },
+  });
+
+  /** After a denied request: a turn goes on with reject-and-continue, and ends `cancelled` without it (ADR 0032). */
+  const afterDeny = async (io: Play, what: string): Promise<acp.StopReason> => {
+    if (capabilities.rejectAndContinue) {
+      await io.say(`The ${what} was rejected, so I tried another way.`);
+      return "end_turn";
+    }
+    return "cancelled";
   };
 
   const play = async (script: string, args: string, io: Play): Promise<acp.StopReason> => {
     const { say, update, signal, session } = io;
     switch (script) {
+      case "ask-path": {
+        const relative = args === "" ? "notes.txt" : args;
+        const outcome = await askedTool(io, editRequest("ask-path-1", relative), () => writeInside(session, relative));
+        if (outcome === "allowed") {
+          await say(`Wrote ${relative}.`);
+          return "end_turn";
+        }
+        return outcome === "refused" ? (await say(`I can't edit ${relative} while planning.`), "end_turn") : afterDeny(io, "edit");
+      }
+
+      case "ask-command": {
+        const command = args === "" ? "pnpm add zod" : args;
+        const outcome = await askedTool(
+          io,
+          { toolCallId: "ask-command-1", title: command, kind: "execute", rawInput: { command }, subject: { tool: "execute", subject: { kind: "command", value: command } } },
+          () => Promise.resolve(),
+        );
+        if (outcome === "allowed") {
+          await say(`Ran ${command}.`);
+          return "end_turn";
+        }
+        return outcome === "refused" ? (await say("I can't run that while planning."), "end_turn") : afterDeny(io, "command");
+      }
+
+      case "ask-pair": {
+        const [first, second] = await Promise.all([
+          askedTool(io, editRequest("ask-pair-a", "pair-a.txt"), () => writeInside(session, "pair-a.txt")),
+          askedTool(io, editRequest("ask-pair-b", "pair-b.txt"), () => writeInside(session, "pair-b.txt")),
+        ]);
+        await say(`pair: a=${first} b=${second}`);
+        return first === "denied" || second === "denied" ? afterDeny(io, "edit") : "end_turn";
+      }
+
+      case "plan-turn": {
+        if (capabilities.nativePlan) {
+          await update({
+            sessionUpdate: "plan",
+            entries: [
+              { content: "Read the README", priority: "high", status: "pending" },
+              { content: "Write CONTRIBUTING.md", priority: "medium", status: "pending" },
+            ],
+          });
+        }
+        const write = await askedTool(io, editRequest("plan-write", "plan-attempt.txt"), () => writeInside(session, "plan-attempt.txt"));
+        const config = await readConfig();
+        const calls: string[] = [];
+        for (const [index, server] of (config.mcpServers ?? []).entries()) {
+          const value = mcpSubjectValue(server.name, FAKE_AGENT_MCP_TOOL);
+          const outcome = await askedTool(
+            io,
+            {
+              toolCallId: `plan-mcp-${String(index)}`,
+              title: value,
+              kind: "other",
+              rawInput: { mcpServer: server.name, tool: FAKE_AGENT_MCP_TOOL },
+              subject: { tool: "mcp", subject: { kind: "tool", value } },
+            },
+            () => Promise.resolve(),
+          );
+          calls.push(`${server.name}:${outcome}`);
+        }
+        await say(`plan: write=${write} mcp=${calls.join(",")}. I'll write CONTRIBUTING.md and link it from the README.`);
+        return "end_turn";
+      }
+
+      case "mode":
+        await say(`mode: ${session.mode}`);
+        return "end_turn";
+
+      case "skills": {
+        const config = await readConfig();
+        if (capabilities.skills) {
+          const lines: string[] = [];
+          for (const skill of config.skills ?? []) {
+            let first = "";
+            try {
+              first = (await readFile(path.join(skill.dir, "SKILL.md"), "utf8")).split("\n")[0] ?? "";
+            } catch {
+              first = "(unreadable)";
+            }
+            lines.push(`${skill.name} (${first})`);
+          }
+          await say(`skills: ${lines.join(", ")}`);
+        } else {
+          const named = [...(config.instructions ?? "").matchAll(/^Skill ([A-Za-z0-9_-]+):/gm)].map((match) => match[1] ?? "");
+          await say(`skills from instructions: ${named.join(", ")}`);
+        }
+        return "end_turn";
+      }
+
+      case "mcp": {
+        const config = await readConfig();
+        const configured = (config.mcpServers ?? []).map((server) => `${server.name}/${server.transport}`);
+        await say(`mcp: ${[...configured, ...session.sessionMcp.map((name) => `${name}/session`)].join(", ")}`);
+        return "end_turn";
+      }
+
+      case "read-blocks": {
+        const blocks = readMarkedBlocks(promptTextOf(io));
+        await say(blocks.map((block) => `Read ${block.label}: ${block.text}`).join(" | "));
+        return "end_turn";
+      }
+
       case "say":
         await say("Hello from the fake agent. ");
         await say("The work is done.");

@@ -196,7 +196,14 @@ describe("the OpenCode adapter's capabilities", () => {
       elicitationForm: true,
       modelBaseUrlAndPlaceholderKey: true,
       sessionArchive: true,
+      // Milestone 3: what's proved today; ticket 08 turns them on with their proofs.
+      permissionRules: "runner-only",
+      planMode: "none",
+      skills: false,
+      mcp: { http: false, stdio: false },
+      projectConfigOverride: false,
     });
+    expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });
 });
 

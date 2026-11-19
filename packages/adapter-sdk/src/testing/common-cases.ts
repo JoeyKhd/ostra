@@ -48,7 +48,7 @@ export const useSubject = <Adapter, Fixture>(
 export const defineCommonCases = <Adapter extends CommonAdapter>(
   subject: () => { readonly adapter: Adapter },
   kind: Adapter["kind"],
-  capabilityTypes: Readonly<Record<keyof Adapter["capabilities"] & string, "boolean" | "string" | "array">>,
+  capabilityTypes: Readonly<Record<keyof Adapter["capabilities"] & string, "boolean" | "string" | "array" | "object">>,
 ): void => {
   it("has a kebab-case name and its kind", () => {
     const { adapter } = subject();
@@ -63,6 +63,8 @@ export const defineCommonCases = <Adapter extends CommonAdapter>(
       const value: unknown = Reflect.get(Object(declared), key);
       if (type === "array") {
         expect(Array.isArray(value), `capability ${key} is a list`).toBe(true);
+      } else if (type === "object") {
+        expect(typeof value === "object" && value !== null && !Array.isArray(value), `capability ${key} is an object`).toBe(true);
       } else {
         expect(typeof value, `capability ${key} is a ${String(type)}`).toBe(type);
       }

@@ -17,4 +17,27 @@ export type AgentCapabilities = {
    * another box's workspace (`exportSession`, `importSession`), so a fresh box carries the session on.
    */
   readonly sessionArchive: boolean;
+
+  // ---- milestone 3 (ADR 0049) ----
+  /**
+   * Whether the agent's own settings can say "ask" for a path or a command, so it asks only for
+   * what a rule covers (`native`), or it asks for every request and only the runner's check
+   * stands (`runner-only`). The runner checks every request against the rules either way.
+   */
+  readonly permissionRules: "native" | "runner-only";
+  /**
+   * How the adapter makes a read-only plan turn (F-063): an ACP session mode it switches with
+   * `session/set_mode` (`session-mode`), a relaunch with the other mode's launch and
+   * `session/load` (`relaunch`), or not at all (`none`: plan first can't run on this agent).
+   */
+  readonly planMode: "session-mode" | "relaunch" | "none";
+  /** The agent reads skills from a folder of the task's config; without it, they're appended to its instructions. */
+  readonly skills: boolean;
+  /** The MCP transports the agent speaks: an HTTP server at the sidecar's proxy, a stdio command in the image. */
+  readonly mcp: { readonly http: boolean; readonly stdio: boolean };
+  /**
+   * The profile's permissions and MCP servers win over a repo's own agent config. Without it, the
+   * runner hides the files `repoConfigPaths` names from the agent for the task (ADR 0049, Q171).
+   */
+  readonly projectConfigOverride: boolean;
 };

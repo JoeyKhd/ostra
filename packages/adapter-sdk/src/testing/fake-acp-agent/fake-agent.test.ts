@@ -13,7 +13,7 @@ import { defineAgentContractSuite } from "../agent-suite.ts";
 import type { PrepareLaunchInput } from "../../agent/base.ts";
 import type { AgentFixture } from "../agent-suite.ts";
 import { runAgentCommand, spawnAgentProcess } from "../spawn-agent.ts";
-import { fakeMarker } from "./agent.ts";
+import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, fakeMarker } from "./agent.ts";
 import type { FakeAgentProfile } from "./agent.ts";
 import { FakeAgentAdapter } from "./fake-agent-adapter.ts";
 
@@ -73,6 +73,7 @@ const fixtureFor = async (): Promise<AgentFixture> => {
           "FAKE_AGENT_DATA",
           "FAKE_AGENT_BASE_URL",
           "FAKE_AGENT_API_KEY",
+          "FAKE_AGENT_CONFIG",
           "NODE_ENV",
           // Windows adds these to every process it starts, from the ones above.
           "HOMEDRIVE",
@@ -101,6 +102,18 @@ const fixtureFor = async (): Promise<AgentFixture> => {
       },
       archivePath: path.join(root, "session-archive.json"),
       remember: { prompt: fakeMarker("remember", "BLUE-HERON"), recall: fakeMarker("recall"), fact: "BLUE-HERON" },
+    },
+    profile: {
+      askPath: (relativePath) => fakeMarker("ask-path", relativePath),
+      askCommand: (command) => fakeMarker("ask-command", command),
+      askPair: fakeMarker("ask-pair"),
+      planTurn: fakeMarker("plan-turn"),
+      mode: fakeMarker("mode"),
+      skills: fakeMarker("skills"),
+      mcp: fakeMarker("mcp"),
+      mcpTool: FAKE_AGENT_MCP_TOOL,
+      allowAllRepoConfig: { path: FAKE_AGENT_REPO_CONFIG, content: JSON.stringify({ permission: "allow" }) },
+      echoesMarkedBlocks: true,
     },
   };
 };

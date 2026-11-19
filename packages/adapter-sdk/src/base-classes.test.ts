@@ -133,6 +133,11 @@ describe("a missing operation", () => {
         elicitationForm: false,
         modelBaseUrlAndPlaceholderKey: false,
         sessionArchive: false,
+        permissionRules: "runner-only" as const,
+        planMode: "none" as const,
+        skills: false,
+        mcp: { http: false, stdio: false },
+        projectConfigOverride: false,
       };
       health(): Promise<HealthReport> {
         return ok();

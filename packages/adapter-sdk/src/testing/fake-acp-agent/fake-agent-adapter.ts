@@ -1,6 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { mcpSubjectValue } from "@ostra/protocol";
+import type { ApprovalRequestSubject } from "@ostra/protocol";
+
 import { createAcpDriver } from "../../agent/acp/driver.ts";
 import { AgentAdapter } from "../../agent/base.ts";
 import type {
@@ -10,14 +13,15 @@ import type {
   ExportSessionInput,
   ImportSessionInput,
   MappedUpdate,
+  PermissionRequest,
   PrepareLaunchInput,
 } from "../../agent/base.ts";
 import type { AgentCapabilities } from "../../agent/capabilities.ts";
 import type { AdapterContext } from "../../common/context.ts";
 import { ok } from "../../common/result.ts";
 import type { AdapterResult, HealthReport } from "../../common/result.ts";
-import { fakeAgentCapabilities } from "./agent.ts";
-import type { FakeAgentProfile } from "./agent.ts";
+import { FAKE_AGENT_REPO_CONFIG, fakeAgentCapabilities } from "./agent.ts";
+import type { FakeAgentConfig, FakeAgentProfile } from "./agent.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 
@@ -32,6 +36,7 @@ const PASSTHROUGH = process.platform === "win32" ? ["PATH", "Path", "SystemRoot"
 export class FakeAgentAdapter extends AgentAdapter {
   readonly name: string;
   readonly capabilities: AgentCapabilities;
+  override readonly repoConfigPaths: readonly string[] = [FAKE_AGENT_REPO_CONFIG];
   readonly #profile: FakeAgentProfile;
 
   constructor(profile: FakeAgentProfile, driver: DriverPort = createAcpDriver(), context?: AdapterContext) {
@@ -50,6 +55,45 @@ export class FakeAgentAdapter extends AgentAdapter {
   /** The agent's own folder for its sessions, in the box's agent folder. */
   static dataDirOf(agentDir: string): string {
     return path.join(agentDir, "fake-agent-data");
+  }
+
+  /** Milestone 3: the task config the agent reads, in the box's agent folder: never in the repo. */
+  static configPathOf(agentDir: string): string {
+    return path.join(agentDir, "fake-agent-config.json");
+  }
+
+  /**
+   * The profile's side as the agent reads it (ADR 0049): the mode, the rules (which only a `native`
+   * agent uses), the skills as a folder or, without `skills`, as instructions, and the MCP servers
+   * the agent can speak. An HTTP server's URL is the sidecar's: no credential is in it.
+   */
+  #config(input: PrepareLaunchInput): FakeAgentConfig {
+    const skills = input.skills ?? [];
+    const skillLines = this.capabilities.skills ? [] : skills.map((skill) => `Skill ${skill.name}: read ${path.join(skill.dir, "SKILL.md")}`);
+    const instructions = [input.instructions ?? "", ...skillLines].filter((line) => line !== "").join("\n");
+    const mcpServers = (input.mcpServers ?? []).filter((server) =>
+      server.transport === "http" ? this.capabilities.mcp.http : this.capabilities.mcp.stdio,
+    );
+    return {
+      mode: input.mode ?? "build",
+      approvalRules: input.approvalRules ?? [],
+      ...(this.capabilities.skills ? { skills: skills.map((skill) => ({ name: skill.name, dir: skill.dir })) } : {}),
+      instructions: instructions === "" ? null : instructions,
+      mcpServers: mcpServers.map((server) => ({ name: server.name, transport: server.transport, readOnly: server.readOnly })),
+    };
+  }
+
+  /** An MCP call is a tool call of kind `other` naming its server and tool; the rest are ACP's standard kinds. */
+  protected override describePermission(request: PermissionRequest, cwd: string): ApprovalRequestSubject | null {
+    const input = request.rawInput;
+    if (request.toolKind === "other" && typeof input === "object" && input !== null) {
+      const server: unknown = Reflect.get(input, "mcpServer");
+      const tool: unknown = Reflect.get(input, "tool");
+      if (typeof server === "string" && typeof tool === "string") {
+        return { tool: "mcp", subject: { kind: "tool", value: mcpSubjectValue(server, tool) } };
+      }
+    }
+    return super.describePermission(request, cwd);
   }
 
   #baseEnv(agentDir: string): Record<string, string> {
@@ -101,6 +145,7 @@ export class FakeAgentAdapter extends AgentAdapter {
       FAKE_AGENT_DATA: FakeAgentAdapter.dataDirOf(input.agentDir),
       FAKE_AGENT_BASE_URL: input.model.baseUrl,
       FAKE_AGENT_API_KEY: input.model.placeholderKey,
+      FAKE_AGENT_CONFIG: FakeAgentAdapter.configPathOf(input.agentDir),
       ...input.extraEnv,
     });
     return Promise.resolve(
@@ -109,7 +154,7 @@ export class FakeAgentAdapter extends AgentAdapter {
         args: [MAIN, `--profile=${this.#profile}`],
         env,
         cwd: input.workspaceDir,
-        files: [],
+        files: [{ path: FakeAgentAdapter.configPathOf(input.agentDir), content: JSON.stringify(this.#config(input)) }],
       }),
     );
   }

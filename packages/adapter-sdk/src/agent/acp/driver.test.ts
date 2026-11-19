@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 
 import { sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
@@ -17,6 +20,13 @@ import { isAlive } from "./process-tree.ts";
 // streams), and against real processes where the test is about processes.
 
 const cleanups: (() => Promise<void> | void)[] = [];
+
+/** A folder of the test's own for the agent's config (milestone 3 writes the task config there). */
+const agentFolder = async (): Promise<string> => {
+  const dir = await mkdtemp(path.join(tmpdir(), "ostra-driver-agent-"));
+  cleanups.push(() => rm(dir, { recursive: true, force: true }));
+  return dir;
+};
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) {
     await cleanup();
@@ -131,6 +141,8 @@ describe("the ACP driver, in process", () => {
       {
         toolCallId: "perm-1",
         title: "Edit notes.txt",
+        // Milestone 3: the tool call's kind comes along, for the rules (ADR 0049).
+        toolKind: "edit",
         options: [
           { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
           { optionId: "allow-always", name: "Allow for this task", kind: "allow_always" },
@@ -283,7 +295,7 @@ describe("the ACP driver, with processes", () => {
       taskId: taskIdSchema.parse("task-1"),
       sessionId: sessionIdSchema.parse("session-1"),
       workspaceDir: process.cwd(),
-      agentDir: process.cwd(),
+      agentDir: await agentFolder(),
       model: { endpointModelId: "m", apiFormat: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", placeholderKey: "k" },
       mcp: { url: "http://127.0.0.1:9/mcp" },
       instructions: null,
@@ -333,7 +345,7 @@ describe("the ACP driver, with processes", () => {
       taskId: taskIdSchema.parse("task-1"),
       sessionId: sessionIdSchema.parse("session-1"),
       workspaceDir: process.cwd(),
-      agentDir: process.cwd(),
+      agentDir: await agentFolder(),
       model: { endpointModelId: "m", apiFormat: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", placeholderKey: "k" },
       mcp: { url: "http://127.0.0.1:9/mcp" },
       instructions: null,

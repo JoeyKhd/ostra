@@ -563,6 +563,12 @@ export class TinyAgent extends AgentAdapter {
     elicitationForm: true,
     modelBaseUrlAndPlaceholderKey: true,
     sessionArchive: false,
+    // Milestone 3: the tiny agent asks for nothing itself and has no plan mode.
+    permissionRules: "runner-only",
+    planMode: "none",
+    skills: false,
+    mcp: { http: false, stdio: false },
+    projectConfigOverride: false,
   };
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });

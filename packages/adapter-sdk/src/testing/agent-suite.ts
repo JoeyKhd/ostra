@@ -13,6 +13,8 @@ import type {
   PrepareLaunchInput,
   QuestionAnswer,
 } from "../agent/base.ts";
+import { defineAgentProfileCases } from "./agent-profile-cases.ts";
+import type { AgentProfileProbes } from "./agent-profile-cases.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
@@ -101,6 +103,11 @@ export type AgentFixture = {
     /** A prompt that makes the agent state a fact, and one that asks for it back without tools. */
     readonly remember: { readonly prompt: string; readonly recall: string; readonly fact: string };
   };
+  /**
+   * Milestone 3 (ADR 0049): the prompts and files of the profile's cases: rules, task rules, plan
+   * mode, skills, MCP servers, a repo's config. Absent: those cases are skipped.
+   */
+  readonly profile?: AgentProfileProbes;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -128,6 +135,11 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       elicitationForm: "boolean",
       modelBaseUrlAndPlaceholderKey: "boolean",
       sessionArchive: "boolean",
+      permissionRules: "string",
+      planMode: "string",
+      skills: "boolean",
+      mcp: "object",
+      projectConfigOverride: "boolean",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -524,6 +536,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         await started.stop();
       }
     });
+
+    // Milestone 3: approval rules, task rules, plan first, skills, MCP servers (ADR 0049).
+    defineAgentProfileCases(subject);
   });
 };
 

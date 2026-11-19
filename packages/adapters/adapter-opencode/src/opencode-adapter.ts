@@ -56,7 +56,19 @@ export class OpenCodeAdapter extends AgentAdapter {
     // ostra has run (ADR 0039, spike 2): another pinned version reads false until the agent suite has
     // passed on it, and reopening then uses the rebuild template.
     sessionArchive: ARCHIVE_VERIFIED_VERSIONS.includes(OPENCODE_VERSION),
+    // Milestone 3 (ADR 0049): declared as what's proved today. Milestone 3's ticket 08 maps the
+    // rules into OpenCode's own permissions, its plan agent, skills, MCP servers and the config
+    // precedence, proves each in the agent suite, and turns them on. Until then the runner checks
+    // every request, plan first isn't offered, and the repo's OpenCode config is hidden.
+    permissionRules: "runner-only",
+    planMode: "none",
+    skills: false,
+    mcp: { http: false, stdio: false },
+    projectConfigOverride: false,
   };
+
+  /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */
+  override readonly repoConfigPaths: readonly string[] = ["opencode.json", "opencode.jsonc", ".opencode"];
 
   readonly #resolveBinary: () => Promise<AdapterResult<OpenCodeBinary>>;
   readonly #todos = new Map<string, TodoTracker>();

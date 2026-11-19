@@ -2,14 +2,18 @@ import type { Readable, Writable } from "node:stream";
 
 import type {
   ApiFormat,
+  ApprovalRequestSubject,
+  ApprovalRule,
   OptionId,
   QuestionField,
   SessionId,
   StopReason,
   TaskEvent,
   TaskId,
+  TaskRule,
   ToolCallId,
   TurnId,
+  TurnMode,
 } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
@@ -17,6 +21,7 @@ import type { AdapterContext, Plumbing } from "../common/context.ts";
 import { adapterError, ok } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { AgentCapabilities } from "./capabilities.ts";
+import { describeStandardPermission } from "./permission-subject.ts";
 
 // The agent kind (ADR 0025, ADR 0032): OpenCode first, Claude Code before launch. ACP is the only
 // way ostra talks to an agent (ADR 0018). The base class composes ostra's ACP driver through a
@@ -24,6 +29,29 @@ import type { AgentCapabilities } from "./capabilities.ts";
 // how to launch it, and the quirks of its ACP updates.
 
 // ---------- launching ----------
+
+/** A skill the runner wrote for the task (F-021, ADR 0049): its folder holds `SKILL.md` and its files. */
+export type LaunchSkill = {
+  readonly name: string;
+  /** Absolute, inside the task's agent folder: never in the repo. */
+  readonly dir: string;
+};
+
+/**
+ * An MCP server as the agent reaches it (ADR 0049, Q170): an HTTP server at the sidecar's MCP
+ * proxy, whose address holds no credential, or a stdio server, a command already in the image whose
+ * variables hold no secret.
+ */
+export type LaunchMcpServer =
+  | { readonly name: string; readonly transport: "http"; readonly url: string; readonly readOnly: boolean }
+  | {
+      readonly name: string;
+      readonly transport: "stdio";
+      readonly command: string;
+      readonly args: readonly string[];
+      readonly env: Readonly<Record<string, string>>;
+      readonly readOnly: boolean;
+    };
 
 /** A file the agent needs before it starts, such as its per-task config. */
 export type LaunchFile = {
@@ -69,6 +97,21 @@ export type PrepareLaunchInput = {
   readonly instructions: string | null;
   /** The variables the environment allows through to the agent (non-secret, per repo). */
   readonly extraEnv: Readonly<Record<string, string>>;
+
+  // ---- milestone 3 (ADR 0049): the profile, the task's rules and the mode ----
+  /**
+   * The profile's approval rules: what needs a person. A `native` adapter writes them into the
+   * agent's own settings as "ask"; a `runner-only` one leaves every request to the runner. Absent: none.
+   */
+  readonly approvalRules?: readonly ApprovalRule[];
+  /** The task's "for this task" rules, which the runner answers itself. Absent: none. */
+  readonly taskRules?: readonly TaskRule[];
+  /** The profile's skills, as the runner wrote them. Without `skills`, the adapter adds them to the instructions. */
+  readonly skills?: readonly LaunchSkill[];
+  /** The profile's MCP servers, beside ostra's own (`mcp`). Absent: none. */
+  readonly mcpServers?: readonly LaunchMcpServer[];
+  /** The mode the agent starts in (F-063). Absent: `build`. */
+  readonly mode?: TurnMode;
 };
 
 // ---------- the driver seam (ticket 09) ----------
@@ -96,6 +139,18 @@ export type PermissionRequest = {
   readonly toolCallId: ToolCallId;
   readonly title: string;
   readonly options: readonly { readonly optionId: OptionId; readonly name: string; readonly kind: string }[];
+  // ---- milestone 3 ----
+  /** The tool call's ACP kind, as the agent sent it: vendor data. */
+  readonly toolKind?: string;
+  /** The tool call's raw input, as the agent sent it: vendor data, may quote the repo, never logged. */
+  readonly rawInput?: unknown;
+  /** The paths the tool call names, as the agent sent them. */
+  readonly locations?: readonly string[];
+  /**
+   * What the request touches, for the rules and the card (ADR 0049): set by the base class from
+   * `describePermission`; `null` when the request names nothing the rules can match.
+   */
+  readonly subject?: ApprovalRequestSubject | null;
 };
 
 export type PermissionAnswer =
@@ -188,6 +243,12 @@ export type StartSessionInput = {
   readonly onQuestion: DriverHandlers["onQuestion"];
   /** Resume this agent session in place, when the adapter has `sessionLoad`. */
   readonly resumeAgentSessionId?: string;
+  /**
+   * Milestone 3 (F-063): for a `relaunch` adapter's `setMode`, stops the agent's process and starts
+   * it again with the launch `prepareLaunch` gives for `mode`, and hands back its stdio. The runner
+   * provides it; without it, a `relaunch` adapter can't change mode.
+   */
+  readonly relaunch?: (mode: TurnMode) => Promise<AdapterResult<AgentIo>>;
 };
 
 /** A running session, as the base class hands it back. */
@@ -261,6 +322,14 @@ export abstract class AgentAdapter {
   #plumbing: Plumbing | undefined;
   readonly #turns = new Map<string, TurnId>();
   readonly #emitters = new Map<string, (events: readonly TaskEvent[]) => void>();
+  readonly #starts = new Map<string, StartSessionInput>();
+
+  /**
+   * Milestone 3 (ADR 0049, Q171): the repo files that hold this agent's own config, relative to a
+   * repo's checkout, such as `opencode.json`. Without `projectConfigOverride`, the runner hides them
+   * from the agent for the task and puts them back before the commit.
+   */
+  readonly repoConfigPaths: readonly string[] = [];
 
   constructor(driver: DriverPort, context: AdapterContext = defaultAdapterContext) {
     this.#driver = driver;
@@ -299,12 +368,27 @@ export abstract class AgentAdapter {
     return Promise.resolve(adapterError("unsupported", `${this.name} can't import a session`));
   }
 
+  /**
+   * Milestone 3 (ADR 0049): what a permission request touches, for the rules. The default reads
+   * ACP's standard kinds: a path for `edit`, `delete` and `move`, a command for `execute`, a URL for
+   * `fetch`. An adapter whose agent says it another way, or names its MCP tools, overrides it.
+   */
+  protected describePermission(request: PermissionRequest, cwd: string): ApprovalRequestSubject | null {
+    return describeStandardPermission(request, cwd);
+  }
+
+  /** Milestone 3 (F-063): the agent's own ID of a mode, for `session/set_mode`. The default is ostra's name. */
+  protected modeIdFor(mode: TurnMode): string {
+    return mode;
+  }
+
   /** Connects to the agent's process and starts (or resumes) its session. */
   async startSession(input: StartSessionInput): Promise<AdapterResult<AgentSession>> {
     if (input.resumeAgentSessionId !== undefined && !this.capabilities.sessionLoad) {
       return adapterError("unsupported", `${this.name} can't resume its own sessions`);
     }
     const sessionKey = String(input.sessionId);
+    this.#starts.set(sessionKey, input);
     this.#emitters.set(sessionKey, input.onEvents);
     let replayed = 0;
     const connected = await this.#driver.connect(input.io, {
@@ -326,11 +410,14 @@ export abstract class AgentAdapter {
           input.onEvents(events);
         }
       },
-      onPermission: input.onPermission,
+      // The request goes on with its subject, read once here, for the runner's rules.
+      onPermission: (agentSessionId, request, signal) =>
+        input.onPermission(agentSessionId, { ...request, subject: this.describePermission(request, input.cwd) }, signal),
       onQuestion: input.onQuestion,
     });
     if (!connected.ok) {
       this.#emitters.delete(sessionKey);
+      this.#starts.delete(sessionKey);
       return connected;
     }
     const connection = connected.value;
@@ -357,11 +444,17 @@ export abstract class AgentAdapter {
    * `turn.failed` when the agent couldn't finish. The caller writes `user.message` and numbers
    * the events; it doesn't write these (F-023).
    */
-  async prompt(session: AgentSession, turnId: TurnId, text: string): Promise<AdapterResult<{ readonly stopReason: StopReason }>> {
+  async prompt(
+    session: AgentSession,
+    turnId: TurnId,
+    text: string,
+    options: { readonly mode?: TurnMode } = {},
+  ): Promise<AdapterResult<{ readonly stopReason: StopReason }>> {
     const key = String(session.sessionId);
     const emit = this.#emitters.get(key);
     this.#turns.set(key, turnId);
-    emit?.([{ kind: "turn.started", turnId }]);
+    // Milestone 3: a turn whose mode the runner names says so, for the thread's plan marker (F-063).
+    emit?.([options.mode === undefined ? { kind: "turn.started", turnId } : { kind: "turn.started", turnId, mode: options.mode }]);
     const result = await session.connection.prompt(session.agentSessionId, text);
     const held = this.#driver.finishTurn?.({ taskId: session.taskId, sessionId: session.sessionId, turnId }) ?? [];
     emit?.([
@@ -386,11 +479,60 @@ export abstract class AgentAdapter {
     return session.connection.steer(session.agentSessionId, text);
   }
 
+  /**
+   * Milestone 3 (F-063, ADR 0049): switches a live session between plan and build mode, between
+   * turns. With `planMode: "session-mode"` it's ACP's `session/set_mode`; with `relaunch` the agent
+   * is stopped and started again with the other mode's launch (`StartSessionInput.relaunch`), and
+   * its session loaded, the replay counted as milestone 2 does; with `none` it's refused. The
+   * session that comes back is the one to use from then on.
+   */
+  async setMode(session: AgentSession, mode: TurnMode): Promise<AdapterResult<AgentSession>> {
+    const key = String(session.sessionId);
+    const planMode = this.capabilities.planMode;
+    switch (planMode) {
+      case "none":
+        return adapterError("unsupported", `${this.name} has no plan mode`);
+      case "session-mode": {
+        const setMode = session.connection.setMode;
+        if (setMode === undefined) {
+          return adapterError("unsupported", `${this.name}'s driver can't set a session's mode`);
+        }
+        const set = await setMode(session.agentSessionId, this.modeIdFor(mode));
+        if (!set.ok) {
+          return set;
+        }
+        this.#emitters.get(key)?.(set.value);
+        return ok(session);
+      }
+      case "relaunch": {
+        const start = this.#starts.get(key);
+        if (!this.capabilities.sessionLoad || start?.relaunch === undefined) {
+          return adapterError("unsupported", `${this.name} can't be relaunched in another mode here`);
+        }
+        await session.connection.close();
+        // Between turns: the load's replay must never be mapped as the last turn's new events.
+        this.#turns.delete(key);
+        const io = await start.relaunch(mode);
+        if (!io.ok) {
+          return io;
+        }
+        const resumed = await this.startSession({ ...start, io: io.value, resumeAgentSessionId: session.agentSessionId });
+        if (resumed.ok) {
+          this.#emitters.get(key)?.([{ kind: "session.config_changed", key: "mode", value: this.modeIdFor(mode).slice(0, 2000) }]);
+        }
+        return resumed;
+      }
+      default:
+        return planMode satisfies never;
+    }
+  }
+
   /** Ends the session's connection. */
   async close(session: AgentSession): Promise<void> {
     const key = String(session.sessionId);
     this.#turns.delete(key);
     this.#emitters.delete(key);
+    this.#starts.delete(key);
     this.#driver.closeSession?.(session.sessionId);
     await session.connection.close();
   }

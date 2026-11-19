@@ -125,7 +125,14 @@ const updateNotificationSchema = z.looseObject({
 });
 
 const permissionSchema = z.looseObject({
-  toolCall: z.looseObject({ toolCallId: toolCallIdSchema, title: z.string().nullish() }),
+  toolCall: z.looseObject({
+    toolCallId: toolCallIdSchema,
+    title: z.string().nullish(),
+    // Milestone 3: what the request touches, for the rules (ADR 0049). Vendor data, read loosely.
+    kind: z.string().nullish(),
+    rawInput: z.unknown().optional(),
+    locations: z.array(z.looseObject({ path: z.string() })).nullish().catch(null),
+  }),
   options: z.array(z.looseObject({ optionId: z.string(), name: z.string(), kind: z.string() })),
 });
 
@@ -285,9 +292,13 @@ const connectAgent = async (
       if (!parsed.success) {
         return { outcome: { outcome: "cancelled" } };
       }
+      const { kind, rawInput, locations } = parsed.data.toolCall;
       const request: PermissionRequest = {
         toolCallId: parsed.data.toolCall.toolCallId,
         title: parsed.data.toolCall.title ?? "",
+        ...(typeof kind === "string" ? { toolKind: kind } : {}),
+        ...(rawInput === undefined ? {} : { rawInput }),
+        ...(locations === null || locations === undefined ? {} : { locations: locations.map((location) => location.path) }),
         // An option whose ID can't be an ID is left out; the IDs are parsed here, once.
         options: parsed.data.options.flatMap((option) => {
           const optionId = optionIdSchema.safeParse(option.optionId);
