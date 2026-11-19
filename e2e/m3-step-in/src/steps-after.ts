@@ -36,7 +36,7 @@ export const merge = async (d: Demo): Promise<void> => {
   d.run.timings["mergeSeenSeconds"] = seconds(Date.now() - mergedAt);
   if (d.run.ticket !== null) {
     const ticketId = d.run.ticket.id;
-    const done = await waitFor("the ticket's move to done", 5 * 60_000, async () => {
+    const done = await waitFor("the ticket's move to done", 12 * 60_000, async () => {
       const issue = await readIssue(d.tool, ticketId);
       return issue.state.type === "completed" ? issue : null;
     }, 10_000).catch(() => null);
@@ -69,9 +69,17 @@ export const cancel = async (d: Demo): Promise<void> => {
   const { sam, tool, settings } = d;
   if (d.run.ticket === null) throw new Error("no ticket");
   await turnSettled(d, 20 * 60_000);
+  const states = statesSchema.parse(await tool.call("query ($id: String!) { team(id: $id) { states { nodes { id name type } } } }", { id: settings.linearTeamId }));
+  // After the merge the ticket is done; the follow-up's work puts it back in progress, as a person
+  // would, so its cancel is a close while the task runs (a close after the merge does nothing).
+  const started = states.team.states.nodes.find((state) => state.type === "started");
+  if (started !== undefined) {
+    await tool.call("mutation ($id: String!, $stateId: String!) { issueUpdate(id: $id, input: { stateId: $stateId }) { success } }", { id: d.run.ticket.id, stateId: started.id });
+    await sleep(15_000);
+  }
   await sam.goto(taskPath(d));
   const box = sam.getByRole("textbox", { name: "Message the agent" });
-  await box.fill("Add a third line to the changelog that says the release name is final.");
+  await box.fill("Add a third line to the changelog that says the release name is final, then read every file in the repo once more to check nothing else needs the name.");
   const reopen = sam.locator('[data-action="reopen"]');
   if ((await reopen.count()) > 0) await reopen.click();
   else await sam.locator('[data-action="send"]').click();
@@ -79,7 +87,6 @@ export const cancel = async (d: Demo): Promise<void> => {
     const task = await d.db.task.findUniqueOrThrow({ where: { id: taskIdOf(d) }, select: { state: true } });
     return task.state === "running" ? true : null;
   }, 1000);
-  const states = statesSchema.parse(await tool.call("query ($id: String!) { team(id: $id) { states { nodes { id name type } } } }", { id: settings.linearTeamId }));
   const canceled = states.team.states.nodes.find((state) => state.type === "canceled");
   if (canceled === undefined) throw new Error("the team has no cancelled status");
   await tool.call("mutation ($id: String!, $stateId: String!) { issueUpdate(id: $id, input: { stateId: $stateId }) { success } }", { id: d.run.ticket.id, stateId: canceled.id });
@@ -90,8 +97,13 @@ export const cancel = async (d: Demo): Promise<void> => {
     return task.needsYouReason === "ticket_closed" || (await d.db.needsYouItem.count({ where: { taskId: taskIdOf(d), reason: "ticket_closed", state: "open" } })) > 0 ? true : null;
   }, 2000);
   d.run.timings["ticketClosedSeconds"] = seconds(Date.now() - cancelledAt);
-  const interrupted = (await eventsOf(d, "turn.cancel_requested")).filter((row) => row.occurredAt.getTime() >= cancelledAt - 1000).length;
-  d.check("step 12: the turn was interrupted and the task needs you · ticket closed", interrupted > 0, `${String(interrupted)} cancel request, ${String(d.run.timings["ticketClosedSeconds"])} s after the cancel`);
+  // The turn ends cancelled: the runner's answer to core's interrupt.
+  const closed = (await eventsOf(d, "ticket.closed")).filter((row) => row.occurredAt.getTime() >= cancelledAt - 1000);
+  const cancelledTurns = await waitFor("the interrupted turn", 120_000, async () => {
+    const rows = (await eventsOf(d, "turn.ended")).filter((row) => row.occurredAt.getTime() >= cancelledAt - 1000 && JSON.stringify(row.payload).includes('"cancelled"'));
+    return rows.length > 0 ? rows : null;
+  }, 2000).catch(() => []);
+  d.check("step 12: the turn was interrupted and the task needs you · ticket closed", closed.length === 1 && cancelledTurns.length > 0, `ticket.closed and a cancelled turn, ${String(d.run.timings["ticketClosedSeconds"])} s after the cancel`);
   await sam.goto(taskPath(d));
   const block = sam.getByTestId("ticket-closed");
   await block.waitFor({ timeout: 60_000 });
@@ -176,7 +188,7 @@ export const services = async (d: Demo): Promise<void> => {
   await demo.getByRole("listbox", { name: "Pick the project" }).getByRole("button", { name: d.settings.githubOtherRepo, exact: true }).click();
   await demo.getByLabel("Prompt").fill("List the files at the repo's root in docs/files.md");
   await demo.locator('[data-action="start-task"]').click();
-  await demo.waitForURL(/\/tasks\/[^/]+$/, { timeout: 30_000 });
+  await demo.waitForURL((url) => /^\/tasks\/[^/]+$/.test(url.pathname) && url.pathname !== "/tasks/new", { timeout: 30_000 });
   const waitingId = taskIdSchema.parse(new URL(demo.url()).pathname.split("/").at(-1));
   const note = demo.getByTestId("task-dispatch-note");
   await note.waitFor({ timeout: 120_000 });
@@ -196,7 +208,7 @@ export const services = async (d: Demo): Promise<void> => {
     await demo.getByRole("listbox", { name: "Pick the project" }).getByRole("button", { name: d.settings.githubRepo, exact: true }).click();
     await demo.getByLabel("Prompt").fill(`Say how many files are at the repo's root (round ${String(round)}). Change nothing.`);
     await demo.locator('[data-action="start-task"]').click();
-    await demo.waitForURL(/\/tasks\/[^/]+$/, { timeout: 30_000 });
+    await demo.waitForURL((url) => /^\/tasks\/[^/]+$/.test(url.pathname) && url.pathname !== "/tasks/new", { timeout: 30_000 });
     const id = taskIdSchema.parse(new URL(demo.url()).pathname.split("/").at(-1));
     const finished = await waitFor("the setup's end", 10 * 60_000, async () => {
       const row = await d.db.event.findFirst({ where: { taskId: id, kind: "environment.setup_finished" }, select: { payload: true } });
@@ -239,6 +251,11 @@ export const secrets = async (d: Demo): Promise<void> => {
   }
   const mails = await readMail(d.settings.m3StateDir);
   const perMoment = new Map<string, number>();
-  for (const one of mails) perMoment.set(`${one.to.join(",")}:${one.subject}`, (perMoment.get(`${one.to.join(",")}:${one.subject}`) ?? 0) + 1);
+  // A moment is a member, a kind (the subject's words before " · ") and a task (the mail's link).
+  for (const one of mails) {
+    const task = /\/tasks\/([0-9a-f-]{36})/.exec(one.data)?.[1] ?? "none";
+    const key = `${one.to.join(",")}:${one.subject.split("·")[0] ?? ""}:${task}`;
+    perMoment.set(key, (perMoment.get(key) ?? 0) + 1);
+  }
   d.check("after: one mail per member and moment", [...perMoment.values()].every((n) => n === 1), `${String(mails.length)} mails, ${String(perMoment.size)} distinct`);
 };

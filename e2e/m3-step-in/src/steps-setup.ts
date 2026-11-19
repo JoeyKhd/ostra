@@ -66,10 +66,14 @@ const approveRunner = async (d: Demo): Promise<void> => {
 
 export const setup = async (d: Demo): Promise<void> => {
   const { demo, settings } = d;
-  await addModelProvider(demo, settings);
-  await connectGitHub(demo, settings);
-  d.run.projectHref = await createProject(demo, settings);
-  d.run.otherProjectHref = await createOtherProject(d);
+  // Once setup is done Home has no checklist for milestone 1's helpers to read: a later run only
+  // seeds Linear again (its webhook, which a clean-up may have deleted).
+  if (d.run.projectHref === null || d.run.otherProjectHref === null) {
+    await addModelProvider(demo, settings);
+    await connectGitHub(demo, settings);
+    d.run.projectHref = await createProject(demo, settings);
+    d.run.otherProjectHref = await createOtherProject(d);
+  }
   const seeded = await seedLinear({
     db: d.db,
     tool: d.tool,
