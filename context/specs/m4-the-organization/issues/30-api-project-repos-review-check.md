@@ -1,6 +1,6 @@
 # 30: API: project repos and the review check
 
-Status: ready-for-agent
+Status: resolved
 Builder: api
 Blocked by: 17, 18
 Features: F-098, F-104
@@ -16,8 +16,10 @@ Spec: `../spec.md`, section 4 ("Several repos", "The independent-review check");
 
 ## Done when
 
-- [ ] Tests named `it("F-098: ...")`: add, reorder and remove with their access and limits; a removal refused with the tasks named; a project created with two repos.
-- [ ] Tests named `it("F-104: ...")`: the check's state and reason on `tasks.get` per repo and head.
-- [ ] Committed as `✨ add project repos and the check to the API`.
+- [x] Tests named `it("F-098: ...")`: add, reorder and remove with their access and limits; a removal refused with the tasks named; a project created with two repos.
+- [x] Tests named `it("F-104: ...")`: the check's state and reason on `tasks.get` per repo and head.
+- [x] Committed as `✨ add project repos and the check to the API`.
 
 ## Comments
+
+- 2026-11-19 (api builder B): built and pushed as `✨ add project repos and the check to the API`. `projects.repos`, `projects.addRepo`, `projects.removeRepo` (a refusal answers `{ removed: false, message, tasks }`, each task by title and ticket key) and `projects.reorderRepos` in `packages/api/src/routers/project-repos.ts`, over ticket 17's use cases with `OSTRA_PROJECT_MAX_REPOS`. `projects.create` takes `moreRepos` (`createProjectInputSchema`, additive), each repo once, the limit checked in the router; `checkProjectRepos` and the project views now order repos by `position`. `tasks.get` gives each PR a `reviewCheck` (`waiting`/`passed`, reason, approver, and `heads`). Tests: `project-repos.test.ts`, `task-review-check.test.ts`, and the isolation suite's new `projects.repos` row; break-its in `context/proof/F-098.md` and `F-104.md`.

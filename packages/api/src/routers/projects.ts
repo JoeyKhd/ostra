@@ -21,6 +21,7 @@ import { adminProcedure, memberProcedure, projectProcedure, router, unwrap } fro
 import { inboxCounts } from "./inbox.ts";
 import { agentProfileViewSchema, loadAgentProfileView } from "./agent-profile-view.ts";
 import { detectionViewSchema } from "./environments.ts";
+import { projectReposProcedures } from "./project-repos.ts";
 
 // F-086, ticket 32: projects. A project is one repo linked through the organization's App, with its
 // one environment. Another organization's projects, and a restricted one a member isn't on, are
@@ -117,12 +118,23 @@ const ticketTemplateView = (saved: string | null) => ({
 });
 
 export const projectsRouter = router({
-  /** Creates a project on one repo the App's installation includes, with its environment drafted from the repo. */
+  // F-098 (ticket 30): the project's several repos, in order.
+  ...projectReposProcedures,
+
+  /**
+   * Creates a project on one or more repos the App's installations include (`repo` first, then
+   * `moreRepos`), with its environment drafted from the first repo.
+   */
   create: adminProcedure
     .input(createProjectInputSchema)
     .output(createdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
+      const { db, ports, settings } = ctx.deps;
+      // F-098 (ticket 30): a project holds at most `OSTRA_PROJECT_MAX_REPOS` repos from its start.
+      const repoCount = 1 + (input.moreRepos?.length ?? 0);
+      if (repoCount > settings.projectMaxRepos) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `A project holds at most ${String(settings.projectMaxRepos)} repos` });
+      }
       // Reading the repo's files is part of it, so the transaction gets time.
       const result = await db.$transaction((tx) => createProject({ tx, scope: ctx.scope, ...ports }, input), { timeout: 60_000, maxWait: 10_000 });
       const created = unwrap(result, {
@@ -143,7 +155,7 @@ export const projectsRouter = router({
     const rows = await db.project.findMany({
       where: { organizationId },
       orderBy: { createdAt: "asc" },
-      include: { repos: { orderBy: { createdAt: "asc" } } },
+      include: { repos: { orderBy: [{ position: "asc" }, { createdAt: "asc" }] } },
     });
     const visible = visibleProjects(
       ctx.scope,
@@ -180,7 +192,7 @@ export const projectsRouter = router({
       const project = await db.project.findFirstOrThrow({
         where: { id: input.projectId, organizationId },
         include: {
-          repos: { orderBy: { createdAt: "asc" } },
+          repos: { orderBy: [{ position: "asc" }, { createdAt: "asc" }] },
           environment: { select: { status: true } },
           pools: { include: { pool: { select: { id: true, name: true, isDefault: true } } } },
         },

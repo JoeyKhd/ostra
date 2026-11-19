@@ -82,7 +82,7 @@ const credentialsOf = async (
 export const checkProjectRepos = async (deps: CheckRepoRulesDeps, input: CheckRepoRulesInput): Promise<readonly RepoChecked[]> => {
   const { organizationId, projectId } = input;
   const now = deps.clock.now();
-  const rows = await deps.db.repo.findMany({ where: { organizationId, projectId }, include: { ...installationStateSelect }, orderBy: { createdAt: "asc" } });
+  const rows = await deps.db.repo.findMany({ where: { organizationId, projectId }, include: { ...installationStateSelect }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
   const checked: RepoChecked[] = [];
   // One `listRepos` per installation answers `private` for all of its repos.
   const listed = new Map<string, ReadonlyMap<string, boolean>>();

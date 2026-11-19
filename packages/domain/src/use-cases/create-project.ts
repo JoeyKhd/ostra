@@ -13,11 +13,19 @@ import type { Ports } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import type { UseCaseResult } from "./common.ts";
 import { ensureDefaultPool } from "./pools.ts";
+import { checkoutDirFor, PROJECT_MAX_REPOS_DEFAULT } from "../repos/several-repos.ts";
 import { appOwnerInTx, installationUsable, linkInstallationInTx, linkOwnInstallationInTx, seenInstallationOf } from "../code-host/installations.ts";
 
 // F-086: an admin creates a project with one repo linked through the organization's App, and its one
 // environment as a draft (F-112 fills it from the repo's files). Its default code agent profile is
 // the organization's built-in OpenCode profile. Written by ticket 32.
+
+/** A repo the project is created with: the App's connection, the installation and the repo. */
+const projectRepoInputSchema = z.strictObject({
+  connectionId: connectionIdSchema,
+  installationId: z.string().min(1).max(64),
+  fullName: repoFullNameSchema,
+});
 
 export const createProjectInputSchema = z.strictObject({
   name: z.string().trim().min(1).max(128),
@@ -27,12 +35,17 @@ export const createProjectInputSchema = z.strictObject({
     .max(64)
     .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, "lowercase letters, digits and inner hyphens"),
   access: z.enum(["open", "restricted"]).default("open"),
-  repo: z.strictObject({
-    connectionId: connectionIdSchema,
-    installationId: z.string().min(1).max(64),
-    fullName: repoFullNameSchema,
-  }),
-});
+  repo: projectRepoInputSchema,
+  /**
+   * Milestone 4 (F-098, ticket 30): the project's other repos, after `repo`, in order. Each is one
+   * a linked App installation reaches, as `repo` is; none twice. The API holds the total to
+   * `OSTRA_PROJECT_MAX_REPOS`.
+   */
+  moreRepos: z.array(projectRepoInputSchema).max(PROJECT_MAX_REPOS_DEFAULT - 1).optional(),
+}).refine(
+  (input) => new Set([input.repo, ...(input.moreRepos ?? [])].map((repo) => repo.fullName.toLowerCase())).size === 1 + (input.moreRepos?.length ?? 0),
+  { message: "Each repo once", path: ["moreRepos"] },
+);
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;
 
 export type CreateProjectResult = UseCaseResult<
@@ -89,20 +102,20 @@ const checkoutDirOf = (fullName: RepoFullName): string => {
   return safe === "" ? "repo" : safe;
 };
 
-export const createProject: CreateProject = async (deps, input) => {
+type HostRepo = Extract<Awaited<ReturnType<CodeHostAdapter["listRepos"]>>, { readonly ok: true }>["value"][number];
+
+const refusal = (error: Exclude<CreateProjectResult, { readonly ok: true }>["error"], message: string) => ({ ok: false, error, message }) as const;
+
+/** A repo a linked installation of one of the organization's Apps lists, or why not. */
+const reachRepo = async (
+  deps: CreateProjectDeps,
+  wanted: z.infer<typeof projectRepoInputSchema>,
+): Promise<{ readonly ok: true; readonly app: CodeHostAppCredentials; readonly hostRepo: HostRepo } | Extract<CreateProjectResult, { readonly ok: false }>> => {
   const { tx, scope } = deps;
   const organizationId = scope.organizationId;
-  if (!requireOrganizationAdmin(scope, organizationId).ok) {
-    return refuse("forbidden", "Only an organization admin creates a project");
-  }
-  if ((await tx.project.count({ where: { organizationId, slug: input.slug } })) > 0) {
-    return refuse("slug-taken", "A project with that slug exists");
-  }
-
-  // The repo must be one the organization's App can reach: listed by its installation.
-  const connection = await tx.connection.findFirst({ where: { id: input.repo.connectionId, organizationId, kind: "github" } });
+  const connection = await tx.connection.findFirst({ where: { id: wanted.connectionId, organizationId, kind: "github" } });
   if (connection === null) {
-    return refuse("repo-not-installed", "That GitHub connection doesn't exist in this organization");
+    return refusal("repo-not-installed", "That GitHub connection doesn't exist in this organization");
   }
   const keyRef = secretRefSchema.safeParse(connection.privateKeySecretRef);
   if (!keyRef.success) {
@@ -117,43 +130,71 @@ export const createProject: CreateProject = async (deps, input) => {
   // anything is minted for it. One ostra hasn't seen yet is linked here when it's on the App owner's
   // own account; one on another account waits for an admin on the GitHub page. When the host
   // doesn't say who owns the App, the admin's choice links it, as before milestone 4.
-  const installationId = input.repo.installationId;
+  const installationId = wanted.installationId;
   const known = await tx.codeHostInstallation.findUnique({
     where: { connectionId_installationId: { connectionId: connection.id, installationId } },
     select: { state: true, removedAt: true },
   });
   if (known !== null && !installationUsable(known)) {
-    return refuse("repo-not-installed", "That GitHub installation isn't linked to ostra: an organization admin links it on the GitHub page");
+    return refusal("repo-not-installed", "That GitHub installation isn't linked to ostra: an organization admin links it on the GitHub page");
   }
   if (known === null) {
     const listed = await deps.adapters.codeHost.listInstallations(app);
     const seen = listed.ok ? listed.value.find((installation) => installation.installationId === installationId) : undefined;
     if (seen === undefined) {
-      return refuse("repo-not-installed", "The App has no such installation");
+      return refusal("repo-not-installed", "The App has no such installation");
     }
     const owner = await appOwnerInTx(tx, deps.adapters.codeHost, app, connection);
     const connectionId = connectionIdSchema.parse(connection.id);
     if (owner.accountId === null && owner.login === null) {
       await linkInstallationInTx(deps, tx, { organizationId, connectionId, installation: seenInstallationOf(seen), memberId: scope.memberId });
     } else if (!(await linkOwnInstallationInTx(deps, tx, { organizationId, connectionId, owner, installation: seenInstallationOf(seen) }))) {
-      return refuse("repo-not-installed", "That GitHub installation isn't linked to ostra: an organization admin links it on the GitHub page");
+      return refusal("repo-not-installed", "That GitHub installation isn't linked to ostra: an organization admin links it on the GitHub page");
     }
   }
-  const repos = await deps.adapters.codeHost.listRepos(app, input.repo.installationId);
+  const repos = await deps.adapters.codeHost.listRepos(app, wanted.installationId);
   if (!repos.ok) {
-    return refuse("repo-not-installed", `GitHub did not list the installation's repos: ${repos.error.message}`);
+    return refusal("repo-not-installed", `GitHub did not list the installation's repos: ${repos.error.message}`);
   }
-  const hostRepo = repos.value.find((candidate) => candidate.fullName.toLowerCase() === input.repo.fullName.toLowerCase());
+  const hostRepo = repos.value.find((candidate) => candidate.fullName.toLowerCase() === wanted.fullName.toLowerCase());
   if (hostRepo === undefined) {
-    return refuse("repo-not-installed", "The App's installation doesn't include that repo");
+    return refusal("repo-not-installed", `The App's installation doesn't include ${wanted.fullName}`);
   }
+
+  return { ok: true, app, hostRepo };
+};
+
+export const createProject: CreateProject = async (deps, input) => {
+  const { tx, scope } = deps;
+  const organizationId = scope.organizationId;
+  if (!requireOrganizationAdmin(scope, organizationId).ok) {
+    return refuse("forbidden", "Only an organization admin creates a project");
+  }
+  if ((await tx.project.count({ where: { organizationId, slug: input.slug } })) > 0) {
+    return refuse("slug-taken", "A project with that slug exists");
+  }
+
+  // Each repo must be one the organization's App can reach: listed by a linked installation.
+  const reached: { readonly connectionId: string; readonly installationId: string; readonly app: CodeHostAppCredentials; readonly hostRepo: HostRepo }[] = [];
+  for (const wanted of [input.repo, ...(input.moreRepos ?? [])]) {
+    const found = await reachRepo(deps, wanted);
+    if (!found.ok) {
+      return found;
+    }
+    reached.push({ connectionId: wanted.connectionId, installationId: wanted.installationId, app: found.app, hostRepo: found.hostRepo });
+  }
+  const [first] = reached;
+  if (first === undefined) {
+    throw new Error("a project has a first repo");
+  }
+  const { app, hostRepo } = first;
 
   const profileId = await ensureBuiltInAgentProfile(tx, organizationId);
   const poolId = await ensureDefaultPool(tx, organizationId);
 
   const detection = await detectRepoEnvironment(
     deps.adapters.codeHost,
-    { app, installationId: input.repo.installationId, repo: hostRepo.fullName },
+    { app, installationId: first.installationId, repo: hostRepo.fullName },
     hostRepo.defaultBranch,
   );
 
@@ -170,19 +211,31 @@ export const createProject: CreateProject = async (deps, input) => {
     select: { id: true },
   });
   const projectId = projectIdSchema.parse(project.id);
-  const repo = await tx.repo.create({
-    data: {
-      organizationId,
-      projectId,
-      connectionId: connection.id,
-      installationId: input.repo.installationId,
-      hostRepoId: hostRepo.hostRepoId,
-      fullName: hostRepo.fullName,
-      defaultBranch: hostRepo.defaultBranch,
-      checkoutDir: checkoutDirOf(hostRepo.fullName),
-    },
-    select: { id: true },
-  });
+  // Each repo at its place in the order (F-098), each in its own folder.
+  const taken = new Set<string>();
+  let firstRepoId: RepoId | null = null;
+  for (const [position, entry] of reached.entries()) {
+    const checkoutDir = position === 0 ? checkoutDirOf(entry.hostRepo.fullName) : checkoutDirFor(repoFullNameSchema.parse(entry.hostRepo.fullName), taken);
+    taken.add(checkoutDir);
+    const created = await tx.repo.create({
+      data: {
+        organizationId,
+        projectId,
+        connectionId: entry.connectionId,
+        installationId: entry.installationId,
+        hostRepoId: entry.hostRepo.hostRepoId,
+        fullName: entry.hostRepo.fullName,
+        defaultBranch: entry.hostRepo.defaultBranch,
+        checkoutDir,
+        position,
+      },
+      select: { id: true },
+    });
+    firstRepoId ??= repoIdSchema.parse(created.id);
+  }
+  if (firstRepoId === null) {
+    throw new Error("a project has a first repo");
+  }
   await tx.projectPool.create({ data: { organizationId, projectId, poolId } });
   // The environment starts as a draft: the detected setup script and base image, to be reviewed.
   // Variables and secrets are listed in the detection for the form; a secret has no value yet, and
@@ -199,13 +252,13 @@ export const createProject: CreateProject = async (deps, input) => {
     action: "project.created",
     entity: "project",
     entityId: projectId,
-    data: { slug: input.slug, access: input.access, repo: hostRepo.fullName },
+    data: { slug: input.slug, access: input.access, repo: hostRepo.fullName, ...(reached.length > 1 ? { repos: reached.map((entry) => entry.hostRepo.fullName).join(",") } : {}) },
   });
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
   return {
     ok: true,
     projectId,
-    repoId: repoIdSchema.parse(repo.id),
+    repoId: firstRepoId,
     environmentId: environmentIdSchema.parse(environment.id),
     detection,
   };

@@ -137,6 +137,24 @@ const finishedTaskStates = ["stopped", "merged", "done"] as const;
 
 const isOneOf = (list: readonly string[], value: string | null): boolean => value !== null && list.includes(value);
 
+type ReviewCheckRow = { readonly headSha: string; readonly status: "pending" | "passed"; readonly reason: string | null; readonly approverMemberId: string | null; readonly updatedAt: Date };
+
+const reviewCheckHeadOf = (check: ReviewCheckRow, reviewers: ReadonlyMap<string, string>) => ({
+  headSha: check.headSha,
+  /** `waiting` until someone who didn't drive the task approves this head; then `passed`. */
+  state: check.status === "passed" ? ("passed" as const) : ("waiting" as const),
+  /** Words for the thread, never a review's text. */
+  reason: check.reason,
+  approver: check.approverMemberId === null ? null : { memberId: memberIdSchema.parse(check.approverMemberId), name: reviewers.get(check.approverMemberId) ?? "A former member" },
+  updatedAt: check.updatedAt.getTime(),
+});
+
+/** A PR's review check: its newest head's, with every head's (newest first). `null` before ostra checked it. */
+const reviewCheckOf = (checks: readonly ReviewCheckRow[], reviewers: ReadonlyMap<string, string>) => {
+  const [newest] = checks;
+  return newest === undefined ? null : { ...reviewCheckHeadOf(newest, reviewers), heads: checks.map((check) => reviewCheckHeadOf(check, reviewers)) };
+};
+
 export const tasksRouter = router({
   /** F-037, F-135 (tickets 27, 50): whether a new task would start now, or the reason it would wait. */
   startCheck: startCheckProcedure,
@@ -279,7 +297,15 @@ export const tasksRouter = router({
     const task = await db.task.findFirst({
       where: { id: input.taskId, organizationId },
       include: {
-        repos: { include: { repo: { select: { fullName: true } }, pullRequests: { orderBy: { openedAt: "asc" } } }, orderBy: { createdAt: "asc" } },
+        repos: {
+          include: {
+            repo: { select: { fullName: true } },
+            pullRequests: { orderBy: { openedAt: "asc" } },
+            // Milestone 4 (F-104, ticket 30): the review check of each PR, per head, newest first.
+            reviewChecks: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] },
+          },
+          orderBy: { createdAt: "asc" },
+        },
         sessions: { orderBy: { startedAt: "desc" }, take: 1 },
         needsYouItems: { where: { state: "open" }, orderBy: { createdAt: "asc" } },
       },
@@ -293,6 +319,13 @@ export const tasksRouter = router({
       session?.agentProfileId ??
       (await db.project.findFirst({ where: { id: task.projectId, organizationId }, select: { defaultCodeProfileId: true } }))?.defaultCodeProfileId ??
       null;
+    // F-104: the members who passed a review check, by name.
+    const approverIds = [...new Set(task.repos.flatMap((repo) => repo.reviewChecks.flatMap((check) => (check.approverMemberId === null ? [] : [check.approverMemberId]))))];
+    const reviewers = new Map(
+      (approverIds.length === 0 ? [] : await db.member.findMany({ where: { organizationId, id: { in: approverIds } }, select: { id: true, user: { select: { name: true } } } })).map(
+        (member) => [member.id, member.user.name] as const,
+      ),
+    );
     const [driver, creator, lease, agent] = await Promise.all([
       task.driverMemberId === null ? null : db.member.findFirst({ where: { id: task.driverMemberId, organizationId }, select: { id: true, user: { select: { name: true } } } }),
       task.creatorMemberId === null ? null : db.member.findFirst({ where: { id: task.creatorMemberId, organizationId }, select: { id: true, user: { select: { name: true } } } }),
@@ -369,7 +402,21 @@ export const tasksRouter = router({
         behindBy: repo.behindBy,
         behindCheckedAt: repo.behindCheckedAt?.getTime() ?? null,
         /** Every PR the repo has had, oldest first (F-066): a merged one stays when a reopen opens another. */
-        pullRequests: repo.pullRequests.map((pr) => ({ number: pr.number, url: pr.url, branchName: pr.branchName, state: pr.state, draft: pr.draft, draftByOstra: pr.draftByOstra, openedAt: pr.openedAt.getTime(), closedAt: pr.closedAt?.getTime() ?? null })),
+        pullRequests: repo.pullRequests.map((pr) => ({
+          number: pr.number,
+          url: pr.url,
+          branchName: pr.branchName,
+          state: pr.state,
+          draft: pr.draft,
+          draftByOstra: pr.draftByOstra,
+          openedAt: pr.openedAt.getTime(),
+          closedAt: pr.closedAt?.getTime() ?? null,
+          /**
+           * F-104 (ticket 30, ADR 0040 amended): `ostra/independent-review` on the PR's newest head
+           * ostra has checked, `null` before its first evaluation; `heads` keeps every head's.
+           */
+          reviewCheck: reviewCheckOf(repo.reviewChecks.filter((check) => check.prNumber === pr.number), reviewers),
+        })),
       })),
       session:
         session === undefined
