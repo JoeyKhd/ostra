@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels } from "@ostra/db";
@@ -24,7 +24,7 @@ import {
   sessionIdSchema,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { Ack, CommandAck, DownFrame, ErrorFrame, Hello, RunnerId, Status } from "@ostra/protocol";
+import type { Ack, CommandAck, DownFrame, ErrorFrame, Hello, RunnerId, Status, UpFrame } from "@ostra/protocol";
 import pg from "pg";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
@@ -34,6 +34,8 @@ import { salvageEventsFrame } from "../ingest/ingest.ts";
 import { bearerToken, runnerIsLive } from "./access-token.ts";
 import type { AckedCommand, GatewayContext, RunnerRef } from "./context.ts";
 import { databaseErrorCodes } from "./database-error.ts";
+import { createHttpCarrier } from "./http-carrier.ts";
+import type { CarrierSession } from "./http-carrier.ts";
 import { createSidecars } from "./sidecars.ts";
 import { isTaskToken } from "./task-token.ts";
 
@@ -64,6 +66,8 @@ type Peer = {
 
 export type Connections = {
   readonly handleUpgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  /** The HTTP carrier's `hello`, `up` and `down` (milestone 5); `false` for any other path. */
+  readonly handleHttp: (request: IncomingMessage, response: ServerResponse, url: URL) => Promise<boolean>;
   /** Starts the LISTEN connection and the timers. */
   readonly start: () => Promise<void>;
   /** Asks every peer to reconnect elsewhere, and stops. */
@@ -391,8 +395,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     }
   };
 
-  const applyCommandAck = async (peer: Peer, ack: CommandAck): Promise<void> => {
-    const { runner } = peer;
+  const applyCommandAck = async (runner: RunnerRef, ack: CommandAck): Promise<void> => {
     const at = new Date(now());
     await db.$transaction(async (tx) => {
       await tx.command.updateMany({
@@ -432,9 +435,9 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     });
   };
 
-  const applyStatus = async (peer: Peer, status: Status): Promise<void> => {
-    statuses.set(peer.runner.runnerId, status);
-    await db.$transaction((tx) => recordRunnerReport(reportDeps(tx), reportOf(peer.runner, peer.minor, status)));
+  const applyStatus = async (runner: RunnerRef, minor: number, status: Status): Promise<void> => {
+    statuses.set(runner.runnerId, status);
+    await db.$transaction((tx) => recordRunnerReport(reportDeps(tx), reportOf(runner, minor, status)));
   };
 
   // ---------- a connection ----------
@@ -482,6 +485,62 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       await hooks.onDisconnectedInTx(tx, runner);
     });
   };
+
+  // ---------- the HTTP carrier: the same session on another carrier (milestone 5, ticket 11) ----------
+
+  /** Acks the runner's commands up to `upTo`, never past what was ever sent. */
+  const ackCommands = async (runner: RunnerRef, upTo: number): Promise<void> => {
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "command" SET "ackedAt" = ${new Date(now())}
+        WHERE "runnerId" = ${runner.runnerId} AND "organizationId" = ${runner.organizationId} AND "ackedAt" IS NULL
+          AND "seq" <= LEAST(${upTo}, (SELECT "commandSeq" FROM "runner" WHERE "id" = ${runner.runnerId}))`;
+      await tx.$executeRaw`
+        UPDATE "runner" SET "ackedCommandSeq" = GREATEST("ackedCommandSeq", LEAST(${upTo}, "commandSeq"))
+        WHERE "id" = ${runner.runnerId} AND "organizationId" = ${runner.organizationId}`;
+    });
+  };
+
+  /** One up frame past `hello`, handled as the WebSocket handles it; the frames it earned. */
+  const handleUp = async (runner: RunnerRef, minor: number, frame: Exclude<UpFrame, Hello>): Promise<readonly DownFrame[]> => {
+    switch (frame.type) {
+      case "events":
+        // Answered only once the batch committed.
+        return hooks.ingest(runner, frame);
+      case "command-ack":
+        await applyCommandAck(runner, frame);
+        return [];
+      case "status":
+        await applyStatus(runner, minor, frame);
+        return [];
+      case "live-text":
+        await hooks.liveText(runner, frame);
+        return [];
+      case "runner-event":
+        logger.info("gateway.runner-event", { runnerId: runner.runnerId, kind: frame.event.kind, carrier: "http" });
+        await hooks.runnerEvent?.(runner, frame);
+        return [];
+      default:
+        return frame satisfies never;
+    }
+  };
+
+  const carrierSession: CarrierSession = {
+    acceptHello: async (runner, hello) => {
+      const outcome = await acceptHello(runner, hello);
+      return outcome.ok ? { ok: true, connectionEpoch: outcome.connectionEpoch, minor: outcome.minor, acks: outcome.acks } : { ok: false, error: outcome.error };
+    },
+    connectedHere: (runnerId, connectionEpoch) => {
+      const peer = peers.get(runnerId);
+      if (peer !== undefined && peer.connectionEpoch < connectionEpoch) {
+        evict(peer, "replaced");
+      }
+    },
+    handleUp,
+    ackCommands,
+    closePresence,
+  };
+  const http = createHttpCarrier(context, carrierSession);
 
   const onConnection = (ws: WebSocket, runner: RunnerRef): void => {
     let peer: Peer | undefined;
@@ -547,6 +606,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           closed: false,
           goawaySent: false,
         };
+        http.connected(runner.runnerId, outcome.connectionEpoch);
         const old = peers.get(runner.runnerId);
         if (old !== undefined) {
           send(old, { type: "evict", reason: "replaced" });
@@ -605,10 +665,10 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           return;
         }
         case "command-ack":
-          await applyCommandAck(peer, frame);
+          await applyCommandAck(runner, frame);
           return;
         case "status":
-          await applyStatus(peer, frame);
+          await applyStatus(runner, peer.minor, frame);
           return;
         case "live-text":
           await hooks.liveText(runner, frame);
@@ -721,6 +781,20 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       sidecars.onNotification(notification.data);
       return;
     }
+    // The HTTP carrier's held polls, on whichever replica holds them.
+    switch (notification.data.kind) {
+      case "command":
+        http.wake(notification.data.runnerId);
+        break;
+      case "connected":
+        http.connected(notification.data.runnerId, notification.data.connectionEpoch);
+        break;
+      case "revoked":
+        http.revoked(notification.data.runnerId);
+        break;
+      default:
+        notification.data satisfies never;
+    }
     // Every replica listens and ignores the runners it doesn't hold.
     const peer = peers.get(notification.data.runnerId);
     if (peer === undefined) {
@@ -777,7 +851,8 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
 
   const sweep = async (): Promise<void> => {
     await sidecars.sweep();
-    const ids = [...peers.keys()];
+    const holding = http.holding();
+    const ids = [...new Set([...peers.keys(), ...holding.keys()])];
     if (ids.length === 0) {
       return;
     }
@@ -787,6 +862,9 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       WHERE "runnerId" = ANY(${ids}::text[]) AND "ackedAt" IS NULL GROUP BY "runnerId"`;
     for (const raw of unacked) {
       const row = unackedRowSchema.safeParse(raw);
+      if (row.success && (row.data.max ?? 0) > (holding.get(row.data.runnerId) ?? Number.MAX_SAFE_INTEGER)) {
+        http.wake(row.data.runnerId, row.data.max ?? 0);
+      }
       const peer = row.success ? peers.get(row.data.runnerId) : undefined;
       if (row.success && peer !== undefined && (row.data.max ?? 0) > peer.lastSent) {
         void deliver(peer);
@@ -798,6 +876,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       select: { id: true },
     });
     for (const row of revoked) {
+      http.revoked(runnerIdSchema.parse(row.id));
       const peer = peers.get(runnerIdSchema.parse(row.id));
       if (peer !== undefined) {
         evict(peer, "revoked");
@@ -819,7 +898,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     });
     for (const row of stale) {
       const runnerId = runnerIdSchema.parse(row.runnerId);
-      if (peers.has(runnerId)) {
+      if (peers.has(runnerId) || http.holds(runnerId)) {
         continue;
       }
       logger.info("gateway.presence-orphaned", { runnerId, connectionEpoch: row.connectionEpoch });
@@ -829,6 +908,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
 
   const writePresence = async (): Promise<void> => {
     await sidecars.writePresence();
+    await http.writePresence();
     await closeOrphanedPresences();
     const held = [...peers.values()].filter((peer) => !peer.closed);
     for (const peer of held) {
@@ -890,6 +970,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
 
   return {
     handleUpgrade,
+    handleHttp: http.handle,
     start: async () => {
       running = true;
       if (options.listen !== false) {
@@ -901,6 +982,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     },
     stop: async () => {
       running = false;
+      http.stop();
       await sidecars.stop();
       for (const timer of pending) {
         clearTimeout(timer);

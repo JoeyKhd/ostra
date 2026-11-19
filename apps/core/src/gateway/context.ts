@@ -82,6 +82,8 @@ export type GatewayTimers = {
   readonly sweepMs: number;
   readonly presenceMs: number;
   readonly maxConnectionAgeMs: number;
+  /** How long the HTTP carrier holds a `down` poll with nothing to send (milestone 5). */
+  readonly longPollMs: number;
 };
 
 export const defaultTimers: GatewayTimers = {
@@ -91,6 +93,7 @@ export const defaultTimers: GatewayTimers = {
   sweepMs: runnerLimits.sweepMs,
   presenceMs: runnerLimits.presenceMs,
   maxConnectionAgeMs: runnerLimits.maxConnectionAgeMs,
+  longPollMs: runnerLimits.longPollMs,
 };
 
 export type GatewayContext = {

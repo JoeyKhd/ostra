@@ -78,7 +78,8 @@ export const createGateway = (options: GatewayOptions): Gateway => {
   return {
     context,
     connections,
-    handleRequest: (request, response, url) => handleRunnerEndpoint(context, request, response, url),
+    handleRequest: async (request, response, url) =>
+      (await connections.handleHttp(request, response, url)) || handleRunnerEndpoint(context, request, response, url),
     handleUpgrade: connections.handleUpgrade,
     start: connections.start,
     stop: connections.stop,
