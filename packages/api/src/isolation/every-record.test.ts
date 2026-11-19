@@ -254,6 +254,9 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ReviewCheck: ["tasks.get"],
   ProviderListEntry: ["providers.list", "projects.get"],
   ModelChoice: ["providers.list", "projects.get"],
+  // Milestone 5 (its ticket 04): no procedure reads them yet; tickets 27 and 28 add theirs.
+  BoxSize: [],
+  Registry: [],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */

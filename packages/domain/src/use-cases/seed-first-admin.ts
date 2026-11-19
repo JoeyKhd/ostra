@@ -9,7 +9,7 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, organizationNameSchema, usern
 import { slugify } from "../branch-name.ts";
 import type { AuditLog, ChangeNotices, Clock } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
-import { ensureDefaultPool } from "./pools.ts";
+import { ensureBoxSizes, ensureDefaultPool } from "./pools.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-001, F-002 (the maintainer, 2026-11-19, which supersedes Q117's setup token): a server that
@@ -149,6 +149,9 @@ export const seedFirstAdmin: SeedFirstAdmin = async (deps, input) => {
     await ensureBuiltInAgentProfile(tx, organizationId);
     // And its default runner pool, which a new project links to.
     await ensureDefaultPool(tx, organizationId);
+    // Milestone 5 (F-095): its three box sizes, for an install that first starts after the
+    // migration that inserted them for the organizations it found.
+    await ensureBoxSizes(tx, organizationId);
     const memberId = memberIdSchema.parse(randomUUID());
     await tx.member.create({ data: { id: memberId, organizationId, userId, role: "admin", createdAt: now } });
     await tx.instanceSetting.upsert({

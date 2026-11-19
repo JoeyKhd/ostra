@@ -145,7 +145,8 @@
       "restoreConflict": "Restore conflict",
       "unstorableEvent": "An event couldn't be stored",
       "filesOutsideRepos": "Files left outside the repositories",
-      "noProviderForModel": "No provider serves its model in this project"
+      "noProviderForModel": "No provider serves its model in this project",
+      "runnerAwaitingApproval": "A runner waits for approval"
     },
     "action": {
       "approve": "Approve",
@@ -1086,7 +1087,8 @@
       "restoreConflict": "Its saved work conflicts with the branch",
       "unstorableEvent": "An event couldn't be stored",
       "filesOutsideRepos": "Files left outside the repositories",
-      "noProviderForModel": "No provider serves its model in this project"
+      "noProviderForModel": "No provider serves its model in this project",
+      "runnerAwaitingApproval": "A runner waits for approval"
     },
     "stopReason": {
       "requested": "asked to stop",
@@ -1094,7 +1096,8 @@
       "prsClosed": "its pull requests were closed",
       "runnerLost": "its runner was lost",
       "spendCap": "its spend cap",
-      "runaway": "it ran away"
+      "runaway": "it ran away",
+      "cancelled": "it was cancelled from the queue"
     },
     "waitingOnYou": "{n} waiting on you",
     "runningCount": "{n} running",

@@ -55,6 +55,8 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
       return [plain(t("home.reason.filesOutsideRepos"))];
     case "no_provider_for_model":
       return [plain(t("home.reason.noProviderForModel"))];
+    case "runner_awaiting_approval":
+      return [plain(t("home.reason.runnerAwaitingApproval"))];
     default:
       return detail satisfies never;
   }
@@ -84,6 +86,7 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
     case "unstorable_event":
     case "files_outside_repos":
     case "no_provider_for_model":
+    case "runner_awaiting_approval":
       return "home.action.openTask";
     default:
       return reason satisfies never;

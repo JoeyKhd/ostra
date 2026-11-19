@@ -4,6 +4,7 @@ import type {
   ApprovalTool,
   AuthScheme,
   BoxReleaseReason,
+  BoxWaitingReason,
   CheckStatus,
   CommandKind,
   CommandResult,
@@ -27,6 +28,7 @@ import type {
   AuthScheme as DbAuthScheme,
   CheckRunStatus as DbCheckRunStatus,
   BoxReleaseReason as DbBoxReleaseReason,
+  BoxWaitingReason as DbBoxWaitingReason,
   CommandKind as DbCommandKind,
   CommandResult as DbCommandResult,
   EffortLevel as DbEffortLevel,
@@ -275,3 +277,15 @@ export const reviewCheckStatusFromDb = {
   pending: "pending",
   passed: "passed",
 } as const satisfies Record<DbReviewCheckStatus, ReviewCheckStatus> & Record<ReviewCheckStatus, DbReviewCheckStatus>;
+
+// ---------- milestone 5 ----------
+
+/** Why a box is still being made (F-093): the protocol's `image-pull` is `image_pull` here. */
+export const boxWaitingReasonFromDb = {
+  node: "node",
+  image_pull: "image-pull",
+} as const satisfies Record<DbBoxWaitingReason, BoxWaitingReason>;
+export const boxWaitingReasonToDb = {
+  node: "node",
+  "image-pull": "image_pull",
+} as const satisfies Record<BoxWaitingReason, DbBoxWaitingReason>;

@@ -76,6 +76,8 @@ export const needsYouReasonText = (reason: NeedsYouReason): string => {
       return t("tasks.needsYouReason.filesOutsideRepos");
     case "no_provider_for_model":
       return t("tasks.needsYouReason.noProviderForModel");
+    case "runner_awaiting_approval":
+      return t("tasks.needsYouReason.runnerAwaitingApproval");
     default:
       return reason satisfies never;
   }
@@ -95,6 +97,8 @@ export const stopReasonText = (reason: StopReason): string => {
       return t("tasks.stopReason.spendCap");
     case "runaway":
       return t("tasks.stopReason.runaway");
+    case "cancelled":
+      return t("tasks.stopReason.cancelled");
     default:
       return reason satisfies never;
   }

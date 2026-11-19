@@ -86,6 +86,9 @@ export const isolationModelList = [
   "ReviewCheck",
   "ProviderListEntry",
   "ModelChoice",
+  // Milestone 5 (its ticket 04).
+  "BoxSize",
+  "Registry",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -325,6 +328,10 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     const catalogId = `fixture/model-${tag()}`;
     return (await db.modelChoice.create({ data: { organizationId, projectId, modelKey: `catalog:${catalogId}`, modelCatalogId: catalogId, modelId: await ensure("Model"), reason: "admin" } })).id;
   },
+  // Milestone 5: organization records, one per organization (a size per name, a registry each).
+  BoxSize: async ({ db, organizationId }) => (await db.boxSize.create({ data: { organizationId, name: "small", cpuMillis: 2000, memoryMiB: 4096 } })).id,
+  Registry: async ({ db, organizationId }) =>
+    (await db.registry.create({ data: { organizationId, url: "registry.example.com", repositoryPrefix: `ostra-${tag()}`, auth: "basic", pushSecretId: `secret:${id()}`, pullSecretId: `secret:${id()}` } })).id,
 };
 
 /** The models without `organizationId`, each with why it has none (reviewed: ADR 0053). */

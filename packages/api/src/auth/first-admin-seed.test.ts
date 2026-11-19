@@ -52,6 +52,15 @@ describe("a race of server starts on an empty install", () => {
     expect(await harness.test.db.user.count()).toBe(1);
   });
 
+  it("F-095: the seeded organization starts with its three box sizes", async () => {
+    const sizes = await harness.test.db.boxSize.findMany({ orderBy: { cpuMillis: "asc" }, select: { name: true, cpuMillis: true, memoryMiB: true } });
+    expect(sizes).toEqual([
+      { name: "small", cpuMillis: 2000, memoryMiB: 4096 },
+      { name: "medium", cpuMillis: 4000, memoryMiB: 8192 },
+      { name: "large", cpuMillis: 8000, memoryMiB: 16_384 },
+    ]);
+  });
+
   it("never logs the password, the email or the username", () => {
     const lines = JSON.stringify(harness.logs);
     expect(lines).not.toContain(TEST_PASSWORD);

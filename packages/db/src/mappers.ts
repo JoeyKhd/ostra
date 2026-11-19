@@ -37,8 +37,12 @@ import {
   projectIdSchema,
   providerIdSchema,
   questionIdSchema,
+  boxSizeIdSchema,
+  boxSizeNameSchema,
+  registryIdSchema,
   repoIdSchema,
   repoRelativePathSchema,
+  runnerCapabilitiesSchema,
   runnerIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
@@ -63,6 +67,7 @@ import {
   approvalToolFromDb,
   authSchemeFromDb,
   boxReleaseReasonFromDb,
+  boxWaitingReasonFromDb,
   checkRunStatusFromDb,
   commandKindFromDb,
   effortLevelFromDb,
@@ -79,6 +84,7 @@ import type {
   BlobUpload,
   Board,
   Box,
+  BoxSize,
   Budget,
   CodeHostInstallation,
   BudgetNotice,
@@ -123,6 +129,7 @@ import type {
   OrganizationSetting,
   Project,
   RateBudget,
+  Registry,
   Repo,
   Runner,
   RunnerPool,
@@ -198,7 +205,14 @@ export const mapJoinToken = (row: JoinToken) => ({
   organizationId: organizationIdSchema.parse(row.organizationId),
   poolId: poolIdSchema.parse(row.poolId),
   createdByMemberId: optional(memberIdSchema, row.createdByMemberId),
+  revokedByMemberId: optional(memberIdSchema, row.revokedByMemberId),
 });
+
+/** What a runner's executor declares (protocol minor 4), or `null` for an older runner or a bad row. */
+const runnerCapabilities = (value: unknown) => {
+  const parsed = runnerCapabilitiesSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
 
 export const mapRunner = (row: Runner) => ({
   ...row,
@@ -206,6 +220,9 @@ export const mapRunner = (row: Runner) => ({
   organizationId: organizationIdSchema.parse(row.organizationId),
   poolId: optional(poolIdSchema, row.poolId),
   ownerMemberId: optional(memberIdSchema, row.ownerMemberId),
+  joinTokenId: optional(joinTokenIdSchema, row.joinTokenId),
+  drainedByMemberId: optional(memberIdSchema, row.drainedByMemberId),
+  capabilities: runnerCapabilities(row.capabilities),
 });
 
 export const mapAgentProfile = (row: AgentProfile) => ({
@@ -292,6 +309,7 @@ export const mapBox = (row: Box) => ({
   taskId: taskIdSchema.parse(row.taskId),
   runnerId: optional(runnerIdSchema, row.runnerId),
   releaseReason: row.releaseReason === null ? null : boxReleaseReasonFromDb[row.releaseReason],
+  waitingReason: row.waitingReason === null ? null : boxWaitingReasonFromDb[row.waitingReason],
 });
 
 export const mapLease = (row: Lease) => ({
@@ -539,6 +557,25 @@ export const mapSnapshot = (row: Snapshot) => ({
   projectId: projectIdSchema.parse(row.projectId),
   environmentId: environmentIdSchema.parse(row.environmentId),
   runnerId: optional(runnerIdSchema, row.runnerId),
+  registryId: optional(registryIdSchema, row.registryId),
+});
+
+// ---------- milestone 5 ----------
+
+export const mapBoxSize = (row: BoxSize) => ({
+  ...row,
+  id: boxSizeIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  name: boxSizeNameSchema.parse(row.name),
+  updatedByMemberId: optional(memberIdSchema, row.updatedByMemberId),
+});
+
+/** An organization's registry. Its secret references stay as they are: never a credential's value. */
+export const mapRegistry = (row: Registry) => ({
+  ...row,
+  id: registryIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  updatedByMemberId: optional(memberIdSchema, row.updatedByMemberId),
 });
 
 export const mapNotification = (row: Notification) => ({

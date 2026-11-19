@@ -39,6 +39,9 @@ export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason): Notific
     case "files_outside_repos":
     // Milestone 4 (F-135): shown to the organization's admins in needs-you, with no mail of its own.
     case "no_provider_for_model":
+    // Milestone 5 (F-091): the join sends its own runner notices to the admins (ticket 12), so the
+    // item adds no second one.
+    case "runner_awaiting_approval":
       return null;
     default:
       return reason satisfies never;

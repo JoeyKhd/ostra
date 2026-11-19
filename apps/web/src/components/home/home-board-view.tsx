@@ -41,6 +41,7 @@ export const bareDetail = (reason: Reason): NeedsYouDetail => {
     case "environment_proposal":
     case "files_outside_repos":
     case "no_provider_for_model":
+    case "runner_awaiting_approval":
     case "no_changes":
     case "restore_conflict":
     case "round_cap":

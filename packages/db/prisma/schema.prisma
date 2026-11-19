@@ -171,6 +171,9 @@ model Organization {
   modelChoices        ModelChoice[]
   // Milestone 4, the account mails (ticket 19).
   accountMailDeliveries AccountMailDelivery[]
+  // Milestone 5 (F-095, F-120).
+  boxSizes              BoxSize[]
+  registry              Registry?
 
   @@unique([slug])
   @@map("organization")
@@ -556,6 +559,12 @@ model RunnerPool {
   requiresApproval Boolean      @default(false)
   /// The pool's cap on boxes at once; `null` for none.
   maxBoxes         Int?
+  // ---- milestone 5 (F-091) ----
+  /// A new join token's lifetime in days: `null` for the setting's default
+  /// (`OSTRA_JOIN_TOKEN_DAYS`), `0` for no expiry.
+  joinTokenDays     Int?
+  /// The admin who last changed the pool's settings; kept when the member leaves.
+  updatedByMemberId String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -585,8 +594,16 @@ model JoinToken {
   expiresAt         DateTime?
   revokedAt         DateTime?
   lastUsedAt        DateTime?
+  // ---- milestone 5 (F-091) ----
+  /// The admin who revoked it; kept when the member leaves.
+  revokedByMemberId String?
+  /// How many runners joined with it.
+  useCount          Int          @default(0)
   createdAt         DateTime     @default(now())
 
+  runners Runner[]
+
+  @@unique([id, organizationId])
   @@index([poolId])
   @@map("join_token")
 }
@@ -624,6 +641,25 @@ model Runner {
   approvedAt      DateTime?
   /// The member who approved it; kept when the member leaves.
   approvedByMemberId String?
+  // ---- milestone 5 (F-091, F-092, F-061, F-067, F-095, ADR 0059) ----
+  /// The join token it joined with; `null` for a personal runner or one that joined before.
+  joinTokenId     String?
+  joinToken       JoinToken?     @relation(fields: [joinTokenId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  /// How it was installed, as its `hello` said (protocol minor 4).
+  install         RunnerInstall?
+  /// The protocol minor it last spoke.
+  minor           Int?
+  /// What it offers, as its last `status` said: slots, and CPU and memory where sizes apply.
+  slots           Int?
+  cpuMillis       Int?
+  memoryMiB       Int?
+  /// What its executor can do, as `@ostra/protocol`'s `runnerCapabilitiesSchema` parses it.
+  capabilities    Json?
+  /// When an admin drained it, and who; cleared by a resume.
+  drainedAt          DateTime?
+  drainedByMemberId  String?
+  /// When it was last offered a task, so the one offered least recently wins a tie (ADR 0059).
+  lastOfferedAt   DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -692,6 +728,9 @@ model AgentProfile {
   modelCustomName String?
   /// F-137 (ADR 0066): how much the model reasons. A new task copies it.
   effort         EffortLevel   @default(default)
+  // ---- milestone 5 (F-069, ADR 0059) ----
+  /// The labels a runner needs to run this profile's tasks, matched exactly as a subset.
+  runnerLabels   String[]      @default([])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -770,7 +809,8 @@ model Project {
   defaultRefineProfileId String?
   defaultCodeProfileId   String?
   defaultReviewProfileId String?
-  /// The default box size's name (Q43): `small`, `medium` or `large`.
+  /// The default box size's name (Q43): `small`, `medium` or `large` (checked in the migration;
+  /// milestone 5's `BoxSize` rows hold their limits).
   defaultBoxSize         String?
   /// Milestone 2 (F-064): the ticket prompt's template, or `null` for the built-in one.
   ticketTemplate         String?
@@ -857,7 +897,10 @@ model ProjectPool {
   project        Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   poolId         String
   pool           RunnerPool @relation(fields: [poolId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The project's share of the pool, in boxes at once; `null` for none (ADR 0059).
   maxBoxes       Int?
+  /// Milestone 5 (F-069, F-086): the pool's place in the project's ordered list, from 0.
+  position       Int        @default(0)
 
   @@id([projectId, poolId])
   @@map("project_pool")
@@ -1148,6 +1191,13 @@ model Snapshot {
   /// The scan of the image for each setup secret's value, before it's used.
   secretScan      SnapshotSecretScan?
   buildDurationMs Int?
+  // ---- milestone 5 (F-120, ADR 0060) ----
+  /// The organization's registry it was pushed to; `null` for one kept on its runner (milestone 3).
+  registryId      String?
+  registry        Registry?        @relation(fields: [registryId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  /// What built it: the host's Docker engine or a rootless BuildKit pod.
+  builder         SnapshotBuilder?
+  pushedAt        DateTime?
   createdAt      DateTime      @default(now())
   readyAt        DateTime?
   updatedAt      DateTime      @updatedAt
@@ -1241,6 +1291,16 @@ model Task {
   // ---- milestone 4 ----
   /// F-137 (ADR 0066): the task's reasoning level, copied from the profile, changed by the driver.
   effort            EffortLevel     @default(default)
+  // ---- milestone 5 (F-067, F-069, ADR 0059) ----
+  /// Its place in a pool's queue: 1 urgent to 4 low, from the ticket's priority; a prompt task and
+  /// a ticket without one are 3.
+  queuePriority     Int             @default(3) @db.SmallInt
+  /// When it was first queued; a requeue keeps it.
+  queuedAt          DateTime?
+  /// The labels a runner needs, copied from the profile when it's queued.
+  requiredLabels    String[]        @default([])
+  /// Who cancelled it from the queue (`stoppedReason` `cancelled`); kept when the member leaves.
+  cancelledByMemberId String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1274,6 +1334,8 @@ model Task {
   @@unique([projectId, ticketId], where: raw("kind = 'code' AND \"ticketId\" IS NOT NULL AND state NOT IN ('stopped', 'merged', 'done')"), map: "task_one_active_code_task_per_ticket")
   @@index([projectId, state])
   @@index([organizationId, state])
+  /// Milestone 5: a pool's queue, in its order (ADR 0059).
+  @@index([organizationId, state, queuePriority, queuedAt])
   /// Two tasks of a project never share a branch (F-016, Q136 item 10). A create writes the
   /// placeholder `pending` before the real name, so the index leaves it out (ticket 46).
   @@unique([projectId, branchName], where: raw("\"branchName\" <> 'pending'"), map: "task_project_branch_unique")
@@ -1373,6 +1435,19 @@ model Box {
   sidecarDisconnectedAt  DateTime?
   /// The counter the sidecar's commands are numbered from, taken under this row's lock.
   sidecarCommandSeq      Int       @default(0)
+  // ---- milestone 5 (F-095, F-120, F-093) ----
+  /// The size's name and its limits when the box was made; `null` where sizes don't apply.
+  size           String?
+  cpuMillis      Int?
+  memoryMiB      Int?
+  /// The snapshot image it starts from, by digest; `null` for none.
+  imageRef       String?
+  imageDigest    String?
+  /// Why it's still `creating`: no node yet, or its image is being pulled. `null` otherwise.
+  waitingReason  BoxWaitingReason?
+  waitingSince   DateTime?
+  /// When its pod was scheduled after a wait.
+  scheduledAt    DateTime?
 
   leases          Lease[]
   sessions        Session[]
@@ -1380,6 +1455,9 @@ model Box {
 
   @@unique([id, taskId])
   @@index([taskId])
+  /// Milestone 5: the counts of a runner's and a project's boxes (ADR 0059).
+  @@index([runnerId, state])
+  @@index([projectId, state])
   @@map("box")
 }
 
@@ -2221,6 +2299,8 @@ enum NeedsYouReason {
   files_outside_repos
   /// Milestone 4 (F-135): no provider on the project's list serves the profile's model.
   no_provider_for_model
+  /// Milestone 5 (F-091): a runner joined a pool that requires approval. For the admins.
+  runner_awaiting_approval
 }
 
 enum TaskStopReason {
@@ -2230,6 +2310,8 @@ enum TaskStopReason {
   runner_lost
   spend_cap
   runaway
+  /// Milestone 5 (F-067): cancelled from its pool's queue before it started.
+  cancelled
 }
 
 enum TaskRepoState {
@@ -2509,6 +2591,9 @@ enum NotificationKind {
   password_reset
   budget_warning
   budget_reached
+  // Milestone 5 (F-091): the runner notices, for the organization's admins.
+  runner_joined
+  runner_awaiting_approval
 }
 
 /// What an account mail is for (ticket 19): the job's purposes.
@@ -3103,4 +3188,79 @@ enum InstallationState {
 enum InstallationAccountKind {
   organization
   user
+}
+
+// ===========================================================================
+// Milestone 5: the fleet (spec section 5.3, ADR 0059, ADR 0060)
+// ===========================================================================
+
+/// One of an organization's three box sizes (F-095, ADR 0059): `small`, `medium` or `large`
+/// (checked in the migration), each with the limits of the agent's container.
+model BoxSize {
+  id                String       @id @default(uuid(7))
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  cpuMillis         Int
+  memoryMiB         Int
+  /// The admin who last changed it; `null` for the defaults.
+  updatedByMemberId String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+  @@unique([id, organizationId])
+  @@map("box_size")
+}
+
+/// The organization's registry for snapshots (F-120, ADR 0060): one per organization. Its
+/// credentials are secret store references, never the values.
+model Registry {
+  id                String       @id @default(uuid(7))
+  organizationId    String       @unique
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// The registry's host (and port), such as `registry.example.com`.
+  url               String
+  /// The path images go under: `<url>/<repositoryPrefix>/<projectId>:<snapshotId>`.
+  repositoryPrefix  String
+  auth              RegistryAuth
+  /// Secret store references for the push and the pull credential; `null` with `node` auth.
+  pushSecretId      String?
+  pullSecretId      String?
+  /// The last check from the panel, and its result as the domain's `registryCheckResultSchema`.
+  checkedAt         DateTime?
+  checkResult       Json?
+  updatedByMemberId String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  snapshots Snapshot[]
+
+  @@unique([id, organizationId])
+  @@map("registry")
+}
+
+/// How a runner was installed (protocol minor 4): from npm, from the runner image, or from source.
+enum RunnerInstall {
+  npm
+  image
+  source
+}
+
+/// Why a box is still `creating` (F-093): no node yet, or its image is being pulled.
+enum BoxWaitingReason {
+  node
+  image_pull
+}
+
+/// How a registry is signed in to (F-120): a username and token, or the node's own identity.
+enum RegistryAuth {
+  basic
+  node
+}
+
+/// What built a snapshot (F-120): the host's Docker engine or a rootless BuildKit pod.
+enum SnapshotBuilder {
+  docker
+  buildkit
 }
