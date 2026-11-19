@@ -23,3 +23,4 @@ Spec: `../spec.md`, section 4 ("A notification"); ADR 0050
 - [x] Committed as `✨ add notification fan-out and delivery`.
 
 ## Comments
+- 2026-11-19, core: done in `adf1e22` (✨ add notification fan-out and delivery). Every writer of a needs-you item now goes through `createNeedsYouItemInTx`, `resolveNeedsYouItemsInTx` or `setNeedsYouSummaryInTx` (they enqueue `notify.fanout` in the caller's transaction), and `needs-you-writers.test.ts` reads the whole repo and fails for a write anywhere else, which caught ticket 27's `service.failed` writer. Fan-out and delivery are wired into core (`notify.fanout`, `notify.deliver`) with the real panel adapter on the `Notification` table and the real ticket adapter on the board's tracker. Break-it checks: ten, each failing its test.

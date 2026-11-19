@@ -21,3 +21,4 @@ Spec: `../spec.md`, section 2 (F-084)
 - [x] Committed as `✨ add usage per task and turn`.
 
 ## Comments
+- 2026-11-19, core: done in `dc28e09` (✨ add usage per task and turn). Ingest keeps each turn's four token kinds, spend and estimated mark as `usage.recorded` arrives, and the turn's agent time (its start to its end) when it ends; `readTaskUsage(db, organizationId, taskId)` gives a task's totals and its turns in one query for ticket 39. Spend is `null` for tokens a model has no price for. A turn still open, or one that a crash or stop cut off, has no agent time yet. Break-it checks: seven, each failing its test.
