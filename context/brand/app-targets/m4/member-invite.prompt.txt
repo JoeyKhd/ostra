@@ -1,0 +1,26 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/project-new.png, the members generation (the page behind), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# The page behind the sheet was then dimmed by a script (x0.6 left of the sheet's edge).
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective. It is ostra's "Members" page with the "Invite" side sheet open on the right. ostra is a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: same graphite near-black chrome, same small dense type, hairline rows, few boxes. The form inside the sheet copies the style of the FIRST attached screenshot (the "Create a project" form): the same field labels, input boxes, checkbox rows, radio rows and footer button, at exactly that scale. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs #131416 with a 1px #2A2C30 border, radius 7px; selected row #1A1B1E; hairlines #1F2023; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; primary button filled off-white #F3F0E8 with dark text #0C1D21; checked checkboxes and the selected radio filled off-white #F3F0E8 with a dark mark. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar. No gradients, no glow, no purple, no blue, no teal in the sheet, no illustrations.
+
+FONTS: Manrope Bold for the page title and the sheet title. IBM Plex Sans for UI text. IBM Plex Mono for the email address and project counts. Thin Lucide line icons, 15px.
+
+BACKGROUND (the page behind the sheet): the SECOND attached screenshot, the Members page, exactly as it is (sidebar with "Members" selected, top bar "Acme Corp > Members", title "Members", the members table, Invitations, Removed), but WITHOUT its open dropdown menu and WITHOUT its right properties panel, and covered by a flat black overlay at 60% so everything behind is dim and clearly inactive. The sheet itself is NOT dimmed.
+
+THE SHEET: a full-height panel on the right edge, 420px wide, background #0D0E10, a 1px #2A2C30 line on its left edge, no rounded corners, padding 24px. Top to bottom:
+- Header row: title "Invite to Acme Corp" (Manrope Bold, 18px), and at the far right a small faint "X" close icon.
+- Under it, a muted 13px line: "They join through a link that works once and expires in 7 days."
+- 20px lower, field label "Address" (12px muted). An input 34px tall filling the sheet's width, value "jordan@acme.dev" in IBM Plex Mono white.
+- 20px lower, field label "Role in Acme Corp" (12px muted). Two radio rows separated by hairlines, each two lines:
+   (•) selected: "Member" white, under it faint 12px "Starts, drives and reopens tasks in the projects they can open."
+   ( ) "Admin" white, under it faint 12px "Every project, plus models, runners, budgets and who belongs."
+- 22px lower, a section line: "Restricted projects" semibold 13px, then faint "optional". Under it a faint 12px line: "Open projects need no grant: every member opens them."
+  Then a plain list, NO box around it, rows 40px separated by 1px hairlines, top and bottom hairline. Each row: a 14px square checkbox, an 8px coloured square, the project name, a small faint lock icon, and at the right a small select box (#131416, 1px #2A2C30 border, 28px tall, about 130px wide) with a chevron:
+     [checked, row background #1A1B1E] grey square "vault" (lock) | select "Member"
+     [ ] violet-grey square "billing-platform" (lock) | select "Member" shown faint and disabled
+- Pinned at the BOTTOM of the sheet, a hairline across the sheet, then 16px below it: a small muted line with a mail icon: "ostra mails the link to this address too." Under it, 14px lower, a row: the primary button filled #F3F0E8 with dark text "Create invitation" (34px tall), and next to it a quiet bordered button "Cancel".
+
+Everything in the sheet aligned on one clean left edge, calm and dense, crisp small legible text, every word spelled exactly as written.

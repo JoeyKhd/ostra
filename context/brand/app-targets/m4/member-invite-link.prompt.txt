@@ -1,0 +1,20 @@
+# Generation 1 (kept, the only one): an edit of member-invite's generation. References: that generation, app-targets/m1/project-new.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# The page behind the sheet was then dimmed by a script (x0.6 left of the sheet's edge).
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+EDIT THE FIRST ATTACHED IMAGE. Keep everything exactly as it is, pixel for pixel: the dimmed Members page behind, the sidebar, the top bar, the sheet's position, width, left border, padding and the close "X". Change ONLY the content inside the right sheet, which now shows the invitation just created. Same fonts and scale as the first image: Manrope Bold for the sheet title, IBM Plex Sans for text, IBM Plex Mono for the link and the address. Palette: background #0D0E10, code box #131416 with a 1px #2A2C30 border and radius 8px, hairlines #1F2023, text #F2F3F4, muted #B4B7BB, faint #8B8E93, teal #6FB8AA only for "Copy link", success green #4FB286 only for the small check icon, primary button #F3F0E8 with dark text #0C1D21. No amber in the sheet.
+
+THE SHEET'S NEW CONTENT, top to bottom:
+- Header row: title "Invitation created" (Manrope Bold, 18px), the small faint "X" at the far right.
+- Under it, a muted 13px line: "jordan@acme.dev joins Acme Corp as a member." with "jordan@acme.dev" in mono.
+- 20px lower, field label "Invitation link" (12px muted). Under it a code box filling the sheet's width, holding the full link in IBM Plex Mono 12.5px white, wrapping onto two lines: "https://ostra.acme.dev/invite/" then "q7Hc2xRk4N9vTb1sLw8eYf3pMz6aJd0u". Directly under the box, at its left, a teal text button with a copy icon: "Copy link".
+- 14px lower, a muted 13px line with a small shield icon: "Send it privately: anyone with this link can join as this person."
+- 10px lower, a faint 12px line: "Shown once. It works once and expires on 26 Nov."
+- 18px lower, a hairline, then a row with a small green check icon and white 13px text: "Mailed to jordan@acme.dev" (the address in mono).
+- 18px lower, a hairline, then a small faint group label "Invitation", key/value rows 30px, key muted in a 96px column, value white in IBM Plex Sans:
+   Role | Member
+   Projects | vault · Member  (a tiny grey 8px square before "vault" and a tiny lock icon after it)
+   Expires | 26 Nov
+   Invited by | Alex Kim
+- Pinned at the BOTTOM of the sheet, a hairline across the sheet, then a row: the primary button "Done" (34px tall, off-white fill, dark text) and next to it a quiet bordered button "Invite another".
+Remove the old form entirely (no Address input, no radio rows, no project checkboxes, no "Create invitation").
