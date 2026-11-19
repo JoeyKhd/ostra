@@ -1,0 +1,35 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. Match the attached reference screenshots exactly in style: same sidebar, same graphite near-black chrome, same fonts, same density and same hairline-row language. Attached logo: the ostra hinge mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar.
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; deletions red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the one "needs you" approval and the sidebar needs-you markers. No gradients, no glow, no purple, no blue tint, no cards inside cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); task keys, file paths, branch names, commands, token counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, background #0A0B0C, right hairline. Top: hinge logo + "Acme Corp" + up-down chevron. Then a search field "Search" with "⌘K" and a square off-white "+" button. Rows (26px tall, 13px, muted): "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects". "calculator" expanded with a teal 8px square and an amber dot; under it indented: "Tasks 17" (this row selected, #1A1B1E), "Inbox 4", "Environment", "Automations", "Memory 2", "Repos", "Settings". Then "billing-platform" (violet square, amber dot), "web-storefront" (orange square, amber dot), "mobile-app" (blue square, amber dot), "data-pipeline" (pink square), "··· 13 more". Section label "Organization": "Runner pools 238", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px across the main area, bottom hairline. Left breadcrumbs: "calculator  ›  Tasks  ›  CALC-161" (last one bright). Right: a small link icon, an outlined button with a pull-request icon "PR #483", an outlined button with a square icon "Stop".
+
+3) MAIN COLUMN (thread), left padding 40px:
+- Mono faint line: "CALC-161 · from Linear"
+- Title: "Add history panel"
+- Status line, 13px, NO amber text: a small 7px amber dot followed by bright #EDEDEE text "Needs you · approval", then a faint middle dot, then muted text "Running 14 min on", then faint mono "build-fleet-07".
+- One hairline under the header (no tabs).
+- Thread, each message a 28px round outlined avatar icon on the left and content on the right, no bubbles, no boxes:
+  a) Person icon. "Sam Rivera" bold + faint mono "14:02". Text: "Pick up CALC-161. Keep the last 50 results; clicking one should load it back into the input."
+  b) Small bot-free square agent icon. "OpenCode" bold + faint mono "14:02 · Claude Sonnet 5.5" + teal small "working". Text: "I'll add a history panel that stores the last 50 results in the calculator state and lets you click one to reuse it."
+     Then a compact "Plan" block (label "Plan" in small faint 12px), three 24px rows with tiny 12px glyphs: green check + muted "Store the last 50 results in state"; teal (#6FB8AA) ring with a dot in it + bright "Render the history panel"; faint empty circle + muted "Keyboard navigation and tests".
+     Then tool rows, 28px tall, in a strict three-column grid: faint 14px icon, a muted verb in a fixed 56px column, then the mono path, so every path starts at the same x; the result sits inline right after the path with a 12px gap (not pushed to the far right):
+     "Read    src/calculator/state.ts"
+     "Edited  src/history/panel.tsx   +118" (green number)
+     "Edited  src/calculator/state.ts   +24  −6" (green, red)
+     "Ran     pnpm test history   ✓ exit 0" (green check and text)
+     and directly under the Ran row, aligned with the paths, a small 12px teal text link "Show the output" with NO underline.
+  c) The approval, NOT a card: a 2px amber vertical rule on the left, indented under the agent. Amber hand icon + amber semibold "Needs you · approval". Text: "OpenCode wants to run a command that changes the database:". A small mono code chip on #131416: "pnpm db:migrate". A row of three small buttons: outlined "Deny", amber filled "Approve once" with dark text, outlined "Approve for this task". Faint 12px line under it, all plain faint grey, no link: "Any member of calculator can answer. The first answer wins."
+- Generous empty thread space, then the COMPOSER pinned at the bottom: one rounded box #131416 with border #2A2C30, placeholder "Message the agent…", bottom row: faint info icon + "Send reaches OpenCode at its next step. Interrupt and send stops the turn first." and on the right an outlined button "Interrupt and send" with a pause icon and an off-white filled button "Send" with an arrow-up icon.
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels ("Properties", "Code", "Changes") are small 11px faint grey #64676D, regular weight, not bold. Key/value rows 30px tall, keys muted 12.5px in an 84px column, values bright 12.5px, and NO icons inside values so every value starts at the same x (only the status dot and the driver avatar are allowed):
+"Status" amber dot "Needs you · approval"; "Driver" small avatar "SR" "Sam Rivera" + teal "Take over"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "build-fleet-07", and below it, aligned with the values, two small outlined chips "Pool" "docker"; "Tokens" mono "182k in · 31k out"; "Context" a thin grey meter bar + mono "64k / 200k"; "Spend" mono "$1.82"; "Time" mono "14 min".
+Hairline. Label "Code": "Repo" mono "acme/calculator-web"; "Branch" mono "calc-161-add-history…"; "PR" teal "#483" + muted " · draft".
+Hairline. Label "Changes" with faint mono "+203 −6" right-aligned; rows: mono "panel.tsx" green "+118"; "state.ts" green "+24" red "−6"; "panel.test.tsx" green "+61".
+
+Calm, precise, dense like Linear or a pro IDE console. Everything aligned to a strict grid, crisp small text, all copy spelled exactly as given.

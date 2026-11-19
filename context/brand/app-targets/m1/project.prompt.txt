@@ -1,0 +1,49 @@
+A straight-on, pixel-crisp screenshot of a desktop web app at 1440x960, dark mode. Not a mockup, no device frame, no perspective. It is the "project" screen of ostra, a developer tool that runs coding agents on tasks. Match the reference screenshots exactly in style: same sidebar, same neutral near-black graphite chrome, same hairline rows, same small dense type, same spacing. It is the same product as the references.
+
+FONTS: page title in Manrope Bold. All interface text in IBM Plex Sans (13px body, 12px secondary). IDs, runner names, commands, file paths, numbers and ages in IBM Plex Mono. Icons are Lucide line icons, 15px, thin 1.75 stroke.
+
+PALETTE (flat, exact): page background #0D0E10. Sidebar #0A0B0C. Raised surfaces (composer, group header bands) #131416. Selected nav row #1A1B1E. Hairlines #1F2023, control borders #2A2C30. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Amber #FFB224 is used ONLY for "Needs you". Green #4FB286 for running. Teal #6FB8AA only for one link. Primary button is filled off-white #F3F0E8 with dark #0C1D21 text. No gradients, no glow, no purple, no shadows, no cards inside cards.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a hairline on its right edge. From top:
+- the white ostra logo mark (the rounded shell split by a diagonal channel, from the reference) and "Acme Corp" in semibold, with a small up-down chevron on the right.
+- a search field "Search" with "⌘K" on its right, and next to it a small square off-white button with a "+".
+- nav row "Home" with a house icon.
+- small faint section label "Projects".
+- "calculator" with an 8px teal-green square before it and a small amber dot at the right end. It is expanded: under it, indented, "Tasks" (list-checks icon, selected row with background #1A1B1E, count "10" in faint mono on the right) and "Environment" (box icon).
+- "billing-platform" with an 8px violet square (the only purple allowed, an 8px square).
+- "New project" with a plus icon, muted.
+- small faint section label "Organization".
+- "Runners" (server icon), "Models" (cpu icon), "GitHub" (git-pull-request icon).
+- at the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR across the main area, 44px tall, hairline below: breadcrumbs "calculator  ›  Tasks" ("Tasks" brighter). Nothing on the right side.
+
+3) MAIN COLUMN, padding 40px on the left:
+- Page title "calculator" in Manrope Bold 24px.
+- Lede below in muted 13.5px: "acme/calculator · 2 waiting on you · 3 running" where "acme/calculator" is in IBM Plex Mono.
+- A composer, the only box on the page: full content width, 1px border #2A2C30, 8px radius, background #131416. Inside, placeholder text in faint grey: "Add a short CONTRIBUTING.md that explains how to run the tests". Bottom row of the composer: on the left a small label "Run on" and a compact select showing a laptop icon, "alex-mbp" in mono, " · yours, online · not isolated" in muted text, and a chevron-down. On the right a faint "⌘↵" hint and a filled off-white button with a send icon: "Start the task".
+- Then the task list, grouped. Each group has a quiet header band (background #131416, 32px tall, 6px radius) with an icon, the group name in semibold and a faint mono count. Rows are 40px tall, no boxes, separated by 1px hairlines #1F2023. Each row has columns: a status mark, a faint mono short ID, the task title in #EDEDEE, what the agent is doing now in muted text (commands and paths in mono), the runner (laptop icon + mono name, muted), a small round avatar with initials, and the age in faint mono right-aligned.
+
+Group "Needs you" 2 (amber dot icon in the band):
+  - amber dot · 3f9c21ab · Add a history panel · Approval: pnpm db:migrate · alex-mbp · AK · 14m
+  - amber dot · 8e04d7c2 · Retry webhook delivery on 5xx · Question: keep the old retry header? · alex-mbp · AK · 32m
+Group "Running" 3 (green dot in the band):
+  - green dot · a17be093 · Fix rounding in percent mode · Running pnpm test percent · alex-mbp · AK · 6m
+  - green dot · 5d2e81f4 · Show units in the display · Editing src/display/format.ts · alex-mbp · SR · 9m
+  - thin circular spinner icon · c90b4e17 · Add a short CONTRIBUTING.md · Preparing · running the setup script · alex-mbp · AK · 1m
+Group "Queued" 1 (dashed circle icon):
+  - dashed circle · e26f0a95 · Keyboard shortcuts for memory keys · Waiting for a runner · (no runner) · AK · 2m
+Group "In review" 2 (git-pull-request icon):
+  - pull request icon · 71d3c8e0 · Upgrade Prisma to 7.2 · PR #48 · open · AK · 2h
+  - pull request icon · 0b9fa246 · Parse locale decimal separators · PR #46 · open · SR · 5h
+Last, a collapsed band: chevron-right icon, "Stopped and done" and faint count "9".
+Empty space below.
+
+4) RIGHT PROPERTIES PANEL, 300px wide, hairline on its left edge, padding 20px. Small faint group labels, then key/value rows 30px tall: key in muted grey on the left (84px), value in white on the right, 12.5px.
+- label "Project": Access — "Every member"; Your role — "Admin"; Created — "3 Nov 2026" (mono).
+- hairline divider. label "Repository": Repo — git-branch icon "acme/calculator" (mono); Default branch — "main" (mono).
+- hairline divider. label "Runs": Environment — box icon and "Saved" as a teal link; Pools — server icon "default"; Agent — "OpenCode".
+
+Calm, precise, dense, like Linear's issue list. Every word spelled exactly as written above. No extra text, no extra columns, no charts, no illustrations, no gradients, no glow, no purple except the one 8px project square.

@@ -1,0 +1,35 @@
+A pixel-perfect, straight-on screenshot of a desktop web app's sign-in screen, 1440x960 CSS pixels rendered at 2x. Not a mockup, no device frame, no perspective, no drop shadows, no gradients, no glow or halo around text, no purple, no noise. Flat, razor-crisp text like a real browser render. It must look like the same product as the attached reference screenshots (the dark neutral graphite console "ostra"): same near-black colours, same 1px hairlines, same dense 13px IBM Plex Sans type, same underline tabs, same button styles.
+
+PALETTE (exact hex): left page background #0D0E10. Right panel background #0A0B0C (a touch darker, like the reference sidebar). Input fill #131416. Hairlines #1F2023. Input borders #2A2C30. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Error red #E5675C. Teal link #6FB8AA. Success green #4FB286. Primary button: solid #F3F0E8 with text #0C1D21. No amber, no orange, no blue, no purple anywhere.
+
+FONTS: titles in Manrope Bold. UI text IBM Plex Sans. IDs, paths, commands, times, version in IBM Plex Mono. Icons: Lucide line icons, 15px, 1.75 stroke, colour #64676D.
+
+GRID: two columns divided by one 1px vertical hairline #1F2023 at x=640. Both columns share the same horizontal guides: a top guide at y=40, a content guide at y=300 (the top of both titles), and a bottom guide at y=920 (the baseline of both footers).
+
+LEFT COLUMN (x 0-640, #0D0E10):
+- At x=40, y=40: the ostra lockup copied exactly from the attached logo image: the rounded-square shell mark with one diagonal channel and a small round notch at its top-left, then the lowercase wordmark "ostra". Off-white #F3F0E8, 22px tall. Do not redraw it differently.
+- Form block, 360px wide, left edge x=140, its title top on the y=300 guide:
+  - "Sign in" in Manrope Bold 24px #EDEDEE.
+  - 6px below: lede, 13.5px #9A9DA3: "Use your username or email, and your password."
+  - 28px below: label "Username or email" (12px, weight 500, grey #9A9DA3, clearly dimmer than the input value), 6px gap, input 36px tall, radius 7px, fill #131416, border 1px #2A2C30, value "sam.rivera" in 13px #EDEDEE, 10px left padding.
+  - 14px below: label "Password", input of the same size holding ten masked dots, ERROR state: border 1px #E5675C. 6px under it: a 13px Lucide circle-alert icon in #E5675C and the line "That username or email and password don't match." in 12.5px #E5675C.
+  - 20px below: full-width primary button, 36px tall, radius 7px, fill #F3F0E8, label "Sign in" in 13px semibold #0C1D21.
+  - 16px below: 12px #64676D: "Forgot your password? Ask your instance admin for a reset link."
+- On the bottom guide at x=40: IBM Plex Mono 11.5px #64676D "ostra v0.1.0".
+
+RIGHT COLUMN (x 640-1440, #0A0B0C): a calm, read-only glimpse of one task page from the product, at true scale, with no card, no box, no border around it. Left edge x=720, right edge x=1360. HIERARCHY: the glimpse is secondary and must never compete with the sign-in form. It is one step quieter than the form: its title is #9A9DA3 (not white), the names "Sam Rivera" and "OpenCode" are #9A9DA3, message lines and mono paths are #9A9DA3, verbs and icons #64676D, and only the green "+118", the green "12 passed" and the teal "PR #483" keep their colour. The active tab "Activity" and its underline are #9A9DA3 too.
+- On the y=300 guide: mono 12px #64676D "CALC-161 · from Linear". Under it Manrope Bold 20px #9A9DA3 "Add history panel".
+- 18px below: underline tabs exactly like the reference: "Activity" (#9A9DA3, with a 2px #9A9DA3 underline), the other tabs #64676D, "Changes" with a faint mono "3", "Checks" with a faint mono "1/2", "Events". A 1px #1F2023 hairline runs under the tabs from x=720 to x=1360.
+- 20px below, the activity timeline in the reference's exact style:
+  - 28px circular outline avatar with a user icon; "Sam Rivera" semibold 13px #9A9DA3, then mono 12px #64676D "14:02". Next line 13px #9A9DA3: "Pick up CALC-161. Keep the last 50 results."
+  - 28px circular outline avatar with a bot icon; "OpenCode" semibold, then mono #64676D "14:03 · Claude Sonnet 5.5". Next line: "I'll add a history panel that keeps the last 50 results."
+  - Four compact 13px tool rows, indented under the message text, 30px row height. Icon in #64676D, verb in #64676D, then mono #9A9DA3:
+    file icon, "Read", "src/calculator/state.ts"
+    pencil icon, "Edited", "src/history/panel.tsx", then mono green #4FB286 "+118"
+    play icon (a small triangle, NOT a terminal prompt), "Ran", "pnpm test history", then a green check and green "12 passed"
+    git-pull-request icon, "Opened", teal #6FB8AA "PR #483", then mono #64676D "calc-161-add-history"
+- On the bottom guide at x=720: 13px #9A9DA3 "Self-hosted cloud agents for your team." and, on the same baseline at the right edge x=1360, right-aligned mono 12px #64676D "ticket → task → pull request".
+
+The sign-in form is the brightest thing on the screen; the eye lands on "Sign in" first, the white button second. Text rendering is sharp with no soft shadow behind any letters.
+
+Feel: premium, calm, precise, quiet dark space, perfect alignment to the guides, every text crisp and exactly as written, spelled correctly, nothing else written anywhere.

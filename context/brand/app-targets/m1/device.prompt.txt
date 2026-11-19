@@ -1,0 +1,24 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960, of "ostra", a developer control panel. Flat UI only: no device frame, no perspective, no gradients, no glow, no shadows, no purple accents, no illustrations. The first attached image is the previous draft of this exact screen: keep its composition, but apply the corrections below. It must look like the exact same product as the other attached reference screenshots (same sidebar, same top bar, same graphite colours, same fonts, same density, same hairline rows). Reuse the attached sidebar exactly; the attached logo is the small white mark beside "Acme Corp" at the top of the sidebar.
+
+PALETTE (exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces and code boxes #131416; selected nav row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; amber #FFB224 used ONLY for the "needs you" approval (with dark #0C1D21 text on amber fills); primary button fill #F3F0E8.
+SCALE AND TYPE: the same zoom level and density as the reference task screenshot (sidebar is 16% of the image width, body text small and dense, not oversized). Page title in Manrope Bold 24px (geometric, rounded); all interface text in IBM Plex Sans 13px (the humanist sans in the references, NOT Inter or SF); codes, hostnames, times and IPs in IBM Plex Mono. Icons: Lucide outline, 15px, thin 1.75 stroke, grey.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, #0A0B0C, identical to the reference: logo + "Acme Corp" switcher, Search ⌘K field with a light "+" button, then Home, Needs you (amber pill "5"), My tasks 7; "Projects" label with calculator, billing-platform, web-storefront, mobile-app, data-pipeline (small coloured squares), "13 more"; "Organization" label with Runner pools 238 (this row is SELECTED, background #1A1B1E, white text), Models, Agent profiles, Insights, Memory, Members, Audit log, Background work, Settings; bottom: avatar "AK" Alex Kim.
+2) TOP BAR 44px with a bottom hairline: breadcrumbs "Acme Corp  ›  Runner pools  ›  Approve a runner" (last one white, others grey). Nothing on the right.
+3) MAIN COLUMN, padding 28px 40px, content left-aligned and only 560px wide (the code box and hairlines stop well before the properties panel), lots of calm empty space to the right:
+ - small faint mono line: "ostra runner · device sign-in"
+ - title: "Approve a runner"
+ - grey lede: "Check that this code matches the one in your terminal."
+ - a label "Code" (12px grey), then one wide box (#131416 fill, 1px #1F2023 border, 8px radius, 64px tall) holding the code "WDJB-MJHT" in IBM Plex Mono 28px white with wide letter spacing, and at the right end of the same box a faint mono "expires in 8:41".
+ - section title "What approving does" (13px semibold), then three rows separated by 1px hairlines (no boxes, 38px rows), each with a grey Lucide icon on the left:
+     server icon: "It becomes your personal runner in Acme Corp."
+     user icon: "It runs only the tasks you send to it."
+     shield-off icon: "Personal, not isolated: the agent runs as a process on that machine, as you."
+ - the approval: NOT a card. A 2px amber vertical rule on the left, 16px of space, then: amber hand icon + "Needs you · approval" in amber semibold; below it in white: "Approve only if you ran ostra runner yourself, just now. If you didn't, deny it." (the words ostra runner in IBM Plex Mono); below that two buttons 28px tall, 7px radius: "Deny" (dark #131416 with #2A2C30 border, white text) and "Approve runner" (amber #FFB224 fill, dark #0C1D21 semibold text). Exactly like the approval block in the attached task screenshot.
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px 18px, small faint group labels and key/value rows (keys grey, values white, 30px rows, no boxes), groups separated by a hairline:
+   "Request": Status = amber dot + "Waiting for you"; Client = "ostra runner 0.1.0" (sans, not mono); Scope = "runner" (mono); Requested = "14:02 · 1 min ago" (mono); Expires = "14:12" (mono). All values start at the same x position, perfectly aligned.
+   "Machine": Hostname = "alex-mbp" (mono); System = "macOS 15.1 · arm64"; Address = "192.0.2.14" (mono); Executor = "host" (mono).
+   "Signs in as": Member = small "AK" avatar + "Alex Kim"; Organization = "Acme Corp"; Pool = "Personal".
+
+Dense, calm, precise, trustworthy; the engineering-tool feel of Linear. Every word spelled exactly as written above. No other text.

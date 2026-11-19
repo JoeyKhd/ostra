@@ -1,0 +1,48 @@
+EDIT THE FIRST ATTACHED IMAGE. Reproduce it exactly, pixel for pixel, same layout, same copy, same data, same sizes, with only these two corrections:
+(a) The three section titles "Pools", "Runners" and "Your machine" are currently far too large. Make each one small: IBM Plex Sans semibold, the SAME size as the table body text (13px at 1440 wide), white, with its faint mono count right after it. They must be clearly smaller than the page title "Runners" and only slightly bolder than the rows, exactly like the small section titles "Events" and "Projects" in the other attached screenshots. Keep the same vertical positions of everything else.
+(b) In the "Your machine" row, put every column at the same x position as the rows of the Runners table above it: "alex-mbp" under "build-01", "personal" and the "not isolated" chip starting under "build-fleet", "host" under "docker", "0 / 1 busy" under "3 / 4 busy", "v0.4.2" under "v0.4.2".
+Everything else stays exactly as it is in the first attached image. The full specification of the screen follows, for reference.
+
+A straight-on, pixel-crisp screenshot of a desktop web app screen, 1440x960, dark mode. No device frame, no perspective, no browser chrome. It is the "Runners" page of ostra, a developer tool. Match the attached reference screenshots EXACTLY in style: same sidebar, same top bar, same typography, same density, same hairline rows, same near-black neutral graphite palette. It must look like another page of the same product.
+
+PALETTE (flat, no hue in the chrome): page background #0D0E10; sidebar #0A0B0C; raised surfaces (code box, inputs) #131416; selected row/nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; green #4FB286 only for "online" dots; teal #6FB8AA only for the inline links "Copy"; primary button filled #F3F0E8 with dark #0C1D21 text. Amber #FFB224 appears ONLY on the sidebar "Needs you" count badge, nowhere else on the page. No gradients, no glow, no purple, no shadows, no cards, no boxes inside boxes.
+
+FONTS: page title "Runners" in Manrope bold 24px; all UI text IBM Plex Sans 13px; runner names, versions, numbers, tokens and the command in IBM Plex Mono. Icons: thin Lucide line icons, 15px.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px wide, exactly like the references: the ostra shell logo (attached, white) + "Acme Corp" + up-down chevron; a search field "Search ⌘K" and a small white "+" button; nav rows "Home", "Needs you" with amber badge "2", "My tasks" with faint "3"; section label "Projects" with rows "calculator" (teal square), "billing-platform" (violet square), "web-storefront" (orange square); section label "Organization" with rows "Runners" (selected, highlighted row #1A1B1E, server icon, faint count "7"), "Models" (cpu icon), "GitHub" (git-branch icon); at the bottom an avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px with hairline under it: breadcrumbs "Acme Corp  ›  Runners" (Runners in white). On the right one primary button, filled off-white: "+ New pool".
+
+3) MAIN COLUMN (padding 40px):
+- Title "Runners".
+- Muted lede: "Where tasks run. 4 of 8 runners online, 7 of 14 boxes busy, across 2 pools and your machine."
+- SECTION TITLES ARE SMALL: IBM Plex Sans semibold 13px, white, exactly like "Events" and "Projects" in the references, NOT large Manrope headings. Section title "Pools" with faint mono count "2". Then a borderless table with hairline rows, column headers in faint 11.5px: Pool, Executor, Runners, Busy, Join tokens, Projects, Version.
+  Row 1 (selected, background #1A1B1E): "build-fleet" + small outlined chip "default" | "docker" mono | "2 / 5 online" | a thin 96px meter bar 50% filled in grey + "6 / 12" mono | "2 active" | "3" | "v0.4.2" mono.
+  Row 2: "mac-minis" + small outlined chip "not isolated" (grey text, grey border) | "host" | "1 / 2 online" | meter 100% + "1 / 1" | "1 active" | "1" | "v0.4.2".
+- Section title "Runners" with faint mono count "7", and on the right a quiet text "All pools ⌄". Hairline rows, 38px each, columns aligned: status dot + state word, runner name mono, pool name muted, executor mono muted, busy "3 / 4 busy" mono faint, version mono faint, age faint right-aligned.
+  "● online" (green dot)   build-01   build-fleet   docker   3 / 4 busy   v0.4.2
+  "● online" (green dot)   build-02   build-fleet   docker   2 / 4 busy   v0.4.2
+  "◐ draining" (grey half dot)   build-03   build-fleet   docker   1 / 4 busy   v0.4.2
+  "○ joining" (grey hollow dot)   build-04   build-fleet   docker   —   v0.4.2   just now
+  "● offline" (grey dot)   build-05   build-fleet   docker   —   v0.4.1   seen 3h ago
+  "● online" (green dot)   mini-01   mac-minis   host   1 / 1 busy   v0.4.2
+  "● offline" (grey dot)   mini-02   mac-minis   host   —   v0.4.2   seen 2d ago
+  All runner rows use the SAME column positions; the age column is right-aligned.
+- Section title "Your machine" with faint mono count "1". One hairline row using the SAME column positions as the Runners rows above (no extra icon): "● online" (green) | "alex-mbp" mono | "personal" muted followed by a small outlined grey chip "not isolated" | "host" mono | "0 / 1 busy" | "v0.4.2". Under the row, 16px gap, a muted 12.5px line: "Connect another machine: run this in a clone of ostra, then approve the code it prints." Under it a quiet single-line code box (#131416, 1px #1F2023 border, 8px radius) containing mono text "pnpm ostra runner --server https://ostra.acme.dev" with a teal "Copy" link at its right end. Under the box, faint 12px text with a small shield icon: "Personal runners use the host executor: the agent runs as a process on your machine, not isolated."
+
+4) RIGHT PROPERTIES PANEL 300px, with a hairline on its left, for the selected pool. Small faint label "build-fleet". Key/value rows (key muted, value white), 30px each:
+  Executor — docker
+  Runners — 2 / 5 online
+  Busy — 6 / 12 boxes
+  Projects — calculator, +2
+  Approval — Not required
+  Max boxes — No limit
+  A hairline. Then a small faint label row "Join tokens" with "2" and a small outlined button "+ New token" on the right.
+  A code box (#131416, hairline border) with mono text "ostra-join-q7Hc2x…9fLm" and a teal "Copy" link; under it muted 12px text: "Shown once. Stored only as a hash."
+  Then token rows with hairlines between them:
+   "ci-bootstrap" white, under it faint mono "expires 2026-12-19 · used 2h ago", with a muted "Revoke" text button at the right.
+   "bootstrap" white, under it faint mono "never expires · used 20m ago", muted "Revoke" at the right.
+   "laptop-test" faint and struck through, under it faint "revoked 18 Nov".
+
+The page title "Runners" is Manrope bold, 24px relative to 13px body text: big but not huge. Overall: dense, calm, precise, lots of near-black space, a tool engineers use all day. All text crisp and legible, spelled exactly as written. No extra content, no charts, no illustrations.

@@ -1,0 +1,41 @@
+The FIRST attached image is the previous draft of this exact screen: keep its layout, sizes, copy and positions, and apply only the changes this prompt describes. A flat, straight-on, pixel-precise screenshot of one desktop web app screen, 1440x960 CSS pixels at 2x, dark mode. It is the "New task" screen of ostra, a developer console for coding agents. Match the attached reference screenshots exactly in style: the same sidebar, the same top bar, the same fonts, the same near-black neutral graphite chrome, the same hairline rows, the same density and the same right properties panel. Use the attached logo mark (a rounded shell split by one diagonal channel) in the sidebar's top-left, small, white. No device frame, no perspective, no shadows, no gradients, no glow, no purple, no illustrations, no emoji.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, the composer) #131416; selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286; link teal #6FB8AA; primary button filled warm off-white #F3F0E8 with near-black #0C1D21 text; amber #FFB224 appears ONLY on the sidebar "Needs you" count badge and the small project dots, nowhere else.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles 600); IBM Plex Mono for repo names, branches, runner names, times and keyboard hints. Icons are thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1. SIDEBAR, 232px wide, #0A0B0C, a 1px right hairline. Top: logo mark + "Acme Corp" bold + up-down chevron. Then a search field "Search" with "⌘K" on the right, and beside it a small square off-white button with a black "+". Nav rows 26px tall: "Home", "Needs you" with an amber pill badge "5", "My tasks" with faint "7". Small faint label "Projects", then rows each with an 8px rounded colour square: "calculator" (teal square, amber dot at the right), "billing-platform" (violet-blue square, amber dot), "web-storefront" (ochre square, amber dot), "mobile-app" (blue square, amber dot), "data-pipeline" (pink square), then "··· 13 more". Small faint label "Organization", then rows: "Runner pools" with faint "238", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". At the very bottom: a round grey avatar "AK" and "Alex Kim". No nav item is highlighted.
+2. TOP BAR, 44px tall across the rest of the width, a 1px bottom hairline: breadcrumbs "Acme Corp  ›  New task" with "New task" in white. Nothing on the right.
+3. MAIN COLUMN (left padding 40px, top padding 28px, content about 760px wide):
+   - a faint mono eyebrow: "calculator · prompt task"
+   - title "New task" (Manrope Bold 24px, white)
+   - one muted line: "Type what the agent should do. It works on its own branch and opens a pull request."
+   - THE COMPOSER, the hero of the page: one large box, about 760x250px, background #131416, 1px border #2A2C30, radius 10px, with its border just slightly lighter (#34363A) because it is focused, no glow. Inside, top-left, the prompt the member typed, in 14px IBM Plex Sans, white, wrapping over three lines, with a thin text caret at the end:
+     "Add keyboard navigation to the history panel. Up and Down move through past results, Enter loads the selected one into the input, and Esc closes the panel. Cover it with tests in panel.test.tsx."
+     At the bottom of the composer, one row: on the left three compact BORDERLESS ghost select triggers (28px tall, no border, no fill, 12.5px #9A9DA3 text, each ending in a small faint chevron-down, separated by 4px; they must not look like boxes inside the composer box): [teal 8px square] "calculator"  ·  [sliders icon] "OpenCode · Claude Sonnet 5.5"  ·  [laptop icon] "alex-mbp · yours". On the right: a faint mono keyboard hint "⌘ ↵" and then the primary button, filled off-white #F3F0E8 with near-black text, 28px tall: [arrow-up icon] "Start task".
+   - under the composer, one faint 12px line with a small info icon: "alex-mbp is your own machine. The agent runs in a worktree there, not isolated."
+   - a section 36px below: title "What happens next" (13px semibold), then three 38px rows separated by 1px #1F2023 hairlines, each with a grey Lucide icon at the left:
+     [folder-git icon] "A worktree of " + mono "acme/calculator-web" + " from " + mono "main" + ", on " + mono "alex-mbp"
+     [git-branch icon] "OpenCode works on its own branch, " + mono "ostra/1f3a9c2e-add-keyboard-navigation"
+     [git-pull-request icon] "It opens a pull request. Steer it while it runs, and reopen it any time."
+   - a section below: title "Recent in calculator" with faint mono count "3" and on the far right a muted link "All tasks →". Three 38px hairline rows, columns: status (dot + label), title, what happened, age (faint mono, right-aligned):
+     [green dot] "Running"   "Export history as CSV"   "OpenCode · editing src/export.ts"   "4m"
+     [grey dot] "In review"   "Add history panel"   "PR #483 · checks passed"   "2h"
+     [faint git-merge icon instead of a dot] "Merged"   "Fix rounding in division"   "PR #479"   "1d"
+4. PROPERTIES PANEL on the far right, 340px wide, a 1px left hairline, padding 20px 18px, rows 30px tall with a muted key column (84px) and a white value column, 12.5px text, groups split by a hairline:
+   small faint label "This task"
+     Project   [teal 8px square] calculator
+     Repo      acme/calculator-web (mono)
+     Base      main (mono)
+     Branch    "made when it starts" (muted #9A9DA3, IBM Plex Sans, not mono)
+   hairline, then the small faint label "Agent profile" with, on the same line at the far right, a small teal #6FB8AA link "Change"
+     Profile   Default
+     Agent     [bot icon] OpenCode
+     Model     [sparkles icon] Claude Sonnet 5.5
+   hairline, small faint label "Runs on"
+     Runner    [laptop icon] alex-mbp (mono) · yours
+     State     [green dot] online
+     Executor  host · not isolated (muted)
+
+The overall feel: calm, precise, dense, generous whitespace around a big inviting composer, like the beginning of real work. Clean, crisp, perfectly legible text, aligned to a strict grid, nothing decorative.

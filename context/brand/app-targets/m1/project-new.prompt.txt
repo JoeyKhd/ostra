@@ -1,0 +1,41 @@
+A flat, straight-on desktop screenshot of a web app screen, 1440x960 CSS px rendered at 2x, no device frame, no perspective, no shadow around it. It is the same product as the attached reference screenshots ("graphite" direction of the ostra panel): copy their sidebar, top bar, type, spacing, hairlines and density exactly. Dark UI, neutral near-black graphite with NO hue. No gradients, no glow, no purple, no blur, no illustrations, no cards inside cards, no drop shadows.
+
+PALETTE (exact): page background #0D0E10; sidebar #0A0B0C; inputs and code blocks #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; link teal #6FB8AA; success green #4FB286; primary button filled warm off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY in the sidebar ("Needs you" count pill and the small project dots), never in the main page or the right panel.
+
+FONTS: page title in Manrope Bold 24px. Everything else IBM Plex Sans 13px (labels 12px, section titles 13px semibold). Repo names, slugs, branches, file names, variable names, image names and commands in IBM Plex Mono 12.5px. Icons are thin Lucide line icons, 15px.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px wide, identical to the references: top row the small white shell logo (attached logo) + "Acme Corp" + up/down chevron; a search field "Search ⌘K" with a small off-white square "+" button; nav rows "Home", "Needs you" with an amber pill "5", "My tasks" 7; small label "Projects", then rows with 8px coloured squares: calculator (teal), billing-platform (violet-grey), web-storefront (tan), mobile-app (blue), data-pipeline (pink), "··· 13 more"; small label "Organization": Runner pools 238, Models, Agent profiles, Insights, Memory, Members, Audit log, Background work, Settings; at the bottom an avatar "AK" and "Alex Kim". No row is highlighted. Every sidebar icon sits in the same 15px column and every label starts on the same left edge, Home through Settings.
+2) TOP BAR 44px with a hairline under it: breadcrumbs "Projects  ›  Create a project" (last one brighter). On the far right one quiet bordered button "Cancel".
+3) MAIN COLUMN, left padding 40px, content max width about 560px, lots of calm empty space on its right:
+   - Title "Create a project".
+   - Lede, muted: "A project is its repos, an optional tracker and one environment. Tasks run against it and open their pull requests there."
+   - Field label "Name" (12px muted). Input 32px tall and only about 360px wide (not full width), 1px #2A2C30 border, radius 7px, background #131416, value "payments-api" in IBM Plex Sans. Help line under it, faint: "Slug: payments-api".
+   - Section line: "Repositories" semibold, then faint mono "1 selected", and on the right a muted small link "Manage on GitHub ↗". Under it two controls side by side on one line: a select box showing a GitHub mark + "acme" + chevron (about 160px), and a filter input with a search icon and placeholder "Filter repositories" filling the rest.
+   - Then a plain list, NO box around it, rows 38px separated by 1px hairlines #1F2023, top and bottom hairline. Each row: a 14px square checkbox, the repo full name in mono, a small lock icon after private ones, and the default branch in faint mono aligned right:
+       [checked, row background #1A1B1E, checkbox filled off-white with a dark tick] acme/payments-api  (lock)  main
+       [ ] acme/calculator-web  main
+       [ ] acme/calculator-api  (lock)  main
+       [ ] acme/web-storefront  (lock)  main
+       [ ] acme/mobile-app  (lock)  develop
+       [ ] acme/docs  main
+     Faint help line under the list: "The GitHub App sees 6 repositories in acme."
+   - Section line: "Tracker" semibold, then faint "optional". Two radio rows separated by hairlines, 38px:
+       (•) "None"  then faint text "Tasks start from prompts typed in ostra."
+       ( ) "Linear"  then faint text "Tickets on a team's board become tasks."  and on the right a teal link "Connect Linear →"
+   - A hairline, then the footer: the one primary button, filled #F3F0E8 with dark text, "Create the project", 32px tall; to its right faint text "Nothing runs yet. You review the environment next."
+4) RIGHT PROPERTIES PANEL (every group label in it uses the SAME style: 11px IBM Plex Sans medium, faint #64676D, never bold, never white; group counts right-aligned in faint mono) 340px wide with a 1px hairline on its left, padding 20px, no box, same style as the references' "Properties" panel:
+   - Small faint label "Environment draft" and on the same line, right-aligned, faint mono "acme/payments-api".
+   - Key/value rows 30px, keys muted in an 84px column, values in mono:
+       Base image   ostra/base:node22
+       Tools        node 22.11 · pnpm 9.12
+       Found in     5 files
+   - Faint mono file list, one per line, small, starting exactly on the same left edge as the keys: pnpm-lock.yaml, .nvmrc, .env.example, compose.yaml, .devcontainer/devcontainer.json
+   - Hairline separator. Small faint label "Setup script". A code block (background #131416, 1px #1F2023 border, radius 8px, mono 12px) with faint line numbers:
+       1  corepack enable
+       2  pnpm install --frozen-lockfile
+   - Hairline separator. Small faint label "Variables" (same style as "Environment draft") with faint count "4" right-aligned. Four 28px rows in mono: DATABASE_URL, STRIPE_SECRET_KEY, REDIS_URL, PORT, each with faint right text ".env.example".
+   - Hairline separator. Small faint label "Services" (same style as "Environment draft") with count "2". Two rows: a grey dot + mono "postgres:16" with faint right text "not on host"; a grey dot + mono "redis:7" with faint right text "not on host".
+   - At the bottom a faint 12px note with a small info icon: "Read from the repo's files. No agent, no model."
+
+All text must be crisp, legible and spelled exactly as written. Calm, precise, dense like Linear or the references. Generous alignment on a single left edge in the main column.

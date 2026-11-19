@@ -1,0 +1,60 @@
+# Generation 1 (base prompt). References: app-concepts/html/models-graphite.png, task-b-graphite.png, home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Models" page of ostra, a developer tool for running coding agents. Match the reference screenshots exactly in style: the same sidebar, the same graphite near-black chrome, the same dense 13px type, hairline rows, few boxes. It is the same product as the references.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs and raised surfaces #131416; selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286 (only the small status dots and the check icon); primary button fill #F3F0E8 with dark text #0C1D21; amber #FFB224 appears ONLY on the "5" count badge next to "Needs you" in the sidebar and on four tiny 6px dots beside projects. No other colour anywhere. No gradients, no glow, no purple, no blue accents, no cards with shadows.
+
+FONTS: page title in Manrope Bold 24px. Everything else IBM Plex Sans 13px (section titles semibold 13px, table headers 11.5px faint). IBM Plex Mono for URLs, model IDs, numbers and prices. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a 1px #1F2023 line on its right. Exactly as in the reference: at the top a small white rounded shell logo mark (the attached logo) then "Acme Corp" in semibold and a small up-down chevron. Below it a search field "Search" with "⌘K" at its right, and a small square off-white "+" button. Nav rows 26px tall: "Home" (house icon), "Needs you" (hand icon) with an amber pill badge "5", "My tasks" (user-circle icon) with a faint "7". Small faint label "Projects", then rows each with an 8px rounded colour square: "calculator" (teal square), "billing-platform" (violet square), "web-storefront" (orange square), "mobile-app" (blue square), "data-pipeline" (pink square); the first four have a tiny amber dot at the right edge. Then "··· 13 more". Small faint label "Organization", then: "Runner pools" with faint "238", "Models" (chip icon) HIGHLIGHTED with a #1A1B1E rounded background and white text, "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". At the bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR across the main area, 44px tall, a hairline under it. Left: breadcrumb "Acme Corp  ›  Models" ("Models" in white medium, "Acme Corp" muted). Right: one secondary button with a "+" icon, "Add provider" (dark #131416 fill, #2A2C30 border, white text, 28px tall). It is NOT the light primary button.
+
+3) MAIN PAGE, padding 28px top, 40px left. Title "Models" (Manrope Bold 24px). Under it a muted two-line lede, max 720px wide: "Any provider with an API base URL and a token. Names, logos, limits and prices come from the models.dev catalog. Agents reach a provider through ostra's key proxy, so its token never reaches the agent."
+
+Section "Providers" with a faint mono count "4". No box: rows 40px tall separated by 1px hairlines. Each row: a 15px provider logo in light grey monochrome, the name, the base URL in faint mono, then at the right "N models" in muted text and a small green dot with "Connected".
+- Anthropic · https://api.anthropic.com · 2 models · Connected
+- OpenAI · https://api.openai.com/v1 · 1 model · Connected
+- Google · https://generativelanguage.googleapis.com/v1beta/openai · 1 model · Connected
+- OpenRouter · https://openrouter.ai/api/v1 · 3 models · a small outlined grey chip "personal runners" · Connected
+
+Section "Models" with a faint mono count "7". A table with no box: header row 30px tall with faint 11.5px labels "Model", "Provider", and right-aligned "Context", "Input $/M", "Output $/M"; body rows 40px tall with hairlines. Model column: a small monochrome light-grey model logo, then the name. Numbers in IBM Plex Mono, right-aligned.
+- Claude Sonnet 5.5, with a small outlined grey chip "default" · Anthropic · 1M · $2.00 · $10.00
+- Claude Opus 5.5 · Anthropic · 1M · $4.00 · $20.00
+- GPT-6.2 Sol · OpenAI · 1.05M · $2.00 · $10.00
+- Gemini 4 Carbon · Google · 1M · $2.00 · $10.00
+- Kimi K3.1 Pro · OpenRouter · 1M · $2.00 · $10.00
+- DeepSeek V4 Flash · OpenRouter · 1M · $0.15 · $0.60
+- acme/sql-coder-ft (in mono), with a small outlined grey chip "custom", a plain grey chip icon instead of a logo · OpenRouter · 32k · – · –
+Below the table, empty dark page.
+
+4) RIGHT PROPERTIES PANEL, 340px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px. It holds the "add a provider" form after a successful connection test. Top to bottom, left-aligned:
+- small faint label "New provider" (11px)
+- muted line: "Test the connection first: ostra detects the API format and lists the models."
+- field label "Name" (12px muted), input 32px tall (#131416 fill, #2A2C30 border, 7px radius) containing "internal-vllm"
+- field label "API base URL", input containing "https://llm.acme.internal/v1" in mono
+- field label "Token", input with ten masked dots "••••••••••" and a small eye icon at the right; faint help text under it: "Stored in the secret store, and never shown again."
+- a secondary button "Test connection" (dark fill, #2A2C30 border)
+- a green check icon and green text: "Connected · OpenAI-compatible · found 3 models"
+- three compact 30px rows with hairlines between them, each: mono model ID on the left, the catalog name in faint text, and the context in faint mono at the right:
+  "qwen3-coder-480b   Qwen3 Coder 480B   262k"
+  "llama-4-maverick   Llama 4 Maverick   1M"
+  "acme-sql-7b   custom   32k"
+- field label "API format", a select showing "OpenAI-compatible (detected)" with a small chevron
+- field label "Sessions at once", input with faint placeholder "No cap"
+- a row: label "Allow on personal runners" on the left, a small toggle switch in the OFF position (grey) on the right; faint help text under it: "Off by default. A personal runner is a member's own machine: a key the key proxy holds there can be read by that member."
+- the one light primary button on the page: "Save provider" (#F3F0E8 fill, #0C1D21 text, 28px tall)
+
+All text crisp, legible and spelled exactly as written. Generous but dense spacing like Linear's app: aligned left edges, consistent 40px rows, nothing oversized. No gradients, no glow, no purple, no illustrations, no decorative elements.
+
+# Generation 2 (final, a constrained edit). References: generation 1's output first, then app-concepts/html/models-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+
+Reproduce the FIRST attached image exactly: the same screen, layout, every row, every word, every colour, at the same size and positions. Change only these four things:
+1) The table header labels in the Models table ("Model", "Provider", "Context", "Input $/M", "Output $/M") are IBM Plex Sans (a proportional sans-serif, not monospace), 11.5px, faint grey #64676D.
+2) The small outlined chips "personal runners", "default" and "custom" use IBM Plex Sans (proportional, not monospace) 12px muted grey #9A9DA3 text, 22px tall, 1px #2A2C30 border, 6px radius.
+3) In the right panel, directly under the small faint label "New provider", add a title line "Add a model provider" in IBM Plex Sans semibold 15px white #EDEDEE, then the existing muted line "Test the connection first: ostra detects the API format and lists the models." Shift the rest of the panel down slightly to make room; keep everything else in the panel identical.
+4) The provider rows and the table rows start at exactly the same left edge as the page title "Models" (no indent); the hairlines span from that left edge to the right edge of the content.
+Everything else stays pixel-identical to the first image. Flat dark graphite UI, colours #0D0E10 background, #0A0B0C sidebar, #1F2023 hairlines, #EDEDEE text, green #4FB286 only for status, amber #FFB224 only on the sidebar Needs you badge and project dots. No gradients, no glow, no purple.

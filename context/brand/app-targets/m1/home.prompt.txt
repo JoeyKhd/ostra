@@ -1,0 +1,53 @@
+EDIT the first reference image (the ostra Home screen). Keep its layout, data, spacing, palette and type exactly, and change ONLY these things:
+1. Sidebar top-left: the organization switcher must read "Acme Corp" (semibold, 13px, #EDEDEE) next to a 20px off-white ostra logo mark (the rounded shell with one diagonal channel and a small notch, as in the logo reference), with a small up-down chevron at the far right of that row. Do NOT write the word "ostra" there.
+2. Needs you rows: every action button is exactly the same width (110px) and right-aligned to the same edge: "Approve" (filled amber #FFB224, dark #0C1D21 text), "Review plan", "Review PR", "Answer", "Open task" (outline: #131416 fill, #2A2C30 border). The age column ("4m", "11m", "18m", "26m", "41m") is right-aligned on one vertical edge, in faint mono #64676D.
+3. Right panel group labels "Pull requests merged, last 7 days", "Spend, November" and "Runner pools" are all IBM Plex Sans 11px medium in faint #64676D (not mono). The figures beside them ("$4,212 of $6,000", "238 busy · 41 queued") stay in IBM Plex Mono 12px, secondary #9A9DA3.
+4. Runner pool names ("build-fleet", "k8s-autoscale", "mac-minis", "laptops") are 13px regular, the same size as body text elsewhere, not larger.
+5. Everything else stays identical, including all text, which must be spelled exactly as in the first reference image. No gradients, no glow, no purple, no shadows, no cards. Flat straight-on screenshot, crisp text.
+
+For reference, the full spec of the screen follows.
+
+A flat, straight-on, pixel-crisp screenshot of a desktop web app screen, 1440x960 logical layout at 2x, dark mode. Not a mockup, no device frame, no perspective, no shadows, no gradients, no glow, no purple accents, no illustrations. It is the "Home" screen of "ostra", a self-hosted control panel for coding agents. Match the reference screenshots exactly in style: same sidebar, same type, same density, same near-black neutral graphite chrome, same hairline rows instead of cards. It must look like the same product as the references.
+
+PALETTE (exact hex): page background #0D0E10; sidebar background #0A0B0C; raised surface for inputs and the search box #131416; selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; primary text #EDEDEE; secondary text #9A9DA3; faint text #64676D. Amber #FFB224 means "needs you" and is used ONLY for the needs-you dot, the needs-you count badge, amber numbers in the "Needs you" column, and ONE filled "Approve" button (with dark #0C1D21 text). Green #4FB286 only for the merged-PR icon. Red #E5675C only for the stopped-task icon. Teal #6FB8AA only for text links. Chart bars light grey-green #CFD8D4. Primary button filled off-white #F3F0E8 with dark #0C1D21 text.
+
+TYPE: page title in Manrope Bold 24px; all other text IBM Plex Sans, body 13px, secondary 12px, section titles 13px semibold; task keys, numbers, times, branch and runner names in IBM Plex Mono. Icons: Lucide line icons, 15px, thin 1.75 stroke. Dense like Linear: 26px nav rows, 40px list rows.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, background #0A0B0C, right hairline. Top: the ostra logo mark (the off-white rounded shell with one diagonal cut, from the reference logo image) at 20px, then "Acme Corp" in semibold, then a small up-down chevron. Below: a search field "Search" with "⌘K" on the right, and a small off-white square "+" button. Nav rows: "Home" (selected, #1A1B1E background, house icon), "Needs you" (hand icon) with an amber pill badge "5", "My tasks" (user-circle icon) with faint "7". Small faint label "Projects", then rows each with an 8px rounded colour square: "calculator" (teal square #6FB8AA) amber dot at right, "billing-platform" (violet square #8C7CF0) amber dot, "web-storefront" (ochre square #E0A458) amber dot, "mobile-app" (blue square #5FA8E8) amber dot, "data-pipeline" (rose square #C27BA0) no dot, "··· 13 more". Small faint label "Organization", then: "Runner pools" (server icon) faint "238", "Models" (cpu icon), "Agent profiles" (sliders icon), "Insights" (bar chart icon), "Memory" (book icon), "Members" (users icon), "Audit log" (scroll icon), "Background work" (list icon), "Settings" (gear icon). Bottom: grey circle avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px across the main area with a bottom hairline: breadcrumbs "Acme Corp  ›  Home" ("Home" brighter). Far right: one off-white primary button "+ New task".
+
+3) MAIN COLUMN (padding 40px left), no cards, no boxes:
+- Eyebrow in faint mono: "Wednesday 18 November"
+- Title: "Acme Corp"
+- Lede in secondary grey: "238 tasks running across 18 projects, 41 queued. 37 pull requests merged today."
+
+- SECTION "Needs you": header row with a small amber dot, "Needs you" semibold, faint mono count "5", and at the far right a grey link "Open all →". Then 5 rows of 40px separated by hairlines, columns perfectly aligned: key (faint mono, 80px) | title (primary) | project (8px colour square + name, secondary) | reason (secondary) | age (faint mono, right aligned) | action button column, all buttons the SAME width (110px), right aligned, 26px tall, 6px radius:
+  row 1: "CALC-142" | "Retry webhook delivery on 5xx" | calculator | "Approval: " followed by mono "pnpm add p-retry" | "4m" | filled AMBER button "Approve"
+  row 2: "BIL-88" | "Prorate seat changes" | billing-platform | "Plan ready for review" | "11m" | outline button "Review plan"
+  row 3: "WEB-311" | "Fix cart badge count" | web-storefront | "Draft PR #2213 ready, checks passed" | "18m" | outline button "Review PR"
+  row 4: "MOB-57" | "Crash in the Android share sheet" | mobile-app | "Question: keep the old share API?" | "26m" | outline button "Answer"
+  row 5: "CALC-150" | "Export history as CSV" | calculator | "Setup failed: " followed by mono "pnpm install" " exited 1" | "41m" | outline button "Open task"
+  Outline buttons: #131416 fill, #2A2C30 border, #EDEDEE text. Only row 1 is amber.
+
+- SECTION "Projects" with faint mono count "18", far right grey link "All projects →". A borderless table, header labels in faint 11.5px: "Project", "Repo", "Running", "Queued", "Needs you", "PRs this week", "Spend, Nov". Numbers right aligned in mono with tabular figures. Rows 40px with hairlines:
+  calculator | acme/calculator-web | 11 | 3 | 3 (amber) | 41 | $612
+  billing-platform | acme/billing | 31 | 9 | 1 (amber) | 118 | $1,104
+  web-storefront | acme/storefront | 44 | 12 | 2 (amber) | 176 | $1,380
+  mobile-app | acme/mobile | 19 | 6 | 1 (amber) | 64 | $498
+  data-pipeline | acme/pipeline | 8 | 2 | – (faint) | 22 | $210
+  Each project name has its 8px colour square before it. Repo names in faint mono.
+
+- SECTION "Recent activity", far right grey link "Audit log →". 4 rows of 38px with hairlines, a 15px icon at left, the event text, then on the right the project name in secondary text and a faint mono age:
+  green git-merge icon: "PR #2207 Add gift card balance check merged into main" (main in mono) | web-storefront | 3m
+  grey box icon: "Snapshot rebuilt from main@9c41e2a · 1.9 GB · 2m 41s" | calculator | 12m
+  grey server icon: "Runner build-17 joined build-fleet" (names in mono) | Organization | 20m
+  red circle-x icon: "CALC-139 stopped: spend cap reached" | calculator | 34m
+
+4) RIGHT PANEL 300px, left hairline, padding 20px, no cards, three groups separated by hairlines:
+- Small faint label "Pull requests merged, last 7 days". Big number "849" in Manrope bold 28px. Under it secondary text "1,042 opened · 23 min median to first PR". A small single-series bar chart, 7 bars in #CFD8D4 with a recessive baseline, day labels in faint mono "T F S S M T today"; direct labels only on the peak bar "211" and on today's short darker bar "37".
+- Label row "Spend, November" left and mono "$4,212 of $6,000" right, then a thin 4px meter at 70% filled in #9A9DA3 on #2A2C30.
+- Label row "Runner pools" left and faint mono "238 busy · 41 queued" right. Then four rows, each a name and a mono figure on one line with a thin 4px meter below: "build-fleet" "142 / 200" (71%); "k8s-autoscale" "58 · max 400" (15%); "mac-minis" "31 / 40" (78%); "laptops" "7 / 12 online" (58%).
+
+All text must be spelled exactly as given, sharp and legible. Generous but tight spacing, crisp alignment on a common left edge, calm and precise, like a tool engineers use all day.

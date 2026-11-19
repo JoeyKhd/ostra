@@ -1,0 +1,57 @@
+# Final prompts for the github target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high).
+# github.webp: refs task-b-graphite.png, models-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960, no device frame, no perspective. Product: "ostra", a dark developer control panel. Match the attached reference screenshots EXACTLY in style: same sidebar, same top bar, same fonts, same density, same near-black graphite colours, same hairline rows, same right properties panel. It must look like another page of the same product.
+
+SCREEN: Organization > GitHub, connected state. An admin sees the organization's GitHub App, where it is installed, which repos it can reach, and what it is allowed to do.
+
+PALETTE (neutral graphite, no hue in the chrome): page background #0D0E10, sidebar #0A0B0C, raised surfaces #131416, selected row/nav #1A1B1E, hairlines #1F2023, control borders #2A2C30, text #EDEDEE, secondary text #9A9DA3, faint text #64676D, success green #4FB286 (only the Connected dot and small check icons), link teal #6FB8AA (inline links only), primary button filled warm off-white #F3F0E8 with dark text #0C1D21, amber #FFB224 ONLY on the sidebar "Needs you" count badge and the small project dots. No other colour anywhere. No gradients, no glow, no shadows, no purple, no blue accents, no cards, no boxes inside boxes.
+
+FONTS: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles weight 600 13px); IBM Plex Mono 12.5px for slugs, IDs, repo names, branches, permission names and numbers. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px, #0A0B0C, right hairline. Top: small white hinge-shell logo (attached logo) + "Acme Corp" + up-down chevron. Search field "Search" with "⌘K" and a small off-white square "+" button. Nav rows 26px: "Home", "Needs you" with amber pill count "5", "My tasks" 7. Label "Projects": colour squares + "calculator", "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "13 more". Label "Organization": "Runner pools" 238, "Models", "GitHub" (SELECTED: #1A1B1E background, white text, git-pull-request icon), "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: avatar "AK" + "Alex Kim".
+2) TOP BAR 44px with bottom hairline: breadcrumbs "Acme Corp  >  GitHub" (GitHub in white). Right side: one secondary button with external-link icon "Open on GitHub" (dark #131416 fill, #2A2C30 border, 28px tall). No primary button on this page.
+3) MAIN COLUMN, left padding 40px, top padding 28px:
+ - Title "GitHub".
+ - Lede in grey, max 2 lines: "A GitHub App opens every pull request, as its own bot, with the member as co-author. ostra mints a token for one repo at a time and never hands it to an agent."
+ - Section title "Connection". One 40px row between hairlines: green dot + "Connected" in green-tinted text, then mono "ostra-acme", then faint "App 1048213", right-aligned faint "Bot ostra-acme[bot]".
+ - Section title "Installations" with faint mono count "1", right side teal link "Install on another account ->". One 40px row: building icon, "acme" in white weight 500, faint "organization", right side grey "All repositories", then teal "Configure ->".
+ - Section title "Repositories" with faint count "6", right faint "from acme". Six 38px rows separated by hairlines, columns: lock icon or globe icon, repo name in mono white, default branch in mono faint with git-branch icon, right-aligned grey "Private" or "Public":
+   acme/calculator-web   main   Private
+   acme/billing-platform   main   Private
+   acme/web-storefront   main   Private
+   acme/mobile-app   develop   Private
+   acme/data-pipeline   main   Private
+   acme/design-tokens   main   Public
+4) PROPERTIES PANEL 300px on the right, left hairline, padding 20px 18px. Small faint label "App". Key/value rows 30px, key in grey 84px column, value in white: "Slug" ostra-acme (mono); "App ID" 1048213 (mono); "Bot" ostra-acme[bot] (mono); "Secrets" "In the secret store" (grey) with a small lock icon. Hairline. Small faint label "Permissions" with faint "7" on the right. Rows, permission name in mono grey on the left, level in mono white on the right: contents write, pull_requests write, checks write, actions read, issues read, statuses read, metadata read. Next to "checks" and "actions" a small green check icon. Under the list one faint 12px line: "checks and actions are asked for from the start, so no install re-approves later."
+
+Lots of calm empty dark space below the repositories. Text must be sharp, correctly spelled and exactly as given. No illustrations, no marketing, no octopus, no sparkles.
+
+# github-not-connected.webp: refs github.webp (gen 1), models-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960, no device frame, no perspective. Product: "ostra", a dark developer control panel. Match the attached reference screenshots EXACTLY in style: same sidebar, same top bar, same fonts, same density, same near-black graphite colours, same hairline rows, same right properties panel with a form. The first attached image is the SAME page in its connected state: keep its sidebar, top bar, title, lede, column widths and properties panel identical in style. This is another state of that page.
+
+SCREEN: Organization > GitHub, NOT CONNECTED state. An admin connects the organization's GitHub App for the first time.
+
+PALETTE (neutral graphite, no hue in the chrome): page background #0D0E10, sidebar #0A0B0C, raised surfaces and inputs #131416, selected nav #1A1B1E, hairlines #1F2023, control borders #2A2C30, text #EDEDEE, secondary text #9A9DA3, faint text #64676D, link teal #6FB8AA (inline links only), primary button filled warm off-white #F3F0E8 with dark text #0C1D21, amber #FFB224 ONLY on the sidebar "Needs you" count badge and the small project dots. No green on this page. No other colour anywhere. No gradients, no glow, no shadows, no purple, no blue, no cards, no boxes inside boxes.
+
+FONTS: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (nav, tabs and buttons weight 500, section titles weight 600 13px, field labels 12px weight 500 grey); IBM Plex Mono 12.5px for input values, permission names and env variable names. Thin Lucide line icons, 15px, grey.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px, identical to the reference: logo + "Acme Corp", Search ⌘K and "+", "Home", "Needs you" amber pill "5", "My tasks" 7; "Projects": calculator, billing-platform, web-storefront, mobile-app, data-pipeline, 13 more; "Organization": "Runner pools" 238, "Models", "GitHub" (SELECTED, #1A1B1E, git-pull-request icon), "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings"; bottom "AK" Alex Kim.
+2) TOP BAR 44px with bottom hairline: breadcrumbs "Acme Corp  >  GitHub". Nothing on the right.
+3) MAIN COLUMN, padding 28px top, 40px left:
+ - Title "GitHub".
+ - Grey lede, 2 lines: "A GitHub App opens every pull request, as its own bot, with the member as co-author. ostra mints a token for one repo at a time and never hands it to an agent."
+ - Section title "Connect a GitHub App".
+ - Underline tabs, 18px apart, hairline under them: "Create a new App" (selected: white text with a 2px white underline) and "Use an existing App" (grey).
+ - A narrow form column, 460px wide, aligned left:
+   Field label "Organization on GitHub". Input 32px tall, #131416 fill, #2A2C30 border, 7px radius, mono value "acme". Help under it, faint 12px: "Empty: the App belongs to your own GitHub account."
+   Then one info line with a small grey info-circle icon, grey 12.5px text, NO box, NO colour: "This server's address isn't public, so the App is created without a webhook and receives no events. Set OSTRA_CORE_PUBLIC_URL to turn them on." (OSTRA_CORE_PUBLIC_URL in mono)
+   Then the primary button, 28px tall, off-white #F3F0E8 fill, dark text, external-link icon: "Create the App on GitHub".
+   Under it, faint 12px: "GitHub asks you to confirm, then sends you back here."
+ - Large calm empty dark space below.
+4) PROPERTIES PANEL 300px on the right, left hairline, padding 20px 18px. Small faint label "The App asks for" with faint "7" on the right. Rows 30px: permission name in mono grey on the left, level in mono white on the right: contents write, pull_requests write, checks write, actions read, issues read, statuses read, metadata read. Hairline. Small faint label "Not asked for". One row: mono grey "workflows" and on the right grey "off". Under it faint 12px text: "A push that touches .github/workflows/ fails, and the task says why." Hairline. Small faint label "Events". One row: grey "Webhook" and on the right grey "Off until a public address". 
+
+Text must be sharp, correctly spelled and exactly as given. No illustrations, no marketing, no octopus, no sparkles, no empty-state art.

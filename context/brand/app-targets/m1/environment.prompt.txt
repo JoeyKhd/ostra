@@ -1,0 +1,55 @@
+REVISION OF THE FIRST ATTACHED IMAGE. Keep its layout, content and copy exactly, row for row, but fix these problems:
+1. SCALE AND DENSITY: everything is about 35% too big. Render at the exact scale of the other attached reference screenshots: a 1440x960 CSS-pixel viewport at 2x. Body text 13px, small and crisp; table rows 40px; nav rows 26px; page title 24px; the sidebar is 232px wide (16% of the width); the right panel is 340px. Text should look as small as in the references, with quiet empty near-black space below the content in the main column and the right panel.
+2. The add buttons under the table are quiet ghost buttons: muted grey text with a plus icon, no border, 24px tall.
+3. The value cells line up on one left edge. The two empty secret inputs are 240px wide, 28px tall, with the small "secret" lock tag just after them.
+4. The base image input is 320px wide and 32px tall.
+5. The kind icons are thin Lucide icons (variable, key-round, file), 15px, faint grey.
+6. Keep the logo, sidebar items, breadcrumb, button, every label and every value as written below.
+
+A flat, straight-on desktop web app screenshot, 3:2, of the "Environment" screen of ostra, a self-hosted control panel for coding agents. Not a mockup, no device frame, no perspective. It must look like the same product as the attached reference screenshots: same sidebar, same top bar, same type, same density, same near-black graphite chrome. Copy every label exactly as written below.
+
+STYLE: dark, neutral graphite UI with no hue. Page background #0D0E10. Sidebar #0A0B0C. Raised surfaces (inputs, code block) #131416 with 1px border #2A2C30 and 7px radius. Hairlines #1F2023. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Selected nav row #1A1B1E. Links teal #6FB8AA. Success green #4FB286. Primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "Needs you" count badge in the sidebar, nowhere else. Fonts: Manrope Bold for the page title only; IBM Plex Sans for UI text (13px, dense, like Linear); IBM Plex Mono for names, paths, variable names, values and code. Lucide line icons, thin 1.75 stroke, 15px. Few boxes: sections are a bold 13px title line and rows split by thin hairlines, no cards, never a box inside a box. No gradients, no glow, no shadows, no purple, no illustrations.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR (narrow, about 232px of 1440): top row has the small white ostra hinge logo (the attached logo, tiny, 20px) then "Acme Corp" bold and an up-down chevron. Under it a full-width row "+ New task". Then nav rows with icons: "Home"; "Needs you" with a small amber pill "2"; small grey section label "Projects"; "calculator" with a tiny teal 8px square, expanded with two indented rows "Tasks" (count 4) and "Environment" (box icon, this row is SELECTED with background #1A1B1E); "billing-platform" with a tiny violet-grey square; "+ New project". Small grey section label "Organization"; rows "Runners", "Models", "GitHub". At the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR (44px tall, hairline under it): breadcrumb "calculator  >  Environment" on the left. On the right one primary off-white button "Save environment".
+
+3) MAIN PAGE COLUMN (generous left padding, content left-aligned):
+- Small faint mono eyebrow: "Draft · not saved yet"
+- Page title "Environment" (Manrope Bold 24px)
+- One muted lede line: "ostra drafted this from the repo's files. Check it, fill in the secrets, and save."
+- Section title "Setup script" with faint inline note "runs with bash in the task's workspace, before the agent starts". Below it a code editor box (#131416, mono, faint line numbers 1 to 3):
+  1  corepack enable
+  2  pnpm install --frozen-lockfile
+  3  pnpm prisma generate
+- Section title "acme/calculator-web" (mono) with faint count "5", and on the right of the same line muted text "Written to" followed by a small mono input showing ".env".
+  A dense table with faint column headers "Name", "Value", "During setup", and rows 40px tall split by hairlines. Each row starts with a small grey lucide icon for its kind:
+  row 1, variable icon: NODE_ENV | development | empty checkbox
+  row 2, variable icon: API_URL | http://localhost:4000 | empty checkbox
+  row 3, key icon: DATABASE_URL | an empty input with faint placeholder "No value yet" and a small "secret" tag with a lock icon | checked checkbox (teal)
+  row 4, key icon: STRIPE_TEST_KEY | empty input, faint placeholder "No value yet", "secret" tag | empty checkbox
+  row 5, file icon: config/local.json | faint "3 lines" and teal link "Edit" | empty checkbox
+  Each row ends with a faint small x remove icon.
+  Under the table, three quiet ghost buttons in a row: "+ Variable", "+ Secret", "+ File".
+- Section title "Base image" with faint inline note "docker executor only". Below it a mono input, 420px wide, faint placeholder "ostra's base image".
+- At the bottom a faint footnote with a small shield icon: "For dev and test credentials, never production ones. A secret reaches only its own repo's checkout."
+
+4) RIGHT PROPERTIES PANEL (340px, left hairline, no box):
+- small faint label "Environment", then key/value rows (key muted, value bright):
+  Status | grey dot + "Draft"
+  Repo | acme/calculator-web (mono)
+  Entries | 2 variables · 2 secrets · 1 file
+- hairline
+- small faint label "Found in acme/calculator-web", then a compact list, each item a faint mono filename over a muted one-line finding:
+  pnpm-lock.yaml — pnpm 9, install with --frozen-lockfile
+  .nvmrc — Node 22
+  .env.example — 4 variables, 2 look like secrets
+  docker-compose.yml — 2 services
+- hairline
+- small faint label "Tools": two small outlined mono chips "node 22.11" and "pnpm 9.12"
+- hairline
+- small faint label "Services": two rows, mono "postgres" + faint mono "postgres:16" + right-aligned small grey outlined chip "not on host"; mono "redis" + faint "redis:7" + chip "not on host". Under them faint small help text: "A personal runner doesn't start services. They come with milestone 3."
+
+Overall: calm, precise, dense, lots of quiet near-black space, crisp small text, perfectly aligned left edges, everything legible.
