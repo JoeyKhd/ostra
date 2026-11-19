@@ -1,0 +1,39 @@
+Two flat, straight-on, pixel-precise phone screenshots side by side in one image, dark mode, of ostra, a developer console for coding agents, at phone width. Each screen is exactly 390x844 CSS pixels drawn at 1.5x (585x1266 image pixels), a plain rectangle with square corners and a 1px #2A2C30 outline, no device frame, no bezel, no notch, no status bar, no perspective, no shadow. The two screens stand on a flat plain #26282C canvas, vertically centred, with an equal gap of about 140 image pixels between them and at the left and right edges. Nothing else on the canvas: no captions, no labels, no arrows. Match the attached desktop reference screenshots exactly in style: the same near-black neutral graphite chrome, the same fonts, the same hairline rows, the same quiet density, just reflowed to one column. No gradients, no glow, no purple, no illustrations, no emoji, no bottom tab bar.
+
+PALETTE (exact hex): page background #0D0E10; sheets and the drawer #0A0B0C; raised surfaces (inputs, selects, the composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286; link teal #6FB8AA; primary button filled warm off-white #F3F0E8 with near-black #0C1D21 text. NO amber anywhere in either screen. Ticket status icons and priority icons are grey, never coloured.
+
+TYPE: page titles Manrope Bold 22px; everything else IBM Plex Sans 14px body, 12.5px secondary (buttons weight 500, section titles 600); IBM Plex Mono for ticket keys, task IDs, repo names, runner names, times and ages. Icons are thin Lucide line icons, 16px, stroke 1.75, grey.
+
+LEFT SCREEN: the project's Inbox, with one ticket's sheet open.
+- TOP BAR 44px, 1px bottom hairline, 16px side padding: a menu icon (three lines) at the left, then "Inbox" in white weight 500. At the right a ghost icon button with a sliders icon.
+- PAGE, 16px side padding: title "Inbox"; under it a muted 13px line that wraps to two lines: "Open tickets from Calculator on Linear · updated 8s ago".
+- a row of filter buttons 32px tall, 1px #2A2C30 border, 7px radius, no fill, 12.5px text with a chevron-down each: "Status: Open, started", "Label", "Priority", the last one cut off by the right edge (the row scrolls sideways).
+- the ticket list: rows 60px tall, separated by 1px #1F2023 hairlines, two lines each. Line 1: grey priority icon, faint mono key, then at the far right faint mono age. Line 2: the title in white 14px, one line, truncated with an ellipsis.
+   [signal bars] "CALC-174" ... "3m" / "Support keyboard input for operators"   (this row has a #1A1B1E selected fill)
+   [urgent square] "CALC-173" ... "18m" / "Percent key rounds 0.5 the wrong way"
+   [signal bars] "CALC-169" + a green dot and muted "Running" ... "26m" / "Division by zero shows NaN"
+- over the lower 62% of the screen, a BOTTOM SHEET: background #0A0B0C, a 1px #2A2C30 top border, 14px top corner radius, a small grey grab handle centred at its top. Above the sheet the list is dimmed by a flat 55% black overlay. Inside the sheet, 16px padding:
+   - faint mono "CALC-174" at the left, and at the right a teal link "Open in Linear" with a tiny arrow-up-right icon
+   - the title in white 17px semibold: "Support keyboard input for operators"
+   - one muted 12.5px line: [dashed circle icon] "Todo" · [signal bars] "High" · a tiny outline chip "feature" · a small round avatar "SR" "Sam Rivera"
+   - three lines of the description in muted 13px: "Typing + − × ÷ on the keyboard should work like pressing the keys. Enter evaluates, Backspace deletes the last digit and Esc clears the display." then a small teal link "Show more"
+   - a hairline, then the small faint label "Start a task"
+   - three full-width selects, 40px tall, background #131416, 1px #2A2C30 border, 7px radius, each with its small muted label on the left inside the select and the value then a chevron-down on the right: "Kind" "Code"; "Agent profile" [bot icon] "OpenCode · Claude Sonnet 5.5"; "Run on" [laptop icon] "alex-mbp" mono + muted " · yours"
+   - one faint 12px line with an info icon: "The agent gets the title, the description, 2 comments and the labels."
+   - the primary button, full width, 44px tall, filled off-white #F3F0E8 with near-black text weight 600: [arrow-up icon] "Start task"
+
+RIGHT SCREEN: the task page of a ticket task, in review, its agent idle.
+- TOP BAR 44px, 1px bottom hairline, 16px side padding: the menu icon, then "CALC-161" in white mono weight 500. At the right a small outline button 30px tall: [git-pull-request icon] "PR #483".
+- HEADER, 16px side padding, 20px top: faint mono 12px "CALC-161 · from Linear"; title "Add history panel" (Manrope Bold 22px, white); one 13px line: [grey git-pull-request icon] white "In review" + faint " · idle, stops in 11 min".
+- a section titled "Ticket" (13px semibold) with 44px hairline rows:
+   [three-quarter circle status icon] "In Review on Linear" and on the right a teal "Open in Linear" with a tiny arrow-up-right icon
+   [chevron-right] "What the agent got" and on the right faint "title, description, 1 comment, 2 labels"
+- a section titled "Sync on Linear", 44px hairline rows, each with a small icon, the step, and a faint mono time on the right:
+   [green check] "Started · moved to In Progress" "14:02"
+   [green check] "In review · PR linked, moved to In Review" "14:31"
+   [faint empty circle] muted "Done · when the PR merges, by Linear's GitHub integration"
+- a section titled "Pull requests", one 44px row: [git-pull-request icon] mono "acme/calculator-web" + teal mono "#483", then on the right muted "open"
+- then the thread's last lines, no bubbles: a 28px row with a grey info icon and muted text "Work saved · the hidden ref and the session archive, 2.1 MB" with faint mono "14:31" on the right; then a message: a small round outlined bot icon, "OpenCode" semibold + faint mono "14:31", and two lines of white 14px text: "The history panel is in, with tests. I opened PR #483 and I'm idle until you send something."
+- the COMPOSER pinned at the bottom with 16px margins: one box, background #131416, 1px #2A2C30 border, 10px radius, a faint placeholder "Message the agent…", and a bottom row: faint 12px "Send starts its next turn." on the left and on the right the primary button, filled off-white, 36px tall: [arrow-up icon] "Send".
+
+The overall feel: calm, precise, dense yet comfortable for a thumb, the same product as the desktop references. Clean, crisp, perfectly legible text, every word spelled exactly as written above, aligned to a strict grid, nothing decorative.

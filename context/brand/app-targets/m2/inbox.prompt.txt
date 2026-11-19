@@ -1,0 +1,44 @@
+A flat, straight-on, pixel-precise screenshot of one desktop web app screen, 1440x960 CSS pixels at 2x, dark mode. It is the project "Inbox" screen of ostra, a developer console for coding agents: the open tickets of the project's Linear board, and starting a task from one. Match the attached reference screenshots exactly in style: the same sidebar, the same top bar, the same fonts, the same near-black neutral graphite chrome, the same hairline rows, the same density and the same right properties panel. Use the attached logo mark (a rounded shell split by one diagonal channel) in the sidebar's top-left, small, white. No device frame, no perspective, no shadows, no gradients, no glow, no purple, no illustrations, no emoji.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, selects) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286; link teal #6FB8AA; error red #E5675C; primary button filled warm off-white #F3F0E8 with near-black #0C1D21 text; amber #FFB224 appears ONLY on the small project dot in the sidebar, nowhere else on the page. Ticket status icons and priority icons are grey (#9A9DA3), never coloured.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles 600); IBM Plex Mono for ticket keys, task IDs, runner names and ages. Icons are thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1. SIDEBAR, 232px wide, #0A0B0C, a 1px right hairline. Top: logo mark + "Acme Corp" semibold + up-down chevron. Then a search field "Search" with "⌘K" on the right, and beside it a small square off-white button with a black "+". Nav row "Home" (house icon). Small faint label "Projects", then "calculator" with an 8px teal square and a small amber dot at the right end; it is expanded, and under it, indented: "Tasks" (list-checks icon, faint count "8"), "Inbox" (inbox icon, SELECTED: row background #1A1B1E, white text, faint mono count "9"), "Boards" (kanban icon), "Environment" (box icon). Then "billing-platform" with an 8px violet-blue square. Then "New project" with a plus icon, muted. Small faint label "Organization", then rows: "Runners" (server icon), "Models" (cpu icon), "GitHub" (git-pull-request icon), "Linear" (a simple slanted-lines icon). At the very bottom: a round grey avatar "AK" and "Alex Kim".
+2. TOP BAR, 44px tall across the rest of the width, a 1px bottom hairline: breadcrumbs "calculator  ›  Inbox" with "Inbox" in white. Nothing on the right.
+3. MAIN COLUMN (left padding 40px, top padding 28px, right padding 40px):
+   - title "Inbox" (Manrope Bold 24px, white)
+   - one muted 13.5px line: "Open tickets from " + white "Calculator" + " on Linear · updated 8s ago"
+   - 18px below, ONE FILTER ROW, all controls 28px tall with 7px radius: a search input 240px wide (background #131416, 1px border #2A2C30, a search icon and faint placeholder "Filter by title or key"), then four compact outline filter buttons (1px border #2A2C30, no fill, 12.5px text, each ending in a small faint chevron-down): "Status: Open, started" (with "Open, started" in white), "Label", "Priority", "Assignee". On the far right of the row, faint mono text "9 tickets".
+   - 14px below, the ticket list: rows 40px tall, no boxes, separated by 1px #1F2023 hairlines, no header row. Columns, the same x in every row: a grey priority icon (16px column: Linear-style signal bars, or an exclamation square for urgent, or three faint dots for no priority) · ticket key in faint IBM Plex Mono 12.5px (80px column) · title in #EDEDEE 13px (flexible) · labels as tiny outline chips (22px tall, 1px #2A2C30 border, 6px radius, muted 12px text) · status as a small grey circle-style status icon + muted status name (120px column) · task column (150px): empty, or a status dot + label + faint mono task ID · age in faint mono 12px, right-aligned (40px column).
+     The FIRST row is SELECTED: a #1A1B1E fill with a 6px radius across the whole row, no border.
+     Rows, top to bottom:
+     [signal bars high] "CALC-174"  "Support keyboard input for operators"  [feature]  [empty dashed circle] "Todo"  (empty)  "3m"     <- selected row
+     [urgent square] "CALC-173"  "Percent key rounds 0.5 the wrong way"  [bug]  [empty dashed circle] "Todo"  (empty)  "18m"
+     [signal bars high] "CALC-169"  "Division by zero shows NaN"  [bug]  [half-filled circle] "In Progress"  [green dot] "Running" + faint mono "a17be093"  "26m"
+     [signal bars medium] "CALC-170"  "Copy the result to the clipboard on click"  [feature]  [dotted circle] "Backlog"  (empty)  "1h"
+     [signal bars medium] "CALC-161"  "Add history panel"  [feature]  [three-quarter circle] "In Review"  [git-pull-request icon] "In review" + faint mono "3f9c21ab"  "2h"
+     [signal bars medium] "CALC-165"  "Memory keys lose their value on reload"  [bug]  [circle with a dashed outline] "Triage"  (empty)  "1d"
+     [signal bars low] "CALC-166"  "Add a light theme toggle"  [design] [ui]  [dotted circle] "Backlog"  (empty)  "2d"
+     [three faint dots] "CALC-158"  "Document the build steps"  [docs]  [dotted circle] "Backlog"  (empty)  "4d"
+     [signal bars low] "CALC-157"  "Scientific mode: sin, cos and tan"  [feature]  [dotted circle] "Backlog"  (empty)  "5d"
+   - below the last row, empty page background.
+4. PROPERTIES PANEL on the far right, 340px wide, a 1px left hairline, padding 20px 18px. It shows the selected ticket and the form that starts its task. Group labels are small faint 11px text; rows 30px tall with a muted key column (96px) and a white value column, 12.5px; groups split by a hairline.
+   - first line: faint mono "CALC-174" on the left, and on the far right a small teal #6FB8AA link "Open in Linear" with a tiny arrow-up-right icon
+   - the ticket title below in white 15px semibold: "Support keyboard input for operators"
+   - rows:
+     Status    [empty dashed circle icon] Todo
+     Priority  [signal bars icon] High
+     Labels    [feature] tiny outline chip
+     Assignee  [small round avatar "SR"] Sam Rivera
+     Updated   3 min ago (mono)
+   - then a paragraph of the ticket description in muted #9A9DA3 12.5px with 1.6 line height, four lines: "Typing + − × ÷ on the keyboard should work like pressing the keys. Enter evaluates, Backspace deletes the last digit and Esc clears the display. Numpad keys too." and under it a small teal link "Show more"
+   - hairline, then the small faint label "Start a task"
+     Kind           a select 28px tall (background #131416, 1px #2A2C30 border, 7px radius) showing "Code" and a chevron-down
+     Agent profile  a select showing [bot icon] "OpenCode · Claude Sonnet 5.5" and a chevron
+     Run on         a select showing [laptop icon] "alex-mbp" (mono) + muted " · yours" and a chevron
+   - one faint 12px line with a small info icon: "The agent gets the title, the description, 2 comments and the labels."
+   - then the page's one primary button, the full width of the panel, 32px tall, filled off-white #F3F0E8 with near-black text weight 600: [arrow-up icon] "Start task"
+
+The overall feel: calm, precise, dense, like Linear's issue list inside a quiet graphite console; the eye goes from the selected row to the panel and its one button. Clean, crisp, perfectly legible text, every word spelled exactly as written above, aligned to a strict grid, nothing decorative.
