@@ -395,7 +395,7 @@ const applyEffects = async (
         }
         // After the box failed, so the release keeps its reason. The fence already checked that
         // this event carries the task's current epoch, so the active lease is this session's.
-        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
+        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released", deps);
         break;
       }
       case "service.failed": {
@@ -426,7 +426,7 @@ const applyEffects = async (
             data: { state: "failed", failedReason: `the ${event.name} service failed` },
           });
         }
-        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
+        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released", deps);
         break;
       }
       case "approval.requested":

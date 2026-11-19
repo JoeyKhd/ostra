@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, mapModel, mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { blobIdSchema, boxIdSchema, modelIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
+import { blobIdSchema, boxIdSchema, modelIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, RunnerId, TaskId } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
@@ -20,6 +20,12 @@ import type { ModelName } from "../providers/model-name.ts";
 import { installationStateSelect, installationUsable } from "../code-host/installations.ts";
 import { clearNoProviderInTx, raiseNoProviderInTx, resolveProfileModelInTx, sessionRowStateInTx } from "../providers/session-model.ts";
 import type { ReopenStep } from "./reopen.ts";
+import { boxFootprint } from "../fleet/capacity.ts";
+import { queuePriorityFor } from "../fleet/queue.ts";
+import type { FleetRunner } from "../fleet/capacity.ts";
+import { chooseRunner } from "../fleet/choose.ts";
+import type { ChooseResult, ChooseTask } from "../fleet/choose.ts";
+import { fleetInTx, lockPoolsInTx, lockRunnerInTx, poolsInTx, projectPoolsInTx, projectSizeInTx, snapshotRunnerInTx } from "./fleet-rows.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
 // milestone 1), raises the task's lease epoch under the task row's lock, creates the box and the
@@ -59,6 +65,10 @@ export type DispatchTaskDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "cloc
    * to them, isn't `default` goes only to a minor-3 runner. Without it the task's own level decides.
    */
   readonly effortLevels?: AgentEffortLevels;
+  /** Milestone 5: `OSTRA_PERSONAL_RUNNER_CAPACITY`; 2 without it. */
+  readonly personalSlots?: number;
+  /** Milestone 5: the task's place in each pool's queue, from the admission's walk (`queued`'s place). */
+  readonly places?: ReadonlyMap<PoolId, number>;
 };
 
 /** The runner minor that reads each repo's own bot (F-136): a task across two Apps needs it. */
@@ -159,6 +169,9 @@ export const TASK_BUSY = "the task is locked by another transaction; the job ret
 
 type Candidate = { readonly id: RunnerId; readonly executor: "docker" | "host" | "kubernetes"; readonly freeSlots: number };
 
+/** The runner a dispatch goes to: its pool (`null` for a personal runner or a kept box), and whether it applies sizes. */
+type Chosen = { readonly id: RunnerId; readonly executor: "docker" | "host" | "kubernetes"; readonly poolId: PoolId | null; readonly sizes: boolean };
+
 type RunnerScope = { readonly ids?: readonly RunnerId[]; readonly poolIds?: readonly PoolId[] };
 
 const onlineWhere = (organizationId: OrganizationId, where: RunnerScope, now: number, minMinor = 0) => ({
@@ -258,6 +271,17 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         });
   if (profile === null) {
     return noRunner({ code: "no-model" });
+  }
+  // Milestone 5 (F-067): a task queued before its queue's fields were set (or by a path that set
+  // none) takes them now: its first time, its ticket's priority and its profile's labels.
+  let requiredLabels: readonly string[] = task.requiredLabels;
+  if (task.queuedAt === null) {
+    const ticket = task.ticketId === null ? null : await tx.ticket.findFirst({ where: { id: task.ticketId }, select: { priority: true } });
+    requiredLabels = [...new Set(profile.runnerLabels)].sort();
+    await tx.task.update({
+      where: { id: task.id },
+      data: { queuedAt: new Date(now), queuePriority: queuePriorityFor(ticket?.priority), requiredLabels: [...requiredLabels] },
+    });
   }
   // Milestone 4 (F-135, ADR 0065): the session's provider and model row. Its start resolves them
   // through the project's list and records them; a recorded row is used only while its provider is
@@ -361,19 +385,11 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         level: task.effort,
       }).effort.level !== "default");
   const minMinor = runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor;
-  let tooOld = false;
-  const fitting = async (scope: RunnerScope): Promise<readonly Candidate[]> => {
-    const found = await available(tx, task.organizationId, scope, now, needsServices, minMinor);
-    if (found.length === 0 && minMinor > 0 && (await available(tx, task.organizationId, scope, now, needsServices)).length > 0) {
-      tooOld = true;
-    }
-    return found;
-  };
-  /** Why no runner fits: a runner too old for the profile, or a services runner missing, when one that can't start them is online in the same scope. */
-  const noFitFor = async (scope: RunnerScope, otherwise: DispatchWait): Promise<DispatchWait> => {
-    if (tooOld) {
-      return { code: "needs-protocol", minor: minMinor };
-    }
+  /**
+   * Milestone 3's words when services are why (F-094): a services runner missing, when only runners
+   * that can't start them are online in the same scope. Otherwise the choice's own reason.
+   */
+  const servicesReason = async (scope: RunnerScope, otherwise: DispatchWait): Promise<DispatchWait> => {
     if (!needsServices) {
       return otherwise;
     }
@@ -403,19 +419,55 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
     }
   }
-  let candidates: readonly Candidate[] = [];
+  let runner: Chosen | null = null;
   if (plan.step === "resumed" && plan.keptRunnerId !== undefined) {
-    candidates = await fitting({ ids: [plan.keptRunnerId] });
-    if (candidates.length === 0) {
+    const [kept] = await available(tx, task.organizationId, { ids: [plan.keptRunnerId] }, now, needsServices, minMinor);
+    if (kept === undefined) {
       plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
+    } else {
+      // The kept box's runner, already chosen: the box it holds is the task's.
+      runner = { id: kept.id, executor: kept.executor, poolId: null, sizes: false };
     }
   }
-  if (candidates.length > 0) {
-    // The kept box's runner, already chosen.
-  } else if (task.runnerId !== null) {
+
+  // Milestone 5 (F-067, F-069, F-095, ADR 0059): the choice, from ostra's own rows, under the lock
+  // of what it counts: the project's pools, or the picked personal runner.
+  const fleetOptions = { now, minMinor, ...(deps.personalSlots === undefined ? {} : { personalSlots: deps.personalSlots }) };
+  const size = await projectSizeInTx(tx, organization, project);
+  const serviceCount = needsServices ? await tx.service.count({ where: { projectId: task.projectId, organizationId: task.organizationId } }) : 0;
+  const chooseTask: ChooseTask = {
+    id: task.id,
+    projectId: project,
+    personalRunnerId: task.runnerId === null ? null : runnerIdSchema.parse(task.runnerId),
+    // A task no member started (milestone 6's rules, schedules and agent mode) goes to pools only.
+    startedByMember: task.creatorMemberId !== null,
+    requiredLabels,
+    needsServices,
+    size:
+      size === null
+        ? null
+        : {
+            name: size.name,
+            footprint: boxFootprint(
+              size.limits,
+              Array.from({ length: serviceCount }, () => null),
+            ),
+          },
+  };
+  const chosenOf = (choice: ChooseResult, fleet: readonly FleetRunner[]): Chosen | null => {
+    if (choice.kind !== "runner") {
+      return null;
+    }
+    const row = fleet.find((candidate) => candidate.id === choice.runnerId);
+    return row === undefined ? null : { id: row.id, executor: row.executor, poolId: choice.poolId, sizes: row.capabilities?.boxSizes === true };
+  };
+
+  if (runner !== null) {
+    // The kept box's runner.
+  } else if (chooseTask.startedByMember && chooseTask.personalRunnerId !== null) {
     // The member picked their own personal runner: only it, and only theirs.
     const chosen = await tx.runner.findFirst({
-      where: { id: task.runnerId, organizationId: task.organizationId, kind: "personal", ownerMemberId: task.creatorMemberId ?? "" },
+      where: { id: chooseTask.personalRunnerId, organizationId: task.organizationId, kind: "personal", ownerMemberId: task.creatorMemberId ?? "" },
       select: { id: true },
     });
     if (chosen === null) {
@@ -424,39 +476,93 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     if (!provider.allowOnPersonalRunners) {
       return noRunner({ code: "personal-runner-not-allowed" });
     }
-    const picked: RunnerScope = { ids: [runnerIdSchema.parse(chosen.id)] };
-    candidates = await fitting(picked);
-    let scope = picked;
-    if (candidates.length === 0 && plan.step !== "new") {
-      // A reopen goes anywhere (F-033): the owner's other personal runners, when the one picked is gone.
-      const owned = await tx.runner.findMany({
-        where: { organizationId: task.organizationId, kind: "personal", ownerMemberId: task.creatorMemberId ?? "" },
-        select: { id: true },
+    // A reopen goes anywhere (F-033): the owner's other personal runners, when the one picked is gone.
+    const owned =
+      plan.step === "new"
+        ? []
+        : await tx.runner.findMany({
+            where: { organizationId: task.organizationId, kind: "personal", ownerMemberId: task.creatorMemberId ?? "", id: { not: chosen.id } },
+            select: { id: true },
+            orderBy: { id: "asc" },
+          });
+    const tries = [runnerIdSchema.parse(chosen.id), ...owned.map((row) => runnerIdSchema.parse(row.id))];
+    let wait: DispatchWait = { code: "personal-runner-unavailable" };
+    for (const personalRunnerId of tries) {
+      await lockRunnerInTx(tx, organization, personalRunnerId);
+      const fleet = await fleetInTx(tx, organization, { runnerIds: [personalRunnerId] }, fleetOptions);
+      const choice = chooseRunner({
+        task: { ...chooseTask, personalRunnerId },
+        project: { id: project, pools: [], snapshotRunnerId: null },
+        pools: [],
+        runners: fleet.runners,
+        boxes: fleet.boxes,
+        registrySet: false,
       });
-      scope = { ids: owned.map((row) => runnerIdSchema.parse(row.id)) };
-      candidates = await fitting(scope);
+      runner = chosenOf(choice, fleet.runners);
+      if (runner !== null) {
+        break;
+      }
+      if (personalRunnerId === tries[0] && choice.kind === "waits") {
+        wait = choice.reason;
+      }
     }
-    if (candidates.length === 0) {
-      return noRunner(await noFitFor(scope, { code: "personal-runner-unavailable" }));
+    if (runner === null) {
+      if (minMinor > 0) {
+        const anyMinor = await fleetInTx(tx, organization, { runnerIds: tries }, { ...fleetOptions, minMinor: 0 });
+        const older = tries.some(
+          (personalRunnerId) =>
+            chooseRunner({
+              task: { ...chooseTask, personalRunnerId },
+              project: { id: project, pools: [], snapshotRunnerId: null },
+              pools: [],
+              runners: anyMinor.runners,
+              boxes: anyMinor.boxes,
+              registrySet: false,
+            }).kind === "runner",
+        );
+        if (older) {
+          return noRunner({ code: "needs-protocol", minor: minMinor });
+        }
+      }
+      return noRunner(wait.code === "needs-services" ? await servicesReason({ ids: tries }, { code: "personal-runner-unavailable" }) : wait);
     }
   } else {
-    const listed = await tx.projectPool.findMany({ where: { projectId: task.projectId }, select: { poolId: true } });
-    const poolIds =
-      listed.length > 0
-        ? listed.map((row) => poolIdSchema.parse(row.poolId))
-        : (await tx.runnerPool.findMany({ where: { organizationId: task.organizationId, isDefault: true }, select: { id: true } })).map((row) =>
-            poolIdSchema.parse(row.id),
-          );
-    candidates = poolIds.length === 0 ? [] : await fitting({ poolIds });
-    if (candidates.length === 0) {
-      return noRunner(poolIds.length === 0 ? { code: "no-runner-online" } : await noFitFor({ poolIds }, { code: "no-runner-online" }));
+    const projectPools = await projectPoolsInTx(tx, organization, project);
+    const poolIds = projectPools.map((entry) => entry.poolId);
+    if (poolIds.length === 0) {
+      return noRunner({ code: "no-runner-online" });
+    }
+    // The pools' rows, in ID order: every admission of these pools counts and grants in turn.
+    await lockPoolsInTx(tx, organization, poolIds);
+    const [pools, registrySet, snapshotRunnerId] = await Promise.all([
+      poolsInTx(tx, organization, poolIds),
+      tx.registry.count({ where: { organizationId: organization } }).then((count) => count > 0),
+      snapshotRunnerInTx(tx, organization, project),
+    ]);
+    const chooseIn = async (options: typeof fleetOptions): Promise<{ readonly choice: ChooseResult; readonly runners: readonly FleetRunner[] }> => {
+      const fleet = await fleetInTx(tx, organization, { poolIds }, options);
+      const choice = chooseRunner({
+        task: chooseTask,
+        project: { id: project, pools: projectPools, snapshotRunnerId },
+        pools,
+        runners: fleet.runners,
+        boxes: fleet.boxes,
+        registrySet,
+        ...(deps.places === undefined ? {} : { places: deps.places }),
+      });
+      return { choice, runners: fleet.runners };
+    };
+    const { choice, runners } = await chooseIn(fleetOptions);
+    runner = chosenOf(choice, runners);
+    if (runner === null) {
+      if (minMinor > 0 && (await chooseIn({ ...fleetOptions, minMinor: 0 })).choice.kind === "runner") {
+        return noRunner({ code: "needs-protocol", minor: minMinor });
+      }
+      const reason: DispatchWait = choice.kind === "waits" ? choice.reason : { code: "no-runner-online" };
+      return noRunner(reason.code === "needs-services" ? await servicesReason({ poolIds }, reason) : reason);
     }
   }
-  const [runner] = candidates;
   const unavailable: DispatchWait = { code: task.runnerId === null ? "no-runner-online" : "personal-runner-unavailable" };
-  if (runner === undefined) {
-    return noRunner(unavailable);
-  }
   // The runner's row, locked before the grant (the outbox takes the same lock for its counter). A
   // revoke that committed while this read the candidates is seen here, so no lease goes to a
   // revoked runner (Q131).
@@ -478,6 +584,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
   const runnerId = runner.id;
+  // Milestone 5 (F-095): the project's size, where the runner's executor applies sizes.
+  const boxSize = runner.sizes && size !== null ? { name: size.name, cpuMillis: size.limits.cpuMillis, memoryMiB: size.limits.memoryMiB } : null;
   // `resumed`: the same box, on the runner that kept it. Every other step makes a fresh one.
   const boxId =
     plan.step === "resumed"
@@ -485,11 +593,21 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       : boxIdSchema.parse(
           (
             await tx.box.create({
-              data: { organizationId, projectId, taskId: task.id, runnerId, executor: runner.executor, state: "creating" },
+              data: {
+                organizationId,
+                projectId,
+                taskId: task.id,
+                runnerId,
+                executor: runner.executor,
+                state: "creating",
+                ...(boxSize === null ? {} : { size: boxSize.name, cpuMillis: boxSize.cpuMillis, memoryMiB: boxSize.memoryMiB }),
+              },
               select: { id: true },
             })
           ).id,
         );
+  // The least recently offered wins a tie next time (ADR 0059).
+  await tx.runner.update({ where: { id: runnerId }, data: { lastOfferedAt: new Date(now) } });
   // One active lease per task: an earlier grant still open (a reopen that raced its own) ends here.
   await tx.lease.updateMany({
     where: { taskId: task.id, state: "active" },
@@ -502,7 +620,14 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   await tx.session.update({ where: { id: session.id }, data: { boxId, origin: plan.step } });
   const command = await deps.outbox.enqueueInTx(tx, organizationId, runnerId, {
     kind: "dispatch",
-    body: { taskId: task.id, sessionId: input.sessionId, boxId, leaseEpoch: input.leaseEpoch },
+    body: {
+      taskId: task.id,
+      sessionId: input.sessionId,
+      boxId,
+      leaseEpoch: input.leaseEpoch,
+      // Minor 4: the box's size; a minor-3 runner is never sent it (the outbox encodes down).
+      ...(boxSize === null ? {} : { box: { size: boxSize, image: null } }),
+    },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },
   });

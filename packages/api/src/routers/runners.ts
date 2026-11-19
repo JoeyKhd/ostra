@@ -134,7 +134,7 @@ export const runnersRouter = router({
    */
   revoke: memberProcedure.input(revokeRunnerInputSchema).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;
-    const result = await db.$transaction((tx) => revokeRunner({ tx, scope: ctx.scope, notices: ports.notices, audit: ports.audit, clock: ports.clock }, input), {
+    const result = await db.$transaction((tx) => revokeRunner({ tx, scope: ctx.scope, notices: ports.notices, audit: ports.audit, clock: ports.clock, jobs: ports.jobs }, input), {
       timeout: 30_000,
     });
     const revoked = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });

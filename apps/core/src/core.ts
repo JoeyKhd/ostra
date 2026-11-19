@@ -34,7 +34,7 @@ import { handlePanelBlobEndpoint } from "./blobs/panel-endpoints.ts";
 import { blobGcHandler, ensureBlobGcSchedule } from "./blobs/gc.ts";
 
 import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
-import { applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
+import { admitHandler, applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
 import type { DispatcherDeps } from "./dispatch/dispatcher.ts";
 import { handleTaskEndpoint } from "./dispatch/endpoints.ts";
 import { handleMemoryEndpoint } from "./memory/endpoints.ts";
@@ -102,7 +102,6 @@ const TRACKER_TICK_MS = 30_000;
 const TICKET_DRAIN_MS = 2_000;
 
 /** How often queued tasks with no offer out get a fresh dispatch. */
-const REQUEUE_MS = 5_000;
 
 /** How often queued snapshot builds look for a `docker` runner, and lost ones go back to the queue (ticket 26). */
 const SNAPSHOT_SWEEP_MS = 15_000;
@@ -199,6 +198,8 @@ export const startCore = async (
     reopen: { agentImportsArchives: (adapter) => archiveAgents.get(adapter) === true, archiveMaxBytes: settings.blobStore.maxBytes },
     // Milestone 4 (F-137): a task at a level goes only to a minor-3 runner.
     effortLevels: agentEffortLevels,
+    // Milestone 5 (F-067): a personal runner's slots, unless its member set another number.
+    personalSlots: settings.personalRunnerCapacity,
   };
   const reactionDeps: ReactionDeps = {
     db,
@@ -251,6 +252,7 @@ export const startCore = async (
   });
   await jobs.work("task.grace", graceHandler(db, graceDeps));
   await jobs.work("task.dispatch", dispatchHandler(dispatcherDeps));
+  await jobs.work("queue.admit", admitHandler(dispatcherDeps));
   await jobs.work("task.offer-timeout", offerTimeoutHandler(dispatcherDeps));
   await jobs.work("task.session-ended", sessionEndedHandler(reactionDeps));
   await jobs.work("task.open-pull-requests", openPullRequestsHandler(reactionDeps));
@@ -570,12 +572,13 @@ export const startCore = async (
   const scheduleTimer = setInterval(() => void schedules(), 10 * 60_000);
   scheduleTimer.unref();
 
-  // Queued tasks with no offer out try again: a runner came online, a slot freed, a hold ended.
+  // The queue's sweep (F-067): each pool's admission, and queued personal tasks with no offer out
+  // try again: a runner came online, a slot freed, a hold ended.
   const requeue = setInterval(() => {
     requeueQueuedTasks(dispatcherDeps).catch((error: unknown) => {
       logger.warn("dispatch.requeue-failed", { error: error instanceof Error ? error.name : "unknown" });
     });
-  }, REQUEUE_MS);
+  }, settings.queueSweepSeconds * 1_000);
   requeue.unref();
   const snapshotSweep = setInterval(() => {
     requeueSnapshots(snapshotDeps).catch((error: unknown) => {

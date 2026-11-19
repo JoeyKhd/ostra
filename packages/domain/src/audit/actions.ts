@@ -8,6 +8,8 @@ export const auditActions = {
   "task.created": "task",
   "task.reopened": "task",
   "task.stopped": "task",
+  /** Milestone 5 (F-067): cancelled from its pool's queue before it started. */
+  "task.cancelled": "task",
   "task.driver-changed": "task",
   "task.effort-changed": "task",
   "task.update-branch": "task",

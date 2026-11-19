@@ -324,7 +324,9 @@ describe("ostra runner against core", () => {
 
     await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
     const row = await runnerRow(runnerId);
-    expect(row).toMatchObject({ organizationId, kind: "personal", name: "laptop", executor: "host", capacity: 2, labels: ["gpu", "fast"] });
+    expect(row).toMatchObject({ organizationId, kind: "personal", name: "laptop", executor: "host", capacity: 2 });
+    // Milestone 5 (F-069): its own labels, with the built-in ones core adds from what it knows.
+    expect(row.labels).toEqual(["fast", "gpu", "executor:host", `os:${process.platform}`, `arch:${process.arch}`].sort());
     const pkg = z.looseObject({ version: z.string() }).parse(JSON.parse(await readFile(path.join(path.dirname(runnerMain), "..", "package.json"), "utf8")));
     expect(row.version).toBe(pkg.version);
 

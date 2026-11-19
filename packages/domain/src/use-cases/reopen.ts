@@ -306,7 +306,8 @@ export const reopenTask: ReopenTask = async (deps, input) => {
     });
   }
 
-  await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId } });
+  // Milestone 5 (F-067): a reopen is a new place in the queue, taken when it's queued (`queueTask`).
+  await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId, queuedAt: null } });
   await moveTaskInTx(moveDeps, task, reopenInput);
   const freshBranches = mergedRepoIds.length === 0 ? [] : await freshBranchesInTx(tx, task, new Date(now));
   // The reopen answers what the task needed: a limit, a crash, no changes.

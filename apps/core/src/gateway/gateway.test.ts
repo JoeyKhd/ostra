@@ -504,7 +504,10 @@ describe("the WebSocket", () => {
     await waitFor(() => harness.gateway.connections.status(runner.runnerId)?.capacity === 2);
     await sleep(300);
     expect(await notices()).toBe(before + 1);
-    expect((await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).labels).toEqual(["gpu"]);
+    // Milestone 5 (F-069): its own label, with the built-in ones core adds from its registration.
+    expect((await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).labels).toEqual(
+      ["gpu", "executor:host", `os:${process.platform}`, `arch:${process.arch}`].sort(),
+    );
   });
 
   it("F-014: stores the containment a runner reports, and keeps it when a status leaves it out", async () => {

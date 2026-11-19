@@ -64,6 +64,11 @@ export type TaskInput =
   | { readonly type: "cancel" }
   /** A runner accepted the dispatch: the box is being made. */
   | { readonly type: "runner_accepted" }
+  /**
+   * Milestone 5 (F-067, ADR 0060): the box was never placed (no node came, or the runner had no
+   * room after all). The task goes back to the queue, keeping its place: not a crash.
+   */
+  | { readonly type: "box_unplaced" }
   /** The box is ready and the session started. */
   | { readonly type: "box_ready" }
   | { readonly type: "setup_failed" }
@@ -165,6 +170,8 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
       return from === "queued" ? moveTo({ state: "stopped", reason: "cancelled" }) : refuse(input, from);
     case "runner_accepted":
       return from === "queued" ? moveTo({ state: "preparing" }) : refuse(input, from);
+    case "box_unplaced":
+      return from === "preparing" ? moveTo({ state: "queued" }) : refuse(input, from);
     case "box_ready":
       return from === "preparing" ? moveTo({ state: "running" }) : refuse(input, from);
     case "setup_failed":
@@ -325,6 +332,7 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
     case "reject":
     case "cancel":
     case "runner_accepted":
+    case "box_unplaced":
     case "box_ready":
     case "setup_failed":
     case "plan_proposed":
@@ -367,6 +375,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "reject":
     case "cancel":
     case "runner_accepted":
+    case "box_unplaced":
     case "box_ready":
     case "setup_failed":
     case "crashed":
@@ -411,6 +420,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "reject":
     case "cancel":
     case "runner_accepted":
+    case "box_unplaced":
     case "box_ready":
     case "setup_failed":
     case "crashed":

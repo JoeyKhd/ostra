@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema, taskEventSchema } from "@ostra/protocol";
+import { organizationIdSchema, projectIdSchema, runnerIdSchema, taskEventSchema } from "@ostra/protocol";
 import type { SessionId, TaskId } from "@ostra/protocol";
 import { boxIdSchema } from "@ostra/protocol";
 
@@ -9,6 +9,7 @@ import type { JobPayload } from "../jobs.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
+import { enqueueRunnerAdmissionInTx } from "./admission.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx } from "./needs-you-items.ts";
@@ -70,7 +71,7 @@ export const lastAgentMessageInTx = async (tx: Tx, taskId: TaskId, sessionId: Se
 };
 
 /** Ends the task's active lease and stops its box: the session is over (milestone 1: one turn). */
-export const releaseLeaseInTx = async (tx: Tx, taskId: TaskId, at: Date, reason: "released"): Promise<void> => {
+export const releaseLeaseInTx = async (tx: Tx, taskId: TaskId, at: Date, reason: "released", ports?: Pick<Ports, "jobs">): Promise<void> => {
   const lease = await tx.lease.findFirst({ where: { taskId, state: "active" } });
   if (lease === null) {
     return;
@@ -78,6 +79,10 @@ export const releaseLeaseInTx = async (tx: Tx, taskId: TaskId, at: Date, reason:
   await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: at, endReason: reason } });
   await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["ready", "idle"] } }, data: { state: "stopped", stoppedAt: at, idleSince: null } });
   await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["creating", "preparing"] } }, data: { state: "failed", failedReason: "the session ended before the box was ready" } });
+  // Milestone 5 (F-067): the box's slot is free, so its runner's pool admits the next task.
+  if (ports !== undefined) {
+    await enqueueRunnerAdmissionInTx(ports, tx, organizationIdSchema.parse(lease.organizationId), runnerIdSchema.parse(lease.runnerId));
+  }
 };
 
 export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
@@ -113,7 +118,7 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
   }
   const at = new Date(deps.clock.now());
   const lease = await tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { boxId: true } });
-  await releaseLeaseInTx(tx, task.id, at, "released");
+  await releaseLeaseInTx(tx, task.id, at, "released", deps);
   const sessionRef = { organizationId: input.organizationId, taskId: task.id, sessionId: input.sessionId };
   await endSessionTimersInTx(deps, tx, sessionRef);
 

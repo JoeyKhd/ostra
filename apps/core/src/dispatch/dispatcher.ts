@@ -1,11 +1,11 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { acceptOffer, dispatchTask, dispatchWaitColumns } from "@ostra/domain";
+import { acceptOffer, admitQueued, dispatchTask, dispatchWaitColumns, goesToPersonalRunner, projectPoolsInTx, queueTask } from "@ostra/domain";
 import type { AgentEffortLevels, ChangeNotices, Clock, CommandOutbox, JobPayload, ReopenDispatchSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { TaskId } from "@ostra/protocol";
+import type { OrganizationId, PoolId, ProjectId, TaskId } from "@ostra/protocol";
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
 import { killPoint } from "../kill-points.ts";
@@ -26,11 +26,23 @@ export type DispatcherDeps = {
   readonly reopen?: ReopenDispatchSettings;
   /** Milestone 4 (F-137): the levels each agent can send for a model, from core's agent registry. */
   readonly effortLevels?: AgentEffortLevels;
+  /** Milestone 5: `OSTRA_PERSONAL_RUNNER_CAPACITY` (2 without it). */
+  readonly personalSlots?: number;
 };
 
 export const dispatchHandler =
   (deps: DispatcherDeps): JobHandler<"task.dispatch"> =>
   async (context) => {
+    // Milestone 5 (F-067, ADR 0059): a task for the pools waits in their queues, and their
+    // admission grants it in its turn. A task for its member's personal runner goes now, against
+    // that runner's slots.
+    const queued = await deps.db.$transaction((tx) =>
+      queueTask({ tx, jobs: deps.jobs, clock: deps.clock }, { organizationId: context.payload.organizationId, taskId: context.payload.taskId, keepPlace: true }),
+    );
+    if (queued.ok && queued.poolIds.length > 0) {
+      context.logger.info("task.dispatch-queued", { taskId: context.payload.taskId, pools: queued.poolIds.length });
+      return;
+    }
     const result = await deps.db.$transaction(
       (tx) =>
         dispatchTask(
@@ -43,6 +55,7 @@ export const dispatchHandler =
             logger: context.logger,
             ...(deps.reopen === undefined ? {} : { reopen: deps.reopen }),
             ...(deps.effortLevels === undefined ? {} : { effortLevels: deps.effortLevels }),
+            ...(deps.personalSlots === undefined ? {} : { personalSlots: deps.personalSlots }),
           },
           context.payload,
         ),
@@ -52,6 +65,29 @@ export const dispatchHandler =
       killPoint("dispatch.offered");
     }
     context.logger.info("task.dispatch-done", { taskId: context.payload.taskId, outcome: result.ok ? "offered" : result.error });
+  };
+
+/** `queue.admit` (F-067, ticket 13): one pass of a pool's admission. */
+export const admitHandler =
+  (deps: DispatcherDeps): JobHandler<"queue.admit"> =>
+  async (context) => {
+    const result = await admitQueued(
+      {
+        db: deps.db,
+        jobs: deps.jobs,
+        outbox: deps.outbox,
+        notices: deps.notices,
+        clock: deps.clock,
+        logger: context.logger,
+        ...(deps.reopen === undefined ? {} : { reopen: deps.reopen }),
+        ...(deps.effortLevels === undefined ? {} : { effortLevels: deps.effortLevels }),
+        ...(deps.personalSlots === undefined ? {} : { personalSlots: deps.personalSlots }),
+      },
+      context.payload,
+    );
+    if (result.admitted.length > 0) {
+      killPoint("dispatch.offered");
+    }
   };
 
 const activeSessionOf = (tx: Tx, taskId: TaskId) =>
@@ -112,20 +148,35 @@ export const applyOfferResultsInTx = async (
 };
 
 /**
- * Sends a dispatch for every queued task with no offer out: the retry for a task that found no
- * runner, after a runner comes online, a slot frees or a provider's hold ends. One query a sweep.
+ * The queue's sweep (F-067, every `OSTRA_QUEUE_SWEEP_SECONDS`): `queue.admit` for every pool whose
+ * queue holds a task with no offer out, and a fresh dispatch for every such task that goes to its
+ * member's personal runner. It catches every change of room that sent nothing: a slot freed, a
+ * runner came online, a provider's hold ended. Each job is keyed, so a sweep never sends one twice.
  */
 export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs">, limit = 200): Promise<number> => {
   const waiting = await deps.db.task.findMany({
     where: { state: "queued", leases: { none: { state: "active" } } },
-    select: { id: true, organizationId: true, leaseEpoch: true, sessions: { where: { state: "starting" }, select: { id: true }, take: 1 } },
-    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      organizationId: true,
+      projectId: true,
+      creatorMemberId: true,
+      runnerId: true,
+      leaseEpoch: true,
+      sessions: { where: { state: "starting" }, select: { id: true }, take: 1 },
+    },
+    orderBy: [{ queuePriority: "asc" }, { queuedAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
     take: limit,
   });
   let sent = 0;
+  const projects = new Map<string, { readonly organizationId: OrganizationId; readonly projectId: ProjectId }>();
   for (const task of waiting) {
     const [session] = task.sessions;
     if (session === undefined) {
+      continue;
+    }
+    if (!goesToPersonalRunner(task)) {
+      projects.set(task.projectId, { organizationId: organizationIdSchema.parse(task.organizationId), projectId: projectIdSchema.parse(task.projectId) });
       continue;
     }
     const payload: JobPayload<"task.dispatch"> = {
@@ -136,6 +187,20 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
     };
     await deps.db.$transaction(async (tx) => {
       const result = await deps.jobs.sendInTx(tx, "task.dispatch", payload);
+      if (result.kind === "enqueued") {
+        sent += 1;
+      }
+    });
+  }
+  const pools = new Map<PoolId, OrganizationId>();
+  for (const { organizationId, projectId } of projects.values()) {
+    for (const entry of await projectPoolsInTx(deps.db, organizationId, projectId)) {
+      pools.set(entry.poolId, organizationId);
+    }
+  }
+  for (const [poolId, organizationId] of pools) {
+    await deps.db.$transaction(async (tx) => {
+      const result = await deps.jobs.sendInTx(tx, "queue.admit", { organizationId, poolId });
       if (result.kind === "enqueued") {
         sent += 1;
       }

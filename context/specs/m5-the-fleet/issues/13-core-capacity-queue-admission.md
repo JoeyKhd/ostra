@@ -1,6 +1,6 @@
 # 13: Core: capacity, the pool queue and admission
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 05
 Features: F-067, F-095, F-014
@@ -17,9 +17,20 @@ Spec: `../spec.md`, section 4 ("What a runner reports", "Admission"); ADR 0059, 
 
 ## Done when
 
-- [ ] Tests named for `F-067`: capacity from slots, CPU and memory; a personal runner's two; the queue's order; a project at its share passed over while another's task starts; fifty admissions raced from three core replicas never exceed a share or a cap (counted afterwards from rows); a requeue keeps its place; cancel by an admin, by the task's member, and refused for another member.
-- [ ] Break-it: counting the share outside the admitting transaction lets the race exceed it and fails the test; recorded in `context/proof/F-067.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the pool queue and admission`.
+- [x] Tests named for `F-067`: capacity from slots, CPU and memory; a personal runner's two; the queue's order; a project at its share passed over while another's task starts; fifty admissions raced from three core replicas never exceed a share or a cap (counted afterwards from rows); a requeue keeps its place; cancel by an admin, by the task's member, and refused for another member.
+- [x] Break-it: counting the share outside the admitting transaction lets the race exceed it and fails the test; recorded in `context/proof/F-067.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the pool queue and admission`.
 
 ## Comments
+
+- 2026-11-20: built in `packages/domain/src/use-cases/admission.ts` (`queueTask`, `admitQueued`, `poolQueueInTx`, `requeueTaskInTx`, `cancelQueuedTask`), `fleet-rows.ts` (the locks and the rows the choice reads), `runner-report.ts` (`recordRunnerReport`), and core's `queue.admit` handler and sweep in `apps/core/src/dispatch/dispatcher.ts`. Tests: `apps/core/src/dispatch/admission.test.ts`; proof rows in `context/proof/F-067.md` and `F-095.md`. Decisions made while building:
+  - Each task's admission is `dispatchTask` in its own transaction: the task's row (`SKIP LOCKED`), then the project's pools' rows in ID order (`FOR NO KEY UPDATE`), then the count from `Box` rows and `chooseRunner`. A `task.dispatch` job for a pool task now only queues it (`queueTask`) and sends its pools' `queue.admit`, so the queue's order holds; a personal runner's task is granted by its `task.dispatch` under the runner's row lock.
+  - The existing 5 s requeue sweep became the queue's sweep, every `OSTRA_QUEUE_SWEEP_SECONDS`: `queue.admit` per pool with queued work, and a fresh `task.dispatch` for queued personal tasks.
+  - `queue.admit` is also sent when a runner comes online, when its report shows more room, and when a lease is released (`releaseLeaseInTx` with the jobs port). Approve, resume and share changes (tickets 12, 15, 27) can call `enqueueRunnerAdmissionInTx` or `enqueueProjectAdmissionInTx`; the sweep catches anything they don't.
+  - A personal runner's slots: what it reported; one at minor 4 that hasn't reported takes `OSTRA_PERSONAL_RUNNER_CAPACITY`; one below minor 4 runs its own `--capacity`, which it enforces. Ticket 19's runner reports 2 by default.
+  - A revoked pool runner's unaccepted offers go back to the queue with their place; a personal runner's task still stops as `runner_lost` (Q131), since it has nowhere else to go. `RevokeRunnerDeps` gains an optional `jobs`.
+  - A box that was never placed (`no-node`, `no-room`) after the runner accepted needs `preparing` → `queued`: a new task input, `box_unplaced`. `requeueTaskInTx` does it; ticket 20's ingest calls it when the runner reports the failure.
+  - Milestone 3's test "a busy docker runner makes the task wait for a slot" now expects `queued { poolId, place }`, not `no-runner-online`: a runner fits and none has room, which is ADR 0059's `queued`.
+  - A reopen clears `queuedAt`, so it takes a new place when it's queued.
+  - The second row of F-067 stays `partial` until an admin can see the queue (ticket 26, ticket 33). F-067 is `building`.

@@ -1,9 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
-import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels, processContainmentToDb } from "@ostra/db";
-import { awaitsApproval, notifyRunnerInTx, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
-import type { RunnerInput, RunnerLifecycle } from "@ostra/domain";
+import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels } from "@ostra/db";
+import type { Tx } from "@ostra/db";
+import { awaitsApproval, enqueueRunnerAdmissionInTx, notifyRunnerInTx, recordRunnerReport, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
+import type { RunnerInput, RunnerLifecycle, RunnerReportWithContainment } from "@ostra/domain";
 import {
   closeCodes,
   commandIdSchema,
@@ -13,6 +14,7 @@ import {
   negotiate,
   parseJson,
   parseUpFrame,
+  isReservedLabel,
   PROTOCOL_MAJOR,
   refuseHelloExecutor,
   runnerLimits,
@@ -146,6 +148,37 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     return moved.ok ? moved.state : state;
   };
 
+  /**
+   * What a runner reports (F-067, F-069, ticket 13): its slots, resources, capabilities, labels,
+   * install, minor and containment, kept on its row by `recordRunnerReport`, which writes only
+   * what changed and sends its pool's admission when it has more room.
+   */
+  const reportOf = (runner: RunnerRef, minor: number, status: Status): RunnerReportWithContainment => ({
+    runnerId: runner.runnerId,
+    organizationId: runner.organizationId,
+    minor,
+    version: status.version,
+    slots: status.capacity,
+    resources: status.resources ?? null,
+    capabilities: status.capabilities ?? null,
+    install: status.install ?? null,
+    labels: status.labels,
+    os: null,
+    arch: null,
+    executor: status.executor,
+    capacity: status.capacity,
+    ...(status.processContainment === undefined ? {} : { processContainment: status.processContainment }),
+  });
+
+  const reportDeps = (tx: Tx) => ({
+    tx,
+    clock: context.ports.clock,
+    notices: context.ports.notices,
+    logger,
+    server: { minor: context.serverMinor, version: context.serverVersion },
+    jobs: context.ports.jobs,
+  });
+
   // ---------- hello ----------
 
   const acceptHello = async (runner: RunnerRef, hello: Hello): Promise<HelloOutcome> => {
@@ -245,6 +278,26 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         where: { id: runner.runnerId },
         data: { lastSeenAt: new Date(now()), version: hello.runnerVersion, ...(state === null ? {} : { state: state.state }) },
       });
+      // Milestone 5 (F-067, ticket 13): what the hello reports, kept on the row; a runner below
+      // minor 4 reports none of it, and counts slots only. Online, its pool's queue is admitted.
+      const own = await tx.runner.findUniqueOrThrow({ where: { id: runner.runnerId }, select: { labels: true, capacity: true } });
+      await recordRunnerReport(reportDeps(tx), {
+        runnerId: runner.runnerId,
+        organizationId: runner.organizationId,
+        minor: negotiation.minor,
+        version: hello.runnerVersion,
+        slots: hello.resources?.slots ?? own.capacity,
+        resources: hello.resources ?? null,
+        capabilities: hello.capabilities ?? null,
+        install: hello.install ?? null,
+        labels: own.labels.filter((label) => !isReservedLabel(label)),
+        os: null,
+        arch: null,
+        ...(hello.executor === undefined ? {} : { executor: hello.executor }),
+      });
+      if (state?.state === "online") {
+        await enqueueRunnerAdmissionInTx({ jobs: context.ports.jobs }, tx, runner.organizationId, runner.runnerId);
+      }
       // What the peer says it applied is acked, up to what was ever sent.
       const appliedUpTo = Math.min(hello.lastCommandSeq, row.commandSeq);
       await tx.command.updateMany({
@@ -379,40 +432,9 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     });
   };
 
-  const applyStatus = async (runner: RunnerRef, status: Status): Promise<void> => {
-    statuses.set(runner.runnerId, status);
-    const row = await db.runner.findFirst({
-      where: { id: runner.runnerId, organizationId: runner.organizationId },
-      select: { executor: true, capacity: true, labels: true, version: true, processContainment: true },
-    });
-    if (row === null) {
-      return;
-    }
-    // A status without it (a sidecar, an older runner) keeps what the row says (ticket 42).
-    const containment = status.processContainment === undefined ? row.processContainment : processContainmentToDb[status.processContainment];
-    const changed =
-      row.executor !== status.executor ||
-      row.processContainment !== containment ||
-      row.capacity !== status.capacity ||
-      row.version !== status.version ||
-      row.labels.length !== status.labels.length ||
-      row.labels.some((label, index) => label !== status.labels[index]);
-    // A change notice only when something changed, never per heartbeat.
-    if (!changed) {
-      return;
-    }
-    await db.$transaction(async (tx) => {
-      await tx.runner.update({
-        where: { id: runner.runnerId },
-        data: { executor: status.executor, capacity: status.capacity, labels: [...status.labels], version: status.version, processContainment: containment },
-      });
-      await context.ports.notices.emitInTx(tx, {
-        organizationId: runner.organizationId,
-        projectId: null,
-        entity: "runner",
-        entityId: runner.runnerId,
-      });
-    });
+  const applyStatus = async (peer: Peer, status: Status): Promise<void> => {
+    statuses.set(peer.runner.runnerId, status);
+    await db.$transaction((tx) => recordRunnerReport(reportDeps(tx), reportOf(peer.runner, peer.minor, status)));
   };
 
   // ---------- a connection ----------
@@ -586,7 +608,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           await applyCommandAck(peer, frame);
           return;
         case "status":
-          await applyStatus(runner, frame);
+          await applyStatus(peer, frame);
           return;
         case "live-text":
           await hooks.liveText(runner, frame);

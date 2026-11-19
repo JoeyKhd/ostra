@@ -160,7 +160,8 @@ describe("services and where a task may run (F-094)", () => {
     expect(await dispatch(await seedQueuedTask(test.db, world, fixture.a.member, null))).toMatchObject({ ok: true, runnerId: docker.runnerId });
     const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
     expect(await dispatch(task)).toMatchObject({ ok: false, error: "no-runner" });
-    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).dispatchWait).toEqual({ code: "no-runner-online" });
+    // Milestone 5 (F-067): a runner fits, only none has room now: the task waits its turn in the pool's queue.
+    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).dispatchWait).toEqual({ code: "queued", poolId, place: 1 });
   });
 
   it("F-094: the spec carries the service with its plain variables only; its secret is in the credentials and nowhere else", async () => {

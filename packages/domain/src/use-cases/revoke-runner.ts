@@ -10,6 +10,7 @@ import { runnerFromColumns } from "../lifecycles/mapping.ts";
 import { transitionRunner } from "../lifecycles/runner.ts";
 import { notifyRunnerInTx } from "../postgres-outbox.ts";
 import type { Ports } from "../ports.ts";
+import { requeueTaskInTx } from "./admission.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 
@@ -47,6 +48,8 @@ export type RevokeRunnerResult = UseCaseResult<
 
 export type RevokeRunnerDeps = Pick<Ports, "notices" | "audit" | "clock"> & {
   readonly tx: Tx;
+  /** Milestone 5: sends an unaccepted offer's next dispatch at once; without it, the queue's sweep does. */
+  readonly jobs?: Ports["jobs"];
   readonly scope: MemberScope;
   readonly logger?: Logger;
 };
@@ -119,6 +122,13 @@ export const revokeRunner: RevokeRunner = async (deps, input) => {
     // The fence: from here on, a write carrying the old epoch is refused (F-045).
     const row = await tx.task.update({ where: { id: lease.taskId }, data: { leaseEpoch: { increment: 1 } } });
     const task = mapTask(row);
+    if (row.state === "queued" && runner.kind === "pool") {
+      // Milestone 5 (F-067, ADR 0059): an offer a pool runner never accepted. The task goes back to
+      // its pools' queue with its first time, so it keeps its place; nothing of it ran on this
+      // runner. A personal runner's task has nowhere else to go, so it stops, as before.
+      await requeueTaskInTx(deps, tx, { organizationId, taskId: task.id, endReason: RUNNER_REVOKED_END_REASON, boxReason: "the runner was revoked", wait: null });
+      continue;
+    }
     await moveTaskInTx(moveDeps, task, { type: "stop", reason: "runner_lost" });
     const session = await tx.session.findFirst({
       where: { taskId: task.id, state: { in: [...ACTIVE_SESSION_STATES] } },
