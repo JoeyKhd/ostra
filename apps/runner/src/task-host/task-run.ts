@@ -366,7 +366,6 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       },
       onRateLimited: (limit) => {
         log.warn("model provider rate-limited the task", { providerId: taskSpec.agent.providerId, status: limit.status, retryAfterMs: limit.retryAfterMs });
-      },
         // F-089: the server holds new dispatches on the provider. A hold is reported again only
         // when it reaches well past the last one, so an agent retrying into a limit doesn't fill its log.
         const retryAfterSeconds = rateLimitHoldSeconds(limit.retryAfterMs);
@@ -375,6 +374,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           rateLimitedUntil = until;
           void emit({ kind: "provider.rate_limited", providerId: taskSpec.agent.providerId, retryAfterSeconds });
         }
+      },
       onUpstreamRefused: (refusal: UpstreamRefusal) => {
         // F-089: an upstream 401 or 403 fails the task at once, with a typed reason.
         end({ kind: "crashed", error: `the model provider refused the task's token (status ${String(refusal.status)})` });
