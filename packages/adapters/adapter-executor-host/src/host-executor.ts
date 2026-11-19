@@ -106,6 +106,9 @@ type BoxRecord = {
 
 const boxKey = (box: BoxRef): string => `${box.taskId}\u0000${box.boxId}`;
 
+/** ostra's own folder in a checkout or the workspace: the ticket's files go in its `ticket/` (ticket 26). */
+const OSTRA_DIR = ".ostra";
+
 /** The most of an agent command's output kept: it can hold content, so it's never logged. */
 const AGENT_COMMAND_OUTPUT_MAX = 64 * 1024;
 
@@ -754,6 +757,8 @@ export class HostExecutor extends ExecutorAdapter {
       return adapterError("unavailable", "checking out the task's branch failed");
     }
     const gitDir = path.join(checkout, ".git");
+    // ostra's own folder (`.ostra/`: the ticket's files, ticket 26) never lands in a commit or the hidden ref.
+    await excludeFromGit(gitDir, [OSTRA_DIR]);
     const hook = path.join(gitDir, "hooks", "prepare-commit-msg");
     await mkdir(path.dirname(hook), { recursive: true });
     await writeFile(hook, PREPARE_COMMIT_MSG_HOOK);

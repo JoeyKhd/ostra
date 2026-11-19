@@ -165,6 +165,7 @@ export const TICKET_FILES_DIR = ".ostra/ticket";
 export const TICKET_FILE_EXTENSIONS: Readonly<Record<string, string>> = {
   "image/png": "png",
   "image/jpeg": "jpg",
+  "image/jpg": "jpg",
   "image/gif": "gif",
   "image/webp": "webp",
   "image/avif": "avif",

@@ -85,8 +85,8 @@ export type FakeServer = {
   readonly bulkFaults: BulkFaults;
   /** Every bulk-path call, by kind: `start`, `chunk`, `finish`, `download`. */
   readonly bulkCalls: string[];
-  /** A blob of the task, as core stores a ticket image (ticket 12). Answers its ID. */
-  readonly putBlob: (taskId: string, bytes: Buffer, contentType: string) => string;
+  /** A blob of the task, as core stores a ticket image (ticket 12). Answers its ID: `blobId`, or a new one. */
+  readonly putBlob: (taskId: string, bytes: Buffer, contentType: string, blobId?: string) => string;
   /** The HTTP server, so the fake gateway can take its WebSocket upgrades. */
   readonly httpServer: Server;
   readonly setInfo: (info: Partial<InfoResponse>) => void;
@@ -461,8 +461,8 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     blobs,
     bulkFaults,
     bulkCalls,
-    putBlob: (taskId, bytes, contentType) => {
-      const blobId = randomUUID();
+    putBlob: (taskId, bytes, contentType, given) => {
+      const blobId = given ?? randomUUID();
       blobs.set(blobId, { taskId, bytes, sha256: digest(bytes), contentType, purpose: "ticket-file" });
       return blobId;
     },

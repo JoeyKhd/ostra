@@ -29,6 +29,7 @@ import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
 import { saveSessionArchive } from "./session-archive.ts";
+import { writeTicketFiles } from "./ticket-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
 import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 
@@ -825,7 +826,28 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       }
     }
     boxPrepared = true;
+    await placeTicketFiles(taskSpec);
     return { ok: true, spec: taskSpec };
+  };
+
+  /**
+   * F-064, ticket 26: the ticket's images under `.ostra/ticket/` in the folder the agent's session
+   * opens on, before the agent starts. A file that fails is skipped and named; the turn starts anyway.
+   */
+  const placeTicketFiles = async (taskSpec: TaskSpec): Promise<void> => {
+    const files = taskSpec.contextFiles ?? [];
+    if (files.length === 0 || dirsCache === undefined || channel?.supports("ticket.files_ready") !== true) {
+      return;
+    }
+    const placed = await writeTicketFiles({
+      link: deps.link,
+      taskId: taskSpec.taskId,
+      leaseEpoch: taskSpec.leaseEpoch,
+      files,
+      sessionDir: agentCwd(dirsCache.workspaceDir, taskSpec.repos),
+      logger: log,
+    });
+    await emit({ kind: "ticket.files_ready", files: [...placed.files], ...(placed.skipped.length > 0 ? { skipped: [...placed.skipped] } : {}) });
   };
 
   const startAgent = async (taskSpec: TaskSpec): Promise<string | null> => {
