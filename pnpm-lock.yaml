@@ -617,6 +617,9 @@ importers:
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../adapters/adapter-github
+      '@ostra/runner':
+        specifier: workspace:*
+        version: link:../../apps/runner
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
