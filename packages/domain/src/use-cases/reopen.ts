@@ -111,7 +111,10 @@ export type ReopenTaskResult = UseCaseResult<
   },
   | "not-found"
   | "forbidden"
-  /** In milestone 2 a merged task isn't reopened: its fresh branch is F-066, milestone 3. */
+  /**
+   * In milestone 2 a merged task wasn't reopened. Since milestone 3 (F-066) it reopens on a fresh
+   * branch, and only a merged task whose repos record no merge is refused, with this code.
+   */
   | "merged_reopen_later"
   /** Another active task holds the ticket (spec section 11, item 12). */
   | "ticket-has-task"
@@ -178,6 +181,10 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   // Milestone 3 (F-066, ticket 24): a merged repo reopens on a fresh branch from its base. A merged
   // task moves by `reopen_after_merge`; one with a repo merged and another in review, by `reopen`.
   const mergedRepoIds = (await tx.taskRepo.findMany({ where: { taskId: task.id, state: "merged" }, select: { repoId: true } })).map((row) => repoIdSchema.parse(row.repoId));
+  if (task.state === "merged" && mergedRepoIds.length === 0) {
+    // A merged task whose repos record no merge has no base to start a fresh branch from.
+    return refused("merged_reopen_later", "This merged task has no merged repo to start a fresh branch from. Start a new task instead");
+  }
   const reopenInput: TaskInput = task.state === "merged" ? { type: "reopen_after_merge", mergedRepoIds } : { type: "reopen" };
   const current = taskFromColumns(task);
   if (!current.ok) {

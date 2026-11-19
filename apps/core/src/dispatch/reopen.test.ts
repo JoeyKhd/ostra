@@ -355,7 +355,7 @@ describe("what a reopen refuses (F-032, spec section 11, item 12)", () => {
     // Milestone 3 reopens a merged task on a fresh branch (F-066, ticket 24); one whose repos record
     // no merge has nothing to start the fresh branch from.
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "merged", subState: null } });
-    expect(await reopen(task.taskId, "more")).toMatchObject({ ok: false, error: "not-reopenable" });
+    expect(await reopen(task.taskId, "more")).toMatchObject({ ok: false, error: "merged_reopen_later" });
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "in_review", subState: "waiting_for_reviewer" } });
     expect(await reopen(task.taskId)).toMatchObject({ ok: false, error: "text-required" });
     // At the spend cap: tokens, since the model has no price.
