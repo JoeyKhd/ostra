@@ -335,6 +335,37 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
 
+  e2e/m3-step-in:
+    dependencies:
+      '@ostra/adapter-sdk':
+        specifier: workspace:*
+        version: link:../../packages/adapter-sdk
+      '@ostra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@ostra/e2e-m1':
+        specifier: workspace:*
+        version: link:../m1-first-pr
+      '@ostra/e2e-m2':
+        specifier: workspace:*
+        version: link:../m2-tickets-in
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@playwright/test':
+        specifier: 1.65.1
+        version: 1.65.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      eslint:
+        specifier: 10.15.0
+        version: 10.15.0(jiti@2.7.0)
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
+
   packages/adapter-sdk:
     dependencies:
       '@agentclientprotocol/sdk':
