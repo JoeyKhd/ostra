@@ -45,6 +45,7 @@ A change is done, and ready to commit, when every line that applies holds in tha
 
 ## Commits
 
+- **CI scope (the maintainer, 2026-11-19).** `.github/workflows/ci.yml` runs on every push and pull request with only the everyday checks: typecheck, lint, test and `check:licenses`. `pnpm check:proof` and the Playwright e2e suite run only by hand, in `.github/workflows/proof.yml` (`gh workflow run Proof`). Never add them, or another heavy job, to `ci.yml`; run them locally before you push.
 - Commit and push to `origin main` after every fix or change, once it's done (above). One logical change per commit.
 - Other sessions work in this checkout at the same time: stage your own files by path, and leave changes you didn't make as they are.
 - A change to any `package.json` goes in the same commit as the updated `pnpm-lock.yaml` (run `pnpm install` first). CI installs with `--frozen-lockfile`, and a stale lockfile fails every later build.
