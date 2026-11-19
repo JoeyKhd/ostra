@@ -94,6 +94,8 @@ export class FakeCodeHost extends CodeHostAdapter {
   readonly pulls: OpenedPull[] = [];
   /** Fail the next `openPullRequest` this many times, as a flaky host would. */
   failOpens = 0;
+  /** Open the PR, then lose the answer, this many times: a timeout after the host made it. */
+  loseOpenAnswers = 0;
 
   health(): Promise<HealthReport> {
     return healthy;
@@ -179,6 +181,10 @@ export class FakeCodeHost extends CodeHostAdapter {
       body: input.body,
     };
     this.pulls.push(pull);
+    if (this.loseOpenAnswers > 0) {
+      this.loseOpenAnswers -= 1;
+      return Promise.resolve(adapterError("unavailable", "the host timed out after opening the PR"));
+    }
     return Promise.resolve(ok(pull));
   }
 

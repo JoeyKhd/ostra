@@ -156,6 +156,11 @@ describe("a session that ends with changes", () => {
     codeHost.failOpens = 1;
     await expect(openPrs(task)).rejects.toThrow(CODE_HOST_FAILED);
     const before = codeHost.pulls.length;
+    // Then the host opens it and the answer is lost: the job dies between the PR's creation and its
+    // row's update, and its retry finds the open PR on the host instead of opening another.
+    codeHost.loseOpenAnswers = 1;
+    await expect(openPrs(task)).rejects.toThrow(CODE_HOST_FAILED);
+    expect(codeHost.pulls.length).toBe(before + 1);
     await openPrs(task);
     await openPrs(task);
     const pulls = codeHost.pulls.slice(before);
