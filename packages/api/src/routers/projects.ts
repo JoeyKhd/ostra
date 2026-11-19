@@ -24,6 +24,7 @@ import { inboxCounts } from "./inbox.ts";
 import { agentProfileViewSchema, loadAgentProfileView } from "./agent-profile-view.ts";
 import { detectionViewSchema } from "./environments.ts";
 import { projectReposProcedures } from "./project-repos.ts";
+import { projectProviderProcedures } from "./project-providers.ts";
 
 // F-086, ticket 32: projects. A project is one repo linked through the organization's App, with its
 // one environment. Another organization's projects, and a restricted one a member isn't on, are
@@ -130,6 +131,8 @@ const projectAccessViewSchema = z.object({
 export const projectsRouter = router({
   // F-098 (ticket 30): the project's several repos, in order.
   ...projectReposProcedures,
+  // F-135 (ticket 50): the project's providers, by name, and an organization admin's changes to them.
+  ...projectProviderProcedures,
 
   /**
    * Creates a project on one or more repos the App's installations include (`repo` first, then

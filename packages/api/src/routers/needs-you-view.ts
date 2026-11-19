@@ -66,7 +66,9 @@ export type ReasonDetail =
   | { readonly reason: "setup_failed"; readonly exitCode: number | null }
   | { readonly reason: "stalled"; readonly minutes: number }
   | { readonly reason: "ticket_closed"; readonly status: string | null }
-  | { readonly reason: Exclude<DbEnum.NeedsYouReason, "question" | "approval" | "plan" | "draft_ready" | "setup_failed" | "stalled" | "ticket_closed"> };
+  /** F-135 (ticket 50): the model no provider on the project's list serves, as its text ("No key for {model}"). */
+  | { readonly reason: "no_provider_for_model"; readonly modelName: string | null }
+  | { readonly reason: Exclude<DbEnum.NeedsYouReason, "question" | "approval" | "plan" | "draft_ready" | "setup_failed" | "stalled" | "ticket_closed" | "no_provider_for_model"> };
 
 /** What an inline answer needs, and whether this member can give it. */
 export type AnswerView =
@@ -288,6 +290,8 @@ export const loadNeedsYouViews = async (
         }
         case "ticket_closed":
           return { reason: "ticket_closed", status: loaded.ticketStatus.get(task.id) ?? null };
+        case "no_provider_for_model":
+          return { reason: "no_provider_for_model", modelName: item.summary === null || item.summary === "" ? null : item.summary };
         case "no_changes":
         case "spend_cap":
         case "crashed":
@@ -297,7 +301,6 @@ export const loadNeedsYouViews = async (
         case "restore_conflict":
         case "unstorable_event":
         case "files_outside_repos":
-        case "no_provider_for_model":
         case "runner_awaiting_approval":
           return { reason: item.reason };
         default:

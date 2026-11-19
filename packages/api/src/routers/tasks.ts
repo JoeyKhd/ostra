@@ -314,7 +314,7 @@ export const tasksRouter = router({
           },
           orderBy: { createdAt: "asc" },
         },
-        sessions: { orderBy: { startedAt: "desc" }, take: 1 },
+        sessions: { orderBy: { startedAt: "desc" }, take: 1, include: { provider: { select: { name: true } } } },
         needsYouItems: { where: { state: "open" }, orderBy: { createdAt: "asc" } },
       },
     });
@@ -437,6 +437,8 @@ export const tasksRouter = router({
               outputTokens: session.outputTokens,
               cacheReadTokens: session.cacheReadTokens,
               cacheWriteTokens: session.cacheWriteTokens,
+              /** F-135 (ticket 50, ADR 0065): the provider whose key the session uses, by name; `null` before its start resolves one. */
+              providerName: session.provider?.name ?? null,
             },
       /** The agent profile the task runs with: its agent and model (task.md, the properties panel). */
       agent,

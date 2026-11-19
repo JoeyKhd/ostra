@@ -4,6 +4,7 @@ import {
   modelNameOfColumns,
   modelNameOfModel,
   modelNameText,
+  noProviderMessage,
   resolveSessionModel,
   resolveStartProfileInTx,
 } from "@ostra/domain";
@@ -37,7 +38,8 @@ const MONTHS = [
 ] as const;
 
 export const startCheckSchema = z.union([
-  z.object({ kind: z.literal("open") }),
+  /** F-135 (ticket 50): the provider whose key the task would use, for New task's "Key" row. */
+  z.object({ kind: z.literal("open"), providerName: z.string() }),
   z.object({
     kind: z.literal("wait"),
     reason: z.literal("budget-reached"),
@@ -121,7 +123,7 @@ export const startCheckInTx = async (
       kind: "wait",
       reason: "no-provider",
       modelName: text,
-      message: `No key on this project's list serves ${text}: an organization admin adds a provider that lists it`,
+      message: noProviderMessage(name),
     };
   }
   const gate = await checkBudget(tx, {
@@ -131,9 +133,11 @@ export const startCheckInTx = async (
     origin: "dispatch",
     now: input.now,
   });
+  const provider = await tx.modelProvider.findFirst({ where: { id: model.providerId, organizationId }, select: { name: true } });
+  const providerName = provider?.name ?? "";
   switch (gate.kind) {
     case "open":
-      return { kind: "open" };
+      return { kind: "open", providerName };
     case "held": {
       if (gate.reason === "unpriced") {
         return {

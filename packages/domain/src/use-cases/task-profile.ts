@@ -4,6 +4,7 @@ import type { AgentProfileId, TaskKind } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { MemberScope } from "../access.ts";
+import { modelNameOfColumns } from "../providers/model-name.ts";
 import { checkProfileUse } from "./agent-profile-setup.ts";
 import { BUILT_IN_PROFILE_ADAPTER } from "./agent-profiles.ts";
 import type { ProfileMcpServer } from "./m3-signatures.ts";
@@ -91,8 +92,12 @@ export const resolveStartProfileInTx = async (
   },
 ): Promise<ResolveProfileResult> => {
   const organizationId = scope.organizationId;
+  // Milestone 4 (F-135, ADR 0065): a profile has a model when it names one, by name or by its
+  // row; which provider serves it is the project's list's to say, and the caller checks that next.
   const withModel = (profile: StartProfile): ResolveProfileResult =>
-    profile.model === null ? { ok: false, error: "no-agent-profile", message: NO_MODEL } : { ok: true, profile, profileId: agentProfileIdSchema.parse(profile.id) };
+    profile.model === null && modelNameOfColumns(profile) === null
+      ? { ok: false, error: "no-agent-profile", message: NO_MODEL }
+      : { ok: true, profile, profileId: agentProfileIdSchema.parse(profile.id) };
 
   if (input.chosen !== undefined) {
     // The API's own check (ticket 34): another organization's profile reads as one that isn't

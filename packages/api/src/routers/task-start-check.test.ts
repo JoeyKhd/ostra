@@ -28,7 +28,7 @@ it("F-037: startCheck gives each reason: open, a project's and the organization'
 
   // The organization's first provider is on the default list (ADR 0065), so a fresh install's
   // project has a key. Its model has no price yet: with no budget, that's fine.
-  expect(await check()).toEqual({ kind: "open" });
+  expect(await check()).toEqual({ kind: "open", providerName: "World models" });
 
   // A budget, and a model without a price: the budget can't count it.
   const { budgetId: orgBudget } = await admin.budgets.set({ projectId: null, monthlyUsd: 1000 });
@@ -45,7 +45,7 @@ it("F-037: startCheck gives each reason: open, a project's and the organization'
     cacheReadPerMTok: null,
     cacheWritePerMTok: null,
   });
-  expect(await check()).toEqual({ kind: "open" });
+  expect(await check()).toEqual({ kind: "open", providerName: "World models" });
 
   // The project's budget reached.
   const now = budgetMonthOf(Date.now());
@@ -87,7 +87,7 @@ it("F-037: startCheck gives each reason: open, a project's and the organization'
     message: `The organization's budget for ${monthWords} is reached`,
   });
   await admin.budgets.clear({ projectId: null });
-  expect(await check()).toEqual({ kind: "open" });
+  expect(await check()).toEqual({ kind: "open", providerName: "World models" });
 
   // No key: the project's own list holds no provider that serves the profile's model.
   await harness.test.db.project.update({
@@ -98,8 +98,7 @@ it("F-037: startCheck gives each reason: open, a project's and the organization'
     kind: "wait",
     reason: "no-provider",
     modelName: "world-model",
-    message:
-      "No key on this project's list serves world-model: an organization admin adds a provider that lists it",
+    message: "No provider on this project's list serves world-model: an organization admin adds one under Models",
   });
   await harness.test.db.project.update({
     where: { id: a.openProject.id },

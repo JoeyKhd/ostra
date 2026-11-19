@@ -100,6 +100,8 @@ describe("keys per project at a task's start", () => {
     const memberRows = (await member.home.needsYou({})).rows.map((row) => row.taskId);
     expect(adminRows).toContain(started.taskId);
     expect(memberRows).not.toContain(started.taskId);
+    // Ticket 50: the row names the model, for "No key for {model}".
+    expect((await admin.home.needsYou({})).rows.find((row) => row.taskId === started.taskId)?.detail).toEqual({ reason: "no_provider_for_model", modelName: "world-model" });
     // Another organization's admin sees nothing of it.
     const outsider = await harness.as(harness.fixture.b.admin);
     expect((await outsider.home.needsYou({})).rows.map((row) => row.taskId)).not.toContain(started.taskId);

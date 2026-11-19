@@ -6,16 +6,23 @@ import { apiFormatFromDb, effortLevelFromDb } from "@ostra/db";
 import {
   agentDisplayName,
   archiveAgentProfile,
+  loadProviderList,
+  modelNameKey,
+  modelNameOfModel,
+  modelNameSchema,
+  modelNameText,
   PRESET_NAMES,
   presetRules,
   profileLimits,
   profileMcpServersSchema,
+  profileModelName,
   profilesForMember,
+  resolveProjectModel,
   saveAgentProfile,
   SELECTABLE_AGENT_ADAPTERS,
   visibleProjects,
 } from "@ostra/domain";
-import type { MemberScope, ProfileMcpServer } from "@ostra/domain";
+import type { MemberScope, ModelName, ProfileMcpServer } from "@ostra/domain";
 import {
   agentProfileIdSchema,
   apiFormatSchema,
@@ -36,7 +43,7 @@ import {
   ruleMatches,
   taskKindSchema,
 } from "@ostra/protocol";
-import type { AgentProfileId, ApprovalRequestSubject, ApprovalRule, ApprovalTool, EffortLevel, OrganizationId, RuleContext } from "@ostra/protocol";
+import type { AgentProfileId, ApprovalRequestSubject, ApprovalRule, ApprovalTool, EffortLevel, ModelId, OrganizationId, ProviderId, RuleContext } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -97,6 +104,8 @@ const profileRowSchema = z.object({
   agentName: z.string(),
   builtIn: z.boolean(),
   model: modelViewSchema.nullable(),
+  /** F-135 (ADR 0065): the model by name, as the profile saved it; each project's list decides who serves it. */
+  modelName: modelNameSchema.nullable(),
   /** F-137: how much its model reasons; a new task copies it. */
   effort: effortLevelSchema,
   planFirst: z.boolean(),
@@ -260,6 +269,7 @@ const toRow = async (
               providerName: row.model.provider.name,
               apiFormat: apiFormatFromDb[row.model.provider.apiFormat],
             },
+      modelName: profileModelName(row),
       effort: effortLevelFromDb[row.effort],
       planFirst: row.planFirst,
       closingTurn: row.closingTurn,
@@ -324,6 +334,11 @@ const saveInput = z.strictObject({
   name: z.string().max(profileLimits.nameMax),
   adapter: z.string().max(100),
   modelId: modelIdSchema.nullable(),
+  /**
+   * F-135 (ticket 50, ADR 0065): the model by name, pinning no provider; each project's list then
+   * decides which provider serves it. Given, it wins over `modelId`.
+   */
+  modelName: modelNameSchema.nullable().optional(),
   instructions: z.string().max(profileLimits.instructionsMax).nullable(),
   approvalRules: approvalRulesSchema,
   planFirst: z.boolean(),
@@ -646,6 +661,7 @@ export const agentProfilesRouter = router({
         name: input.name,
         adapter: input.adapter,
         modelId: input.modelId,
+        ...(input.modelName === undefined ? {} : { modelName: input.modelName }),
         instructions: input.instructions,
         approvalRules: input.approvalRules,
         planFirst: input.planFirst,
@@ -668,6 +684,65 @@ export const agentProfilesRouter = router({
         }
       }
       return { profileId: result.profileId };
+    }),
+
+  /**
+   * F-135 (ADR 0065): the model names any of the organization's providers lists, for the profile
+   * editor: each with the providers that list it, and the projects whose list serves it from none
+   * ("no key" there). Organization admins, who save profiles.
+   */
+  modelOptions: adminProcedure
+    .output(
+      z.array(
+        z.object({
+          name: modelNameSchema,
+          text: z.string(),
+          displayName: z.string(),
+          providers: z.array(z.object({ providerId: providerIdSchema, name: z.string(), modelId: modelIdSchema })),
+          projectsWithout: z.array(z.object({ projectId: projectIdSchema, name: z.string() })),
+          /** Every project with the provider that serves the model there, `null` for "no key" (ticket 50, item 10). */
+          projects: z.array(z.object({ projectId: projectIdSchema, name: z.string(), providerName: z.string().nullable() })),
+        }),
+      ),
+    )
+    .query(async ({ ctx }) => {
+      const { db } = ctx.deps;
+      const organizationId = ctx.scope.organizationId;
+      const [rows, providers, projects] = await Promise.all([
+        db.model.findMany({ where: { organizationId, listed: true }, select: { id: true, providerId: true, catalogId: true, endpointModelId: true, displayName: true }, orderBy: { id: "asc" } }),
+        db.modelProvider.findMany({ where: { organizationId }, select: { id: true, name: true } }),
+        db.project.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      ]);
+      const providerName = new Map(providers.map((provider) => [provider.id, provider.name] as const));
+      const lists = await Promise.all(projects.map(async (project) => ({ project, state: await loadProviderList(db, organizationId, projectIdSchema.parse(project.id)) })));
+      const byKey = new Map<string, { name: ModelName; displayName: string; providers: { providerId: ProviderId; name: string; modelId: ModelId }[] }>();
+      for (const row of rows) {
+        const name = modelNameOfModel(row);
+        const key = modelNameKey(name);
+        const entry = byKey.get(key) ?? { name, displayName: row.displayName ?? row.endpointModelId, providers: [] };
+        if (!entry.providers.some((provider) => provider.providerId === row.providerId)) {
+          entry.providers.push({ providerId: providerIdSchema.parse(row.providerId), name: providerName.get(row.providerId) ?? "", modelId: modelIdSchema.parse(row.id) });
+        }
+        byKey.set(key, entry);
+      }
+      return [...byKey.entries()]
+        .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+        .map(([, entry]) => ({
+          name: entry.name,
+          text: modelNameText(entry.name),
+          displayName: entry.displayName,
+          providers: entry.providers.sort((x, y) => x.name.localeCompare(y.name)),
+          projectsWithout: lists.flatMap(({ project, state }) =>
+            state === null || resolveProjectModel(state.list, state.choices, state.models, entry.name).ok ? [] : [{ projectId: projectIdSchema.parse(project.id), name: project.name }],
+          ),
+          projects: lists.flatMap(({ project, state }) => {
+            if (state === null) {
+              return [];
+            }
+            const resolved = resolveProjectModel(state.list, state.choices, state.models, entry.name);
+            return [{ projectId: projectIdSchema.parse(project.id), name: project.name, providerName: resolved.ok ? (providerName.get(resolved.providerId) ?? "") : null }];
+          }),
+        }));
     }),
 
   /** Archives a profile; project defaults on it move to the built-in one (Q189). Organization admins only. */

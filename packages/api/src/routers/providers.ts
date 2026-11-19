@@ -13,6 +13,8 @@ import type { CatalogEntry, ModelEndpoint } from "@ostra/adapter-sdk";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { loadProviderUses, noUse, providerListProcedures, providerUseSchema } from "./provider-lists.ts";
+import { hostOf } from "./project-providers.ts";
 import { effortLevelViewSchema, levelsOfModel, reasoningOf, reasoningSourceSchema, toLevelViews } from "../services/agent-effort.ts";
 import { adminProcedure, router, unwrap } from "../trpc/init.ts";
 
@@ -64,6 +66,8 @@ const providerViewSchema = z.object({
   id: providerIdSchema,
   name: z.string(),
   baseUrl: z.string(),
+  /** F-135 (ticket 50): the base URL's host, as the Models page shows a key. */
+  host: z.string(),
   apiFormat: apiFormatSchema,
   authScheme: authSchemeSchema,
   sessionsAtOnce: z.number().int().nullable(),
@@ -72,6 +76,8 @@ const providerViewSchema = z.object({
   modelsRefreshedAt: z.number().int().nullable(),
   modelCount: z.number().int(),
   createdAt: z.number().int(),
+  // F-135 (ticket 50, ADR 0065): the lists it's on, the projects that use it, its month's spend.
+  ...providerUseSchema.shape,
 });
 
 const modelViewSchema = z.object({
@@ -126,6 +132,9 @@ const MAX_PRICE = 1_000_000;
 const priceInputSchema = z.number().min(0).max(999_999).nullable();
 
 export const providersRouter = router({
+  // F-135 (ticket 50): the default list, its preview, a model's provider on it, the upgrade's choices.
+  ...providerListProcedures,
+
   /**
    * "Test connection": lists the endpoint's models, detects its API format and auth scheme, and
    * matches each model to the catalog. The token is used for this call and returned nowhere.
@@ -203,12 +212,15 @@ export const providersRouter = router({
       orderBy: { createdAt: "asc" },
       include: { _count: { select: { models: { where: { listed: true } } } } },
     });
+    const uses = await loadProviderUses(ctx.deps.db, ctx.scope.organizationId, ctx.deps.ports.clock.now());
     return rows.map((row) => {
       const provider = mapModelProvider(row);
       return {
+        ...(uses.get(row.id) ?? noUse),
         id: provider.id,
         name: provider.name,
         baseUrl: provider.baseUrl,
+        host: hostOf(provider.baseUrl),
         apiFormat: provider.apiFormat,
         authScheme: provider.authScheme,
         sessionsAtOnce: provider.sessionsAtOnce,
