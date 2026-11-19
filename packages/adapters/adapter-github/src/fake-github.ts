@@ -77,6 +77,36 @@ export type FakePullRequest = {
   closedAt: string | null;
 };
 
+/** Milestone 4 (F-104): a review on a PR, as a person or a bot made it on the host. */
+export type FakeReview = {
+  readonly id: number;
+  readonly repo: string;
+  readonly number: number;
+  readonly userId: number;
+  readonly login: string;
+  /** GitHub's author type: `Bot` for an App's bot. */
+  readonly userType: "User" | "Bot";
+  /** As the REST API writes it: `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED`, `PENDING`. */
+  state: string;
+  readonly commitId: string;
+  /** ISO, or `null` for a pending review. */
+  readonly submittedAt: string | null;
+};
+
+/** Milestone 4 (F-104): a check run, as the Checks API keeps it. */
+export type FakeCheckRun = {
+  readonly id: number;
+  readonly repo: string;
+  readonly appId: number;
+  readonly name: string;
+  readonly headSha: string;
+  status: string;
+  conclusion: string | null;
+  title: string | null;
+  summary: string | null;
+  externalId: string | null;
+};
+
 type TokenScope = {
   readonly installationId: number;
   /** `null`: every repo of the installation. */
@@ -143,6 +173,13 @@ export type FakeGitHub = {
   readonly liveUserTokens: () => number;
   /** The next revocations fail, with this status (default 500). */
   readonly failRevocations: (count: number, status?: number) => void;
+  // ---- milestone 4 (F-104) ----
+  /** Adds a review to a PR, after the ones it has; its ID. */
+  readonly addReview: (repo: string, number: number, review: Omit<FakeReview, "id" | "repo" | "number">) => FakeReview;
+  /** Dismisses a review, as a maintainer does: it stays listed, as `DISMISSED`. */
+  readonly dismissReview: (reviewId: number) => FakeReview;
+  /** Every check run, in the order they were made. */
+  readonly checkRuns: readonly FakeCheckRun[];
   readonly close: () => Promise<void>;
 };
 
@@ -168,6 +205,16 @@ const readBody = async (request: IncomingMessage): Promise<unknown> => {
   const text = Buffer.concat(chunks).toString("utf8");
   return text === "" ? {} : JSON.parse(text);
 };
+
+/** A Checks API body: GitHub owns the format, so unknown fields are let through. */
+const checkRunBodySchema = z.looseObject({
+  name: z.string().optional(),
+  head_sha: z.string().optional(),
+  status: z.string().optional(),
+  conclusion: z.string().nullish(),
+  external_id: z.string().optional(),
+  output: z.looseObject({ title: z.string().optional(), summary: z.string().optional() }).optional(),
+});
 
 const bodySchema = z.looseObject({
   repositories: z.array(z.string()).optional(),
@@ -215,6 +262,32 @@ export const createFakeGitHub = async (options: {
   let revokedUserTokens = 0;
   let failRevocations = 0;
   let failRevocationStatus = 500;
+  const reviews: FakeReview[] = [];
+  const checkRuns: FakeCheckRun[] = [];
+  let reviewCounter = 0;
+  let checkRunCounter = 0;
+  let baseUrl = "";
+  const apiBase = (): string => baseUrl;
+  const reviewJson = (review: FakeReview) => ({
+    id: review.id,
+    node_id: `PRR_fake_${String(review.id)}`,
+    user: { id: review.userId, login: review.login, type: review.userType },
+    body: "",
+    state: review.state,
+    commit_id: review.commitId,
+    author_association: review.userType === "Bot" ? "NONE" : "MEMBER",
+    ...(review.submittedAt === null ? {} : { submitted_at: review.submittedAt }),
+  });
+  const checkRunJson = (run: FakeCheckRun) => ({
+    id: run.id,
+    name: run.name,
+    head_sha: run.headSha,
+    status: run.status,
+    conclusion: run.conclusion,
+    external_id: run.externalId,
+    output: { title: run.title, summary: run.summary },
+    app: { id: run.appId, slug: appSlug },
+  });
   const nodeIdOf = (pr: FakePullRequest): string => `PR_fake_${Buffer.from(`${pr.repo}#${String(pr.number)}`).toString("base64url")}`;
 
   const send = (response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void => {
@@ -760,6 +833,99 @@ export const createFakeGitHub = async (options: {
       send(response, 201, { id, content: body.data.content, user: { login: `${appSlug}[bot]` } });
       return;
     }
+    // ---- milestone 4: reviews and check runs (F-104)
+    const reviewsRoute = /^\/pulls\/(\d+)\/reviews$/.exec(rest);
+    if (method === "GET" && reviewsRoute?.[1] !== undefined) {
+      if (!needs("pull_requests", "read")) {
+        forbid();
+        return;
+      }
+      const number = Number(reviewsRoute[1]);
+      const held = reviews.filter((review) => review.repo === `${owner}/${name}` && review.number === number);
+      if (held.length === 0 && !pulls.some((pr) => pr.repo === `${owner}/${name}` && pr.number === number)) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      // Paged as GitHub pages it, oldest first, with a `Link` header to the next page.
+      const perPage = Math.min(Number(url.searchParams.get("per_page") ?? "30"), 100);
+      const page = Number(url.searchParams.get("page") ?? "1");
+      const slice = held.slice((page - 1) * perPage, page * perPage);
+      const next = page * perPage < held.length ? { link: `<${apiBase()}${path}?per_page=${String(perPage)}&page=${String(page + 1)}>; rel="next"` } : {};
+      send(response, 200, slice.map(reviewJson), next);
+      return;
+    }
+    const checkRunsOfRef = /^\/commits\/([^/]+)\/check-runs$/.exec(rest);
+    if (method === "GET" && checkRunsOfRef?.[1] !== undefined) {
+      if (!needs("checks", "read")) {
+        forbid();
+        return;
+      }
+      const ref = decodeURIComponent(checkRunsOfRef[1]);
+      const named = url.searchParams.get("check_name");
+      const appFilter = url.searchParams.get("app_id");
+      const found = checkRuns.filter(
+        (run) => run.repo === `${owner}/${name}` && run.headSha === ref && (named === null || run.name === named) && (appFilter === null || String(run.appId) === appFilter),
+      );
+      send(response, 200, { total_count: found.length, check_runs: found.map(checkRunJson) });
+      return;
+    }
+    if (method === "POST" && rest === "/check-runs") {
+      if (!needs("checks", "write")) {
+        forbid();
+        return;
+      }
+      const body = checkRunBodySchema.safeParse(await readBody(request));
+      if (!body.success || body.data.name === undefined || body.data.head_sha === undefined || !/^[0-9a-f]{40}$/.test(body.data.head_sha)) {
+        send(response, 422, { message: "Validation Failed" });
+        return;
+      }
+      checkRunCounter += 1;
+      const run: FakeCheckRun = {
+        id: 5_000_000 + checkRunCounter,
+        repo: `${owner}/${name}`,
+        appId: Number(appId),
+        name: body.data.name,
+        headSha: body.data.head_sha,
+        status: body.data.status ?? "queued",
+        conclusion: body.data.conclusion ?? null,
+        title: body.data.output?.title ?? null,
+        summary: body.data.output?.summary ?? null,
+        externalId: body.data.external_id ?? null,
+      };
+      checkRuns.push(run);
+      send(response, 201, checkRunJson(run));
+      return;
+    }
+    const checkRunRoute = /^\/check-runs\/(\d+)$/.exec(rest);
+    if (method === "PATCH" && checkRunRoute?.[1] !== undefined) {
+      if (!needs("checks", "write")) {
+        forbid();
+        return;
+      }
+      const run = checkRuns.find((candidate) => candidate.repo === `${owner}/${name}` && candidate.id === Number(checkRunRoute[1]));
+      if (run === undefined) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const body = checkRunBodySchema.safeParse(await readBody(request));
+      if (!body.success) {
+        send(response, 422, { message: "Validation Failed" });
+        return;
+      }
+      // As GitHub: a conclusion completes the run; an in-progress status clears it.
+      if (body.data.conclusion !== undefined && body.data.conclusion !== null) {
+        run.status = "completed";
+        run.conclusion = body.data.conclusion;
+      } else if (body.data.status !== undefined) {
+        run.status = body.data.status;
+        run.conclusion = body.data.status === "completed" ? run.conclusion : null;
+      }
+      run.title = body.data.output?.title ?? run.title;
+      run.summary = body.data.output?.summary ?? run.summary;
+      run.externalId = body.data.external_id ?? run.externalId;
+      send(response, 200, checkRunJson(run));
+      return;
+    }
     const patched = /^\/pulls\/(\d+)$/.exec(rest);
     if (method === "PATCH" && patched?.[1] !== undefined) {
       if (!needs("pull_requests", "write")) {
@@ -793,6 +959,7 @@ export const createFakeGitHub = async (options: {
   });
   const address: AddressInfo | string | null = server.address();
   const port = typeof address === "object" && address !== null ? address.port : 0;
+  baseUrl = `http://127.0.0.1:${String(port)}`;
 
   return {
     apiUrl: `http://127.0.0.1:${String(port)}`,
@@ -832,6 +999,19 @@ export const createFakeGitHub = async (options: {
       failRevocations += count;
       failRevocationStatus = status;
     },
+    addReview: (repo, number, review) => {
+      reviewCounter += 1;
+      const added: FakeReview = { ...review, id: 80_000_000 + reviewCounter, repo, number };
+      reviews.push(added);
+      return added;
+    },
+    dismissReview: (reviewId) => {
+      const found = reviews.find((review) => review.id === reviewId);
+      if (found === undefined) throw new Error("the fake has no such review");
+      found.state = "DISMISSED";
+      return found;
+    },
+    checkRuns,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

@@ -1,0 +1,21 @@
+# F-104, ticket 08: check runs and reviews on GitHub, live on ostra-test/test1
+#
+# 2026-11-19, Windows 11, the test App from ~/.config/ostra-dev/github.env and github-test.env (no token, key or
+# secret printed). The test opens a PR on a fresh branch, publishes ostra's check run on its head twice (one run),
+# updates it to success, and reads the PR's reviews before and after the App's own comment review; it then closes
+# the PR and deletes the branch. A reviewer user's approval, its dismissal and the webhooks GitHub delivers for
+# them wait for ticket 42 (the reviewer's token, and the App subscribed to pull_request_review).
+# Command: set -a; . ~/.config/ostra-dev/github.env; . ~/.config/ostra-dev/github-test.env; set +a;
+#          npx vitest run src/github-adapter.live.test.ts -t "milestone 4" --reporter=verbose
+
+ RUN  v5.1.1 <repo>/packages/adapters/adapter-github
+stdout | src/github-adapter.live.test.ts > the GitHub adapter's milestone 4, live on the test org (F-104) > F-104: publishes a check run on the PR's head once, a second publish answering the same run, and updates it to success
+live check run: one run on the head, published twice, updated to success
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 4, live on the test org (F-104) > F-104: publishes a check run on the PR's head once, a second publish answering the same run, and updates it to success 3946ms
+stdout | src/github-adapter.live.test.ts > the GitHub adapter's milestone 4, live on the test org (F-104) > F-104: lists the PR's reviews, the App's own comment review read as a bot's
+live reviews: 1 review, isBot=true, state=commented
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 4, live on the test org (F-104) > F-104: lists the PR's reviews, the App's own comment review read as a bot's 1962ms
+ Test Files  1 passed (1)
+      Tests  2 passed | 12 skipped (14)
+   Start at  18:42:43
+   Duration  13.74s (tests 96%, import 2%, transform 2%)

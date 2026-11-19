@@ -187,3 +187,46 @@ export const pushWebhookSchema = z.looseObject({
 export const userTokenSchema = z
   .looseObject({ access_token: z.string().min(1).optional(), error: z.string().min(1).optional() })
   .refine((answer) => answer.access_token !== undefined || answer.error !== undefined, "neither a token nor an error");
+
+// ---------- milestone 4 (F-104, ADR 0040) ----------
+
+/** A review's author: `type` is `Bot` for an App's bot (`<slug>[bot]`), `User` for a person. */
+const reviewUserSchema = z.looseObject({ id: z.number().int(), login: z.string().min(1), type: z.string().optional() });
+
+/**
+ * One review, as `GET /repos/{o}/{r}/pulls/{n}/reviews` lists it and the `pull_request_review`
+ * webhook carries it. The REST API writes the state in capitals (`APPROVED`), the webhook in small
+ * letters (`approved`); a pending review has no `submitted_at`. The body is never read. A deleted
+ * account's review has `user: null`.
+ */
+export const reviewSchema = z.looseObject({
+  id: z.number().int(),
+  user: reviewUserSchema.nullish(),
+  state: z.string().min(1),
+  commit_id: z.string().nullish(),
+  submitted_at: z.string().nullish(),
+});
+export const reviewListSchema = z.array(reviewSchema);
+export type GitHubReview = z.infer<typeof reviewSchema>;
+
+/** A `pull_request_review` webhook: a review submitted, edited or dismissed, with the PR's head. */
+export const reviewWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+  pull_request: z.looseObject({ number: z.number().int().positive(), head: z.looseObject({ sha: z.string().min(1) }) }),
+  review: reviewSchema,
+});
+
+/** A check run, as the Checks API answers one. */
+export const checkRunSchema = z.looseObject({
+  id: z.number().int(),
+  name: z.string(),
+  head_sha: z.string().min(1),
+  status: z.string(),
+  conclusion: z.string().nullish(),
+  app: z.looseObject({ id: z.number().int() }).nullish(),
+});
+
+/** `GET /repos/{o}/{r}/commits/{ref}/check-runs`. */
+export const checkRunListSchema = z.looseObject({ total_count: z.number().int().nonnegative(), check_runs: z.array(checkRunSchema) });

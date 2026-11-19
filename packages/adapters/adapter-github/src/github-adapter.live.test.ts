@@ -448,3 +448,108 @@ describe.skipIf(!env.success)("the GitHub adapter's milestone 3, live on the tes
     });
   }, 120_000);
 });
+
+// Milestone 4 (ticket 08, F-104), live: a check run published once per head and updated, and a
+// PR's reviews read back, on a PR the test opens in `test1`. The review a reviewer user sends, its
+// dismissal and the webhooks GitHub delivers for them need the reviewer's token and the App's
+// `pull_request_review` event (ticket 42, steps 2 and 3), so they are the maintainer's run.
+
+describe.skipIf(!env.success)("the GitHub adapter's milestone 4, live on the test org (F-104)", () => {
+  const adapter = new GitHubAdapter({ userAgent });
+  let access: RepoAccess;
+  let api: Octokit;
+  let base = "";
+  let branch: string | undefined;
+  let prNumber: number | undefined;
+  let headSha = "";
+  const name = `ostra/live-check-${String(Date.now())}`;
+
+  const config = (): z.infer<typeof envSchema> => {
+    if (!env.success) {
+      throw new Error("the live environment is not loaded");
+    }
+    return env.data;
+  };
+  const target = (): { readonly owner: string; readonly repo: string } => ({ owner: config().GITHUB_TEST_ORG, repo: config().GITHUB_TEST_REPO });
+
+  beforeAll(async () => {
+    const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PATH, GITHUB_APP_INSTALLATION_ID, GITHUB_TEST_ORG, GITHUB_TEST_REPO } = config();
+    const app = { appId: GITHUB_APP_ID, privateKey: await readFile(GITHUB_APP_PRIVATE_KEY_PATH, "utf8") };
+    access = { app, installationId: GITHUB_APP_INSTALLATION_ID, repo: repoFullNameSchema.parse(`${GITHUB_TEST_ORG}/${GITHUB_TEST_REPO}`) };
+    const token = await adapter.mintRepoToken(access, { contents: "write", pull_requests: "write", metadata: "read" });
+    if (!token.ok) {
+      throw new Error(`could not mint a setup token: ${token.error.message}`);
+    }
+    api = new Octokit({ auth: token.value.token, userAgent });
+    const defaultBranch = await adapter.getDefaultBranch(access);
+    if (!defaultBranch.ok) {
+      throw new Error("no default branch");
+    }
+    base = defaultBranch.value;
+    const head = await api.rest.git.getRef({ ...target(), ref: `heads/${base}` });
+    branch = `ostra/live-m4-${String(Date.now())}`;
+    await api.rest.git.createRef({ ...target(), ref: `refs/heads/${branch}`, sha: head.data.object.sha });
+    const committed = await api.rest.repos.createOrUpdateFileContents({
+      ...target(),
+      path: `live-test/${branch.replaceAll("/", "-")}.md`,
+      message: "ostra live test: a milestone 4 probe",
+      content: Buffer.from("A probe from the ostra GitHub adapter's milestone 4 live test.\n").toString("base64"),
+      branch,
+    });
+    headSha = committed.data.commit.sha ?? "";
+    const opened = await adapter.openPullRequest({ access, head: branch, base, title: "ostra live test (milestone 4): safe to close", body: "Opened by the adapter's live test.", draft: false });
+    if (!opened.ok) throw new Error(opened.error.message);
+    prNumber = opened.value.number;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (prNumber !== undefined) {
+      await api.rest.pulls.update({ ...target(), pull_number: prNumber, state: "closed" });
+    }
+    if (branch !== undefined) {
+      await api.rest.git.deleteRef({ ...target(), ref: `heads/${branch}` });
+    }
+  }, 60_000);
+
+  it("F-104: publishes a check run on the PR's head once, a second publish answering the same run, and updates it to success", async () => {
+    const input = {
+      name,
+      headSha,
+      status: "in_progress",
+      conclusion: null,
+      title: "Waiting for an independent reviewer",
+      summary: "A member who didn't drive the task approves the PR's current head.",
+      externalId: "live-test",
+    } as const;
+    const first = await adapter.publishCheckRun(access, input);
+    if (!first.ok) throw new Error(first.error.message);
+    expect(await adapter.publishCheckRun(access, input)).toEqual(first);
+    // Read back with a token of its own that can read checks, as a person's view of the head would.
+    const reader = await adapter.mintRepoToken(access, { checks: "read", metadata: "read" });
+    if (!reader.ok) throw new Error(reader.error.message);
+    const checks = new Octokit({ auth: reader.value.token, userAgent });
+    const runs = await checks.request("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", { ...target(), ref: headSha, check_name: name, filter: "all" });
+    expect(runs.data.check_runs.map((run) => String(run.id))).toEqual([first.value.checkRunId]);
+    expect(runs.data.check_runs[0]).toMatchObject({ status: "in_progress", conclusion: null, external_id: "live-test", output: { title: input.title } });
+    expect(await adapter.updateCheckRun(access, first.value.checkRunId, { ...input, status: "completed", conclusion: "success", title: "Approved by an independent reviewer" })).toEqual({ ok: true, value: undefined });
+    const done = await checks.request("GET /repos/{owner}/{repo}/check-runs/{check_run_id}", { ...target(), check_run_id: Number(first.value.checkRunId) });
+    expect(done.data).toMatchObject({ status: "completed", conclusion: "success", head_sha: headSha, output: { title: "Approved by an independent reviewer" } });
+    // After the update, a publish for the head still answers the same run.
+    expect(await adapter.publishCheckRun(access, input)).toEqual(first);
+    console.info(`live check run: one run on the head, published twice, updated to ${String(done.data.conclusion)}`);
+  }, 60_000);
+
+  it("F-104: lists the PR's reviews, the App's own comment review read as a bot's", async () => {
+    if (prNumber === undefined) throw new Error("no PR");
+    expect(await adapter.listReviews(access, prNumber)).toEqual({ ok: true, value: [] });
+    // The App can comment on its own PR (it can't approve it): its bot is the review's author.
+    await api.rest.pulls.createReview({ ...target(), pull_number: prNumber, commit_id: headSha, event: "COMMENT", body: "ostra live test: the App's own comment review." });
+    const listed = await adapter.listReviews(access, prNumber);
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value).toHaveLength(1);
+    expect(listed.value[0]).toMatchObject({ isBot: true, state: "commented", commitId: headSha });
+    expect(listed.value[0]?.login).toMatch(/\[bot\]$/);
+    expect(listed.value[0]?.submittedAt).toEqual(expect.any(Number));
+    console.info(`live reviews: ${String(listed.value.length)} review, isBot=${String(listed.value[0]?.isBot)}, state=${String(listed.value[0]?.state)}`);
+  }, 60_000);
+});

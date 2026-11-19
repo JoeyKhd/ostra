@@ -1,4 +1,7 @@
+import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
+
+import type { CheckRunState, PullRequestReview } from "@ostra/adapter-sdk";
 
 import { defineCodeHostContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
 import type { CodeHostFixture } from "@ostra/adapter-sdk/testing";
@@ -6,7 +9,7 @@ import { repoFullNameSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createFakeGitHub } from "./fake-github.ts";
-import type { FakeGitHub } from "./fake-github.ts";
+import type { FakeGitHub, FakeReview } from "./fake-github.ts";
 import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter } from "./github-adapter.ts";
 
 const template = "## What\n\n## Why\n";
@@ -200,6 +203,84 @@ const pullRequestPayload = (overrides: Readonly<Record<string, unknown>> = {}, p
     ...overrides,
   });
 
+// ---- milestone 4 (ticket 08, F-104): reviews, check runs, and the review webhooks ----
+
+const REVIEWED_PR = 40;
+const reviewedHead = "e".repeat(40);
+const olderHead = "f".repeat(40);
+const at = (minute: number): string => new Date(Date.UTC(2026, 10, 18, 12, minute)).toISOString();
+
+/** A `pull_request_review` webhook's payload, as GitHub documents it ("Webhook events and payloads"), with a field ostra doesn't read. */
+const reviewPayload = (input: { readonly action: "submitted" | "edited" | "dismissed"; readonly reviewId: number; readonly state: string; readonly userId: number; readonly login: string; readonly type: "User" | "Bot" }): string =>
+  JSON.stringify({
+    action: input.action,
+    review: {
+      id: input.reviewId,
+      node_id: `PRR_${String(input.reviewId)}`,
+      user: { login: input.login, id: input.userId, type: input.type, site_admin: false },
+      body: "Looks good.",
+      commit_id: reviewedHead,
+      submitted_at: at(30),
+      state: input.state,
+      html_url: `https://github.example/fake-org/test1/pull/${String(REVIEWED_PR)}#pullrequestreview-${String(input.reviewId)}`,
+      author_association: "MEMBER",
+      a_field_github_adds_later: { anything: true },
+    },
+    pull_request: { number: REVIEWED_PR, title: "a PR", head: { ref: "ostra/contract", sha: reviewedHead }, base: { ref: "main" } },
+    repository: { id: 1001, full_name: "fake-org/test1" },
+    installation: { id: 7 },
+    sender: { login: input.login, id: input.userId },
+  });
+
+const milestone4Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "reviews" | "checkRuns" | "reviewWebhooks"> => {
+  const repo = "fake-org/test1";
+  // Oldest first: a bot's comment, a person's approval since dismissed, a change request on an older head, and an approval.
+  const bot = fake.addReview(repo, REVIEWED_PR, { userId: fake.botId, login: `${fake.appSlug}[bot]`, userType: "Bot", state: "COMMENTED", commitId: reviewedHead, submittedAt: at(1) });
+  const dismissed = fake.addReview(repo, REVIEWED_PR, { userId: 583231, login: "octocat", userType: "User", state: "APPROVED", commitId: olderHead, submittedAt: at(2) });
+  fake.dismissReview(dismissed.id);
+  const changes = fake.addReview(repo, REVIEWED_PR, { userId: 583232, login: "hubot", userType: "User", state: "CHANGES_REQUESTED", commitId: olderHead, submittedAt: at(3) });
+  const approved = fake.addReview(repo, REVIEWED_PR, { userId: 583233, login: "monalisa", userType: "User", state: "APPROVED", commitId: reviewedHead, submittedAt: at(4) });
+  const expected = (review: FakeReview, state: PullRequestReview["state"]): PullRequestReview => ({
+    reviewId: String(review.id),
+    userId: String(review.userId),
+    login: review.login,
+    isBot: review.userType === "Bot",
+    state,
+    commitId: review.commitId,
+    submittedAt: review.submittedAt === null ? null : Date.parse(review.submittedAt),
+  });
+  const synchronize = pullRequestPayload({ action: "synchronize", number: REVIEWED_PR }, { number: REVIEWED_PR, state: "open", merged: false, merged_at: null, closed_at: null, head: { ref: "ostra/contract", sha: reviewedHead } });
+  return {
+    reviews: { number: REVIEWED_PR, expected: [expected(bot, "commented"), expected(dismissed, "dismissed"), expected(changes, "changes_requested"), expected(approved, "approved")] },
+    checkRuns: {
+      headSha: reviewedHead,
+      otherHeadSha: olderHead,
+      read: (checkRunId) => {
+        const run = fake.checkRuns.find((candidate) => String(candidate.id) === checkRunId);
+        if (run === undefined) return Promise.resolve(undefined);
+        const conclusion = run.conclusion === "success" || run.conclusion === "action_required" ? run.conclusion : null;
+        const state: CheckRunState = run.status === "completed" && conclusion !== null ? { status: "completed", conclusion } : { status: "in_progress", conclusion: null };
+        return Promise.resolve({ checkRunId, name: run.name, headSha: run.headSha, title: run.title ?? "", summary: run.summary ?? "", externalId: run.externalId ?? "", ...state });
+      },
+      count: (headSha, name) => Promise.resolve(fake.checkRuns.filter((run) => run.headSha === headSha && run.name === name).length),
+    },
+    reviewWebhooks: {
+      submitted: {
+        input: signed(fake, "pull_request_review", reviewPayload({ action: "submitted", reviewId: approved.id, state: "approved", userId: 583233, login: "monalisa", type: "User" })),
+        number: REVIEWED_PR,
+        headSha: reviewedHead,
+        review: { reviewId: String(approved.id), userId: "583233", login: "monalisa", isBot: false, state: "approved", commitId: reviewedHead, submittedAt: Date.parse(at(30)) },
+      },
+      dismissed: {
+        input: signed(fake, "pull_request_review", reviewPayload({ action: "dismissed", reviewId: dismissed.id, state: "dismissed", userId: 583231, login: "octocat", type: "User" })),
+        number: REVIEWED_PR,
+        reviewId: String(dismissed.id),
+      },
+      synchronize: { input: signed(fake, "pull_request", synchronize), number: REVIEWED_PR, headSha: reviewedHead },
+    },
+  };
+};
+
 const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
   const app = { appId: fake.appId, privateKey: fake.privateKey };
   const body = JSON.stringify({ action: "opened", number: 1 });
@@ -233,6 +314,7 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
       { branch: "ostra/classic", expected: { protected: true, requiresSignedCommits: "unknown" } },
     ],
     ...milestone3Fixture(fake),
+    ...milestone4Fixture(fake),
   };
 };
 
@@ -937,7 +1019,9 @@ describe("the GitHub adapter", () => {
     it("F-053: reads a body that isn't JSON, or isn't the event it says, as invalid, and other events as other", () => {
       expect(adapter.parseWebhook(signed(fake, "issue_comment", "{nope"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
       expect(adapter.parseWebhook(signed(fake, "pull_request_review_comment", "{}"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
-      expect(adapter.parseWebhook(signed(fake, "pull_request_review", "{}"))).toEqual({ ok: true, value: { kind: "other", event: "pull_request_review" } });
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review_thread", "{}"))).toEqual({ ok: true, value: { kind: "other", event: "pull_request_review_thread" } });
+      // Milestone 4 reads the review event itself (ticket 08): an empty one is invalid, not other.
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review", "{}"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
     });
 
     it("F-053: reacts 👀 to a line comment once, with a PR-scoped token, and refuses a comment that isn't there", async () => {
@@ -1061,9 +1145,153 @@ describe("the GitHub adapter", () => {
         draftPullRequests: true,
         prComments: true,
         userLink: true,
-        // Milestone 4: until ticket 08.
-        reviews: false,
+        // Milestone 4 (ticket 08).
+        reviews: true,
       });
+    });
+  });
+
+  // ---- milestone 4 (ticket 08, F-104, ADR 0040) ----
+  describe("reviews and check runs", () => {
+    const repo = "fake-org/test1";
+    const head = "1".repeat(40);
+    const access = (): CodeHostFixture["access"] => fixture.access;
+
+    it("F-104: lists every page of a PR's reviews, oldest first, each with its author's ID and login, whether a bot wrote it, its lower-cased state, commit and time", async () => {
+      const number = 41;
+      for (let index = 0; index < 130; index += 1) {
+        fake.addReview(repo, number, {
+          userId: 600_000 + index,
+          login: `reviewer-${String(index)}`,
+          userType: index === 0 ? "Bot" : "User",
+          state: index === 129 ? "APPROVED" : "COMMENTED",
+          commitId: head,
+          submittedAt: new Date(Date.UTC(2026, 10, 18, 12, 0, index)).toISOString(),
+        });
+      }
+      const pending = fake.addReview(repo, number, { userId: 700_001, login: "drafty", userType: "User", state: "PENDING", commitId: head, submittedAt: null });
+      const listed = await adapter.listReviews(access(), number);
+      if (!listed.ok) throw new Error(listed.error.message);
+      expect(listed.value).toHaveLength(131);
+      expect(listed.value[0]).toMatchObject({ userId: "600000", login: "reviewer-0", isBot: true, state: "commented", commitId: head, submittedAt: Date.UTC(2026, 10, 18, 12, 0, 0) });
+      expect(listed.value[0]?.reviewId).toMatch(/^\d+$/);
+      expect(listed.value[129]).toMatchObject({ userId: "600129", isBot: false, state: "approved" });
+      expect(listed.value[130]).toEqual({ reviewId: String(pending.id), userId: "700001", login: "drafty", isBot: false, state: "pending", commitId: head, submittedAt: null });
+      // Oldest first, as GitHub lists them, across its pages of 100.
+      expect(listed.value.map((review) => review.login).slice(98, 102)).toEqual(["reviewer-98", "reviewer-99", "reviewer-100", "reviewer-101"]);
+      expect(fake.requests.filter((request) => request.path === `/repos/${repo}/pulls/${String(number)}/reviews`)).toHaveLength(2);
+      expect(await adapter.listReviews(access(), 0)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(await adapter.listReviews(access(), 9999)).toMatchObject({ ok: false, error: { code: "not-found" } });
+    });
+
+    it("F-104: publishes a check run with a token for the one repo and `checks: write`, in progress with no conclusion, its words and its external ID", async () => {
+      const before = new Set(fake.tokens.keys());
+      const published = await adapter.publishCheckRun(access(), {
+        name: "ostra/independent-review",
+        headSha: head,
+        status: "in_progress",
+        conclusion: null,
+        title: "Waiting for an independent reviewer",
+        summary: "A member who didn't drive the task approves the PR's current head.",
+        externalId: "task-repo-123",
+      });
+      if (!published.ok) throw new Error(published.error.message);
+      const run = fake.checkRuns.find((candidate) => String(candidate.id) === published.value.checkRunId);
+      expect(run).toMatchObject({ repo, name: "ostra/independent-review", headSha: head, status: "in_progress", conclusion: null, title: "Waiting for an independent reviewer", externalId: "task-repo-123", appId: Number(fake.appId) });
+      const minted = [...fake.tokens.entries()].filter(([token]) => !before.has(token)).map(([, scope]) => scope);
+      expect(minted).toEqual([expect.objectContaining({ repos: ["test1"], permissions: { checks: "write", metadata: "read" } })]);
+      // Completed with a conclusion, then back: each a PATCH of the same run.
+      expect(await adapter.updateCheckRun(access(), published.value.checkRunId, { name: "ostra/independent-review", headSha: head, status: "completed", conclusion: "success", title: "Approved", summary: "monalisa approved this head.", externalId: "task-repo-123" })).toEqual({ ok: true, value: undefined });
+      expect(run).toMatchObject({ status: "completed", conclusion: "success", title: "Approved", summary: "monalisa approved this head." });
+      expect(fake.checkRuns.filter((candidate) => candidate.headSha === head && candidate.name === "ostra/independent-review")).toHaveLength(1);
+    });
+
+    it("F-104: refuses a check run on a head that isn't a commit SHA, or with no name, before calling GitHub; an unknown run is not-found", async () => {
+      const input = { name: "ostra/independent-review", headSha: head, status: "in_progress", conclusion: null, title: "t", summary: "s", externalId: "x" } as const;
+      const calls = fake.requests.length;
+      expect(await adapter.publishCheckRun(access(), { ...input, headSha: "main" })).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(await adapter.publishCheckRun(access(), { ...input, name: " " })).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(await adapter.updateCheckRun(access(), "not-a-number", input)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(fake.requests.length).toBe(calls);
+      expect(await adapter.updateCheckRun(access(), "999999", input)).toMatchObject({ ok: false, error: { code: "not-found" } });
+    });
+
+    it("F-104: reads a review webhook whatever GitHub adds to it, a bot's review as a bot's, and refuses one it can't read", () => {
+      const body = (review: Readonly<Record<string, unknown>>): string =>
+        JSON.stringify({
+          action: "submitted",
+          review: { id: 9, user: { id: fake.botId, login: `${fake.appSlug}[bot]`, type: "Bot" }, state: "commented", commit_id: head, submitted_at: "2026-11-18T12:00:00Z", ...review },
+          pull_request: { number: 3, head: { sha: head }, extra: [1, 2] },
+          repository: { id: 1001, full_name: repo },
+          installation: { id: 7 },
+          enterprise: { id: 1 },
+        });
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review", body({})))).toEqual({
+        ok: true,
+        value: {
+          kind: "pull_request_review",
+          action: "submitted",
+          installationId: "7",
+          hostRepoId: "1001",
+          repo,
+          number: 3,
+          headSha: head,
+          review: { reviewId: "9", userId: String(fake.botId), login: `${fake.appSlug}[bot]`, isBot: true, state: "commented", commitId: head, submittedAt: Date.parse("2026-11-18T12:00:00Z") },
+        },
+      });
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review", body({ state: "a-state-github-never-sent" })))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+      expect(adapter.parseWebhook(signed(fake, "pull_request_review", "not json"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+    });
+  });
+
+  // The review harness, ported from spikes/github-app-and-git-proxy/src/harness/review-local.ts: the
+  // reviews the independent-review check reads past, as the adapter reads them from the fake GitHub,
+  // and the webhook's signature. The evaluator itself is the domain's (`packages/domain`, ticket 06).
+  describe("the review harness (spike 4)", () => {
+    const repo = "fake-org/test1";
+    const head = "a".repeat(40);
+    const old = "b".repeat(40);
+    const minute = (m: number): string => new Date(Date.UTC(2026, 10, 18, 12, m)).toISOString();
+
+    it("F-104: reads each review the check tells apart: the App's own comment, the driver's approval, another member's, one of an older commit, one withdrawn by a change request", async () => {
+      const number = 42;
+      const add = (login: string, userId: number, state: string, commitId: string, m: number, userType: "User" | "Bot" = "User") =>
+        fake.addReview(repo, number, { userId, login, userType, state, commitId, submittedAt: minute(m) });
+      add(`${fake.appSlug}[bot]`, fake.botId, "COMMENTED", head, 1, "Bot");
+      add("driver", 1, "APPROVED", head, 2);
+      add("reviewer", 2, "APPROVED", old, 3);
+      add("reviewer", 2, "APPROVED", head, 4);
+      add("reviewer", 2, "CHANGES_REQUESTED", head, 5);
+      add("other", 3, "APPROVED", head, 6);
+      add("other", 3, "COMMENTED", head, 7);
+      const listed = await adapter.listReviews(fixture.access, number);
+      if (!listed.ok) throw new Error(listed.error.message);
+      expect(listed.value.map((review) => [review.login, review.isBot, review.state, review.commitId === head ? "head" : "old"])).toEqual([
+        [`${fake.appSlug}[bot]`, true, "commented", "head"],
+        ["driver", false, "approved", "head"],
+        ["reviewer", false, "approved", "old"],
+        ["reviewer", false, "approved", "head"],
+        ["reviewer", false, "changes_requested", "head"],
+        ["other", false, "approved", "head"],
+        ["other", false, "commented", "head"],
+      ]);
+      // In order, so a later change request reads as withdrawing the earlier approval.
+      expect(listed.value.map((review) => review.submittedAt)).toEqual([...listed.value.map((review) => review.submittedAt)].sort((a, b) => (a ?? 0) - (b ?? 0)));
+    });
+
+    it("F-104: a correctly signed pull_request_review webhook is read; one with a bad signature or none is refused", () => {
+      const body = JSON.stringify({
+        action: "submitted",
+        review: { id: 1, state: "approved", user: { id: 2, login: "reviewer", type: "User" }, commit_id: head, submitted_at: minute(1) },
+        pull_request: { number: 7, head: { sha: head } },
+        repository: { id: 1001, full_name: repo },
+        installation: { id: 7 },
+      });
+      const good = signed(fake, "pull_request_review", body);
+      expect(adapter.verifyWebhook(good)).toBe(true);
+      expect(adapter.parseWebhook(good)).toMatchObject({ ok: true, value: { kind: "pull_request_review", number: 7, review: { login: "reviewer", state: "approved" } } });
+      expect(adapter.verifyWebhook({ ...good, headers: { ...good.headers, "x-hub-signature-256": `sha256=${createHmac("sha256", "not-the-secret").update(body).digest("hex")}` } })).toBe(false);
+      expect(adapter.verifyWebhook({ ...good, headers: { "x-github-event": "pull_request_review" } })).toBe(false);
     });
   });
 });

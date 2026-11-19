@@ -10,6 +10,7 @@ import type {
   AppManifest,
   AppManifestInput,
   BranchRules,
+  CheckRunInput,
   CodeHostAppCredentials,
   CodeHostCapabilities,
   CodeHostOAuthClient,
@@ -30,6 +31,9 @@ import type {
   PullRequest,
   PullRequestComment,
   PullRequestDetails,
+  PullRequestReview,
+  PullRequestReviewState,
+  PublishedCheckRun,
   Reaction,
   ReadFilesResult,
   RepoAccess,
@@ -49,6 +53,8 @@ import {
   branchProtectionSchema,
   branchRulesSchema,
   branchSchema,
+  checkRunListSchema,
+  checkRunSchema,
   compareSchema,
   contentFileSchema,
   conversionSchema,
@@ -63,10 +69,13 @@ import {
   pushWebhookSchema,
   repoSchema,
   reviewCommentWebhookSchema,
+  reviewListSchema,
+  reviewWebhookSchema,
   treeSchema,
   userSchema,
   userTokenSchema,
 } from "./schemas.ts";
+import type { GitHubReview } from "./schemas.ts";
 
 // The GitHub code host adapter (ADR 0040, ADR 0030, ADR 0025). The organization's own GitHub App
 // opens every PR. Tokens are minted for one repo at a time, with named permissions. Ported from
@@ -219,8 +228,8 @@ export class GitHubAdapter extends CodeHostAdapter {
       draftPullRequests: true,
       prComments: true,
       userLink: true,
-      // Milestone 4: reviews and the review webhook come with ticket 08.
-      reviews: false,
+      // Milestone 4 (ticket 08): `listReviews`, the `pull_request_review` webhook, and check runs.
+      reviews: true,
     };
   }
 
@@ -675,7 +684,7 @@ export class GitHubAdapter extends CodeHostAdapter {
     if (event === undefined || event === "") {
       return adapterError("invalid-response", "the webhook has no X-GitHub-Event header");
     }
-    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push") {
+    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push" && event !== "pull_request_review") {
       return ok({ kind: "other", event });
     }
     let payload: unknown;
@@ -693,6 +702,8 @@ export class GitHubAdapter extends CodeHostAdapter {
         return parseReviewCommentWebhook(payload);
       case "push":
         return parsePushWebhook(payload);
+      case "pull_request_review":
+        return parseReviewWebhook(payload);
       default:
         return event satisfies never;
     }
@@ -916,6 +927,111 @@ export class GitHubAdapter extends CodeHostAdapter {
   }
 
   // ---------- webhooks ----------
+
+  // ---------- milestone 4 (F-104, ADR 0040): reviews and check runs ----------
+
+  override async listReviews(access: RepoAccess, number: number): Promise<AdapterResult<readonly PullRequestReview[]>> {
+    if (!Number.isSafeInteger(number) || number < 1) {
+      return adapterError("invalid-input", "a PR number is a positive whole number");
+    }
+    return this.#guarded("listing a PR's reviews", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      // Every page, oldest first, as GitHub lists them: a dismissed review stays, as `DISMISSED`.
+      const raw = await octokit.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews", { owner, repo: name, pull_number: number, per_page: 100 });
+      const parsed = parseVendor(reviewListSchema, raw, "GitHub's reviews");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      const reviews: PullRequestReview[] = [];
+      for (const item of parsed.value) {
+        const review = toReview(item);
+        if (review === null) {
+          return adapterError("invalid-response", "GitHub listed a review whose state or time could not be read");
+        }
+        // A deleted account's review has no author: nobody's approval, so it's left out.
+        if (review !== "no-author") {
+          reviews.push(review);
+        }
+      }
+      return ok(reviews);
+    });
+  }
+
+  override async publishCheckRun(access: RepoAccess, input: CheckRunInput): Promise<AdapterResult<PublishedCheckRun>> {
+    const refused = checkRunRefusal(input);
+    if (refused !== null) {
+      return adapterError("invalid-input", refused);
+    }
+    // Idempotent by `(headSha, name)`: this App's runs on the head under the name are read first, so
+    // a retry after a lost answer finds the run it made (ADR 0040).
+    return this.#guarded("publishing a check run", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { checks: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const listed = await octokit.request("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", {
+        owner,
+        repo: name,
+        ref: input.headSha,
+        check_name: input.name,
+        app_id: Number(access.app.appId),
+        filter: "all",
+        per_page: 100,
+      });
+      const existing = parseVendor(checkRunListSchema, listed.data, "GitHub's check runs");
+      if (!existing.ok) {
+        return existing;
+      }
+      const [ours] = existing.value.check_runs
+        .filter((run) => run.name === input.name && run.head_sha === input.headSha && (run.app === null || run.app === undefined || String(run.app.id) === access.app.appId))
+        .sort((a, b) => a.id - b.id);
+      if (ours !== undefined) {
+        return ok({ checkRunId: String(ours.id) });
+      }
+      // The title and summary are ostra's words, sent as data in the JSON body.
+      const created = await octokit.request("POST /repos/{owner}/{repo}/check-runs", {
+        owner,
+        repo: name,
+        name: input.name,
+        head_sha: input.headSha,
+        external_id: input.externalId,
+        ...checkRunState(input),
+      });
+      const parsed = parseVendor(checkRunSchema, created.data, "GitHub's new check run");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      this.plumbing.logger.info("github.check-run.published", { repo: access.repo, checkRunId: parsed.value.id, status: input.status });
+      return ok({ checkRunId: String(parsed.value.id) });
+    });
+  }
+
+  override async updateCheckRun(access: RepoAccess, checkRunId: string, input: CheckRunInput): Promise<AdapterResult<void>> {
+    if (!/^[1-9]\d{0,19}$/.test(checkRunId)) {
+      return adapterError("invalid-input", "a check run ID is GitHub's number");
+    }
+    const refused = checkRunRefusal(input);
+    if (refused !== null) {
+      return adapterError("invalid-input", refused);
+    }
+    // A PATCH that writes the same state twice is the same run: safe to retry.
+    return this.#guarded("updating a check run", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { checks: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const response = await octokit.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+        owner,
+        repo: name,
+        check_run_id: Number(checkRunId),
+        external_id: input.externalId,
+        ...checkRunState(input),
+      });
+      const parsed = parseVendor(checkRunSchema, response.data, "GitHub's updated check run");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      this.plumbing.logger.info("github.check-run.updated", { repo: access.repo, checkRunId: parsed.value.id, status: input.status });
+      return ok(undefined);
+    });
+  }
 
   verifyWebhook(input: WebhookInput): boolean {
     const header = Object.entries(input.headers).find(([name]) => name.toLowerCase() === "x-hub-signature-256")?.[1];
@@ -1245,3 +1361,85 @@ const parsePushWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent>
   });
 };
 
+// ---------- milestone 4 (F-104, ADR 0040): reviews and check runs ----------
+
+const REVIEW_STATES: Readonly<Partial<Record<string, PullRequestReviewState>>> = {
+  approved: "approved",
+  changes_requested: "changes_requested",
+  commented: "commented",
+  dismissed: "dismissed",
+  pending: "pending",
+};
+
+/**
+ * A review as ostra reads it: the author's numeric ID and login, `isBot` from the author's type,
+ * the state in small letters (the REST API writes `APPROVED`, the webhook `approved`). `null` for a
+ * state or time that can't be read; `no-author` for a review whose account was deleted.
+ */
+const toReview = (review: GitHubReview): PullRequestReview | "no-author" | null => {
+  const state = REVIEW_STATES[review.state.toLowerCase()];
+  const submittedAt = review.submitted_at === null || review.submitted_at === undefined ? null : Date.parse(review.submitted_at);
+  if (state === undefined || Number.isNaN(submittedAt ?? 0)) {
+    return null;
+  }
+  if (review.user === null || review.user === undefined) {
+    return "no-author";
+  }
+  return {
+    reviewId: String(review.id),
+    userId: String(review.user.id),
+    login: review.user.login,
+    isBot: review.user.type === "Bot",
+    state,
+    commitId: review.commit_id ?? null,
+    submittedAt,
+  };
+};
+
+/** GitHub's limits on a check run's words: a summary of 65,535 characters, and a name, title and external ID kept short. */
+const CHECK_SUMMARY_MAX = 65_535;
+const CHECK_TEXT_MAX = 1024;
+
+const checkRunRefusal = (input: CheckRunInput): string | null => {
+  if (!/^[0-9a-f]{40}$/.test(input.headSha)) {
+    return "a check run's head is a 40-character commit SHA";
+  }
+  if (input.name.trim() === "" || input.name.length > CHECK_TEXT_MAX || input.title.length > CHECK_TEXT_MAX || input.externalId.length > CHECK_TEXT_MAX) {
+    return "a check run needs a name, and its name, title and external ID are at most 1,024 characters";
+  }
+  if (input.summary.length > CHECK_SUMMARY_MAX) {
+    return "a check run's summary is at most 65,535 characters";
+  }
+  return null;
+};
+
+/** A check run's status, conclusion and words as the Checks API takes them: no conclusion while in progress. */
+const checkRunState = (
+  input: CheckRunInput,
+): { readonly status: "in_progress" | "completed"; readonly conclusion?: "success" | "action_required"; readonly output: { readonly title: string; readonly summary: string } } =>
+  input.status === "completed"
+    ? { status: "completed", conclusion: input.conclusion, output: { title: input.title, summary: input.summary } }
+    : { status: "in_progress", output: { title: input.title, summary: input.summary } };
+
+const parseReviewWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(reviewWebhookSchema, payload, "GitHub's pull_request_review webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { action, installation, repository, pull_request: pr, review } = parsed.value;
+  const fullName = repoFullNameSchema.safeParse(repository.full_name);
+  const read = toReview(review);
+  if (!fullName.success || read === null || read === "no-author") {
+    return adapterError("invalid-response", "the pull_request_review webhook names a repo, a review state or an author that could not be read");
+  }
+  return ok({
+    kind: "pull_request_review",
+    action,
+    installationId: installationIdOf(installation),
+    hostRepoId: String(repository.id),
+    repo: fullName.data,
+    number: pr.number,
+    headSha: pr.head.sha,
+    review: read,
+  });
+};
