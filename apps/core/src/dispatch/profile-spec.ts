@@ -1,0 +1,136 @@
+import { createHash } from "node:crypto";
+
+import type { Db } from "@ostra/db";
+import { mcpProxyPathFor, storedMcpServersSchema, storedSkillFilesSchema } from "@ostra/domain";
+import { approvalRulesSchema, blobIdSchema, organizationIdSchema, projectIdSchema, runnerLimits, taskIdSchema, taskRuleSchema } from "@ostra/protocol";
+import type { ApprovalRule, BlobId, TaskRule, TaskSpecMcpServer, TaskSpecSkill, TurnMode } from "@ostra/protocol";
+
+import type { BlobService } from "../blobs/blob-service.ts";
+
+// The task spec's profile parts (F-021, ADR 0049, milestone 3's ticket 16): what the dispatch adds
+// to the agent section from the profile the session runs with. Instructions sit beside the repo's
+// own `AGENTS.md` (the agent section's `instructions`, as milestone 1 sent them); skills are copied
+// into the blob store as blobs of the task and named by their blob IDs; an HTTP MCP server becomes a
+// path on the sidecar's MCP proxy, whose URL and secret headers go in the credentials only; a stdio
+// server keeps its command and its variables, which hold no secret; the profile's approval rules
+// and the task's own rules; plan first. The first turn runs in plan mode only for the task's first
+// session, with plan first on and no plan proposed yet.
+
+/** The purposes the copied skill blobs are stored under: words, never content. */
+export const SKILL_BODY_PURPOSE = "agent-skill";
+export const SKILL_FILE_PURPOSE = "agent-skill-file";
+
+export type ProfileSpecParts = {
+  readonly skills: readonly TaskSpecSkill[];
+  readonly mcpServers: readonly TaskSpecMcpServer[];
+  readonly approvalRules: readonly ApprovalRule[];
+  readonly taskRules: readonly TaskRule[];
+  readonly planFirst: boolean;
+  readonly firstTurnMode: TurnMode;
+};
+
+export type ProfileSpecResult =
+  | { readonly ok: true; readonly parts: ProfileSpecParts }
+  /** The profile's stored rules or servers don't parse, or a skill's file can't be copied: the task doesn't run without them. */
+  | { readonly ok: false; readonly message: string };
+
+type Task = { readonly id: string; readonly organizationId: string; readonly projectId: string; readonly planState: "none" | "proposed" | "approved" };
+type Profile = { readonly id: string; readonly approvalRules: unknown; readonly planFirst: boolean; readonly mcpServers: unknown };
+
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+/**
+ * Stores bytes as a blob of the task, once: the same bytes for the same purpose on the same task
+ * are the blob already there, so a spec fetched twice copies nothing twice.
+ */
+const taskBlob = async (
+  db: Db,
+  blobs: Pick<BlobService, "put">,
+  task: Task,
+  input: { readonly purpose: string; readonly contentType: string; readonly bytes: Uint8Array },
+): Promise<BlobId | null> => {
+  const digest = sha256(input.bytes);
+  const existing = await db.blob.findFirst({
+    where: { organizationId: task.organizationId, taskId: task.id, purpose: input.purpose, sha256: digest },
+    select: { id: true },
+  });
+  if (existing !== null) {
+    return blobIdSchema.parse(existing.id);
+  }
+  const stored = await blobs.put(
+    { organizationId: organizationIdSchema.parse(task.organizationId), task: { projectId: projectIdSchema.parse(task.projectId), taskId: taskIdSchema.parse(task.id) } },
+    input,
+  );
+  return stored.ok ? stored.value.blobId : null;
+};
+
+export const profileSpecParts = async (
+  deps: { readonly db: Db; readonly blobs?: Pick<BlobService, "put" | "read"> },
+  task: Task,
+  session: { readonly id: string },
+  profile: Profile,
+): Promise<ProfileSpecResult> => {
+  const { db } = deps;
+  const rules = approvalRulesSchema.safeParse(profile.approvalRules);
+  if (!rules.success) {
+    return { ok: false, message: "the profile's approval rules don't parse" };
+  }
+  const servers = storedMcpServersSchema.safeParse(profile.mcpServers);
+  if (!servers.success) {
+    return { ok: false, message: "the profile's MCP servers don't parse" };
+  }
+  const mcpServers: TaskSpecMcpServer[] = servers.data.map((server) =>
+    server.transport === "http"
+      ? { name: server.name, transport: "http", proxyPath: mcpProxyPathFor(server.name), readOnly: server.readOnly }
+      : { name: server.name, transport: "stdio", command: server.command, args: [...server.args], env: { ...server.env }, readOnly: server.readOnly },
+  );
+
+  const skillRows = await db.agentProfileSkill.findMany({
+    where: { profileId: profile.id, organizationId: task.organizationId },
+    orderBy: [{ name: "asc" }],
+    take: runnerLimits.skillsMax,
+  });
+  const skills: TaskSpecSkill[] = [];
+  if (skillRows.length > 0 && deps.blobs === undefined) {
+    return { ok: false, message: "the profile has skills, and this server has no blob store to hand them over" };
+  }
+  for (const skill of skillRows) {
+    if (deps.blobs === undefined) {
+      break;
+    }
+    const files = storedSkillFilesSchema.safeParse(skill.files);
+    if (!files.success) {
+      return { ok: false, message: "a skill's files don't parse" };
+    }
+    const body = await taskBlob(db, deps.blobs, task, { purpose: SKILL_BODY_PURPOSE, contentType: "text/markdown", bytes: new TextEncoder().encode(skill.body) });
+    if (body === null) {
+      return { ok: false, message: "a skill couldn't be copied into the blob store" };
+    }
+    const copied: { path: string; blobId: BlobId }[] = [];
+    for (const file of files.data) {
+      // The profile's file is its organization's: read for that organization only, then copied as the task's.
+      const read = await deps.blobs.read(organizationIdSchema.parse(task.organizationId), file.blobId);
+      if (!read.ok || read.value.size > runnerLimits.skillFileMaxBytes) {
+        return { ok: false, message: "a skill's file couldn't be read from the blob store" };
+      }
+      const blobId = await taskBlob(db, deps.blobs, task, { purpose: SKILL_FILE_PURPOSE, contentType: read.value.contentType, bytes: read.value.bytes });
+      if (blobId === null) {
+        return { ok: false, message: "a skill's file couldn't be copied into the blob store" };
+      }
+      copied.push({ path: file.path, blobId });
+    }
+    skills.push({ name: skill.name, blobId: body, files: copied });
+  }
+
+  const taskRules: TaskRule[] = (
+    await db.taskApprovalRule.findMany({ where: { taskId: task.id, organizationId: task.organizationId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })
+  ).map((row) => taskRuleSchema.parse({ ruleId: row.id, tool: row.tool, pattern: row.pattern }));
+
+  // Plan mode only on the task's first session, before any plan was proposed (ADR 0049, Q169).
+  const earlier = await db.session.count({ where: { taskId: task.id, id: { not: session.id } } });
+  const firstTurnMode: TurnMode = profile.planFirst && task.planState === "none" && earlier === 0 ? "plan" : "build";
+  return {
+    ok: true,
+    parts: { skills, mcpServers, approvalRules: rules.data, taskRules, planFirst: profile.planFirst, firstTurnMode },
+  };
+};

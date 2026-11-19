@@ -11,6 +11,7 @@ import { runnerStartsServices } from "../environment/services.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
 import type { UseCaseResult } from "./common.ts";
 import { chooseReopenStep } from "./reopen.ts";
+import { PROFILE_FEATURES_MINOR, profileNeedsMinor2 } from "./task-profile.ts";
 import type { ReopenStep } from "./reopen.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
@@ -145,19 +146,22 @@ type Candidate = { readonly id: RunnerId; readonly executor: "docker" | "host" |
 
 type RunnerScope = { readonly ids?: readonly RunnerId[]; readonly poolIds?: readonly PoolId[] };
 
-const onlineWhere = (organizationId: OrganizationId, where: RunnerScope, now: number) => ({
+const onlineWhere = (organizationId: OrganizationId, where: RunnerScope, now: number, minMinor = 0) => ({
   organizationId,
   state: "online" as const,
   revokedAt: null,
   ...(where.ids === undefined ? {} : { id: { in: [...where.ids] } }),
   ...(where.poolIds === undefined ? {} : { kind: "pool" as const, poolId: { in: [...where.poolIds] } }),
-  presence: { is: { disconnectedAt: null, lastSeenAt: { gt: new Date(now - runnerLimits.offlineMs) } } },
+  presence: {
+    is: { disconnectedAt: null, lastSeenAt: { gt: new Date(now - runnerLimits.offlineMs) }, ...(minMinor > 0 ? { minor: { gte: minMinor } } : {}) },
+  },
 });
 
 /**
  * The runners among `ids` that can take a task now: online, present, with a free slot. A task
  * whose environment has services goes only to a runner that can start them (F-094, ADR 0038
- * amended): never to `host`.
+ * amended): never to `host`. A task whose profile has rules, plan first, skills or MCP servers
+ * goes only to a runner at protocol `minMinor` or later (F-021, milestone 3's ticket 16).
  */
 const available = async (
   tx: Tx,
@@ -165,6 +169,7 @@ const available = async (
   where: RunnerScope,
   now: number,
   needsServices = false,
+  minMinor = 0,
 ): Promise<readonly Candidate[]> => {
   if (needsServices) {
     const fit = await tx.runner.findMany({ where: onlineWhere(organizationId, where, now), select: { id: true, executor: true, presence: { select: { minor: true } } } });
@@ -172,10 +177,10 @@ const available = async (
     if (ids.length === 0) {
       return [];
     }
-    return available(tx, organizationId, { ...where, ids: where.ids === undefined ? ids : where.ids.filter((id) => ids.includes(id)) }, now);
+    return available(tx, organizationId, { ...where, ids: where.ids === undefined ? ids : where.ids.filter((id) => ids.includes(id)) }, now, false, minMinor);
   }
   const runners = await tx.runner.findMany({
-    where: onlineWhere(organizationId, where, now),
+    where: onlineWhere(organizationId, where, now, minMinor),
     select: { id: true, executor: true, capacity: true, _count: { select: { leases: { where: { state: "active" } } } } },
   });
   return runners
@@ -229,7 +234,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       ? null
       : await tx.agentProfile.findFirst({
           where: { id: session.agentProfileId, organizationId: task.organizationId },
-          include: { model: { include: { provider: true } } },
+          include: { model: { include: { provider: true } }, _count: { select: { skills: true } } },
         });
   const provider = profile?.model?.provider;
   if (provider === undefined) {
@@ -260,8 +265,26 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
 
   // Milestone 3 (F-094, ticket 27): an environment with services runs only where they can start.
   const needsServices = (await tx.service.count({ where: { projectId: task.projectId, organizationId: task.organizationId } })) > 0;
-  /** Why no runner fits: a services runner missing, when one that can't start them is online in the same scope. */
+  // Milestone 3 (F-021, ticket 16): a profile with rules, plan first, skills or MCP servers goes only
+  // to a runner at minor 2 or later. When only older runners could take it, the task says so.
+  const minMinor =
+    profile !== null &&
+    profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills })
+      ? PROFILE_FEATURES_MINOR
+      : 0;
+  let tooOld = false;
+  const fitting = async (scope: RunnerScope): Promise<readonly Candidate[]> => {
+    const found = await available(tx, task.organizationId, scope, now, needsServices, minMinor);
+    if (found.length === 0 && minMinor > 0 && (await available(tx, task.organizationId, scope, now, needsServices)).length > 0) {
+      tooOld = true;
+    }
+    return found;
+  };
+  /** Why no runner fits: a runner too old for the profile, or a services runner missing, when one that can't start them is online in the same scope. */
   const noFitFor = async (scope: RunnerScope, otherwise: DispatchWait): Promise<DispatchWait> => {
+    if (tooOld) {
+      return { code: "needs-protocol", minor: minMinor };
+    }
     if (!needsServices) {
       return otherwise;
     }
@@ -282,7 +305,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   let plan = await reopenPlanInTx(tx, task, session, profile?.adapter ?? null, deps.reopen, now);
   let candidates: readonly Candidate[] = [];
   if (plan.step === "resumed" && plan.keptRunnerId !== undefined) {
-    candidates = await available(tx, task.organizationId, { ids: [plan.keptRunnerId] }, now, needsServices);
+    candidates = await fitting({ ids: [plan.keptRunnerId] });
     if (candidates.length === 0) {
       plan = await withoutKeptBox(tx, task, session, profile?.adapter ?? null, deps.reopen);
     }
@@ -302,7 +325,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       return noRunner({ code: "personal-runner-not-allowed" });
     }
     const picked: RunnerScope = { ids: [runnerIdSchema.parse(chosen.id)] };
-    candidates = await available(tx, task.organizationId, picked, now, needsServices);
+    candidates = await fitting(picked);
     let scope = picked;
     if (candidates.length === 0 && plan.step !== "new") {
       // A reopen goes anywhere (F-033): the owner's other personal runners, when the one picked is gone.
@@ -311,7 +334,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         select: { id: true },
       });
       scope = { ids: owned.map((row) => runnerIdSchema.parse(row.id)) };
-      candidates = await available(tx, task.organizationId, scope, now, needsServices);
+      candidates = await fitting(scope);
     }
     if (candidates.length === 0) {
       return noRunner(await noFitFor(scope, { code: "personal-runner-unavailable" }));
@@ -324,7 +347,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         : (await tx.runnerPool.findMany({ where: { organizationId: task.organizationId, isDefault: true }, select: { id: true } })).map((row) =>
             poolIdSchema.parse(row.id),
           );
-    candidates = poolIds.length === 0 ? [] : await available(tx, task.organizationId, { poolIds }, now, needsServices);
+    candidates = poolIds.length === 0 ? [] : await fitting({ poolIds });
     if (candidates.length === 0) {
       return noRunner(poolIds.length === 0 ? { code: "no-runner-online" } : await noFitFor({ poolIds }, { code: "no-runner-online" }));
     }

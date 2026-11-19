@@ -7,12 +7,15 @@ import type { z } from "zod";
 
 import { serviceVariablesFromDb } from "../environment/services.ts";
 import type { Ports } from "../ports.ts";
+import { storedMcpServersSchema } from "./task-profile.ts";
 
 // ADR 0030, ADR 0034: `POST /runner/v1/tasks/:taskId/credentials`. Only for the runner that holds the
 // task's active lease, at its current epoch, before the grace ends: then the model endpoint and its
 // token from the secret store, a one-repo git token per repo from the code host, the environment's
 // secrets per repo, and the task's MCP token. Each issue is an audit entry. Never logged. Written by
-// ticket 26.
+// ticket 26. Milestone 3 (ticket 16): each HTTP MCP server of the session's profile, its URL and its
+// headers read from the secret store, for the sidecar's MCP proxy only (ADR 0030, ADR 0049): the
+// spec names a proxy path, and the agent never holds a header.
 
 export const issueTaskCredentialsInputSchema = taskCredentialsRequestSchema.extend({ runnerId: runnerIdSchema });
 export type IssueTaskCredentialsInput = z.infer<typeof issueTaskCredentialsInputSchema>;
@@ -144,6 +147,26 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     }
   }
 
+  // The profile's HTTP MCP servers, for the sidecar alone. A column that doesn't parse gives none:
+  // the spec's builder refuses such a profile, so the agent never sees a server without its headers.
+  const stored = storedMcpServersSchema.safeParse(profile?.mcpServers ?? []);
+  const mcpServers: { name: string; url: string; headers: Record<string, string> }[] = [];
+  for (const server of stored.success ? stored.data : []) {
+    if (server.transport !== "http") {
+      continue;
+    }
+    const headers: Record<string, string> = {};
+    for (const [header, ref] of Object.entries(server.headerSecretRefs)) {
+      const secretRef = secretRefSchema.safeParse(ref);
+      const value = secretRef.success ? await secretStore.get(organizationId, secretRef.data) : null;
+      if (value?.ok !== true) {
+        return failed("an MCP server's header couldn't be read from the secret store");
+      }
+      headers[header] = value.value;
+    }
+    mcpServers.push({ name: server.name, url: server.url, headers });
+  }
+
   const credentials = taskCredentialsSchema.parse({
     taskId: input.taskId,
     leaseEpoch: input.leaseEpoch,
@@ -157,6 +180,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     secrets,
     mcpToken: deps.mcpToken(input.taskId, input.leaseEpoch),
     ...(services.length === 0 ? {} : { services }),
+    ...(mcpServers.length === 0 ? {} : { mcpServers }),
   });
   await deps.audit.recordInTx(tx, {
     organizationId,
@@ -165,7 +189,13 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     action: "task.credentials-issued",
     entity: "task",
     entityId: input.taskId,
-    data: { leaseEpoch: input.leaseEpoch, repos: repos.length, secrets: entries.length, serviceSecrets: services.reduce((sum, service) => sum + service.variables.length, 0) },
+    data: {
+      leaseEpoch: input.leaseEpoch,
+      repos: repos.length,
+      secrets: entries.length,
+      serviceSecrets: services.reduce((sum, service) => sum + service.variables.length, 0),
+      mcpServers: mcpServers.length,
+    },
   });
   return { ok: true, credentials };
 };

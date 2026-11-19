@@ -217,20 +217,6 @@ export const startCore = async (
     { localConcurrency: 2 },
   );
   liveText.start();
-  const taskEndpoints = handleTaskEndpoint({
-    db,
-    tokens: gateway.context.tokens,
-    taskTokens: gateway.context.taskTokens,
-    adapters,
-    audit: postgresAuditLog,
-    clock: systemClock,
-    signingKey,
-    logger,
-    specSettings: {
-      idleMinutes: settings.boxIdleMinutes,
-      spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
-    },
-  });
   // The S3-compatible store, when OSTRA_BLOB_STORE=s3 (ticket 11). Blobs written to the built-in store
   // before the switch stay readable there: each `Blob` row names its store.
   const s3 =
@@ -248,6 +234,21 @@ export const startCore = async (
         )
       : undefined;
   const blobs = createBlobService({ db, settings: settings.blobStore, context: { logger, clock: adapterClock }, ...(s3 === undefined ? {} : { s3 }) });
+  const taskEndpoints = handleTaskEndpoint({
+    db,
+    tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
+    adapters,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    signingKey,
+    logger,
+    specSettings: {
+      idleMinutes: settings.boxIdleMinutes,
+      spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
+    },
+    blobs,
+  });
   const blobEndpoints = handleBlobEndpoint({
     db,
     tokens: gateway.context.tokens,

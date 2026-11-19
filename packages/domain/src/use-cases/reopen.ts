@@ -25,6 +25,7 @@ import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { appendServerEvent } from "./server-events.ts";
 import { endSessionTimersInTx } from "./sessions-m2.ts";
+import { resolveReopenProfileInTx } from "./task-profile.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 import { modelTokenPrices, spendCapFor, spendCapReached, taskTokensInTx } from "./spend.ts";
 import type { SpendCapSettings } from "./spend.ts";
@@ -111,6 +112,8 @@ export type ReopenTaskResult = UseCaseResult<
   | "text-required"
   /** The task reached its spend cap; milestone 2 raises it only through the setting (F-068). */
   | "spend-cap-reached"
+  /** Milestone 3 (F-021): the member may not use the task's agent profile. */
+  | "profile-not-allowed"
 >;
 
 export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & {
@@ -189,6 +192,11 @@ export const reopenTask: ReopenTask = async (deps, input) => {
 
   const sessions = await tx.session.findMany({ where: { taskId: task.id }, orderBy: [{ startedAt: "desc" }, { id: "desc" }] });
   const [previous] = sessions;
+  // F-021: a reopen keeps the profile the task started with, archived or not, if the member may use it.
+  const reopenProfile = await resolveReopenProfileInTx(tx, scope, { task, previousSessionProfileId: previous?.agentProfileId ?? null });
+  if (!reopenProfile.ok) {
+    return refused(reopenProfile.error, reopenProfile.message);
+  }
   // The spend cap holds across sessions: a reopen at the cap waits for the cap to be raised.
   if (deps.spendCap !== undefined) {
     const profileId = previous?.agentProfileId ?? null;
@@ -225,7 +233,7 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   // What no turn answered, before this reopen writes anything: replayed in the new session.
   const owed = (await unansweredMessagesInTx(tx, task.id)).filter((message) => !message.replayed);
 
-  const profileId = previous?.agentProfileId ?? (await tx.project.findUniqueOrThrow({ where: { id: task.projectId }, select: { defaultCodeProfileId: true } })).defaultCodeProfileId;
+  const profileId = reopenProfile.profileId;
   const created = await tx.session.create({
     data: { organizationId, projectId, taskId: task.id, agentProfileId: profileId, origin: "new", state: "starting" },
     select: { id: true },

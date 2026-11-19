@@ -6,8 +6,10 @@ import { modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
 import type { SpendCapSettings } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
+import type { BlobService } from "../blobs/blob-service.ts";
 import { agentInstructions } from "./agent-instructions.ts";
 import { specServices } from "./environment-spec.ts";
+import { profileSpecParts } from "./profile-spec.ts";
 import { specMilestone2Parts } from "./restore-spec.ts";
 
 // `GET /runner/v1/tasks/:taskId/spec` (ticket 26, ADR 0034): what a dispatch hands the runner once it
@@ -22,7 +24,9 @@ export const TURN_MAX_MINUTES = 120;
 export type SpecFailure =
   | { readonly ok: false; readonly error: "not-found"; readonly message: string }
   | { readonly ok: false; readonly error: "stale-lease"; readonly message: string; readonly currentEpoch: number }
-  | { readonly ok: false; readonly error: "code-host-failed"; readonly message: string };
+  | { readonly ok: false; readonly error: "code-host-failed"; readonly message: string }
+  /** Milestone 3: the profile's rules or servers don't parse, or its skills couldn't be copied. */
+  | { readonly ok: false; readonly error: "profile-unusable"; readonly message: string };
 
 export type SpecResult = { readonly ok: true; readonly spec: TaskSpec } | SpecFailure;
 
@@ -41,6 +45,8 @@ export type SpecDeps = {
   readonly codeHost: CodeHostAdapter;
   readonly secretStore: SecretStoreAdapter;
   readonly settings?: TaskSpecSettings;
+  /** Milestone 3: copies a profile's skills into the blob store, as blobs of the task. Without it a profile with skills is refused. */
+  readonly blobs?: Pick<BlobService, "put" | "read">;
 };
 
 /**
@@ -162,6 +168,13 @@ export const buildTaskSpec = async (
     .map((row) => gitPersonSchema.safeParse({ name: row.name, email: row.email }))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
 
+  // Milestone 3 (ticket 16): the profile's skills, MCP servers and rules, the task's rules, plan first.
+  const profileParts = await profileSpecParts({ db, ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }) }, task, session, profile);
+  if (!profileParts.ok) {
+    return { ok: false, error: "profile-unusable", message: profileParts.message };
+  }
+  const parts = profileParts.parts;
+
   // Milestone 2 (ticket 18): the ticket, its images, and a reopen's restore section and template.
   const extras = await specMilestone2Parts(db, task, session);
   // Milestone 3 (ticket 27): the environment's services, for a runner that can start them.
@@ -191,7 +204,13 @@ export const buildTaskSpec = async (
         profile.instructions,
         taskRepos.map(({ repo }) => ({ fullName: repo.fullName, checkoutDir: repo.checkoutDir })),
       ),
+      skills: parts.skills,
+      mcpServers: parts.mcpServers,
+      approvalRules: parts.approvalRules,
+      taskRules: parts.taskRules,
+      planFirst: parts.planFirst,
     },
+    firstTurnMode: parts.firstTurnMode,
     environment: {
       setupScript: environment?.setupScript ?? null,
       baseImage: environment?.baseImage ?? null,

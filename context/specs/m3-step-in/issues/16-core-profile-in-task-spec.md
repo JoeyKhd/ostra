@@ -1,6 +1,6 @@
 # 16: Core: the profile in the task spec
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 06, 07
 Features: F-021
@@ -18,8 +18,10 @@ Spec: `../spec.md`, section 4 ("A task starts with its profile"); ADR 0049
 
 ## Done when
 
-- [ ] Tests: a task's spec carries its profile's sections; the default chain (member's choice, project default, built-in) holds; an archived profile still dispatches its tasks; the MCP headers are in the credentials response and absent from the spec and the event log; a minor-1 runner isn't offered a task that needs minor 2; another organization's profile is never used.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ put the agent profile in the task spec`.
+- [x] Tests: a task's spec carries its profile's sections; the default chain (member's choice, project default, built-in) holds; an archived profile still dispatches its tasks; the MCP headers are in the credentials response and absent from the spec and the event log; a minor-1 runner isn't offered a task that needs minor 2; another organization's profile is never used.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ put the agent profile in the task spec`.
 
 ## Comments
+
+- 2026-11-19: done in `✨ put the agent profile in the task spec`. The start's default chain is `resolveStartProfileInTx` (`packages/domain/src/use-cases/task-profile.ts`), which takes ticket 34's `checkProfileUse` for a member's own pick, so the API's refusals stay as they were (`FORBIDDEN` for a listed profile, `PRECONDITION_FAILED` for an archived or unknown one); a reopen keeps the task's profile and refuses a member who may not use it (`profile-not-allowed`, `FORBIDDEN`). The spec's parts are `apps/core/src/dispatch/profile-spec.ts`; the dispatch's wait is `needs-protocol` ("The task's agent profile needs a runner at protocol 2 or later"), beside ticket 27's `needs-services-runner`. Tests: `apps/core/src/dispatch/profile.test.ts`, eight cases, each with a break-it (in `context/proof/F-021.md`).

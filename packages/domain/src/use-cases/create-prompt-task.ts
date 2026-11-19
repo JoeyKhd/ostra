@@ -12,9 +12,9 @@ import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
-import { checkProfileUse } from "./agent-profile-setup.ts";
 import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { resolveStartProfileInTx } from "./task-profile.ts";
 
 // F-097: a member starts a code task in a project by typing a prompt. In one transaction: the task
 // (queued), its first session (origin `new`), its task repos, the member as co-author, a change
@@ -29,7 +29,7 @@ export const createPromptTaskInputSchema = z.strictObject({
   title: z.string().trim().min(1).max(512).optional(),
   /** The member's own personal runner, or unset to pick from the project's pools. */
   runnerId: runnerIdSchema.optional(),
-  /** The profile to start with, one the member may use (F-021); unset takes the project's default. */
+  /** Milestone 3 (F-021): the member's pick. Unset: the project's default for code tasks, else the built-in profile. */
   agentProfileId: agentProfileIdSchema.optional(),
 });
 export type CreatePromptTaskInput = z.infer<typeof createPromptTaskInputSchema>;
@@ -127,27 +127,15 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
     return access.code === "not-found" ? refuse("not-found", "No such project") : refuse("forbidden", "You may not start a task in this project");
   }
 
-  if (input.agentProfileId !== undefined) {
-    const use = await checkProfileUse(tx, scope, input.agentProfileId);
-    if (!use.ok) {
-      return refuse(use.error, use.message);
-    }
+  // F-021: the member's pick, else the project's default for code tasks, else the built-in profile.
+  const resolved = await resolveStartProfileInTx(tx, scope, { project, kind: "code", chosen: input.agentProfileId });
+  if (!resolved.ok) {
+    return refuse(resolved.error, resolved.message);
   }
-  const profileId = input.agentProfileId ?? project.defaultCodeProfileId;
-  const profile =
-    profileId === null
-      ? null
-      : await tx.agentProfile.findFirst({
-          where: { id: profileId, organizationId },
-          include: { model: { include: { provider: { select: { allowOnPersonalRunners: true } } } } },
-        });
-  const noModel = "The project's default code profile has no model yet: an admin picks one under Models";
-  if (profile === null) {
-    return refuse("no-agent-profile", noModel);
-  }
+  const { profile } = resolved;
   const { model } = profile;
   if (model === null) {
-    return refuse("no-agent-profile", noModel);
+    return refuse("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models");
   }
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
@@ -193,7 +181,6 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
       driverMemberId: scope.memberId,
       creatorMemberId: scope.memberId,
       runnerId: input.runnerId ?? null,
-      // The profile it started with: a later edit or archive of the default doesn't change it (F-021).
       agentProfileId: profile.id,
       ...taskToColumns(lifecycle),
     },

@@ -38,6 +38,11 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
     code: z.literal("needs-services-runner"),
     online: z.array(z.strictObject({ name: z.string().min(1).max(200), executor: executorKindSchema })).max(20),
   }),
+  /**
+   * Milestone 3 (F-021): the task's profile uses what only a runner at protocol `minor` or later
+   * can do (rules, plan first, skills, MCP servers), and only older runners could take it.
+   */
+  z.strictObject({ code: z.literal("needs-protocol"), minor: z.number().int().positive() }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -78,6 +83,8 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
       return wait.online.length === 0
         ? "Needs a runner that can start services (the docker executor); none is online."
         : `Needs a runner that can start services (the docker executor); only ${[...new Set(wait.online.map((runner) => runner.executor))].join(" and ")} runners are online.`;
+    case "needs-protocol":
+      return `The task's agent profile needs a runner at protocol ${String(wait.minor)} or later: update the runner.`;
     default:
       return wait satisfies never;
   }

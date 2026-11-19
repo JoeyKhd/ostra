@@ -25,6 +25,7 @@ import type { AccessTokens } from "../gateway/access-token.ts";
 import { checkTaskLease, isTaskToken } from "../gateway/task-token.ts";
 import type { TaskTokenClaims, TaskTokens } from "../gateway/task-token.ts";
 import { readJsonBody, sendError, sendJson } from "../http.ts";
+import type { BlobService } from "../blobs/blob-service.ts";
 import { buildTaskSpec } from "./task-spec.ts";
 import type { TaskSpecSettings } from "./task-spec.ts";
 
@@ -65,6 +66,8 @@ export type TaskEndpointDeps = {
   readonly logger: Logger;
   /** Milestone 2: what the spec tells a minor-1 runner (the idle timer, the spend cap). */
   readonly specSettings?: TaskSpecSettings;
+  /** Milestone 3: copies a profile's skills into the blob store for the spec (ticket 16). */
+  readonly blobs?: Pick<BlobService, "put" | "read">;
 };
 
 export const handleTaskEndpoint =
@@ -176,6 +179,7 @@ export const handleTaskEndpoint =
           codeHost: deps.adapters.codeHost,
           secretStore: deps.adapters.secretStore,
           ...(deps.specSettings === undefined ? {} : { settings: deps.specSettings }),
+          ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }),
         },
         { taskId: taskId.data, runnerId: caller.runnerId, leaseEpoch: query.data.leaseEpoch },
       );
@@ -196,6 +200,10 @@ export const handleTaskEndpoint =
           return true;
         case "code-host-failed":
           sendError(response, 502, "internal", result.message);
+          return true;
+        case "profile-unusable":
+          logger.warn("task.spec-refused", { leaseEpoch: query.data.leaseEpoch, error: result.error });
+          sendError(response, 500, "internal", result.message);
           return true;
         default:
           return result satisfies never;

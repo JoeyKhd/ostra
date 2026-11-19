@@ -24,10 +24,10 @@ import { ingestTicketHintBody } from "../tickets/ticket-cache.ts";
 import { ticketWriteKey } from "../tickets/contracts.ts";
 import type { TicketWritePayload, TicketWriteStep } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
-import { checkProfileUse } from "./agent-profile-setup.ts";
 import { claimBranchNameInTx } from "./create-prompt-task.ts";
 import type { ConnectionTracker } from "./linear-connection.ts";
 import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
+import { resolveStartProfileInTx } from "./task-profile.ts";
 
 // Tickets in (F-010, F-042, F-064, F-097, spec section 4, "A ticket change" and "A ticket becomes a
 // task"). A ticket's text is untrusted throughout: it's data in the cache and the prompt, never a
@@ -199,25 +199,16 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     return { ok: false, error: "ticket-has-task", message: `This ticket already has an active task, ${taskId}.`, taskId };
   }
 
-  if (input.agentProfileId !== undefined) {
-    const use = await checkProfileUse(tx, scope, input.agentProfileId);
-    if (!use.ok) {
-      return refuseStart(use.error, use.message);
-    }
+  // F-021: the member's pick, else the project's default for code tasks, else the built-in profile.
+  const resolved = await resolveStartProfileInTx(tx, scope, { project, kind: input.kind ?? "code", chosen: input.agentProfileId });
+  if (!resolved.ok) {
+    return refuseStart(resolved.error, resolved.message);
   }
-  const profileId = input.agentProfileId ?? project.defaultCodeProfileId;
-  const profile =
-    profileId === null
-      ? null
-      : await tx.agentProfile.findFirst({
-          where: { id: profileId, organizationId },
-          include: { model: { include: { provider: { select: { allowOnPersonalRunners: true } } } } },
-        });
-  const noModel = "The project's default code profile has no model yet: an admin picks one under Models";
-  if (profile?.model === null || profile === null) {
-    return refuseStart("no-agent-profile", noModel);
-  }
+  const { profile } = resolved;
   const { model } = profile;
+  if (model === null) {
+    return refuseStart("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models");
+  }
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
     return refuseStart("no-repo", "The project has no repo");
@@ -258,7 +249,6 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
       driverMemberId: scope.memberId,
       creatorMemberId: scope.memberId,
       runnerId: input.runnerId ?? null,
-      // The profile it started with: a later edit or archive of the default doesn't change it (F-021).
       agentProfileId: profile.id,
       ...taskToColumns(newTask("code", false)),
     },

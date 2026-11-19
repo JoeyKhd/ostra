@@ -519,6 +519,7 @@ export const tasksRouter = router({
       "not-reopenable": "CONFLICT",
       "text-required": "BAD_REQUEST",
       "spend-cap-reached": "PRECONDITION_FAILED",
+      "profile-not-allowed": "FORBIDDEN",
     });
     return { sessionId: reopened.sessionId };
   }),
