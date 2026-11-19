@@ -21,3 +21,5 @@ Spec: `../spec.md`, section 4 ("The diff", "Diff comments"); ADR 0051
 - [x] Committed as `✨ add the diff and diff comments`.
 
 ## Comments
+
+- 2026-11-19: done in `68155cc` (`✨ add the diff and diff comments`), on `4987c0c`, which widens three milestone 3 contracts additively: `diff.fetch` takes `baseSha: null` (the merge base the host finds, since ostra keeps no base SHA), the reopen input takes an `intent`, and the send use cases add the reopen's refusals to their errors. A new head also queues `diff.fetch` from `session.saved` only when the task repo has comments on an older head; the push webhook (ticket 24) does the same.
