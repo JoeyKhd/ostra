@@ -78,6 +78,15 @@ export const PLAN_MODE_PREAMBLE = [
 /** A plan turn's first prompt: the preamble, then the task's own prompt. */
 export const planTurnPrompt = (taskPrompt: string): string => `${PLAN_MODE_PREAMBLE}\n\n${taskPrompt}`;
 
+/**
+ * The re-prompt after the runner refused a plan turn's request (a write, a command, a fetch) and the
+ * agent ended its turn on the refusal, as an agent without reject-and-continue does (ADR 0032).
+ */
+export const PLAN_MODE_REFUSED_LINE = [
+  "That request was refused: this turn is for planning only, and only reads and searches are allowed.",
+  "Don't change any file or run commands that change anything. Finish your plan as a todo list, one entry per step, and end with a short message.",
+].join("\n");
+
 /** The plan as approved, as the build turn's prompt carries it: the entries as a list, then the message. */
 export const planText = (entries: readonly Pick<PlanEntry, "content">[], message: string): string => {
   const list = entries.map((entry, index) => `${String(index + 1)}. ${entry.content}`).join("\n");

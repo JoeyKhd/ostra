@@ -7,6 +7,7 @@ import {
   denyPrompt,
   markedBlock,
   PLAN_MODE_PREAMBLE,
+  PLAN_MODE_REFUSED_LINE,
   planRevisionPrompt,
   planText,
   planTurnPrompt,
@@ -58,6 +59,12 @@ describe("plan first", () => {
   it("F-063: the plan turn's prompt is the preamble, then the task's prompt", () => {
     expect(planTurnPrompt("Add CONTRIBUTING.md")).toBe(`${PLAN_MODE_PREAMBLE}\n\nAdd CONTRIBUTING.md`);
     expect(PLAN_MODE_PREAMBLE).toContain("don't change any file");
+  });
+
+  it("F-063: the re-prompt after a refused plan request keeps the agent planning, with no member's text", () => {
+    expect(PLAN_MODE_REFUSED_LINE).toContain("planning only");
+    expect(PLAN_MODE_REFUSED_LINE).toContain("todo list");
+    expect(readMarkedBlocks(PLAN_MODE_REFUSED_LINE)).toEqual([]);
   });
 
   it("F-063: the approved plan and the revision request carry the member's text as data", () => {
