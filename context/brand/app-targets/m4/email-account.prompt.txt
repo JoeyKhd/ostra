@@ -1,0 +1,32 @@
+# Generation 1 (kept, the only one). References: app-targets/m3/email-needs-you (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+# Not retouched.
+
+A flat, straight-on render of one HTML account email shown twice side by side, at 1280x853 CSS pixels rendered at 2x: the LEFT half (x 0-640) is the email in LIGHT mode, the RIGHT half (x 640-1280) is the same email in DARK mode. Each half is exactly 640px wide, the reading width of a mail client's message pane, and the two halves meet at a straight vertical edge with no gap and no divider. Not a device mockup, not tilted, no perspective, no drop shadows, no window frame, no mail-app sidebar, no toolbar icons, no brand of any mail app. It is an invitation from ostra, a self-hosted control panel for coding agents: Alex Kim invites Sam to the organization Acme Corp. It must be the SAME DESIGN as the first attached image (the same header strip, top row, card, type sizes, button and footer, at the same scale and positions); only the words and the block inside the card change. IBM Plex Sans body text, Manrope Bold heading, IBM Plex Mono for the address and the link, hairlines, few boxes, the attached hinge logo. Copy every word exactly as written below. Text is small and crisp like a real browser render.
+
+EACH HALF, top to bottom (same layout in both, only colours change):
+
+A) A plain message header strip, 76px tall, full half width, 24px side padding, a 1px hairline under it:
+   - line 1, 15px semibold: "Alex Kim invited you to Acme Corp on ostra"
+   - line 2, 12.5px secondary: "ostra <ostra@acme.dev>  to  sam@acme.dev" and at the right edge "14:05"
+
+B) The email body, on the email's own outer background, centred column 600px wide (20px margins left and right):
+   - 24px down: at the left, the ostra lockup copied exactly from the attached hinge logo: the rounded-square shell mark with one diagonal channel and a small round notch at its top-left, then the lowercase wordmark "ostra", 20px tall. At the right of the same line, 12.5px secondary text "Acme Corp".
+   - 20px down: one card 600px wide, 10px radius, 1px border, 32px padding inside. Inside the card:
+     1. One line in IBM Plex Mono 12px secondary: "Invitation · Acme Corp". NO pill, nothing amber.
+     2. 16px down, the heading in Manrope Bold 22px: "Join Acme Corp on ostra"
+     3. 10px down, 15px body text, line height 24px, two lines: "Alex Kim invited you to join Acme Corp as a member. ostra is where the team runs coding agents on its tickets." ("Alex Kim" and "Acme Corp" in semibold.)
+     4. 20px down, a full-width block 44px tall with a 3px left edge in a quiet grey-green and a quiet fill, 7px radius on the right corners, 14px left padding: IBM Plex Mono 13px: the word "For" in secondary colour, then "sam@acme.dev" in the main text colour.
+     5. 24px down, one button 40px tall, about 196px wide, 7px radius, 13.5px semibold label "Accept the invitation".
+     6. 16px down, 13px secondary text, two lines: "The link works once, until 26 Nov 2026. Anyone who has it can join as you, so don't forward this mail."
+     7. 24px down a 1px hairline across the card, then 16px down 12px faint text: "If the button doesn't work, open this link:" and under it IBM Plex Mono 12px link text "https://ostra.acme.dev/invite/inv_7Hq2kX9mPz4vR8tWb3nL5c".
+   - 24px under the card, 12px faint text, two lines, 32px left padding:
+     "You get this because Alex Kim invited sam@acme.dev. If you didn't expect it, ignore it: nothing happens."
+     "ostra for Acme Corp · ostra.acme.dev"
+   - Below that, quiet empty background to the bottom.
+
+LEFT HALF, LIGHT MODE colours (exact hex, flat): header strip background #FFFFFF, its text #0C1D21 and secondary #2F4A47, hairline #E3E7E4. Email outer background #F3F0E8 (warm off-white). Card #FFFFFF with a 1px #CFD8D4 border. Main text #0C1D21. Secondary text #2F4A47. Faint text #5F6B68. The logo and wordmark #0C1D21. The "For" block fill #F3F0E8 with a #CFD8D4 left edge. The button filled #0C1D21 with off-white #F3F0E8 label. Links #0C1D21 underlined. Hairline in the card #E3E7E4.
+
+RIGHT HALF, DARK MODE colours (exact hex, flat): header strip background #131416, its text #EDEDEE and secondary #9A9DA3, hairline #1F2023. Email outer background #0A0B0C. Card #131416 with a 1px #1F2023 border. Main text #EDEDEE. Secondary text #9A9DA3. Faint text #7E8187. The logo and wordmark off-white #F3F0E8. The "For" block fill #0D0E10 with a #2A2C30 left edge. The button filled off-white #F3F0E8 with dark #0C1D21 label. Links teal #6FB8AA, not underlined. Hairline in the card #1F2023.
+
+NO amber anywhere, NO yellow, in either half: this mail asks nothing urgent. No other colours: no blue links, no purple, no gradients, no glow, no shadows, no illustrations, no icons other than the logo, no emoji, no avatars, no unsubscribe banner, no social icons. Calm, precise, quiet, generous empty space, every word spelled exactly as written.

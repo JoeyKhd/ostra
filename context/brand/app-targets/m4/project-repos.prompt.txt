@@ -1,0 +1,41 @@
+# Generation 1 (kept, the only one). References: app-targets/m2/repo-checks (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+# Not retouched.
+
+A straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective. It is the "Repos" tab of a project's Settings in ostra, a self-hosted control panel that runs coding agents. A project admin manages the project's repos here: their order, adding one, and why one can't be removed yet. It must look like the SAME PRODUCT as the first attached screenshot (the same sidebar, top bar, near-black graphite chrome, hairline rows, small dense type and spacing) and keep that screenshot's scale exactly: body text 13px, nav rows 26px, page title 24px. Copy every word exactly as written below.
+
+FONTS: page title in Manrope Bold. All interface text in IBM Plex Sans. Repo names, branch names, folder names, task keys, times and numbers in IBM Plex Mono. Icons are thin Lucide line icons, 15px, 1.75 stroke.
+
+PALETTE (flat, exact): page background #0D0E10. Sidebar #0A0B0C. Selected row #1A1B1E. Hairlines #1F2023, control borders #2A2C30. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Green #4FB286 only for passing checks (a small shield-check icon). Teal #6FB8AA only for links. A warning is NOT coloured: a thin triangle-alert icon in #EDEDEE. Amber #FFB224 appears ONLY as the tiny dot next to "calculator" in the sidebar, nowhere else. No red on this screen. No gradients, no glow, no shadows, no cards, never a box inside a box, no purple except one 8px project square.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px, background #0A0B0C, hairline on its right, exactly like the attached screenshot. From the top: the small white ostra hinge logo (the attached logo, 20px) and "Acme Corp" semibold with an up-down chevron. A search field "Search" with "⌘K", and a small square off-white "+" button. Nav row "Home" (house icon). Faint section label "Projects". "calculator" with an 8px teal-green square and a tiny amber dot at the right end, expanded into indented rows: "Tasks" (list-checks icon, faint count "8"), "Inbox" (inbox icon, faint count "38"), "Environment" (box icon), "Boards" (square-kanban icon), "Settings" (settings gear icon, SELECTED, background #1A1B1E). Then "billing-platform" with an 8px violet square. "New project" with a plus icon, muted. Faint section label "Organization": "Runners" (server icon), "Models" (cpu icon), "GitHub" (github icon), "Linear". At the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px, hairline below: breadcrumbs "calculator  ›  Settings  ›  Repos" ("Repos" brighter). On the right: a quiet outlined button with a refresh icon "Check again", then 8px after it the page's one filled button, off-white #F3F0E8 fill with dark #0C1D21 text and a plus icon: "Add repo".
+
+3) MAIN COLUMN, 40px left padding, content max 760px wide:
+- At the very top of the column, a row of four plain text tabs, 13px, 28px tall, with a 1px hairline under the whole row: "Ticket template", "Repos", "Access", "Audit log". "Repos" is the active tab: #EDEDEE text with a 2px #EDEDEE underline; the others are #9A9DA3. No pills, no boxes.
+- 24px below: page title "Repos" (Manrope Bold 24px).
+- Muted lede, 13.5px: "Every session checks these repos out side by side, in this order." and on the next line, 13px: "acme · 3 of 10 repos · checked 2 min ago" with "acme", "3" and "10" in mono.
+- Then the repos as an ordered list, no boxes. Each repo is a block separated by hairlines, 12px vertical padding. The first line of a block: on the far left a small faint six-dot grip handle (grip-vertical icon), then the position number in faint mono, then a small git-branch icon, the repo name in mono 13px #EDEDEE, a tiny lock icon if private, the default branch in faint mono; on the right, first a faint usage text, then the verdict in 12.5px, then a faint three-dot "more" icon. Under the first line, one indented check line, 26px tall, 12.5px, starting under the repo name.
+  Block 1: grip · "1" · "acme/calculator-web" · "main" · right: faint "No open tasks" · muted "Ready" · dots.
+     green shield-check icon · "Default branch protected · signed commits not required"
+  Block 2 (SELECTED, background #1A1B1E, 6px radius, the same width as the list): grip · "2" · "acme/calculator-api" with lock icon · "main" · right: "In use by 2 tasks" in #EDEDEE · "1 warning" in #EDEDEE · dots.
+     white triangle-alert icon · "Default branch not protected" · faint: "Allowed: the agent holds no token."
+  Block 3: grip · "3" · "acme/calculator-sdk" with lock icon · "main" · right: faint "No open tasks" · muted "Ready" · dots.
+     green shield-check icon · "Default branch protected · signed commits not required"
+- 14px under the list, one faint 12px line with a small info icon: "Drag a repo by its handle, or focus the handle and press ↑ or ↓. A repo you add joins each open task at its next session."
+- 10px under it, one faint 12px line: "A project holds up to 10 repos."
+Quiet empty near-black space below.
+
+4) RIGHT PROPERTIES PANEL, 300px, hairline on its left, padding 20px. It shows the selected repo. Small faint group labels, key/value rows 30px tall, key muted on the left (104px), value bright on the right, 12.5px regular.
+- label "acme/calculator-api" in faint mono. Rows: Position — "2 of 3"; Folder — "calculator-api/" (mono); Default branch — "main" (mono); Visibility — "Private"; Protected — "No"; Signed commits — "Not required".
+- hairline. label "In use by 2 tasks". Two task rows, 34px each, each with a small status icon, a mono key, the title, and a muted state at the right:
+  "CALC-161" "Add history panel" — "In review"
+  "CALC-158" "Parse negative exponents" — "Working"
+  Under them, a muted paragraph, 12.5px: "This repo can't be removed while a task that isn't merged, stopped or done has a branch in it."
+- 12px below, one outlined button, full panel width, 28px, DISABLED: dimmed faint text "Remove from project" with a faint trash icon.
+- hairline. label "Order", then a short muted paragraph, 12.5px: "Sessions check repos out in this order, and the agent's instructions list them in it. The order changes nothing for a running session."
+
+Calm, precise, dense, like Linear's settings pages. Every word spelled exactly as written. No extra text, no charts, no illustrations, no gradients, no glow.
