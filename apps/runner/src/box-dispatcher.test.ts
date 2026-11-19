@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createDockerBoxes, createEngine } from "@ostra/adapter-executor-docker";
@@ -7,8 +7,9 @@ import type { FakeEngine } from "@ostra/adapter-executor-docker/testing";
 import { silentLogger } from "@ostra/adapter-sdk";
 import { boxIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createBoxDispatcher } from "./box-dispatcher.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createBoxDispatcher, detectTokenAccess, TOKEN_REFRESH_MS } from "./box-dispatcher.ts";
+import type { TokenAccess } from "./box-dispatcher.ts";
 import { exitCodes, runCli } from "./cli/cli.ts";
 import { createCapturingTerminal } from "./cli/terminal.ts";
 import { runSidecarCommand, sidecarEnvSchema } from "./run-sidecar.ts";
@@ -32,53 +33,182 @@ afterEach(async () => {
 
 const ACCESS_TOKEN = "ostra-runner-box-dispatcher-token";
 
+const posix = process.platform !== "win32";
+const modeOf = async (file: string): Promise<number> => (await stat(file)).mode & 0o777;
+
+const dispatchOf = (boxId: string) => {
+  const dispatch = makeCommand({
+    seq: 1,
+    id: "dispatch-1",
+    notAfter: Date.now() + 60_000,
+    kind: "dispatch",
+    body: { taskId: taskSpecFixture.taskId, sessionId: taskSpecFixture.sessionId, boxId: boxIdSchema.parse(boxId), leaseEpoch: taskSpecFixture.leaseEpoch },
+  });
+  if (dispatch.kind !== "dispatch") {
+    throw new Error("not a dispatch");
+  }
+  return dispatch;
+};
+
+const waitFor = async (ready: () => boolean | Promise<boolean>): Promise<void> => {
+  for (let attempt = 0; attempt < 100 && !(await ready()); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+};
+
+type DispatcherExtra = {
+  readonly tokenAccess: TokenAccess;
+  readonly chown?: (path: string, uid: number, gid: number) => Promise<void>;
+  readonly nextToken?: () => string;
+};
+
+const makeDispatcher = (extra: DispatcherExtra) => {
+  const boxes = createDockerBoxes(createEngine(engine.address), { images: { base: "ostra/base:test", runner: "ostra/runner:test" } });
+  return createBoxDispatcher({
+    boxes,
+    link: { fetchSpec: () => Promise.resolve({ ok: true, value: taskSpecFixture }), statusChanged: () => undefined },
+    tokens: {
+      get: () => Promise.resolve({ ok: true, token: extra.nextToken?.() ?? ACCESS_TOKEN, expiresAt: Date.now() + 600_000 }),
+      invalidate: () => undefined,
+    },
+    dataDir: root,
+    serverUrl: "http://ostra-server:8787",
+    capacity: 1,
+    labels: [],
+    logger: silentLogger,
+    tokenAccess: extra.tokenAccess,
+    ...(extra.chown === undefined ? {} : { chown: extra.chown }),
+  });
+};
+
+const sidecarBody = (): string => JSON.stringify([...engine.containers.values()].find((container) => container.name.endsWith("-sidecar"))?.body);
+
+const exitAll = (): void => {
+  for (const container of engine.containers.values()) {
+    container.status = "exited";
+  }
+};
+
 describe("the box dispatcher", () => {
   it("creates a box for a dispatch, keeps a token file for its sidecar, and removes it all when the sidecar exits", async () => {
-    const boxes = createDockerBoxes(createEngine(engine.address), { images: { base: "ostra/base:test", runner: "ostra/runner:test" } });
-    const dispatcher = createBoxDispatcher({
-      boxes,
-      link: { fetchSpec: () => Promise.resolve({ ok: true, value: taskSpecFixture }), statusChanged: () => undefined },
-      tokens: { get: () => Promise.resolve({ ok: true, token: ACCESS_TOKEN, expiresAt: Date.now() + 600_000 }), invalidate: () => undefined },
-      dataDir: root,
-      serverUrl: "http://ostra-server:8787",
-      capacity: 1,
-      labels: [],
-      logger: silentLogger,
-    });
-    const boxId = boxIdSchema.parse("box-dispatched");
-    const dispatch = makeCommand({
-      seq: 1,
-      id: "dispatch-1",
-      notAfter: Date.now() + 60_000,
-      kind: "dispatch",
-      body: { taskId: taskSpecFixture.taskId, sessionId: taskSpecFixture.sessionId, boxId, leaseEpoch: taskSpecFixture.leaseEpoch },
-    });
-    if (dispatch.kind !== "dispatch") {
-      throw new Error("not a dispatch");
-    }
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 } });
+    const boxId = "box-dispatched";
+    const dispatch = dispatchOf(boxId);
     expect(await dispatcher.handlers.dispatch(dispatch)).toEqual({ result: "accepted" });
     expect(await dispatcher.handlers.dispatch({ ...dispatch, body: { ...dispatch.body, boxId: boxIdSchema.parse("another") } })).toEqual({
       result: "rejected",
       reason: "no-capacity",
     });
-    for (let attempt = 0; attempt < 100 && engine.containers.size < 2; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    await waitFor(() => engine.containers.size >= 2);
     expect(engine.containers.size).toBe(2);
     expect(dispatcher.status()).toMatchObject({ executor: "docker", freeSlots: 0, running: [taskSpecFixture.sessionId] });
     expect(await readFile(path.join(root, "boxes", boxId, "token"), "utf8")).toBe(ACCESS_TOKEN);
     const agent = [...engine.containers.values()].find((container) => container.name.endsWith("-agent"));
     expect(JSON.stringify(agent?.body)).not.toContain(ACCESS_TOKEN);
 
-    for (const container of engine.containers.values()) {
-      container.status = "exited";
-    }
+    exitAll();
     await Promise.all(dispatcher.boxes());
     expect(engine.containers.size).toBe(0);
     expect(engine.volumes.size).toBe(0);
     expect(await readdir(path.join(root, "boxes"))).toEqual([]);
     expect(dispatcher.status().freeSlots).toBe(1);
   }, 30_000);
+
+  it.skipIf(!posix)("keeps the token readable by its group alone: 0440 in a 0750 folder, and the sidecar joins the group", async () => {
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 } });
+    await dispatcher.handlers.dispatch(dispatchOf("box-group"));
+    await waitFor(() => engine.containers.size >= 2);
+    const folder = path.join(root, "boxes", "box-group");
+    expect(await modeOf(path.join(folder, "token"))).toBe(0o440);
+    expect(await modeOf(folder)).toBe(0o750);
+    expect(await modeOf(path.join(root, "boxes"))).toBe(0o700);
+    expect(sidecarBody()).toContain('"GroupAdd":["4242"]');
+    expect(await readdir(folder)).toEqual(["token"]);
+    exitAll();
+    await Promise.all(dispatcher.boxes());
+  }, 30_000);
+
+  // As root the runner hands the file to the sidecar's uid and closes the folder to everyone else.
+  // A runner that isn't root can't write into that folder, so only root (and Windows, which has no
+  // such modes) runs this one.
+  it.skipIf(posix && process.getuid?.() !== 0)("hands the token file and folder to the sidecar's uid when it can: 0400 in a 0500 folder", async () => {
+    const handed: { readonly path: string; readonly uid: number; readonly gid: number }[] = [];
+    const dispatcher = makeDispatcher({
+      tokenAccess: { kind: "owner", uid: 1000, gid: 1000 },
+      chown: (target, uid, gid) => {
+        handed.push({ path: path.relative(root, target).split(path.sep).join("/"), uid, gid });
+        return Promise.resolve();
+      },
+    });
+    await dispatcher.handlers.dispatch(dispatchOf("box-owner"));
+    await waitFor(() => engine.containers.size >= 2);
+    expect(handed).toEqual([
+      { path: "boxes/box-owner", uid: 1000, gid: 1000 },
+      { path: "boxes/box-owner/token.next", uid: 1000, gid: 1000 },
+    ]);
+    expect(sidecarBody()).not.toContain("GroupAdd");
+    if (posix) {
+      expect(await modeOf(path.join(root, "boxes", "box-owner", "token"))).toBe(0o400);
+      expect(await modeOf(path.join(root, "boxes", "box-owner"))).toBe(0o500);
+    }
+    exitAll();
+    await Promise.all(dispatcher.boxes());
+    expect(await readdir(path.join(root, "boxes"))).toEqual([]);
+  }, 30_000);
+
+  it("makes no box when the token file can't be kept from other users", async () => {
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "none" } });
+    await dispatcher.handlers.dispatch(dispatchOf("box-none"));
+    await Promise.all(dispatcher.boxes());
+    expect(engine.containers.size).toBe(0);
+    expect(await readdir(root)).toEqual([]);
+    expect(dispatcher.status().freeSlots).toBe(1);
+  });
+
+  // Windows can't rename over a read-only file, which is what a 0440 token is there: POSIX only.
+  it.skipIf(!posix)("rewrites the token whole and in place, with the same access, before the old one expires", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      let issued = 0;
+      const dispatcher = makeDispatcher({
+        tokenAccess: { kind: "group", gid: 4242 },
+        nextToken: () => {
+          issued += 1;
+          return `${ACCESS_TOKEN}-${String(issued)}`;
+        },
+      });
+      await dispatcher.handlers.dispatch(dispatchOf("box-refresh"));
+      await waitFor(() => engine.containers.size >= 2);
+      const file = path.join(root, "boxes", "box-refresh", "token");
+      expect(await readFile(file, "utf8")).toBe(`${ACCESS_TOKEN}-1`);
+      await vi.advanceTimersByTimeAsync(TOKEN_REFRESH_MS);
+      await waitFor(async () => (await readFile(file, "utf8")) === `${ACCESS_TOKEN}-2`);
+      expect(await readFile(file, "utf8")).toBe(`${ACCESS_TOKEN}-2`);
+      if (posix) {
+        expect(await modeOf(file)).toBe(0o440);
+      }
+      expect(await readdir(path.dirname(file))).toEqual(["token"]);
+      exitAll();
+      await Promise.all(dispatcher.boxes());
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 30_000);
+});
+
+describe("detectTokenAccess", () => {
+  it("is the runner's own group unless it is root, which hands the file to the sidecar's uid", () => {
+    const access = detectTokenAccess();
+    const uid = process.getuid?.();
+    const gid = process.getgid?.();
+    if (uid === 0) {
+      expect(access).toEqual({ kind: "owner", uid: 1000, gid: 1000 });
+    } else if (gid === undefined) {
+      expect(access).toEqual({ kind: "none" });
+    } else {
+      expect(access).toEqual({ kind: "group", gid });
+    }
+  });
 });
 
 describe("ostra sidecar", () => {
@@ -97,8 +227,15 @@ describe("ostra sidecar", () => {
       OSTRA_BRIDGE_PORT: "7101",
       OSTRA_SIDECAR_HOST: "sidecar",
       OSTRA_TASK_ROOT: "/task",
+      OSTRA_SIDECAR_DATA_DIR: "/var/lib/ostra-sidecar",
     };
     expect(sidecarEnvSchema.safeParse(good)).toMatchObject({ success: true, data: { OSTRA_LEASE_EPOCH: 2, OSTRA_RUNNER_SHELL: "bash" } });
+    // The sidecar's state is out of the agent's reach: required, and never inside the shared task root.
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_SIDECAR_DATA_DIR: undefined }).success).toBe(false);
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_SIDECAR_DATA_DIR: "/task/.sidecar" }).success).toBe(false);
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_SIDECAR_DATA_DIR: "/task" }).success).toBe(false);
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_SIDECAR_DATA_DIR: "/task/../task/x" }).success).toBe(false);
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_SIDECAR_DATA_DIR: "/taskdata" }).success).toBe(true);
     expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_LEASE_EPOCH: "0" }).success).toBe(false);
     expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_BRIDGE_NONCE: "short" }).success).toBe(false);
   });

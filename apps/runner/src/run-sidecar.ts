@@ -20,24 +20,40 @@ import { createTaskHost } from "./task-host/task-host.ts";
 // box's init to connect over the bridge, then runs the task exactly as `host` does, with the
 // `docker` executor: the agent's processes in the agent's container, never a credential there.
 
+/** Is `child` the folder `parent`, or below it? */
+const isInside = (parent: string, child: string): boolean => {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+};
+
 /** The sidecar's settings, set by the runner. ostra owns this format: strict. */
-export const sidecarEnvSchema = z.object({
-  OSTRA_SERVER_URL: httpUrlSchema,
-  /** The access token for this task, in a file the runner keeps fresh (read-only mount). */
-  OSTRA_SIDECAR_TOKEN_FILE: z.string().min(1),
-  OSTRA_TASK_ID: taskIdSchema,
-  OSTRA_SESSION_ID: sessionIdSchema,
-  OSTRA_BOX_ID: boxIdSchema,
-  OSTRA_LEASE_EPOCH: z.coerce.number().pipe(leaseEpochSchema),
-  OSTRA_BRIDGE_NONCE: z.string().min(32).max(128),
-  OSTRA_BRIDGE_PORT: z.coerce.number().int().min(1).max(65_535),
-  /** The sidecar's name on the box network: the agent reaches the proxies at this address. */
-  OSTRA_SIDECAR_HOST: z.string().min(1).max(253),
-  OSTRA_TASK_ROOT: z.string().min(1),
-  OSTRA_RUNNER_SHELL: z.string().min(1).default("bash"),
-  /** OpenCode in the base image, checked against its SHA-256 when the image was built (ADR 0046). */
-  OSTRA_OPENCODE_BIN: z.string().min(1).default("/opt/opencode/bin/opencode"),
-});
+export const sidecarEnvSchema = z
+  .object({
+    OSTRA_SERVER_URL: httpUrlSchema,
+    /** The access token for this task, in a file the runner keeps fresh (read-only mount). */
+    OSTRA_SIDECAR_TOKEN_FILE: z.string().min(1),
+    OSTRA_TASK_ID: taskIdSchema,
+    OSTRA_SESSION_ID: sessionIdSchema,
+    OSTRA_BOX_ID: boxIdSchema,
+    OSTRA_LEASE_EPOCH: z.coerce.number().pipe(leaseEpochSchema),
+    OSTRA_BRIDGE_NONCE: z.string().min(32).max(128),
+    OSTRA_BRIDGE_PORT: z.coerce.number().int().min(1).max(65_535),
+    /** The sidecar's name on the box network: the agent reaches the proxies at this address. */
+    OSTRA_SIDECAR_HOST: z.string().min(1).max(253),
+    OSTRA_TASK_ROOT: z.string().min(1),
+    /**
+     * Where the sidecar keeps its state (applied commands, the event spool): storage only the sidecar
+     * mounts. Never inside the task root, which the agent shares and can rewrite.
+     */
+    OSTRA_SIDECAR_DATA_DIR: z.string().min(1),
+    OSTRA_RUNNER_SHELL: z.string().min(1).default("bash"),
+    /** OpenCode in the base image, checked against its SHA-256 when the image was built (ADR 0046). */
+    OSTRA_OPENCODE_BIN: z.string().min(1).default("/opt/opencode/bin/opencode"),
+  })
+  .refine((env) => !isInside(env.OSTRA_TASK_ROOT, env.OSTRA_SIDECAR_DATA_DIR), {
+    path: ["OSTRA_SIDECAR_DATA_DIR"],
+    message: "the sidecar's state can't live in the task root, where the agent could rewrite it",
+  });
 export type SidecarEnv = z.infer<typeof sidecarEnvSchema>;
 
 /** How long the box's init has to connect to the bridge. */
@@ -126,7 +142,7 @@ export const runSidecarCommand: RunSidecar = async ({ env, terminal, signal }) =
     serverUrl: settings.OSTRA_SERVER_URL,
     peer: { kind: "sidecar", taskId: settings.OSTRA_TASK_ID, boxId: settings.OSTRA_BOX_ID, leaseEpoch: settings.OSTRA_LEASE_EPOCH },
     tokens,
-    dataDir: path.join(settings.OSTRA_TASK_ROOT, ".sidecar"),
+    dataDir: settings.OSTRA_SIDECAR_DATA_DIR,
     handlers: host.handlers,
     status: host.status,
     logger,

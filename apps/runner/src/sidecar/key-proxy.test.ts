@@ -9,7 +9,7 @@ import { modelIdSchema, providerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApiFormat, AuthScheme, TaskEventOf } from "@ostra/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { parseRetryAfter, startKeyProxy } from "./key-proxy.ts";
+import { isAllowedRoute, parseRetryAfter, startKeyProxy } from "./key-proxy.ts";
 import type { KeyProxy, KeyProxyOptions, RateLimit, UpstreamRefusal } from "./key-proxy.ts";
 
 // Ticket 17's "done when", against both stub formats (spec section 8) and a raw upstream for the
@@ -292,6 +292,83 @@ describe("pass-through", () => {
     const answer = await call(harness, "/chat/completions", openAiBody(false));
     expect(answer.status).toBe(401);
     expect(harness.refusals).toEqual([{ status: 401, path: "/v1/chat/completions" }]);
+  });
+});
+
+describe("only the model API is forwarded", () => {
+  const raw = async (harness: Harness, method: string, path: string, withBase = false): Promise<{ readonly status: number; readonly text: string }> => {
+    const origin = new URL(harness.proxy.baseUrl).origin;
+    const response = await fetch(`${withBase ? harness.proxy.baseUrl : origin}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${harness.proxy.fakeKey}`, "x-api-key": harness.proxy.fakeKey, "content-type": "application/json" },
+      ...(method === "GET" || method === "HEAD" ? {} : { body: "{}" }),
+    });
+    return { status: response.status, text: await response.text() };
+  };
+
+  it.each([
+    ["a file route under the base path", "POST", "/files", true],
+    ["an assistants thread's messages", "POST", "/threads/thread_1/messages", true],
+    ["a deletion", "DELETE", "/chat/completions", true],
+    ["a read of a model route", "GET", "/chat/completions", true],
+    ["the batches route", "POST", "/batches", true],
+    ["a sibling of the base path", "POST", "/v1x/chat/completions", false],
+    ["a route outside the base path", "POST", "/organization/projects", false],
+    ["a model route outside the base path", "POST", "/other/v1/chat/completions", false],
+    ["a path that climbs out of the base path", "POST", "/v1/../admin/chat/completions", false],
+    ["the model list by POST", "POST", "/models", true],
+    ["a model by id", "GET", "/models/stub-model", true],
+  ] as const)("refuses %s with a 403 and never sends the real token", async (_name, method, path, withBase) => {
+    const upstream = await startRawUpstream();
+    const harness = await startProxy(upstream.baseUrl, "openai-compatible", "bearer");
+    const answer = await raw(harness, method, path, withBase);
+    expect(answer.status).toBe(403);
+    expect(JSON.parse(answer.text)).toMatchObject({ error: { code: "route_not_allowed" } });
+    expect(upstream.seen).toEqual([]);
+    expect(harness.proxy.totals()).toMatchObject({ calls: 0, refused: 1 });
+    const refusal = harness.logs.find((record) => JSON.stringify(record).includes("path-not-allowed"));
+    expect(refusal).toBeDefined();
+    expect(JSON.stringify(harness.logs)).not.toContain(path.split("/").filter((part) => part !== "").at(-1) ?? "never");
+  });
+
+  it("answers a refusal in the Anthropic shape for an Anthropic provider", async () => {
+    const upstream = await startRawUpstream();
+    const harness = await startProxy(upstream.baseUrl, "anthropic-messages", "x-api-key");
+    const answer = await raw(harness, "POST", "/files", true);
+    expect(answer.status).toBe(403);
+    expect(JSON.parse(answer.text)).toMatchObject({ type: "error", error: { type: "permission_error" } });
+    expect(upstream.seen).toEqual([]);
+  });
+
+  it("checks the key first: a wrong key still gets the 401", async () => {
+    const upstream = await startRawUpstream();
+    const harness = await startProxy(upstream.baseUrl, "openai-compatible", "bearer");
+    const response = await fetch(`${harness.proxy.baseUrl}/files`, { method: "POST", headers: { authorization: "Bearer wrong" }, body: "{}" });
+    expect(response.status).toBe(401);
+  });
+
+  it.each([
+    ["the chat route", "POST", "/chat/completions"],
+    ["the responses route", "POST", "/responses"],
+    ["the messages route", "POST", "/messages"],
+    ["the model list", "GET", "/models"],
+    ["the model list with a trailing slash", "GET", "/models/"],
+  ] as const)("forwards %s with the real token", async (_name, method, path) => {
+    const upstream = await startRawUpstream();
+    const harness = await startProxy(upstream.baseUrl, "openai-compatible", "bearer");
+    const answer = await raw(harness, method, path, true);
+    expect(answer.status).toBe(200);
+    expect(upstream.seen).toHaveLength(1);
+    expect(upstream.seen[0]?.authorization).toBe(`Bearer ${REAL_TOKEN}`);
+  });
+
+  it("allows a version segment when the provider's base path lacks one", () => {
+    expect(isAllowedRoute("POST", "/v1/chat/completions", "")).toBe(true);
+    expect(isAllowedRoute("GET", "/v1/models", "")).toBe(true);
+    expect(isAllowedRoute("POST", "/v1/files", "")).toBe(false);
+    expect(isAllowedRoute("POST", "/openai/v1/chat/completions", "/openai/v1")).toBe(true);
+    expect(isAllowedRoute("POST", "/openai/v1", "/openai/v1")).toBe(false);
+    expect(isAllowedRoute("POST", "/openai/v2/chat/completions", "/openai/v1")).toBe(false);
   });
 });
 

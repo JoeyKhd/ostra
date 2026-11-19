@@ -3,7 +3,7 @@
 // `DockerExecutor`, reaching the agent's container through the bridge to the box's init.
 export { DockerExecutor } from "./docker-executor.ts";
 export type { DockerExecutorOptions } from "./docker-executor.ts";
-export { AGENT_UID, BRIDGE_PORT, boxResources, createDockerBoxes, DEFAULT_EGRESS_NETWORK, TASK_ROOT, WAIT_POLL_MS } from "./boxes.ts";
+export { AGENT_UID, BRIDGE_PORT, boxResources, createDockerBoxes, DEFAULT_EGRESS_NETWORK, SIDECAR_DATA_DIR, SIDECAR_GID, SIDECAR_UID, TASK_ROOT, WAIT_POLL_MS } from "./boxes.ts";
 export type { BoxImages, BoxInput, BoxOptions, BoxResources, ContainerSpec, CreatedDockerBox, DockerBoxes } from "./boxes.ts";
 export { createEngine, engineAddressFrom, ENGINE_API_VERSION } from "./engine.ts";
 export type { Engine, EngineAddress, EngineError, EngineResult } from "./engine.ts";

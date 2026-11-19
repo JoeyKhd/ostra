@@ -1,6 +1,7 @@
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { boxResources, createDockerBoxes, TASK_ROOT } from "./boxes.ts";
+import { z } from "zod";
+import { boxResources, createDockerBoxes, SIDECAR_DATA_DIR, TASK_ROOT } from "./boxes.ts";
 import type { BoxInput, DockerBoxes } from "./boxes.ts";
 import { egressRules, METADATA_ADDRESS } from "./egress.ts";
 import { createEngine, engineAddressFrom } from "./engine.ts";
@@ -85,6 +86,25 @@ describe("a box's resources", () => {
     expect(agentSpec).not.toContain("TOKEN");
     expect(agentSpec).not.toContain(input.serverUrl);
     expect(agentSpec).not.toContain("SECRET");
+  });
+
+  it("keeps the sidecar's state on a tmpfs only it mounts, never on the task volume the agent shares", () => {
+    const resources = boxResources(input, { images });
+    const sidecar = resources.sidecar.body;
+    const tmpfs = z.record(z.string(), z.string()).parse(sidecar.HostConfig["Tmpfs"]);
+    expect(tmpfs[SIDECAR_DATA_DIR]).toMatch(/uid=1000,gid=1000,mode=0700/);
+    expect(envOf(sidecar)).toContain(`OSTRA_SIDECAR_DATA_DIR=${SIDECAR_DATA_DIR}`);
+    expect(SIDECAR_DATA_DIR.startsWith(`${TASK_ROOT}/`)).toBe(false);
+    const agentSpec = JSON.stringify(resources.agent);
+    expect(agentSpec).not.toContain(SIDECAR_DATA_DIR);
+    expect(JSON.stringify(resources.agent.body.HostConfig)).not.toContain("Tmpfs");
+  });
+
+  it("adds the token file's group to the sidecar only when the runner gave one", () => {
+    expect(boxResources(input, { images }).sidecar.body.HostConfig).not.toHaveProperty("GroupAdd");
+    const grouped = boxResources({ ...input, tokenGroup: 1234 }, { images });
+    expect(grouped.sidecar.body.HostConfig).toMatchObject({ GroupAdd: ["1234"] });
+    expect(grouped.agent.body.HostConfig).not.toHaveProperty("GroupAdd");
   });
 
   it("makes a fresh bridge nonce for every box, shared by the init and the sidecar only", () => {

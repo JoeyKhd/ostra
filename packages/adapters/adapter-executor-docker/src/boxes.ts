@@ -14,7 +14,13 @@ import type { Engine, EngineResult } from "./engine.ts";
 //   sidecar                  the runner image running `ostra sidecar` as 1000: the credentials,
 //                            both proxies, the MCP tools and the ACP driver; on the box network as
 //                            `sidecar`, and on the shared egress network, which has inter-container
-//                            traffic off, so one box's sidecar can't reach another's
+//                            traffic off, so one box's sidecar can't reach another's; its own state
+//                            (applied commands, the event spool) is on a tmpfs only it mounts, never
+//                            on the task volume, where the agent could rewrite it
+//
+// The sidecar shares the agent's uid: they write the same checkouts on the task volume, and a
+// second uid there would break git's ownership check and the files' modes. Separate containers,
+// and mounts only the sidecar has (its state, its token file), are what keep the agent out.
 //
 // The egress baseline (no private ranges, no metadata address, no other box) is host rules on the
 // egress network (`egress.ts`), unverified until the live run on Linux.
@@ -22,6 +28,13 @@ import type { Engine, EngineResult } from "./engine.ts";
 export const BRIDGE_PORT = 7101;
 export const TASK_ROOT = "/task";
 export const AGENT_UID = 1000;
+/** The sidecar's uid and gid: the agent's, for the task volume they share (see above). */
+export const SIDECAR_UID = AGENT_UID;
+export const SIDECAR_GID = AGENT_UID;
+/** The sidecar's own state: a tmpfs in its container only (never the task volume). */
+export const SIDECAR_DATA_DIR = "/var/lib/ostra-sidecar";
+/** Holds the spool's whole quota (the protocol's `spoolQuotaBytes`, 1 GiB) and the state file. */
+const SIDECAR_DATA_SIZE = "1280m";
 /** The shared network every sidecar reaches the server and the code host through. */
 export const DEFAULT_EGRESS_NETWORK = "ostra-egress";
 const LABEL = "ostra.box";
@@ -44,6 +57,11 @@ export type BoxInput = {
   readonly baseImage: string | null;
   /** A host folder holding the sidecar's token file, mounted read-only (never into the agent's container). */
   readonly tokenDir: string;
+  /**
+   * The group that owns the token file when the runner couldn't give it to the sidecar's uid (it
+   * isn't root): added to the sidecar's supplementary groups so it can read the file.
+   */
+  readonly tokenGroup?: number;
 };
 
 export type BoxOptions = {
@@ -144,14 +162,19 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
           `OSTRA_BRIDGE_PORT=${String(BRIDGE_PORT)}`,
           "OSTRA_SIDECAR_HOST=sidecar",
           `OSTRA_TASK_ROOT=${TASK_ROOT}`,
+          `OSTRA_SIDECAR_DATA_DIR=${SIDECAR_DATA_DIR}`,
         ],
-        User: `${String(AGENT_UID)}:${String(AGENT_UID)}`,
+        User: `${String(SIDECAR_UID)}:${String(SIDECAR_GID)}`,
         WorkingDir: TASK_ROOT,
         Labels: labels("sidecar"),
         HostConfig: {
           ...hardening,
           ReadonlyRootfs: true,
-          Tmpfs: { "/tmp": "rw,noexec,nosuid,size=256m" },
+          Tmpfs: {
+            "/tmp": "rw,noexec,nosuid,size=256m",
+            [SIDECAR_DATA_DIR]: `rw,noexec,nosuid,uid=${String(SIDECAR_UID)},gid=${String(SIDECAR_GID)},mode=0700,size=${SIDECAR_DATA_SIZE}`,
+          },
+          ...(input.tokenGroup === undefined ? {} : { GroupAdd: [String(input.tokenGroup)] }),
           // Core on this host, through its published port (the compose file's layout).
           ExtraHosts: ["host.docker.internal:host-gateway"],
           NetworkMode: n.network,

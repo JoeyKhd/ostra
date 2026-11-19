@@ -5,7 +5,7 @@ import { request as httpsRequest, Agent as HttpsAgent } from "node:https";
 import type { AddressInfo } from "node:net";
 import { createUsageMeter, formatForPath, resolveUsage } from "@ostra/adapter-sdk";
 import type { Logger, TokenUsage, WireFormat } from "@ostra/adapter-sdk";
-import type { ModelId, ProviderId, TaskCredentials, TaskEventOf, TaskId } from "@ostra/protocol";
+import type { ApiFormat, ModelId, ProviderId, TaskCredentials, TaskEventOf, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
 // The key proxy (ADR 0030, ADR 0042, F-089). The agent holds a fake key and a base URL that points
@@ -15,6 +15,10 @@ import { z } from "zod";
 // bodies as received. On the way back it reads the usage the endpoint reports, in both API
 // formats, and counts every call it carries, title calls and other tool-less calls included. A
 // call whose answer reported no usage is estimated, and marked so.
+//
+// It forwards model calls only (ADR 0030 limits the agent to using the model): a POST to the chat,
+// responses or messages route, or a GET of the model list, under the provider's own base path.
+// Anything else is refused with a 403, before the real token goes near it.
 //
 // It logs the task ID, statuses and counts only: never a key, a prompt or an answer.
 //
@@ -160,6 +164,33 @@ const rejectBody = (format: WireFormat | undefined): string =>
       : { error: { message: "ostra key proxy: invalid or expired key", type: "invalid_request_error", code: "invalid_api_key" } },
   );
 
+/** A 403 in the provider's own shape: the agent's SDK reads it as a refusal, not an outage. */
+const forbiddenBody = (format: ApiFormat): string =>
+  JSON.stringify(
+    format === "anthropic-messages"
+      ? { type: "error", error: { type: "permission_error", message: "ostra key proxy: this route isn't available to the agent" } }
+      : { error: { message: "ostra key proxy: this route isn't available to the agent", type: "invalid_request_error", code: "route_not_allowed" } },
+  );
+
+/** The model calls, below the provider's base path (an optional version segment is allowed for a base that lacks one). */
+const MODEL_CALL_ROUTE = /^(?:\/v\d+)?\/(?:chat\/completions|responses|messages)$/;
+const MODEL_LIST_ROUTE = /^(?:\/v\d+)?\/models$/;
+
+/**
+ * Is this request one the agent may make with the real token? Only the model API: a POST of a
+ * model call, or a GET of the model list, exactly under `upstreamPath`.
+ */
+export const isAllowedRoute = (method: string, path: string, upstreamPath: string): boolean => {
+  if (!path.startsWith(`${upstreamPath}/`)) {
+    return false;
+  }
+  const route = path.slice(upstreamPath.length).replace(/\/+$/, "");
+  if (method === "POST") {
+    return MODEL_CALL_ROUTE.test(route) && formatForPath(path) !== undefined;
+  }
+  return method === "GET" && MODEL_LIST_ROUTE.test(route);
+};
+
 /** `Retry-After` as seconds or an HTTP date, in ms from `now`. */
 export const parseRetryAfter = (value: string | undefined, now: number): number | null => {
   if (value === undefined || value.trim() === "") {
@@ -245,6 +276,14 @@ export const startKeyProxy = async (options: KeyProxyOptions): Promise<KeyProxy>
       log.warn("key proxy refused a call", {
         reason: presented === undefined ? "no-key" : revoked ? "revoked" : now() >= expiresAt ? "expired" : "wrong-key",
       });
+      return;
+    }
+    if (!isAllowedRoute(request.method ?? "GET", path, upstreamPath)) {
+      refused += 1;
+      const payload = forbiddenBody(options.model.apiFormat);
+      response.writeHead(403, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
+      response.end(payload);
+      log.warn("key proxy refused a call", { reason: "path-not-allowed" });
       return;
     }
     calls += 1;
