@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApiHarness, seedPersonalRunner } from "../testing/index.ts";
+import { runnerIdSchema } from "@ostra/protocol";
+
+import { createApiHarness, seedLease, seedPersonalRunner, seedTask } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
 
 // Ticket 33: runners, runner pools and join tokens. Admin only; a join token is shown once and
@@ -57,6 +59,47 @@ describe("runner pools", () => {
     expect(counted).toMatchObject({ runnerCount: 2, onlineCount: 1, projectCount: 0, activeJoinTokens: 0, isDefault: false });
     expect((await (await harness.as(b.admin)).pools.list()).map((pool) => pool.id)).not.toContain(poolId);
     await expect((await harness.as(a.member)).pools.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("busy boxes (F-092)", () => {
+  it("count a pool's boxes in use and its slots, its executors, versions and first project", async () => {
+    const { a } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    const { poolId } = await admin.pools.create({ name: "busy-fleet" });
+    const runner = (name: string, key: string, executor: "docker" | "host", capacity: number, version: string, state: "online" | "draining" | "offline") =>
+      harness.test.db.runner.create({
+        data: { organizationId: a.organization.id, kind: "pool", poolId, name, publicKey: key.repeat(43), executor, capacity, version, state },
+        select: { id: true },
+      });
+    const working = await runner("busy-01", "s", "docker", 4, "0.4.2", "online");
+    await runner("busy-02", "t", "host", 2, "0.4.10", "draining");
+    await runner("busy-03", "u", "docker", 4, "0.4.2", "offline");
+    await harness.test.db.projectPool.create({ data: { organizationId: a.organization.id, projectId: a.openProject.id, poolId } });
+    const task = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id });
+    await seedLease(harness, task, a.organization.id, a.openProject.id, runnerIdSchema.parse(working.id));
+
+    const pool = (await admin.pools.list()).find((row) => row.id === poolId);
+    expect(pool).toMatchObject({
+      busy: 1,
+      slots: 6,
+      executors: ["docker", "host"],
+      versions: ["0.4.2", "0.4.10"],
+      projectCount: 1,
+      firstProjectName: a.openProject.name,
+    });
+    const listed = (await admin.runners.list()).filter((row) => row.pool?.id === poolId);
+    expect(listed.map((row) => [row.name, row.busy])).toEqual([
+      ["busy-01", 1],
+      ["busy-02", 0],
+      ["busy-03", 0],
+    ]);
+  });
+
+  it("are none for a pool with no runner", async () => {
+    const admin = await harness.as(harness.fixture.a.admin);
+    const { poolId } = await admin.pools.create({ name: "empty-fleet" });
+    expect((await admin.pools.list()).find((row) => row.id === poolId)).toMatchObject({ busy: 0, slots: 0, executors: [], versions: [], firstProjectName: null });
   });
 });
 

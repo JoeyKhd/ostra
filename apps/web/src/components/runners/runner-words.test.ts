@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { runnerStateText, runnerTone } from "./runner-words";
+import { adminLede, runnerAge, runnerDot, runnerStateText, runnerTotals, versionRange } from "./runner-words";
 import type { RunnerState } from "./runner-words";
 
 const states = ["joining", "online", "offline", "draining", "revoked"] as const satisfies readonly RunnerState[];
@@ -10,7 +10,46 @@ describe("runner words", () => {
     expect(states.map(runnerStateText)).toEqual(["joining", "online", "offline", "draining", "revoked"]);
   });
 
-  it("tones online green, draining amber and the rest grey", () => {
-    expect(states.map(runnerTone)).toEqual(["grey", "green", "grey", "amber", "grey"]);
+  it("dots online green, draining half, joining a ring and the rest grey, never amber", () => {
+    expect(states.map(runnerDot)).toEqual(["ring", "green", "grey", "half", "grey"]);
+  });
+
+  it("says how long ago an offline runner was seen, and just now while one joins", () => {
+    const now = Date.UTC(2026, 10, 19, 12);
+    expect(runnerAge("offline", now - 3 * 60 * 60 * 1000, now)).toBe("seen 3h ago");
+    expect(runnerAge("offline", now - 10_000, now)).toBe("seen just now");
+    expect(runnerAge("offline", null, now)).toBe("");
+    expect(runnerAge("joining", null, now)).toBe("just now");
+    expect(runnerAge("online", now - 3_600_000, now)).toBe("");
+  });
+
+  it("shows a pool's versions as one, a range, or a dash", () => {
+    expect(versionRange([])).toBe("—");
+    expect(versionRange(["0.4.2"])).toBe("v0.4.2");
+    expect(versionRange(["0.4.1", "0.4.2"])).toBe("v0.4.1–v0.4.2");
+  });
+});
+
+describe("the admin lede", () => {
+  const runners = [
+    { state: "online", capacity: 4, busy: 3 },
+    { state: "online", capacity: 4, busy: 2 },
+    { state: "draining", capacity: 4, busy: 1 },
+    { state: "joining", capacity: 4, busy: 0 },
+    { state: "offline", capacity: 4, busy: 0 },
+    { state: "online", capacity: 1, busy: 1 },
+    { state: "offline", capacity: 1, busy: 0 },
+    { state: "online", capacity: 1, busy: 0 },
+  ] as const satisfies readonly { state: RunnerState; capacity: number; busy: number }[];
+
+  it("counts runners online and the boxes busy on the runners that take work", () => {
+    expect(runnerTotals(runners)).toEqual({ online: 4, total: 8, busy: 7, slots: 14 });
+  });
+
+  it("says pools and the admin's machine as they are", () => {
+    expect(adminLede(runners, 2, true)).toBe("Where tasks run. 4 of 8 runners online, 7 of 14 boxes busy, across 2 pools and your machine.");
+    expect(adminLede(runners, 2, false)).toBe("Where tasks run. 4 of 8 runners online, 7 of 14 boxes busy, across 2 pools.");
+    expect(adminLede([], 1, false)).toBe("Where tasks run. 0 of 0 runners online, 0 of 0 boxes busy, across 1 pool.");
+    expect(adminLede([], 1, true)).toBe("Where tasks run. 0 of 0 runners online, 0 of 0 boxes busy, across 1 pool and your machine.");
   });
 });

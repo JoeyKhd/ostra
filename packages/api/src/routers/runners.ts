@@ -28,6 +28,8 @@ const runnerRowSelect = {
   state: true,
   lastSeenAt: true,
   createdAt: true,
+  /** Boxes in use: the runner's active leases (F-092). */
+  _count: { select: { leases: { where: { state: "active" } } } },
 } as const;
 
 export const runnersRouter = router({
@@ -51,6 +53,7 @@ export const runnersRouter = router({
       version: row.version,
       os: parseOs(row.os),
       lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.getTime(),
+      busy: row._count.leases,
     }));
   }),
 
@@ -77,6 +80,7 @@ export const runnersRouter = router({
       version: row.version,
       os: parseOs(row.os),
       lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.getTime(),
+      busy: row._count.leases,
       pool: row.pool === null ? null : { id: poolIdSchema.parse(row.pool.id), name: row.pool.name },
       owner: row.owner === null ? null : { memberId: memberIdSchema.parse(row.owner.id), name: row.owner.user.name },
     }));
@@ -86,7 +90,11 @@ export const runnersRouter = router({
 const poolName = z.string().trim().min(1).max(64);
 
 export const poolsRouter = router({
-  /** The organization's runner pools, with their runners and projects counted. */
+  /**
+   * The organization's runner pools, with their runners and projects counted: the boxes in use and
+   * the slots of the runners that take work (online or draining), the executors and versions its
+   * runners run, and the first project that uses it, by name.
+   */
   list: adminProcedure.query(async ({ ctx }) => {
     const organizationId = ctx.scope.organizationId;
     const pools = await ctx.deps.db.runnerPool.findMany({
@@ -94,21 +102,34 @@ export const poolsRouter = router({
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       include: {
         _count: { select: { projectPools: true } },
-        runners: { where: { state: { not: "revoked" } }, select: { state: true } },
+        runners: {
+          where: { state: { not: "revoked" } },
+          select: { state: true, capacity: true, executor: true, version: true, _count: { select: { leases: { where: { state: "active" } } } } },
+        },
         joinTokens: { where: { revokedAt: null }, select: { id: true } },
+        projectPools: { orderBy: { project: { name: "asc" } }, take: 1, select: { project: { select: { name: true } } } },
       },
     });
-    return pools.map((pool) => ({
-      id: poolIdSchema.parse(pool.id),
-      name: pool.name,
-      isDefault: pool.isDefault,
-      requiresApproval: pool.requiresApproval,
-      maxBoxes: pool.maxBoxes,
-      runnerCount: pool.runners.length,
-      onlineCount: pool.runners.filter((runner) => runner.state === "online").length,
-      projectCount: pool._count.projectPools,
-      activeJoinTokens: pool.joinTokens.length,
-    }));
+    return pools.map((pool) => {
+      const working = pool.runners.filter((runner) => runner.state === "online" || runner.state === "draining");
+      return {
+        id: poolIdSchema.parse(pool.id),
+        name: pool.name,
+        isDefault: pool.isDefault,
+        requiresApproval: pool.requiresApproval,
+        maxBoxes: pool.maxBoxes,
+        runnerCount: pool.runners.length,
+        onlineCount: pool.runners.filter((runner) => runner.state === "online").length,
+        projectCount: pool._count.projectPools,
+        firstProjectName: pool.projectPools[0]?.project.name ?? null,
+        activeJoinTokens: pool.joinTokens.length,
+        /** Boxes in use on the runners that take work, and their summed capacity (F-092). */
+        busy: working.reduce((sum, runner) => sum + runner._count.leases, 0),
+        slots: working.reduce((sum, runner) => sum + runner.capacity, 0),
+        executors: [...new Set(pool.runners.map((runner) => runner.executor))].sort((x, y) => x.localeCompare(y)),
+        versions: [...new Set(pool.runners.map((runner) => runner.version))].sort((x, y) => x.localeCompare(y, "en", { numeric: true })),
+      };
+    });
   }),
 
   create: adminProcedure

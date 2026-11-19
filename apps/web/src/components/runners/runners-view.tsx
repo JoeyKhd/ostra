@@ -1,18 +1,25 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CopyIcon, KeyRoundIcon, LaptopIcon, ServerIcon, TriangleAlertIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronDownIcon, PlusIcon, ShieldIcon } from "lucide-react";
 import { useState } from "react";
 
-import { runnerStateText, runnerTone } from "@/components/runners/runner-words";
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
-import { Chip, Code, Status } from "@/components/ui/status";
-import { errorText } from "@/lib/errors";
-import { formatAge } from "@/lib/format";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Sheet } from "@/components/ui/sheet";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import { Chip } from "@/components/ui/status";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+
+import { CopyLink } from "./copy-link";
+import { NewPoolSheet } from "./new-pool-sheet";
+import { PoolProperties } from "./pool-properties";
+import { PoolsTable } from "./pools-table";
+import { MyRunnerRows, RunnerRows } from "./runner-rows";
+import { adminLede } from "./runner-words";
 
 type Runner = RouterOutputs["runners"]["mine"][number];
 
@@ -26,139 +33,151 @@ export const RunnerKind = ({ runner }: { readonly runner: Pick<Runner, "kind" | 
   </span>
 );
 
-const CopyButton = ({ text }: { readonly text: string }) => {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => { setCopied(false); }, 1500);
-        });
-      }}
-    >
-      <CopyIcon /> {copied ? t("common.copied") : t("common.copy")}
-    </Button>
-  );
-};
+/** Which runners the Runners section shows: every one, one pool's, or members' personal ones. */
+type Filter = { readonly kind: "all" } | { readonly kind: "pool"; readonly poolId: string } | { readonly kind: "personal" };
 
-const RunnerRow = ({ runner, owner }: { readonly runner: Runner; readonly owner?: string | null }) => (
-  <li data-runner={runner.name} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
-    {runner.kind === "personal" ? <LaptopIcon className="size-[15px] text-muted" /> : <ServerIcon className="size-[15px] text-muted" />}
-    <span className="font-mono">{runner.name}</span>
-    <RunnerKind runner={runner} />
-    {owner === undefined || owner === null ? null : <span className="text-sm text-muted">{owner}</span>}
-    <span className="ml-auto flex items-center gap-3 text-sm">
-      <span className="font-mono text-faint">{t("runners.capacity", { n: runner.capacity })}</span>
-      <span className="font-mono text-faint">v{runner.version}</span>
-      <Status tone={runnerTone(runner.state)}>
-        {runner.state === "online" || runner.lastSeenAt === null ? runnerStateText(runner.state) : t("runners.seenAgo", { state: runnerStateText(runner.state), age: formatAge(runner.lastSeenAt) })}
-      </Status>
-    </span>
-  </li>
-);
+const RunnerSkeleton = () => <SkeletonRows rows={3} bars={["w-[90px]", "w-[80px]", "w-[110px]", "w-[60px]", "w-[70px]"]} />;
 
-const JoinTokens = ({ poolId }: { readonly poolId: string }) => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const tokens = useQuery(trpc.pools.joinTokens.queryOptions({ poolId }));
-  const [shown, setShown] = useState<string | null>(null);
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: trpc.pools.joinTokens.queryKey({ poolId }) });
-  const create = useMutation(trpc.pools.createJoinToken.mutationOptions({ onSuccess: async (made) => { setShown(made.token); await invalidate(); } }));
-  const revoke = useMutation(trpc.pools.revokeJoinToken.mutationOptions({ onSettled: invalidate }));
+/** Your machine: the member's own runners, then the command that connects one (everyone sees it). */
+const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: string; readonly mine: readonly Runner[] | undefined; readonly now: number }) => {
+  const command = `pnpm ostra runner --server ${corePublicUrl}`;
+  const windows = mine?.some((runner) => runner.os?.platform === "win32") === true;
   return (
-    <div className="mt-2 pl-7">
-      {shown === null ? null : (
-        <div className="mb-2" data-testid="join-token">
-          <p className="mb-1 text-sm text-amber">{t("runners.tokenOnce")}</p>
-          <div className="flex items-start gap-2">
-            <Code className="min-w-0 flex-1">{shown}</Code>
-            <CopyButton text={shown} />
-          </div>
-        </div>
-      )}
-      <ul className="text-sm">
-        {tokens.data?.map((token) => (
-          <li key={token.id} className="flex min-h-8 items-center gap-2">
-            <KeyRoundIcon className="size-3 text-faint" />
-            <span className="text-muted">{token.label ?? t("runners.joinToken")}</span>
-            {token.expiresAt === null ? null : <span className="font-mono text-faint">{t("runners.expires", { date: new Date(token.expiresAt).toISOString().slice(0, 10) })}</span>}
-            <Button size="sm" variant="ghost" className="ml-auto" disabled={revoke.isPending} onClick={() => { revoke.mutate({ joinTokenId: token.id }); }}>
-              {t("runners.revoke")}
-            </Button>
-          </li>
-        ))}
-      </ul>
-      {create.error === null ? null : <p role="alert" className="text-sm text-red">{errorText(create.error)}</p>}
-      <Button size="sm" onClick={() => { create.mutate({ poolId, expiresInDays: 30 }); }} disabled={create.isPending}>
-        <KeyRoundIcon /> {t("runners.newJoinToken")}
-      </Button>
-    </div>
-  );
-};
-
-const AdminSections = () => {
-  const trpc = useTRPC();
-  const runners = useQuery({ ...trpc.runners.list.queryOptions(), refetchInterval: 5_000 });
-  const pools = useQuery(trpc.pools.list.queryOptions());
-  return (
-    <>
-      <Section title={t("runners.pools")} count={pools.data?.length ?? 0}>
-        <ul className="rows">
-          {pools.data?.map((pool) => (
-            <li key={pool.id} className="py-2">
-              <div className="flex min-h-8 items-center gap-3">
-                <ServerIcon className="size-[15px] text-muted" />
-                <span className="font-medium">{pool.name}</span>
-                {pool.isDefault ? <Chip>{t("runners.defaultPool")}</Chip> : null}
-                <span className="ml-auto font-mono text-sm text-muted">{t("runners.onlineCount", { online: pool.onlineCount, total: pool.runnerCount })}</span>
-              </div>
-              <JoinTokens poolId={pool.id} />
-            </li>
-          ))}
-        </ul>
-      </Section>
-      <Section title={t("runners.all")} count={runners.data?.length ?? 0}>
-        <ul className="rows">
-          {runners.data?.map((runner) => <RunnerRow key={runner.id} runner={runner} owner={runner.owner?.name ?? null} />)}
-        </ul>
-      </Section>
-    </>
+    <Section title={t("runners.yourMachine")} {...(mine === undefined ? {} : { count: mine.length })}>
+      <div className="overflow-x-auto">
+        <div className="min-w-[800px]">{mine === undefined ? <RunnerSkeleton /> : <MyRunnerRows runners={mine} now={now} />}</div>
+      </div>
+      <p className="mb-3 mt-4 text-[12.5px] text-muted">{mine !== undefined && mine.length > 0 ? t("runners.connectAnother") : t("runners.connectFirst")}</p>
+      <div className="flex min-h-10 items-center gap-3 rounded-lg border border-line bg-surface px-4 py-2">
+        <code className="min-w-0 flex-1 break-all font-mono text-[13px] text-text">{command}</code>
+        <CopyLink text={command} />
+      </div>
+      <p className="mt-3 flex items-start gap-2 text-sm text-faint">
+        <ShieldIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
+        <span>
+          {t("runners.hostNote")}
+          {windows ? t("runners.hostNoteWindows") : ""}
+        </span>
+      </p>
+    </Section>
   );
 };
 
 /**
- * Organization › Runners (F-013, F-014, F-091's first slice): the command that connects a personal
- * runner, the member's runners appearing online, and for admins the pools and their join tokens.
+ * Organization › Runners (F-013, F-014, F-091, F-092): for admins the pools, every runner and the
+ * selected pool's join tokens; for everyone their own machine and the command that connects it.
  */
 export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: string; readonly admin: boolean }) => {
   const trpc = useTRPC();
+  const me = useQuery(trpc.me.get.queryOptions());
   const mine = useQuery({ ...trpc.runners.mine.queryOptions(), refetchInterval: (query) => (query.state.data?.some((r) => r.state === "online") === true ? 15_000 : 2_000) });
-  const command = `pnpm ostra runner --server ${corePublicUrl}`;
+  const runners = useQuery({ ...trpc.runners.list.queryOptions(), enabled: admin, refetchInterval: 5_000 });
+  const pools = useQuery({ ...trpc.pools.list.queryOptions(), enabled: admin, refetchInterval: 5_000 });
+  const [picked, setPicked] = useState<string | null>(null);
+  const [shown, setShown] = useState<{ readonly poolId: string; readonly token: string } | null>(null);
+  const [filter, setFilter] = useState<Filter>({ kind: "all" });
+  const [creating, setCreating] = useState(false);
+  const now = Date.now();
+
+  const poolList = pools.data ?? [];
+  const selected = poolList.find((pool) => pool.id === picked) ?? poolList.find((pool) => pool.isDefault) ?? poolList[0];
+  const myIds = new Set((mine.data ?? []).map((runner) => runner.id));
+  // The admin's own personal runners are listed under Your machine, not here.
+  const others = (runners.data ?? []).filter((runner) => !myIds.has(runner.id));
+  const listed = others.filter((runner) =>
+    filter.kind === "all" ? true : filter.kind === "personal" ? runner.kind === "personal" : runner.pool?.id === filter.poolId,
+  );
+  const filterLabel =
+    filter.kind === "all"
+      ? t("runners.allPools")
+      : filter.kind === "personal"
+        ? t("runners.personalFilter")
+        : (poolList.find((pool) => pool.id === filter.poolId)?.name ?? t("runners.allPools"));
+
+  const ownMachine = (mine.data?.length ?? 0) > 0;
+  const lede = !admin
+    ? t("runners.ledeMember")
+    : runners.data === undefined || pools.data === undefined || mine.data === undefined
+      ? undefined
+      : adminLede(runners.data, pools.data.length, ownMachine);
+
+  const pickPool = (poolId: string) => {
+    setPicked(poolId);
+    if (shown !== null && shown.poolId !== poolId) setShown(null);
+  };
+
+  const properties =
+    selected === undefined ? (
+      pools.isPending ? null : <p className="text-body text-muted">{t("runners.noPoolSelected")}</p>
+    ) : (
+      <PoolProperties
+        key={selected.id}
+        pool={selected}
+        shown={shown?.poolId === selected.id ? shown.token : null}
+        onShown={(token) => { setShown({ poolId: selected.id, token }); }}
+      />
+    );
+
   return (
-    <PageFrame crumbs={[{ label: t("shell.organization") }, { label: t("shell.runners") }]}>
-      <PageHeading title={t("runners.title")} lede={t("runners.lede")} />
-      <Section title={t("runners.connect")}>
-        <p className="mb-2 text-muted">{t("runners.connectBody")}</p>
-        <div className="flex items-start gap-2">
-          <Code className="min-w-0 flex-1" >{command}</Code>
-          <CopyButton text={command} />
-        </div>
-        <p className="mt-2 text-sm text-faint">{t("runners.connectAfter")}</p>
-        <p className="mt-2 flex items-start gap-1.5 text-sm text-amber">
-          <TriangleAlertIcon className="mt-0.5 size-[13px] shrink-0" />
-          {t("runners.hostWarning")}
-        </p>
-      </Section>
-      <Section title={t("runners.mine")} count={mine.data?.length ?? 0}>
-        {mine.data?.length === 0 ? <p className="border-t border-line py-3 text-muted">{t("runners.noneYet")}</p> : null}
-        <ul className="rows" data-testid="my-runners">
-          {mine.data?.map((runner) => <RunnerRow key={runner.id} runner={runner} />)}
-        </ul>
-      </Section>
-      {admin ? <AdminSections /> : null}
-    </PageFrame>
+    <Sheet open={creating} onOpenChange={setCreating}>
+      <PageFrame
+        crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("shell.runners") }]}
+        {...(admin
+          ? {
+              actions: (
+                <Button variant="primary" onClick={() => { setCreating(true); }}>
+                  <PlusIcon className="stroke-[1.75]" /> {t("runners.newPool")}
+                </Button>
+              ),
+              properties,
+            }
+          : {})}
+      >
+        <PageHeading title={t("runners.title")} {...(lede === undefined ? {} : { lede })} />
+        {lede === undefined ? <div className="h-5" aria-hidden /> : null}
+        {admin ? (
+          <>
+            <Section title={t("runners.pools")} {...(pools.data === undefined ? {} : { count: pools.data.length })}>
+              {pools.data === undefined ? <SkeletonRows rows={2} height="h-10" /> : <PoolsTable pools={pools.data} selectedId={selected?.id ?? null} onSelect={pickPool} />}
+            </Section>
+            <Section
+              title={t("runners.runnersSection")}
+              {...(runners.data === undefined ? {} : { count: others.length })}
+              end={
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="flex items-center gap-1 text-[12.5px] text-muted hover:text-text" aria-label={t("runners.filter")}>
+                    {filterLabel} <ChevronDownIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[180px]">
+                    <DropdownMenuItem onSelect={() => { setFilter({ kind: "all" }); }}>{t("runners.allPools")}</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {poolList.map((pool) => (
+                      <DropdownMenuItem key={pool.id} onSelect={() => { setFilter({ kind: "pool", poolId: pool.id }); }}>
+                        {pool.name}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem onSelect={() => { setFilter({ kind: "personal" }); }}>{t("runners.personalFilter")}</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              }
+            >
+              <div className="overflow-x-auto">
+                <div className="min-w-[800px]">
+                  {runners.data === undefined ? (
+                    <RunnerSkeleton />
+                  ) : listed.length === 0 ? (
+                    <p className="flex h-10 items-center border-y border-line px-2 text-muted">{t("runners.noRunners")}</p>
+                  ) : (
+                    <RunnerRows runners={listed} now={now} />
+                  )}
+                </div>
+              </div>
+            </Section>
+          </>
+        ) : null}
+        <YourMachine corePublicUrl={corePublicUrl} mine={mine.data} now={now} />
+      </PageFrame>
+      {admin ? <NewPoolSheet key={creating ? "open" : "closed"} onCreated={(poolId) => { setCreating(false); pickPool(poolId); }} /> : null}
+    </Sheet>
   );
 };
