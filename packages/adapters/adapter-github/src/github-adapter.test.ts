@@ -1276,6 +1276,38 @@ describe("the GitHub adapter", () => {
       }
     });
 
+    it("F-136: the fake's second App answers as its own App: its owner, its one installation, and tokens for its owner's repos only", async () => {
+      const owner = { login: "globex", id: 9_300, type: "Organization", installationId: 93 } as const;
+      const two = await createFakeGitHub({
+        repos: [
+          { id: 1, owner: "fake-org", name: "test1", defaultBranch: "main", branches: ["main"], files: {} },
+          { id: 2, owner: "globex", name: "shop", defaultBranch: "main", branches: ["main"], files: {} },
+        ],
+        secondApp: { slug: "globex-ostra", owner },
+      });
+      try {
+        const local = new GitHubAdapter({ apiUrl: two.apiUrl, webUrl: two.webUrl, oauthUrl: two.apiUrl });
+        const secondApp = two.secondApp;
+        if (secondApp === null) throw new Error("the fake was started with a second App");
+        const app = { appId: secondApp.appId, privateKey: secondApp.privateKey };
+        expect(await local.readApp(app)).toMatchObject({ ok: true, value: { slug: "globex-ostra", owner: { login: "globex", accountId: "9300" } } });
+        const listed = await local.listInstallations(app);
+        expect(listed.ok && listed.value.map((item) => item.installationId)).toEqual(["93"]);
+        const repos = await local.listRepos(app, "93");
+        expect(repos.ok && repos.value.map((repo) => repo.fullName)).toEqual(["globex/shop"]);
+        // Neither App reaches the other's installation, and the first App's own doesn't reach globex.
+        expect((await local.listRepos(app, two.installationId)).ok).toBe(false);
+        const first = { appId: two.appId, privateKey: two.privateKey };
+        expect((await local.listRepos(first, "93")).ok).toBe(false);
+        const own = await local.listRepos(first, two.installationId);
+        expect(own.ok && own.value.map((repo) => repo.fullName)).toEqual(["fake-org/test1"]);
+        // The second App's key signed for the first App's ID is refused.
+        expect((await local.readApp({ appId: two.appId, privateKey: secondApp.privateKey })).ok).toBe(false);
+      } finally {
+        await two.close();
+      }
+    });
+
     it("F-136: reads each installation event from GitHub's documented payloads, whatever GitHub adds, and refuses one it can't read", () => {
       // GitHub's example payloads ("Webhook events and payloads": installation, installation_repositories), trimmed, with a field ostra doesn't read.
       const account = { login: "octocat", id: 1, node_id: "MDQ6VXNlcjE=", type: "User", site_admin: false, a_field_github_adds_later: true };

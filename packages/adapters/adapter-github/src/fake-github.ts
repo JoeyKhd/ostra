@@ -215,6 +215,11 @@ export type FakeGitHub = {
   readonly installationPayload: (action: string, installationId: number) => string;
   /** An `installation_repositories` webhook's body: repos added to an installation, or removed from it. */
   readonly installationRepositoriesPayload: (action: "added" | "removed", installationId: number, repoNames: readonly string[]) => string;
+  /**
+   * Milestone 4 (F-136): a second App, owned by `secondApp.owner` and installed on that account
+   * only, with its own ID and key; `null` unless the fake was started with one.
+   */
+  readonly secondApp: { readonly appId: string; readonly appSlug: string; readonly privateKey: string; readonly installationId: number; readonly owner: FakeAccount } | null;
   readonly close: () => Promise<void>;
 };
 
@@ -267,6 +272,11 @@ export const createFakeGitHub = async (options: {
   readonly org?: string;
   /** Milestone 4 (F-136): other accounts with the App installed, such as a stranger's. None by default. */
   readonly otherAccounts?: readonly FakeAccount[];
+  /**
+   * Milestone 4 (F-136): a second App ("Connect another App"), owned by this account and installed
+   * on it alone; its repos are the fake's repos whose `owner` is the account's login. None by default.
+   */
+  readonly secondApp?: { readonly slug: string; readonly owner: FakeAccount };
 }): Promise<FakeGitHub> => {
   const pair = await generate("rsa", {
     modulusLength: 2048,
@@ -286,6 +296,13 @@ export const createFakeGitHub = async (options: {
   const org = options.org ?? "fake-org";
   const orgId = 6_001;
   const otherAccounts = options.otherAccounts ?? [];
+  const second = options.secondApp === undefined ? null : { appId: "4343", appSlug: options.secondApp.slug, owner: options.secondApp.owner, pair: await generate("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs1", format: "pem" },
+  }) };
+  /** The accounts whose repos the owner's own installation doesn't reach. */
+  const notOwners = [...otherAccounts, ...(second === null ? [] : [second.owner])];
   const removedInstallations: number[] = [];
   /** The account an installation is on, or `undefined` for one the fake never had or removed. */
   const accountOf = (id: number): { readonly login: string; readonly id: number; readonly type: "Organization" | "User" } | undefined => {
@@ -295,15 +312,20 @@ export const createFakeGitHub = async (options: {
     if (id === installationId) {
       return { login: org, id: orgId, type: "Organization" };
     }
+    if (second !== null && id === second.owner.installationId) {
+      return second.owner;
+    }
     return otherAccounts.find((account) => account.installationId === id);
   };
+  /** Whether an installation belongs to the App a JWT was signed for. */
+  const ofApp = (app: "first" | "second", id: number): boolean => (second !== null && id === second.owner.installationId) === (app === "second");
   /** Whether an installation can reach a repo: another account's reaches its own repos, the owner's every other. */
   const installationSees = (id: number, repo: FakeRepo): boolean => {
     const account = accountOf(id);
     if (account === undefined) {
       return false;
     }
-    return id === installationId ? !otherAccounts.some((other) => other.login === repo.owner) : repo.owner === account.login;
+    return id === installationId ? !notOwners.some((other) => other.login === repo.owner) : repo.owner === account.login;
   };
   const accountJson = (account: { readonly login: string; readonly id: number; readonly type: string }) => ({
     login: account.login,
@@ -374,19 +396,24 @@ export const createFakeGitHub = async (options: {
     response.end(JSON.stringify(body));
   };
 
-  const jwtValid = (token: string): boolean => {
+  /** The App a JWT was validly signed for, or `null`. */
+  const jwtApp = (token: string): "first" | "second" | null => {
     const [header, payload, signature] = token.split(".");
     if (header === undefined || payload === undefined || signature === undefined) {
-      return false;
+      return null;
     }
     try {
       const claims = z.looseObject({ iss: z.union([z.string(), z.number()]) }).parse(JSON.parse(base64url(payload).toString("utf8")));
-      return (
-        String(claims.iss) === appId &&
-        createVerify("RSA-SHA256").update(`${header}.${payload}`).verify(pair.publicKey, signature, "base64url")
-      );
+      const verifies = (publicKey: string): boolean => createVerify("RSA-SHA256").update(`${header}.${payload}`).verify(publicKey, signature, "base64url");
+      if (String(claims.iss) === appId && verifies(pair.publicKey)) {
+        return "first";
+      }
+      if (second !== null && String(claims.iss) === second.appId && verifies(second.pair.publicKey)) {
+        return "second";
+      }
+      return null;
     } catch {
-      return false;
+      return null;
     }
   };
 
@@ -564,8 +591,30 @@ export const createFakeGitHub = async (options: {
 
     // ---- as the App: a JWT
     if (path === "/app" || path.startsWith("/app/")) {
-      if (auth === undefined || !jwtValid(auth)) {
+      const app = auth === undefined ? null : jwtApp(auth);
+      if (app === null) {
         send(response, 401, { message: "A JSON web token could not be decoded" });
+        return;
+      }
+      if (app === "second" && second !== null && method === "GET" && path === "/app") {
+        send(response, 200, {
+          id: Number(second.appId),
+          slug: second.appSlug,
+          name: second.appSlug,
+          permissions: { contents: "write", checks: "write", actions: "read", metadata: "read", pull_requests: "write" },
+          events: ["pull_request"],
+          client_id: "Iv1.fakesecond",
+          owner: accountJson(second.owner),
+        });
+        return;
+      }
+      if (app === "second" && second !== null && method === "GET" && path === "/app/installations") {
+        const live = accountOf(second.owner.installationId) === undefined ? [] : [second.owner];
+        send(
+          response,
+          200,
+          live.map((item) => ({ id: item.installationId, account: accountJson(item), repository_selection: "selected", app_id: Number(second.appId), target_type: item.type })),
+        );
         return;
       }
       if (method === "GET" && path === "/app") {
@@ -593,7 +642,7 @@ export const createFakeGitHub = async (options: {
       const uninstall = /^\/app\/installations\/(\d+)$/.exec(path);
       if (method === "DELETE" && uninstall !== null) {
         const id = Number(uninstall[1]);
-        if (accountOf(id) === undefined) {
+        if (accountOf(id) === undefined || !ofApp(app, id)) {
           send(response, 404, { message: "Not Found" });
           return;
         }
@@ -605,7 +654,7 @@ export const createFakeGitHub = async (options: {
       const mint = /^\/app\/installations\/(\d+)\/access_tokens$/.exec(path);
       if (method === "POST" && mint !== null) {
         const minting = Number(mint[1]);
-        if (accountOf(minting) === undefined) {
+        if (accountOf(minting) === undefined || !ofApp(app, minting)) {
           send(response, 404, { message: "Not Found" });
           return;
         }
@@ -1111,10 +1160,11 @@ export const createFakeGitHub = async (options: {
     checkRuns,
     otherAccounts,
     removedInstallations: () => [...removedInstallations],
+    secondApp: second === null ? null : { appId: second.appId, appSlug: second.appSlug, privateKey: second.pair.privateKey, installationId: second.owner.installationId, owner: second.owner },
     installationPayload: (action, id) => {
       const account = id === installationId ? { login: org, id: orgId, type: "Organization" } : otherAccounts.find((item) => item.installationId === id);
       if (account === undefined) throw new Error("the fake has no such installation");
-      const repos = options.repos.filter((repo) => (id === installationId ? !otherAccounts.some((other) => other.login === repo.owner) : repo.owner === account.login));
+      const repos = options.repos.filter((repo) => (id === installationId ? !notOwners.some((other) => other.login === repo.owner) : repo.owner === account.login));
       return JSON.stringify({
         action,
         installation: {
