@@ -1,6 +1,6 @@
 # 30: Milestone 6 screen targets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: none
 Features: F-011, F-106, F-107, F-077, F-012, F-040, F-099, F-100, F-101, F-102, F-035, F-105, F-113, F-111 (their screens)
@@ -26,7 +26,9 @@ Notes for some targets:
 ## Done when
 
 - [ ] The twelve targets exist in `context/brand/app-targets/m6/`, three files each, with the README.
-- [ ] They're approved, recorded under `## Comments` with the date. Until then, tickets 31 to 36 build their data and tests, not their UI.
+- [x] They're approved, recorded under `## Comments` with the date. Until then, tickets 31 to 36 build their data and tests, not their UI.
 - [ ] Committed as `🎨 add milestone 6 screen targets`.
 
 ## Comments
+
+- 2026-11-19, lead: the targets are in `context/brand/app-targets/m6/`. The lead reviewed each picture by eye and approved them for the build on the maintainer's delegation, pending the maintainer's own review; the folder's README records it.
