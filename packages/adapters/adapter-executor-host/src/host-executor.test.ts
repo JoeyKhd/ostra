@@ -3,9 +3,8 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { isAlive } from "@ostra/adapter-sdk";
 import type { AgentLaunch, BoxRef, TaskProxies } from "@ostra/adapter-sdk";
-import { startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { RepoSecret, TaskSpec } from "@ostra/protocol";
@@ -333,13 +332,17 @@ describe("the host executor", () => {
       }
     }
     expect(childPid).toBeGreaterThan(0);
+    // By birth as well as PID: the stop takes seconds under load, and Windows may hand a PID on.
+    const tracked = trackedPids();
+    const agentPid = (await tracked.track(agent.value.pid ?? null)) ?? 0;
+    await tracked.track(childPid);
     expect(await executor.stop({ box, graceMs: 200 })).toEqual({ ok: true, value: undefined });
-    const agentPid = agent.value.pid ?? 0;
-    for (let attempt = 0; attempt < 50 && (isAlive(agentPid) || isAlive(childPid)); attempt += 1) {
+    const deadline = Date.now() + 15_000;
+    while (((await tracked.isAlive(agentPid)) || (await tracked.isAlive(childPid))) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    expect(isAlive(agentPid)).toBe(false);
-    expect(isAlive(childPid)).toBe(false);
+    expect(await tracked.isAlive(agentPid)).toBe(false);
+    expect(await tracked.isAlive(childPid)).toBe(false);
     await executor.release(box);
   });
 });

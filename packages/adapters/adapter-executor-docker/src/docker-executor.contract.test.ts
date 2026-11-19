@@ -5,9 +5,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isAlive, killTree, silentLogger } from "@ostra/adapter-sdk";
+import { killTree, silentLogger } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { listenForInit } from "./bridge/bridge-server.ts";
@@ -29,6 +29,18 @@ const nodeLaunch = (script: string, box: CreatedBox): AgentLaunch => ({
 });
 
 const pidFile = (box: CreatedBox): string => path.join(box.agentDir, "helper.pid");
+
+const helperPid = async (box: CreatedBox): Promise<number | null> => {
+  try {
+    const pid = Number((await readFile(pidFile(box), "utf8")).trim());
+    return pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+// By birth as well as PID: a stop that takes seconds leaves a killed helper's PID to another process.
+const helpers = trackedPids();
 
 defineExecutorContractSuite({
   name: "docker, through the bridge to a local init",
@@ -68,16 +80,13 @@ defineExecutorContractSuite({
               ].join("\n"),
               box,
             ),
-          readPid: async (box) => {
-            try {
-              const pid = Number((await readFile(pidFile(box), "utf8")).trim());
-              return pid > 0 ? pid : null;
-            } catch {
-              return null;
+          readPid: async (box) => helpers.track(await helperPid(box)),
+          isAlive: helpers.isAlive,
+          kill: async (pid) => {
+            if (await helpers.isAlive(pid)) {
+              await killTree(pid);
             }
           },
-          isAlive: (pid) => Promise.resolve(isAlive(pid)),
-          kill: (pid) => killTree(pid),
         },
         // Ticket 42: a helper with an empty environment. A box's container holds it whatever it
         // carries; here the stand-in init finds it among its descendants, so the agent stays.
@@ -95,16 +104,13 @@ defineExecutorContractSuite({
               ].join("\n"),
               box,
             ),
-          readPid: async (box) => {
-            try {
-              const pid = Number((await readFile(pidFile(box), "utf8")).trim());
-              return pid > 0 ? pid : null;
-            } catch {
-              return null;
+          readPid: async (box) => helpers.track(await helperPid(box)),
+          isAlive: helpers.isAlive,
+          kill: async (pid) => {
+            if (await helpers.isAlive(pid)) {
+              await killTree(pid);
             }
           },
-          isAlive: (pid) => Promise.resolve(isAlive(pid)),
-          kill: (pid) => killTree(pid),
         },
       },
       dispose: async () => {

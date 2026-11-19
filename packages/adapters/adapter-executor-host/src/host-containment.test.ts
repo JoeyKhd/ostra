@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { isAlive, killTree, silentLogger, systemClock } from "@ostra/adapter-sdk";
 import type { AgentLaunch, BoxRef, TaskProxies } from "@ostra/adapter-sdk";
-import { recordingLogger, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { recordingLogger, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { TaskSpec } from "@ostra/protocol";
@@ -44,27 +44,33 @@ const nodeLaunch = (script: string, cwd: string): AgentLaunch => ({
   files: [],
 });
 
+// By birth as well as PID: a stop takes seconds under load, and Windows hands a dead process's PID
+// on within moments, so "is it alive?" by PID alone can answer for another process.
+const tracked = trackedPids();
+
 const readPid = async (file: string, timeoutMs = 15_000): Promise<number> => {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const pid = Number((await readFile(file, "utf8").catch(() => "0")).trim());
     if (pid > 0 || Date.now() >= deadline) {
+      await tracked.track(pid > 0 ? pid : null);
       return pid;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 };
 
+/** Whether the process goes within `timeoutMs`. A check of a PID in use lists every process. */
 const goneWithin = async (pid: number, timeoutMs: number): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (!isAlive(pid)) {
+    if (!(await tracked.isAlive(pid))) {
       forget(pid);
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  if (isAlive(pid)) {
+  if (await tracked.isAlive(pid)) {
     return false;
   }
   forget(pid);
@@ -127,7 +133,7 @@ describe("a host task's processes (ticket 42)", () => {
     // The agent is gone; its helper isn't, until the task stops.
     expect(isAlive(helper)).toBe(true);
     await executor.stop({ box, graceMs: 200 });
-    expect(await goneWithin(helper, 5_000)).toBe(true);
+    expect(await goneWithin(helper, 15_000)).toBe(true);
     await executor.release(box);
   }, 60_000);
 
@@ -147,7 +153,7 @@ describe("a host task's processes (ticket 42)", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(isAlive(daemon)).toBe(true);
     await executor.stop({ box, graceMs: 200 });
-    expect(await goneWithin(daemon, 5_000)).toBe(true);
+    expect(await goneWithin(daemon, 15_000)).toBe(true);
     await executor.release(box);
   }, 60_000);
 
@@ -165,17 +171,18 @@ describe("a host task's processes (ticket 42)", () => {
     const first = await lines.next();
     const report = z.strictObject({ helper: z.number().int().positive(), containment: z.string() }).parse(JSON.parse(String(first.value)));
     strays.push(report.helper);
+    await tracked.track(report.helper);
     expect(isAlive(report.helper), stderr).toBe(true);
     // As a crash or `kill -9` would: no chance to clean up (TerminateProcess on Windows).
     child.kill("SIGKILL");
     await new Promise((resolve) => child.once("exit", resolve));
     if (report.containment === "job-object") {
       // The kernel closed the dead runner's handle, and the job with it.
-      expect(await goneWithin(report.helper, 5_000)).toBe(true);
+      expect(await goneWithin(report.helper, 15_000)).toBe(true);
     }
     // Elsewhere the runner's next start ends what its last run left: its cgroups, its markers.
     await HostExecutor.start({ dataDir }, { logger: silentLogger, clock: systemClock });
-    expect(await goneWithin(report.helper, 5_000)).toBe(true);
+    expect(await goneWithin(report.helper, 15_000)).toBe(true);
   }, 90_000);
 
   it("F-014: with koffi faked to fail, the executor falls back to the tree, says why in its log, and reports process-tree", async () => {
@@ -193,8 +200,9 @@ describe("a host task's processes (ticket 42)", () => {
     const agent = await executor.startAgent(box, nodeLaunch("setInterval(() => {}, 1000)", created.workspaceDir));
     expect(agent.ok).toBe(true);
     const pid = agent.ok ? (agent.value.pid ?? 0) : 0;
+    await tracked.track(pid);
     await executor.stop({ box, graceMs: 100 });
-    expect(await goneWithin(pid, 5_000)).toBe(true);
+    expect(await goneWithin(pid, 15_000)).toBe(true);
     await executor.release(box);
   }, 60_000);
 
@@ -240,7 +248,7 @@ describe.runIf(process.platform === "linux")("a Linux runner without a cgroup of
     }
     expect(isAlive(helper)).toBe(true);
     await executor.stop({ box, graceMs: 200 });
-    expect(await goneWithin(helper, 5_000)).toBe(true);
+    expect(await goneWithin(helper, 15_000)).toBe(true);
     await executor.release(box);
   }, 60_000);
 });

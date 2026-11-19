@@ -1,9 +1,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { isAlive, killTree } from "@ostra/adapter-sdk";
+import { killTree } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import type { HelperCase } from "@ostra/adapter-sdk/testing";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { HostExecutor } from "./host-executor.ts";
@@ -27,19 +27,26 @@ const nodeLaunch = (script: string, box: CreatedBox): AgentLaunch => ({
 
 const pidFile = (box: CreatedBox): string => path.join(box.agentDir, "helper.pid");
 
+// By birth as well as PID: a stop that takes seconds leaves a killed helper's PID to another process.
+const helpers = trackedPids();
+
 const helperCase = (clearEnv: boolean): HelperCase => ({
   // The agent detaches a helper through a go-between, and both exit at once: no parent is left.
   launch: (box) => nodeLaunch(detachedHelperScript(pidFile(box), { exitAtOnce: true, clearEnv }), box),
   readPid: async (box) => {
     try {
       const pid = Number((await readFile(pidFile(box), "utf8")).trim());
-      return pid > 0 ? pid : null;
+      return await helpers.track(pid > 0 ? pid : null);
     } catch {
       return null;
     }
   },
-  isAlive: (pid) => Promise.resolve(isAlive(pid)),
-  kill: (pid) => killTree(pid),
+  isAlive: helpers.isAlive,
+  kill: async (pid) => {
+    if (await helpers.isAlive(pid)) {
+      await killTree(pid);
+    }
+  },
 });
 
 defineExecutorContractSuite({

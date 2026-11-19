@@ -276,7 +276,8 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
           return;
         }
         await adapter.stop({ box, graceMs: 500 });
-        gone = await waitFor(async () => !(await helper.isAlive(pid)), 5_000);
+        // Each check of a PID still in use may list the machine's processes (seconds under load).
+        gone = await waitFor(async () => !(await helper.isAlive(pid)), 15_000);
         expect(gone, "a detached helper outlived the task's stop").toBe(true);
       } finally {
         // Only a helper still seen alive: a dead one's PID may already be another process's.
