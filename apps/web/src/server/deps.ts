@@ -13,7 +13,7 @@ import { repoRoot } from "@ostra/db/dev";
 import type { Db } from "@ostra/db";
 import { checkSecretsKey, parseServerSettings, postgresCommandOutbox, secretsKeyMismatchError, systemClock } from "@ostra/domain";
 import type { JobQueue, ServerSettings } from "@ostra/domain";
-import { createJobs } from "@ostra/jobs";
+import { createJobs, createProducer } from "@ostra/jobs";
 import { errnoCode, organizationIdSchema } from "@ostra/protocol";
 
 // The panel's composition root (ADR 0016): one per web process. It builds what only the web app
@@ -131,23 +131,9 @@ const build = async (): Promise<ApiRuntime> => {
     instanceName: `web-${String(process.pid)}`,
     logger,
   });
-  // Core installs pg-boss's schema (ADR 0037). The panel starts without it and connects the queue
-  // when it first enqueues, so the panel's pages never wait on core.
-  let started: Promise<void> | undefined;
-  const ensureStarted = (): Promise<void> => {
-    started ??= jobs.start().catch((error: unknown) => {
-      started = undefined;
-      logger.warn("web.jobs_unavailable", { name: error instanceof Error ? error.name : "unknown" });
-      throw error;
-    });
-    return started;
-  };
-  const queue: JobQueue = {
-    enqueueInTx: async (tx, job, payload, options) => {
-      await ensureStarted();
-      await jobs.enqueueInTx(tx, job, payload, options);
-    },
-  };
+  // Core installs pg-boss's schema (ADR 0037, Q157). The panel retries its start in the background,
+  // with backoff, and reports itself starting until then, so its pages never wait on core.
+  const queue: JobQueue = createProducer(jobs, { logger });
 
   const runtime = await createApiRuntime({
     settings,

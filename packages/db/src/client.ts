@@ -21,11 +21,26 @@ export type CreateDbOptions = {
   readonly maxConnections?: number;
 };
 
+/**
+ * The URL with `options=-c TimeZone=UTC`, so every session the server opens runs in UTC (ADR 0037,
+ * Q158): Prisma's driver adapter writes a `Date` into `timestamptz` as its UTC fields with no
+ * offset, which Postgres reads in the session's time zone. Options already in the URL are kept.
+ */
+export const utcConnectionString = (databaseUrl: string): string => {
+  const url = new URL(databaseUrl);
+  const existing = url.searchParams.get("options");
+  if (existing?.includes("TimeZone=") === true) {
+    return databaseUrl;
+  }
+  url.searchParams.set("options", existing === null || existing === "" ? "-c TimeZone=UTC" : `${existing} -c TimeZone=UTC`);
+  return url.toString();
+};
+
 /** A client for the database at `databaseUrl`. The URL holds credentials: never log it. */
 export const createDb = (databaseUrl: string, options: CreateDbOptions = {}): Db =>
   new PrismaClient({
     adapter: new PrismaPg({
-      connectionString: databaseUrl,
+      connectionString: utcConnectionString(databaseUrl),
       ...(options.maxConnections === undefined ? {} : { max: options.maxConnections }),
     }),
   });

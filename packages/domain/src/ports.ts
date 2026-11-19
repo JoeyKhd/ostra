@@ -30,6 +30,12 @@ import type { JobName, JobPayload } from "./jobs.ts";
 export type EnqueueOptions = {
   /** Run no sooner than this many ms from now (a timer: the offer timeout, the task grace). */
   readonly startAfterMs?: number;
+  /**
+   * The group a throttled job counts against (`jobSending`'s `throttle`), such as its connection's
+   * ID: the queue's `groupConcurrency` limits running jobs per group. A throttle, never a budget
+   * (ADR 0037): two extra claims can briefly pass it.
+   */
+  readonly group?: { readonly id: string; readonly tier?: string };
 };
 
 /** The durable queue (ADR 0037). Sending a job with a key that exists returns the existing one. */

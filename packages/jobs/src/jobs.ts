@@ -4,6 +4,7 @@
 
 import { silentLogger } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
+import { utcConnectionString } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { jobKey, jobNames, parseJobPayload } from "@ostra/domain";
 import type { EnqueueOptions, JobName, JobPayload, JobQueue } from "@ostra/domain";
@@ -11,7 +12,7 @@ import { fromPrisma, PgBoss } from "pg-boss";
 import type { Queue, SendOptions, WorkOptions } from "pg-boss";
 import { z } from "zod";
 
-import { DEAD_LETTER_QUEUE, queueName, queueSettings } from "./definitions.ts";
+import { cronPeriodSeconds, DEAD_LETTER_QUEUE, FORWARDING_HEARTBEAT_SECONDS, FORWARDING_QUEUE, queueName, queueSettings } from "./definitions.ts";
 
 /**
  * `enqueue-only`: the panel. It enqueues inside its transactions and never migrates, supervises,
@@ -70,9 +71,18 @@ export type WorkerOptions = {
   readonly localConcurrency?: number;
 };
 
+/** What the boot check found (ADR 0037, Q158): a worker refuses to start on any problem. */
+export type BootCheck = { readonly ok: true } | { readonly ok: false; readonly problems: readonly string[] };
+
 export type Jobs = JobQueue & {
-  /** Connects. A worker also installs or upgrades pg-boss's schema and creates every queue. */
+  /**
+   * Connects. A worker also installs or upgrades pg-boss's schema, creates every queue, sets the
+   * forwarding queue's heartbeat, and runs the boot check: it throws, and no worker runs, when the
+   * check fails.
+   */
   readonly start: () => Promise<void>;
+  /** Reads back the forwarding queue's heartbeat and the session's time zone. */
+  readonly bootCheck: () => Promise<BootCheck>;
   /** Stops the workers (letting a running handler finish when `graceful`) and closes the pool. */
   readonly stop: (options?: { readonly graceful?: boolean; readonly timeoutMs?: number }) => Promise<void>;
   /** `enqueueInTx`, with what happened: a new job, or the one already under that key. */
@@ -88,7 +98,14 @@ export type Jobs = JobQueue & {
    * A recurring job by cron, stored in the database: one job per tick however many workers run
    * (workers only). `scheduleKey` tells several schedules of one job apart, such as a provider's ID.
    */
-  readonly schedule: <N extends JobName>(job: N, scheduleKey: string, cron: string, payload: JobPayload<N>) => Promise<void>;
+  readonly schedule: <N extends JobName>(
+    job: N,
+    scheduleKey: string,
+    cron: string,
+    payload: JobPayload<N>,
+    /** The tick's slot; default: the cron's period (`cronPeriodSeconds`). */
+    options?: { readonly singletonSeconds?: number },
+  ) => Promise<void>;
   readonly unschedule: (job: JobName, scheduleKey: string) => Promise<void>;
   /** Cancels the queued or retrying job under this payload's key. `true` when one was cancelled. */
   readonly cancelInTx: <N extends JobName>(tx: Tx | null, job: N, payload: JobPayload<N>) => Promise<boolean>;
@@ -104,8 +121,13 @@ const jobRowSchema = z.looseObject({
   singletonKey: z.string().nullable(),
 });
 
+const timezoneRowSchema = z.looseObject({ TimeZone: z.string() });
+
 const toSendOptions = (key: string, options: EnqueueOptions | undefined): SendOptions => ({
   singletonKey: key,
+  ...(options?.group === undefined
+    ? {}
+    : { group: options.group.tier === undefined ? { id: options.group.id } : { id: options.group.id, tier: options.group.tier } }),
   // pg-boss counts a delay in whole seconds.
   ...(options?.startAfterMs === undefined || options.startAfterMs <= 0
     ? {}
@@ -132,7 +154,8 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
   const pollingIntervalSeconds = Math.max(0.5, options.pollingIntervalSeconds ?? 2);
 
   const boss = new PgBoss({
-    connectionString: options.databaseUrl,
+    // Every session in UTC (Q158).
+    connectionString: utcConnectionString(options.databaseUrl),
     max: options.poolMax ?? 4,
     ...(options.instanceName === undefined ? {} : { instanceName: options.instanceName }),
     // The panel never migrates, supervises or runs schedules: core does all three.
@@ -196,6 +219,23 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
     return out;
   };
 
+  const bootCheck = async (): Promise<BootCheck> => {
+    const problems: string[] = [];
+    const forwarding = await boss.getQueue(FORWARDING_QUEUE);
+    if (forwarding === null) {
+      problems.push(`pg-boss has no ${FORWARDING_QUEUE} queue: its schedules can't be checked (was pg-boss upgraded?)`);
+    } else if (forwarding.heartbeatSeconds !== FORWARDING_HEARTBEAT_SECONDS) {
+      problems.push(
+        `${FORWARDING_QUEUE} has heartbeatSeconds ${String(forwarding.heartbeatSeconds)}, not ${String(FORWARDING_HEARTBEAT_SECONDS)}: a killed replica would strand its batch for 15 minutes`,
+      );
+    }
+    const zone = timezoneRowSchema.safeParse((await boss.getDb().executeSql("SHOW timezone")).rows[0]);
+    if (!zone.success || !/^(UTC|Etc\/UTC)$/i.test(zone.data.TimeZone)) {
+      problems.push(`the database session's time zone is ${zone.success ? zone.data.TimeZone : "unreadable"}, not UTC`);
+    }
+    return problems.length === 0 ? { ok: true } : { ok: false, problems };
+  };
+
   return {
     role: options.role,
     start: async () => {
@@ -205,9 +245,21 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
         for (const job of jobNames) {
           await boss.createQueue(queueName(job), queueOptions(job));
         }
+        // ADR 0037, after spike 8: a heartbeat on the forwarding queue, then the check that it holds.
+        if ((await boss.getQueue(FORWARDING_QUEUE)) === null) {
+          await boss.createQueue(FORWARDING_QUEUE);
+        }
+        await boss.updateQueue(FORWARDING_QUEUE, { heartbeatSeconds: FORWARDING_HEARTBEAT_SECONDS });
+        const checked = await bootCheck();
+        if (!checked.ok) {
+          logger.error("jobs.boot_check_failed", { problems: checked.problems.join("; ") });
+          await boss.stop({ graceful: false, timeout: 2_000 });
+          throw new Error(`jobs: the boot check failed, so no worker starts: ${checked.problems.join("; ")}`);
+        }
       }
       logger.info("jobs.started", { role: options.role });
     },
+    bootCheck,
     stop: async (stopOptions) => {
       await boss.stop({
         graceful: stopOptions?.graceful ?? true,
@@ -221,11 +273,14 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
     work: async (job, handler, workerOptions) => {
       requireWorker("work()");
       // A literal `includeMetadata: true` is what makes pg-boss type the jobs with their metadata.
+      const groupConcurrency = queueSettings[job].groupConcurrency;
       const workOptions = {
         includeMetadata: true,
         localConcurrency: workerOptions?.localConcurrency ?? 4,
         pollingIntervalSeconds,
         batchSize: 1,
+        // A throttle per group, the same on every replica (ADR 0037).
+        ...(groupConcurrency === undefined ? {} : { groupConcurrency }),
       } as const satisfies WorkOptions;
       await boss.work<unknown, undefined, typeof workOptions>(queueName(job), workOptions, async (batch) => {
         for (const raw of batch) {
@@ -257,7 +312,7 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
         return undefined;
       });
     },
-    schedule: async (job, scheduleKey, cron, payload) => {
+    schedule: async (job, scheduleKey, cron, payload, scheduleOptions) => {
       requireWorker("schedule()");
       const parsed = parseJobPayload(job, payload);
       if (!parsed.ok) {
@@ -265,7 +320,9 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
       }
       await boss.schedule(queueName(job), cron, parsed.payload, {
         key: scheduleKey,
+        // The tick's slot (ADR 0037, after spike 8): a replayed forwarding batch's second send falls in it.
         singletonKey: jobKey(job, parsed.payload),
+        singletonSeconds: scheduleOptions?.singletonSeconds ?? cronPeriodSeconds(cron),
       });
     },
     unschedule: async (job, scheduleKey) => {
