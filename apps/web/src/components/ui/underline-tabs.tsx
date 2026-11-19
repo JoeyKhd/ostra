@@ -70,7 +70,7 @@ export const UnderlineTabs = <T extends string,>({ tabs, selected, onSelect, lab
             onClick={() => { onSelect(tab.id); }}
             onKeyDown={(event) => { onKeyDown(event, index); }}
             className={cn(
-              "-mb-px inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent text-sm font-medium text-muted hover:text-text",
+              "-mb-px inline-flex h-10 items-center gap-1.5 border-b-2 border-transparent text-body font-medium text-muted hover:text-text",
               active && "border-text text-text",
             )}
           >
