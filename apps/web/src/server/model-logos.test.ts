@@ -20,6 +20,8 @@ const entry = (logoPath: string | null): CatalogEntry => ({
   cacheReadPricePerMTok: null,
   cacheWritePricePerMTok: null,
   logoPath,
+  reasoning: { supported: false },
+  reasoningPriceDiffers: false,
 });
 const catalog = (...paths: (string | null)[]) => ({ entries: () => Promise.resolve(paths.map(entry)) });
 

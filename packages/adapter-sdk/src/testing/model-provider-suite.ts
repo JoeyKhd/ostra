@@ -118,5 +118,24 @@ export const defineModelProviderContractSuite = (
         [null, null, null, null],
       ]);
     });
+
+    it("F-137: a catalog match carries the entry's reasoning controls and whether its reasoning price differs", () => {
+      const { adapter, fixture } = subject();
+      const known = fixture.catalog.find((entry) => entry.catalogId === fixture.knownModelId || entry.aliases.includes(fixture.knownModelId));
+      if (known === undefined) throw new Error("the fixture's catalog lacks its known model");
+      const reasons: CatalogEntry = { ...known, reasoning: { supported: true, toggle: true, effort: ["low", "high", "max"] }, reasoningPriceDiffers: true };
+      const plain: CatalogEntry = { ...known, catalogId: "ostra-suite-plain", aliases: ["ostra-suite-plain"], reasoning: { supported: false }, reasoningPriceDiffers: false };
+      const matches = adapter.matchCatalog(
+        [
+          { endpointModelId: fixture.knownModelId, displayName: null, contextWindow: null },
+          { endpointModelId: "ostra-suite-plain", displayName: null, contextWindow: null },
+        ],
+        [reasons, plain],
+      );
+      expect(matches.map((match) => (match.match.kind === "catalog" ? [match.match.entry.reasoning, match.match.entry.reasoningPriceDiffers] : "custom"))).toEqual([
+        [{ supported: true, toggle: true, effort: ["low", "high", "max"] }, true],
+        [{ supported: false }, false],
+      ]);
+    });
   });
 };

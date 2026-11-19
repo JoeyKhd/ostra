@@ -32,6 +32,23 @@ const catalog = {
     models: { "acme-1": { id: "acme-1", name: "Acme One", limit: { context: 8000, output: 800 }, cost: { input: 1, output: 2 } } },
   },
 };
+/** F-137: a catalog whose model reasons, in models.dev's v1 spelling. */
+const reasoningCatalog = {
+  acme: {
+    id: "acme",
+    name: "Acme",
+    models: {
+      "acme-1": {
+        id: "acme-1",
+        name: "Acme One",
+        limit: { context: 8000, output: 800 },
+        cost: { input: 1, output: 2, reasoning: 6 },
+        reasoning: true,
+        reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
+      },
+    },
+  },
+};
 const LOGO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
 
 let test: TestDatabase;
@@ -41,7 +58,7 @@ let world: World;
 let server: Server;
 let baseUrl: string;
 let dataDir: string;
-let mode: "ok" | "fail" | "garbage" = "ok";
+let mode: "ok" | "fail" | "garbage" | "reasoning" = "ok";
 const requests: { readonly path: string; readonly headers: Readonly<Record<string, string | string[] | undefined>> }[] = [];
 const modelProvider = new FakeModelProvider();
 const fakes = { codeHost: new FakeCodeHost(), secretStore: new FakeSecretStore() };
@@ -75,7 +92,7 @@ beforeAll(async () => {
       return;
     }
     if (request.url === "/api.json") {
-      response.writeHead(200, { "content-type": "application/json" }).end(mode === "garbage" ? '{"not":"a catalog"}' : JSON.stringify(catalog));
+      response.writeHead(200, { "content-type": "application/json" }).end(mode === "garbage" ? '{"not":"a catalog"}' : JSON.stringify(mode === "reasoning" ? reasoningCatalog : catalog));
       return;
     }
     if (request.url === "/logos/acme.svg") {
@@ -150,6 +167,17 @@ describe("catalog.refresh", () => {
     expect((await stat(file)).mtimeMs).toBe(before.mtimeMs);
     const entries = await catalogSource(deps())();
     expect(entries.map((entry) => entry.catalogId)).toEqual(["acme/acme-1"]);
+  });
+
+  it("F-137: the daily fetch keeps each model's reasoning controls, in the stored copy and the entries it serves", async () => {
+    mode = "reasoning";
+    expect(await refreshCatalog(deps())).toBe("stored");
+    const stored: unknown = JSON.parse(await readFile(path.join(dataDir, CATALOG_FILE), "utf8"));
+    expect(Reflect.get(Object(stored), "providers")).toEqual(reasoningCatalog);
+    const entries = await catalogSource(deps())();
+    expect(entries.map((entry) => [entry.catalogId, entry.reasoning, entry.reasoningPriceDiffers])).toEqual([
+      ["acme/acme-1", { supported: true, toggle: true, effort: ["low", "high", "max"] }, true],
+    ]);
   });
 
   it("with the fetch off makes no request, and the bundled copy is served", async () => {

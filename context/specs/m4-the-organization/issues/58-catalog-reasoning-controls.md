@@ -1,6 +1,6 @@
 # 58: Model catalog: each model's reasoning controls
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 04, 56
 Features: F-137, F-088
@@ -21,12 +21,14 @@ Spec: `../spec.md`, section 5.6; ADR 0066, ADR 0033 (amended); `context/research
 
 ## Done when
 
-- [ ] Tests named `it("F-137: ...")`:
+- [x] Tests named `it("F-137: ...")`:
   - the conversion table above, each row from a fixture shaped like the live API's
   - the bundled copy holds the controls of `anthropic/claude-sonnet-5`, `anthropic/claude-sonnet-4-5`, `openai/gpt-5.5`, `openai/gpt-5.2-pro` and `deepseek/deepseek-v4-pro` as research section 2.2 lists them
   - a malformed `reasoning_options` refuses the reasoning alone
   - `reasoningPriceDiffers` for `alibaba/qwen3-32b`, and not for a model whose two prices match
-- [ ] The `ModelProviderAdapter` contract suite passes with the new fields.
-- [ ] Committed as `✨ keep each catalog model's reasoning controls`.
+- [x] The `ModelProviderAdapter` contract suite passes with the new fields.
+- [x] Committed as `✨ keep each catalog model's reasoning controls`.
 
 ## Comments
+
+- 2026-11-19: built in `✨ keep each catalog model's reasoning controls`. `CatalogEntry` gains `reasoning` (models.dev's v2 shape, `{ supported: false }` when an entry's controls don't parse, with the count logged as `catalog.reasoning-refused`) and `reasoningPriceDiffers`. The catalog schema reads `reasoning`, `reasoning_options` and `cost.reasoning` loosely and converts per model (`reasoningOf`), so a malformed entry never costs the catalog. The refresh script keeps the three fields, and the bundled copy is refreshed (2026-11-19, 9,022 tool-calling models). A control type ostra doesn't know is skipped, and an effort value off the scale refuses the entry's reasoning. Writing `catalogReasoning` on each model row is ticket 59's sync. Proofs in `context/proof/F-137.md`.

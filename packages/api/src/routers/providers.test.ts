@@ -22,6 +22,8 @@ const claude: CatalogEntry = {
   cacheReadPricePerMTok: null,
   cacheWritePricePerMTok: null,
   logoPath: "/assets/models/anthropic.svg",
+  reasoning: { supported: false },
+  reasoningPriceDiffers: false,
 };
 
 let harness: ApiHarness;

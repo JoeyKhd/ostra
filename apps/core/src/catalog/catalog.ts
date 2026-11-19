@@ -93,7 +93,7 @@ export const refreshCatalog = async (deps: CatalogDeps): Promise<RefreshOutcome>
     return "failed";
   }
   const providers = modelsDevCatalogSchema.safeParse(raw);
-  const entries = parseModelsDevCatalog(raw);
+  const entries = parseModelsDevCatalog(raw, { logger: deps.logger });
   if (!providers.success || !entries.ok) {
     // A copy that doesn't match is refused; the last good one stays.
     deps.logger.warn("catalog.refused", { reason: "the copy doesn't parse" });
@@ -132,13 +132,13 @@ export const catalogSource =
         const json = parseJson(await readFile(path.join(deps.dataDir, CATALOG_FILE), "utf8"));
         const stored = json.ok ? storedCatalogSchema.safeParse(json.value) : null;
         if (stored?.success === true) {
-          return catalogEntries(stored.data.providers);
+          return catalogEntries(stored.data.providers, { logger: deps.logger });
         }
       } catch {
         // No copy yet: the bundled one.
       }
     }
-    return (await loadBundledCatalog()).entries;
+    return (await loadBundledCatalog({ logger: deps.logger })).entries;
   };
 
 export const catalogRefreshHandler =

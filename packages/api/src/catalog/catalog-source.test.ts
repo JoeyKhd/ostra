@@ -17,6 +17,8 @@ const entry = (catalogId: string): CatalogEntry => ({
   cacheReadPricePerMTok: null,
   cacheWritePricePerMTok: null,
   logoPath: null,
+  reasoning: { supported: false },
+  reasoningPriceDiffers: false,
 });
 
 const bundled = [entry("bundled/one")];

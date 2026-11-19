@@ -446,6 +446,8 @@ defineModelProviderContractSuite({
             cacheReadPricePerMTok: 0.1,
             cacheWritePricePerMTok: null,
             logoPath: null,
+            reasoning: { supported: false },
+            reasoningPriceDiffers: false,
           },
         ],
         knownModelId: "gpt-test",

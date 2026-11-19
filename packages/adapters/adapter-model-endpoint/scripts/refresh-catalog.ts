@@ -3,7 +3,8 @@ import { writeFile } from "node:fs/promises";
 import { z } from "zod";
 
 // Refreshes the bundled copy of the models.dev catalog: `pnpm catalog:refresh`. It keeps what
-// ostra reads (a model's ID, name, limits and prices) for the models that call tools, which is
+// ostra reads (a model's ID, name, limits, prices and, since F-137, its reasoning controls and
+// reasoning price, as models.dev spells them) for the models that call tools, which is
 // what an agent needs, and writes the fetch date beside them. Run by a maintainer before a
 // release; the running server fetches its own copy daily (ticket 28).
 
@@ -24,7 +25,10 @@ const raw = z.record(
         name: z.string().nullish(),
         tool_call: z.boolean().nullish(),
         limit: z.looseObject({ context: number, output: number }).nullish(),
-        cost: z.looseObject({ input: number, output: number }).nullish(),
+        cost: z.looseObject({ input: number, output: number, reasoning: z.unknown().optional() }).nullish(),
+        // F-137: kept as models.dev has them; the catalog parse converts and checks them per model.
+        reasoning: z.unknown().optional(),
+        reasoning_options: z.unknown().optional(),
       }),
     ),
   }),
@@ -49,7 +53,17 @@ for (const [providerId, provider] of Object.entries(catalog)) {
       name: model.name ?? model.id,
       tool_call: true,
       ...(model.limit === undefined || model.limit === null ? {} : { limit: { context: model.limit.context ?? null, output: model.limit.output ?? null } }),
-      ...(model.cost === undefined || model.cost === null ? {} : { cost: { input: model.cost.input ?? null, output: model.cost.output ?? null } }),
+      ...(model.cost === undefined || model.cost === null
+        ? {}
+        : {
+            cost: {
+              input: model.cost.input ?? null,
+              output: model.cost.output ?? null,
+              ...(model.cost.reasoning === undefined ? {} : { reasoning: model.cost.reasoning }),
+            },
+          }),
+      ...(model.reasoning === undefined ? {} : { reasoning: model.reasoning }),
+      ...(model.reasoning_options === undefined ? {} : { reasoning_options: model.reasoning_options }),
     };
     models += 1;
   }

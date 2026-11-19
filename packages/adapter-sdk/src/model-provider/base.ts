@@ -1,4 +1,4 @@
-import type { ApiFormat, AuthScheme } from "@ostra/protocol";
+import type { ApiFormat, AuthScheme, ReasoningControls } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
@@ -53,6 +53,14 @@ export type CatalogEntry = {
   readonly cacheWritePricePerMTok: number | null;
   /** The logo's path on ostra's own server, never the vendor's (F-088). */
   readonly logoPath: string | null;
+  /**
+   * Milestone 4 (F-137, ADR 0066): the model's reasoning controls in models.dev's v2 shape, from
+   * its `reasoning` and `reasoning_options`. `{ supported: false }` when it doesn't reason, or
+   * when its entry's controls don't parse.
+   */
+  readonly reasoning: ReasoningControls;
+  /** models.dev lists a `cost.reasoning` that isn't its output price. v1 prices reasoning as output. */
+  readonly reasoningPriceDiffers: boolean;
 };
 
 export type CatalogMatch = {

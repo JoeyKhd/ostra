@@ -23,6 +23,8 @@ const catalog: readonly CatalogEntry[] = [
     cacheReadPricePerMTok: null,
     cacheWritePricePerMTok: null,
     logoPath: "/model-logos/anthropic.svg",
+    reasoning: { supported: true, budget: { min: 1024 } },
+    reasoningPriceDiffers: false,
   },
 ];
 
@@ -296,6 +298,8 @@ describe("the model endpoint adapter", () => {
           cacheReadPricePerMTok: 0.15,
           cacheWritePricePerMTok: 1.875,
           logoPath: "/model-logos/acme.svg",
+          reasoning: { supported: false },
+          reasoningPriceDiffers: false,
         },
       ]);
       expect(parseModelsDevCatalog({ acme: { models: "nope" } })).toMatchObject({ ok: false, error: { code: "invalid-response" } });

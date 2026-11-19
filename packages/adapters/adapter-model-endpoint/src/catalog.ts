@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-import { adapterError, ok, parseVendor } from "@ostra/adapter-sdk";
-import type { AdapterResult, CatalogEntry, CatalogMatch, EndpointModel } from "@ostra/adapter-sdk";
+import { adapterError, ok, parseVendor, silentLogger } from "@ostra/adapter-sdk";
+import type { AdapterResult, CatalogEntry, CatalogMatch, EndpointModel, Logger } from "@ostra/adapter-sdk";
+import { EFFORT_SCALE, effortScaleLevelSchema, noReasoning, reasoningControlsSchema } from "@ostra/protocol";
+import type { EffortScaleLevel, ReasoningControls } from "@ostra/protocol";
 import { z } from "zod";
 
 // The models.dev catalog (ADR 0033): names, limits and prices for the models an endpoint lists.
@@ -16,7 +18,12 @@ const modelsDevModelSchema = z.looseObject({
   name: z.string().nullish(),
   tool_call: z.boolean().nullish(),
   limit: z.looseObject({ context: number, output: number }).nullish(),
-  cost: z.looseObject({ input: number, output: number, cache_read: number, cache_write: number }).nullish(),
+  // F-137: `cost.reasoning` is read loosely, so a malformed one costs the reasoning price alone.
+  cost: z.looseObject({ input: number, output: number, cache_read: number, cache_write: number, reasoning: z.unknown().optional() }).nullish(),
+  // F-137: `reasoning` and `reasoning_options` are read loosely here and parsed per model
+  // (`reasoningOf`), so a malformed entry loses its reasoning alone, never the catalog.
+  reasoning: z.unknown().optional(),
+  reasoning_options: z.unknown().optional(),
 });
 
 const modelsDevProviderSchema = z.looseObject({
@@ -65,9 +72,78 @@ export const logoPathFor = (providerId: string): string => `/model-logos/${encod
 const finite = (value: number | null | undefined): number | null =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 
+// ---------- reasoning controls (F-137, ADR 0066; research `opencode-reasoning-effort.md`, 1.2 and 2.1) ----------
+
+const KNOWN_CONTROLS: readonly string[] = ["toggle", "effort", "budget_tokens"];
+
+/** models.dev's v1 `reasoning_options`: a list of controls. A control type ostra doesn't know is skipped. */
+const reasoningOptionsSchema = z.array(
+  z.union([
+    z.looseObject({ type: z.literal("toggle") }),
+    // `null`, `"null"` and `default` are values models.dev lists that send no effort: dropped.
+    z.looseObject({ type: z.literal("effort"), values: z.array(z.union([effortScaleLevelSchema, z.literal("default"), z.literal("null"), z.null()])) }),
+    z.looseObject({ type: z.literal("budget_tokens"), min: z.number().int().positive().nullish(), max: z.number().int().positive().nullish() }),
+    z.looseObject({ type: z.string().refine((type) => !KNOWN_CONTROLS.includes(type)) }),
+  ]),
+);
+
+/**
+ * One model's controls in models.dev's v2 shape: the conversion OpenCode makes from v1 (research
+ * section 1.2). `undefined` when they don't parse: the caller counts it and keeps the rest of the model.
+ */
+export const reasoningOf = (model: { readonly reasoning?: unknown; readonly reasoning_options?: unknown }): ReasoningControls | undefined => {
+  if (model.reasoning !== true) {
+    return model.reasoning === false || model.reasoning === undefined || model.reasoning === null ? noReasoning : undefined;
+  }
+  if (model.reasoning_options === undefined || model.reasoning_options === null) {
+    return { supported: true };
+  }
+  const options = reasoningOptionsSchema.safeParse(model.reasoning_options);
+  if (!options.success) {
+    return undefined;
+  }
+  let toggle = false;
+  const effort = new Set<EffortScaleLevel>();
+  let budget: { min?: number; max?: number } | undefined;
+  for (const option of options.data) {
+    if (option.type === "toggle") {
+      toggle = true;
+    } else if (option.type === "effort") {
+      const values: readonly unknown[] = "values" in option && Array.isArray(option.values) ? option.values : [];
+      for (const value of values) {
+        const level = effortScaleLevelSchema.safeParse(value);
+        if (level.success) effort.add(level.data);
+      }
+    } else if (option.type === "budget_tokens") {
+      const bounds = z.looseObject({ min: z.number().nullish(), max: z.number().nullish() }).parse(option);
+      budget = { ...(typeof bounds.min === "number" ? { min: bounds.min } : {}), ...(typeof bounds.max === "number" ? { max: bounds.max } : {}) };
+    }
+  }
+  const levels = EFFORT_SCALE.filter((level) => effort.has(level));
+  const controls = reasoningControlsSchema.safeParse({
+    supported: true,
+    ...(toggle ? { toggle: true } : {}),
+    ...(levels.length > 0 ? { effort: levels } : {}),
+    ...(budget === undefined ? {} : { budget }),
+  });
+  return controls.success ? controls.data : undefined;
+};
+
+/** models.dev lists a reasoning price that isn't the output price (v1 prices reasoning as output). */
+const reasoningPriceDiffers = (cost: { readonly output?: number | null | undefined; readonly reasoning?: unknown } | null | undefined): boolean => {
+  const reasoning = finite(typeof cost?.reasoning === "number" ? cost.reasoning : null);
+  return reasoning !== null && reasoning !== finite(cost?.output);
+};
+
+export type CatalogEntriesOptions = {
+  /** Where the count of entries whose reasoning was refused goes. Never an entry's text. */
+  readonly logger?: Logger;
+};
+
 /** Every model of the catalog as an entry, first-party providers first, then by provider ID. */
-export const catalogEntries = (catalog: ModelsDevCatalog): readonly CatalogEntry[] => {
+export const catalogEntries = (catalog: ModelsDevCatalog, options: CatalogEntriesOptions = {}): readonly CatalogEntry[] => {
   const entries: CatalogEntry[] = [];
+  let refused = 0;
   const providerIds = Object.keys(catalog).sort((a, b) => providerRank(a) - providerRank(b) || a.localeCompare(b));
   for (const providerId of providerIds) {
     const provider = catalog[providerId];
@@ -75,6 +151,10 @@ export const catalogEntries = (catalog: ModelsDevCatalog): readonly CatalogEntry
       continue;
     }
     for (const model of Object.values(provider.models)) {
+      const reasoning = reasoningOf(model);
+      if (reasoning === undefined) {
+        refused += 1;
+      }
       entries.push({
         catalogId: `${providerId}/${model.id}`,
         name: model.name ?? model.id,
@@ -86,27 +166,34 @@ export const catalogEntries = (catalog: ModelsDevCatalog): readonly CatalogEntry
         cacheReadPricePerMTok: finite(model.cost?.cache_read),
         cacheWritePricePerMTok: finite(model.cost?.cache_write),
         logoPath: logoPathFor(providerId),
+        reasoning: reasoning ?? noReasoning,
+        reasoningPriceDiffers: reasoningPriceDiffers(model.cost),
       });
     }
+  }
+  if (refused > 0) {
+    (options.logger ?? silentLogger).warn("catalog.reasoning-refused", { entries: refused });
   }
   return entries;
 };
 
 /** Parses a catalog the server fetched. A copy that doesn't match is refused, and the bundled one stays. */
-export const parseModelsDevCatalog = (raw: unknown): AdapterResult<readonly CatalogEntry[]> => {
+export const parseModelsDevCatalog = (raw: unknown, options: CatalogEntriesOptions = {}): AdapterResult<readonly CatalogEntry[]> => {
   const parsed = parseVendor(modelsDevCatalogSchema, raw, "the models.dev catalog");
   if (!parsed.ok) {
     return parsed;
   }
-  const entries = catalogEntries(parsed.value);
+  const entries = catalogEntries(parsed.value, options);
   return entries.length === 0 ? adapterError("invalid-response", "the models.dev catalog has no models") : ok(entries);
 };
 
 /** The copy bundled with the package, and the date it was fetched. */
-export const loadBundledCatalog = async (): Promise<{ readonly fetchedAt: string; readonly entries: readonly CatalogEntry[] }> => {
+export const loadBundledCatalog = async (
+  options: CatalogEntriesOptions = {},
+): Promise<{ readonly fetchedAt: string; readonly entries: readonly CatalogEntry[] }> => {
   const text = await readFile(new URL("../catalog/models-dev.json", import.meta.url), "utf8");
   const bundled = bundledCatalogSchema.parse(JSON.parse(text));
-  return { fetchedAt: bundled.fetchedAt, entries: catalogEntries(bundled.providers) };
+  return { fetchedAt: bundled.fetchedAt, entries: catalogEntries(bundled.providers, options) };
 };
 
 // ---------- matching an endpoint's model IDs to the catalog ----------
