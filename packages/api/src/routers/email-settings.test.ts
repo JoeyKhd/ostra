@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeMailAdapter } from "../testing/fake-adapters.ts";
 import { createApiHarness } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
+import { noEmailDirectory } from "../services/email.ts";
 import type { EmailConfig } from "../services/email.ts";
 
 // F-115, ticket 37: the install's email. Only an instance admin reads or changes it; a key or a
@@ -155,14 +156,9 @@ describe("email.settings", () => {
     await admin.email.settings.save({ provider: "off" });
     expect(await rejection(admin.email.settings.save({ provider: "smtp", fromAddress: "ostra@example.com", fromName: "ostra", host: "relay.local", port: 25, secure: "none", user: "mailer", password: null }))).toMatchObject({ code: "BAD_REQUEST", message: "SMTP with a user needs a password" });
     await expect(admin.email.settings.save({ provider: "resend", fromAddress: "not an address", fromName: "ostra", apiKey: RESEND_KEY })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    // Off keeps the secrets, so switching back needs no key; with none ever stored, Resend asks for one.
-    const fresh = await createApiHarness();
-    try {
-      await fresh.test.db.user.update({ where: { id: fresh.fixture.a.admin.userId }, data: { role: "admin" } });
-      expect(await rejection((await fresh.as(fresh.fixture.a.admin)).email.settings.save({ provider: "resend", fromAddress: "ostra@example.com", fromName: "ostra", apiKey: null }))).toMatchObject({ code: "BAD_REQUEST", message: "Resend needs an API key" });
-    } finally {
-      await fresh.dispose();
-    }
+    // With no key ever stored, Resend asks for one.
+    await harness.test.db.emailSettings.update({ where: { id: "instance" }, data: { resendApiKeySecretRef: null, secretsOrganizationId: null } });
+    expect(await rejection(admin.email.settings.save({ provider: "resend", fromAddress: "ostra@example.com", fromName: "ostra", apiKey: null }))).toMatchObject({ code: "BAD_REQUEST", message: "Resend needs an API key" });
     expect(await admin.email.settings.save({ provider: "off" })).toEqual({ provider: "off" });
     expect(await (await harness.as(harness.fixture.a.member)).email.status()).toEqual({ on: false, provider: "off" });
   });
@@ -256,14 +252,10 @@ describe("email.sendTest", () => {
   });
 
   it("F-115: a build with no adapter for the provider says so", async () => {
-    const bare = await createApiHarness();
-    try {
-      await bare.test.db.user.update({ where: { id: bare.fixture.a.admin.userId }, data: { role: "admin" } });
-      const admin = await bare.as(bare.fixture.a.admin);
-      await admin.email.settings.save({ provider: "smtp", fromAddress: "ostra@example.com", fromName: "ostra", host: "relay.local", port: 25, secure: "none", user: null, password: null });
-      expect(await admin.email.sendTest()).toMatchObject({ ok: false, words: "This build has no SMTP adapter" });
-    } finally {
-      await bare.dispose();
-    }
+    const admin = await instanceAdmin();
+    await admin.email.settings.save({ provider: "smtp", fromAddress: "ostra@example.com", fromName: "ostra", host: "relay.local", port: 25, secure: "none", user: null, password: null });
+    const context = await harness.contextOf(harness.fixture.a.admin);
+    const bare = harness.callerFor({ ...context, deps: { ...context.deps, email: noEmailDirectory } });
+    expect(await bare.email.sendTest()).toMatchObject({ ok: false, words: "This build has no SMTP adapter" });
   });
 });
