@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { connectionIdSchema } from "@ostra/protocol";
+
 import { t } from "@/lib/messages";
 
 import { LinearBody, LinearProperties } from "./linear-panel";
@@ -19,13 +21,13 @@ const common = {
   webhookEvents: ["Issue", "Comment", "Attachment", "IssueLabel", "OAuthAuthorization", "AgentSessionEvent"],
   pollSeconds: 60,
   reconcileMinutes: 5,
-} as const;
+};
 
 const none: LinearNone = { state: "none", mode: "webhooks", modeReason: null, lastRevoked: null, ...common };
 
 const active: LinearConnection = {
   state: "active",
-  connectionId: "c7f3a9e2",
+  connectionId: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c7"),
   mode: "webhooks",
   modeReason: null,
   credentialKind: "app_oauth",

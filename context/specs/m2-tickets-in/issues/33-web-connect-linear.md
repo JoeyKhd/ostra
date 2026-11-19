@@ -27,8 +27,14 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Component tests for each state (not connected, pending, active by webhooks, active by polling, silent webhooks, failed token, revoked, an `api_key` connection), and `AdminOnly` for a member.
+- [x] Component tests for each state (not connected, pending, active by webhooks, active by polling, silent webhooks, failed token, revoked, an `api_key` connection), and `AdminOnly` for a member.
 - [ ] A Playwright run against the fake Linear server goes from "Connect Linear" to `active`.
-- [ ] Committed as `✨ add the Linear connection screen`.
+- [x] Committed as `✨ add the Linear connection screen`.
 
 ## Comments
+
+- 2026-11-19, web: the screen is built and committed (`✨ add the Linear page's views and step circles`, `99410e1`, then `✨ add the Linear connection screen`), to `connect-linear` and `home-first-run`, checked side by side at 1440×956 (connected by webhooks from a fixture, then against ticket 27's router with a dev `api_key` connection to ostra-test: polling, `Personal API key (development)`, no Authorize).
+  - `components/linear/`: `linear-types.ts` (aliases of `linear.status`), `linear-status.ts` (the page's words), `linear-panel.tsx` (the three steps, the connected sections, the panel; tested state by state), `linear-view.tsx` (the router calls: `saveApp` and `authorizeUrl` take the `connectionId`; `Start again` is `disconnect` then `start`). The page is `AdminOnly` for a member (`page.test.tsx`), and the sidebar's `Linear` row (`ticket`) shows to admins only.
+  - Home: `StepTick` (`components/ui/step-tick.tsx`, with the `skipped` look) replaces the checklist's `Tick`; `SetupSteps` renders the six Linear states and `Skip for now`; the right column is the Deep water picture while the checklist shows (`PageFrame` gained `decorative`).
+  - **Still open: the Playwright run against the fake Linear server.** The panel has no setting that points `createApiRuntime`'s `linearEndpoints` at another server, so a browser run can't reach the fake. It needs a dev-only setting (say `OSTRA_DEV_LINEAR_URL`, with its line in `docs/configuration.md`) read in `apps/web/src/server/deps.ts`, and `e2e/stack.ts` starting `createFakeLinear()` and registering the app's callback. Left for the next web pass.
+

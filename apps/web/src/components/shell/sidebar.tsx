@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, TicketIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -121,6 +121,9 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           </NavLink>
           <NavLink href="/organization/github" icon={<GitPullRequestIcon />} onNavigate={onNavigate}>
             {t("shell.github")}
+          </NavLink>
+          <NavLink href="/organization/linear" icon={<TicketIcon />} onNavigate={onNavigate}>
+            {t("shell.linear")}
           </NavLink>
         </>
       ) : null}
