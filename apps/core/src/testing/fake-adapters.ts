@@ -1,8 +1,12 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { adapterError, CodeHostAdapter, ModelProviderAdapter, ok, secretRefSchema, SecretStoreAdapter } from "@ostra/adapter-sdk";
+import { FakeReviewsAndChecks } from "@ostra/adapter-sdk/testing";
 import type {
   AdapterResult,
+  CheckRunInput,
+  PublishedCheckRun,
+  PullRequestReview,
   CodeHostWebhookEvent,
   CommentRef,
   CompareResult,
@@ -86,7 +90,11 @@ export type OpenedPull = PullRequest & { readonly repo: string; readonly body: s
 
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: false, installableByOtherAccounts: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false };
+  /** Milestone 4 (F-104, ticket 18): the PRs' reviews and the check runs, in memory. */
+  readonly reviewsAndChecks = new FakeReviewsAndChecks();
+  /** Fail the next `listReviews` this many times, as a flaky host would. */
+  failReviewLists = 0;
   /** App ID to its private key and bot. */
   readonly apps = new Map<string, { readonly privateKey: string; readonly bot: GitPerson }>();
   /** Installation ID to the repos it lists. */
@@ -257,6 +265,13 @@ export class FakeCodeHost extends CodeHostAdapter {
     if (found !== undefined) {
       this.pulls[index] = { ...found, state: state.state };
     }
+  }
+
+  /** Someone pushes to a PR's branch: its head moves (a `synchronize`, F-104). */
+  pushHead(repo: string, number: number, headSha: string): void {
+    const state = this.#stateOf(repo, number);
+    state.headSha = headSha;
+    state.updatedAt = Math.max(this.now(), state.updatedAt + 1);
   }
 
   hostRepoIdOf(repo: string): string {
@@ -441,6 +456,9 @@ export class FakeCodeHost extends CodeHostAdapter {
     if (event === "issue_comment" || event === "pull_request_review_comment" || event === "push") {
       return this.#parseM3(event, read);
     }
+    if (event === "pull_request_review") {
+      return this.#parseReview(read);
+    }
     if (event !== "pull_request") {
       return ok({ kind: "other", event });
     }
@@ -475,6 +493,76 @@ export class FakeCodeHost extends CodeHostAdapter {
       headSha,
       changedAt: Date.parse(updatedAt),
     });
+  }
+
+  // Milestone 4 (F-104): a review, read as GitHub's adapter reads one. Its body is never read.
+  #parseReview(read: (...path: readonly string[]) => unknown): AdapterResult<CodeHostWebhookEvent> {
+    const number = read("pull_request", "number");
+    const repoId = read("repository", "id");
+    const repo = repoFullNameSchema.safeParse(read("repository", "full_name"));
+    const action = read("action");
+    const headSha = read("pull_request", "head", "sha");
+    const reviewId = read("review", "id");
+    const userId = read("review", "user", "id");
+    const login = read("review", "user", "login");
+    const state = read("review", "state");
+    const installation = read("installation", "id");
+    if (
+      typeof number !== "number" ||
+      (typeof repoId !== "string" && typeof repoId !== "number") ||
+      !repo.success ||
+      typeof action !== "string" ||
+      typeof headSha !== "string" ||
+      typeof reviewId !== "number" ||
+      typeof userId !== "number" ||
+      typeof login !== "string" ||
+      typeof state !== "string"
+    ) {
+      return adapterError("invalid-response", "not a pull_request_review event");
+    }
+    const lower = state.toLowerCase();
+    const submittedAt = read("review", "submitted_at");
+    const commitId = read("review", "commit_id");
+    return ok({
+      kind: "pull_request_review",
+      action,
+      installationId: typeof installation === "number" ? String(installation) : null,
+      hostRepoId: String(repoId),
+      repo: repo.data,
+      number,
+      headSha,
+      review: {
+        reviewId: String(reviewId),
+        userId: String(userId),
+        login,
+        isBot: read("review", "user", "type") === "Bot",
+        state: lower === "approved" || lower === "changes_requested" || lower === "commented" || lower === "dismissed" ? lower : "pending",
+        commitId: typeof commitId === "string" ? commitId : null,
+        submittedAt: typeof submittedAt === "string" ? Date.parse(submittedAt) : null,
+      },
+    });
+  }
+
+  override listReviews(access: RepoAccess, number: number): Promise<AdapterResult<readonly PullRequestReview[]>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    if (this.failReviewLists > 0) {
+      this.failReviewLists -= 1;
+      return Promise.resolve(adapterError("unavailable", "the fake host is down"));
+    }
+    return Promise.resolve(ok(this.reviewsAndChecks.reviews(access.repo, number)));
+  }
+
+  override publishCheckRun(access: RepoAccess, input: CheckRunInput): Promise<AdapterResult<PublishedCheckRun>> {
+    return Promise.resolve(this.known(access.app) ? ok(this.reviewsAndChecks.publish(access.repo, input)) : adapterError("unauthorized", "refused"));
+  }
+
+  override updateCheckRun(access: RepoAccess, checkRunId: string, input: CheckRunInput): Promise<AdapterResult<void>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    return Promise.resolve(this.reviewsAndChecks.update(access.repo, checkRunId, input) ? ok(undefined) : adapterError("not-found", "no such check run"));
   }
 
   #parseM3(event: "issue_comment" | "pull_request_review_comment" | "push", read: (...path: readonly string[]) => unknown): AdapterResult<CodeHostWebhookEvent> {

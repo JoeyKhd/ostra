@@ -14,7 +14,8 @@ import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import { parseBoardMapping } from "../tickets/board-mapping.ts";
 import { ticketMagicLine, ticketPullRequestTitle } from "../tickets/contracts.ts";
-import type { Ports } from "../ports.ts";
+import type { JobQueue, Ports } from "../ports.ts";
+import { enqueueReviewEvaluationInTx } from "../review/review-check.ts";
 import type { UseCaseResult } from "./common.ts";
 import { writeTicketStepsInTx } from "../tickets/ticket-writes.ts";
 import { moveTaskInTx } from "./moves.ts";
@@ -51,6 +52,8 @@ export type OpenPullRequestsDeps = Pick<Ports, "notices" | "audit" | "clock" | "
   readonly logger?: Logger;
   /** Called once a PR exists on the code host and before its row says so: the restart harness's seam (ticket 21). */
   readonly afterHostWrite?: () => void;
+  /** Milestone 4 (F-104, ticket 18): a PR ostra opens gets its independent-review check evaluated. */
+  readonly jobs?: JobQueue;
 };
 
 export type OpenPullRequests = (deps: OpenPullRequestsDeps, input: OpenPullRequestsInput) => Promise<OpenPullRequestsResult>;
@@ -220,6 +223,10 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       });
       // Search (ticket 11): the PR is found by its title, on its repo.
       await writePullRequestSearchEntry(tx, { organizationId, projectId, taskId: task.id, repoId, eventSeq: openedSeq, title: pr.title });
+      // Milestone 4 (F-104): the new PR's independent-review check, on its head.
+      if (deps.jobs !== undefined && !reused && taskRepo.headSha !== null) {
+        await enqueueReviewEvaluationInTx(deps.jobs, tx, { organizationId, taskRepoId: taskRepo.id, prNumber: pr.number, headSha: taskRepo.headSha, connectionId: repo.connectionId });
+      }
       // A ticket task's ticket links the PR, moves to in review at the first one, and its
       // progress comment is edited (F-031); each write is keyed, so a rerun writes nothing new.
       await writeTicketStepsInTx({ tx }, { taskId: task.id, trigger: { kind: "pr-opened", repoId, url: pr.url } });

@@ -55,6 +55,7 @@ import { accountMailSendHandler } from "./reactions/account-mail.ts";
 import { budgetCheckHandler, budgetNewMonthHandler, budgetReleaseHandler, ensureBudgetNewMonthSchedule } from "./reactions/budgets.ts";
 import { ensureInsightsSchedule, insightsComputeHandler } from "./reactions/insights.ts";
 import { enqueueSearchBackfill, searchBackfillHandler } from "./search/backfill.ts";
+import { reviewEvaluateHandler } from "./reactions/review-check.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
@@ -360,6 +361,8 @@ export const startCore = async (
     onComment: prCommentHook({ db, jobs }),
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
+  // Milestone 4 (F-104, ticket 18): the independent-review check, on each task PR's head.
+  await jobs.work("review.evaluate", reviewEvaluateHandler({ db, notices, clock: systemClock, adapters }), { localConcurrency: 2 });
   await jobs.work(
     "github.comment",
     githubCommentHandler({

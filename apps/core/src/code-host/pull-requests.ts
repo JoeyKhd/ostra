@@ -1,7 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostWebhookEvent, Logger, PullRequestDetails, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { reconcileBehind, recordPullRequestState, recordPush } from "@ostra/domain";
+import { enqueueReviewEvaluationsInTx, reconcileBehind, recordPullRequestState, recordPush } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, RecordPullRequestStateResult } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { connectionIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
@@ -76,8 +76,16 @@ export const githubWebhookHandler =
       return deps.onComment === undefined ? { outcome: "ignored", reason: "comments aren't read here" } : deps.onComment(context, event);
     }
     if (event.kind === "pull_request_review") {
-      // Milestone 4 (F-104): the independent-review check reads reviews (ticket 18).
-      return { outcome: "ignored", reason: "reviews aren't read here yet" };
+      // Milestone 4 (F-104, ticket 18): a review on a task's open PR re-evaluates its check on the PR's head.
+      const enqueued = await deps.db.$transaction((tx) =>
+        enqueueReviewEvaluationsInTx(deps.jobs, tx, {
+          organizationId: context.organizationId,
+          hostRepo: { connectionId: context.connectionId, hostRepoId: event.hostRepoId, prNumber: event.number },
+          headSha: event.headSha,
+        }),
+      );
+      context.logger.info("pr.review", { number: event.number, action: event.action.slice(0, 32), reviewer: event.review.login.slice(0, 64), enqueued });
+      return enqueued === 0 ? { outcome: "ignored", reason: "not a task's open PR" } : { outcome: "processed" };
     }
     if (event.kind === "installation" || event.kind === "installation_repositories") {
       // Milestone 4 (F-136): installations on other accounts are linked by ticket 49.
@@ -100,8 +108,23 @@ export const githubWebhookHandler =
       return { outcome: "ignored", reason: result.message };
     }
     context.logger.info("pr.state", { number: event.number, action: event.action.slice(0, 32), taskOutcome: result.taskOutcome, matched: result.taskRepoId !== null });
+    if (result.taskRepoId !== null && event.state === "open" && REVIEW_ACTIONS.has(event.action)) {
+      // Milestone 4 (F-104, ticket 18): a new head (`synchronize`) waits for an approval of it.
+      const taskRepoId = result.taskRepoId;
+      await deps.db.$transaction((tx) =>
+        enqueueReviewEvaluationsInTx(deps.jobs, tx, {
+          organizationId: context.organizationId,
+          taskRepoId,
+          hostRepo: { connectionId: context.connectionId, hostRepoId: event.hostRepoId, prNumber: event.number },
+          headSha: event.headSha,
+        }),
+      );
+    }
     return result.taskRepoId === null ? { outcome: "ignored", reason: "not a task's PR" } : { outcome: "processed" };
   };
+
+/** The `pull_request` actions that give a task PR a head to evaluate its independent-review check on. */
+const REVIEW_ACTIONS: ReadonlySet<string> = new Set(["opened", "reopened", "synchronize", "ready_for_review"]);
 
 /** When the host says the PR's state last changed: its merge, its close, or its last update. */
 const changedAtOf = (details: PullRequestDetails): number =>
@@ -133,7 +156,7 @@ export const reconcilePullRequests = async (
     where: { organizationId: input.organizationId, state: "pr_open", prNumber: { not: null }, repo: { connectionId: input.connectionId } },
     orderBy: { updatedAt: "asc" },
     take: MAX_PRS_PER_PASS,
-    select: { prNumber: true, repo: { select: { fullName: true, installationId: true, hostRepoId: true } } },
+    select: { id: true, prNumber: true, repo: { select: { fullName: true, installationId: true, hostRepoId: true } } },
   });
   let read = 0;
   let changed = 0;
@@ -153,7 +176,20 @@ export const reconcilePullRequests = async (
       deps.logger.warn("pr.reconcile-read-failed", { connectionId: input.connectionId, prNumber: taskRepo.prNumber, code: details.error.code });
       continue;
     }
-    if (details.value.state === "open") continue;
+    if (details.value.state === "open") {
+      // Milestone 4 (F-104, ticket 18): with webhooks off, the reconcile keeps the check current.
+      const { prNumber } = taskRepo;
+      const headSha = details.value.headSha;
+      await deps.db.$transaction((tx) =>
+        enqueueReviewEvaluationsInTx(deps.jobs, tx, {
+          organizationId: input.organizationId,
+          taskRepoId: taskRepo.id,
+          hostRepo: { connectionId: input.connectionId, hostRepoId: taskRepo.repo.hostRepoId, prNumber },
+          headSha,
+        }),
+      );
+      continue;
+    }
     const result = await record(deps, {
       organizationId: input.organizationId,
       connectionId: input.connectionId,

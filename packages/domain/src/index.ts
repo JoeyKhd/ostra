@@ -99,6 +99,7 @@ export * from "./memory/notes.ts";
 export * from "./memory/closing-turn.ts";
 export * from "./repos/several-repos.ts";
 export * from "./review/independent-review.ts";
+export * from "./review/review-check.ts";
 export * from "./mail/account-mails.ts";
 export * from "./mail/account-mail-links.ts";
 export * from "./audit/actions.ts";

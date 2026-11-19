@@ -5,6 +5,7 @@ import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope, ProjectRole } from "../access.ts";
 import { prCommentPrompt } from "../prompts/index.ts";
+import { enqueueReviewEvaluationsInTx } from "../review/review-check.ts";
 import type { M3Deps, AcceptPrComment } from "./m3-signatures.ts";
 import { sendMemberMessageInTx } from "./member-message.ts";
 import type { SendMemberMessageDeps } from "./member-message.ts";
@@ -138,6 +139,7 @@ export const acceptPrCommentWith = async (deps: M3Deps, extras: AcceptPrCommentE
         },
       });
       // The member is a co-author of what follows (ADR 0040), by the link's no-reply address (ADR 0052).
+      const credited = await tx.taskCoAuthor.count({ where: { taskId, memberId: linked.scope.memberId } });
       await tx.taskCoAuthor.upsert({
         where: { taskId_email: { taskId, email: `${input.commenterGithubUserId}+${input.commenterLogin}@users.noreply.github.com` } },
         create: {
@@ -150,6 +152,10 @@ export const acceptPrCommentWith = async (deps: M3Deps, extras: AcceptPrCommentE
         },
         update: {},
       });
+      if (credited === 0) {
+        // Milestone 4 (F-104): a new driver's approval no longer counts as independent.
+        await enqueueReviewEvaluationsInTx(deps.jobs, tx, { organizationId, taskId });
+      }
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId,

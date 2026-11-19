@@ -62,6 +62,7 @@ export const openPullRequestsHandler =
         adapters: deps.adapters,
         publicUrl: deps.publicUrl,
         logger: context.logger,
+        jobs: deps.jobs,
         afterHostWrite: () => {
           killPoint("open-pull-requests.answered");
         },

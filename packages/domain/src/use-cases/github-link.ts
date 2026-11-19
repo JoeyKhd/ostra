@@ -1,6 +1,7 @@
 import type { Tx } from "@ostra/db";
 import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 
+import { enqueueReviewEvaluationsForUserInTx } from "../review/review-check.ts";
 import type { LinkGitHubUser, UnlinkGitHubUser } from "./m3-signatures.ts";
 
 // The verified GitHub link (F-119, ADR 0052; ticket 39): an account's GitHub user ID and login, as
@@ -19,6 +20,8 @@ export const linkGitHubUser: LinkGitHubUser = async (deps, input) =>
     }
     const now = new Date(deps.clock.now());
     await tx.user.update({ where: { id: input.userId }, data: { githubUserId: input.githubUserId, githubLogin: input.githubLogin, githubLinkedAt: now } });
+    // Milestone 4 (F-104): an approval by this account may count now, on the organizations' open task PRs.
+    await enqueueReviewEvaluationsForUserInTx(deps.jobs, tx, input.userId);
     const place = await auditPlace(tx, input.userId);
     if (place !== null) {
       await deps.audit.recordInTx(tx, {
@@ -41,6 +44,8 @@ export const unlinkGitHubUser: UnlinkGitHubUser = async (deps, input) =>
       return { ok: false, error: "not-linked", message: "No GitHub account is linked" } as const;
     }
     await tx.user.update({ where: { id: input.userId }, data: { githubUserId: null, githubLogin: null, githubLinkedAt: null } });
+    // Milestone 4 (F-104): an approval by this account counts no more.
+    await enqueueReviewEvaluationsForUserInTx(deps.jobs, tx, input.userId);
     const place = await auditPlace(tx, input.userId);
     if (place !== null) {
       await deps.audit.recordInTx(tx, {
