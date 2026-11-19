@@ -199,6 +199,9 @@ describe("minor 2's events", () => {
     expect(encodeEventForMinor(minor2FieldFixtures["turn.started"], 1)).toEqual({ kind: "turn.started", turnId: ids.turn });
     expect(encodeEventForMinor(minor2FieldFixtures["user.message"], 1)).not.toHaveProperty("intent");
     expect(encodeEventForMinor(minor2FieldFixtures["session.saved"], 1)).not.toHaveProperty("checks");
+    expect(encodeEventForMinor(minor2FieldFixtures["session.restored"], 1)).not.toHaveProperty("fallbackReason");
+    expect(encodeEventForMinor(minor2FieldFixtures["ticket.files_ready"], 1)).not.toHaveProperty("skipped");
+    expect(encodeEventForMinor(minor2FieldFixtures["session.restored"], 0)).toEqual({ kind: "session.restored" });
     expect(encodeEventForMinor(minor2FieldFixtures["approval.requested"], 2)).toEqual(minor2FieldFixtures["approval.requested"]);
     // Down to minor 0 drops both minors' fields.
     const v0 = encodeEventForMinor({ ...minor1FieldFixtures["user.message"], intent: "pr-comment" }, 0);

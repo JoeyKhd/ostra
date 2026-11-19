@@ -158,6 +158,48 @@ export const ticketFileNameSchema = z
 /** The workspace folder ticket files are written to; the workspace's git excludes it (spec section 11, item 9). */
 export const TICKET_FILES_DIR = ".ostra/ticket";
 
+/**
+ * The content types a ticket file is written for (spec section 11, item 9, a working value), and
+ * each one's extension: images and PDFs. Anything else is skipped.
+ */
+export const TICKET_FILE_EXTENSIONS: Readonly<Record<string, string>> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/avif": "avif",
+  "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+  "application/pdf": "pdf",
+};
+
+/**
+ * A ticket file's name in `TICKET_FILES_DIR` (ticket 26): made from its blob ID and content type,
+ * never from the ticket's text, so core names the same file in the prompt (`contextFiles[].path`)
+ * as the runner writes. `null` for a type that isn't written.
+ */
+export const ticketFileNameFor = (blobId: string, contentType: string): string | null => {
+  const extension = TICKET_FILE_EXTENSIONS[contentType.toLowerCase()];
+  if (extension === undefined) {
+    return null;
+  }
+  const stem = blobId.replace(/[^A-Za-z0-9-]/g, "-").replace(/^-+/, "").slice(0, 120);
+  return `${stem === "" ? "file" : stem}.${extension}`;
+};
+
+/** Why a ticket file wasn't written (minor 2, on `ticket.files_ready`). */
+export const ticketFileSkipReasonSchema = z.enum([
+  /** Not an image or a PDF. */
+  "type-not-allowed",
+  /** The bulk path didn't give it. */
+  "download-failed",
+  /** Its bytes didn't match their digest or their size. */
+  "digest-mismatch",
+  /** It couldn't be written into the workspace. */
+  "write-failed",
+]);
+export type TicketFileSkipReason = z.infer<typeof ticketFileSkipReasonSchema>;
+
 /** One repo's state after a turn, in `session.saved`. */
 export const savedRepoSchema = z.strictObject({
   repoId: repoIdSchema,
@@ -347,6 +389,19 @@ const approvalAnswered = approvalAnsweredV1.extend({
 const userMessageV2 = userMessage.extend({
   /** Minor 2: why the message was written. Missing means `message`. */
   intent: messageIntentSchema.optional(),
+});
+
+const sessionRestoredV2 = sessionRestored.extend({
+  /** Minor 2: why a restore fell back to the rebuild template, in words (ticket 24). Never content. */
+  fallbackReason: z.string().min(1).max(500).optional(),
+});
+
+const ticketFilesReadyV2 = ticketFilesReady.extend({
+  /** Minor 2: the files that weren't written, each with why (ticket 26). The turn starts anyway. */
+  skipped: z
+    .array(z.strictObject({ blobId: blobIdSchema, reason: ticketFileSkipReasonSchema }))
+    .max(runnerLimits.ticketFilesMax)
+    .optional(),
 });
 
 const sessionSavedV2 = sessionSaved.extend({
@@ -606,11 +661,11 @@ const sharedEventOptions = [
 /** The event union at the current minor (2). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
   userMessageV2,
-  sessionRestored,
+  sessionRestoredV2,
   sessionCrashed,
   sessionSavedV2,
   sessionLimitReached,
-  ticketFilesReady,
+  ticketFilesReadyV2,
   workspaceFilesOutsideRepos,
   turnStarted,
   approvalRequested,
@@ -699,6 +754,8 @@ const turnStartedStripV1 = z.object(turnStartedV1.shape);
 const approvalRequestedStripV1 = z.object(approvalRequestedV1.shape);
 const approvalAnsweredStripV1 = z.object(approvalAnsweredV1.shape);
 const sessionSavedStripV1 = z.object(sessionSaved.shape);
+const sessionRestoredStripV1 = z.object(sessionRestored.shape);
+const ticketFilesReadyStripV1 = z.object(ticketFilesReady.shape);
 
 /** An event without the fields minor 2 added: what a minor-1 peer reads. */
 const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
@@ -716,6 +773,12 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
   }
   if (event.kind === "session.saved") {
     return sessionSavedStripV1.parse(event);
+  }
+  if (event.kind === "session.restored") {
+    return sessionRestoredStripV1.parse(event);
+  }
+  if (event.kind === "ticket.files_ready") {
+    return ticketFilesReadyStripV1.parse(event);
   }
   return event;
 };

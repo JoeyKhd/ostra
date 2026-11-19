@@ -398,6 +398,19 @@ export const minor2FieldFixtures = {
     archive: { blobId: ids.blob, size: 48_213, sha256: fixtureDigests.sha256 },
     checks: [{ checkId: ids.check, status: "failed" }],
   },
+  "session.restored": {
+    kind: "session.restored",
+    origin: "rebuilt",
+    replayedUpdates: 0,
+    hiddenRef: "applied",
+    previousBox: "released",
+    fallbackReason: "the archive didn't match its digest",
+  },
+  "ticket.files_ready": {
+    kind: "ticket.files_ready",
+    files: [{ path: "0196f1a0-0000-7000-8000-000000000011.png", blobId: ids.ticketFileBlob }],
+    skipped: [{ blobId: ids.blob, reason: "download-failed" }],
+  },
   "plan.answered, approved with edits": {
     kind: "plan.answered",
     decision: "approve",
