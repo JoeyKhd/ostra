@@ -22,6 +22,19 @@ export type FakeRepo = {
   readonly branches: readonly string[];
   /** Defaults to true. */
   readonly private?: boolean;
+  /** Branches with classic branch protection. Its `required_signatures` needs `administration`, which the App lacks. */
+  readonly protectedBranches?: readonly string[];
+  /** Branch to the rule types of the rulesets that apply to it (`required_signatures`, `deletion`, …). */
+  readonly rulesets?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * `free`: like a private repo in a free organization, rulesets and rules answer 403 "Upgrade to
+   * GitHub Pro or make this repository public". Only a private repo is limited.
+   */
+  readonly plan?: "free" | "paid";
+  /** The rules endpoint answers 403 "Resource not accessible by integration", as for a missing permission. */
+  readonly rulesRefused?: boolean;
+  /** Refs that exist besides the branches, in full: `refs/ostra/wip/<taskId>`. */
+  readonly refs?: readonly string[];
 };
 
 export type FakePullRequest = {
@@ -34,6 +47,11 @@ export type FakePullRequest = {
   readonly draft: boolean;
   state: "open" | "closed";
   merged: boolean;
+  headSha: string;
+  /** ISO times, as GitHub sends them. */
+  updatedAt: string;
+  mergedAt: string | null;
+  closedAt: string | null;
 };
 
 type TokenScope = {
@@ -73,6 +91,12 @@ export type FakeGitHub = {
   readonly org: string;
   readonly requests: FakeRequest[];
   readonly pulls: FakePullRequest[];
+  /** Refs besides branches, per `owner/name`. */
+  readonly refs: Map<string, Set<string>>;
+  /** Merges or closes a PR, as a person on the host would, and stamps its times. */
+  readonly finishPullRequest: (repo: string, number: number, outcome: "merged" | "closed") => FakePullRequest;
+  /** Reopens a closed PR (not a merged one). */
+  readonly reopenPullRequest: (repo: string, number: number) => FakePullRequest;
   readonly tokens: Map<string, TokenScope>;
   readonly failures: InjectedFailure[];
   readonly webhookSecret: string;
@@ -131,6 +155,7 @@ export const createFakeGitHub = async (options: {
   const webhookSecret = "fake-webhook-secret";
   const requests: FakeRequest[] = [];
   const pulls: FakePullRequest[] = [];
+  const refs = new Map<string, Set<string>>(options.repos.map((repo) => [`${repo.owner}/${repo.name}`, new Set(repo.refs ?? [])]));
   const tokens = new Map<string, TokenScope>();
   const failures: InjectedFailure[] = [];
 
@@ -176,11 +201,48 @@ export const createFakeGitHub = async (options: {
     number: pr.number,
     html_url: `https://github.example/${pr.repo}/pull/${String(pr.number)}`,
     state: pr.state,
-    merged_at: pr.merged ? "2026-01-01T00:00:00Z" : null,
+    merged: pr.merged,
+    merged_at: pr.mergedAt,
+    closed_at: pr.closedAt,
+    updated_at: pr.updatedAt,
     title: pr.title,
-    head: { ref: pr.head },
+    head: { ref: pr.head, sha: pr.headSha },
     base: { ref: pr.base },
   });
+
+  const findPull = (repo: string, number: number): FakePullRequest => {
+    const pr = pulls.find((item) => item.repo === repo && item.number === number);
+    if (pr === undefined) {
+      throw new Error(`the fake has no PR ${repo}#${String(number)}`);
+    }
+    return pr;
+  };
+  let clock = Date.parse("2026-01-01T00:00:00Z");
+  /** Each change moves the fake's clock on, so a later change always has a later time. */
+  const tick = (): string => {
+    clock += 1000;
+    return new Date(clock).toISOString();
+  };
+  const finishPullRequest = (repo: string, number: number, outcome: "merged" | "closed"): FakePullRequest => {
+    const pr = findPull(repo, number);
+    const at = tick();
+    pr.state = "closed";
+    pr.merged = outcome === "merged";
+    pr.mergedAt = outcome === "merged" ? at : null;
+    pr.closedAt = at;
+    pr.updatedAt = at;
+    return pr;
+  };
+  const reopenPullRequest = (repo: string, number: number): FakePullRequest => {
+    const pr = findPull(repo, number);
+    if (pr.merged) {
+      throw new Error("a merged PR can't be reopened");
+    }
+    pr.state = "open";
+    pr.closedAt = null;
+    pr.updatedAt = tick();
+    return pr;
+  };
 
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const url = new URL(request.url ?? "/", "http://fake");
@@ -404,9 +466,82 @@ export const createFakeGitHub = async (options: {
         draft: body.draft ?? false,
         state: "open",
         merged: false,
+        headSha: randomBytes(20).toString("hex"),
+        updatedAt: tick(),
+        mergedAt: null,
+        closedAt: null,
       };
       pulls.push(pr);
       send(response, 201, prJson(pr));
+      return;
+    }
+    const byNumber = /^\/pulls\/(\d+)$/.exec(rest);
+    if (method === "GET" && byNumber?.[1] !== undefined) {
+      if (!needs("pull_requests", "read")) {
+        forbid();
+        return;
+      }
+      const pr = pulls.find((item) => item.repo === `${owner}/${name}` && item.number === Number(byNumber[1]));
+      if (pr === undefined) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      send(response, 200, prJson(pr));
+      return;
+    }
+    const branchRoute = /^\/branches\/(.+)$/.exec(rest);
+    if (method === "GET" && branchRoute?.[1] !== undefined) {
+      if (!needs("contents", "read")) {
+        forbid();
+        return;
+      }
+      const branch = decodeURIComponent(branchRoute[1]);
+      if (!repo.branches.includes(branch)) {
+        send(response, 404, { message: "Branch not found" });
+        return;
+      }
+      send(response, 200, { name: branch, protected: repo.protectedBranches?.includes(branch) ?? false });
+      return;
+    }
+    const rulesRoute = /^\/rules\/branches\/(.+)$/.exec(rest);
+    if (method === "GET" && rulesRoute?.[1] !== undefined) {
+      if (!needs("metadata", "read")) {
+        forbid();
+        return;
+      }
+      if ((repo.plan ?? "paid") === "free" && (repo.private ?? true)) {
+        send(response, 403, {
+          message: "Upgrade to GitHub Pro or make this repository public to enable this feature.",
+          documentation_url: "https://docs.github.com/rest/repos/rules#get-rules-for-a-branch",
+        });
+        return;
+      }
+      if (repo.rulesRefused === true) {
+        forbid();
+        return;
+      }
+      const branch = decodeURIComponent(rulesRoute[1]);
+      send(
+        response,
+        200,
+        (repo.rulesets?.[branch] ?? []).map((type) => ({ type, ruleset_source_type: "Repository", ruleset_source: `${owner}/${name}`, ruleset_id: 1 })),
+      );
+      return;
+    }
+    const refRoute = /^\/git\/refs\/(.+)$/.exec(rest);
+    if (method === "DELETE" && refRoute?.[1] !== undefined) {
+      if (!needs("contents", "write")) {
+        forbid();
+        return;
+      }
+      const full = `refs/${decodeURIComponent(refRoute[1])}`;
+      const held = refs.get(`${owner}/${name}`);
+      if (held?.delete(full) !== true) {
+        send(response, 422, { message: "Reference does not exist" });
+        return;
+      }
+      response.writeHead(204, { "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4989", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600) });
+      response.end();
       return;
     }
     const patched = /^\/pulls\/(\d+)$/.exec(rest);
@@ -455,6 +590,9 @@ export const createFakeGitHub = async (options: {
     org,
     requests,
     pulls,
+    refs,
+    finishPullRequest,
+    reopenPullRequest,
     tokens,
     failures,
     webhookSecret,

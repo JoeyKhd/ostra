@@ -9,9 +9,12 @@ import type {
   AppInfo,
   AppManifest,
   AppManifestInput,
+  BranchRules,
   CodeHostAppCredentials,
   CodeHostCapabilities,
+  CodeHostWebhookEvent,
   CreatedApp,
+  DeleteRefResult,
   HealthReport,
   HostRepo,
   Installation,
@@ -19,6 +22,7 @@ import type {
   UpdatePullRequestBodyInput,
   PermissionLevel,
   PullRequest,
+  PullRequestDetails,
   ReadFilesResult,
   RepoAccess,
   RepoFile,
@@ -30,16 +34,20 @@ import { gitPersonSchema, repoFullNameSchema } from "@ostra/protocol";
 import type { GitPerson } from "@ostra/protocol";
 import { z } from "zod";
 
-import { readHttpFailure, retryDecision, toAdapterError } from "./errors.ts";
+import { isPlanLimit, readHttpFailure, retryDecision, statusOf, toAdapterError } from "./errors.ts";
 import { buildAppManifest } from "./manifest.ts";
 import {
   appSchema,
+  branchProtectionSchema,
+  branchRulesSchema,
   branchSchema,
   contentFileSchema,
   conversionSchema,
   installationSchema,
+  pullRequestDetailsSchema,
   pullRequestListSchema,
   pullRequestSchema,
+  pullRequestWebhookSchema,
   repoSchema,
   treeSchema,
   userSchema,
@@ -91,6 +99,15 @@ const PR_TEMPLATE_PATHS = [
   "PULL_REQUEST_TEMPLATE.md",
 ] as const;
 
+/** Rule types that protect a branch from being deleted, rewritten, or merged into without review. */
+const PROTECTIVE_RULE_TYPES: ReadonlySet<string> = new Set(["deletion", "non_fast_forward", "pull_request", "update"]);
+const REASON_NO_RULES_ON_PLAN = "GitHub doesn't offer branch rules on this repo's plan, so none apply.";
+const REASON_CLASSIC_SIGNATURES =
+  "This branch uses classic branch protection, and its signed-commit rule can only be read with the administration permission, which ostra doesn't ask for.";
+const REASON_RULES_REFUSED = "GitHub wouldn't let the App read this branch's rulesets.";
+/** Only refs under here are deleted: a branch or a tag is never ostra's to delete through this call. */
+const DELETABLE_REF = /^refs\/ostra\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+
 const quietLog = {
   debug: () => undefined,
   info: () => undefined,
@@ -133,8 +150,7 @@ export class GitHubAdapter extends CodeHostAdapter {
     this.#webUrl = (options.webUrl ?? DEFAULT_WEB_URL).replace(/\/+$/, "");
     this.#userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     // Where an LFS batch answer may send the git proxy (Q119, spike 4).
-    // `branchRules` turns on with ticket 09, which builds `readBranchRules` (and the PR state, webhooks and refs).
-    this.capabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)], branchRules: false };
+    this.capabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)], branchRules: true };
   }
 
   // ---------- health ----------
@@ -475,6 +491,168 @@ export class GitHubAdapter extends CodeHostAdapter {
       }
       this.plumbing.logger.info("github.pr.body-updated", { repo: access.repo, prNumber: parsed.value.number });
       return ok(toPullRequest(parsed.value));
+    });
+  }
+
+  // ---------- milestone 2: branch rules, a PR by number, PR webhooks, refs ----------
+
+  override async readBranchRules(access: RepoAccess, branch: string): Promise<AdapterResult<BranchRules>> {
+    if (branch.length === 0 || branch.length > 255 || /[\u0000-\u001f\u007f]/.test(branch)) {
+      return adapterError("invalid-input", "a branch name to check is empty, too long or has control characters");
+    }
+    return this.#guarded<BranchRules>("reading a branch's rules", this.#budgetKey(access), async () => {
+      // No `administration` permission: classic protection's signed-commit rule is out of reach (ADR 0040).
+      const octokit = await this.#asRepo(access, { contents: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const branchResponse = await octokit.request("GET /repos/{owner}/{repo}/branches/{branch}", { owner, repo: name, branch });
+      const branchInfo = parseVendor(branchProtectionSchema, branchResponse.data, "GitHub's branch");
+      if (!branchInfo.ok) {
+        return branchInfo;
+      }
+      const flagged = branchInfo.value.protected;
+
+      const rules = await octokit
+        .request("GET /repos/{owner}/{repo}/rules/branches/{branch}", { owner, repo: name, branch, per_page: 100 })
+        .then(
+          (response) => {
+            const data: unknown = response.data;
+            return { kind: "read" as const, data };
+          },
+          (error: unknown) => {
+            if (isPlanLimit(error)) {
+              return { kind: "no-rules-on-plan" as const };
+            }
+            // A 403 that is the rate limit is retried by the guard, not read as a refusal.
+            if (statusOf(error) === 403 && readHttpFailure(error, this.plumbing.clock.now())?.rateLimited !== true) {
+              return { kind: "refused" as const };
+            }
+            throw error;
+          },
+        );
+
+      if (rules.kind === "no-rules-on-plan") {
+        // Classic protection, if any, is all there can be: its signed-commit rule is unreadable.
+        return ok(
+          flagged
+            ? { protected: true, requiresSignedCommits: "unknown", reasons: [REASON_CLASSIC_SIGNATURES] }
+            : { protected: false, requiresSignedCommits: false, reasons: [REASON_NO_RULES_ON_PLAN] },
+        );
+      }
+      if (rules.kind === "refused") {
+        return ok({ protected: flagged ? true : "unknown", requiresSignedCommits: "unknown", reasons: [REASON_RULES_REFUSED] });
+      }
+      const parsedRules = parseVendor(branchRulesSchema, rules.data, "GitHub's branch rules");
+      if (!parsedRules.ok) {
+        return parsedRules;
+      }
+      const types = new Set(parsedRules.value.map((rule) => rule.type));
+      if (types.has("required_signatures")) {
+        return ok({ protected: true, requiresSignedCommits: true, reasons: [] });
+      }
+      const isProtected = flagged || [...types].some((type) => PROTECTIVE_RULE_TYPES.has(type));
+      // An unprotected branch can't have classic protection, so nothing requires signatures. A
+      // protected one might: only `administration: read` could say.
+      return flagged
+        ? ok({ protected: isProtected, requiresSignedCommits: "unknown", reasons: [REASON_CLASSIC_SIGNATURES] })
+        : ok({ protected: isProtected, requiresSignedCommits: false, reasons: [] });
+    });
+  }
+
+  override async getPullRequest(access: RepoAccess, number: number): Promise<AdapterResult<PullRequestDetails>> {
+    if (!Number.isSafeInteger(number) || number < 1) {
+      return adapterError("invalid-input", "a PR number is a positive whole number");
+    }
+    return this.#guarded("reading a PR", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const response = await octokit.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", { owner, repo: name, pull_number: number });
+      const parsed = parseVendor(pullRequestDetailsSchema, response.data, "GitHub's PR");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      const pr = parsed.value;
+      const updatedAt = Date.parse(pr.updated_at);
+      const mergedAt = pr.merged_at === null || pr.merged_at === undefined ? null : Date.parse(pr.merged_at);
+      const closedAt = pr.closed_at === null || pr.closed_at === undefined ? null : Date.parse(pr.closed_at);
+      if (Number.isNaN(updatedAt) || Number.isNaN(mergedAt ?? 0) || Number.isNaN(closedAt ?? 0)) {
+        return adapterError("invalid-response", "GitHub's PR has a time that could not be read");
+      }
+      const merged = pr.merged === true || mergedAt !== null;
+      return ok({
+        number: pr.number,
+        url: pr.html_url,
+        state: pr.state === "open" ? "open" : merged ? "merged" : "closed",
+        headBranch: pr.head.ref,
+        baseBranch: pr.base.ref,
+        title: pr.title,
+        merged,
+        headSha: pr.head.sha,
+        updatedAt,
+        mergedAt,
+        closedAt,
+      } satisfies PullRequestDetails);
+    });
+  }
+
+  override parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
+    const event = Object.entries(input.headers).find(([headerName]) => headerName.toLowerCase() === "x-github-event")?.[1];
+    if (event === undefined || event === "") {
+      return adapterError("invalid-response", "the webhook has no X-GitHub-Event header");
+    }
+    if (event !== "pull_request") {
+      return ok({ kind: "other", event });
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(input.body);
+    } catch {
+      return adapterError("invalid-response", "the pull_request webhook's body is not JSON");
+    }
+    const parsed = parseVendor(pullRequestWebhookSchema, payload, "GitHub's pull_request webhook");
+    if (!parsed.ok) {
+      return parsed;
+    }
+    const { action, number, installation, repository, pull_request: pr } = parsed.value;
+    const fullName = repoFullNameSchema.safeParse(repository.full_name);
+    const changedAt = Date.parse(pr.updated_at);
+    if (!fullName.success || Number.isNaN(changedAt)) {
+      return adapterError("invalid-response", "the pull_request webhook names a repo or a time that could not be read");
+    }
+    const merged = pr.merged === true || (pr.merged_at !== null && pr.merged_at !== undefined);
+    return ok({
+      kind: "pull_request",
+      action,
+      installationId: installation === null || installation === undefined ? null : String(installation.id),
+      hostRepoId: String(repository.id),
+      repo: fullName.data,
+      number,
+      state: pr.state === "open" ? "open" : merged ? "merged" : "closed",
+      headBranch: pr.head.ref,
+      headSha: pr.head.sha,
+      changedAt,
+    });
+  }
+
+  override async deleteRef(access: RepoAccess, ref: string): Promise<AdapterResult<DeleteRefResult>> {
+    if (!DELETABLE_REF.test(ref)) {
+      return adapterError("invalid-input", "only a ref under refs/ostra/ can be deleted");
+    }
+    return this.#guarded<DeleteRefResult>("deleting a ref", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { contents: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      try {
+        await octokit.request("DELETE /repos/{owner}/{repo}/git/refs/{ref}", { owner, repo: name, ref: ref.slice("refs/".length) });
+        this.plumbing.logger.info("github.ref.deleted", { repo: access.repo });
+        return ok({ deleted: true });
+      } catch (error) {
+        // GitHub answers 422 "Reference does not exist" (and 404 for a path it can't resolve):
+        // already gone is what was asked for.
+        const status = statusOf(error);
+        if (status === 404 || status === 422) {
+          return ok({ deleted: false });
+        }
+        throw error;
+      }
     });
   }
 

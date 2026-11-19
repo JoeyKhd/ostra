@@ -1,6 +1,6 @@
 # 09: GitHub adapter: branch rules, PR states, webhooks and refs
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 04
 Features: F-055, F-060, F-031, F-044, F-079
@@ -29,8 +29,15 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] The code host suite passes against the fake.
-- [ ] The live cases, gated on `github.env` and `github-test.env`: `test1`'s and `test2`'s default branches read as their real protection; a PR opened and merged by the test is read as merged; a hidden ref pushed by the test is deleted, and deleting it again succeeds.
-- [ ] Committed as `✨ add GitHub branch rules, PR states and refs`.
+- [x] The code host suite passes against the fake.
+- [x] The live cases, gated on `github.env` and `github-test.env`: `test1`'s and `test2`'s default branches read as their real protection; a PR opened and merged by the test is read as merged; a hidden ref pushed by the test is deleted, and deleting it again succeeds.
+- [x] Committed as `✨ add GitHub branch rules, PR states and refs`.
 
 ## Comments
+- 2026-11-19, adapters (HASH09): done in `HASH09` (`✨ add GitHub branch rules, PR states and refs`). For tickets 14, 16, 13, 31 and 39:
+  - **`readBranchRules`** follows the 2026-11-19 decision exactly. `branches/{b}` gives the classic flag, `rules/branches/{b}` the rulesets (`required_signatures` signs; `deletion`, `non_fast_forward`, `pull_request` or `update` protect). It reads with `contents: read` and `metadata: read` only, and never asks for `administration`, so it never calls classic protection's `required_signatures`: a branch flagged protected that no ruleset signs reads `requiresSignedCommits: "unknown"` with the reason. A 403 "Upgrade to GitHub Pro" on the rules (the free private repo) reads `false` for both with the reason `GitHub doesn't offer branch rules on this repo's plan, so none apply.`; any other 403 (not the rate limit) reads `"unknown"` with a reason. The vendor's words never reach a reason, an error or a log line. `capabilities.branchRules` is now `true`.
+  - **`getPullRequest`** adds `merged`, `headSha`, and `updatedAt`, `mergedAt`, `closedAt` as ms since the epoch.
+  - **`parseWebhook`** reads `X-GitHub-Event` whatever its case; any event but `pull_request` is `other` (its body isn't read), and any `pull_request` action is read, with `closed` + `merged` as state `merged` and `changedAt` from the PR's `updated_at`. **The result has no delivery ID:** core reads `X-GitHub-Delivery` itself from the headers it already holds to key the inbox row (ticket 13), as it does for Linear.
+  - **`deleteRef`** accepts only a ref under `refs/ostra/` (a branch or a tag answers `invalid-input`), mints `contents: write` for that repo, and a ref already gone (GitHub's 422 "Reference does not exist", or 404) is `{ deleted: false }`.
+  - **The fake GitHub** (`createFakeGitHub`) gained: `protectedBranches`, `rulesets`, `plan: "free"`, `rulesRefused` and `refs` per repo; the branch, rules, PR-by-number and ref-delete routes; and `finishPullRequest` and `reopenPullRequest` on the server, which stamp `mergedAt`, `closedAt` and `updatedAt`. `FakePullRequest` gained `headSha`, `updatedAt`, `mergedAt` and `closedAt`, and its `merged_at` now comes from `mergedAt` (code that set only `merged` must call `finishPullRequest`).
+  - **Live, on `ostra-test`** (with `github.env` and `github-test.env`): `test1` and `test2` read false/false with the plan reason (both are private on a free plan, so ticket 40's step 1 still stands: until then the live case can't see a real rule); a PR opened and squash-merged on `test2` by the test reads open, then merged with its times and the head SHA; a hidden ref created by the test is deleted, and deleting it again succeeds. Merging adds one commit to `test2`'s `main` per run (one fixed file, `live-test/merged-probe.md`).

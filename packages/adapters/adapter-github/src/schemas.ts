@@ -65,3 +65,34 @@ export const pullRequestSchema = z.looseObject({
   base: z.looseObject({ ref: z.string() }),
 });
 export const pullRequestListSchema = z.array(pullRequestSchema);
+
+// ---------- milestone 2 ----------
+
+/** `GET /repos/{o}/{r}/branches/{b}`: only whether the branch is protected is read. */
+export const branchProtectionSchema = z.looseObject({ protected: z.boolean() });
+
+/** `GET /repos/{o}/{r}/rules/branches/{b}`: the rules of every ruleset that applies to the branch. */
+export const branchRulesSchema = z.array(z.looseObject({ type: z.string() }));
+
+/** `GET /repos/{o}/{r}/pulls/{n}`. */
+export const pullRequestDetailsSchema = z.looseObject({
+  number: z.number().int().positive(),
+  html_url: z.string().min(1),
+  state: z.enum(["open", "closed"]),
+  merged: z.boolean().optional(),
+  merged_at: z.string().nullish(),
+  closed_at: z.string().nullish(),
+  updated_at: z.string().min(1),
+  title: z.string(),
+  head: z.looseObject({ ref: z.string(), sha: z.string().min(1) }),
+  base: z.looseObject({ ref: z.string() }),
+});
+
+/** A `pull_request` webhook's payload. */
+export const pullRequestWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  number: z.number().int().positive(),
+  installation: z.looseObject({ id: z.number().int() }).nullish(),
+  repository: z.looseObject({ id: z.number().int(), full_name: z.string().min(1) }),
+  pull_request: pullRequestDetailsSchema,
+});

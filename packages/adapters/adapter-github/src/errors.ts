@@ -91,3 +91,29 @@ export const retryDecision = (error: unknown, now: number): RetryDecision => {
   }
   return failure.status >= 500 ? { retry: true } : { retry: false };
 };
+
+const messageErrorSchema = z.looseObject({
+  message: z.string().optional(),
+  response: z.looseObject({ data: z.looseObject({ message: z.string().optional() }).nullish() }).nullish(),
+});
+
+/**
+ * Whether GitHub refused because the repo's plan doesn't offer the feature: a private repo in a free
+ * organization gets a 403 "Upgrade to GitHub Pro or make this repository public" for rulesets and
+ * rules. The vendor's words are matched here and never leave: not in an error, not in a log line.
+ */
+export const isPlanLimit = (error: unknown): boolean => {
+  const status: unknown = Reflect.get(Object(error), "status");
+  if (status !== 403) {
+    return false;
+  }
+  const parsed = messageErrorSchema.safeParse(error);
+  const text = parsed.success ? (parsed.data.response?.data?.message ?? parsed.data.message ?? "") : "";
+  return /upgrade to github pro|make this repository public/i.test(text);
+};
+
+/** The HTTP status of a thrown Octokit error, or `undefined` when it wasn't one. */
+export const statusOf = (error: unknown): number | undefined => {
+  const status: unknown = Reflect.get(Object(error), "status");
+  return typeof status === "number" ? status : undefined;
+};

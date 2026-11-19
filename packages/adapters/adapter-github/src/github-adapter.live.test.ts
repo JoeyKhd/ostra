@@ -29,6 +29,7 @@ describe.skipIf(!env.success)("the GitHub adapter, live on the test org", () => 
   let api: Octokit;
   let branch: string | undefined;
   let prNumber: number | undefined;
+  let mergeBranch: string | undefined;
 
   const config = (): z.infer<typeof envSchema> => {
     if (!env.success) {
@@ -50,7 +51,14 @@ describe.skipIf(!env.success)("the GitHub adapter, live on the test org", () => 
   });
 
   afterAll(async () => {
-    const { GITHUB_TEST_ORG, GITHUB_TEST_REPO } = config();
+    const { GITHUB_TEST_ORG, GITHUB_TEST_REPO, GITHUB_TEST_OTHER_REPO } = config();
+    if (mergeBranch !== undefined) {
+      const minted = await adapter.mintRepoToken(other, { contents: "write", metadata: "read" });
+      if (minted.ok) {
+        const cleaner = new Octokit({ auth: minted.value.token, userAgent: "ostra-github-adapter-live-test/0.0.0" });
+        await cleaner.rest.git.deleteRef({ owner: GITHUB_TEST_ORG, repo: GITHUB_TEST_OTHER_REPO, ref: `heads/${mergeBranch}` });
+      }
+    }
     if (prNumber !== undefined) {
       await api.rest.pulls.update({ owner: GITHUB_TEST_ORG, repo: GITHUB_TEST_REPO, pull_number: prNumber, state: "closed" });
     }
@@ -128,5 +136,114 @@ describe.skipIf(!env.success)("the GitHub adapter, live on the test org", () => 
       ok: false,
       error: { code: "conflict" },
     });
+  }, 60_000);
+
+  it("reads each test repo's default branch as its real protection (F-055, F-060)", async () => {
+    const { GITHUB_TEST_ORG, GITHUB_TEST_REPO, GITHUB_TEST_OTHER_REPO } = config();
+    for (const repo of [access, other]) {
+      const name = repo === access ? GITHUB_TEST_REPO : GITHUB_TEST_OTHER_REPO;
+      const base = await adapter.getDefaultBranch(repo);
+      if (!base.ok) {
+        throw new Error("no default branch");
+      }
+      const token = await adapter.mintRepoToken(repo, { contents: "read", metadata: "read" });
+      if (!token.ok) {
+        throw new Error("could not mint a read token");
+      }
+      const reader = new Octokit({ auth: token.value.token, userAgent: "ostra-github-adapter-live-test/0.0.0" });
+      const flagged = (await reader.rest.repos.getBranch({ owner: GITHUB_TEST_ORG, repo: name, branch: base.value })).data.protected;
+      // What the rules endpoint says for this plan: a private repo in a free organization is refused.
+      const rulesStatus = await reader
+        .request("GET /repos/{owner}/{repo}/rules/branches/{branch}", { owner: GITHUB_TEST_ORG, repo: name, branch: base.value })
+        .then(
+          () => 200,
+          (error: unknown) => Number(Reflect.get(Object(error), "status")),
+        );
+
+      const rules = await adapter.readBranchRules(repo, base.value);
+      expect(rules, name).toMatchObject({ ok: true });
+      if (!rules.ok) {
+        continue;
+      }
+      if (flagged) {
+        expect(rules.value.protected, name).toBe(true);
+      }
+      if (rulesStatus === 403 && !flagged) {
+        expect(rules.value, name).toEqual({
+          protected: false,
+          requiresSignedCommits: false,
+          reasons: ["GitHub doesn't offer branch rules on this repo's plan, so none apply."],
+        });
+      }
+      // Never a guess: an answer that isn't a plain yes or no says why.
+      if (rules.value.protected === "unknown" || rules.value.requiresSignedCommits === "unknown") {
+        expect(rules.value.reasons.length, name).toBeGreaterThan(0);
+      }
+    }
+  }, 60_000);
+
+  it("reads a PR the test opened and merged as open, then merged (F-044)", async () => {
+    const { GITHUB_TEST_ORG, GITHUB_TEST_OTHER_REPO } = config();
+    const minted = await adapter.mintRepoToken(other, { contents: "write", pull_requests: "write", metadata: "read" });
+    if (!minted.ok) {
+      throw new Error("could not mint a token for the other repo");
+    }
+    const otherApi = new Octokit({ auth: minted.value.token, userAgent: "ostra-github-adapter-live-test/0.0.0" });
+    const target = { owner: GITHUB_TEST_ORG, repo: GITHUB_TEST_OTHER_REPO };
+    const base = await adapter.getDefaultBranch(other);
+    if (!base.ok) {
+      throw new Error("no default branch");
+    }
+    const head = await otherApi.rest.git.getRef({ ...target, ref: `heads/${base.value}` });
+    mergeBranch = `ostra/live-merge-${String(Date.now())}`;
+    await otherApi.rest.git.createRef({ ...target, ref: `refs/heads/${mergeBranch}`, sha: head.data.object.sha });
+    // One fixed file, so repeated runs change a line and don't grow the tree.
+    const path = "live-test/merged-probe.md";
+    const existing = await otherApi.rest.repos.getContent({ ...target, path, ref: base.value }).then(
+      (response) => (Array.isArray(response.data) ? undefined : response.data.sha),
+      () => undefined,
+    );
+    const committed = await otherApi.rest.repos.createOrUpdateFileContents({
+      ...target,
+      path,
+      message: "ostra live test: a probe for the merged state",
+      content: Buffer.from(`Last probed ${new Date().toISOString()} by the ostra GitHub adapter's live test.\n`).toString("base64"),
+      branch: mergeBranch,
+      ...(existing === undefined ? {} : { sha: existing }),
+    });
+
+    const opened = await adapter.openPullRequest({
+      access: other,
+      head: mergeBranch,
+      base: base.value,
+      title: "ostra live test: merged by the test",
+      body: "Opened and merged by the adapter's live test.",
+      draft: false,
+    });
+    if (!opened.ok) {
+      throw new Error(`could not open the PR: ${opened.error.message}`);
+    }
+    const open = await adapter.getPullRequest(other, opened.value.number);
+    expect(open).toMatchObject({ ok: true, value: { state: "open", merged: false, mergedAt: null, headSha: committed.data.commit.sha } });
+
+    await otherApi.rest.pulls.merge({ ...target, pull_number: opened.value.number, merge_method: "squash" });
+    const merged = await adapter.getPullRequest(other, opened.value.number);
+    expect(merged).toMatchObject({ ok: true, value: { state: "merged", merged: true } });
+    expect(merged.ok && merged.value.mergedAt).toEqual(expect.any(Number));
+    expect(merged.ok && merged.value.closedAt).toEqual(expect.any(Number));
+  }, 90_000);
+
+  it("deletes a hidden ref the test pushed, and deleting it again succeeds (F-079)", async () => {
+    const { GITHUB_TEST_ORG, GITHUB_TEST_REPO } = config();
+    const base = await adapter.getDefaultBranch(access);
+    if (!base.ok) {
+      throw new Error("no default branch");
+    }
+    const head = await api.rest.git.getRef({ owner: GITHUB_TEST_ORG, repo: GITHUB_TEST_REPO, ref: `heads/${base.value}` });
+    const ref = `refs/ostra/wip/live-test-${String(Date.now())}`;
+    await api.rest.git.createRef({ owner: GITHUB_TEST_ORG, repo: GITHUB_TEST_REPO, ref, sha: head.data.object.sha });
+    expect(await adapter.deleteRef(access, ref)).toEqual({ ok: true, value: { deleted: true } });
+    expect(await adapter.deleteRef(access, ref)).toEqual({ ok: true, value: { deleted: false } });
+    await expect(api.rest.git.getRef({ owner: GITHUB_TEST_ORG, repo: GITHUB_TEST_REPO, ref: ref.slice("refs/".length) })).rejects.toMatchObject({ status: 404 });
   }, 60_000);
 });

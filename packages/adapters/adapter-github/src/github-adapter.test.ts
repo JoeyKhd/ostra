@@ -26,15 +26,48 @@ const startFake = (): Promise<FakeGitHub> =>
           ".github/pull_request_template.md": template,
           "src/index.ts": "export {};\n",
         },
-        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth"],
+        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open"],
+        protectedBranches: ["ostra/classic"],
+        rulesets: {
+          main: ["deletion", "required_signatures"],
+          "ostra/review": ["pull_request"],
+        },
+        refs: ["refs/ostra/wip/task-contract"],
       },
       { id: 1002, owner: "fake-org", name: "test2", defaultBranch: "main", files: { "secret.txt": "other repo\n" }, branches: ["main"] },
+      // Private, in a free organization: rulesets and rules answer 403 "Upgrade to GitHub Pro".
+      { id: 1003, owner: "fake-org", name: "free", defaultBranch: "main", files: {}, branches: ["main"], plan: "free" },
+      // The rules endpoint refuses the App, as for a missing permission.
+      { id: 1004, owner: "fake-org", name: "refused", defaultBranch: "main", files: {}, branches: ["main", "locked"], protectedBranches: ["locked"], rulesRefused: true },
     ],
+  });
+
+const pullRequestPayload = (overrides: Readonly<Record<string, unknown>> = {}, pr: Readonly<Record<string, unknown>> = {}): string =>
+  JSON.stringify({
+    action: "closed",
+    number: 12,
+    installation: { id: 7 },
+    repository: { id: 1001, full_name: "fake-org/test1" },
+    pull_request: {
+      number: 12,
+      html_url: "https://github.example/fake-org/test1/pull/12",
+      state: "closed",
+      merged: true,
+      merged_at: "2026-01-01T00:00:05Z",
+      closed_at: "2026-01-01T00:00:05Z",
+      updated_at: "2026-01-01T00:00:05Z",
+      title: "a title",
+      head: { ref: "ostra/contract", sha: "a".repeat(40) },
+      base: { ref: "main" },
+      ...pr,
+    },
+    ...overrides,
   });
 
 const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
   const app = { appId: fake.appId, privateKey: fake.privateKey };
   const body = JSON.stringify({ action: "opened", number: 1 });
+  const prBody = pullRequestPayload();
   return {
     app,
     wrongApp: { appId: fake.appId, privateKey: fake.wrongPrivateKey },
@@ -46,6 +79,23 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
     prTemplate: template,
     prHead: "ostra/contract",
     webhook: { headers: { "X-Hub-Signature-256": fake.signWebhook(body) }, body, secret: fake.webhookSecret },
+    // Node lowercases a request's header names; the suite's second case replaces `x-github-event`.
+    pullRequestWebhook: {
+      input: {
+        headers: { "x-github-event": "pull_request", "x-github-delivery": "delivery-1", "x-hub-signature-256": fake.signWebhook(prBody) },
+        body: prBody,
+        secret: fake.webhookSecret,
+      },
+      number: 12,
+      state: "merged",
+    },
+    deletableRef: "refs/ostra/wip/task-contract",
+    branchRules: [
+      { branch: "main", expected: { protected: true, requiresSignedCommits: true } },
+      { branch: "ostra/contract", expected: { protected: false, requiresSignedCommits: false } },
+      { branch: "ostra/review", expected: { protected: true, requiresSignedCommits: false } },
+      { branch: "ostra/classic", expected: { protected: true, requiresSignedCommits: "unknown" } },
+    ],
   };
 };
 
@@ -288,10 +338,10 @@ describe("the GitHub adapter", () => {
       if (pr === undefined) {
         throw new Error("no PR");
       }
-      pr.state = "closed";
-      pr.merged = true;
+      fake.finishPullRequest("fake-org/test1", pr.number, "merged");
       expect(await adapter.findPullRequest(fixture.access, "ostra/third")).toMatchObject({ ok: true, value: { state: "merged" } });
       pr.merged = false;
+      pr.mergedAt = null;
       expect(await adapter.findPullRequest(fixture.access, "ostra/third")).toMatchObject({ ok: true, value: { state: "closed" } });
     });
 
@@ -305,6 +355,234 @@ describe("the GitHub adapter", () => {
         ok: false,
         error: { code: "conflict" },
       });
+    });
+  });
+
+  describe("branch rules (F-055, F-060)", () => {
+    const on = (name: string) => ({ ...fixture.access, repo: repoFullNameSchema.parse(`fake-org/${name}`) });
+
+    it("reads a ruleset's required_signatures as protected and signed, with no reason", async () => {
+      expect(await adapter.readBranchRules(fixture.access, "main")).toEqual({
+        ok: true,
+        value: { protected: true, requiresSignedCommits: true, reasons: [] },
+      });
+    });
+
+    it("reads a protective rule on its own as protected and not signed", async () => {
+      expect(await adapter.readBranchRules(fixture.access, "ostra/review")).toMatchObject({
+        ok: true,
+        value: { protected: true, requiresSignedCommits: false, reasons: [] },
+      });
+    });
+
+    it("reads an unprotected branch as false for both, since classic protection can't be there", async () => {
+      expect(await adapter.readBranchRules(fixture.access, "ostra/contract")).toEqual({
+        ok: true,
+        value: { protected: false, requiresSignedCommits: false, reasons: [] },
+      });
+    });
+
+    it("answers unknown, with the reason, for a classically protected branch no ruleset signs", async () => {
+      const rules = await adapter.readBranchRules(fixture.access, "ostra/classic");
+      expect(rules).toMatchObject({ ok: true, value: { protected: true, requiresSignedCommits: "unknown" } });
+      expect(rules.ok && rules.value.reasons.join(" ")).toContain("administration");
+    });
+
+    it("answers false for both on a plan that has no rules, never unknown, and says so", async () => {
+      expect(await adapter.readBranchRules(on("free"), "main")).toEqual({
+        ok: true,
+        value: { protected: false, requiresSignedCommits: false, reasons: ["GitHub doesn't offer branch rules on this repo's plan, so none apply."] },
+      });
+    });
+
+    it("answers unknown, with the reason, when GitHub refuses the App the rulesets", async () => {
+      expect(await adapter.readBranchRules(on("refused"), "main")).toMatchObject({
+        ok: true,
+        value: { protected: "unknown", requiresSignedCommits: "unknown" },
+      });
+      expect(await adapter.readBranchRules(on("refused"), "locked")).toMatchObject({
+        ok: true,
+        value: { protected: true, requiresSignedCommits: "unknown" },
+      });
+    });
+
+    it("answers not-found for a branch that isn't there, and refuses a branch name with a control character", async () => {
+      expect(await adapter.readBranchRules(fixture.access, "ostra/nope")).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await adapter.readBranchRules(fixture.access, "a\nb")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(await adapter.readBranchRules(fixture.access, "")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("asks for no permission beyond read, and never the administration permission", async () => {
+      const before = fake.tokens.size;
+      // A fresh adapter, since a minted token is cached.
+      await new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl }).readBranchRules(fixture.access, "main");
+      const minted = [...fake.tokens.values()].slice(before);
+      expect(minted.length).toBeGreaterThan(0);
+      for (const scope of minted) {
+        expect(Object.keys(scope.permissions)).not.toContain("administration");
+        expect(Object.values(scope.permissions)).not.toContain("write");
+      }
+    });
+
+    it("keeps the vendor's words out of the answer", async () => {
+      const rules = await adapter.readBranchRules(on("free"), "main");
+      expect(JSON.stringify(rules)).not.toMatch(/Upgrade to GitHub Pro|documentation_url/);
+    });
+
+    it("reads a rate-limited 403 as a wait, not as a refusal", async () => {
+      fake.failures.push({ pathPattern: /\/rules\/branches\//, status: 403, headers: { "x-ratelimit-remaining": "0", "retry-after": "120" }, times: 5 });
+      const rules = await adapter.readBranchRules(fixture.access, "main");
+      fake.failures.length = 0;
+      expect(rules).toMatchObject({ ok: false, error: { code: "rate-limited" } });
+    });
+  });
+
+  describe("a PR by number (F-044)", () => {
+    it("reads an open PR, a merged one with its times, and a closed one", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/open", base: "main", title: "by number", body: "", draft: false });
+      if (!opened.ok) {
+        throw new Error("open failed");
+      }
+      const open = await adapter.getPullRequest(fixture.access, opened.value.number);
+      expect(open).toMatchObject({ ok: true, value: { state: "open", merged: false, mergedAt: null, closedAt: null, headBranch: "ostra/open", baseBranch: "main" } });
+      expect(open.ok && open.value.headSha).toMatch(/^[0-9a-f]{40}$/);
+
+      const merged = fake.finishPullRequest("fake-org/test1", opened.value.number, "merged");
+      const after = await adapter.getPullRequest(fixture.access, opened.value.number);
+      expect(after).toMatchObject({
+        ok: true,
+        value: { state: "merged", merged: true, mergedAt: Date.parse(merged.mergedAt ?? ""), closedAt: Date.parse(merged.closedAt ?? ""), updatedAt: Date.parse(merged.updatedAt) },
+      });
+
+      const second = fake.pulls.find((pr) => pr.head === "ostra/other");
+      if (second === undefined) {
+        throw new Error("no second PR");
+      }
+      fake.finishPullRequest("fake-org/test1", second.number, "closed");
+      expect(await adapter.getPullRequest(fixture.access, second.number)).toMatchObject({
+        ok: true,
+        value: { state: "closed", merged: false, mergedAt: null },
+      });
+    });
+
+    it("reads a reopened PR as open again", async () => {
+      const pr = fake.pulls.find((candidate) => candidate.head === "ostra/other");
+      if (pr === undefined) {
+        throw new Error("no PR");
+      }
+      fake.reopenPullRequest("fake-org/test1", pr.number);
+      expect(await adapter.getPullRequest(fixture.access, pr.number)).toMatchObject({ ok: true, value: { state: "open", closedAt: null } });
+    });
+
+    it("answers not-found for a PR that isn't there, and refuses a number that isn't one", async () => {
+      expect(await adapter.getPullRequest(fixture.access, 99_999)).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await adapter.getPullRequest(fixture.access, 0)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      expect(await adapter.getPullRequest(fixture.access, 1.5)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+  });
+
+  describe("pull_request webhooks (F-044)", () => {
+    const hook = (action: string, state: "open" | "closed", pr: Readonly<Record<string, unknown>> = {}) => {
+      const body = pullRequestPayload({ action }, { state, ...pr });
+      return {
+        headers: { "X-GitHub-Event": "pull_request", "X-GitHub-Delivery": "d-9", "X-Hub-Signature-256": fake.signWebhook(body) },
+        body,
+        secret: fake.webhookSecret,
+      };
+    };
+
+    it("reads closed-and-merged as merged, with the head, the repo's host ID and the PR's own time", () => {
+      const input = hook("closed", "closed");
+      expect(adapter.verifyWebhook(input)).toBe(true);
+      expect(adapter.parseWebhook(input)).toEqual({
+        ok: true,
+        value: {
+          kind: "pull_request",
+          action: "closed",
+          installationId: "7",
+          hostRepoId: "1001",
+          repo: test1,
+          number: 12,
+          state: "merged",
+          headBranch: "ostra/contract",
+          headSha: "a".repeat(40),
+          changedAt: Date.parse("2026-01-01T00:00:05Z"),
+        },
+      });
+    });
+
+    it("reads closed without a merge as closed", () => {
+      expect(adapter.parseWebhook(hook("closed", "closed", { merged: false, merged_at: null }))).toMatchObject({
+        ok: true,
+        value: { action: "closed", state: "closed" },
+      });
+    });
+
+    it("reads reopened and synchronize as open", () => {
+      for (const action of ["reopened", "synchronize"]) {
+        expect(adapter.parseWebhook(hook(action, "open", { merged: false, merged_at: null, closed_at: null }))).toMatchObject({
+          ok: true,
+          value: { kind: "pull_request", action, state: "open" },
+        });
+      }
+    });
+
+    it("reads a header whatever its case, and takes no installation when the payload has none", () => {
+      const body = pullRequestPayload({ installation: undefined });
+      expect(adapter.parseWebhook({ headers: { "X-GITHUB-EVENT": "pull_request" }, body, secret: "" })).toMatchObject({
+        ok: true,
+        value: { installationId: null },
+      });
+    });
+
+    it("tolerates fields GitHub adds", () => {
+      const body = pullRequestPayload({ sender: { login: "x" }, brand_new: [1, 2, 3] }, { labels: [], something_else: { deep: true } });
+      expect(adapter.parseWebhook({ headers: { "x-github-event": "pull_request" }, body, secret: "" }).ok).toBe(true);
+    });
+
+    it("answers other for an event it doesn't act on, without reading its body", () => {
+      expect(adapter.parseWebhook({ headers: { "x-github-event": "push" }, body: "not json at all", secret: "" })).toEqual({
+        ok: true,
+        value: { kind: "other", event: "push" },
+      });
+    });
+
+    it("answers invalid-response for no event header, a body that isn't JSON and a payload that doesn't match", () => {
+      const headers = { "x-github-event": "pull_request" };
+      expect(adapter.parseWebhook({ headers: {}, body: "{}", secret: "" })).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+      expect(adapter.parseWebhook({ headers, body: "{", secret: "" })).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+      expect(adapter.parseWebhook({ headers, body: JSON.stringify({ action: "closed" }), secret: "" })).toMatchObject({
+        ok: false,
+        error: { code: "invalid-response" },
+      });
+      const badTime = pullRequestPayload({}, { updated_at: "yesterday-ish" });
+      expect(adapter.parseWebhook({ headers, body: badTime, secret: "" })).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+    });
+  });
+
+  describe("refs (F-079)", () => {
+    it("deletes a hidden ref with a contents:write token for that repo only, and deleting it again is success", async () => {
+      fake.refs.get("fake-org/test1")?.add("refs/ostra/wip/task-two");
+      const before = fake.tokens.size;
+      expect(await adapter.deleteRef(fixture.access, "refs/ostra/wip/task-two")).toEqual({ ok: true, value: { deleted: true } });
+      expect(await adapter.deleteRef(fixture.access, "refs/ostra/wip/task-two")).toEqual({ ok: true, value: { deleted: false } });
+      const minted = [...fake.tokens.values()].slice(before);
+      expect(minted[0]?.repos).toEqual(["test1"]);
+      expect(minted[0]?.permissions).toEqual({ contents: "write", metadata: "read" });
+      expect(fake.refs.get("fake-org/test1")?.has("refs/ostra/wip/task-two")).toBe(false);
+    });
+
+    it("never deletes a branch, a tag or a path that climbs out", async () => {
+      const before = fake.requests.length;
+      for (const ref of ["refs/heads/main", "refs/tags/v1", "refs/ostra/../heads/main", "refs/ostra/", "ostra/wip/x", "refs/ostra/wip/a b", "refs/ostra/wip/x?y=1"]) {
+        expect(await adapter.deleteRef(fixture.access, ref), ref).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      }
+      expect(fake.requests.length).toBe(before);
+    });
+
+    it("answers not-found for a repo the installation can't see", async () => {
+      const hidden = { ...fixture.access, repo: repoFullNameSchema.parse("fake-org/missing") };
+      expect(await adapter.deleteRef(hidden, "refs/ostra/wip/x")).toMatchObject({ ok: false, error: { code: "not-found" } });
     });
   });
 
@@ -408,7 +686,7 @@ describe("the GitHub adapter", () => {
         checkRuns: true,
         prTemplates: true,
         lfsActionHosts: ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"],
-        branchRules: false,
+        branchRules: true,
       });
     });
   });
