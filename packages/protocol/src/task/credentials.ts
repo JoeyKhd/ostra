@@ -17,6 +17,14 @@ const NEVER_LOGGED =
 
 const secretValue = z.string().min(1).max(65_536);
 
+/**
+ * An HTTP header value: visible ASCII, space, tab and obs-text, never CR, LF or another control
+ * character. Node refuses such a value when a request is made, so the profile editor, the stored
+ * value and the credentials all hold to it.
+ */
+export const HTTP_HEADER_VALUE = /^[\t\u0020-\u007e\u0080-\u00ff]+$/;
+export const mcpHeaderValueSchema = secretValue.regex(HTTP_HEADER_VALUE, "a header value can't hold a line break or another control character");
+
 export const modelEndpointCredentialsSchema = z.strictObject({
   baseUrl: z.url({ protocol: /^https?$/ }),
   apiFormat: apiFormatSchema,
@@ -67,7 +75,7 @@ const taskCredentialsShapeV1 = {
 export const mcpServerCredentialsSchema = z.strictObject({
   name: agentItemNameSchema,
   url: z.url({ protocol: /^https?$/ }),
-  headers: z.record(z.string().min(1).max(256), secretValue),
+  headers: z.record(z.string().min(1).max(256), mcpHeaderValueSchema),
 });
 export type McpServerCredentials = z.infer<typeof mcpServerCredentialsSchema>;
 

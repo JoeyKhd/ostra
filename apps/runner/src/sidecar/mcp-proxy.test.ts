@@ -99,6 +99,28 @@ describe("the sidecar's MCP proxy (F-021)", () => {
     expect(server.requests).toEqual([]);
   });
 
+  it("F-021: a header value Node refuses (a line break) answers 502 and the process goes on", async () => {
+    upstream = await startTokenMcpServer({ token: TOKEN, tool: "lookup" });
+    const logs: LogRecord[] = [];
+    proxy = await startMcpProxy({
+      taskId: taskIdSchema.parse("0196f1a0-m3-mcp-proxy"),
+      routes: [
+        { name: "dirty", proxyPath: "/mcp/dirty", url: upstream.urlFor("docs"), headers: { Authorization: `Bearer ${TOKEN}
+x-injected: 1` } },
+        { name: "docs", proxyPath: "/mcp/docs", url: upstream.urlFor("docs"), headers: { Authorization: `Bearer ${TOKEN}` } },
+      ],
+      listenHost: "127.0.0.1",
+      logger: createLogger((record) => logs.push(record)),
+    });
+    const dirty = await post(proxy.urlFor("/mcp/dirty"), rpc(1, "tools/list"));
+    expect(dirty.status).toBe(502);
+    expect(logs.find((record) => record.message === "an MCP server couldn't be reached")?.fields).toMatchObject({ server: "dirty" });
+    expect(JSON.stringify(logs)).not.toContain(TOKEN);
+    // Nothing reached the server for it, and the proxy still answers the next server's call.
+    expect(upstream.requests).toEqual([]);
+    expect((await post(proxy.urlFor("/mcp/docs"), rpc(2, "tools/call", { name: "lookup", arguments: {} }))).status).toBe(200);
+  });
+
   it("F-021: a server that can't be reached answers 502, and the proxy goes on", async () => {
     const { upstream: server, proxy: mcp, logs } = await start();
     const real = server.urlFor("docs");

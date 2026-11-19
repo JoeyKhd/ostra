@@ -208,6 +208,24 @@ describe("agentProfiles.save and .archive (F-021)", () => {
   });
 });
 
+describe("an MCP header's value (F-021)", () => {
+  const withHeader = (value: string) =>
+    base({ mcpServers: [{ transport: "http", name: "search", url: "https://mcp.example.com/mcp", headers: [{ name: "Authorization", value }] }] });
+
+  it("F-021: a header value holding a line break or another control character is refused on save, and a trailing newline is trimmed before it is stored", async () => {
+    const a = await admin();
+    const profilesBefore = await harness.test.db.agentProfile.count();
+    for (const bad of [`Bearer abc\nx-injected: 1`, `Bearer abc\rx`, `Bearer ab\u0000c`, `Bearer ab\u007fc`]) {
+      await expect(a.agentProfiles.save(withHeader(bad))).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    }
+    expect(await harness.test.db.agentProfile.count()).toBe(profilesBefore);
+    const saved = await a.agentProfiles.save(withHeader(`  Bearer pasted-token-0123\n`));
+    const row = await harness.test.db.agentProfile.findUniqueOrThrow({ where: { id: saved.profileId } });
+    const ref = storedServers.parse(row.mcpServers)[0]?.headerSecretRefs["Authorization"];
+    expect(await harness.fakes.secretStore.get(harness.fixture.a.organization.id, secretRefOf(ref))).toMatchObject({ ok: true, value: "Bearer pasted-token-0123" });
+  });
+});
+
 describe("who may use a profile (F-021)", () => {
   it("F-021: a listed profile is invisible to an unlisted member and refused to start a task, and works for a listed one", async () => {
     const a = await admin();

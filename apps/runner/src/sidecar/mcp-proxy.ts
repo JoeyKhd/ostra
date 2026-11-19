@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createServer, request as httpRequest } from "node:http";
-import type { IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
+import type { ClientRequest, IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { AddressInfo } from "node:net";
 import type { Logger } from "@ostra/adapter-sdk";
@@ -81,7 +81,7 @@ export const startMcpProxy = async (options: McpProxyOptions): Promise<McpProxy>
     let received = 0;
     let status = 0;
     const send = secure ? httpsRequest : httpRequest;
-    const outgoing = send(target, { method: incoming.method ?? "POST", headers }, (answer) => {
+    const onAnswer = (answer: IncomingMessage): void => {
       status = answer.statusCode ?? 502;
       response.writeHead(status, pick(answer.headers, FORWARDED_RESPONSE_HEADERS));
       // An SSE reply goes out as it comes, never buffered.
@@ -96,7 +96,18 @@ export const startMcpProxy = async (options: McpProxyOptions): Promise<McpProxy>
       answer.on("error", () => {
         response.destroy();
       });
-    });
+    };
+    // Node refuses a header it can't send (a control character) by throwing here: the call fails with
+    // a 502, and the runner, with every task on it, goes on.
+    let outgoing: ClientRequest;
+    try {
+      outgoing = send(target, { method: incoming.method ?? "POST", headers }, onAnswer);
+    } catch (error) {
+      log.warn("an MCP server couldn't be reached", { server: route.name, error: error instanceof Error ? error.name : "unknown" });
+      incoming.resume();
+      response.writeHead(502, { "content-type": "text/plain" }).end("the MCP server couldn't be reached");
+      return;
+    }
     outgoing.on("error", (error) => {
       log.warn("an MCP server couldn't be reached", { server: route.name, error: error.name });
       if (!response.headersSent) {

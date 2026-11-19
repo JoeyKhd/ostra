@@ -1,7 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, authSchemeFromDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, taskCredentialsRequestSchema, taskCredentialsSchema } from "@ostra/protocol";
+import { HTTP_HEADER_VALUE, organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, taskCredentialsRequestSchema, taskCredentialsSchema } from "@ostra/protocol";
 import type { LeaseEpoch, OrganizationId, RepoSecret, ServiceSecrets, TaskCredentials, TaskId } from "@ostra/protocol";
 import type { z } from "zod";
 
@@ -162,7 +162,13 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
       if (value?.ok !== true) {
         return failed("an MCP server's header couldn't be read from the secret store");
       }
-      headers[header] = value.value;
+      // A value saved before the editor refused control characters may end in a newline: trimmed here,
+      // and one that still can't be sent fails the credentials, not the runner.
+      const trimmed = value.value.trim();
+      if (!HTTP_HEADER_VALUE.test(trimmed)) {
+        return failed("an MCP server's header holds a character a header can't");
+      }
+      headers[header] = trimmed;
     }
     mcpServers.push({ name: server.name, url: server.url, headers });
   }

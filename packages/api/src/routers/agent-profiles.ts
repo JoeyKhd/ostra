@@ -26,6 +26,7 @@ import {
   approvalSubjectSchema,
   approvalToolSchema,
   blobIdSchema,
+  HTTP_HEADER_VALUE,
   memberIdSchema,
   modelIdSchema,
   projectIdSchema,
@@ -257,7 +258,7 @@ const mcpServerInput = z.discriminatedUnion("transport", [
     url: z.string().max(2048),
     readOnly: z.boolean().default(false),
     /** A header's value is written to the secret store; `null` keeps the one already stored under the name. */
-    headers: z.array(z.strictObject({ name: z.string().max(200), value: z.string().min(1).max(8192).nullable() })).max(profileLimits.headersMax).default([]),
+    headers: z.array(z.strictObject({ name: z.string().max(200), value: z.string().trim().min(1).max(8192).regex(HTTP_HEADER_VALUE, "a header value can't hold a line break or another control character").nullable() })).max(profileLimits.headersMax).default([]),
   }),
   z.strictObject({
     name: z.string().max(profileLimits.skillNameMax),

@@ -345,6 +345,36 @@ describe("the spec's agent section", () => {
     expect(records.some((record) => record.message === "task.credentials-issued")).toBe(true);
   });
 
+  it("F-021: a header stored with a trailing newline reaches the sidecar trimmed; one with a line break inside fails the credentials, not the runner", async () => {
+    const put = async (value: string) => {
+      const stored = await secretStore.put({ organizationId: world.organizationId, purpose: "agent-profile.mcp-header" }, value);
+      if (!stored.ok) {
+        throw new Error("the fake secret store refused");
+      }
+      return secretRefSchema.parse(stored.value);
+    };
+    const credentialsOf = async (value: string) => {
+      const profile = await makeProfile(test.db, world.organizationId, await modelOf(world.profileId), {
+        name: `Header ${String(Math.random())}`,
+        mcpServers: [{ name: "release-names", transport: "http", url: MCP_URL, readOnly: true, headerSecretRefs: { Authorization: await put(value) } }],
+      });
+      const task = await started(fixture.a.member, { agentProfileId: profile, runnerId: runner.runnerId });
+      expect(await dispatch(world.organizationId, task)).toMatchObject({ ok: true });
+      const token = await accessToken(harness, runner);
+      return fetch(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token.accessToken}`, [runnerHeaders.minor]: "2" },
+        body: JSON.stringify({ taskId: task.taskId, leaseEpoch: 1 }),
+      });
+    };
+    const trailing = await credentialsOf(`Bearer ${MCP_TOKEN}\n`);
+    expect(trailing.status).toBe(200);
+    expect(taskCredentialsSchema.parse(await trailing.json()).mcpServers).toEqual([{ name: "release-names", url: MCP_URL, headers: { Authorization: `Bearer ${MCP_TOKEN}` } }]);
+    const inside = await credentialsOf(`Bearer ${MCP_TOKEN}\nx-injected: 1`);
+    expect(inside.status).toBe(502);
+    expect(await inside.text()).not.toContain(MCP_TOKEN);
+  });
+
   it("F-021: plan mode only on the task's first session before a plan; an archived profile still dispatches its tasks", async () => {
     const task = await started(fixture.a.member, { agentProfileId: careful, runnerId: runner.runnerId });
     await test.db.agentProfile.update({ where: { id: careful }, data: { archivedAt: new Date() } });

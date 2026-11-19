@@ -7,6 +7,19 @@ import { taskCredentialsSchema } from "./credentials.ts";
 import type { TaskCredentials } from "./credentials.ts";
 import { repoRelativePathSchema, taskSpecSchema } from "./spec.ts";
 
+describe("the task credentials' MCP headers (F-021)", () => {
+  const server = (value: string) => ({ ...taskCredentialsFixture, mcpServers: [{ name: "docs", url: "https://mcp.example.com/mcp", headers: { Authorization: value } }] });
+
+  it("F-021: a header value holding CR, LF or another control character is refused, and a plain token or text with a tab or accents is kept", () => {
+    for (const bad of [`Bearer a\nb`, `Bearer a\rb`, `Bearer a\u0000b`, `Bearer a\u007fb`, `Bearer a\u0100b`]) {
+      expect(taskCredentialsSchema.safeParse(server(bad)).success).toBe(false);
+    }
+    for (const good of ["Bearer sk-0123456789", `a\tb`, "caf\u00e9"]) {
+      expect(taskCredentialsSchema.safeParse(server(good)).success).toBe(true);
+    }
+  });
+});
+
 describe("the task spec", () => {
   it("parses a full example", () => {
     expect(taskSpecSchema.parse(JSON.parse(JSON.stringify(taskSpecFixture)))).toEqual(taskSpecFixture);
