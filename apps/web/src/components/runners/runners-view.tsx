@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CopyIcon, KeyRoundIcon, LaptopIcon, ServerIcon, TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
+import { runnerStateText, runnerTone } from "@/components/runners/runner-words";
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Chip, Code, Status } from "@/components/ui/status";
-import type { Tone } from "@/components/ui/status";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
@@ -15,8 +15,6 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 type Runner = RouterOutputs["runners"]["mine"][number];
-
-const stateTone = (state: string): Tone => (state === "online" ? "green" : state === "draining" ? "amber" : "grey");
 
 /** A runner's kind as the panel says it: a personal `host` runner is "personal, not isolated" (ADR 0029). */
 export const RunnerKind = ({ runner }: { readonly runner: Pick<Runner, "kind" | "executor" | "isolated"> }) => (
@@ -54,8 +52,8 @@ const RunnerRow = ({ runner, owner }: { readonly runner: Runner; readonly owner?
     <span className="ml-auto flex items-center gap-3 text-sm">
       <span className="font-mono text-faint">{t("runners.capacity", { n: runner.capacity })}</span>
       <span className="font-mono text-faint">v{runner.version}</span>
-      <Status tone={stateTone(runner.state)}>
-        {runner.state === "online" ? t("runners.online") : runner.lastSeenAt === null ? runner.state : t("runners.seenAgo", { state: runner.state, age: formatAge(runner.lastSeenAt) })}
+      <Status tone={runnerTone(runner.state)}>
+        {runner.state === "online" || runner.lastSeenAt === null ? runnerStateText(runner.state) : t("runners.seenAgo", { state: runnerStateText(runner.state), age: formatAge(runner.lastSeenAt) })}
       </Status>
     </span>
   </li>

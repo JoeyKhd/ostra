@@ -5,6 +5,8 @@ import { FileIcon, KeyRoundIcon, PlusIcon, TriangleAlertIcon, VariableIcon, XIco
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import type { ProjectId } from "@ostra/protocol";
+
 import { PageFrame, PageHeading, PropGroup, Section } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -127,7 +129,7 @@ const Reasons = ({ detected }: { readonly detected: Detected }) => (
  * and files, edited and saved. A new project lands here on its draft, with detection's reasons.
  * No secret value is ever shown back: a stored secret reads "set".
  */
-export const EnvironmentView = ({ projectId }: { readonly projectId: string }) => {
+export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const params = useSearchParams();

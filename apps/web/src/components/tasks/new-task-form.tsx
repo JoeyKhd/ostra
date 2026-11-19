@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { SubmitEvent } from "react";
 
-import { projectIdSchema, runnerIdSchema } from "@ostra/protocol";
+import { runnerIdSchema } from "@ostra/protocol";
+import type { ProjectId } from "@ostra/protocol";
 
+import { runnerStateText } from "@/components/runners/runner-words";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Textarea, fieldClass } from "@/components/ui/input";
@@ -22,7 +24,7 @@ const POOLS = "pools";
  * "New task" (F-097): a prompt and "Run on": the member's own personal runner ("personal, not
  * isolated") or the project's pools (F-014). No ticket is created.
  */
-export const NewTaskForm = ({ projectId, compact = false }: { readonly projectId: string; readonly compact?: boolean }) => {
+export const NewTaskForm = ({ projectId, compact = false }: { readonly projectId: ProjectId; readonly compact?: boolean }) => {
   const trpc = useTRPC();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -47,7 +49,7 @@ export const NewTaskForm = ({ projectId, compact = false }: { readonly projectId
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     create.mutate({
-      projectId: projectIdSchema.parse(projectId),
+      projectId,
       prompt: prompt.trim(),
       ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }),
     });
@@ -76,7 +78,7 @@ export const NewTaskForm = ({ projectId, compact = false }: { readonly projectId
           >
             {runners.data?.map((runner) => (
               <option key={runner.id} value={runner.id}>
-                {t("newTask.personalRunner", { name: runner.name, state: runner.state })}
+                {t("newTask.personalRunner", { name: runner.name, state: runnerStateText(runner.state) })}
                 {runner.isolated ? "" : ` · ${t("runners.notIsolated")}`}
               </option>
             ))}

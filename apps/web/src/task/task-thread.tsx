@@ -13,7 +13,8 @@ import { useMutation } from "@tanstack/react-query";
 import { BotIcon, InfoIcon, PauseIcon, SendIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { clientMessageIdSchema, taskIdSchema } from "@ostra/protocol";
+import { clientMessageIdSchema } from "@ostra/protocol";
+import type { TaskId } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
 import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
@@ -160,7 +161,7 @@ const Composer = ({ running, onSend }: { readonly running: boolean; readonly onS
 };
 
 export type TaskThreadProps = {
-  readonly taskId: string;
+  readonly taskId: TaskId;
   readonly log: TaskStreamState;
   readonly memberId: MemberId | null;
   readonly memberName: (memberId: string) => string;
@@ -199,7 +200,7 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, running
       const clientMessageId = clientMessageIdSchema.parse(crypto.randomUUID());
       setOptimistic((list) => [...list, { clientMessageId, memberId, text, delivery: interrupt ? "after-interrupt" : running ? "queued" : "immediate" }]);
       try {
-        await send.mutateAsync({ taskId: taskIdSchema.parse(taskId), clientMessageId, text, delivery: interrupt ? "interrupt" : "queue" });
+        await send.mutateAsync({ taskId, clientMessageId, text, delivery: interrupt ? "interrupt" : "queue" });
       } catch (cause) {
         setOptimistic((list) => list.filter((m) => m.clientMessageId !== clientMessageId));
         throw new Error(errorText({ message: cause instanceof Error ? cause.message : "", data: null }) ?? t("errors.unknown"));

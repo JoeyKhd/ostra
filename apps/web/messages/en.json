@@ -298,7 +298,13 @@
     "pool": "pool",
     "notIsolated": "not isolated",
     "capacity": "capacity {n}",
-    "online": "online",
+    "state": {
+      "joining": "joining",
+      "online": "online",
+      "offline": "offline",
+      "draining": "draining",
+      "revoked": "revoked"
+    },
     "onlineCount": "{online} / {total} online",
     "seenAgo": "{state}, seen {age} ago",
     "joinToken": "Join token",

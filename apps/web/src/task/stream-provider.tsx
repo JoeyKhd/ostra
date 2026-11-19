@@ -6,7 +6,7 @@ import { useSubscription } from "@trpc/tanstack-react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import type { ChangeEntity, LiveTextFrame, SegmentId, StoredEvent } from "@ostra/protocol";
+import type { ChangeEntity, LiveTextFrame, SegmentId, StoredEvent, TaskId } from "@ostra/protocol";
 
 import { useTRPC } from "@/lib/trpc";
 
@@ -27,7 +27,7 @@ export type TaskListener = {
   readonly connection: (connection: Connection) => void;
 };
 
-type Watch = { readonly taskId: string; readonly afterSeq: number; readonly listener: TaskListener };
+type Watch = { readonly taskId: TaskId; readonly afterSeq: number; readonly listener: TaskListener };
 
 type StreamContextValue = {
   /** Opens the task's events on the tab's stream, after `afterSeq`. Returns the unwatch. */

@@ -3,6 +3,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useState } from "react";
 
+import type { TaskId } from "@ostra/protocol";
+
 import { useTRPC } from "@/lib/trpc";
 
 import { useStream } from "./stream-provider";
@@ -20,7 +22,7 @@ export type TaskLog = {
  * A task's log on its page (ADR 0036): the newest 20 turns first, then the live tail on the tab's
  * stream from where that page ended, and "Load earlier turns" paging back.
  */
-export const useTaskLog = (taskId: string): TaskLog => {
+export const useTaskLog = (taskId: TaskId): TaskLog => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const { watchTask } = useStream();

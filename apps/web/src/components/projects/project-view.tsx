@@ -5,6 +5,8 @@ import { GitPullRequestIcon, LaptopIcon, ServerIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import type { ProjectId } from "@ostra/protocol";
+
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { NewTaskForm } from "@/components/tasks/new-task-form";
 import { doingText, groupText, stateTone, taskStateText } from "@/components/tasks/task-words";
@@ -59,7 +61,7 @@ const Row = ({ task, now }: { readonly task: TaskRow; readonly now: number }) =>
  * A project's tasks (ticket 38): grouped by state in the domain model's order, a count per group,
  * and the "New task" composer with "Run on".
  */
-export const ProjectView = ({ projectId }: { readonly projectId: string }) => {
+export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) => {
   const trpc = useTRPC();
   const project = useQuery(trpc.projects.get.queryOptions({ projectId }));
   const groups = useQuery(trpc.tasks.list.queryOptions({ projectId }));

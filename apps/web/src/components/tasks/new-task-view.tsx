@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 
+import type { ProjectId } from "@ostra/protocol";
+
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { buttonVariants } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -18,7 +20,7 @@ import { NewTaskForm } from "./new-task-form";
 export const NewTaskView = () => {
   const trpc = useTRPC();
   const projects = useQuery(trpc.projects.list.queryOptions());
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<ProjectId | null>(null);
   const projectId = picked ?? projects.data?.[0]?.id ?? null;
   return (
     <PageFrame crumbs={[{ label: t("newTask.title") }]}>
@@ -31,7 +33,7 @@ export const NewTaskView = () => {
       ) : (
         <div className="mt-6 max-w-[720px]">
           <Field id="task-project" label={t("newTask.project")}>
-            <select id="task-project" className={cn(fieldClass, "h-8 w-auto")} value={projectId ?? ""} onChange={(e) => { setPicked(e.target.value); }}>
+            <select id="task-project" className={cn(fieldClass, "h-8 w-auto")} value={projectId ?? ""} onChange={(e) => { setPicked(projects.data?.find((project) => project.id === e.target.value)?.id ?? null); }}>
               {projects.data?.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
           </Field>

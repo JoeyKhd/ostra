@@ -1,10 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranchIcon, GitPullRequestIcon, HandIcon, LaptopIcon, ServerIcon, SquareIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { taskIdSchema } from "@ostra/protocol";
+import type { TaskId } from "@ostra/protocol";
 import { deriveTaskState } from "@ostra/task-view";
 
 import { RunnerKind } from "@/components/runners/runners-view";
@@ -105,13 +105,13 @@ const Properties = ({ task, tokens, context, onTakeOver, takingOver }: {
  * The task page (ADR 0036, F-023, F-025): the live thread, the properties panel, Stop and the PR
  * link. Stop is optimistic and confirmed by the stream's change notice.
  */
-export const TaskView = ({ taskId }: { readonly taskId: string }) => {
+export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const task = useQuery(trpc.tasks.get.queryOptions({ taskId }));
   const me = useQuery(trpc.me.get.queryOptions());
   const members = useQuery(trpc.organization.members.queryOptions());
-  const project = useQuery({ ...trpc.projects.get.queryOptions({ projectId: task.data?.projectId ?? "" }), enabled: task.data !== undefined });
+  const project = useQuery(trpc.projects.get.queryOptions(task.data === undefined ? skipToken : { projectId: task.data.projectId }));
   const log = useTaskLog(taskId);
   const view = useMemo(() => deriveTaskState(log.state.events), [log.state.events]);
   const [stopping, setStopping] = useState(false);
@@ -162,7 +162,7 @@ export const TaskView = ({ taskId }: { readonly taskId: string }) => {
             ),
           )}
           {data.capabilities.stop && !stopped ? (
-            <Button data-action="stop" onClick={() => { stop.mutate({ taskId: taskIdSchema.parse(taskId) }); }} disabled={stopping || stop.isPending}>
+            <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending}>
               <SquareIcon /> {stopping ? t("taskPage.stopping") : t("taskPage.stop")}
             </Button>
           ) : null}
@@ -174,7 +174,7 @@ export const TaskView = ({ taskId }: { readonly taskId: string }) => {
           tokens={view.tokens}
           context={view.context}
           takingOver={takeOver.isPending}
-          onTakeOver={() => { takeOver.mutate({ taskId: taskIdSchema.parse(taskId) }); }}
+          onTakeOver={() => { takeOver.mutate({ taskId }); }}
         />
       }
     >
