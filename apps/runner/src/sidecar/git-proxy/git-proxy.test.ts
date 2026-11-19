@@ -168,6 +168,32 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, `refs/heads/${branch}`)).not.toBeNull();
   }, 60_000);
 
+  it("F-090: refuses a push that carries the task's branch beside main, and every look-alike of its refs, forwarding nothing", async () => {
+    const proxy = await startProxy();
+    const { dir } = await clone(proxy.urlFor(repo), "mixed");
+    await commitFile(dir, "mixed.txt", "x\n");
+    const mainBefore = await upstream.refSha(repo, "refs/heads/main");
+    const branchBefore = await upstream.refSha(repo, `refs/heads/${branch}`);
+    const before = receivePacks(repo);
+    // The task's own branch (forced, so git sends it whatever the branch holds) and main in one
+    // push: one refused ref refuses all of it.
+    const mixed = await runGit(["push", "origin", `+HEAD:refs/heads/${branch}`, "HEAD:main"], dir);
+    expect(mixed.code).not.toBe(0);
+    expect(mixed.stderr).toContain("! [remote rejected] HEAD -> main (ostra: only the task's branch and its hidden ref can be pushed)");
+    expect(mixed.stderr).toContain(`! [remote rejected] HEAD -> ${branch} (ostra: not pushed, another ref in this push was refused)`);
+    // Exact refs only: a longer name, a child of the branch, another case, a tag, another task's hidden ref.
+    for (const ref of [`refs/heads/${branch}-x`, `refs/heads/${branch}/x`, `refs/heads/${branch.toUpperCase()}`, "refs/tags/v1", "refs/ostra/wip/0196f1a0-another-task"]) {
+      const pushed = await runGit(["push", "origin", `HEAD:${ref}`], dir);
+      expect(pushed.code, ref).not.toBe(0);
+      expect(pushed.stderr, ref).toContain("(ostra: only the task's branch and its hidden ref can be pushed)");
+    }
+    // Not one receive-pack reached the code host. (A lookup of each ref upstream can't say so on a
+    // case-insensitive file system, where the stub finds the branch under its upper-case name.)
+    expect(receivePacks(repo)).toBe(before);
+    expect(await upstream.refSha(repo, "refs/heads/main")).toBe(mainBefore);
+    expect(await upstream.refSha(repo, `refs/heads/${branch}`)).toBe(branchBefore);
+  }, 60_000);
+
   it("F-090: refuses a push to another repo in git's words, and no request for it reaches the code host", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "other-repo");
@@ -216,6 +242,26 @@ describe("a refused push's answer and its cost", () => {
     const reported = await receivePack(proxy, commands("refs/heads/main", "report-status agent=git/2.53"));
     expect(reported.status).toBe(200);
     expect(await reported.text()).toContain("ng refs/heads/main ostra: only the task's branch and its hidden ref can be pushed");
+    expect(receivePacks(repo)).toBe(before);
+  });
+
+  it("F-090: reads every command of a push, so the task's branch first and main after it is refused whole, forwarding nothing", async () => {
+    const proxy = await startProxy();
+    const before = receivePacks(repo);
+    // An agent with a shell can write the command list in any order, unlike stock git.
+    const body = Buffer.concat([
+      encodePkt(`${A} ${B} refs/heads/${branch}\0report-status agent=git/2.53\n`),
+      encodePkt(`${A} ${B} ${hiddenRef}\n`),
+      encodePkt(`${A} ${B} refs/heads/main\n`),
+      FLUSH_PKT,
+      Buffer.from("PACK"),
+    ]);
+    const answer = await receivePack(proxy, body);
+    expect(answer.status).toBe(200);
+    const text = await answer.text();
+    expect(text).toContain("ng refs/heads/main ostra: only the task's branch and its hidden ref can be pushed");
+    expect(text).toContain(`ng refs/heads/${branch} ostra: not pushed, another ref in this push was refused`);
+    expect(text).toContain(`ng ${hiddenRef} ostra: not pushed, another ref in this push was refused`);
     expect(receivePacks(repo)).toBe(before);
   });
 
@@ -361,7 +407,14 @@ describe("read-only mode", () => {
     expect(typeof downloadHref).toBe("string");
     if (typeof downloadHref === "string") {
       expect((await fetch(downloadHref)).status).toBe(200);
-      expect((await fetch(downloadHref, { method: "PUT", body: "x" })).status).toBe(403);
+      // Every method but GET is refused read-only, in the proxy, with nothing sent upstream.
+      const upstreamBefore = upstream.requests.length;
+      for (const method of ["PUT", "POST"]) {
+        const refused = await fetch(downloadHref, { method, body: "x" });
+        expect(refused.status, method).toBe(403);
+        expect(await refused.text(), method).toContain("ostra: this task can fetch but not push");
+      }
+      expect(upstream.requests.length).toBe(upstreamBefore);
     }
   }, 60_000);
 });

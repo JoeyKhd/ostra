@@ -6,7 +6,7 @@ import type { LogRecord } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { dispatchTask, holdProviderInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import { dispatchTask, holdProviderInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, releaseLeaseInTx, systemClock } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { repoFullNameSchema, runnerPaths, taskCredentialsSchema, taskSpecSchema } from "@ostra/protocol";
@@ -287,6 +287,19 @@ describe("the spec and the credentials", () => {
     expect(spec.status).toBe(404);
     // Without a token at all.
     expect((await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 })).status).toBe(401);
+  });
+
+  it("F-090: the lease check refuses a lease that ended, though the task's epoch is still the one it held", async () => {
+    const token = await accessToken(harness, runner);
+    // The session ends: core releases the lease, and the task's epoch stays where it was.
+    await test.db.$transaction((tx) => releaseLeaseInTx(tx, task.taskId, new Date(), "released"));
+    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).leaseEpoch).toBe(1);
+    const mintedBefore = codeHost.minted.length;
+    const after = await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 }, token.accessToken);
+    expect(after.status).toBe(409);
+    expect(after.body).toMatchObject({ error: { code: "stale-lease", currentEpoch: 1 } });
+    // Refused before the code host was asked: no git token was minted for it.
+    expect(codeHost.minted).toHaveLength(mintedBefore);
   });
 });
 
