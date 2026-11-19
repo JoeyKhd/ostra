@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,7 +12,7 @@ import { fakeMarker, serveFakeAgent } from "../../testing/fake-acp-agent/agent.t
 import type { FakeAgentProfile } from "../../testing/fake-acp-agent/agent.ts";
 import { FakeAgentAdapter } from "../../testing/fake-acp-agent/fake-agent-adapter.ts";
 import { spawnAgentProcess } from "../../testing/spawn-agent.ts";
-import type { AcpUpdate, DriverConnection, DriverHandlers, DriverPort, PermissionRequest, QuestionRequest } from "../base.ts";
+import type { AcpUpdate, AgentIo, DriverConnection, DriverHandlers, DriverPort, PermissionRequest, QuestionRequest } from "../base.ts";
 import { createAcpDriver } from "./driver.ts";
 import type { AcpDriverOptions } from "./driver.ts";
 import { isAlive } from "./process-tree.ts";
@@ -45,6 +46,7 @@ const connectInProcess = async (
   profile: FakeAgentProfile,
   handlerOverrides: Partial<DriverHandlers> = {},
   options: AcpDriverOptions = {},
+  agentProcess: Pick<AgentIo, "pid" | "unitPids"> = {},
 ): Promise<Peer> => {
   const toAgent = new PassThrough();
   const fromAgent = new PassThrough();
@@ -59,7 +61,7 @@ const connectInProcess = async (
   const questions: QuestionRequest[] = [];
   const driver = createAcpDriver({ treeSnapshotMs: 0, ...options });
   const connected = await driver.connect(
-    { stdin: toAgent, stdout: fromAgent, stderr: new PassThrough() },
+    { stdin: toAgent, stdout: fromAgent, stderr: new PassThrough(), ...agentProcess },
     {
       onUpdate: (agentSessionId, update) => {
         updates.push({ agentSessionId, update });
@@ -120,6 +122,53 @@ describe("the ACP driver, in process", () => {
     expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
     expect(Date.now() - at).toBeLessThan(5000);
   });
+
+  it("F-023: a slow reap doesn't hold a cancel past its budget: the turn ends, and the reap finishes after it", async () => {
+    // A stand-in for the agent's process, so the driver watches a tree; the fake agent runs here.
+    const idle = (): ChildProcess => {
+      const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", windowsHide: true });
+      cleanups.push(() => {
+        child.kill("SIGKILL");
+      });
+      return child;
+    };
+    const pidOf = (child: ChildProcess): number => {
+      if (child.pid === undefined) {
+        throw new Error("no pid");
+      }
+      return child.pid;
+    };
+    const agent = pidOf(idle());
+    // The unit's listing hangs until the test lets it go, as PowerShell's does on a busy Windows machine.
+    let reapStarted: () => void = () => undefined;
+    const reaping = new Promise<void>((resolve) => {
+      reapStarted = resolve;
+    });
+    let listUnit: (pids: readonly number[]) => void = () => undefined;
+    const unitPids = (): Promise<readonly number[]> => {
+      reapStarted();
+      return new Promise((resolve) => {
+        listUnit = resolve;
+      });
+    };
+    const peer = await connectInProcess("rich", {}, { cancelGraceMs: 2_000 }, { pid: agent, unitPids });
+    const id = await newSession(peer);
+    const turn = peer.connection.prompt(id, fakeMarker("silent"));
+    await waitUntil(() => messageText(peer).includes("Starting a long step."));
+    // Born during the turn, in the task's unit and outside the agent's tree.
+    const bornInTurn = pidOf(idle());
+    await peer.connection.cancel(id);
+    // The listing never answered, and the turn ended anyway, within the cancel's budget.
+    expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+    await reaping;
+    const reapFrom = Date.now();
+    listUnit([bornInTurn]);
+    // The reap lists every process first: PowerShell, seconds on a busy Windows machine. What
+    // this checks is that it finishes after the turn, so it waits for that, not for a time.
+    await waitUntil(() => !isAlive(bornInTurn), 25_000);
+    expect(isAlive(bornInTurn), `the turn's process, ${String(Date.now() - reapFrom)} ms after the late reap began`).toBe(false);
+    expect(isAlive(agent), "the agent itself").toBe(true);
+  }, 30_000);
 
   it("ends a cancelled turn itself when the agent ignores the cancel", async () => {
     const peer = await connectInProcess("rich", {}, { cancelGraceMs: 200 });

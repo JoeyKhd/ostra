@@ -315,7 +315,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         await subject().adapter.cancel(running);
         expect(await turnResult).toMatchObject({ ok: true, value: { stopReason: "cancelled" } });
         // A killed child can linger as a zombie until its parent collects it: that counts as gone.
-        const deadline = Date.now() + 5000;
+        // The reap may also finish after the turn ends (the driver keeps the cancel in its budget),
+        // so this waits for the process to go, not for a time.
+        const deadline = Date.now() + 20_000;
         while ((await isRunning(pid)) && Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 25));
         }

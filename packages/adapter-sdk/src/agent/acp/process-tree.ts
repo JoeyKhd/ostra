@@ -260,10 +260,12 @@ export type TreeWatch = {
   /** Kills every descendant ever seen that's still the same process. Returns how many. */
   readonly reap: () => Promise<number>;
   /**
-   * Kills the descendants born since `since` (ms since the epoch): live ones, seen orphans, and the
-   * processes of `unitPids` (the task's job or cgroup, which holds the ones that detached themselves).
+   * Kills the descendants born since `since` (ms since the epoch), and up to `until` when it's given:
+   * live ones, seen orphans, and the processes of `unitPids` (the task's job or cgroup, which holds
+   * the ones that detached themselves). `until` keeps a reap that's still running from reaching
+   * the processes of a turn that started after the one it reaps.
    */
-  readonly reapBornSince: (since: number, unitPids?: readonly number[]) => Promise<number>;
+  readonly reapBornSince: (since: number, unitPids?: readonly number[], until?: number) => Promise<number>;
   /** Kills the root and every descendant ever seen. */
   readonly killAll: () => Promise<void>;
 };
@@ -275,6 +277,9 @@ export type TreeWatch = {
  */
 const bornSince = (p: ProcessInfo, since: number, skewMs: number): boolean =>
   p.startedAt !== 0 && (isWindows || isLinux ? p.startedAt + skewMs >= since - 50 : p.startedAt >= Math.floor(since / 1000) * 1000);
+
+/** Whether a process was born by `until`, with the same 50 ms of slack (macOS's whole second rounds down). */
+const bornBy = (p: ProcessInfo, until: number, skewMs: number): boolean => (isWindows || isLinux ? p.startedAt + skewMs <= until + 50 : p.startedAt <= until);
 
 export const watchProcessTree = (rootPid: number): TreeWatch => {
   const known = new Map<number, ProcessKey>();
@@ -304,19 +309,20 @@ export const watchProcessTree = (rootPid: number): TreeWatch => {
       }
       return killed;
     },
-    reapBornSince: async (since, unitPids = []) => {
+    reapBornSince: async (since, unitPids = [], until = Number.POSITIVE_INFINITY) => {
       const alive = await list();
       const skew = isLinux ? await bootSkewMs().catch(() => 0) : 0;
+      const inWindow = (p: ProcessInfo): boolean => bornSince(p, since, skew) && bornBy(p, until, skew);
       const targets = new Map<number, ProcessInfo>();
       for (const p of remember(alive)) {
-        if (bornSince(p, since, skew)) {
+        if (inWindow(p)) {
           targets.set(p.pid, p);
         }
       }
       const inUnit = new Set(unitPids);
       for (const p of alive) {
         const seen = known.get(p.pid);
-        if (p.pid !== rootPid && ((seen !== undefined && sameProcess(seen, p)) || inUnit.has(p.pid)) && bornSince(p, since, skew)) {
+        if (p.pid !== rootPid && ((seen !== undefined && sameProcess(seen, p)) || inUnit.has(p.pid)) && inWindow(p)) {
           targets.set(p.pid, p);
         }
       }

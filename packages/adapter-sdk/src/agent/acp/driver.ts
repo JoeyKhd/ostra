@@ -32,7 +32,10 @@ import { isAlive, watchProcessTree } from "./process-tree.ts";
 // - `initialize` advertises `elicitation.form`, so an agent's question reaches ostra instead of
 //   being cancelled.
 // - A cancel returns within `cancelGraceMs` (5 s): the turn ends `cancelled` even when the agent
-//   never answers, and the agent's process tree is ended when the driver knows its PID.
+//   never answers, and the agent's process tree is ended when the driver knows its PID. The reap
+//   of the turn's processes counts against the same budget: listing processes takes PowerShell
+//   seconds on a busy Windows machine, so a reap still running at the deadline finishes after the
+//   turn has ended, limited to the processes born during that turn.
 // - Updates that `session/load` replays are not emitted as new events.
 // - ACP payloads are vendor data: they're read with loose schemas, and no ACP type leaves this
 //   file. Failures are values (`AdapterResult`), with messages that hold no agent content.
@@ -52,6 +55,15 @@ export type AcpDriverOptions = {
 };
 
 const STDERR_DRAIN = (): void => undefined;
+
+/** What a cancel's budget keeps back from its reap, for the turn's own end (F-023). */
+const REAP_MARGIN_MS = 500;
+
+/** Resolves after `ms` (at once for 0 or less), without holding the process open. */
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, ms)).unref();
+  });
 
 // ---------- node streams as web streams ----------
 
@@ -389,7 +401,13 @@ const connectAgent = async (
   const steeringAdvertised = info.success && info.data._meta?.steering?.supported === true;
 
   // Turns in flight, by the agent's session ID: a cancel needs the one it's cancelling.
-  type Turn = { readonly startedAt: number; cancelled: boolean; readonly graceExpired: Promise<void>; readonly expire: () => void };
+  type Turn = {
+    readonly startedAt: number;
+    /** When ostra cancelled it, ms since the epoch; null while it runs on. */
+    cancelledAt: number | null;
+    readonly graceExpired: Promise<void>;
+    readonly expire: () => void;
+  };
   const turns = new Map<string, Turn>();
 
   let snapshotTimer: NodeJS.Timeout | undefined;
@@ -470,7 +488,7 @@ const connectAgent = async (
       const graceExpired = new Promise<void>((resolve) => {
         expire = resolve;
       });
-      const turn: Turn = { startedAt: Date.now(), cancelled: false, graceExpired, expire };
+      const turn: Turn = { startedAt: Date.now(), cancelledAt: null, graceExpired, expire };
       turns.set(agentSessionId, turn);
       startSnapshots();
       try {
@@ -498,7 +516,11 @@ const connectAgent = async (
         const stopReason = stopReasonSchema.safeParse(parsed.data.stopReason);
         const reason: StopReason = stopReason.success ? stopReason.data : "end_turn";
         if (reason === "cancelled" && watch !== undefined) {
-          await watch.reapBornSince(turn.startedAt, await io.unitPids?.().catch(() => []));
+          const endedAt = Date.now();
+          const reaped = (async () => watch.reapBornSince(turn.startedAt, (await io.unitPids?.().catch(() => [])) ?? [], endedAt))().catch(() => 0);
+          // Ours: within the cancel's budget (F-023), with a margin for the turn's own end. The
+          // agent's own (a deny ends OpenCode's turn `cancelled`): the reap runs to its end first.
+          await (turn.cancelledAt === null ? reaped : Promise.race([reaped, delay(turn.cancelledAt + cancelGraceMs - Math.min(REAP_MARGIN_MS, cancelGraceMs / 2) - Date.now())]));
         }
         return ok({ stopReason: reason });
       } finally {
@@ -511,8 +533,8 @@ const connectAgent = async (
 
     cancel: async (agentSessionId) => {
       const turn = turns.get(agentSessionId);
-      if (turn !== undefined && !turn.cancelled) {
-        turn.cancelled = true;
+      if (turn?.cancelledAt === null) {
+        turn.cancelledAt = Date.now();
         setTimeout(turn.expire, cancelGraceMs).unref();
       }
       try {

@@ -61,4 +61,21 @@ describe("a cancelled turn's reap", () => {
     expect(isAlive(pidOf(older))).toBe(true);
     expect(isAlive(pidOf(agent))).toBe(true);
   }, 30_000);
+
+  it("F-023: a reap that ends at the turn's end spares the processes born after it", async () => {
+    const agent = idle();
+    // Start times are kept to the second on some systems: each step is clearly in its own second.
+    const since = Date.now();
+    const inTurn = idle();
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    const until = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    // The next turn's: a late reap of the turn before must not reach it.
+    const later = idle();
+
+    await watchProcessTree(pidOf(agent)).reapBornSince(since, [pidOf(inTurn), pidOf(later)], until);
+    expect(await goneWithin(pidOf(inTurn), 5_000)).toBe(true);
+    expect(isAlive(pidOf(later))).toBe(true);
+    expect(isAlive(pidOf(agent))).toBe(true);
+  }, 30_000);
 });
