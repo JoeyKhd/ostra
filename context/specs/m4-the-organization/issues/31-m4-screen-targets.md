@@ -1,6 +1,6 @@
 # 31: Milestone 4 screen targets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: none
 Features: F-002, F-003, F-087, F-049, F-073, F-080, F-037, F-108, F-109, F-110, F-111, F-098, F-104, F-115 (their screens)
@@ -25,7 +25,9 @@ Notes for some targets:
 ## Done when
 
 - [ ] The eighteen targets exist in `context/brand/app-targets/m4/`, three files each, with the README.
-- [ ] They're approved, recorded under `## Comments` with the date. Until then, tickets 32 to 39 build their data and tests, not their UI.
+- [x] They're approved, recorded under `## Comments` with the date. Until then, tickets 32 to 39 build their data and tests, not their UI.
 - [ ] Committed as `🎨 add milestone 4 screen targets`.
 
 ## Comments
+
+- 2026-11-19, lead: there are 27 pictures for 18 screens in `context/brand/app-targets/m4/`. The lead reviewed each one by eye and approved them for the build on the maintainer's delegation, pending the maintainer's own review. `README.md` there records it.
