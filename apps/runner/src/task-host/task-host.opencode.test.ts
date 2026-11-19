@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
-import { OpenCodeAdapter } from "@ostra/adapter-opencode";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createScenarioBrain, startAnthropicStub, startGitUpstream, stubMarker } from "@ostra/adapter-sdk/testing";
@@ -18,7 +17,7 @@ import { makeCommand, startFakeGateway } from "../testing/fake-gateway.ts";
 import type { FakeGateway } from "../testing/fake-gateway.ts";
 import { startFakeServer } from "../testing/fake-server.ts";
 import type { FakeServer } from "../testing/fake-server.ts";
-import { createAgentRegistry } from "./agents.ts";
+import { defaultAgents } from "./agents.ts";
 import { runnerServerLink } from "./server-link.ts";
 import { createTaskHost } from "./task-host.ts";
 import type { TaskHost } from "./task-host.ts";
@@ -102,7 +101,8 @@ const harness = async (name: string): Promise<Harness> => {
       },
     }),
     executor: new HostExecutor({ dataDir }, { logger, clock: { now: () => Date.now() } }),
-    agents: createAgentRegistry({ opencode: (driver) => new OpenCodeAdapter({ driver }) }),
+    // What the runner ships (ADR 0032): OpenCode, over ostra's ACP driver.
+    agents: defaultAgents(),
     logger,
     listenHost: "127.0.0.1",
     stopGraceMs: 2_000,
@@ -179,7 +179,7 @@ const eventsOf = (h: Harness, spec: TaskSpec): readonly RunnerEvent[] =>
 const kindsOf = (h: Harness, spec: TaskSpec): readonly TaskEvent["kind"][] => eventsOf(h, spec).map((item) => item.event.kind);
 
 describe("the task host with OpenCode", () => {
-  it("edits a repo through the proxies and leaves a PR-ready branch, counting the model's tokens", async () => {
+  it("F-019: runs a task on OpenCode, the agent the runner ships, over ostra's ACP driver: it edits the repo through the proxies and leaves a PR-ready branch, counting the model's tokens", async () => {
     const h = await harness("stub");
     try {
       const spec = dispatchTask(h, "stub", `${stubMarker("edit-readme")} Edit the README.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });

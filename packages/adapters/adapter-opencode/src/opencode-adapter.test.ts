@@ -59,7 +59,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(launched.cwd).toBe(input().workspaceDir);
   });
 
-  it("writes the provider, the model, the todo tool and the MCP server into the task's own config", async () => {
+  it("F-019: writes the provider, the model, the todo tool and the MCP server into the task's own config", async () => {
     const { files } = await launch();
     const config = jsonFile(files, "opencode.json");
     expect(config["model"]).toBe("ostra/acme/model-1");
@@ -88,7 +88,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(ostra).not.toHaveProperty("compatibility");
   });
 
-  it("allows edit and shell in the worktree and denies `external_directory`", async () => {
+  it("F-019: writes the permission rules into the task's own config: edit and shell allowed in the worktree, `external_directory` denied", async () => {
     const config = jsonFile((await launch()).files, "opencode.json");
     expect(config["permissions"]).toEqual([
       { action: "*", resource: "*", effect: "allow" },
@@ -105,7 +105,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(config["instructions"]).toEqual([written?.path]);
   });
 
-  it("writes the model catalog as a file, and points OpenCode at it with its own fetch off", async () => {
+  it("F-019: writes the model catalog as a file, and points OpenCode at it with its own fetch off", async () => {
     const { files, env } = await launch();
     const catalog = jsonFile(files, "models.json");
     expect(catalog["ostra"]).toMatchObject({ npm: "@ai-sdk/openai-compatible", models: { "acme/model-1": { tool_call: true } } });
@@ -187,7 +187,7 @@ describe("the OpenCode adapter's launch", () => {
 });
 
 describe("the OpenCode adapter's capabilities", () => {
-  it("declares steering, session load, elicitation and the base URL, and no native plan or reject-and-continue", () => {
+  it("F-019: declares steering, session load, elicitation and the base URL, and no native plan or reject-and-continue", () => {
     expect(adapter().capabilities).toEqual({
       steerMidTurn: true,
       sessionLoad: true,
@@ -292,7 +292,7 @@ describe("the pinned binary", () => {
     expect(resolved).toMatchObject({ ok: true, value: { path: binary, packageName, packageVersion: OPENCODE_VERSION } });
   });
 
-  it("refuses a binary that changed, and says so without starting it", async () => {
+  it("F-019: refuses a binary that changed, and says so without starting it", async () => {
     const { from, packageName, binary } = await install("the genuine binary");
     const pinned = await sha256File(binary);
     await writeFile(binary, "a tampered binary");
@@ -313,7 +313,7 @@ describe("the pinned binary", () => {
     expect(!refused.ok && refused.error.message).toContain("pinned to");
   });
 
-  it("finds this machine's real binary and checks it against the pin", async () => {
+  it("F-019: finds this machine's real binary of the pinned version and checks it against its SHA-256", async () => {
     const resolved = await resolveOpenCodeBinary();
     expect(resolved, "the installed OpenCode binary matches its pinned SHA-256").toMatchObject({ ok: true });
   });

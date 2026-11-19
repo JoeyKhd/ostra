@@ -1,0 +1,85 @@
+# The agent contract suite, 2026-11-19, Windows 11, Node 24, OpenCode 2.3.2 (pinned), commit efe1824 plus this change
+# vitest --reporter=verbose: packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts (the pinned binary against stub models),
+# then packages/adapter-sdk/src/testing/fake-acp-agent/fake-agent.test.ts (the scripted fake ACP agent, rich and plain). ✓ passed, ↓ skipped (no probe for that agent).
+
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > has a kebab-case name and its kind 1ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > declares every capability, with its type 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > reports itself healthy against its fakes 189ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > ADR 0030: launches with an allowlisted environment that holds no credential 1ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-023: a turn runs to end_turn, bracketed by turn.started and turn.ended, with the agent's message 2767ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-023: a cancel ends the turn with cancelled, in under 5 s 1826ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-023: a cancel leaves no process of the agent's behind 1ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-023: tool calls render by ACP kind, and a failing one is reported 3323ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-019: the agent's environment holds only the allowlist 1ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > ADR 0030: the model base URL and the fake key are what reach the agent 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > ADR 0032: a deny is followed by the runner's re-prompt, or by the agent carrying on when it declares rejectAndContinue 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-019: an allowed permission request lets the agent go on 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-019: a question reaches ostra through elicitation.form, and the answer reaches the agent 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > F-019: a plan reaches ostra as plan.updated when the agent declares nativePlan 3199ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > ADR 0018: an unknown update becomes agent.unknown, and nothing around it is dropped 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > ADR 0032: steering is used only when the adapter declares steerMidTurn and the agent advertised it 1887ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > ADR 0032: a steer during a turn reaches the agent, when steering is declared 12017ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, openai-compatible stub > agent contract: opencode against a openai-compatible stub > refuses to resume a session when it doesn't declare sessionLoad 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > has a kebab-case name and its kind 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > declares every capability, with its type 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > reports itself healthy against its fakes 1ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > ADR 0030: launches with an allowlisted environment that holds no credential 1ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-023: a turn runs to end_turn, bracketed by turn.started and turn.ended, with the agent's message 3950ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-023: a cancel ends the turn with cancelled, in under 5 s 3228ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-023: a cancel leaves no process of the agent's behind 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-023: tool calls render by ACP kind, and a failing one is reported 3906ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-019: the agent's environment holds only the allowlist 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > ADR 0030: the model base URL and the fake key are what reach the agent 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > ADR 0032: a deny is followed by the runner's re-prompt, or by the agent carrying on when it declares rejectAndContinue 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-019: an allowed permission request lets the agent go on 0ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-019: a question reaches ostra through elicitation.form, and the answer reaches the agent 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > F-019: a plan reaches ostra as plan.updated when the agent declares nativePlan 3270ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > ADR 0018: an unknown update becomes agent.unknown, and nothing around it is dropped 0ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > ADR 0032: steering is used only when the adapter declares steerMidTurn and the agent advertised it 2073ms
+ ✓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > ADR 0032: a steer during a turn reaches the agent, when steering is declared 11553ms
+ ↓ src/opencode-adapter.contract.test.ts > OpenCode, anthropic-messages stub > agent contract: opencode against a anthropic-messages stub > refuses to resume a session when it doesn't declare sessionLoad 0ms
+ ✓ src/opencode-adapter.contract.test.ts > F-019 on the pinned OpenCode > F-019: OpenCode runs a turn over ostra's ACP driver, and its initialize advertises steering, so a steer mid-turn reaches its next model call 11992ms
+ ✓ src/opencode-adapter.contract.test.ts > F-019 on the pinned OpenCode > F-019: the OpenCode adapter refuses a steer, as unsupported, on an agent whose initialize doesn't advertise steering 2180ms
+ ✓ src/opencode-adapter.contract.test.ts > F-019 on the pinned OpenCode > F-019: OpenCode's todowrite call reaches ostra as plan.updated, mapped inside the adapter, and never as a tool row 3145ms
+ Test Files  1 passed (1)
+      Tests  23 passed | 16 skipped (39)
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > has a kebab-case name and its kind 1ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > declares every capability, with its type 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > reports itself healthy against its fakes 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > ADR 0030: launches with an allowlisted environment that holds no credential 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-023: a turn runs to end_turn, bracketed by turn.started and turn.ended, with the agent's message 1544ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-023: a cancel ends the turn with cancelled, in under 5 s 2551ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-023: a cancel leaves no process of the agent's behind 3143ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-023: tool calls render by ACP kind, and a failing one is reported 2251ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-019: the agent's environment holds only the allowlist 2799ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > ADR 0030: the model base URL and the fake key are what reach the agent 1810ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > ADR 0032: a deny is followed by the runner's re-prompt, or by the agent carrying on when it declares rejectAndContinue 2697ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-019: an allowed permission request lets the agent go on 1955ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-019: a question reaches ostra through elicitation.form, and the answer reaches the agent 1408ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > F-019: a plan reaches ostra as plan.updated when the agent declares nativePlan 1397ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > ADR 0018: an unknown update becomes agent.unknown, and nothing around it is dropped 1190ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > ADR 0032: steering is used only when the adapter declares steerMidTurn and the agent advertised it 1128ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > ADR 0032: a steer during a turn reaches the agent, when steering is declared 1779ms
+ ↓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, rich profile > refuses to resume a session when it doesn't declare sessionLoad 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > has a kebab-case name and its kind 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > declares every capability, with its type 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > reports itself healthy against its fakes 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > ADR 0030: launches with an allowlisted environment that holds no credential 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-023: a turn runs to end_turn, bracketed by turn.started and turn.ended, with the agent's message 1188ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-023: a cancel ends the turn with cancelled, in under 5 s 3136ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-023: a cancel leaves no process of the agent's behind 2088ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-023: tool calls render by ACP kind, and a failing one is reported 1446ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-019: the agent's environment holds only the allowlist 1215ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > ADR 0030: the model base URL and the fake key are what reach the agent 1641ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > ADR 0032: a deny is followed by the runner's re-prompt, or by the agent carrying on when it declares rejectAndContinue 2268ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-019: an allowed permission request lets the agent go on 1599ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-019: a question reaches ostra through elicitation.form, and the answer reaches the agent 1398ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > F-019: a plan reaches ostra as plan.updated when the agent declares nativePlan 1865ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > ADR 0018: an unknown update becomes agent.unknown, and nothing around it is dropped 1740ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > ADR 0032: steering is used only when the adapter declares steerMidTurn and the agent advertised it 1413ms
+ ↓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > ADR 0032: a steer during a turn reaches the agent, when steering is declared 1495ms
+ ↓ src/testing/fake-acp-agent/fake-agent.test.ts > agent contract: the scripted fake ACP agent, plain profile > refuses to resume a session when it doesn't declare sessionLoad 0ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > the fake ACP agents, for the capabilities OpenCode lacks (F-019) > F-019: the rich fake declares native plan updates and reject-and-continue, which OpenCode lacks, and both reach ostra 1708ms
+ ✓ src/testing/fake-acp-agent/fake-agent.test.ts > the fake ACP agents, for the capabilities OpenCode lacks (F-019) > F-019: the plain fake declares neither and can't steer: no plan update, a deny ends the turn, and a steer is refused 2382ms
+ Test Files  1 passed (1)
+      Tests  35 passed | 3 skipped (38)

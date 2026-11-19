@@ -3,8 +3,12 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { turnIdSchema } from "@ostra/protocol";
+import type { TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
-import { afterAll } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+
+import type { AgentSession } from "../../agent/base.ts";
 
 import { defineAgentContractSuite } from "../agent-suite.ts";
 import type { PrepareLaunchInput } from "../../agent/base.ts";
@@ -119,3 +123,68 @@ for (const profile of ["rich", "plain"] as const satisfies readonly FakeAgentPro
     create: async () => ({ adapter: new FakeAgentAdapter(profile), fixture: await fixtureFor() }),
   });
 }
+
+// F-019: the fakes stand for what OpenCode lacks. `rich` declares native plan updates and
+// reject-and-continue, and both happen; `plain` declares neither, and can't be steered.
+
+const turnOf = (n: number) => turnIdSchema.parse(`fake-f019-turn-${String(n)}`);
+
+const runFake = async (
+  profile: FakeAgentProfile,
+  body: (adapter: FakeAgentAdapter, session: AgentSession, events: TaskEvent[]) => Promise<void>,
+): Promise<void> => {
+  const fixture = await fixtureFor();
+  const adapter = new FakeAgentAdapter(profile);
+  const launch = await adapter.prepareLaunch(fixture.launchInput);
+  if (!launch.ok) throw new Error(launch.error.message);
+  const started = await spawnAgentProcess(launch.value);
+  const events: TaskEvent[] = [];
+  const session = await adapter.startSession({
+    taskId: fixture.launchInput.taskId,
+    sessionId: fixture.launchInput.sessionId,
+    io: started.io,
+    cwd: fixture.launchInput.workspaceDir,
+    mcpServers: [],
+    onEvents: (batch) => {
+      events.push(...batch);
+    },
+    onPermission: (_sessionId, request) => {
+      const reject = request.options.find((option) => option.kind === "reject_once");
+      return Promise.resolve(reject === undefined ? { outcome: "cancelled" } : { outcome: "selected", optionId: reject.optionId });
+    },
+    onQuestion: () => Promise.resolve({ outcome: "cancelled" }),
+  });
+  try {
+    if (!session.ok) throw new Error(session.error.message);
+    await body(adapter, session.value, events);
+    await adapter.close(session.value);
+  } finally {
+    await started.stop();
+  }
+};
+
+describe("the fake ACP agents, for the capabilities OpenCode lacks (F-019)", () => {
+  it("F-019: the rich fake declares native plan updates and reject-and-continue, which OpenCode lacks, and both reach ostra", async () => {
+    await runFake("rich", async (adapter, session, events) => {
+      expect(adapter.capabilities).toMatchObject({ nativePlan: true, rejectAndContinue: true, steerMidTurn: true });
+      expect(await adapter.prompt(session, turnOf(1), fakeMarker("plan"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(events.filter((event) => event.kind === "plan.updated")).toHaveLength(1);
+      // A deny, and the agent carries on in the same turn.
+      expect(await adapter.prompt(session, turnOf(2), fakeMarker("permission"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(events.some((event) => event.kind === "tool.failed")).toBe(true);
+    });
+  }, 60_000);
+
+  it("F-019: the plain fake declares neither and can't steer: no plan update, a deny ends the turn, and a steer is refused", async () => {
+    await runFake("plain", async (adapter, session, events) => {
+      expect(adapter.capabilities).toMatchObject({ nativePlan: false, rejectAndContinue: false, steerMidTurn: false });
+      expect(session.connection.steeringAdvertised).toBe(false);
+      expect(await adapter.prompt(session, turnOf(1), fakeMarker("plan"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(events.some((event) => event.kind === "plan.updated")).toBe(false);
+      expect(await adapter.prompt(session, turnOf(2), fakeMarker("permission"))).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+      // The deny ended the turn; the next prompt goes on (the re-prompt ADR 0032 describes).
+      expect(await adapter.prompt(session, turnOf(3), fakeMarker("say"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(await adapter.steer(session, "use tabs")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    });
+  }, 60_000);
+});
