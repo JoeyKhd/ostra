@@ -1,6 +1,6 @@
 # 06: Domain: lifecycles, access, the gate, Insights, memory, several repos, the evaluator, mails
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: 01, 05
 Features: every F-ID of the spec's section 2 (their rules)
@@ -29,9 +29,11 @@ Pure code first, each piece with exhaustive tests; use-case signatures with thei
 
 ## Done when
 
-- [ ] Tests: every lifecycle's transitions, legal and illegal; the gate for every origin at 79%, 80%, 99% and 100%, and across a month's end; each Insights figure on a fixture with its expected value; each secret shape and each model-control token refused, and their negative controls saved; the index's order and cut, with a note that sessions only saw in the index ranked by its last edit, below a note a session read; the block's framing, with each note's source; a stale expected version refused; the evaluator's cases (approved, stale, dismissed, bot, driver, unlinked, changes requested after an approval); each mail renders with its link in both parts.
-- [ ] Each test that proves a row's condition is named for the row, with its break-it check.
-- [ ] Every new setting is in `docs/configuration.md`.
-- [ ] Committed as `✨ add the milestone 4 domain`.
+- [x] Tests: every lifecycle's transitions, legal and illegal; the gate for every origin at 79%, 80%, 99% and 100%, and across a month's end; each Insights figure on a fixture with its expected value; each secret shape and each model-control token refused, and their negative controls saved; the index's order and cut, with a note that sessions only saw in the index ranked by its last edit, below a note a session read; the block's framing, with each note's source; a stale expected version refused; the evaluator's cases (approved, stale, dismissed, bot, driver, unlinked, changes requested after an approval); each mail renders with its link in both parts.
+- [x] Each test that proves a row's condition is named for the row, with its break-it check.
+- [x] Every new setting is in `docs/configuration.md`.
+- [x] Committed as `✨ add the milestone 4 domain`.
 
 ## Comments
+
+- 2026-11-19: built in `packages/domain`: `src/lifecycles/m4.ts` (membership, invitation, proposal, a budget's month, the review check), `access.ts` (`scopeForMembership`, `requireInstanceAdmin`, `canWriteNote`, `canArchiveNote`, `canReadAudit`), `src/budget/gate.ts`, `src/insights/figures.ts`, `src/memory/` (secret scan, index builder, block renderer, version check, "Remember this"), `src/repos/several-repos.ts`, `src/review/independent-review.ts` (spike 4's evaluator, ported, with drivers as members and approvers through verified links), `src/mail/account-mails.ts`, `src/use-cases/m4-signatures.ts`, the eight jobs with their keys (and their queues in `packages/jobs`), the ten settings with their lines in `docs/configuration.md`, and `seedOrganization` in `@ostra/domain/testing`. Tests in `src/milestone-4.test.ts`, each F-named one with a break-it (20 breaks, each failing its test); partial proof rows in `context/proof/F-037.md`, `F-104.md`, `F-108.md`, `F-109.md` and `F-110.md`, since the core and api tickets wire these. Whole-repo typecheck, lint and test, and check:proof green. Commit: `✨ add the milestone 4 domain`.

@@ -77,6 +77,17 @@ export const settingNames = [
   "OSTRA_SNAPSHOT_NIGHTLY_HOUR",
   "OSTRA_DIFF_MAX_FILES",
   "OSTRA_DIFF_MAX_PATCH_KIB",
+  // Milestone 4.
+  "OSTRA_INVITATION_DAYS",
+  "OSTRA_RESET_LINK_HOURS",
+  "OSTRA_BUDGET_WARN_PERCENT",
+  "OSTRA_INSIGHTS_INTERVAL_MINUTES",
+  "OSTRA_MEMORY_INDEX_MAX_NOTES",
+  "OSTRA_MEMORY_INDEX_MAX_KIB",
+  "OSTRA_MEMORY_ALWAYS_MAX_KIB",
+  "OSTRA_MEMORY_PROPOSALS_PER_TASK",
+  "OSTRA_PROJECT_MAX_REPOS",
+  "OSTRA_SEARCH_ENTRY_MAX_KIB",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -298,6 +309,46 @@ export const settingFields = {
     default: "1024",
     description: "A file whose diff is over this many KiB shows \"Too large to show here\", with a link to the code host (F-027).",
   },
+  OSTRA_INVITATION_DAYS: {
+    default: "7",
+    description: "How many days an invitation's link works (F-002). It works once.",
+  },
+  OSTRA_RESET_LINK_HOURS: {
+    default: "24",
+    description: "How many hours a password reset link works (F-002). It works once.",
+  },
+  OSTRA_BUDGET_WARN_PERCENT: {
+    default: "80",
+    description: "At this share of a monthly budget, its admins are told once, in the panel and by mail (F-037). At 100% new tasks and turns wait.",
+  },
+  OSTRA_INSIGHTS_INTERVAL_MINUTES: {
+    default: "5",
+    description: "How often Insights are recomputed (F-108). The page says when they were.",
+  },
+  OSTRA_MEMORY_INDEX_MAX_NOTES: {
+    default: "100",
+    description: "The most notes the memory index an agent starts with lists (F-110). The rest are found with search.",
+  },
+  OSTRA_MEMORY_INDEX_MAX_KIB: {
+    default: "8",
+    description: "The memory index's size, in KiB (F-110).",
+  },
+  OSTRA_MEMORY_ALWAYS_MAX_KIB: {
+    default: "8",
+    description: "The \"always\" notes' size together, in KiB (F-110). An \"always\" note past it is listed in the index instead.",
+  },
+  OSTRA_MEMORY_PROPOSALS_PER_TASK: {
+    default: "20",
+    description: "The most memory notes one task's agent may propose (F-111).",
+  },
+  OSTRA_PROJECT_MAX_REPOS: {
+    default: "10",
+    description: "The most repos one project holds (F-098). Every task checks them all out side by side.",
+  },
+  OSTRA_SEARCH_ENTRY_MAX_KIB: {
+    default: "8",
+    description: "The most text, in KiB, search keeps of one message, tool input or PR (F-080). Longer text is cut.",
+  },
 } as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
 /**
@@ -430,6 +481,16 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_SNAPSHOT_NIGHTLY_HOUR: whole(0, 23).default(3).describe(describe("OSTRA_SNAPSHOT_NIGHTLY_HOUR")),
   OSTRA_DIFF_MAX_FILES: whole(1, 3000).default(300).describe(describe("OSTRA_DIFF_MAX_FILES")),
   OSTRA_DIFF_MAX_PATCH_KIB: whole(1, 16 * 1024).default(1024).describe(describe("OSTRA_DIFF_MAX_PATCH_KIB")),
+  OSTRA_INVITATION_DAYS: whole(1, 90).default(7).describe(describe("OSTRA_INVITATION_DAYS")),
+  OSTRA_RESET_LINK_HOURS: whole(1, 168).default(24).describe(describe("OSTRA_RESET_LINK_HOURS")),
+  OSTRA_BUDGET_WARN_PERCENT: whole(1, 99).default(80).describe(describe("OSTRA_BUDGET_WARN_PERCENT")),
+  OSTRA_INSIGHTS_INTERVAL_MINUTES: whole(1, 1440).default(5).describe(describe("OSTRA_INSIGHTS_INTERVAL_MINUTES")),
+  OSTRA_MEMORY_INDEX_MAX_NOTES: whole(0, 1000).default(100).describe(describe("OSTRA_MEMORY_INDEX_MAX_NOTES")),
+  OSTRA_MEMORY_INDEX_MAX_KIB: whole(1, 8).default(8).describe(describe("OSTRA_MEMORY_INDEX_MAX_KIB")),
+  OSTRA_MEMORY_ALWAYS_MAX_KIB: whole(0, 8).default(8).describe(describe("OSTRA_MEMORY_ALWAYS_MAX_KIB")),
+  OSTRA_MEMORY_PROPOSALS_PER_TASK: whole(0, 200).default(20).describe(describe("OSTRA_MEMORY_PROPOSALS_PER_TASK")),
+  OSTRA_PROJECT_MAX_REPOS: whole(1, 10).default(10).describe(describe("OSTRA_PROJECT_MAX_REPOS")),
+  OSTRA_SEARCH_ENTRY_MAX_KIB: whole(1, 8).default(8).describe(describe("OSTRA_SEARCH_ENTRY_MAX_KIB")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -502,6 +563,26 @@ export type ServerSettings = {
   readonly diffMaxFiles: number;
   /** OSTRA_DIFF_MAX_PATCH_KIB, in bytes. */
   readonly diffMaxPatchBytes: number;
+  /** OSTRA_INVITATION_DAYS. */
+  readonly invitationDays: number;
+  /** OSTRA_RESET_LINK_HOURS. */
+  readonly resetLinkHours: number;
+  /** OSTRA_BUDGET_WARN_PERCENT. */
+  readonly budgetWarnPercent: number;
+  /** OSTRA_INSIGHTS_INTERVAL_MINUTES. */
+  readonly insightsIntervalMinutes: number;
+  /** OSTRA_MEMORY_INDEX_MAX_NOTES. */
+  readonly memoryIndexMaxNotes: number;
+  /** OSTRA_MEMORY_INDEX_MAX_KIB, in bytes. */
+  readonly memoryIndexMaxBytes: number;
+  /** OSTRA_MEMORY_ALWAYS_MAX_KIB, in bytes. */
+  readonly memoryAlwaysMaxBytes: number;
+  /** OSTRA_MEMORY_PROPOSALS_PER_TASK. */
+  readonly memoryProposalsPerTask: number;
+  /** OSTRA_PROJECT_MAX_REPOS. */
+  readonly projectMaxRepos: number;
+  /** OSTRA_SEARCH_ENTRY_MAX_KIB, in bytes. */
+  readonly searchEntryMaxBytes: number;
 };
 
 /**
@@ -673,6 +754,16 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       snapshotNightlyHour: value.OSTRA_SNAPSHOT_NIGHTLY_HOUR,
       diffMaxFiles: value.OSTRA_DIFF_MAX_FILES,
       diffMaxPatchBytes: value.OSTRA_DIFF_MAX_PATCH_KIB * 1024,
+      invitationDays: value.OSTRA_INVITATION_DAYS,
+      resetLinkHours: value.OSTRA_RESET_LINK_HOURS,
+      budgetWarnPercent: value.OSTRA_BUDGET_WARN_PERCENT,
+      insightsIntervalMinutes: value.OSTRA_INSIGHTS_INTERVAL_MINUTES,
+      memoryIndexMaxNotes: value.OSTRA_MEMORY_INDEX_MAX_NOTES,
+      memoryIndexMaxBytes: value.OSTRA_MEMORY_INDEX_MAX_KIB * 1024,
+      memoryAlwaysMaxBytes: value.OSTRA_MEMORY_ALWAYS_MAX_KIB * 1024,
+      memoryProposalsPerTask: value.OSTRA_MEMORY_PROPOSALS_PER_TASK,
+      projectMaxRepos: value.OSTRA_PROJECT_MAX_REPOS,
+      searchEntryMaxBytes: value.OSTRA_SEARCH_ENTRY_MAX_KIB * 1024,
     },
   };
 };

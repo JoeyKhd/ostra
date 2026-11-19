@@ -56,7 +56,7 @@ describe("the job catalogue (ADR 0037)", () => {
     expect([...jobNames].sort()).toEqual(Object.keys(jobPayloadSchemas).sort());
   });
 
-  it("has milestone 1's jobs, milestone 2's and milestone 3's", () => {
+  it("has milestone 1's jobs, milestone 2's, milestone 3's and milestone 4's", () => {
     expect([...jobNames].sort()).toEqual(
       [
         "catalog.refresh",
@@ -86,6 +86,14 @@ describe("the job catalogue (ADR 0037)", () => {
         "snapshot.schedule",
         "snapshot.nightly",
         "cli-session.expire",
+        "account-mail.send",
+        "invitation.expire",
+        "budget.check",
+        "budget.release",
+        "insights.compute",
+        "search.backfill",
+        "pr.link-related",
+        "review.evaluate",
       ].sort(),
     );
   });

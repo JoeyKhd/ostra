@@ -70,6 +70,15 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "snapshot.schedule": { ...base, retryLimit: 3, expireInSeconds: 600 },
   "snapshot.nightly": { ...base, retryLimit: 2, expireInSeconds: 600 },
   "cli-session.expire": { ...base, retryLimit: 2 },
+  // Milestone 4 (its ticket 06's names; tickets 11 to 19 and 22 build them).
+  "account-mail.send": { ...base, retryLimit: 8, retryDelayMax: 900 },
+  "invitation.expire": { ...base, retryLimit: 2 },
+  "budget.check": { ...base, retryLimit: 5 },
+  "budget.release": { ...base, retryLimit: 5 },
+  "insights.compute": { ...base, retryLimit: 2, expireInSeconds: 600 },
+  "search.backfill": { ...base, retryLimit: 3, expireInSeconds: 600 },
+  "pr.link-related": { ...base, retryLimit: 8, groupConcurrency: 2 },
+  "review.evaluate": { ...base, retryLimit: 8, groupConcurrency: 2 },
 };
 
 /**

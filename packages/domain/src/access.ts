@@ -1,4 +1,4 @@
-import type { MemberId, OrganizationId, ProjectId } from "@ostra/protocol";
+import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
 
 // The access checks (ADR 0026): every tRPC procedure and the live stream call these on the member's
 // scope before reading or writing. Pure: the scope is loaded once per request.
@@ -83,3 +83,80 @@ export const requireProjectAccess = (
 /** The projects a member can see, for list queries: filters by organization and restriction. */
 export const visibleProjects = <P extends ProjectAccessInfo>(scope: MemberScope, projects: readonly P[]): readonly P[] =>
   projects.filter((project) => requireProjectAccess(scope, project, "read").ok);
+
+// ---------- milestone 4 (ADR 0053, ADR 0044 amended, ADR 0054) ----------
+
+/** A membership's state (ADR 0053). Only an active one makes a scope. */
+export type MembershipState = "active" | "pending_verification" | "removed";
+
+/**
+ * The scope a membership makes, or `null`: a removed or pending membership sees nothing of the
+ * organization, as if it weren't a member (ADR 0053).
+ */
+export const scopeForMembership = (
+  membership: { readonly organizationId: OrganizationId; readonly memberId: MemberId; readonly role: OrganizationRole; readonly state: MembershipState },
+  projectRoles: ReadonlyMap<ProjectId, ProjectRole>,
+): MemberScope | null => {
+  switch (membership.state) {
+    case "active":
+      return { organizationId: membership.organizationId, memberId: membership.memberId, role: membership.role, projectRoles };
+    case "pending_verification":
+    case "removed":
+      return null;
+    default:
+      return membership.state satisfies never;
+  }
+};
+
+/** Who is asking at the install's level: an account, and whether it's an instance admin. */
+export type AccountScope = { readonly userId: UserId; readonly instanceAdmin: boolean };
+
+/** The instance admin's pages (ADR 0053). The role grants nothing inside an organization the account isn't in. */
+export const requireInstanceAdmin = (account: AccountScope): Access<AccountScope> => (account.instanceAdmin ? granted(account) : forbidden);
+
+/** What the memory checks need to know about a note. */
+export type NoteAccessInfo = {
+  readonly organizationId: OrganizationId;
+  /** `null` for an organization note. */
+  readonly project: ProjectAccessInfo | null;
+  readonly authorMemberId: MemberId | null;
+};
+
+/**
+ * Who writes, edits and approves memory (ADR 0044, Q201): any member who can open the project, for
+ * its notes; any member of the organization, for organization notes.
+ */
+export const canWriteNote = (scope: MemberScope, note: NoteAccessInfo): boolean => {
+  if (scope.organizationId !== note.organizationId) {
+    return false;
+  }
+  return note.project === null || requireProjectAccess(scope, note.project, "read").ok;
+};
+
+/**
+ * Archiving or deleting a note: its author, if they can still write it; anyone else's needs a
+ * project admin, or an organization admin for an organization note (ADR 0044, Q201).
+ */
+export const canArchiveNote = (scope: MemberScope, note: NoteAccessInfo): boolean => {
+  if (!canWriteNote(scope, note)) {
+    return false;
+  }
+  if (note.authorMemberId !== null && note.authorMemberId === scope.memberId) {
+    return true;
+  }
+  return note.project === null ? scope.role === "admin" : requireProjectAccess(scope, note.project, "admin").ok;
+};
+
+/**
+ * The audit log (ADR 0054, Q197): organization admins read all of it; a project admin reads their
+ * project's entries. `project` is `null` for the organization-wide log.
+ */
+export const canReadAudit = (scope: MemberScope, organizationId: OrganizationId, project: ProjectAccessInfo | null): boolean => {
+  if (scope.organizationId !== organizationId) {
+    return false;
+  }
+  if (scope.role === "admin") {
+    return true;
+  }
+  return project !== null && requireProjectAccess(scope, project, "admin").ok;
+};

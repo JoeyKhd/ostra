@@ -64,6 +64,16 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_SNAPSHOT_NIGHTLY_HOUR` | `3` | The hour, in UTC (0 to 23), at which projects whose default branch moved get a fresh snapshot (F-051). |
 | `OSTRA_DIFF_MAX_FILES` | `300` | Past this many changed files, the Changes tab links to the code host instead of drawing the diff (F-027). |
 | `OSTRA_DIFF_MAX_PATCH_KIB` | `1024` | A file whose diff is over this many KiB shows "Too large to show here", with a link to the code host (F-027). |
+| `OSTRA_INVITATION_DAYS` | `7` | How many days an invitation's link works (F-002). It works once. |
+| `OSTRA_RESET_LINK_HOURS` | `24` | How many hours a password reset link works (F-002). It works once. |
+| `OSTRA_BUDGET_WARN_PERCENT` | `80` | At this share of a monthly budget, its admins are told once, in the panel and by mail (F-037). At 100% new tasks and turns wait. |
+| `OSTRA_INSIGHTS_INTERVAL_MINUTES` | `5` | How often Insights are recomputed (F-108). The page says when they were. |
+| `OSTRA_MEMORY_INDEX_MAX_NOTES` | `100` | The most notes the memory index an agent starts with lists (F-110). The rest are found with search. |
+| `OSTRA_MEMORY_INDEX_MAX_KIB` | `8` | The memory index's size, in KiB (F-110). |
+| `OSTRA_MEMORY_ALWAYS_MAX_KIB` | `8` | The "always" notes' size together, in KiB (F-110). An "always" note past it is listed in the index instead. |
+| `OSTRA_MEMORY_PROPOSALS_PER_TASK` | `20` | The most memory notes one task's agent may propose (F-111). |
+| `OSTRA_PROJECT_MAX_REPOS` | `10` | The most repos one project holds (F-098). Every task checks them all out side by side. |
+| `OSTRA_SEARCH_ENTRY_MAX_KIB` | `8` | The most text, in KiB, search keeps of one message, tool input or PR (F-080). Longer text is cut. |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 

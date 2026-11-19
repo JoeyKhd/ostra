@@ -2,7 +2,9 @@ import {
   boardIdSchema,
   boxIdSchema,
   boxReleaseReasonSchema,
+  budgetIdSchema,
   connectionIdSchema,
+  epochMsSchema,
   gitShaSchema,
   leaseEpochSchema,
   needsYouItemIdSchema,
@@ -14,6 +16,7 @@ import {
   repoIdSchema,
   sessionIdSchema,
   taskIdSchema,
+  taskRepoIdSchema,
   taskSeqSchema,
   ticketWriteIdSchema,
   webhookDeliveryIdSchema,
@@ -58,6 +61,15 @@ export const jobNames = [
   "snapshot.schedule",
   "snapshot.nightly",
   "cli-session.expire",
+  // ---- milestone 4 (spec section 5.4) ----
+  "account-mail.send",
+  "invitation.expire",
+  "budget.check",
+  "budget.release",
+  "insights.compute",
+  "search.backfill",
+  "pr.link-related",
+  "review.evaluate",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -152,6 +164,41 @@ export const jobPayloadSchemas = {
   "snapshot.nightly": z.strictObject({}),
   /** Revoke the CLI sessions past their expiry (F-103, ticket 39). */
   "cli-session.expire": z.strictObject({}),
+
+  // ---- milestone 4 ----
+  /**
+   * Send one account mail (F-002, F-115, ticket 19): an invitation (its ID), a verification (the
+   * membership's ID) or a reset (the reset link's ID). The link is made when it's sent, never stored here.
+   */
+  "account-mail.send": z.strictObject({
+    organizationId: organizationIdSchema,
+    purpose: z.enum(["invitation", "email_verification", "password_reset"]),
+    recordId: z.string().min(1).max(64).regex(/^\S+$/, "an ID"),
+  }),
+  /** Mark the invitations past their expiry (F-002, ticket 22). A sweep. */
+  "invitation.expire": z.strictObject({}),
+  /** Send a budget's notice for a month and threshold, once (F-037, ticket 13). */
+  "budget.check": z.strictObject({
+    organizationId: organizationIdSchema,
+    budgetId: budgetIdSchema,
+    month: z.string().regex(/^[0-9]{4}-(0[1-9]|1[0-2])$/, "YYYY-MM"),
+    threshold: z.enum(["warn", "reached"]),
+  }),
+  /** Release a budget's held turns and waiting tasks in the order they were held (F-037, ticket 13). */
+  "budget.release": z.strictObject({ organizationId: organizationIdSchema, budgetId: budgetIdSchema, raisedAt: epochMsSchema }),
+  /** Recompute every organization's last two days of Insights and any changed day (F-108, ticket 14). An idempotent pass: a schedule. */
+  "insights.compute": z.strictObject({}),
+  /** Write a task's search entries, idempotent per entry (F-080, ticket 11). */
+  "search.backfill": z.strictObject(taskScope),
+  /** Set the "Related" section of every PR of a task when one opens (F-098, ticket 17). */
+  "pr.link-related": z.strictObject({ ...taskScope, repoId: repoIdSchema, prNumber: z.number().int().positive() }),
+  /** Evaluate a task PR's independent-review check on its head (F-104, ticket 18). */
+  "review.evaluate": z.strictObject({
+    organizationId: organizationIdSchema,
+    taskRepoId: taskRepoIdSchema,
+    prNumber: z.number().int().positive(),
+    headSha: gitShaSchema,
+  }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -188,6 +235,14 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "snapshot.schedule": (payload) => `project:${payload.projectId}:snapshot:${payload.reason}`,
   "snapshot.nightly": () => "snapshots:nightly",
   "cli-session.expire": () => "cli-sessions:expire",
+  "account-mail.send": (payload) => `account-mail:${payload.purpose}:${payload.recordId}`,
+  "invitation.expire": () => "invitations:expire",
+  "budget.check": (payload) => `budget:${payload.budgetId}:${payload.month}:${payload.threshold}`,
+  "budget.release": (payload) => `budget:${payload.budgetId}:release:${String(payload.raisedAt)}`,
+  "insights.compute": () => "insights:compute",
+  "search.backfill": (payload) => `task:${payload.taskId}:search-backfill`,
+  "pr.link-related": (payload) => `task:${payload.taskId}:link-related:${payload.repoId}:${String(payload.prNumber)}`,
+  "review.evaluate": (payload) => `pr:${payload.taskRepoId}:${String(payload.prNumber)}:review:${payload.headSha}`,
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -232,7 +287,19 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "snapshot.schedule": { kind: "event" },
   "snapshot.nightly": { kind: "schedule" },
   "cli-session.expire": { kind: "schedule" },
+  "account-mail.send": { kind: "event" },
+  "invitation.expire": { kind: "schedule" },
+  "budget.check": { kind: "event" },
+  "budget.release": { kind: "event" },
+  "insights.compute": { kind: "schedule" },
+  "search.backfill": { kind: "event" },
+  "pr.link-related": { kind: "event", throttle: "connection" },
+  // Reviews, a push and a link a moment apart evaluate once (`reviewEvaluateSingletonSeconds`).
+  "review.evaluate": { kind: "event", throttle: "connection" },
 };
+
+/** `review.evaluate`'s singleton window (spec section 5.4): one evaluation per PR and head in 10 s. */
+export const reviewEvaluateSingletonSeconds = 10;
 
 /** `snapshot.schedule`'s singleton window (spec section 5.4): one build per project and reason a minute. */
 export const snapshotScheduleSingletonSeconds = 60;

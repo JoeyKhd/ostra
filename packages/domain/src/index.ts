@@ -11,6 +11,7 @@ export * from "./lifecycles/task-repo.ts";
 export * from "./lifecycles/snapshot.ts";
 export * from "./lifecycles/lease.ts";
 export * from "./lifecycles/mapping.ts";
+export * from "./lifecycles/m4.ts";
 
 export * from "./ports.ts";
 export * from "./jobs.ts";
@@ -82,6 +83,17 @@ export * from "./rules/index.ts";
 export * from "./notifications/index.ts";
 export * from "./prompts/index.ts";
 export * from "./use-cases/m3-signatures.ts";
+export * from "./use-cases/m4-signatures.ts";
+
+// Milestone 4.
+export * from "./budget/gate.ts";
+export * from "./insights/figures.ts";
+export * from "./memory/secret-scan.ts";
+export * from "./memory/block.ts";
+export * from "./memory/remember-this.ts";
+export * from "./repos/several-repos.ts";
+export * from "./review/independent-review.ts";
+export * from "./mail/account-mails.ts";
 export * from "./diff/unified-diff.ts";
 export * from "./diff/stored-diff.ts";
 export * from "./use-cases/repo-access.ts";
