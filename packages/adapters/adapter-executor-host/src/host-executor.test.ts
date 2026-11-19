@@ -11,7 +11,9 @@ import { boxIdSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { RepoSecret, TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { processTreeContainment } from "./containment.ts";
 import { HostExecutor } from "./host-executor.ts";
+import { localProcesses } from "./task-processes.ts";
 
 // Ticket 19's "done when", against the git proxy's upstream stub (here without the proxy: the
 // executor's job is the checkout, the environment, the commits and the processes).
@@ -314,6 +316,88 @@ describe("the host executor", () => {
     }
     expect(isAlive(agentPid)).toBe(false);
     expect(isAlive(childPid)).toBe(false);
+    await executor.release(box);
+  });
+});
+
+describe("the executor's git, where the agent controls the checkout", () => {
+  type GitRun = { readonly command: string; readonly args: readonly string[] };
+
+  /** The host's own processes, recording every program the executor runs through the seam. */
+  const recordingExecutor = (calls: GitRun[]): HostExecutor => {
+    const local = localProcesses(() => processTreeContainment());
+    return new HostExecutor({
+      dataDir: path.join(root, "runner-recorded"),
+      processes: {
+        startAgent: local.startAgent,
+        run: (command, args, options) => {
+          calls.push({ command, args });
+          return local.run(command, args, options);
+        },
+      },
+    });
+  };
+
+  const gitRuns = (calls: readonly GitRun[]): readonly GitRun[] => calls.filter((call) => call.command === "git");
+  const HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never"];
+  const subcommand = (call: GitRun): string | undefined => call.args.slice(HARDENING.length)[0];
+
+  it("runs every git command, the sidecar's included, through the processes seam", async () => {
+    const calls: GitRun[] = [];
+    const recorded = recordingExecutor(calls);
+    const box = newBox();
+    const spec = twoRepoSpec(box, null);
+    const created = await recorded.create({ ...box, spec, proxies });
+    if (!created.ok) {
+      throw new Error("create failed");
+    }
+    await recorded.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+    await writeFile(path.join(created.value.workspaceDir, "test1", "seam.txt"), "x\n");
+    const pushed = await recorded.commitAndPush({
+      box,
+      message: "Add seam.txt",
+      author: spec.gitIdentity,
+      coAuthors: [],
+      branchName: spec.branchName,
+      hiddenRef: `refs/ostra/wip/${box.taskId}`,
+    });
+    expect(pushed.ok).toBe(true);
+    // The checkout's git: all of it through the seam, and all of it with the hardening that beats
+    // the checkout's own config. (The task's own config file is written before any agent exists.)
+    const checkoutGit = gitRuns(calls).filter((call) => call.args[0] === "-c");
+    const seen = new Set(checkoutGit.map(subcommand));
+    for (const expected of ["clone", "config", "checkout", "status", "add", "commit", "rev-list", "rev-parse", "push", "check-ignore"]) {
+      expect(seen, expected).toContain(expected);
+    }
+    for (const call of checkoutGit) {
+      expect(call.args.slice(0, HARDENING.length), call.args.join(" ")).toEqual(HARDENING);
+    }
+    expect(gitRuns(calls).filter((call) => call.args[0] !== "-c").every((call) => call.args[0] === "lfs")).toBe(true);
+    await recorded.release(box);
+  });
+
+  it("doesn't run a program the agent set in the checkout's config when it commits", async () => {
+    const box = newBox();
+    const spec = twoRepoSpec(box, null);
+    const created = await executor.create({ ...box, spec, proxies });
+    if (!created.ok) {
+      throw new Error("create failed");
+    }
+    await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+    const dirA = path.join(created.value.workspaceDir, "test1");
+    const marker = path.join(created.value.agentDir, "fsmonitor-ran");
+    await run("git", ["config", "--local", "core.fsmonitor", `touch '${marker.split(path.sep).join("/")}'`], { cwd: dirA });
+    await writeFile(path.join(dirA, "change.txt"), "x\n");
+    const pushed = await executor.commitAndPush({
+      box,
+      message: "Add change.txt",
+      author: spec.gitIdentity,
+      coAuthors: [],
+      branchName: spec.branchName,
+      hiddenRef: `refs/ostra/wip/${box.taskId}`,
+    });
+    expect(pushed.ok).toBe(true);
+    expect(await exists(marker)).toBe(false);
     await executor.release(box);
   });
 });

@@ -107,6 +107,13 @@ done < "$trailers"
 exit 0
 `;
 
+/**
+ * Settings on every checkout git command, which beat the checkout's own config: no filesystem
+ * monitor (a repo-local `core.fsmonitor` runs a program), no `ext::` transport, no ssh command. Not
+ * `core.hooksPath`: the `prepare-commit-msg` hook below is how every commit gets its trailers.
+ */
+const GIT_HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never"] as const;
+
 /** Setup output split so no piece passes the event's cap. */
 const splitOutput = (text: string): readonly string[] => {
   const pieces: string[] = [];
@@ -376,9 +383,17 @@ export class HostExecutor extends ExecutorAdapter {
     return own.length > 0 ? `: ${own}` : ` (exit ${String(result.code)})`;
   }
 
-  /** git with the task's own config: never the member's global one, never the system's. */
+  /**
+   * git with the task's own config: never the member's global one, never the system's.
+   *
+   * It runs through the processes seam, not in this process. On `docker` a checkout is on the volume
+   * the agent writes, so its config, hooks and filters are the agent's to set, and any of them can
+   * run a program when git reads the repo (`core.fsmonitor` on `status`, a filter driver on `add`, a
+   * hook on `commit`). That program must run in the agent's container, which holds no credential,
+   * and never in the sidecar, which does (ADR 0030). On `host` the seam is this machine, as before.
+   */
   #git(record: BoxRecord, args: readonly string[], cwd: string, extra: Readonly<Record<string, string>> = {}): Promise<RunResult> {
-    return runProgram("git", args, {
+    return this.#processes.run("git", [...GIT_HARDENING, ...args], {
       cwd,
       env: {
         ...baseEnv(this.#env),
@@ -394,7 +409,7 @@ export class HostExecutor extends ExecutorAdapter {
   async #hasLfs(): Promise<boolean> {
     if (this.#lfs === undefined) {
       await mkdir(this.#dataDir, { recursive: true });
-      this.#lfs = (await runProgram("git", ["lfs", "version"], { cwd: this.#dataDir, env: baseEnv(this.#env) })).code === 0;
+      this.#lfs = (await this.#processes.run("git", ["lfs", "version"], { cwd: this.#dataDir, env: baseEnv(this.#env) })).code === 0;
     }
     return this.#lfs;
   }
