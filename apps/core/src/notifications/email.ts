@@ -5,7 +5,7 @@ import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger, Notification, NotificationAdapter, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { emailStillNeeded, momentHeading, renderNeedsYouEmail } from "@ostra/domain";
+import { emailStillNeeded, momentHeading, momentKindOf, renderNeedsYouEmail } from "@ostra/domain";
 import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
 import { approvalSubjectSchema, memberIdSchema, notificationIdSchema, organizationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalSubject } from "@ostra/protocol";
@@ -176,7 +176,8 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
 
   /** The moment's one line, from the rows (never from the moment's own text). */
   const detailOf = async (row: DeliveryRow): Promise<MomentDetail> => {
-    const { kind, task, needsYouItem: item } = row.notification;
+    const { task, needsYouItem: item } = row.notification;
+    const kind = momentKindOf(row.notification.kind);
     switch (kind) {
       case "approval": {
         const approval =
@@ -229,7 +230,8 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     }
     const { notification: stored } = row;
     // Due now: a member who read it in the panel meanwhile, or an item closed meanwhile, needs no mail.
-    if (!emailStillNeeded({ kind: stored.kind, readAt: stored.readAt?.getTime() ?? null, itemState: stored.needsYouItem?.state ?? null })) {
+    const kind = momentKindOf(stored.kind);
+    if (!emailStillNeeded({ kind, readAt: stored.readAt?.getTime() ?? null, itemState: stored.needsYouItem?.state ?? null })) {
       return { outcome: "skipped", why: stored.readAt === null ? "closed" : "read" };
     }
     // Milestone 4's verification (F-002) restricts mail to a verified address; until then the account's address is used.
@@ -251,11 +253,11 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     const notification: Notification = {
       organizationId: organizationIdSchema.parse(row.organizationId),
       memberIds: [memberId],
-      title: momentHeading[stored.kind],
-      body: momentHeading[stored.kind],
+      title: momentHeading[kind],
+      body: momentHeading[kind],
       url: urlOf(deps, row),
       idempotencyKey: row.idempotencyKey,
-      kind: stored.kind,
+      kind,
       recipients: [{ memberId, email: address, trackerMention: null }],
       subject: task?.title ?? "",
       rendered,

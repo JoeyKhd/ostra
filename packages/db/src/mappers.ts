@@ -10,6 +10,14 @@ import {
   diffCommentIdSchema,
   boardIdSchema,
   boxIdSchema,
+  budgetIdSchema,
+  heldTurnIdSchema,
+  invitationIdSchema,
+  noteIdSchema,
+  proposalIdSchema,
+  resetLinkGrantIdSchema,
+  reviewCheckIdSchema,
+  searchEntryIdSchema,
   commandIdSchema,
   commandSchema,
   connectionIdSchema,
@@ -57,6 +65,7 @@ import {
   checkRunStatusFromDb,
   commandKindFromDb,
   sessionLimitFromDb,
+  turnOriginFromDb,
 } from "./enums.ts";
 import type {
   AgentProfile,
@@ -68,6 +77,21 @@ import type {
   BlobUpload,
   Board,
   Box,
+  Budget,
+  BudgetNotice,
+  HeldTurn,
+  InsightDaily,
+  InsightRun,
+  Invitation,
+  MemoryNote,
+  MemoryNoteVersion,
+  MemoryProposal,
+  MemoryUse,
+  ResetLinkGrant,
+  ReviewCheck,
+  SearchEntry,
+  SpendDaily,
+  TaskMetric,
   Check,
   CheckRun,
   CliSession,
@@ -532,4 +556,131 @@ export const mapCliSession = (row: CliSession) => ({
   organizationId: organizationIdSchema.parse(row.organizationId),
   memberId: memberIdSchema.parse(row.memberId),
   userId: userIdSchema.parse(row.userId),
+});
+
+// ---------- milestone 4 ----------
+
+/** An invitation. Its `projectGrants` stay JSON here: the domain's schema parses them. */
+export const mapInvitation = (row: Invitation) => ({
+  ...row,
+  id: invitationIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  inviterId: userIdSchema.parse(row.inviterId),
+  acceptedUserId: optional(userIdSchema, row.acceptedUserId),
+  revokedByMemberId: optional(memberIdSchema, row.revokedByMemberId),
+});
+
+/** A reset link. Its token's hash stays in the row and is never logged. */
+export const mapResetLinkGrant = (row: ResetLinkGrant) => ({
+  ...row,
+  id: resetLinkGrantIdSchema.parse(row.id),
+  userId: userIdSchema.parse(row.userId),
+  createdByUserId: optional(userIdSchema, row.createdByUserId),
+});
+
+/** A search entry. Its text is never logged. */
+export const mapSearchEntry = (row: SearchEntry) => ({
+  ...row,
+  id: searchEntryIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  repoId: optional(repoIdSchema, row.repoId),
+  authorMemberId: optional(memberIdSchema, row.authorMemberId),
+});
+
+export const mapSpendDaily = (row: SpendDaily) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  modelId: modelIdSchema.parse(row.modelId),
+});
+
+export const mapBudget = (row: Budget) => ({
+  ...row,
+  id: budgetIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  updatedByMemberId: optional(memberIdSchema, row.updatedByMemberId),
+});
+
+export const mapBudgetNotice = (row: BudgetNotice) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  budgetId: budgetIdSchema.parse(row.budgetId),
+});
+
+export const mapHeldTurn = (row: HeldTurn) => ({
+  ...row,
+  id: heldTurnIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  budgetId: budgetIdSchema.parse(row.budgetId),
+  origin: turnOriginFromDb[row.origin],
+});
+
+export const mapTaskMetric = (row: TaskMetric) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+});
+
+export const mapInsightDaily = (row: InsightDaily) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+});
+
+export const mapInsightRun = (row: InsightRun) => ({ ...row, organizationId: organizationIdSchema.parse(row.organizationId) });
+
+/** A memory note. Its title and body are never logged. */
+export const mapMemoryNote = (row: MemoryNote) => ({
+  ...row,
+  id: noteIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  sourceTaskId: optional(taskIdSchema, row.sourceTaskId),
+  authorMemberId: optional(memberIdSchema, row.authorMemberId),
+});
+
+export const mapMemoryNoteVersion = (row: MemoryNoteVersion) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  noteId: noteIdSchema.parse(row.noteId),
+  editedByMemberId: optional(memberIdSchema, row.editedByMemberId),
+  proposalId: optional(proposalIdSchema, row.proposalId),
+});
+
+/** A proposed note. Its title and body are never logged. */
+export const mapMemoryProposal = (row: MemoryProposal) => ({
+  ...row,
+  id: proposalIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  taskId: optional(taskIdSchema, row.taskId),
+  sessionId: optional(sessionIdSchema, row.sessionId),
+  proposedByMemberId: optional(memberIdSchema, row.proposedByMemberId),
+  relatesToNoteId: optional(noteIdSchema, row.relatesToNoteId),
+  decidedByMemberId: optional(memberIdSchema, row.decidedByMemberId),
+  resultNoteId: optional(noteIdSchema, row.resultNoteId),
+});
+
+export const mapMemoryUse = (row: MemoryUse) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  sessionId: sessionIdSchema.parse(row.sessionId),
+  noteId: noteIdSchema.parse(row.noteId),
+});
+
+export const mapReviewCheck = (row: ReviewCheck) => ({
+  ...row,
+  id: reviewCheckIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskRepoId: taskRepoIdSchema.parse(row.taskRepoId),
+  approverMemberId: optional(memberIdSchema, row.approverMemberId),
 });

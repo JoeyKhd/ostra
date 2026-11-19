@@ -2,7 +2,7 @@ import type { DbEnum, Tx } from "@ostra/db";
 import { memberIdSchema, notificationDeliveryIdSchema, notificationIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { MemberId, NeedsYouItemId, NotificationDeliveryId, NotificationId, OrganizationId, ProjectId } from "@ostra/protocol";
 
-import { channelsFor, deliveryKey, EMAIL_DELAY_SECONDS_DEFAULT, emailDueAt } from "../notifications/choices.ts";
+import { channelsFor, deliveryKey, EMAIL_DELAY_SECONDS_DEFAULT, emailDueAt, isMomentKind } from "../notifications/choices.ts";
 import type { NotificationChannel, NotificationChoice } from "../notifications/choices.ts";
 import { resolveAudience } from "../notifications/choices.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -134,7 +134,9 @@ export const fanOutNotification = async (deps: M3Deps, input: FanOutInput): Prom
 
     // An item already closed by the time its fan-out runs notifies the panel only: nothing outside needs it.
     const deliveries = notifications.flatMap((notification) => {
-      const choices: readonly NotificationChoice[] = preferences.filter((row) => row.memberId === notification.memberId);
+      const choices: readonly NotificationChoice[] = preferences.flatMap((row) =>
+        row.memberId === notification.memberId && isMomentKind(row.kind) ? [{ ...row, kind: row.kind }] : [],
+      );
       // Mail is decided when it's due (`off`, no address, read), so its delivery is written either way.
       const channels = channelsFor({ kind, choices, taskHasTicket, emailOn: true, memberHasEmail: true });
       return channels

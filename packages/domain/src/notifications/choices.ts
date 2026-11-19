@@ -8,6 +8,22 @@ import type { MemberId } from "@ostra/protocol";
 export { notificationKinds };
 export type { NotificationKind };
 
+const momentKinds: ReadonlySet<string> = new Set(notificationKinds);
+
+/**
+ * Whether a stored notification's kind is a needs-you moment. Milestone 4 adds the account and
+ * budget kinds to the stored enum; they never go through the needs-you fan-out and delivery.
+ */
+export const isMomentKind = (kind: string): kind is NotificationKind => momentKinds.has(kind);
+
+/** A stored kind the needs-you delivery handles. Any other kind there is a bug, so it throws. */
+export const momentKindOf = (kind: string): NotificationKind => {
+  if (!isMomentKind(kind)) {
+    throw new Error(`not a needs-you moment: ${kind}`);
+  }
+  return kind;
+};
+
 /** The three channels of milestone 3. */
 export const notificationChannels = ["panel", "tracker", "email"] as const;
 export type NotificationChannel = (typeof notificationChannels)[number];

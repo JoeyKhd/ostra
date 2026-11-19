@@ -4,6 +4,7 @@ import {
   deliveryChangeOf,
   fanOutNotification,
   momentHeading,
+  momentKindOf,
   recordDelivery,
   trackerDelivery,
 } from "@ostra/domain";
@@ -129,7 +130,7 @@ export const loadDelivery = (db: Db, organizationId: OrganizationId, deliveryId:
 
 /** The delivery's one-line text: the moment's heading, or who closed it. Never the task's own words. */
 const lineOf = async (deps: NotifyDeps, row: DeliveryRow, change: "created" | "answered" | "dismissed"): Promise<string> => {
-  const heading = momentHeading[row.notification.kind];
+  const heading = momentHeading[momentKindOf(row.notification.kind)];
   if (change === "created") {
     return heading;
   }
@@ -159,11 +160,11 @@ export const baseNotification = async (
   return {
     organizationId: organizationIdSchema.parse(row.organizationId),
     memberIds: recipients.map((recipient) => recipient.memberId),
-    title: momentHeading[row.notification.kind],
+    title: momentHeading[momentKindOf(row.notification.kind)],
     body: line,
     url: urlOf(deps, row),
     idempotencyKey: row.idempotencyKey,
-    kind: row.notification.kind,
+    kind: momentKindOf(row.notification.kind),
     recipients,
     subject: task?.title ?? "",
     rendered: null,

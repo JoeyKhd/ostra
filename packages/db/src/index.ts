@@ -11,6 +11,21 @@ export { Prisma } from "./generated/prisma/client.ts";
 /** The database's enums, by Prisma's names (underscores where the protocol has hyphens). */
 export * as DbEnum from "./generated/prisma/enums.ts";
 export type {
+  // Milestone 4.
+  ResetLinkGrant,
+  SearchEntry,
+  SpendDaily,
+  Budget,
+  BudgetNotice,
+  HeldTurn,
+  TaskMetric,
+  InsightDaily,
+  InsightRun,
+  MemoryNote,
+  MemoryNoteVersion,
+  MemoryProposal,
+  MemoryUse,
+  ReviewCheck,
   User,
   AuthSession,
   Account,

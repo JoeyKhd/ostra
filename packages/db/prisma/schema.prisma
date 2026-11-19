@@ -64,6 +64,8 @@ model User {
   members            Member[]
   invitations        Invitation[]
   cliSessions        CliSession[]
+  // ---- milestone 4 ----
+  resetLinkGrants    ResetLinkGrant[]
 
   @@unique([email])
   @@unique([username])
@@ -158,6 +160,12 @@ model Organization {
   blobChunks         BlobChunk[]
   oauthStates        OAuthState[]
   setting            OrganizationSetting?
+  // Milestone 4.
+  budgets            Budget[]
+  insightDailies     InsightDaily[]
+  insightRun         InsightRun?
+  memoryNotes        MemoryNote[]
+  memoryProposals    MemoryProposal[]
 
   @@unique([slug])
   @@map("organization")
@@ -173,6 +181,13 @@ model Member {
   // plugin is configured with `creatorRole: "admin"` (ticket 30).
   role           String       @default("member")
   createdAt      DateTime
+  // ---- milestone 4 (F-002, ADR 0053) ----
+  /// Lists of members show `active` ones unless they show history. A removed membership is kept,
+  /// so history keeps its name; a pending or removed one makes no scope.
+  state             MemberState @default(active)
+  removedAt         DateTime?
+  /// No foreign key: the admin who removed it, kept by ID.
+  removedByMemberId String?
 
   ownedRunners       Runner[]
   projectMemberships ProjectMember[]
@@ -202,6 +217,17 @@ model Invitation {
   createdAt      DateTime     @default(now())
   inviterId      String
   user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  // ---- milestone 4 (F-002, ADR 0053) ----
+  /// ostra: the restricted projects it grants, `[{ projectId, role }]`, parsed by the domain's schema.
+  projectGrants     Json      @default("[]")
+  acceptedAt        DateTime?
+  /// The account that accepted it. No foreign key: kept by ID.
+  acceptedUserId    String?
+  revokedAt         DateTime?
+  /// No foreign key: the admin who revoked it, kept by ID.
+  revokedByMemberId String?
+  /// When the panel last showed its link to the inviter.
+  linkShownAt       DateTime?
 
   @@index([organizationId])
   @@index([email])
@@ -330,9 +356,15 @@ model AuditEntry {
   /// IDs and settings only, never content or secrets.
   data           Json?
   createdAt      DateTime       @default(now())
+  // ---- milestone 4 (F-073, ADR 0054) ----
+  /// The actor's name as it was, so a removed member's entries still read.
+  actorName      String?
 
   @@index([organizationId, createdAt])
   @@index([projectId])
+  @@index([organizationId, action, createdAt])
+  @@index([organizationId, actorId, createdAt])
+  @@index([organizationId, entity, entityId])
   @@map("audit_entry")
 }
 
@@ -473,12 +505,17 @@ model Model {
   /// not known, and the spend count prices that kind at the input price.
   cacheReadPricePerMTok  Decimal? @db.Decimal(12, 6)
   cacheWritePricePerMTok Decimal? @db.Decimal(12, 6)
+  /// Milestone 4 (F-037, ADR 0055): where the prices came from, and when they last changed.
+  priceSource            PriceSource?
+  priceChangedAt         DateTime?
   /// Whether the endpoint still lists it.
   listed             Boolean       @default(true)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
   agentProfiles AgentProfile[]
+  // ---- milestone 4 ----
+  spendDailies  SpendDaily[]
 
   @@unique([providerId, endpointModelId])
   @@unique([id, organizationId])
@@ -620,6 +657,9 @@ model AgentProfile {
   /// The MCP servers: name, transport, `readOnly`, the URL or the command, and secret references for
   /// an HTTP server's headers. Never a header's value.
   mcpServers     Json          @default("[]")
+  // ---- milestone 4 (F-111, ADR 0044) ----
+  /// After the task's last turn, one more asks the agent what the next task should know.
+  closingTurn    Boolean       @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -739,6 +779,17 @@ model Project {
   taskPullRequests  TaskPullRequest[]
   checkRuns         CheckRun[]
   notifications     Notification[]
+  // ---- milestone 4 ----
+  searchEntries     SearchEntry[]
+  spendDailies      SpendDaily[]
+  budgets           Budget[]
+  heldTurns         HeldTurn[]
+  taskMetrics       TaskMetric[]
+  insightDailies    InsightDaily[]
+  memoryNotes       MemoryNote[]
+  memoryProposals   MemoryProposal[]
+  memoryUses        MemoryUse[]
+  reviewChecks      ReviewCheck[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -801,6 +852,8 @@ model Repo {
   branchRules          Json?
   /// When they were read: "Check again" reads them anew after 10 minutes (ticket 31).
   branchRulesCheckedAt DateTime?
+  /// Milestone 4 (F-098): the repo's place in the project's order. Existing rows were numbered by creation.
+  position             Int        @default(0)
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
@@ -1169,6 +1222,11 @@ model Task {
   diffComments  DiffComment[]
   checkRuns     CheckRun[]
   notifications Notification[]
+  // ---- milestone 4 ----
+  searchEntries SearchEntry[]
+  heldTurns     HeldTurn[]
+  taskMetrics   TaskMetric[]
+  memoryUses    MemoryUse[]
 
   @@unique([id, projectId])
   /// One active code task per ticket per project (spec section 11, item 12).
@@ -1219,6 +1277,8 @@ model TaskRepo {
 
   diffComments DiffComment[]
   pullRequests TaskPullRequest[]
+  // ---- milestone 4 ----
+  reviewChecks ReviewCheck[]
 
   @@unique([taskId, repoId])
   @@unique([id, projectId])
@@ -1374,6 +1434,8 @@ model Session {
   approvals Approval[]
   // ---- milestone 3 ----
   checkRuns CheckRun[]
+  // ---- milestone 4 ----
+  memoryUses MemoryUse[]
 
   @@unique([id, taskId])
   @@unique([taskId], where: raw("state IN ('starting', 'running', 'waiting', 'idle')"), map: "session_one_active_per_task")
@@ -2336,6 +2398,12 @@ enum NotificationKind {
   setup_failed
   ticket_closed
   test
+  // Milestone 4 (F-115): the account and budget mails.
+  invitation
+  email_verification
+  password_reset
+  budget_warning
+  budget_reached
 }
 
 enum NotificationChannel {
@@ -2380,4 +2448,439 @@ enum SnapshotSecretScan {
 enum DeviceCodePurpose {
   runner
   cli
+}
+
+// ===========================================================================
+// Milestone 4 (ticket 05, spec section 5.3): the organization. Additive only.
+// ===========================================================================
+
+/// A reset link an instance admin or the account itself made (F-002, ADR 0053). Install-level,
+/// like the accounts: on the isolation test's allowlist. Only the token's hash is kept.
+model ResetLinkGrant {
+  id              String        @id @default(uuid(7))
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The instance admin who made it, or `null` for a self-service reset by mail.
+  createdByUserId String?
+  kind            ResetLinkKind
+  /// SHA-256 of the link's token. The token itself is never stored or logged.
+  tokenHash       String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@unique([tokenHash])
+  @@index([userId])
+  @@map("reset_link_grant")
+}
+
+/// One searchable piece of a task (F-080, ADR 0054): its title, prompt or ticket, a message, a
+/// tool's input or a PR. Written at ingest; `search.backfill` fills it for older tasks. Its text
+/// is never logged, and a query reaches it only as a bound parameter.
+model SearchEntry {
+  id             String                    @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project                   @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task                      @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The repo a PR or tool input belongs to, for the repo filter. No foreign key: a filter only.
+  repoId         String?
+  /// The event it came from; `null` for the title, the prompt and the ticket.
+  eventSeq       Int?
+  kind           SearchEntryKind
+  /// The member who wrote it, for the member filter. No foreign key: removed members keep entries.
+  authorMemberId String?
+  /// At most 8 KiB (`OSTRA_SEARCH_ENTRY_MAX_KIB`). Never logged.
+  text           String
+  /// `to_tsvector('simple', text)`, generated by Postgres (raw SQL in the migration), GIN-indexed.
+  vector         Unsupported("tsvector")?  @default(dbgenerated("to_tsvector('simple'::regconfig, text)"))
+  createdAt      DateTime                  @default(now())
+
+  @@unique([taskId, eventSeq, kind])
+  /// The title, prompt and ticket rows have no event: one of each per task.
+  @@unique([taskId, kind], where: raw("\"eventSeq\" IS NULL"), map: "search_entry_one_per_task_and_kind")
+  @@index([organizationId, projectId, createdAt])
+  @@index([vector], type: Gin, map: "search_entry_vector_idx")
+  @@map("search_entry")
+}
+
+/// A project's spend on one model on one UTC day (F-037, ADR 0055): the rollup the ingest adds to.
+model SpendDaily {
+  id               String   @id @default(uuid(7))
+  organizationId   String
+  projectId        String
+  project          Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The UTC day.
+  day              DateTime @db.Date
+  modelId          String
+  model            Model    @relation(fields: [modelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  inputTokens      BigInt   @default(0)
+  outputTokens     BigInt   @default(0)
+  cacheReadTokens  BigInt   @default(0)
+  cacheWriteTokens BigInt   @default(0)
+  spentMicroUsd    BigInt   @default(0)
+  /// Tokens of a model with no price: counted, not priced.
+  unpricedTokens   BigInt   @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([projectId, day, modelId])
+  @@index([organizationId, day])
+  @@map("spend_daily")
+}
+
+/// A monthly budget (F-037, ADR 0055): the organization's own (`projectId` null) or a project's.
+model Budget {
+  id                String        @id @default(uuid(7))
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// `null` for the organization's own budget.
+  projectId         String?
+  project           Project?      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The budget for one calendar month in UTC, in micro-USD.
+  monthlyMicroUsd   BigInt
+  /// No foreign key: the row outlives the member.
+  updatedByMemberId String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  notices   BudgetNotice[]
+  heldTurns HeldTurn[]
+
+  @@unique([organizationId, projectId])
+  /// One organization budget: Postgres treats nulls as distinct in the unique above.
+  @@unique([organizationId], where: raw("\"projectId\" IS NULL"), map: "budget_one_per_organization")
+  @@unique([id, organizationId])
+  @@map("budget")
+}
+
+/// A budget notice sent once per budget, month and threshold (F-037).
+model BudgetNotice {
+  id             String          @id @default(uuid(7))
+  organizationId String
+  budgetId       String
+  budget         Budget          @relation(fields: [budgetId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// `YYYY-MM`, in UTC (checked in the migration).
+  month          String
+  threshold      BudgetThreshold
+  sentAt         DateTime        @default(now())
+
+  @@unique([budgetId, month, threshold])
+  @@map("budget_notice")
+}
+
+/// A turn the budget gate held (F-037, ADR 0055), released in order on a raise or a new month.
+model HeldTurn {
+  id                String         @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project        @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId            String
+  task              Task           @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  origin            HeldTurnOrigin
+  budgetId          String
+  budget            Budget         @relation(fields: [budgetId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The saved member message's event, when the held turn is one.
+  pendingMessageSeq Int?
+  heldAt            DateTime       @default(now())
+  releasedAt        DateTime?
+
+  @@index([budgetId, releasedAt, heldAt])
+  @@index([taskId])
+  @@map("held_turn")
+}
+
+/// One task's figures for Insights (F-108, ADR 0055), recomputed by `insights.compute`.
+model TaskMetric {
+  id                String    @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project   @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId            String
+  task              Task      @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The task's own creation time.
+  createdAt         DateTime
+  firstPrAt         DateTime?
+  prsOpened         Int       @default(0)
+  prsMerged         Int       @default(0)
+  prsClosedUnmerged Int       @default(0)
+  waitingMs         BigInt    @default(0)
+  computedAt        DateTime  @default(now())
+
+  @@unique([taskId])
+  @@index([projectId, createdAt])
+  @@map("task_metric")
+}
+
+/// One day of Insights (F-108): a project's (`projectId`) or the organization's (null).
+model InsightDaily {
+  id                String       @id @default(uuid(7))
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project?     @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  day               DateTime     @db.Date
+  prsOpened         Int          @default(0)
+  prsMerged         Int          @default(0)
+  prsClosedUnmerged Int          @default(0)
+  waitingMs         BigInt       @default(0)
+  waitingItems      Int          @default(0)
+  /// Needs-you time by reason, in ms: `{ [reason]: number }`, parsed by the domain's schema.
+  waitingByReason   Json         @default("{}")
+  computedAt        DateTime     @default(now())
+
+  @@unique([organizationId, projectId, day])
+  @@unique([organizationId, day], where: raw("\"projectId\" IS NULL"), map: "insight_daily_one_per_organization_day")
+  @@map("insight_daily")
+}
+
+/// When `insights.compute` last ran for an organization, and the newest change it saw (F-108).
+model InsightRun {
+  organizationId     String       @id
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastRunAt          DateTime?
+  lastSourceChangeAt DateTime?
+
+  @@map("insight_run")
+}
+
+/// A memory note (F-109, ADR 0044): the organization's (`projectId` null) or a project's. Its text
+/// is never logged. Only a read moves `lastUsedAt` and `useCount` (Q91).
+model MemoryNote {
+  id             String           @id @default(uuid(7))
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// `null` for an organization note; the migration checks it matches `scope`.
+  projectId      String?
+  project        Project?         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  scope          MemoryScope
+  title          String
+  body           String
+  kind           MemoryKind
+  always         Boolean          @default(false)
+  status         MemoryNoteStatus @default(active)
+  version        Int              @default(1)
+  sourceKind     MemorySourceKind
+  /// No foreign key: a note outlives the task it came from.
+  sourceTaskId   String?
+  /// The comment's URL or ID, for a note from a review comment.
+  sourceRef      String?
+  /// No foreign key: removed members keep their notes.
+  authorMemberId String?
+  lastUsedAt     DateTime?
+  useCount       Int              @default(0)
+  /// `to_tsvector('simple', title || ' ' || body)`, generated (raw SQL), GIN-indexed.
+  vector         Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, ((title || ' '::text) || body))"))
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  versions MemoryNoteVersion[]
+  uses     MemoryUse[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, projectId, status])
+  @@index([vector], type: Gin, map: "memory_note_vector_idx")
+  @@map("memory_note")
+}
+
+/// Every saved version of a note, for its history (F-109).
+model MemoryNoteVersion {
+  id               String     @id @default(uuid(7))
+  organizationId   String
+  noteId           String
+  note             MemoryNote @relation(fields: [noteId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  version          Int
+  title            String
+  body             String
+  kind             MemoryKind
+  always           Boolean
+  /// No foreign key: removed members keep their history.
+  editedByMemberId String?
+  /// The proposal merged into it, when this version is a merge.
+  proposalId       String?
+  createdAt        DateTime   @default(now())
+
+  @@unique([noteId, version])
+  @@map("memory_note_version")
+}
+
+/// A proposed note (F-111): from an agent, a review comment or a closing turn. It reaches no agent
+/// until a member approves or merges it. Its text is never logged.
+model MemoryProposal {
+  id                 String             @id @default(uuid(7))
+  organizationId     String
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId          String?
+  project            Project?           @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  scope              MemoryScope
+  title              String
+  body               String
+  kind               MemoryKind
+  state              ProposalState      @default(proposed)
+  sourceKind         ProposalSourceKind
+  /// No foreign keys below: a proposal outlives its task, session, members and notes.
+  taskId             String?
+  sessionId          String?
+  proposedByMemberId String?
+  relatesToNoteId    String?
+  relation           ProposalRelation?
+  decidedByMemberId  String?
+  decidedAt          DateTime?
+  resultNoteId       String?
+  /// Generated over title and body, as `MemoryNote.vector`.
+  vector             Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, ((title || ' '::text) || body))"))
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([organizationId, projectId, state])
+  @@index([taskId])
+  @@index([vector], type: Gin, map: "memory_proposal_vector_idx")
+  @@map("memory_proposal")
+}
+
+/// What a session saw of memory (F-110), from `memory.used`.
+model MemoryUse {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  sessionId      String
+  session        Session      @relation(fields: [sessionId, taskId], references: [id, taskId], onDelete: Cascade)
+  noteId         String
+  note           MemoryNote   @relation(fields: [noteId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  via            MemoryUseVia
+  at             DateTime     @default(now())
+
+  @@unique([sessionId, noteId, via])
+  @@index([taskId])
+  @@index([noteId])
+  @@map("memory_use")
+}
+
+/// The independent-review check on one head of a task PR (F-104, ADR 0040).
+model ReviewCheck {
+  id               String            @id @default(uuid(7))
+  organizationId   String
+  projectId        String
+  project          Project           @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskRepoId       String
+  taskRepo         TaskRepo          @relation(fields: [taskRepoId, projectId], references: [id, projectId], onDelete: Cascade)
+  prNumber         Int
+  headSha          String
+  /// The code host's check run, once published.
+  checkRunId       String?
+  status           ReviewCheckStatus @default(pending)
+  /// Words for the thread, never a review's text.
+  reason           String?
+  /// No foreign key: the member who passed it, kept by ID.
+  approverMemberId String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([taskRepoId, headSha])
+  @@map("review_check")
+}
+
+enum MemberState {
+  active
+  pending_verification
+  removed
+}
+
+enum ResetLinkKind {
+  admin_link
+  self_service
+}
+
+enum SearchEntryKind {
+  title
+  prompt
+  ticket
+  member_message
+  agent_message
+  tool_input
+  pr
+}
+
+enum PriceSource {
+  endpoint
+  catalog
+  admin
+}
+
+enum BudgetThreshold {
+  warn
+  reached
+}
+
+enum HeldTurnOrigin {
+  dispatch
+  reopen
+  message
+  diff_comments
+  update_branch
+  pr_comment
+  keep_working
+  closing_turn
+  automatic_round
+}
+
+enum MemoryKind {
+  convention
+  command
+  gotcha
+  decision
+  preference
+  term
+}
+
+enum MemoryScope {
+  organization
+  project
+}
+
+enum MemoryNoteStatus {
+  active
+  archived
+}
+
+enum MemorySourceKind {
+  member
+  task
+  diff_comment
+  pr_comment
+  proposal
+}
+
+enum ProposalState {
+  proposed
+  approved
+  rejected
+  merged
+}
+
+enum ProposalSourceKind {
+  agent
+  diff_comment
+  pr_comment
+  closing_turn
+}
+
+enum ProposalRelation {
+  contradicts
+  refines
+}
+
+enum MemoryUseVia {
+  index
+  always
+  search
+  read
+}
+
+enum ReviewCheckStatus {
+  pending
+  passed
 }

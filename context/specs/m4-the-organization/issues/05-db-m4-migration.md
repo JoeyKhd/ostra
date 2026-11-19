@@ -1,6 +1,6 @@
 # 05: DB: the milestone 4 migration
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none (milestone 3's migration, its ticket 06, lands first)
 Features: every F-ID of the spec's section 2 (their tables)
@@ -23,10 +23,12 @@ One new migration, after milestone 3's, additive only: every change in section 5
 
 ## Done when
 
-- [ ] `pnpm db:migrate` applies to an empty database and to one at milestone 3's head with rows in every earlier table.
-- [ ] Tests: each new composite key refuses a row whose project belongs to another organization; each unique index refuses its duplicate, and the organization's budget is unique where `projectId` is null; a `SearchEntry` and a `MemoryNote` are found by `@@` on their vectors.
-- [ ] Nothing is renamed or dropped; Prisma's generated types compile in every package.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the milestone 4 migration`.
+- [x] `pnpm db:migrate` applies to an empty database and to one at milestone 3's head with rows in every earlier table.
+- [x] Tests: each new composite key refuses a row whose project belongs to another organization; each unique index refuses its duplicate, and the organization's budget is unique where `projectId` is null; a `SearchEntry` and a `MemoryNote` are found by `@@` on their vectors.
+- [x] Nothing is renamed or dropped; Prisma's generated types compile in every package.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the milestone 4 migration`.
 
 ## Comments
+
+- 2026-11-19: migration `20261121000000_milestone_4`, with the generated `tsvector` columns declared to Prisma as `Unsupported("tsvector")` with their `dbgenerated` expression and a GIN `@@index`, so `prisma migrate diff` shows no drift of its own; checks Prisma can't declare at its end (`ostra:`), and the `repo.position` backfill. Enums and mappers in `src/enums.ts` and `src/mappers.ts` (`turnOriginToDb`/`FromDb` for the held turn's hyphenated origins). Tests in `packages/db/src/schema-m4.test.ts`: every composite key across organizations, every unique index, the organization budget and day of Insights where `projectId` is null, the checks, `@@` on the search and note vectors with a near miss, the additive-only guard on the SQL, and an upgrade from milestone 3's head with rows in every altered table. Break-it: dropped `budget_one_per_organization` and the month check from the migration, and the two tests failed. The notification kinds' new values widened `Notification.kind`, so the needs-you delivery narrows with the domain's new `momentKindOf`/`isMomentKind`. Whole-repo typecheck, lint and test green. Commit: `✨ add the milestone 4 migration`.

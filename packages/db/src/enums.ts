@@ -7,9 +7,15 @@ import type {
   CheckStatus,
   CommandKind,
   CommandResult,
+  MemoryKind,
+  MemoryScope,
+  MemoryUseVia,
   ProcessContainment,
+  ProposalRelation,
+  ReviewCheckStatus,
   SessionLimit,
   SessionOutcome,
+  TurnOrigin,
 } from "@ostra/protocol";
 
 import type {
@@ -22,6 +28,12 @@ import type {
   BoxReleaseReason as DbBoxReleaseReason,
   CommandKind as DbCommandKind,
   CommandResult as DbCommandResult,
+  HeldTurnOrigin as DbHeldTurnOrigin,
+  MemoryKind as DbMemoryKind,
+  MemoryScope as DbMemoryScope,
+  MemoryUseVia as DbMemoryUseVia,
+  ProposalRelation as DbProposalRelation,
+  ReviewCheckStatus as DbReviewCheckStatus,
   ProcessContainment as DbProcessContainment,
   SessionLimit as DbSessionLimit,
   SessionOutcome as DbSessionOutcome,
@@ -188,3 +200,58 @@ export const approvalRuleSourceFromDb = {
   profile: "profile",
   task: "task",
 } as const satisfies Record<DbApprovalRuleSource, "profile" | "task">;
+
+// ---------- milestone 4 ----------
+
+/** What wanted a held turn (F-037, ADR 0055): the protocol's origins, hyphens as underscores. */
+export const turnOriginToDb = {
+  dispatch: "dispatch",
+  reopen: "reopen",
+  message: "message",
+  "diff-comments": "diff_comments",
+  "update-branch": "update_branch",
+  "pr-comment": "pr_comment",
+  "keep-working": "keep_working",
+  "closing-turn": "closing_turn",
+  "automatic-round": "automatic_round",
+} as const satisfies Record<TurnOrigin, DbHeldTurnOrigin>;
+export const turnOriginFromDb = {
+  dispatch: "dispatch",
+  reopen: "reopen",
+  message: "message",
+  diff_comments: "diff-comments",
+  update_branch: "update-branch",
+  pr_comment: "pr-comment",
+  keep_working: "keep-working",
+  closing_turn: "closing-turn",
+  automatic_round: "automatic-round",
+} as const satisfies Record<DbHeldTurnOrigin, TurnOrigin>;
+
+// The memory and review vocabularies (F-104, F-109, F-110, F-111), spelled the same in the
+// database and the protocol. Each map is checked both ways.
+export const memoryKindFromDb = {
+  convention: "convention",
+  command: "command",
+  gotcha: "gotcha",
+  decision: "decision",
+  preference: "preference",
+  term: "term",
+} as const satisfies Record<DbMemoryKind, MemoryKind> & Record<MemoryKind, DbMemoryKind>;
+export const memoryScopeFromDb = {
+  organization: "organization",
+  project: "project",
+} as const satisfies Record<DbMemoryScope, MemoryScope> & Record<MemoryScope, DbMemoryScope>;
+export const memoryUseViaFromDb = {
+  index: "index",
+  always: "always",
+  search: "search",
+  read: "read",
+} as const satisfies Record<DbMemoryUseVia, MemoryUseVia> & Record<MemoryUseVia, DbMemoryUseVia>;
+export const proposalRelationFromDb = {
+  contradicts: "contradicts",
+  refines: "refines",
+} as const satisfies Record<DbProposalRelation, ProposalRelation> & Record<ProposalRelation, DbProposalRelation>;
+export const reviewCheckStatusFromDb = {
+  pending: "pending",
+  passed: "passed",
+} as const satisfies Record<DbReviewCheckStatus, ReviewCheckStatus> & Record<ReviewCheckStatus, DbReviewCheckStatus>;
