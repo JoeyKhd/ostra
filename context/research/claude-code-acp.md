@@ -1,0 +1,119 @@
+# Claude Code over ACP, on keys
+
+**Question:** How does ostra run Claude Code through its own ACP driver, as a second `AgentAdapter`, on a key the key proxy holds and against an endpoint that speaks Anthropic's Messages API, with no subscription login anywhere (F-018, Q45, Q47)? Which package does it launch, under which license, how, and what does it advertise in `initialize`?
+
+**Checked:** 2026-11-19, against the npm registry, the published package's own files, and Anthropic's Claude Code docs. Builds on `agent-harnesses.md` (2026-11-17), whose Claude Code section this updates: the adapter's version, its launch, its `initialize` reply, and how it takes a gateway. Milestone 7's spec (`specs/m7-launch/spec.md`) and ADR 0062 apply it.
+
+**How the package was read.** The tarball of `@agentclientprotocol/claude-agent-acp@0.108.1` was downloaded from the registry into a folder of its own and read, never run. Its file and line citations below (`dist/...:N`) are to that tarball, which anyone can fetch from the URL in [P1]. GitHub's API refused the source tree (rate limit), so the citations are to the compiled `dist/`, which is what ostra would run.
+
+## Summary
+
+- **The adapter is `@agentclientprotocol/claude-agent-acp`, 0.108.1, Apache-2.0,** published 2026-11-18 by GitHub Actions with npm provenance, from the `agentclientprotocol/claude-agent-acp` repo [P1]. It's the Zed-started adapter `agent-harnesses.md` named at 0.108.0. It's a Node program (`bin: dist/index.js`, Node ≥ 22) [P1], built on Anthropic's Agent SDK, which it pins exactly at `0.3.326` [P1].
+- **Claude Code itself is proprietary.** The Agent SDK and Claude Code both say "SEE LICENSE IN README.md" [P2][P3]; the SDK's license file reads "© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance" [P4], and its README points to the Commercial Terms of Service [P4]. The SDK carries the Claude Code binary as one optional package per platform, `@anthropic-ai/claude-agent-sdk-<platform>`, about 371 MB each on Linux x64 [P5].
+- **Launch:** `node dist/index.js`, ACP on stdio; every other console output goes to stderr [P6]. `--hide-claude-auth` makes it refuse every session a claude.ai subscription would pay for (Free, Pro, Max, Team), and hide the claude.ai login method [P7]. `--cli` runs the wrapped Claude CLI instead of ACP [P6].
+- **It takes a base URL and a key from its environment.** With no provider set over ACP, the adapter routes to `ANTHROPIC_BASE_URL`, else `https://api.anthropic.com` [P8], and starts the CLI with `process.env` as its environment [P9]. Claude Code sends `ANTHROPIC_API_KEY` as the `x-api-key` header [D1]. So ostra's two variables, the key proxy's address and the task's placeholder key, are all it needs, and the key proxy already takes a placeholder in `x-api-key` (`apps/runner/src/sidecar/key-proxy.ts`).
+- **`initialize` advertises** protocol version 1, `loadSession`, images and embedded context in prompts, MCP over HTTP, SSE and ACP, session list, resume, fork, close, delete, options, title and status, `auth.logout` and `auth.status`, `providers`, `_meta.claudeCode.promptQueueing`, and, at the reply's top level, `_meta.steering.supported: true` [P10]. Stdio MCP isn't in the reply because ACP makes it mandatory for every agent [A1].
+- **What it reads from the repo.** It starts the CLI with `settingSources: ["user", "project", "local"]` [P9], so a repo's own `.claude/settings.json` and `.claude/settings.local.json` apply, hooks included. ADR 0049's rule for an agent without `projectConfigOverride` (hide the agent's repo config files for the task) covers it.
+- **Nothing here needs a subscription.** The `ANTHROPIC_API_KEY` source outranks a stored subscription [P7][D1], and with `--hide-claude-auth` a session that a subscription would pay for is refused [P7].
+
+## Sources
+
+| | What | Where |
+|---|---|---|
+| P1 | `@agentclientprotocol/claude-agent-acp` 0.108.1: `license: Apache-2.0`, `bin`, `engines`, `dependencies` (`@anthropic-ai/claude-agent-sdk: 0.3.326`, `@agentclientprotocol/sdk: 2.8.0`), `_npmUser` GitHub Actions trusted publisher, provenance attestation; `dist-tags` `latest: 0.108.1`, published 2026-11-18T17:21:24Z | https://registry.npmjs.org/@agentclientprotocol/claude-agent-acp/latest, https://registry.npmjs.org/@agentclientprotocol%2fclaude-agent-acp |
+| P2 | `@anthropic-ai/claude-code` 2.1.328: `license: SEE LICENSE IN README.md`, eight per-platform optional packages | https://registry.npmjs.org/@anthropic-ai/claude-code/latest |
+| P3 | `@anthropic-ai/claude-agent-sdk` 0.3.328 latest (published 2026-11-18T23:13Z), `license: SEE LICENSE IN README.md`; 0.3.326 has eight optional platform packages at `0.3.326` and no install scripts | https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/latest, https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/0.3.326 |
+| P4 | The SDK tarball's `LICENSE.md` (one line, quoted above) and `README.md` line 68 ("please review our Commercial Terms of Service") | the 0.3.326 tarball from [P3] |
+| P5 | `@anthropic-ai/claude-agent-sdk-linux-x64` 0.3.326: `license: SEE LICENSE IN LICENSE.md`, `os: linux`, `cpu: x64`, unpacked 371,430,493 bytes | https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-linux-x64/0.3.326 |
+| P6 | `dist/index.js:12-40` (`--cli` spawns the CLI), `:41-44` (`--version`), `:45-95` (ACP on stdout, console to stderr, `CLAUDE_AGENT_LOGS`, `CLAUDE_AGENT_ACP_PROTOCOL`) | the 0.108.1 tarball |
+| P7 | `dist/hide-claude-auth.js:1-35` (the guard and when it recreates a query), `:37` (`--hide-claude-auth`), `:49` (the refusal's message), the allowlist of key sources that outrank a subscription (`ANTHROPIC_API_KEY`, `apiKeyHelper`, `/login managed key`) | the 0.108.1 tarball |
+| P8 | `dist/providers.js:42-102` (`createEnvForProvider`: a provider set over ACP blanks `ANTHROPIC_API_KEY` and sets `ANTHROPIC_BASE_URL` and a placeholder `ANTHROPIC_AUTH_TOKEN`), `:170-196` (`defaultProviderConfig`: `ANTHROPIC_BASE_URL`, else Anthropic's) | the 0.108.1 tarball |
+| P9 | `dist/v1/acp-agent.js:7532` (`AskUserQuestion` disallowed unless the client renders form elicitations), `:7588-7600` (the CLI's env: `process.env`, then the client's `_meta` env, then a provider's), `:7611` (`settingSources: ["user", "project", "local"]`), `:7633` (the client's `_meta.claudeCode.options` spread after it), `:7640-7670` (what ACP keeps: `cwd`, MCP servers, permission mode, `canUseTool`, elicitations, `pathToClaudeCodeExecutable`) | the 0.108.1 tarball |
+| P10 | `dist/v1/acp-agent.js:490-582`, `initialize`: the reply quoted in the summary; `authMethods` holds terminal login methods only for a client that advertises terminal auth, and the gateway methods only for one that advertises `auth._meta.gateway` | the 0.108.1 tarball |
+| P11 | `dist/claude-cli.js:16-47`: the CLI is `CLAUDE_CODE_EXECUTABLE`, else the one beside a standalone executable, else the SDK's platform package (`@anthropic-ai/claude-agent-sdk-linux-<arch>[-musl]/claude`); with `CLAUDE_CODE_EXECUTABLE` set, MCP servers go on the CLI's command line (`argv`), otherwise over stdin (`initialize`) | the 0.108.1 tarball |
+| P12 | `dist/session-mode.js:290-322`: modes `default` ("Manual"), `acceptEdits`, `plan`, `auto`, `bypassPermissions`; `dist/permissions/modes.js:3`: bypass is off for root unless `IS_SANDBOX` is set | the 0.108.1 tarball |
+| P13 | `dist/session-model.js:600-612`: the model is `ANTHROPIC_MODEL`, then `settings.model`, then a resumed session's, then the first listed | the 0.108.1 tarball |
+| P14 | `README.md:39-58` (standalone executables bundle `claude`; `CLAUDE_CODE_EXECUTABLE` puts MCP `env` and `headers` on a command line other users can read), `:60-83` (draft ACP v2 for clients that ask for it; "Steering is v1 only for now"), `:85-89` (contributions under Apache-2.0, no CLA) | the 0.108.1 tarball |
+| D1 | Environment variables: `ANTHROPIC_API_KEY` ("sent as `X-Api-Key` header … In non-interactive mode (`-p`), the key is always used when present"), `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL` ("also used for background functionality"), `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, `DISABLE_AUTOUPDATER`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION` | https://code.claude.com/docs/en/env-vars |
+| D2 | Memory: user instructions at `~/.claude/CLAUDE.md`; a repo's `AGENTS.md` read when no `CLAUDE.md` is in the working directory or above (v2.1.277 or later); auto memory | https://code.claude.com/docs/en/memory |
+| D3 | Gateway compatibility: the Anthropic Messages format needs `/v1/messages` (and `/v1/messages/count_tokens`, optional), forwarding `anthropic-beta` and `anthropic-version`; `x-api-key` carries an `ANTHROPIC_API_KEY`; optional model discovery is `GET /v1/models?limit=1000` at startup, cached under `CLAUDE_CONFIG_DIR` | https://code.claude.com/docs/en/llm-gateway-protocol |
+| D4 | Legal and compliance (checked 2026-11-17 in `agent-harnesses.md` §1.4): no claude.ai login offered by third parties, no Free, Pro, Max or Ultra credentials routed for users, team-provisioned API keys fine for the customer's own users | https://code.claude.com/docs/en/legal-and-compliance |
+| A1 | ACP session setup: "All Agents MUST support the stdio transport"; HTTP and SSE are optional capabilities checked in `initialize` | https://agentclientprotocol.com/protocol/session-setup |
+
+## 1. The packages
+
+| Package | Version | License | What it is |
+|---|---|---|---|
+| `@agentclientprotocol/claude-agent-acp` | 0.108.1, latest on 2026-11-19 (a `preview` tag also exists) | Apache-2.0 [P1] | The ACP agent: a Node program on the Agent SDK. Its maintainers on npm are two individuals and the publisher is GitHub Actions through npm's trusted publishing, with a provenance attestation [P1] |
+| `@anthropic-ai/claude-agent-sdk` | 0.3.326, exactly, as the adapter pins it (0.3.328 is the latest) | Proprietary: Anthropic's legal agreements [P3][P4] | "A library that runs the Claude Code binary" (`agent-harnesses.md` §1.1). No install scripts; the binary comes from an optional platform package [P3] |
+| `@anthropic-ai/claude-agent-sdk-<platform>` | 0.3.326 | Proprietary [P5] | The Claude Code CLI binary for one platform: linux x64 and arm64 (glibc and musl), darwin x64 and arm64, win32 x64 and arm64 [P3]. About 371 MB on Linux x64 [P5] |
+| `@agentclientprotocol/sdk` | 2.8.0, the adapter's own | Apache-2.0 | The ACP library. ostra's driver uses 2.7.0 (ADR 0007); the two speak the same wire protocol, v1, so the versions needn't match |
+
+- **The adapter also ships standalone executables** on GitHub releases, which bundle the `claude` binary and need no Node [P14]. ostra doesn't use them: they'd be a second download with its own checksums, and the base image and every runner already have Node (`deploy/Dockerfile.base`).
+- **`CLAUDE_CODE_EXECUTABLE` is a trap for ostra.** With it set, the adapter passes the session's MCP servers, with their `env` and `headers`, on the CLI's command line, "where other users of the machine can read" them [P11][P14]. ostra's MCP server takes the task's bearer in a header (`PrepareLaunchInput.mcp.bearer`). So ostra leaves the variable unset and lets the adapter find the binary in the SDK's platform package, whose path is fixed [P11], and checks that file's SHA-256 before it launches it, as it does for OpenCode (`packages/adapters/adapter-opencode/src/binary.ts`).
+
+## 2. Launching it
+
+```
+node <node_modules>/@agentclientprotocol/claude-agent-acp/dist/index.js --hide-claude-auth
+```
+
+- **ACP over stdio.** `dist/index.js` serves ACP on stdout and sends every other console stream to stderr, so stdout carries only the protocol [P6]. It exits when the connection closes, on stdin's end, `SIGTERM` or `SIGINT` [P6].
+- **v1 by default for ostra.** A client that asks for protocol version 2 gets the draft v2; any other gets v1 [P14]. ostra's driver asks for `acp.PROTOCOL_VERSION` of the SDK it pins (`packages/adapter-sdk/src/agent/acp/driver.ts:382`), and advertises `elicitation.form`, no `fs` and no `terminal` (`:383-388`), so the agent asks its questions as forms and uses its own file and shell tools. `CLAUDE_AGENT_ACP_PROTOCOL=v1` pins the version [P6][P14], and ostra sets it, so a later default can't move a task to the draft. Steering is v1 only [P14].
+- **`--hide-claude-auth`.** "This integration must never bill a claude.ai subscription, except a Claude Enterprise plan" [P7]. Under the flag the agent hides the claude.ai login method from `initialize` and refuses, with `authRequired` and the message "This integration does not support using claude.ai subscriptions.", every session and turn a Free, Pro, Max or Team plan would pay for [P7]. ostra passes it on every launch, so a machine whose user is logged in to Claude Code (a personal runner on `host`) still can't spend that login through ostra (Q47).
+- **The environment ostra gives it** (an allowlist, ADR 0030), each variable from [D1]:
+  - `ANTHROPIC_BASE_URL`: the key proxy's address (loopback on `host`, the sidecar's in a box). The adapter routes to it when no provider is set over ACP [P8], and ostra never sets one.
+  - `ANTHROPIC_API_KEY`: the task's placeholder key. Claude Code sends it as `x-api-key` [D1], and in non-interactive use "the key is always used when present" [D1]. `ANTHROPIC_AUTH_TOKEN` stays unset, so no `Authorization` header carries a second credential.
+  - `ANTHROPIC_MODEL`: the profile's model, the endpoint's model ID; it outranks every other source of the model [P13]. `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL`: the same ID. The Haiku one is "also used for background functionality" [D1], so without it a background call names a model the endpoint may not serve.
+  - `CLAUDE_CONFIG_DIR`: a folder in the task's agent folder. "All settings, session history, and plugins are stored under this path" [D1], so nothing reaches the machine's `~/.claude`, and its cached gateway model list lands there too [D3]. `CLAUDE_CODE_PROJECT_DIR_NAME`: a fixed name, so a session's transcript folder doesn't depend on the workspace's path [D1], which differs between boxes on `host`.
+  - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`: "Claude does not create or load auto memory files" [D1] (ADR 0044: each agent's own memory stays off).
+  - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`, `DISABLE_AUTOUPDATER=1`: no auto-updates, telemetry, error reporting or feature-flag fetches [D1] (ADR 0021: no telemetry; ADR 0046: the version is the image's pin).
+  - `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`: no predicted follow-up per turn [D1]. The adapter asks for one by default, and it rides the turn's own call [P9]; ostra has no use for it, and every call costs tokens.
+  - `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` only for a provider whose gateway refuses pre-release `anthropic-beta` values [D1]; a profile switch, off by default, since Anthropic's own API takes them.
+  - `CLAUDE_AGENT_ACP_PROTOCOL=v1` (above), and `HOME` and `PATH` as the adapter's own allowlist sets them.
+- **What the endpoint must serve:** `/v1/messages`, with `anthropic-beta` and `anthropic-version` forwarded; `/v1/messages/count_tokens` is optional, and without it Claude Code estimates [D3]. It may call `GET /v1/models` at startup, fails silently when the gateway lacks it, and caches the answer under `CLAUDE_CONFIG_DIR` [D3]. Every one of these goes through the key proxy, which counts each call (F-089).
+
+## 3. What it advertises in `initialize`
+
+From `dist/v1/acp-agent.js:490-582` [P10], v1, for a client that declares none of the JetBrains AIR extensions:
+
+| Field | Value | What ostra makes of it |
+|---|---|---|
+| `protocolVersion` | `1` | The driver's version |
+| `agentCapabilities.loadSession` | `true` | `sessionLoad` |
+| `agentCapabilities.promptCapabilities` | `image: true`, `embeddedContext: true` | Ticket images can go in as images (F-064), when the driver sends them |
+| `agentCapabilities.mcpCapabilities` | `http: true`, `sse: true`, `acp: true` | `mcp.http`; stdio is mandatory for every ACP agent [A1], so `mcp.stdio` too |
+| `agentCapabilities.sessionCapabilities` | `additionalDirectories`, `close`, `delete`, `fork`, `list`, `options`, `resume`, `status`, `systemPrompt`, `title` | None of them is needed: ostra uses `session/new`, `session/load`, `session/prompt`, `session/cancel` and `session/set_mode` |
+| `agentCapabilities.auth` | `logout`, `status` | Unused. The agent pushes `_auth/status_update` after `initialize` [P10]; that the driver tolerates the unknown notification is an agent contract case |
+| `agentCapabilities.providers` | `{}` | Client-managed routing (`providers/set`) exists, and ostra doesn't use it: the environment is enough, and a provider set over ACP blanks `ANTHROPIC_API_KEY` [P8] |
+| `agentCapabilities._meta.claudeCode.promptQueueing` | `true` | A prompt sent during a turn is queued by the agent. ostra queues its own (F-024), so it never relies on it |
+| `_meta.steering.supported` (top level) | `true` | `steerMidTurn`, over `_session/steering`, the same extension OpenCode's adapter reads (ADR 0032) |
+| `agentInfo` | `name: "@agentclientprotocol/claude-agent-acp"`, `title: "Claude Agent"`, the version | Recorded on the session (`DriverConnection.agentName`, `agentVersion`) |
+| `authMethods` | Empty for ostra: terminal logins only for a client that advertises terminal auth, gateway logins only for `auth._meta.gateway` [P10] | ostra advertises neither, so it is never offered a login |
+
+## 4. How it behaves, for each thing ostra's interface asks
+
+| ostra's capability (`packages/adapter-sdk/src/agent/capabilities.ts`, and milestones 4 and 6's additions) | What the adapter does | Source |
+|---|---|---|
+| `steerMidTurn` | `_meta.steering.supported`, v1 only | [P10][P14] |
+| `sessionLoad` | `loadSession: true` | [P10] |
+| `nativePlan` | Its TODO lists arrive as ACP plans ("TODO lists" in its feature list) | README features list in the tarball |
+| `rejectAndContinue` | A denied tool call goes back to the model through `canUseTool`, which ACP keeps for itself [P9]; whether the turn carries on is to be shown by the agent suite | [P9]; to verify |
+| `elicitationForm` and `elicitation` | `AskUserQuestion` is a form elicitation when the client advertises form elicitation, and is disallowed otherwise; MCP elicitations are forwarded the same way | [P9] |
+| `modelBaseUrlAndPlaceholderKey` | `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY` | [P8][D1] |
+| `sessionArchive` | Transcripts live under `CLAUDE_CONFIG_DIR/projects/<CLAUDE_CODE_PROJECT_DIR_NAME>/` [D1]; `agent-harnesses.md` §1.2 found a copied `.jsonl` resumes by ID, and that two writers lose messages. An archive is that folder; the agent suite's archive case decides | [D1], `agent-harnesses.md` §1.2 |
+| `permissionRules` | Claude Code's own settings take `allow`, `ask` and `deny` rules with patterns (`agent-harnesses.md` §1.3); ostra writes them into the user settings in `CLAUDE_CONFIG_DIR` | `agent-harnesses.md` §1.3 |
+| `planMode` | A session mode, `plan`, switched with `session/set_mode`; the others are `default`, `acceptEdits`, `auto`, `bypassPermissions` | [P12] |
+| `skills` | Read from the user config folder's `skills/` | `agent-harnesses.md` §1.1; to verify in the suite |
+| `mcp` | HTTP and stdio | [P10][A1] |
+| `projectConfigOverride` | No: the repo's project and local settings load [P9], so the adapter names `.claude/settings.json`, `.claude/settings.local.json` and `.mcp.json` in `repoConfigPaths`, and the runner hides them (ADR 0049, Q171) | [P9] |
+| `memory` (milestone 4) | `mcp`, with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` | [D1][P10] |
+| The repo's `AGENTS.md` (F-078) | Read natively when no `CLAUDE.md` is in the working directory or above; with one, the repo's `CLAUDE.md` is its own choice | [D2] |
+| ostra's instructions and the memory block | The user-level `CLAUDE.md` in `CLAUDE_CONFIG_DIR`, never the repo | [D1][D2] |
+| `bypassPermissions` | Off for root unless `IS_SANDBOX`; ostra never uses it, since the runner answers every request it asks | [P12] |
+
+## 5. What's still unverified
+
+- **The turn after a denied tool call** (`rejectAndContinue`), **skills from `CLAUDE_CONFIG_DIR/skills/`**, **the archive's round trip to a fresh workspace**, and **whether a gateway without `count_tokens` or `/v1/models` slows a session's start**: none ran here. Each is a case of the agent contract suite (milestone 7's ticket 05), which decides the declared value.
+- **Redistribution.** Whether Anthropic's terms allow ostra's public images to contain the Claude Code binary [P4][D4] is a legal question, not a technical one (ADR 0032, `rivet.md` R16). This file doesn't answer it. ADR 0062 keeps the binary out of every image ostra publishes until the maintainer has.
+- **A non-Claude model behind the Messages API.** The demo's endpoint may serve another family's model in Anthropic's format (spike 10 ran OpenCode that way, `spike-is-opencode-good-enough.md`). Claude Code's protocol works on it; how well the model drives Claude Code's tools is a measurement for the demo, not a claim here.
