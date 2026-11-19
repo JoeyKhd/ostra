@@ -37,7 +37,7 @@ A real box still waits for the Linux machine, with F-017.
 
 ## Comments
 
-**2026-11-19:** built.
+**2026-11-19:** built, in commit `26e2105`.
 - `packages/protocol`: `POST /runner/v1/tasks/:taskId/token` (`taskTokenRequestSchema`, `taskTokenResponseSchema`, `TASK_TOKEN_PREFIX`), strict; the log guard redacts `ostra-task-`.
 - `apps/core/src/gateway/task-token.ts`: the token, an HMAC under core's key over the organization, task, epoch, box and runner, with no clock; `checkTaskLease` reads the lease at every use. The endpoint answers only the runner holding the current, active lease, and a `host` lease gets `400`.
 - `apps/core/src/gateway/sidecars.ts`: the `sidecar` peer, on the same `/runner/v1/connect` upgrade, picked by the bearer's prefix. Presence and the connection epoch are columns on `box`, and a sidecar's commands are rows of the new `sidecar_command` table, numbered per box. The outbox routes a boxed task's `steer`, `interrupt`, `stop` and approval answers there. A stale lease gets `409` at the upgrade and on HTTP, and `error stale-lease` and a 4403 close on the socket.
