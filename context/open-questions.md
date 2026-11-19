@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q185). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q209). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -306,6 +306,32 @@ Met while reading the approved milestone 3 targets' open points and the spec aga
 | Q188 Where and when does a check run in a task with several repos? | Spec section 11, item 23; tickets 23, 32, 47: a repo's check on turns that changed that repo, in its folder; a check with no repo once, at the workspace root; a PR reads every check that applies to it |
 | Q189 What happens to a project's default when its profile is archived? | Spec section 11, item 24; tickets 07, 34, 42: the default moves to the built-in profile, which is always open to everyone; tasks keep the profile they started with; no restore in milestone 3 |
 | Q190 Where do the approval-rule matcher and the prompts the runner sends live? | Spec sections 5.1, 5.4 and 11, item 25; tickets 01, 02, 07, 30, 31: in `@ostra/protocol`, since the runner and the adapters are Apache-2.0 and can't import `packages/domain` (ADR 0045, ADR 0048) |
+
+#### Settled for milestone 4's spec (2026-11-19)
+
+Writing `specs/m4-the-organization/spec.md` met these questions. The maintainer delegated the night's decisions, so each was settled by its recommendation, and the spec's section 11 restates them. Ticket 42 of that spec asks the maintainer to review them; any the maintainer disagrees with moves back to the open list.
+
+| Question | Settled in |
+|---|---|
+| Q191 What does removing a member do? | ADR 0053, F-002: ostra's own use case marks the membership removed and keeps it for history; project roles, personal runners, CLI sessions, driving, draft comments and pending invitations go in the same transaction; the account stays |
+| Q192 Who may invite, and to what? | ADR 0053, F-002, F-087: organization admins, with a role and optional restricted projects; project admins add existing members only; an address with an account joins by signing in |
+| Q193 How is an invitee's address verified, and can members reset their own password? | ADR 0053, F-002: with email set up, the address is locked to the invitation and verified by a mailed link before the membership is active, and "Forgot your password?" mails a verified address; without email, the link alone, and only the instance admin's reset links |
+| Q194 Can an organization or an install lose its last admin? | ADR 0053, F-003: no; the last admin and the last instance admin are kept under a lock. The instance admin role grants nothing inside an organization the account isn't in |
+| Q195 How does a member move between organizations, and what do links do? | ADR 0053, F-049: the active organization in the session, the last one remembered; a link into another of the member's organizations switches with a notice; new organizations get a pool and the built-in profile |
+| Q196 How is "a test for every kind of record" kept true as tables are added? | ADR 0053, F-049, F-087: a test generated from the schema's model list, with a fixture per model and a reviewed allowlist, that fails on a model on neither list |
+| Q197 What does the audit log record, and who reads it? | ADR 0054, F-073: people's and the system's actions in `AuditEntry`, the agent's in the event log, linked; a credential's use is one entry per issuance; append-only, kept while the organization exists; organization admins read all and export CSV, project admins their project's |
+| Q198 How does search work, and over what? | ADR 0054, F-080: Postgres full-text (`simple`), a search table written at ingest over titles, prompts, tickets, messages and tool inputs, never thoughts or output; filters as columns, access in the query; a palette and a page |
+| Q199 What exactly does a budget stop, and when? | ADR 0055, F-037: calendar months in UTC; notices at 80% and 100% once per budget and month; at 100% no new task or turn starts, held in order and released on a raise; running turns finish; one gate for every origin; unpriced models wait where a budget applies |
+| Q200 What do the Insights figures mean? | ADR 0055, F-108: six fixed definitions, computed every 5 minutes into daily rows and per-task metrics; a hidden project's share shows as "Other projects" |
+| Q201 What does memory's secret scan look for, and who may write and approve notes? | ADR 0044 (amended), F-109, F-111: the organization's own secret values and a fixed list of credential shapes; members write and approve in what they can open, and archiving another's note needs an admin of its scope |
+| Q202 How large are the index and the "always" notes, and in what order? | ADR 0044 (amended), F-110: 100 notes and 8 KiB, plus 8 KiB of "always" notes, project before organization, then by last use, with the rest left to search |
+| Q203 What are the memory tools, and how do they reach ostra without a credential in the box? | ADR 0044 (amended), F-110, F-111: `memory_search`, `memory_read` and `memory_propose` on the sidecar's ostra MCP server, forwarded to core with the task's token; 20 proposals a task |
+| Q204 How is a contradicting proposal found without a model call? | ADR 0044 (amended), F-111: the agent declares a relation, and ostra shows the three highest-ranking notes beside every proposal; the member decides |
+| Q205 Where is "Remember this" before the AI review exists? | ADR 0044 (amended), F-111: on diff comments and accepted `@ostra` comments; AI findings in milestone 6, so F-111 stays `building` |
+| Q206 How many repos may a project have, and what changes when one is added or removed? | ADR 0027 (amended), F-098: up to 10; all checked out side by side, the agent at the root with the repos listed; "Related" sections in every PR; a repo added joins the next session; a repo in use can't be removed |
+| Q207 Whose approval counts for the independent-review check, and when is it evaluated? | ADR 0040 (amended), F-104: GitHub users linked to an active non-driver member; on reviews, new heads, links, trailers and the reconcile; `in_progress` until the live test shows it doesn't block, then `action_required` |
+| Q208 How does the scripted demo link a GitHub user it can't sign in as? | ADR 0053: `pnpm dev:link-github`, refused outside development and test and left out of production builds, like `pnpm dev:seed-member` |
+| Q209 What does a runner on protocol minor 2 get in milestone 4? | `specs/m4-the-organization/spec.md`, section 5.1: the memory block appended to its instructions and no tools; everything else works unchanged |
 
 ## Open
 

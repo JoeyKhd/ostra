@@ -1,6 +1,6 @@
 # A task belongs to a project and may change several repos
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q29, and supersedes Q7. Replaces "one ticket, one repo" in F-007 and the domain model. **Amended 2026-11-19** (`context/history/answers-2026-11-19.md`): how a task ends when some of its PRs merge and others close (Q107).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q29, and supersedes Q7. Replaces "one ticket, one repo" in F-007 and the domain model. **Amended 2026-11-19** (`context/history/answers-2026-11-19.md`): how a task ends when some of its PRs merge and others close (Q107). **Amended again 2026-11-19 for milestone 4's spec** (Q206): how many repos, where the agent starts, how the PRs link, and adding or removing a repo ("Milestone 4: several repos in practice" below).
 
 A task belongs to one project (ADR 0026). It starts from a ticket or from a prompt (F-097), and later from a PR. It may change any of the project's repos.
 
@@ -31,3 +31,14 @@ A task belongs to one project (ADR 0026). It starts from a ticket or from a prom
 - Domain rule: "one ticket, one active code task per project".
 - Ledger: F-007 loses its sentences about picking a repo. F-098 (tasks across several repos) is a new v1 row. F-030 and F-078 open one PR per changed repo.
 - **Fallback, confidence medium.** If several PRs per task cost more than a milestone, v1 runs one repo per task in behaviour and the schema stays as it is. It's fourth on the list of what slips first (section 5 of the answers).
+
+## Milestone 4: several repos in practice
+
+Added 2026-11-19 (Q206), for milestone 4's spec, which ships F-098.
+
+- **A project holds at most 10 repos** *(working value: `OSTRA_PROJECT_MAX_REPOS`)*, each checked out by every session, side by side in the workspace, in the project's order. Each keeps its own folder name (the repo's name, with the owner added when two share a name).
+- **The agent starts at the workspace's root** when the task has more than one repo (milestone 1's `agentCwd` already does), and its instructions list the repos, their folders and their base branches. One repo: it starts in that repo, as before.
+- **The PRs link to each other.** Each PR's body ends with a "Related" section listing the task's other PRs, which core edits into every open PR of the task when another one opens, idempotent by task and repo. The ticket gets every PR linked (milestone 2's tracker writer), and the task page lists them all.
+- **Adding a repo to a project** changes no running session: the next session of each open task checks it out too, with a task repo and no branch until the task changes it. **Removing a repo** is refused while an unfinished task (any state but `stopped`, `merged` and `done`) has a branch in it, and the refusal lists those tasks.
+- **Everything per repo stays per repo:** the diff, the checks (a check names its repo or none), update branch, the fresh branch after a merge, the PR's state, and the independent-review check (ADR 0040).
+

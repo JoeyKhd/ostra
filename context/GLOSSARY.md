@@ -250,9 +250,17 @@ _Avoid_: rule, knowledge
 A memory note suggested by an agent or a review, waiting for a member to approve it.
 _Avoid_: draft (that's refine)
 
+**Memory index**:
+What an agent receives about memory at a session's start: each note's title and one line, within a size limit, beside the notes marked "always" in full. The agent searches and reads the rest through ostra's memory tools.
+_Avoid_: memory dump, context file
+
 **Budget**:
-A monthly spend limit for an organization or a project.
+A monthly spend limit for an organization or a project. At 100%, no new task or turn starts until an admin raises it or the month turns; a turn the budget stops waiting is "held".
 _Avoid_: quota, credits
+
+**Insights**:
+The figures an organization or project sees about its work over a period: PRs opened and merged, the merge rate, the median time to a first PR, the time waiting on people, tokens and spend. Computed every few minutes, not live.
+_Avoid_: analytics, metrics, dashboard
 
 ### Who
 
@@ -267,6 +275,22 @@ _Avoid_: user, seat
 **Admin**:
 A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is seeded by the server when it starts with no account, and is also its instance admin, who can create more organizations.
 _Avoid_: owner, operator
+
+**Instance admin**:
+The account that manages the install itself: its organizations, its email, its accounts' reset links and open sign-up. Separate from any organization's admin: it sees nothing inside an organization it isn't a member of.
+_Avoid_: superuser, root, owner
+
+**Invitation**:
+An organization admin's offer of membership to one address, with a role and, optionally, restricted projects. Its link is its secret: it works once and expires. With email set up, the invitee's address is also verified.
+_Avoid_: invite code, sign-up token
+
+**Reset link**:
+A one-time link that lets an account choose a new password. With email set up, a member asks for one by mail; without it, only the instance admin creates one. Using it signs out the account's other sessions.
+_Avoid_: recovery code, password token
+
+**Audit log**:
+The organization's record of who did what and when: people's and the system's actions, each credential issued, every admin change. What an agent ran and read is in the task's event log, which the audit log links to.
+_Avoid_: activity log, history (a task's history is its event log)
 
 **CLI session**:
 What `ostra login` makes: a member's own credential for the `ostra` CLI, made by a device code the member approves in the browser, listed and revocable in their Account. It can read a task's branches for `ostra checkout`, and nothing else.

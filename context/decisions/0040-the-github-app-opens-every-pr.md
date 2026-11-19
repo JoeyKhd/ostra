@@ -1,6 +1,6 @@
 # The GitHub App opens every PR
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122). **Amended again 2026-11-19 for milestone 4's spec** (Q207): whose approval counts, and how the check is kept current ("Milestone 4: the check in practice" below).
 
 The organization's GitHub App opens every PR and authors every commit.
 
@@ -27,3 +27,13 @@ The organization's GitHub App opens every PR and authors every commit.
 - Commits pushed with `git push` aren't signed by GitHub. A repo that requires signed commits can't take ostra's pushes until signed commits (F-056) ship after v1.
 - Ledger: F-030 and F-078 open one PR per changed repo with co-author trailers. F-104 and F-119 are new v1 rows.
 - Revisit if an organization's rules require human-authored commits. Then member-opened PRs return together with GitHub sign-in (F-004).
+
+## Milestone 4: the check in practice
+
+Added 2026-11-19 (Q207), for milestone 4's spec, which ships F-104.
+
+- **Whose approval counts.** A review counts only when its GitHub user is linked (F-119) to an active member of the task's organization who isn't a driver. A driver is every member with a co-author trailer on the task (Q121). An unlinked approver doesn't count, because ostra can't tell whether they are a driver on another account; the check's text says "Approved by @login, who isn't linked to an ostra member" so the team knows why it waits.
+- **When it's evaluated.** On every `pull_request_review` (submitted, edited, dismissed), on every `pull_request` `synchronize` (a new head: a new pending check for it), when a member links or unlinks GitHub, when a trailer is added, and in milestone 2's PR reconcile, every 5 minutes. Each evaluation lists the PR's reviews through the code host adapter and runs spike 4's evaluator (`spikes/github-app-and-git-proxy/src/github/independent-review.ts`), and writes the check only when its result changed, idempotent by PR and head.
+- **On every PR of every task,** in every project. A repo's branch protection decides whether it blocks a merge; ostra never changes branch protection.
+- **`in_progress` or `action_required`.** The check reports `in_progress` ("Waiting for an independent reviewer") until milestone 4's live test on `test1`, with branch protection requiring the check, shows whether that blocks a merge. If it doesn't, the adapter reports `action_required` instead, the test records which, and this ADR is amended with the answer.
+

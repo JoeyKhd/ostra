@@ -316,6 +316,23 @@ The `host` executor has no box. Its worktree goes through the same states, so a 
 | **rejected** | No agent ever sees it | Never |
 | **merged into another note** | Its content went into an existing note | Never |
 
+## A membership's lifecycle
+
+*Added 2026-11-19 for milestone 4 (ADR 0053).*
+
+```
+ (invitation accepted) ──▶ pending verification ──▶ active ──▶ removed
+                     └─────────────────────────────▲
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **pending verification** | The invitee signed up through an invitation on an install with email, and hasn't opened the verification mail. They see nothing of the organization | They open the link (→ active), or an admin removes them (→ removed) |
+| **active** | A member, with their organization role and project roles. Without email, a membership starts here | An admin removes them (→ removed). The last admin can't be removed |
+| **removed** | Kept for history: their name shows with "(removed)". Their project roles, personal runners, CLI sessions, driving and pending invitations ended with the removal | Never. Invited again, they get a new membership |
+
+An **invitation** is `pending` until it's accepted, revoked or expired (7 days *(working value)*), and works once. Its link is its ID.
+
 ## Events and their two numbers
 
 Every event carries two numbers (ADR 0011, ADR 0035):
