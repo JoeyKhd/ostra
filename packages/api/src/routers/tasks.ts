@@ -28,6 +28,7 @@ import {
   approvalOptionSchema,
   clientMessageIdSchema,
   memberIdSchema,
+  needsYouItemIdSchema,
   optionIdSchema,
   projectIdSchema,
   runnerIdSchema,
@@ -437,7 +438,8 @@ export const tasksRouter = router({
             },
       /** The agent profile the task runs with: its agent and model (task.md, the properties panel). */
       agent,
-      needsYou: task.needsYouItems.map((item) => ({ reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
+      // Ticket 36: the item's ID, so the page can answer it (`tasks.dismissNeedsYou`).
+      needsYou: task.needsYouItems.map((item) => ({ id: needsYouItemIdSchema.parse(item.id), reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
       ...extras,
       capabilities: {
         send: isDriver && sessionGoing && (state === "running" || state === "needs_you"),
