@@ -1,6 +1,6 @@
 # The web app uses the libraries the maintainer already works with
 
-**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) as the first email option, with SMTP through `nodemailer` as the second. Amended again 2026-11-19: `koffi` is how the runner makes a Windows job object (Q126). Amended 2026-11-19 for milestone 7's spec: three entries wait for the maintainer's yes (the docs site's Fumadocs, Changesets, and Claude Code's ACP adapter, installed at run time), at the end of this file. First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
+**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) as the first email option, with SMTP through `nodemailer` as the second. Amended again 2026-11-19: `koffi` is how the runner makes a Windows job object (Q126). Amended 2026-11-19 for milestone 7's spec: three entries (the docs site's Fumadocs, Changesets, and Claude Code's ACP adapter, installed at run time), at the end of this file, confirmed the same day under the maintainer's permission for the session's dependencies. First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
 
 | Area | Choice |
 |---|---|
@@ -64,14 +64,14 @@ Milestone 1 starts from these and pins exactly (a version less than a day old is
 
 Other dependencies from the same list are recorded in the ADR of the feature that needs them, each with its own confirmation line: `@agentclientprotocol/sdk` (ADR 0032), `@modelcontextprotocol/sdk` (ADR 0044), an S3 client (ADR 0043) and `@changesets/cli` (ADR 0045).
 
-## Waiting for the maintainer's yes (milestone 7's spec, 2026-11-19)
+## Milestone 7 (2026-11-19)
 
-Chosen on the maintainer's delegation for milestone 7, and **not added until the maintainer confirms each one here**. The ticket that needs one builds its fallback until then, as the row says.
+Chosen on the maintainer's delegation for milestone 7's spec, and confirmed the same day by the lead under the maintainer's standing permission for that session ("for this entire session you can just install every dependency without permission"), pending the maintainer's own review. Each is added only when its ticket is built. If the maintainer withdraws one, its ticket builds the fallback in the last column. Claude Code itself stays under Anthropic's terms, and whether ostra's public images may include it is Q266, a legal reading left to the maintainer.
 
-| Dependency | Package | For | License | Without it |
+| Dependency | Package | For | License | If withdrawn |
 |---|---|---|---|---|
-| `fumadocs-core`, `fumadocs-ui`, `fumadocs-mdx` | `apps/docs` | The docs site (F-058, ADR 0063): MDX pages, layout, the static search index, on Next.js 16 | MIT | The pages on Next.js alone, from Markdown through `@assistant-ui/react-markdown`, without search |
-| `@changesets/cli` | the root, dev only | One version line for every published package (ADR 0045, ADR 0064) | MIT | The release workflow bumps every published `package.json` with a small script of its own |
-| `@agentclientprotocol/claude-agent-acp` 0.108.1, and through it `@anthropic-ai/claude-agent-sdk` 0.3.326 | **No `package.json`:** installed at run time by the runner, or into an agent image (ADR 0062, ADR 0046) | Claude Code over ACP (F-018) | Apache-2.0; the SDK and Claude Code under Anthropic's legal agreements | None: F-018 needs it. The adapter, its tests and the scripted fakes are built without it, and only its live cases wait |
+| `fumadocs-core`, `fumadocs-ui`, `fumadocs-mdx` | `apps/docs` | The docs site (F-058, ADR 0063): MDX pages, layout, the static search index, on Next.js 16 | MIT; confirmed 2026-11-19 | The pages on Next.js alone, from Markdown through `@assistant-ui/react-markdown`, without search |
+| `@changesets/cli` | the root, dev only | One version line for every published package (ADR 0045, ADR 0064) | MIT; confirmed 2026-11-19 | The release workflow bumps every published `package.json` with a small script of its own |
+| `@agentclientprotocol/claude-agent-acp` 0.108.1, and through it `@anthropic-ai/claude-agent-sdk` 0.3.326 | **No `package.json`:** installed at run time by the runner, or into an agent image (ADR 0062, ADR 0046) | Claude Code over ACP (F-018) | Apache-2.0; the SDK and Claude Code under Anthropic's legal agreements; confirmed 2026-11-19 | None: F-018 needs it. The adapter, its tests and the scripted fakes are built without it, and only its live cases wait |
 
 No other new dependency is planned for milestone 7: the keyboard and contrast checks, the message-file check and the measure's script are ostra's own code on what's already installed.

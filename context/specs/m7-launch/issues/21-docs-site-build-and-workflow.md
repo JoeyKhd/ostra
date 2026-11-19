@@ -9,7 +9,7 @@ Spec: `../spec.md`, sections 2 and 4; ADR 0063
 
 ## What to build
 
-- **`apps/docs`**, Apache-2.0, private (never published to npm): on Fumadocs once the maintainer says yes (ADR 0007's "Waiting for the maintainer's yes"), each package pinned exactly; until then, the fallback ADR 0063 names, and this ticket says which under `## Comments`. The brand's tokens and fonts, both themes, the targets' layout.
+- **`apps/docs`**, Apache-2.0, private (never published to npm): on Fumadocs (confirmed 2026-11-19, ADR 0007's "Milestone 7" lines), each package pinned exactly. If the maintainer withdraws it, the fallback ADR 0063 names, and this ticket says which under `## Comments`. The brand's tokens and fonts, both themes, the targets' layout.
 - **Content loading:** its own pages from `apps/docs/content/`, written as Markdown that both Fumadocs and the fallback render (no MDX component a page can't do without), and `docs/configuration.md`, `docs/development.md` and `docs/agents/*.md` read as files at build time, never copied.
 - **The static export** (`output: "export"`), with the repo's Pages base path, and, on Fumadocs, its search index built with it. The fallback has no search (ADR 0007's line), and the `docs-search` target is built only on Fumadocs.
 - **`docs.yml`:** started with `gh workflow run Docs` and on `release: published`; builds and deploys to GitHub Pages; actions pinned by SHA; no secret but the workflow's own token. `ci.yml` only typechecks and lints `apps/docs` with the rest.
