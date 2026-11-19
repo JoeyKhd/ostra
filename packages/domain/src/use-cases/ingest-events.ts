@@ -19,6 +19,7 @@ import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { recordMemoryUse } from "../memory/store.ts";
+import { sendClosingTurnInTx } from "../memory/closing-turn.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
 import { recordSpendInTx } from "./budgets.ts";
 import { modelTokenPrices, priceTokens } from "./spend.ts";
@@ -460,6 +461,17 @@ const applyEffects = async (
         );
         if (!saved.ok) {
           deps.logger?.warn("ingest.work-saved-refused", { taskId: task.id, sessionId: session.id, error: saved.error });
+        }
+        // Milestone 4 (F-111, ticket 16): the profile's closing turn, after a turn with changes.
+        if (saved.ok && deps.outbox !== undefined) {
+          const closing = await sendClosingTurnInTx(
+            { outbox: deps.outbox, notices: deps.notices, clock: deps.clock },
+            tx,
+            { organizationId, taskId: task.id, sessionId: sessionRef.sessionId, savedSeq: seq, event },
+          );
+          if (closing === "sent" || closing === "held") {
+            deps.logger?.info("ingest.closing-turn", { taskId: task.id, sessionId: session.id, outcome: closing });
+          }
         }
         await reloadSession();
         await reloadTask();

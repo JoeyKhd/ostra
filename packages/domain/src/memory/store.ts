@@ -112,7 +112,7 @@ export const buildMemoryBlock = (async (db: Db, input, limits: MemoryLimits = de
 // ---------- the memory tools (the sidecar's endpoints) ----------
 
 /** The words of a query, for the prefix query and the matched line. Letters, digits and `_` only. */
-const queryWords = (query: string): readonly string[] =>
+export const queryWords = (query: string): readonly string[] =>
   [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])].filter((word) => word.length > 0).slice(0, 32);
 
 /** The note's line that holds most of the query's words: what a result shows instead of the body. */
@@ -350,7 +350,7 @@ export const proposeNote = (async (deps: ProposeNoteDeps, input): Promise<Propos
       projectId,
       actor: { kind: "system", id: null },
       action: "memory.proposal-created",
-      entity: "memory_proposal",
+      entity: "memory-proposal",
       entityId: proposalId,
       data: { taskId: input.taskId, source: input.source, scope: input.scope },
     });

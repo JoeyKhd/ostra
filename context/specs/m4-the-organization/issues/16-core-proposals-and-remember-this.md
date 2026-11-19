@@ -1,6 +1,6 @@
 # 16: Core: notes, proposals and "Remember this"
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 06, 15
 Features: F-109, F-111
@@ -17,9 +17,11 @@ Spec: `../spec.md`, section 4 ("A proposal's decision"); ADR 0044 (amended)
 
 ## Done when
 
-- [ ] Tests named `it("F-109: ...")`: notes with each kind and scope; versions on edit; a stale edit refused with `CONFLICT` and no version written; each secret shape and model-control token refused; an audit entry per change; a member who can't open the project can't write or read its notes.
-- [ ] Tests named `it("F-111: ...")`: each decision; a decided proposal refused twice; a merge into a note that moved on refused with `CONFLICT`; related notes ranked; "Remember this" from both sources; the closing turn runs only when the switch is on, which it isn't by default.
-- [ ] Break-it checks recorded in `context/proof/F-109.md` and `F-111.md`.
-- [ ] Committed as `✨ add memory notes and proposals`.
+- [x] Tests named `it("F-109: ...")`: notes with each kind and scope; versions on edit; a stale edit refused with `CONFLICT` and no version written; each secret shape and model-control token refused; an audit entry per change; a member who can't open the project can't write or read its notes.
+- [x] Tests named `it("F-111: ...")`: each decision; a decided proposal refused twice; a merge into a note that moved on refused with `CONFLICT`; related notes ranked; "Remember this" from both sources; the closing turn runs only when the switch is on, which it isn't by default.
+- [x] Break-it checks recorded in `context/proof/F-109.md` and `F-111.md`.
+- [x] Committed as `✨ add memory notes and proposals`.
 
 ## Comments
+
+- 2026-11-19: built and proved; committed as `✨ add memory notes and proposals` (its hash is in the next ticket's commit, and in `git log`). `saveNote`, `archiveNote`, `readNoteForMember`, `decideProposal`, `relatedNotes` and `proposeRememberThis` are `packages/domain/src/memory/notes.ts`; the closing turn is `packages/domain/src/memory/closing-turn.ts`, sent by the ingest after a `session.saved` that moved a repo's head (never after a closing turn, once per save), through `checkBudget` with the origin `closing-turn`, and held as any turn is. The thread shows it as the driver's message with ostra's fixed prompt; a proposal made in it is sourced `closing_turn` by the proposals endpoint. Additive migration `20261121200000_memory_proposal_source_ref` gives `MemoryProposal` a `sourceRef`, so a "Remember this" proposal keeps its comment, and the note it becomes (or the note a merge writes) names the comment as its source (spec step 9). Fourteen break-its, each caught (`context/proof/F-109.md`, `F-111.md`). Tests: `apps/core/src/memory/notes.test.ts`.

@@ -95,6 +95,8 @@ export * from "./memory/secret-scan.ts";
 export * from "./memory/block.ts";
 export * from "./memory/remember-this.ts";
 export * from "./memory/store.ts";
+export * from "./memory/notes.ts";
+export * from "./memory/closing-turn.ts";
 export * from "./repos/several-repos.ts";
 export * from "./review/independent-review.ts";
 export * from "./mail/account-mails.ts";

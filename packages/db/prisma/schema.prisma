@@ -2825,6 +2825,8 @@ model MemoryProposal {
   kind               MemoryKind
   state              ProposalState      @default(proposed)
   sourceKind         ProposalSourceKind
+  /// The diff comment's ID or the PR comment's URL, for a "Remember this" proposal.
+  sourceRef          String?
   /// No foreign keys below: a proposal outlives its task, session, members and notes.
   taskId             String?
   sessionId          String?

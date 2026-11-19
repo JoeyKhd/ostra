@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { Logger, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { proposeNote, readNote, searchNotes } from "@ostra/domain";
+import { isClosingTurnMessageId, lastMessageIdInTx, proposeNote, readNote, searchNotes } from "@ostra/domain";
 import type { AuditLog, Clock } from "@ostra/domain";
 import {
   memoryProposalRequestSchema,
@@ -183,6 +183,8 @@ export const handleMemoryEndpoint =
         sendJson(response, 200, refusal);
         return true;
       }
+      // A proposal made in the profile's closing turn (ticket 16) is sourced as that turn's.
+      const lastMessage = context.sessionId === null ? null : await lastMessageIdInTx(deps.db, context.taskId, context.sessionId);
       const result = await proposeNote(
         {
           db: deps.db,
@@ -201,7 +203,7 @@ export const handleMemoryEndpoint =
           scope: parsed.data.scope,
           relatesTo: parsed.data.relatesTo,
           relation: parsed.data.relation,
-          source: "agent",
+          source: lastMessage !== null && isClosingTurnMessageId(lastMessage) ? "closing_turn" : "agent",
         },
       );
       if (result.ok) {
