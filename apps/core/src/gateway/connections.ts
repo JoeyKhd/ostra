@@ -555,9 +555,10 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           await hooks.liveText(runner, frame);
           return;
         case "runner-event":
-          // Protocol minor 2: a snapshot's result outside a task. Ticket 26 records it; until then
-          // it's logged by kind only, and the runner reports it again with the command's resend.
+          // Protocol minor 2: a snapshot's result outside a task (ticket 26), applied by its ID, so
+          // the runner's report again after a lost connection changes nothing.
           logger.info("gateway.runner-event", { runnerId: runner.runnerId, kind: frame.event.kind });
+          await hooks.runnerEvent?.(runner, frame);
           return;
         default:
           frame satisfies never;

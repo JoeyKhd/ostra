@@ -1,5 +1,5 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { CodeHostAdapter, Logger, PullRequestDetails, SecretStoreAdapter } from "@ostra/adapter-sdk";
+import type { CodeHostAdapter, CodeHostWebhookEvent, Logger, PullRequestDetails, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { recordPullRequestState } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, RecordPullRequestStateResult } from "@ostra/domain";
@@ -28,6 +28,12 @@ export type PullRequestStateDeps = {
   readonly codeHost: CodeHostAdapter;
   readonly secretStore: SecretStoreAdapter;
   readonly logger: Logger;
+  /** Milestone 3 (ticket 26): a push, for the snapshot's lockfile trigger. Without it, a push is ignored. */
+  readonly onPush?: (input: {
+    readonly organizationId: OrganizationId;
+    readonly connectionId: ConnectionId;
+    readonly event: Extract<CodeHostWebhookEvent, { kind: "push" }>;
+  }) => Promise<string>;
 };
 
 const record = (
@@ -46,6 +52,11 @@ export const githubWebhookHandler =
       return { outcome: "ignored", reason: "the delivery could not be read" };
     }
     const event = parsed.value;
+    if (event.kind === "push" && deps.onPush !== undefined) {
+      const outcome = await deps.onPush({ organizationId: context.organizationId, connectionId: context.connectionId, event });
+      context.logger.info("push.read", { outcome });
+      return outcome === "rebuilding" ? { outcome: "processed" } : { outcome: "ignored", reason: `push: ${outcome}` };
+    }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.kind === "other" ? event.event.slice(0, 64) : event.kind})` };
     }

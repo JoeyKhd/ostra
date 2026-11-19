@@ -1,11 +1,11 @@
 import type { Db } from "@ostra/db";
-import { serviceVariablesFromDb } from "@ostra/domain";
-import { runnerLimits } from "@ostra/protocol";
+import { hostCacheKeyFor, serviceVariablesFromDb } from "@ostra/domain";
+import { projectIdSchema, runnerLimits } from "@ostra/protocol";
 
-// The task spec's minor-2 environment sections (milestone 3): the checks (F-054, ticket 23) and the
-// services (F-094, ticket 27). The
-// spec holds each service's plain variables only; its secrets go through the credentials endpoint
-// after the lease check (`issueTaskCredentials`), never here.
+// The task spec's minor-2 environment sections (milestone 3): the checks (F-054, ticket 23), the
+// services (F-094, ticket 27) and what the box starts from (F-051, ticket 26). The spec holds each
+// service's plain variables only; its secrets go through the credentials endpoint after the lease
+// check (`issueTaskCredentials`), never here.
 
 /** The environment's services as the spec carries them, by name. Plain data: `taskSpecSchema` checks it. */
 export const specServices = async (db: Db, task: { readonly projectId: string; readonly organizationId: string }): Promise<Record<string, unknown>[]> => {
@@ -40,4 +40,39 @@ export const specChecks = async (
       repoId: row.repoId,
       timeoutSeconds: Math.min(Math.max(1, row.timeoutSeconds), runnerLimits.checkTimeoutMaxSeconds),
     }));
+};
+
+/**
+ * The spec's `snapshot` (ADR 0038 as amended): on `docker`, the project's ready snapshot when the
+ * chosen runner holds it, and nothing when it doesn't (the box runs the full setup; no runner is
+ * passed over for lacking it); on `host`, the key of the project's repo mirrors and dependency
+ * cache. Plain data, or `undefined` for none.
+ */
+export const specSnapshot = async (
+  db: Db,
+  task: { readonly projectId: string; readonly organizationId: string },
+  lease: { readonly runnerId: string; readonly boxId: string },
+): Promise<Record<string, unknown> | undefined> => {
+  const box = await db.box.findFirst({ where: { id: lease.boxId, organizationId: task.organizationId }, select: { executor: true } });
+  const executor = box?.executor ?? null;
+  switch (executor) {
+    case "host":
+      return { kind: "host-cache", cacheKey: hostCacheKeyFor(projectIdSchema.parse(task.projectId)) };
+    case "docker": {
+      const ready = await db.snapshot.findFirst({
+        where: { projectId: task.projectId, organizationId: task.organizationId, state: "ready" },
+        orderBy: { readyAt: "desc" },
+        select: { id: true, runnerId: true, imageRef: true, digest: true },
+      });
+      if (ready?.runnerId !== lease.runnerId || ready.imageRef === null || ready.digest === null) {
+        return undefined;
+      }
+      return { kind: "image", snapshotId: ready.id, imageRef: ready.imageRef, digest: ready.digest };
+    }
+    case "kubernetes":
+    case null:
+      return undefined;
+    default:
+      return executor satisfies never;
+  }
 };

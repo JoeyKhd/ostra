@@ -14,6 +14,7 @@ import type {
   LiveText,
   OrganizationId,
   ReplicaId,
+  RunnerEventFrame,
   RunnerId,
   SessionId,
   TaskId,
@@ -60,6 +61,8 @@ export type GatewayHooks = {
   readonly onSidecarConnectedInTx: (tx: Tx, lease: SidecarLease) => Promise<void>;
   /** A box's sidecar's newest connection closed (its task's grace starts, F-045). */
   readonly onSidecarDisconnectedInTx: (tx: Tx, lease: SidecarLease) => Promise<void>;
+  /** Protocol minor 2: a runner's own event, outside any task (a snapshot build's result, ticket 26). Without it, logged only. */
+  readonly runnerEvent?: (runner: RunnerRef, frame: RunnerEventFrame) => Promise<void>;
 };
 
 /** The lease a sidecar's task token names, checked. */

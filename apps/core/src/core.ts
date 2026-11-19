@@ -59,6 +59,17 @@ import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
 import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
+import { handleSnapshotEndpoint } from "./snapshots/endpoints.ts";
+import {
+  applySnapshotCommandResultsInTx,
+  applySnapshotRunnerEvent,
+  ensureSnapshotNightlySchedule,
+  requeueSnapshots,
+  snapshotNightlyHandler,
+  snapshotScheduleHandler,
+  snapshotsOnPush,
+} from "./snapshots/snapshots.ts";
+import type { SnapshotDeps } from "./snapshots/snapshots.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
@@ -79,6 +90,9 @@ const TICKET_DRAIN_MS = 2_000;
 
 /** How often queued tasks with no offer out get a fresh dispatch. */
 const REQUEUE_MS = 5_000;
+
+/** How often queued snapshot builds look for a `docker` runner, and lost ones go back to the queue (ticket 26). */
+const SNAPSHOT_SWEEP_MS = 15_000;
 
 /** The adapters core holds (ADR 0025): the code host, the model provider and the secret store. */
 export const createServerAdapters = async (db: Db, settings: ServerSettings, logger: Logger): Promise<ServerAdapters> => {
@@ -168,6 +182,17 @@ export const startCore = async (
     logger,
     timers,
   };
+  // Snapshots (milestone 3, ticket 26): built by a `docker` runner of the project's pools.
+  const snapshotDeps: SnapshotDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    clock: systemClock,
+    codeHost: adapters.codeHost,
+    secretStore: adapters.secretStore,
+    logger,
+  };
   const signingKey = await loadRunnerTokenKey(settings);
   const gateway = createGateway({
     db,
@@ -189,7 +214,9 @@ export const startCore = async (
         await applyOfferResultsInTx(dispatcherDeps, tx, runner, results);
         await applyStopResultsInTx(reactionDeps, tx, runner, results);
         await applyReleaseResultsInTx({ clock: systemClock, logger }, tx, runner, results);
+        await applySnapshotCommandResultsInTx(snapshotDeps, tx, runner, results);
       },
+      runnerEvent: (runner, frame) => applySnapshotRunnerEvent(snapshotDeps, runner, frame),
     },
     logger,
   });
@@ -198,6 +225,8 @@ export const startCore = async (
   await jobs.work("task.offer-timeout", offerTimeoutHandler(dispatcherDeps));
   await jobs.work("task.session-ended", sessionEndedHandler(reactionDeps));
   await jobs.work("task.open-pull-requests", openPullRequestsHandler(reactionDeps));
+  await jobs.work("snapshot.schedule", snapshotScheduleHandler(snapshotDeps), { localConcurrency: 2 });
+  await jobs.work("snapshot.nightly", snapshotNightlyHandler(snapshotDeps), { localConcurrency: 1 });
   // Runaway protection on the server (ticket 19): the maximum duration and the stall sweep.
   const limitDeps: LimitDeps = {
     db,
@@ -251,6 +280,7 @@ export const startCore = async (
     },
     blobs,
   });
+  const snapshotEndpoints = handleSnapshotEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
   const blobEndpoints = handleBlobEndpoint({
     db,
     tokens: gateway.context.tokens,
@@ -286,6 +316,7 @@ export const startCore = async (
     codeHost: adapters.codeHost,
     secretStore: adapters.secretStore,
     logger,
+    onPush: (input: Parameters<typeof snapshotsOnPush>[1]) => snapshotsOnPush(snapshotDeps, input),
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
   // Milestone 3's diff (ticket 22): one compare per head, cached, and outdated comments.
@@ -373,7 +404,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, snapshotEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 
@@ -405,6 +436,9 @@ export const startCore = async (
     await ensureStallSweepSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "session.stall-sweep", error: error instanceof Error ? error.name : "unknown" });
     });
+    await ensureSnapshotNightlySchedule(jobs, settings.snapshotNightlyHour).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "snapshot.nightly", error: error instanceof Error ? error.name : "unknown" });
+    });
   };
   await schedules();
   const scheduleTimer = setInterval(() => void schedules(), 10 * 60_000);
@@ -417,6 +451,12 @@ export const startCore = async (
     });
   }, REQUEUE_MS);
   requeue.unref();
+  const snapshotSweep = setInterval(() => {
+    requeueSnapshots(snapshotDeps).catch((error: unknown) => {
+      logger.warn("snapshot.sweep-failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
+  }, SNAPSHOT_SWEEP_MS);
+  snapshotSweep.unref();
 
   logger.info("core.listening", { port, replicaId });
   return {
@@ -428,6 +468,7 @@ export const startCore = async (
     stop: async () => {
       clearTimeout(bootstrapTimer);
       clearInterval(requeue);
+      clearInterval(snapshotSweep);
       clearInterval(drain);
       clearInterval(trackerTimer);
       clearInterval(scheduleTimer);
