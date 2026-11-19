@@ -15,6 +15,7 @@ import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import { parseBoardMapping } from "../tickets/board-mapping.ts";
 import { ticketMagicLine, ticketPullRequestTitle } from "../tickets/contracts.ts";
 import type { JobQueue, Ports } from "../ports.ts";
+import { enqueueLinkRelatedInTx } from "../repos/project-repos.ts";
 import { enqueueReviewEvaluationInTx } from "../review/review-check.ts";
 import type { UseCaseResult } from "./common.ts";
 import { writeTicketStepsInTx } from "../tickets/ticket-writes.ts";
@@ -223,6 +224,10 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       });
       // Search (ticket 11): the PR is found by its title, on its repo.
       await writePullRequestSearchEntry(tx, { organizationId, projectId, taskId: task.id, repoId, eventSeq: openedSeq, title: pr.title });
+      // Milestone 4 (F-098, ticket 17): the task's PRs link each other in their "Related" sections.
+      if (deps.jobs !== undefined && !reused) {
+        await enqueueLinkRelatedInTx(deps.jobs, tx, { organizationId, taskId: task.id, repoId, prNumber: pr.number, connectionId: repo.connectionId });
+      }
       // Milestone 4 (F-104): the new PR's independent-review check, on its head.
       if (deps.jobs !== undefined && !reused && taskRepo.headSha !== null) {
         await enqueueReviewEvaluationInTx(deps.jobs, tx, { organizationId, taskRepoId: taskRepo.id, prNumber: pr.number, headSha: taskRepo.headSha, connectionId: repo.connectionId });

@@ -16,6 +16,7 @@ import {
 import type { BlobRef, BoxId, ClientMessageId, MemberId, NeedsYouItemId, PendingMessage, SessionId, TaskId, TaskSeq, TurnOrigin } from "@ostra/protocol";
 import { z } from "zod";
 
+import { addNewProjectReposInTx } from "../repos/project-repos.ts";
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { taskFromColumns } from "../lifecycles/mapping.ts";
@@ -271,6 +272,8 @@ export const reopenTask: ReopenTask = async (deps, input) => {
     select: { id: true },
   });
   const sessionId = sessionIdSchema.parse(created.id);
+  // Milestone 4 (F-098, ticket 17): a repo the project gained since joins this new session, with no branch yet.
+  await addNewProjectReposInTx(tx, { id: task.id, organizationId, projectId: task.projectId, branchName: task.branchName });
   for (const message of owed) {
     await appendServerEvent(tx, {
       organizationId: organization,
