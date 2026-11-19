@@ -107,6 +107,17 @@ export type FakeCheckRun = {
   externalId: string | null;
 };
 
+/**
+ * Milestone 4 (F-136, ADR 0065): an account other than the App's owner with the App installed on
+ * it, such as a client's organization. Its repos are the fake's repos whose `owner` is its login.
+ */
+export type FakeAccount = {
+  readonly login: string;
+  readonly id: number;
+  readonly type: "Organization" | "User";
+  readonly installationId: number;
+};
+
 type TokenScope = {
   readonly installationId: number;
   /** `null`: every repo of the installation. */
@@ -144,6 +155,8 @@ export type FakeGitHub = {
   readonly wrongPrivateKey: string;
   readonly installationId: string;
   readonly org: string;
+  /** Milestone 4 (F-136): the owner's account ID: the App's owner, and its own installation's account. */
+  readonly orgId: number;
   readonly requests: FakeRequest[];
   readonly pulls: FakePullRequest[];
   /** Refs besides branches, per `owner/name`. */
@@ -180,6 +193,18 @@ export type FakeGitHub = {
   readonly dismissReview: (reviewId: number) => FakeReview;
   /** Every check run, in the order they were made. */
   readonly checkRuns: readonly FakeCheckRun[];
+  // ---- milestone 4 (ticket 47, F-136) ----
+  /** The accounts besides the owner's with the App installed, as the fake was started. */
+  readonly otherAccounts: readonly FakeAccount[];
+  /** Installations `DELETE /app/installations/{id}` removed, in order. */
+  readonly removedInstallations: () => readonly number[];
+  /**
+   * An `installation` webhook's body for one of the fake's installations, as GitHub documents it
+   * (`created`, `deleted`, `suspend`, `unsuspend`, `new_permissions_accepted`), with its repos.
+   */
+  readonly installationPayload: (action: string, installationId: number) => string;
+  /** An `installation_repositories` webhook's body: repos added to an installation, or removed from it. */
+  readonly installationRepositoriesPayload: (action: "added" | "removed", installationId: number, repoNames: readonly string[]) => string;
   readonly close: () => Promise<void>;
 };
 
@@ -230,6 +255,8 @@ export const createFakeGitHub = async (options: {
   readonly repos: readonly FakeRepo[];
   /** The installation's account login. Defaults to `fake-org`. */
   readonly org?: string;
+  /** Milestone 4 (F-136): other accounts with the App installed, such as a stranger's. None by default. */
+  readonly otherAccounts?: readonly FakeAccount[];
 }): Promise<FakeGitHub> => {
   const pair = await generate("rsa", {
     modulusLength: 2048,
@@ -247,6 +274,34 @@ export const createFakeGitHub = async (options: {
   const botId = 777_001;
   const installationId = 7;
   const org = options.org ?? "fake-org";
+  const orgId = 6_001;
+  const otherAccounts = options.otherAccounts ?? [];
+  const removedInstallations: number[] = [];
+  /** The account an installation is on, or `undefined` for one the fake never had or removed. */
+  const accountOf = (id: number): { readonly login: string; readonly id: number; readonly type: "Organization" | "User" } | undefined => {
+    if (removedInstallations.includes(id)) {
+      return undefined;
+    }
+    if (id === installationId) {
+      return { login: org, id: orgId, type: "Organization" };
+    }
+    return otherAccounts.find((account) => account.installationId === id);
+  };
+  /** Whether an installation can reach a repo: another account's reaches its own repos, the owner's every other. */
+  const installationSees = (id: number, repo: FakeRepo): boolean => {
+    const account = accountOf(id);
+    if (account === undefined) {
+      return false;
+    }
+    return id === installationId ? !otherAccounts.some((other) => other.login === repo.owner) : repo.owner === account.login;
+  };
+  const accountJson = (account: { readonly login: string; readonly id: number; readonly type: string }) => ({
+    login: account.login,
+    id: account.id,
+    node_id: `O_fake_${String(account.id)}`,
+    type: account.type,
+    site_admin: false,
+  });
   const webhookSecret = "fake-webhook-secret";
   const requests: FakeRequest[] = [];
   const pulls: FakePullRequest[] = [];
@@ -500,30 +555,48 @@ export const createFakeGitHub = async (options: {
           permissions: { contents: "write", checks: "write", actions: "read", metadata: "read", pull_requests: "write" },
           events: ["pull_request"],
           client_id: oauthClient.clientId,
+          owner: accountJson({ login: org, id: orgId, type: "Organization" }),
         });
         return;
       }
       if (method === "GET" && path === "/app/installations") {
-        send(response, 200, [
-          { id: installationId, account: { login: org, type: "Organization" }, repository_selection: "selected" },
-        ]);
+        const live = [{ installationId, login: org, id: orgId, type: "Organization" }, ...otherAccounts].filter((item) => accountOf(item.installationId) !== undefined);
+        send(
+          response,
+          200,
+          live.map((item) => ({ id: item.installationId, account: accountJson(item), repository_selection: "selected", app_id: Number(appId), target_type: item.type })),
+        );
+        return;
+      }
+      // Milestone 4 (F-136): "Uninstalls a GitHub App on a user, organization, or enterprise account."
+      const uninstall = /^\/app\/installations\/(\d+)$/.exec(path);
+      if (method === "DELETE" && uninstall !== null) {
+        const id = Number(uninstall[1]);
+        if (accountOf(id) === undefined) {
+          send(response, 404, { message: "Not Found" });
+          return;
+        }
+        removedInstallations.push(id);
+        response.writeHead(204);
+        response.end();
         return;
       }
       const mint = /^\/app\/installations\/(\d+)\/access_tokens$/.exec(path);
       if (method === "POST" && mint !== null) {
-        if (Number(mint[1]) !== installationId) {
+        const minting = Number(mint[1]);
+        if (accountOf(minting) === undefined) {
           send(response, 404, { message: "Not Found" });
           return;
         }
         const body = bodySchema.parse(await readBody(request));
-        if (body.repositories?.some((wanted) => !options.repos.some((repo) => repo.name === wanted)) === true) {
+        if (body.repositories?.some((wanted) => !options.repos.some((repo) => repo.name === wanted && installationSees(minting, repo))) === true) {
           send(response, 422, { message: "There is at least one repository that does not exist or is not accessible to the parent installation." });
           return;
         }
         const token = `ghs_${randomBytes(18).toString("hex")}`;
         const expiresAt = Date.now() + 3_600_000;
         tokens.set(token, {
-          installationId,
+          installationId: minting,
           repos: body.repositories ?? null,
           permissions: body.permissions ?? { contents: "write", pull_requests: "write", metadata: "read" },
           expiresAt,
@@ -579,7 +652,7 @@ export const createFakeGitHub = async (options: {
       return;
     }
     if (method === "GET" && path === "/installation/repositories") {
-      const visible = options.repos.filter((repo) => scope.repos === null || scope.repos.includes(repo.name));
+      const visible = options.repos.filter((repo) => installationSees(scope.installationId, repo) && (scope.repos === null || scope.repos.includes(repo.name)));
       send(response, 200, { total_count: visible.length, repositories: visible.map(repoJson) });
       return;
     }
@@ -591,7 +664,7 @@ export const createFakeGitHub = async (options: {
     const [, owner = "", name = "", rest = ""] = repoRoute;
     const repo = repoOf(owner, name);
     // A token narrowed to one repo sees no other: GitHub answers 404, not 403.
-    if (repo === undefined || (scope.repos !== null && !scope.repos.includes(repo.name))) {
+    if (repo === undefined || !installationSees(scope.installationId, repo) || (scope.repos !== null && !scope.repos.includes(repo.name))) {
       send(response, 404, { message: "Not Found" });
       return;
     }
@@ -971,6 +1044,7 @@ export const createFakeGitHub = async (options: {
     wrongPrivateKey: other.privateKey,
     installationId: String(installationId),
     org,
+    orgId,
     requests,
     pulls,
     refs,
@@ -1012,6 +1086,55 @@ export const createFakeGitHub = async (options: {
       return found;
     },
     checkRuns,
+    otherAccounts,
+    removedInstallations: () => [...removedInstallations],
+    installationPayload: (action, id) => {
+      const account = id === installationId ? { login: org, id: orgId, type: "Organization" } : otherAccounts.find((item) => item.installationId === id);
+      if (account === undefined) throw new Error("the fake has no such installation");
+      const repos = options.repos.filter((repo) => (id === installationId ? !otherAccounts.some((other) => other.login === repo.owner) : repo.owner === account.login));
+      return JSON.stringify({
+        action,
+        installation: {
+          id,
+          account: accountJson(account),
+          repository_selection: "selected",
+          access_tokens_url: `${apiBase()}/app/installations/${String(id)}/access_tokens`,
+          app_id: Number(appId),
+          app_slug: appSlug,
+          target_id: account.id,
+          target_type: account.type,
+          permissions: { contents: "write", metadata: "read", pull_requests: "write", checks: "write" },
+          events: ["pull_request"],
+          created_at: "2026-11-19T10:00:00Z",
+          updated_at: "2026-11-19T10:00:00Z",
+          suspended_by: action === "suspend" ? { login: account.login, id: account.id, type: "User" } : null,
+          suspended_at: action === "suspend" ? "2026-11-19T10:05:00Z" : null,
+        },
+        ...(action === "created" || action === "deleted"
+          ? { repositories: repos.map((repo) => ({ id: repo.id, node_id: `R_fake_${String(repo.id)}`, name: repo.name, full_name: `${repo.owner}/${repo.name}`, private: repo.private ?? true })) }
+          : {}),
+        requester: null,
+        sender: { login: `${account.login}-admin`, id: account.id + 1, type: "User" },
+      });
+    },
+    installationRepositoriesPayload: (action, id, repoNames) => {
+      const account = id === installationId ? { login: org, id: orgId, type: "Organization" } : otherAccounts.find((item) => item.installationId === id);
+      if (account === undefined) throw new Error("the fake has no such installation");
+      const repos = repoNames.map((name) => {
+        const repo = options.repos.find((candidate) => candidate.name === name && candidate.owner === account.login);
+        if (repo === undefined) throw new Error("the fake has no such repo on the account");
+        return { id: repo.id, node_id: `R_fake_${String(repo.id)}`, name: repo.name, full_name: `${repo.owner}/${repo.name}`, private: repo.private ?? true };
+      });
+      return JSON.stringify({
+        action,
+        installation: { id, account: accountJson(account), repository_selection: "selected", app_id: Number(appId), target_type: account.type },
+        repository_selection: "selected",
+        repositories_added: action === "added" ? repos : [],
+        repositories_removed: action === "removed" ? repos : [],
+        requester: null,
+        sender: { login: `${account.login}-admin`, id: account.id + 1, type: "User" },
+      });
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { CheckRunState, PullRequestReview } from "@ostra/adapter-sdk";
+import type { CheckRunState, InstallationAccount, PullRequestReview } from "@ostra/adapter-sdk";
 
 import { defineCodeHostContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
 import type { CodeHostFixture } from "@ostra/adapter-sdk/testing";
@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFakeGitHub } from "./fake-github.ts";
 import type { FakeGitHub, FakeReview } from "./fake-github.ts";
 import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter } from "./github-adapter.ts";
+import { OSTRA_PROJECT_URL } from "./manifest.ts";
 
 const template = "## What\n\n## Why\n";
 const test1 = repoFullNameSchema.parse("fake-org/test1");
@@ -151,6 +152,40 @@ const milestone3Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "compare" | 
   };
 };
 
+// ---- milestone 4 (ticket 47, F-136): a stranger's installation, and another the suite removes ----
+
+const STRANGER = { login: "stranger-co", id: 9_100, type: "Organization", installationId: 91 } as const;
+const ANOTHER = { login: "another-dev", id: 9_200, type: "User", installationId: 92 } as const;
+const strangerRead: InstallationAccount = { accountId: "9100", login: "stranger-co", kind: "organization" };
+const strangerRepo = (id: number, name: string) => ({ hostRepoId: String(id), fullName: repoFullNameSchema.parse(`stranger-co/${name}`) });
+/** DELETE requests that reached the fake's uninstall endpoint. */
+const removalCalls = (fake: FakeGitHub): number => fake.requests.filter((request) => request.method === "DELETE" && /^\/app\/installations\/\d+$/.test(request.path)).length;
+
+const milestone4InstallationsFixture = (
+  fake: FakeGitHub,
+): Pick<CodeHostFixture, "manifestVisibility" | "installations" | "removal" | "installationWebhooks"> => ({
+  manifestVisibility: (manifest) => ({ public: manifest["public"] === true, homepage: String(manifest["url"]) }),
+  installations: {
+    owner: { login: fake.org, accountId: String(fake.orgId) },
+    stranger: { installationId: "91", accountLogin: "stranger-co", accountId: "9100" },
+  },
+  removal: { installationId: "92", unknownInstallationId: "404404", calls: () => removalCalls(fake) },
+  installationWebhooks: [
+    ...(["created", "deleted", "suspend", "unsuspend"] as const).map((action) => ({
+      input: signed(fake, "installation", fake.installationPayload(action, 91)),
+      expected: { kind: "installation" as const, action, installationId: "91", account: strangerRead },
+    })),
+    {
+      input: signed(fake, "installation_repositories", fake.installationRepositoriesPayload("added", 91, ["api"])),
+      expected: { kind: "installation_repositories" as const, action: "added", installationId: "91", account: strangerRead, reposAdded: [strangerRepo(3002, "api")], reposRemoved: [] },
+    },
+    {
+      input: signed(fake, "installation_repositories", fake.installationRepositoriesPayload("removed", 91, ["api"])),
+      expected: { kind: "installation_repositories" as const, action: "removed", installationId: "91", account: strangerRead, reposAdded: [], reposRemoved: [strangerRepo(3002, "api")] },
+    },
+  ],
+});
+
 const startFake = (): Promise<FakeGitHub> =>
   createFakeGitHub({
     repos: [
@@ -178,7 +213,11 @@ const startFake = (): Promise<FakeGitHub> =>
       { id: 1003, owner: "fake-org", name: "free", defaultBranch: "main", files: {}, branches: ["main"], plan: "free" },
       // The rules endpoint refuses the App, as for a missing permission.
       { id: 1004, owner: "fake-org", name: "refused", defaultBranch: "main", files: {}, branches: ["main", "locked"], protectedBranches: ["locked"], rulesRefused: true },
+      // Milestone 4 (F-136): repos on a stranger's account, which installed the public App.
+      { id: 3001, owner: "stranger-co", name: "app", defaultBranch: "main", files: { "README.md": "stranger\n" }, branches: ["main"] },
+      { id: 3002, owner: "stranger-co", name: "api", defaultBranch: "main", files: {}, branches: ["main"] },
     ],
+    otherAccounts: [STRANGER, ANOTHER],
   });
 
 const pullRequestPayload = (overrides: Readonly<Record<string, unknown>> = {}, pr: Readonly<Record<string, unknown>> = {}): string =>
@@ -315,6 +354,7 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
     ],
     ...milestone3Fixture(fake),
     ...milestone4Fixture(fake),
+    ...milestone4InstallationsFixture(fake),
   };
 };
 
@@ -1147,12 +1187,120 @@ describe("the GitHub adapter", () => {
         userLink: true,
         // Milestone 4 (ticket 08).
         reviews: true,
-        installableByOtherAccounts: false,
+        // Milestone 4 (ticket 47).
+        installableByOtherAccounts: true,
       });
     });
   });
 
   // ---- milestone 4 (ticket 08, F-104, ADR 0040) ----
+  describe("installations on other accounts (F-136)", () => {
+    const input = {
+      name: "ostra acme",
+      homepageUrl: "https://ostra.acme.dev",
+      webhookUrl: "https://ostra.acme.dev/hooks/github/abc",
+      redirectUrl: "https://ostra.acme.dev/setup/github/callback",
+      ownerLogin: "acme",
+    };
+
+    it("F-136: the manifest is private with the panel as homepage by default or when asked, and public with ostra's project page when asked; the OAuth callbacks stay the install's", () => {
+      for (const asked of [{}, { public: false }] as const) {
+        const { manifest } = adapter.appManifest({ ...input, ...asked });
+        expect(manifest["public"]).toBe(false);
+        expect(manifest["url"]).toBe(input.homepageUrl);
+      }
+      const { manifest } = adapter.appManifest({ ...input, public: true });
+      expect(manifest["public"]).toBe(true);
+      expect(manifest["url"]).toBe(OSTRA_PROJECT_URL);
+      expect(OSTRA_PROJECT_URL).not.toContain("acme");
+      // Sign-in and the verified link still come back to this install.
+      expect(manifest["callback_urls"]).toEqual([`${input.homepageUrl}/api/auth/callback/github`, `${input.homepageUrl}/api/github/link/callback`]);
+      expect(manifest["redirect_url"]).toBe(input.redirectUrl);
+    });
+
+    it("F-136: reads the App's owner and each installation's account ID; a stranger's installation mints tokens for its own repos only", async () => {
+      expect(await adapter.readApp(fixture.app)).toMatchObject({ ok: true, value: { owner: { login: "fake-org", accountId: "6001" } } });
+      const listed = await adapter.listInstallations(fixture.app);
+      expect(listed.ok && listed.value.find((item) => item.installationId === "91")).toEqual({
+        installationId: "91",
+        accountLogin: "stranger-co",
+        accountId: "9100",
+        accountKind: "organization",
+        repositorySelection: "selected",
+      });
+      expect(listed.ok && listed.value.find((item) => item.installationId === fake.installationId)?.accountId).toBe("6001");
+      const repos = await adapter.listRepos(fixture.app, "91");
+      expect(repos.ok && repos.value.map((repo) => repo.fullName)).toEqual(["stranger-co/app", "stranger-co/api"]);
+      const own = await adapter.listRepos(fixture.app, fake.installationId);
+      expect(own.ok && own.value.map((repo) => repo.fullName)).not.toContain("stranger-co/app");
+      const strangers = { app: fixture.app, installationId: "91", repo: repoFullNameSchema.parse("stranger-co/app") };
+      expect(await adapter.getDefaultBranch(strangers)).toEqual({ ok: true, value: "main" });
+      expect((await adapter.getDefaultBranch({ ...strangers, repo: test1 })).ok).toBe(false);
+    });
+
+    it("F-136: a removal sends one DELETE /app/installations/{id} as the App; an unknown or removed one is not-found, and a malformed ID never reaches GitHub", async () => {
+      const removable = await createFakeGitHub({ repos: [], otherAccounts: [ANOTHER] });
+      try {
+        const local = new GitHubAdapter({ apiUrl: removable.apiUrl, webUrl: removable.webUrl, oauthUrl: removable.apiUrl });
+        const app = { appId: removable.appId, privateKey: removable.privateKey };
+        expect(await local.removeInstallation(app, "92")).toEqual({ ok: true, value: undefined });
+        expect(removable.requests.filter((request) => request.method === "DELETE")).toEqual([expect.objectContaining({ path: "/app/installations/92" })]);
+        expect(removable.removedInstallations()).toEqual([92]);
+        const listed = await local.listInstallations(app);
+        expect(listed.ok && listed.value.map((item) => item.installationId)).toEqual([removable.installationId]);
+        expect(await local.removeInstallation(app, "92")).toMatchObject({ ok: false, error: { code: "not-found" } });
+        expect(await local.removeInstallation(app, "404404")).toMatchObject({ ok: false, error: { code: "not-found" } });
+        expect(await local.removeInstallation({ ...app, privateKey: removable.wrongPrivateKey }, "7")).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+        const before = removable.requests.length;
+        for (const malformed of ["", "0", "12a", "../7", "-1"]) {
+          expect(await local.removeInstallation(app, malformed), malformed).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+        }
+        expect(removable.requests.length).toBe(before);
+        expect(removable.removedInstallations()).toEqual([92]);
+      } finally {
+        await removable.close();
+      }
+    });
+
+    it("F-136: reads each installation event from GitHub's documented payloads, whatever GitHub adds, and refuses one it can't read", () => {
+      // GitHub's example payloads ("Webhook events and payloads": installation, installation_repositories), trimmed, with a field ostra doesn't read.
+      const account = { login: "octocat", id: 1, node_id: "MDQ6VXNlcjE=", type: "User", site_admin: false, a_field_github_adds_later: true };
+      const installation = {
+        id: 1,
+        account,
+        repository_selection: "selected",
+        access_tokens_url: "https://api.github.com/app/installations/1/access_tokens",
+        app_id: 1,
+        target_id: 1,
+        target_type: "User",
+        permissions: { metadata: "read", contents: "read" },
+        events: ["push", "pull_request"],
+        suspended_by: null,
+        suspended_at: null,
+      };
+      const repo = { id: 1296269, node_id: "MDEwOlJlcG9zaXRvcnkxMjk2MjY5", name: "Hello-World", full_name: "octocat/Hello-World", private: false };
+      const read: InstallationAccount = { accountId: "1", login: "octocat", kind: "user" };
+      for (const action of ["created", "deleted", "suspend", "unsuspend", "new_permissions_accepted"]) {
+        const body = JSON.stringify({ action, installation, repositories: [repo], requester: null, sender: account });
+        expect(adapter.parseWebhook(signed(fake, "installation", body)), action).toEqual({ ok: true, value: { kind: "installation", action, installationId: "1", account: read } });
+      }
+      const added = JSON.stringify({ action: "added", installation, repository_selection: "selected", repositories_added: [repo], repositories_removed: [], requester: null, sender: account });
+      const hello = { hostRepoId: "1296269", fullName: repoFullNameSchema.parse("octocat/Hello-World") };
+      expect(adapter.parseWebhook(signed(fake, "installation_repositories", added))).toEqual({
+        ok: true,
+        value: { kind: "installation_repositories", action: "added", installationId: "1", account: read, reposAdded: [hello], reposRemoved: [] },
+      });
+      const removed = JSON.stringify({ action: "removed", installation, repository_selection: "selected", repositories_added: [], repositories_removed: [repo], sender: account });
+      expect(adapter.parseWebhook(signed(fake, "installation_repositories", removed))).toMatchObject({ ok: true, value: { action: "removed", reposAdded: [], reposRemoved: [hello] } });
+      // An organization's account reads as one; a webhook with no account, or a repo name that isn't one, is refused.
+      const orgBody = JSON.stringify({ action: "created", installation: { ...installation, id: 5, account: { ...account, type: "Organization" } } });
+      expect(adapter.parseWebhook(signed(fake, "installation", orgBody))).toMatchObject({ ok: true, value: { installationId: "5", account: { kind: "organization" } } });
+      expect(adapter.parseWebhook(signed(fake, "installation", JSON.stringify({ action: "created", installation: { id: 1 } })))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+      const badRepo = JSON.stringify({ action: "added", installation, repositories_added: [{ ...repo, full_name: "not a repo" }] });
+      expect(adapter.parseWebhook(signed(fake, "installation_repositories", badRepo))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+    });
+  });
+
   describe("reviews and check runs", () => {
     const repo = "fake-org/test1";
     const head = "1".repeat(40);

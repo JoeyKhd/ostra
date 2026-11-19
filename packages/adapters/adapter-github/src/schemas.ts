@@ -12,6 +12,8 @@ export const appSchema = z.looseObject({
   permissions: permissionLevels.default({}),
   events: z.array(z.string()).default([]),
   client_id: z.string().min(1).optional(),
+  // Milestone 4 (F-136): the account that owns the App; GitHub's schema lets it be null.
+  owner: z.looseObject({ login: z.string().min(1), id: z.number().int() }).nullish(),
 });
 
 /** `POST /app-manifests/{code}/conversions`. */
@@ -28,7 +30,7 @@ export const conversionSchema = z.looseObject({
 export const installationSchema = z.looseObject({
   id: z.number().int(),
   account: z
-    .looseObject({ login: z.string().optional(), type: z.string().optional() })
+    .looseObject({ login: z.string().optional(), id: z.number().int().optional(), type: z.string().optional() })
     .nullish(),
   repository_selection: z.enum(["all", "selected"]),
 });
@@ -230,3 +232,28 @@ export const checkRunSchema = z.looseObject({
 
 /** `GET /repos/{o}/{r}/commits/{ref}/check-runs`. */
 export const checkRunListSchema = z.looseObject({ total_count: z.number().int().nonnegative(), check_runs: z.array(checkRunSchema) });
+
+// ---------- milestone 4 (ticket 47, F-136, ADR 0065): the installation webhooks ----------
+
+/** The account an installation is on: `type` is `Organization` or `User`. */
+const installationAccountSchema = z.looseObject({ id: z.number().int(), login: z.string().min(1), type: z.string().optional() });
+
+/** A repo as the installation webhooks name it. */
+const installationRepoSchema = z.looseObject({ id: z.number().int(), full_name: z.string().min(1) });
+
+/**
+ * An `installation` webhook: the App installed on an account (`created`), uninstalled (`deleted`),
+ * `suspend`ed, `unsuspend`ed, or its new permissions accepted. Every App gets it; no subscription.
+ */
+export const installationWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  installation: z.looseObject({ id: z.number().int(), account: installationAccountSchema }),
+});
+
+/** An `installation_repositories` webhook: repos `added` to an installation or `removed` from it. */
+export const installationRepositoriesWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  installation: z.looseObject({ id: z.number().int(), account: installationAccountSchema }),
+  repositories_added: z.array(installationRepoSchema).default([]),
+  repositories_removed: z.array(installationRepoSchema).default([]),
+});

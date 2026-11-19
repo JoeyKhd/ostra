@@ -24,6 +24,8 @@ import type {
   HealthReport,
   HostRepo,
   Installation,
+  InstallationAccount,
+  InstallationRepo,
   LinkedUser,
   OpenPullRequestInput,
   UpdatePullRequestBodyInput,
@@ -59,7 +61,9 @@ import {
   contentFileSchema,
   conversionSchema,
   graphqlAnswerSchema,
+  installationRepositoriesWebhookSchema,
   installationSchema,
+  installationWebhookSchema,
   issueCommentWebhookSchema,
   pullRequestDetailsSchema,
   pullRequestListSchema,
@@ -231,7 +235,7 @@ export class GitHubAdapter extends CodeHostAdapter {
       // Milestone 4 (ticket 08): `listReviews`, the `pull_request_review` webhook, and check runs.
       reviews: true,
       // Milestone 4 (ticket 47): a public App, its installation events and removing one.
-      installableByOtherAccounts: false,
+      installableByOtherAccounts: true,
     };
   }
 
@@ -299,6 +303,7 @@ export class GitHubAdapter extends CodeHostAdapter {
         permissions: parsed.value.permissions,
         events: parsed.value.events,
         ...(parsed.value.client_id === undefined ? {} : { clientId: parsed.value.client_id }),
+        ...(parsed.value.owner === null || parsed.value.owner === undefined ? {} : { owner: { login: parsed.value.owner.login, accountId: String(parsed.value.owner.id) } }),
       });
     });
   }
@@ -317,14 +322,29 @@ export class GitHubAdapter extends CodeHostAdapter {
         if (login === undefined) {
           continue;
         }
+        const accountId = item.account?.id;
         installations.push({
           installationId: String(item.id),
           accountLogin: login,
+          ...(accountId === undefined ? {} : { accountId: String(accountId) }),
           accountKind: item.account?.type === "Organization" ? "organization" : "user",
           repositorySelection: item.repository_selection,
         });
       }
       return ok(installations);
+    });
+  }
+
+  override async removeInstallation(app: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<void>> {
+    if (!/^[1-9]\d{0,19}$/.test(installationId)) {
+      return adapterError("invalid-input", "an installation ID is GitHub's number");
+    }
+    // "Uninstalls a GitHub App on a user, organization, or enterprise account" (F-136, ADR 0065),
+    // with the App's JWT. An unknown installation answers 404: not-found.
+    return this.#guarded("removing an installation", `app:${app.appId}`, async () => {
+      await this.#asApp(app).request("DELETE /app/installations/{installation_id}", { installation_id: Number(installationId) });
+      this.plumbing.logger.info("github.installation.removed", { appId: app.appId, installationId });
+      return ok(undefined);
     });
   }
 
@@ -686,7 +706,15 @@ export class GitHubAdapter extends CodeHostAdapter {
     if (event === undefined || event === "") {
       return adapterError("invalid-response", "the webhook has no X-GitHub-Event header");
     }
-    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push" && event !== "pull_request_review") {
+    if (
+      event !== "pull_request" &&
+      event !== "issue_comment" &&
+      event !== "pull_request_review_comment" &&
+      event !== "push" &&
+      event !== "pull_request_review" &&
+      event !== "installation" &&
+      event !== "installation_repositories"
+    ) {
       return ok({ kind: "other", event });
     }
     let payload: unknown;
@@ -706,6 +734,10 @@ export class GitHubAdapter extends CodeHostAdapter {
         return parsePushWebhook(payload);
       case "pull_request_review":
         return parseReviewWebhook(payload);
+      case "installation":
+        return parseInstallationWebhook(payload);
+      case "installation_repositories":
+        return parseInstallationRepositoriesWebhook(payload);
       default:
         return event satisfies never;
     }
@@ -1444,4 +1476,48 @@ const parseReviewWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEven
     headSha: pr.head.sha,
     review: read,
   });
+};
+
+// ---------- milestone 4 (ticket 47, F-136, ADR 0065): the installation webhooks ----------
+
+const accountOf = (account: { readonly id: number; readonly login: string; readonly type?: string | undefined }): InstallationAccount => ({
+  accountId: String(account.id),
+  login: account.login,
+  // As `listInstallations` reads it: an organization, or a user's own account.
+  kind: account.type === "Organization" ? "organization" : "user",
+});
+
+const parseInstallationWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(installationWebhookSchema, payload, "GitHub's installation webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { action, installation } = parsed.value;
+  return ok({ kind: "installation", action, installationId: String(installation.id), account: accountOf(installation.account) });
+};
+
+const installationReposOf = (repos: readonly { readonly id: number; readonly full_name: string }[]): InstallationRepo[] | null => {
+  const read: InstallationRepo[] = [];
+  for (const repo of repos) {
+    const fullName = repoFullNameSchema.safeParse(repo.full_name);
+    if (!fullName.success) {
+      return null;
+    }
+    read.push({ hostRepoId: String(repo.id), fullName: fullName.data });
+  }
+  return read;
+};
+
+const parseInstallationRepositoriesWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(installationRepositoriesWebhookSchema, payload, "GitHub's installation_repositories webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { action, installation } = parsed.value;
+  const added = installationReposOf(parsed.value.repositories_added);
+  const removed = installationReposOf(parsed.value.repositories_removed);
+  if (added === null || removed === null) {
+    return adapterError("invalid-response", "the installation_repositories webhook names a repo that could not be read");
+  }
+  return ok({ kind: "installation_repositories", action, installationId: String(installation.id), account: accountOf(installation.account), reposAdded: added, reposRemoved: removed });
 };

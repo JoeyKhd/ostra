@@ -31,6 +31,12 @@ export const appEvents = [
   "workflow_run",
 ] as const;
 
+/**
+ * A public App's homepage (F-136, ADR 0065): ostra's own project page. Anyone can open a public
+ * App's page to install it, so it doesn't name the install's address. A private App's is the panel's.
+ */
+export const OSTRA_PROJECT_URL = "https://github.com/JoeyKhd/ostra";
+
 /** Where GitHub sends a member back after they sign in to link their account (F-119). */
 export const GITHUB_LINK_CALLBACK_PATH = "/api/github/link/callback";
 
@@ -66,16 +72,19 @@ export const buildAppManifest = (input: AppManifestInput, webUrl: string): AppMa
   const base = webUrl.replace(/\/+$/, "");
   const withHook = isPublicWebhookUrl(input.webhookUrl);
   const homepage = input.homepageUrl.replace(/\/+$/, "");
+  // Private by default (Q281): GitHub won't make a public App private again once another account installed it.
+  const isPublic = input.public === true;
   return {
     manifest: {
       name: input.name,
-      url: input.homepageUrl,
+      url: isPublic ? OSTRA_PROJECT_URL : input.homepageUrl,
       ...(withHook ? { hook_attributes: { url: input.webhookUrl, active: true }, default_events: [...appEvents] } : {}),
       redirect_url: input.redirectUrl,
       // The OAuth callbacks: "Sign in with GitHub", and the verified link of a member's account (F-119,
       // ADR 0052). An App made before milestone 3 needs the second added once (ticket 51).
       callback_urls: [`${homepage}/api/auth/callback/github`, `${homepage}${GITHUB_LINK_CALLBACK_PATH}`],
-      public: false,
+      // "Private GitHub Apps can only be installed on the user or organization account of the app owner."
+      public: isPublic,
       default_permissions: { ...appPermissions },
     },
     createUrl:
