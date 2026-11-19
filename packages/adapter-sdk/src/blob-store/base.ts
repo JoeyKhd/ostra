@@ -2,6 +2,7 @@ import type { OrganizationId, UploadId } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
+import { ok } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { BlobStoreCapabilities } from "./capabilities.ts";
 
@@ -57,4 +58,14 @@ export abstract class BlobStoreAdapter {
 
   /** Checks the digest and stores the blob. Milestone 2. */
   abstract finishUpload(uploadId: UploadId): Promise<AdapterResult<StoredBlob>>;
+
+  /**
+   * Drops an unfinished upload and whatever the store holds for it (core's `blob.gc`, after 24 h).
+   * Additive: the built-in store keeps its upload in rows the server owns and deletes, so the default
+   * has nothing to drop. A store that keeps the bytes itself (S3-compatible) overrides it.
+   */
+  abortUpload(uploadId: UploadId): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("abortUpload has nothing to drop", { uploadId });
+    return Promise.resolve(ok(undefined));
+  }
 }

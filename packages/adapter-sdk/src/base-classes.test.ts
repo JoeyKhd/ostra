@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
+import { boxIdSchema, taskIdSchema, uploadIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 
 import { AgentAdapter } from "./agent/base.ts";
@@ -216,5 +216,12 @@ describe("milestone 2's executor operations", () => {
     expect(ran.ok ? "ok" : ran.error.code).toBe("unsupported");
     const resumed = await executor.resumeBox({ ...box, spec: taskSpecFixture, proxies: { gitBaseUrl: "http://127.0.0.1:9", modelBaseUrl: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9" } });
     expect(resumed.ok ? "ok" : resumed.error.code).toBe("unsupported");
+  });
+});
+
+describe("milestone 2's blob store operation", () => {
+  it("abortUpload has nothing to drop by default, so a store that keeps its uploads in rows the server owns needs no code for it", async () => {
+    const store = new TinyBlobStore();
+    expect(await store.abortUpload(uploadIdSchema.parse("upload-that-never-was"))).toEqual({ ok: true, value: undefined });
   });
 });
