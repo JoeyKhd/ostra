@@ -1,0 +1,6 @@
+{
+  "runnerName": "live-pool-01",
+  "executor": "docker",
+  "stateAfterJoin": "joining",
+  "stateAfterApprove": "online"
+}
