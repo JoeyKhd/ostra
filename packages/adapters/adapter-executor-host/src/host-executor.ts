@@ -428,6 +428,16 @@ export class HostExecutor extends ExecutorAdapter {
   async release(box: BoxRef, reason: BoxReleaseReason = "requested"): Promise<AdapterResult<void>> {
     const record = this.#boxes.get(boxKey(box));
     if (record === undefined) {
+      // A box this executor no longer tracks, such as one kept before the runner restarted (ticket
+      // 23): its folder goes too, unless another box of the same task lives in it now.
+      if ([...this.#boxes.values()].some((other) => other.ref.taskId === box.taskId)) {
+        return ok(undefined);
+      }
+      try {
+        await rm(path.join(this.#dataDir, "tasks", folderOf(box.taskId)), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch (error) {
+        return adapterError("unavailable", `couldn't remove the task's folder (${error instanceof Error ? error.name : "unknown"})`);
+      }
       return ok(undefined);
     }
     await this.#endAgent(record, 0);

@@ -26,12 +26,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await shared.close();
-});
+}, 60_000);
 
 afterEach(async () => {
   await harness?.close();
   harness = undefined;
-});
+}, 60_000);
 
 const start = async (): Promise<Harness> => {
   harness = await startHarness(shared);

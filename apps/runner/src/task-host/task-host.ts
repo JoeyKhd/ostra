@@ -1,8 +1,10 @@
+import os from "node:os";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { ExecutorKind, RunnerLabel, SessionId } from "@ostra/protocol";
+import type { BoxId, ExecutorKind, RunnerLabel, SessionId } from "@ostra/protocol";
 import type { CommandHandlers, CommandOutcome, PeerStatus, SessionRef } from "../connection/peer.ts";
+import { removeAgentLeftovers } from "./leftovers.ts";
 import { startTaskRun } from "./task-run.ts";
-import type { TaskRun, TaskRunDeps } from "./task-run.ts";
+import type { KeptBox, TaskRun, TaskRunDeps } from "./task-run.ts";
 
 // The task host (ticket 21): the runner's side of every command, and the tasks it's running. It
 // accepts a dispatch within the offer timeout or rejects it when full, and hands each task to a
@@ -13,6 +15,8 @@ export type TaskHostOptions = TaskRunDeps & {
   readonly capacity: number;
   readonly executorKind: ExecutorKind;
   readonly labels: readonly RunnerLabel[];
+  /** The system temp folder, where an agent's leftovers go on `host` (ticket 23). Default: `os.tmpdir()`. */
+  readonly tempDir?: string;
 };
 
 export type TaskHost = {
@@ -26,22 +30,55 @@ export type TaskHost = {
   readonly restored: (sessions: readonly SessionRef[]) => Promise<void>;
   /** Every run's promise, for tests and shutdown. */
   readonly running: () => readonly TaskRun[];
+  /** The boxes ended sessions left kept, for a resume or a `release` (milestone 2). */
+  readonly kept: () => readonly KeptBox[];
   /** Ends every run's agent, keeping the workspaces (the runner is shutting down). */
   readonly shutdown: () => Promise<void>;
 };
 
 export const createTaskHost = (options: TaskHostOptions): TaskHost => {
   const runs = new Map<SessionId, TaskRun>();
+  /** Boxes kept after their session ended (ADR 0039), by box. On `host` the worktree stays until a release. */
+  const keptBoxes = new Map<BoxId, KeptBox>();
   let draining = false;
   const log: Logger = options.logger.child({ component: "task-host" });
+  const tempDir = options.tempDir ?? os.tmpdir();
 
   const track = (run: TaskRun): void => {
     runs.set(run.dispatch.sessionId, run);
     options.link.statusChanged();
     void run.done.finally(() => {
       runs.delete(run.dispatch.sessionId);
+      const left = run.keptBox();
+      if (left !== undefined) {
+        keptBoxes.set(left.box.boxId, left);
+        log.info("box kept", { taskId: left.box.taskId, boxId: left.box.boxId });
+      }
       options.link.statusChanged();
     });
+  };
+
+  /**
+   * `release` (ticket 23): the box and its workspace, the agent's own folders with them, and what
+   * the agent left in the system temp folder. A session that waits between turns ends first, as its
+   * idle timer would; a box whose turn is running is busy. A box already gone is released too.
+   */
+  const release = async (body: Parameters<CommandHandlers["release"]>[0]["body"]): Promise<CommandOutcome> => {
+    const live = [...runs.values()].find((run) => run.dispatch.boxId === body.boxId && run.dispatch.taskId === body.taskId);
+    if (live !== undefined && !(await live.endBetweenTurns())) {
+      log.info("release refused: the box's turn is running", { taskId: body.taskId, boxId: body.boxId });
+      return { result: "rejected", reason: "box-busy" };
+    }
+    const left = keptBoxes.get(body.boxId) ?? live?.keptBox();
+    const released = await options.executor.release({ taskId: body.taskId, boxId: body.boxId }, body.reason);
+    if (!released.ok) {
+      log.warn("releasing the box failed", { taskId: body.taskId, boxId: body.boxId, code: released.error.code });
+      return { result: "rejected", reason: "release-failed" };
+    }
+    keptBoxes.delete(body.boxId);
+    const leftovers = await removeAgentLeftovers(tempDir, [body.taskId, left?.agentSessionId]);
+    log.info("box released", { taskId: body.taskId, boxId: body.boxId, reason: body.reason, kept: left !== undefined, leftovers });
+    return { result: "done" };
   };
 
   const done = (outcome: CommandOutcome): Promise<CommandOutcome> => Promise.resolve(outcome);
@@ -92,13 +129,9 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
     "update-hint": (command) => {
       log.info("a newer runner is available", { version: command.body.version });
       return done({ result: "done" });
-    },    // Protocol minor 1. Milestone 1's host releases the workspace after every session, so a box
-    // this runner no longer runs is already gone. Ticket 23 keeps idle boxes and releases them here.
-    release: (command) => {
-      const held = [...runs.values()].some((run) => run.dispatch.boxId === command.body.boxId);
-      log.info("release asked", { taskId: command.body.taskId, boxId: command.body.boxId, reason: command.body.reason, held });
-      return done(held ? { result: "rejected", reason: "box-busy" } : { result: "done", reason: "not-held" });
     },
+    // Protocol minor 1: remove a kept box (ticket 23). Idempotent: a box already gone acks `done`.
+    release: (command) => release(command.body),
     // Protocol minor 2. Questions and plans are answered with tickets 30 and 31; the `host`
     // executor builds no snapshot image (ADR 0038), so it refuses a build.
     "question-answer": () => done({ result: "rejected", reason: "no-pending-question" }),
@@ -133,6 +166,7 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       }
     },
     running: () => [...runs.values()],
+    kept: () => [...keptBoxes.values()],
     shutdown: async () => {
       await Promise.allSettled([...runs.values()].map((run) => run.fence()));
     },

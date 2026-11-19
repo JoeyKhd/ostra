@@ -14,7 +14,7 @@ import type {
   QuestionRequest,
   RepoPushResult,
 } from "@ostra/adapter-sdk";
-import { approvalIdSchema, questionIdSchema, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, questionIdSchema, runnerLimits, turnIdSchema } from "@ostra/protocol";
 import type { CommandBody, StopReason, TaskCredentials, TaskEvent, TaskSpec, TurnId } from "@ostra/protocol";
 import type { CommandOutcome, SessionChannel } from "../connection/peer.ts";
 import { startGitProxy } from "../sidecar/git-proxy/git-proxy.ts";
@@ -76,6 +76,29 @@ export type TaskRunDeps = {
   readonly gitUpstreamUrl?: (cloneUrl: string) => string;
   /** The clock the after-turn figures read. Default: `Date.now`. */
   readonly now?: () => number;
+  /** The idle timer's clock (spec section 8: tests run it in seconds). Default: the real one. */
+  readonly timers?: TaskTimers;
+};
+
+/** A timer port: `after` calls `fire` once, `ms` from now, unless the answer is called first. */
+export type TaskTimers = { readonly after: (ms: number, fire: () => void) => () => void };
+
+export const realTimers: TaskTimers = {
+  after: (ms, fire) => {
+    const timer = setTimeout(fire, ms);
+    timer.unref();
+    return () => {
+      clearTimeout(timer);
+    };
+  },
+};
+
+/** A box a session left kept (ADR 0039): its next session can resume in it, or a `release` removes it. */
+export type KeptBox = {
+  readonly box: BoxRef;
+  /** The agent adapter that ran in it, and its own session there, for `session/load` on a resume. */
+  readonly agentAdapter: string;
+  readonly agentSessionId: string | null;
 };
 
 export type DispatchBody = CommandBody<"dispatch">;
@@ -91,6 +114,13 @@ export type TaskRun = {
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
   readonly abandon: () => Promise<void>;
+  /**
+   * Ends a session that waits between turns, as its idle timer would (a `release`, ticket 23).
+   * Resolves once the run is done; `false`, and nothing ends, while a turn runs.
+   */
+  readonly endBetweenTurns: () => Promise<boolean>;
+  /** Once `done`: the box the run left kept, if it did. */
+  readonly keptBox: () => KeptBox | undefined;
 };
 
 type Ending =
@@ -173,6 +203,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   /** The session spans turns (milestone 2): set once the spec is read. */
   let acrossTurns = false;
   const now = deps.now ?? Date.now;
+  const timers = deps.timers ?? realTimers;
+  /** Set when the run ends with its box kept. */
+  let kept: KeptBox | undefined;
+  /** The idle limit of a session across turns, in ms. */
+  const idleMs = (taskSpec: TaskSpec): number => (taskSpec.limits.idleMinutes ?? runnerLimits.idleMinutes) * 60_000;
   /** Wakes the session waiting between turns: a message came, or the session is ending. */
   let wake: (() => void) | undefined;
   const nudge = (): void => {
@@ -243,6 +278,20 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     const questionId = questionIdSchema.parse(randomUUID());
     void emit({ kind: "question.asked", turnId: currentTurn, questionId, message: request.message, fields: [...request.fields] });
+    // A turn that waits on a person follows the idle timer (ADR 0039, ticket 23): when it fires, the
+    // turn is cancelled, its work saved, and the session ends. The needs-you item stays on the server.
+    const waitingSpec = spec;
+    const disarm =
+      acrossTurns && waitingSpec !== undefined
+        ? timers.after(idleMs(waitingSpec), () => {
+            log.info("a turn waited on a person past the idle limit: ending the session", { idleMinutes: waitingSpec.limits.idleMinutes ?? null });
+            end({ kind: "idle" });
+            thisTurn.abort();
+            if (agent !== undefined && session !== undefined) {
+              void agent.cancel(session).catch(() => undefined);
+            }
+          })
+        : () => undefined;
     // Milestone 1's panel shows the question read-only (F-026 answers it): it waits until the turn's
     // time runs out or the turn is cancelled.
     await new Promise<void>((resolve) => {
@@ -257,6 +306,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         resolve();
       }, { once: true });
     });
+    disarm();
     void emit({ kind: "question.closed", questionId, reason: thisTurn.signal.aborted ? "expired" : "cancelled" });
     return { outcome: "cancelled" };
   };
@@ -478,18 +528,30 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   /** The messages queued while a turn ran, as the next turn's prompt. */
   const takeQueued = (): string | undefined => (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
 
-  /** Between turns: the next turn's text, or `undefined` once the session is ending. */
-  const nextTurn = async (): Promise<string | undefined> => {
-    while (ending === undefined) {
-      const queued = takeQueued();
-      if (queued !== undefined) {
-        return queued;
+  /**
+   * Between turns: the next turn's text, or `undefined` once the session is ending. The idle timer
+   * runs while it waits (F-096): `limits.idleMinutes` with no new turn, and the session ends. A new
+   * turn before then starts the timer again the next time the session waits.
+   */
+  const nextTurn = async (taskSpec: TaskSpec): Promise<string | undefined> => {
+    const disarm = timers.after(idleMs(taskSpec), () => {
+      log.info("the session was idle for its limit: ending it", { idleMinutes: taskSpec.limits.idleMinutes ?? null });
+      end({ kind: "idle" });
+    });
+    try {
+      while (ending === undefined) {
+        const queued = takeQueued();
+        if (queued !== undefined) {
+          return queued;
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
       }
-      await new Promise<void>((resolve) => {
-        wake = resolve;
-      });
+      return undefined;
+    } finally {
+      disarm();
     }
-    return undefined;
   };
 
   /** The commit message for what a turn left, by how the session is going. */
@@ -517,7 +579,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   const runAcrossTurns = async (taskSpec: TaskSpec): Promise<void> => {
     let next: string | undefined = taskSpec.prompt;
     while (ending === undefined) {
-      next ??= await nextTurn();
+      next ??= await nextTurn(taskSpec);
       if (next === undefined) {
         break;
       }
@@ -577,7 +639,13 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
   };
 
+  /** The agent's own session ID, kept past its close: a resume loads it (ticket 24). */
+  let lastAgentSessionId: string | undefined;
+
   const endAgent = async (): Promise<void> => {
+    if (session !== undefined) {
+      lastAgentSessionId = session.agentSessionId;
+    }
     if (agent !== undefined && session !== undefined) {
       const closing = agent.close(session);
       await Promise.race([closing.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, deps.stopGraceMs + 5_000))]);
@@ -833,7 +901,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       const how: Ending = ending ?? { kind: "idle" };
       await finishAcrossTurns(taskSpec, how);
       // The box stays for the next session, unless it never got ready or the server refused the lease.
-      await cleanUp(how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned"));
+      const keep = how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned");
+      await cleanUp(keep);
+      if (keep && boxCreated) {
+        kept = { box, agentAdapter: taskSpec.agent.adapter, agentSessionId: lastAgentSessionId ?? null };
+      }
       stopDone.resolve({ result: "done" });
       log.info("task run ended", { ending: how.kind, turns: turnOrdinal });
       return;
@@ -968,5 +1040,14 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       }
       await done;
     },
+    endBetweenTurns: async () => {
+      if (turnRunning) {
+        return false;
+      }
+      end({ kind: "idle" });
+      await done;
+      return true;
+    },
+    keptBox: () => kept,
   };
 };

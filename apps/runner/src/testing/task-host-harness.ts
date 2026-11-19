@@ -16,6 +16,7 @@ import type { AgentFactory } from "../task-host/agents.ts";
 import { runnerServerLink } from "../task-host/server-link.ts";
 import { createTaskHost } from "../task-host/task-host.ts";
 import type { TaskHost, TaskHostOptions } from "../task-host/task-host.ts";
+import type { TaskTimers } from "../task-host/task-run.ts";
 import { makeCommand, startFakeGateway } from "./fake-gateway.ts";
 import type { FakeGateway } from "./fake-gateway.ts";
 import { startFakeServer } from "./fake-server.ts";
@@ -246,5 +247,38 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
       await gateway.close();
       await server.close();
     },
+  };
+};
+
+/** A fake clock for the idle timer (spec section 8): nothing sleeps for real. */
+export type ManualTimers = TaskTimers & {
+  /** Moves the clock on, firing every timer that comes due, in order. */
+  readonly advance: (ms: number) => void;
+  /** How many timers are armed now. */
+  readonly pending: () => number;
+};
+
+export const manualTimers = (): ManualTimers => {
+  let now = 0;
+  let next = 0;
+  const armed = new Map<number, { readonly at: number; readonly fire: () => void }>();
+  return {
+    after: (ms, fire) => {
+      next += 1;
+      const id = next;
+      armed.set(id, { at: now + ms, fire });
+      return () => {
+        armed.delete(id);
+      };
+    },
+    advance: (ms) => {
+      now += ms;
+      const due = [...armed.entries()].filter(([, timer]) => timer.at <= now).sort((a, b) => a[1].at - b[1].at);
+      for (const [id, timer] of due) {
+        armed.delete(id);
+        timer.fire();
+      }
+    },
+    pending: () => armed.size,
   };
 };
