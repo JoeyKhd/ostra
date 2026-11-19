@@ -813,6 +813,11 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       case "attachmentLinkGitHubPR": {
         const url = stringArg(args["url"]);
         if (url === undefined) throw invalid("url is required");
+        // Unlike `attachmentCreate`, Linear refuses a second link of a URL the issue already has.
+        const linkedIssue = issueOf(stringArg(args["issueId"]) ?? "");
+        if (attachments.some((attachment) => attachment.issueId === linkedIssue.id && attachment.url === url)) {
+          throw new FakeAnswer(400, "INPUT_ERROR", "invalid input", "Duplicate attachment for duplicate url");
+        }
         return { success: true, attachment: attachmentJson(linkAttachment(stringArg(args["issueId"]) ?? "", url, "GitHub pull request", null)) };
       }
       case "webhookCreate": {

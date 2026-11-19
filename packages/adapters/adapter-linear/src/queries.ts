@@ -48,6 +48,8 @@ export const documents = {
   commentUpdate: "mutation OstraCommentUpdate($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success comment { id } } }",
   attachmentCreate:
     "mutation OstraAttachmentCreate($issueId: String!, $url: String!, $title: String!, $subtitle: String) { attachmentCreate(input: { issueId: $issueId, url: $url, title: $title, subtitle: $subtitle }) { success attachment { id } } }",
+  // An issue's links, to find a PR's before linking it: Linear refuses a second link of one URL.
+  issueAttachments: "query OstraIssueAttachments($id: String!) { issue(id: $id) { id attachments(first: 100) { nodes { id url } } } }",
   attachmentLinkGitHubPR: "mutation OstraLinkPullRequest($issueId: String!, $url: String!) { attachmentLinkGitHubPR(issueId: $issueId, url: $url) { success } }",
   attachmentLinkGitHubPRWithKind:
     "mutation OstraLinkPullRequestWithKind($issueId: String!, $url: String!, $linkKind: GitLinkKind!) { attachmentLinkGitHubPR(issueId: $issueId, url: $url, linkKind: $linkKind) { success } }",
@@ -75,6 +77,7 @@ export const worstCaseVariables: Readonly<Record<DocumentName, Readonly<Record<s
   commentCreate: {},
   commentUpdate: {},
   attachmentCreate: {},
+  issueAttachments: {},
   attachmentLinkGitHubPR: {},
   attachmentLinkGitHubPRWithKind: {},
   usersByEmail: { first: USERS_PER_QUERY * 2 },
@@ -161,6 +164,7 @@ export const answers = {
   attachmentCreate: z.looseObject({
     attachmentCreate: z.looseObject({ success: z.boolean(), attachment: z.looseObject({ id: z.string() }).nullish() }),
   }),
+  issueAttachments: z.looseObject({ issue: z.looseObject({ id: z.string(), attachments: nodes(z.looseObject({ id: z.string(), url: z.string() })) }) }),
   attachmentLinkGitHubPR: z.looseObject({ attachmentLinkGitHubPR: z.looseObject({ success: z.boolean() }) }),
   usersByEmail: z.looseObject({
     users: nodes(

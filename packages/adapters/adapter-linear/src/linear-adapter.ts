@@ -537,7 +537,20 @@ export class LinearAdapter extends TrackerAdapter {
     if (!issue.ok) {
       return issue;
     }
-    // Linear keeps one attachment per URL on an issue, so linking again links once.
+    // Linear refuses a second link of the same URL ("Duplicate attachment for duplicate url", an
+    // input error), so a retry after a link that committed, or a replay, must find the first one:
+    // looked up before the link, and again when the link is refused, in case another call won the race.
+    const isLinked = async (): Promise<AdapterResult<boolean>> => {
+      const found = await this.#query("issueAttachments", { id: issue.value.id }, answers.issueAttachments);
+      return found.ok ? ok(found.value.issue.attachments.nodes.some((attachment) => attachment.url === pullRequestUrl)) : found;
+    };
+    const before = await isLinked();
+    if (!before.ok) {
+      return before;
+    }
+    if (before.value) {
+      return ok(undefined);
+    }
     const linked =
       options?.kind === undefined
         ? await this.#query("attachmentLinkGitHubPR", { issueId: issue.value.id, url: pullRequestUrl }, answers.attachmentLinkGitHubPR)
@@ -548,7 +561,11 @@ export class LinearAdapter extends TrackerAdapter {
             answers.attachmentLinkGitHubPR,
           );
     if (!linked.ok) {
-      return linked;
+      if (linked.error.code !== "invalid-input") {
+        return linked;
+      }
+      const after = await isLinked();
+      return after.ok && after.value ? ok(undefined) : linked;
     }
     return linked.value.attachmentLinkGitHubPR.success ? ok(undefined) : adapterError("conflict", "Linear did not link the PR");
   }
