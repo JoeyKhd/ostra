@@ -34,3 +34,4 @@ Spec: `../spec.md`, section 4 ("What a runner reports", "Admission"); ADR 0059, 
   - Milestone 3's test "a busy docker runner makes the task wait for a slot" now expects `queued { poolId, place }`, not `no-runner-online`: a runner fits and none has room, which is ADR 0059's `queued`.
   - A reopen clears `queuedAt`, so it takes a new place when it's queued.
   - The second row of F-067 stays `partial` until an admin can see the queue (ticket 26, ticket 33). F-067 is `building`.
+- 2026-11-20: committed as e59e57a5 (✨ add the pool queue and admission).
