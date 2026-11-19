@@ -1,6 +1,6 @@
 # 27: API: the Linear connection
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 06, 08
 Features: F-005, F-042
@@ -43,8 +43,15 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Tests against the fake Linear server: the whole flow from `start` to `active`; a callback with another admin's state, an old state or a reused state is refused; a token that isn't the app's is refused; polling mode on a private address; a member who isn't an admin is refused everywhere; secrets never come back from any procedure.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the Linear connection`.
+- [x] Tests against the fake Linear server: the whole flow from `start` to `active`; a callback with another admin's state, an old state or a reused state is refused; a token that isn't the app's is refused; polling mode on a private address; a member who isn't an admin is refused everywhere; secrets never come back from any procedure.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the Linear connection`.
 
 ## Comments
+- 2026-11-19, api: done (`✨ add the Linear connection`, `efa0a2d`). The whole repo's typecheck, lint and tests pass (61 tasks). For tickets 33, 14, 39 and 40:
+  - **Procedures** (all `adminProcedure`): `linear.status` (the union the web builder's `linear-types.ts` expects, field for field), `linear.start` (idempotent for a pending connection: the same row and webhook URL; refused with CONFLICT for an active or failed one), `linear.saveApp { connectionId, clientId, clientSecret, webhookSecret? }` (answers `{ authorizeUrl }`, never a value back), `linear.authorizeUrl { connectionId }` (a fresh `OAuthState`; also how a failed connection is authorized again), `linear.complete { code, state }` (what the callback route calls: `apps/web/src/app/api/linear/callback/route.ts`, which redirects to `/organization/linear` with `?connected=1` or `?error=<words>`, as the GitHub route does), `linear.disconnect { connectionId }`, and `setup.skip { step: "linear" }`. `setup.status` now answers `{ steps: [{ id, state }], next }` with `linear` after `github`; its only web caller (`setup-checklist.tsx`) now renders the web builder's `SetupSteps`. "Start again" on the page is `disconnect` then `start`.
+  - **The calls to Linear** are ticket 08's functions behind the domain's `LinearAppKit` (`services/linear-app.ts`, `ApiDeps.linear`); a test points the endpoints at the fake Linear server (`createApiHarness({ linearEndpoints })`). The domain's `startLinearConnection`, `connectLinear` (= `saveLinearApp` + `createLinearAuthorizeUrl`), `authorizeLinear`, `disconnectLinear` (new) and `skipSetupStep` are written; their deps gained `linear`, `adapters` and `publicUrl` (additive; nothing else called them).
+  - **`Connection.appId` is unique per organization and kind**, so a disconnected row gives it back as `revoked:<connectionId>`; a new start then uses the `pending` placeholder again. A revoked row keeps its workspace key for "Disconnected from … on …".
+  - **`linear.refresh-token`** is enqueued (a delayed job, an hour before the token expires) by `authorizeLinear` only, which makes only `app_oauth` connections; the development seed (`api_key`) never gets one. A pending, failed or revoked connection is not core's to poll: **core (ticket 14) must poll and sync only boards whose connection is `active`.**
+  - **`silentSince`** is derived in `linear.status`: webhooks mode, active, and a ticket cache row changed more than two poll intervals after the last delivery (or after activation). Ticket 14 may replace it with a stored flag.
+  - **Unverified against real Linear:** the real consent, the token response and the revoke call are ticket 08's code, tested on the fake only. The maintainer's morning click (demo step 1) is their first real run.
