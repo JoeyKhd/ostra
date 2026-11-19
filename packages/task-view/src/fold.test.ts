@@ -3,8 +3,11 @@ import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 
 import {
+  blobIdSchema,
   clientMessageIdSchema,
   memberIdSchema,
+  repoIdSchema,
+  sessionIdSchema,
   segmentIdSchema,
   storedEventSchema,
   taskEventKinds,
@@ -236,19 +239,25 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "session.saved": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      // Ticket 36: protocol minor 1's markers have rows of their own.
+      expect(typesOf(m)).toContain("data-saved");
+      expect(typesOf(m)).not.toContain("data-unsupported");
     },
   },
   "session.limit_reached": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      // Ticket 36: protocol minor 1's markers have rows of their own.
+      expect(typesOf(m)).toContain("data-limit");
+      expect(typesOf(m)).not.toContain("data-unsupported");
     },
   },
   "ticket.files_ready": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      // Ticket 36: protocol minor 1's markers have rows of their own.
+      expect(typesOf(m)).toContain("data-ticket-files");
+      expect(typesOf(m)).not.toContain("data-unsupported");
     },
   },
   "workspace.files_outside_repos": {
@@ -701,3 +710,34 @@ describe("message times", () => {
     ]);
   });
 });
+
+describe("protocol minor 1's markers (ticket 36)", () => {
+  const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e1");
+  const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d1", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
+  const sha = "3be91f0aa5b6c7d8e9f00112233445566778899a";
+
+  it("folds the work saved after a turn with the archive's size and the hidden refs", () => {
+    const messages = foldTaskEvents(
+      [
+        stored(1, {
+          kind: "session.saved",
+          turnOrdinal: 1,
+          repos: [{ repoId: repoIdSchema.parse("01900000-0000-7000-8000-0000000000a1"), headSha: sha, ahead: true, hiddenRefSha: sha }],
+          archive: { blobId: blobIdSchema.parse("01900000-0000-7000-8000-0000000000f1"), size: 2_400_000, sha256: "a".repeat(64) },
+        }),
+      ],
+      [],
+    );
+    const part = messages.flatMap((message) => message.parts).find((each) => each.type === "data-saved");
+    expect(part?.type === "data-saved" ? part.data : undefined).toEqual({ turnOrdinal: 1, archiveBytes: 2_400_000, hiddenRefs: [sha], unsaved: 0 });
+  });
+
+  it("tags a reopen's message and a replayed one", () => {
+    const messages = foldTaskEvents(
+      [stored(1, { kind: "user.message", memberId: memberIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), clientMessageId: clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), text: "Carry on", delivery: "immediate", reopen: true })],
+      [],
+    );
+    expect(messages[0]?.metadata?.author?.reopen).toBe(true);
+  });
+});
+

@@ -2,7 +2,12 @@
 
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
+  ArchiveIcon,
   BrainIcon,
+  HistoryIcon,
+  LayersIcon,
+  PaperclipIcon,
+  SquarePlayIcon,
   CheckIcon,
   CircleDotIcon,
   CircleIcon,
@@ -28,6 +33,7 @@ import { formatDuration } from "@/lib/format";
 import { t } from "@/lib/messages";
 
 import { filesOutsideText } from "./files-outside-words";
+import { restoredDetail, savedDetail } from "./marker-words";
 import { useDataPart, useTaskContext, useToolPart } from "./task-context";
 import type { ToolLikePart } from "./task-context";
 
@@ -424,6 +430,32 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           </Line>
         </div>
       );
+    case "data-saved":
+      return (
+        <div data-part="saved">
+          <Line icon={<ArchiveIcon />} tone="muted">
+            {t("task.saved", { n: part.data.turnOrdinal })}
+            <span className="font-mono text-sm text-faint">{savedDetail(part.data)}</span>
+          </Line>
+        </div>
+      );
+    case "data-limit":
+      return (
+        <div data-part="limit" data-limit={part.data.limit}>
+          <Line icon={<TriangleAlertIcon />} tone="muted">
+            {t(`task.limit.${part.data.limit}`, { n: Math.round(part.data.observed) })}
+          </Line>
+        </div>
+      );
+    case "data-ticket-files":
+      return (
+        <div data-part="ticket-files">
+          <Line icon={<PaperclipIcon />} tone="muted">
+            {t("task.ticketFiles")}
+            <span className="truncate font-mono text-sm text-faint">{part.data.paths.map((path) => `.ostra/ticket/${path}`).join(", ")}</span>
+          </Line>
+        </div>
+      );
     case "data-driver":
       return (
         <Line icon={<InfoIcon />} tone="muted">
@@ -440,11 +472,26 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
         case "runner.lost":
           text = t("task.system.runnerLost");
           break;
-        case "session.restored":
-          text = t("task.system.restored");
-          break;
+        case "session.restored": {
+          // Protocol minor 1 says how it came back (ADR 0039); a minor-0 event keeps milestone 1's line.
+          if (event.origin === undefined) {
+            text = t("task.system.restored");
+            break;
+          }
+          const title = event.origin === "resumed" ? t("task.system.resumed") : event.origin === "restored" ? t("task.system.restoredArchive") : t("task.system.rebuilt");
+          const glyph = event.origin === "resumed" ? <SquarePlayIcon /> : event.origin === "restored" ? <HistoryIcon /> : <LayersIcon />;
+          const detail = restoredDetail(event);
+          return (
+            <div data-part="restored" data-origin={event.origin}>
+              <Line icon={glyph} tone="muted">
+                <span className="text-text">{title}</span>
+                {detail === "" ? null : <span className="font-mono text-sm text-faint">{detail}</span>}
+              </Line>
+            </div>
+          );
+        }
         case "session.crashed":
-          text = t("task.system.crashed", { error: event.error });
+          text = event.cause === "box_lost" ? t("task.system.boxLost") : t("task.system.crashed", { error: event.error });
           break;
         case "session.config_changed":
           text = t("task.system.config", { key: event.key, value: event.value });

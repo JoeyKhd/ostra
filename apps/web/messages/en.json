@@ -708,7 +708,17 @@
       "restored": "The session was restored.",
       "crashed": "The session crashed: {error}",
       "config": "{key} set to {value}",
-      "stopRequested": "{name} asked the agent to stop."
+      "stopRequested": "{name} asked the agent to stop.",
+      "resumed": "Resumed in the same box",
+      "restoredArchive": "Restored from the session archive",
+      "rebuilt": "Rebuilt from the template",
+      "replayed": "{n} updates replayed",
+      "workRestored": "unfinished work restored",
+      "workConflict": "the unfinished work conflicts with the branch",
+      "previousKept": "the box was kept",
+      "previousReleased": "a fresh box",
+      "previousLost": "the box before it was lost",
+      "boxLost": "The box was lost before the agent answered."
     },
     "composer": {
       "label": "Message the agent",
@@ -718,7 +728,21 @@
       "interruptAndSend": "Interrupt and send",
       "notDriver": "{name} is driving. Take over to send messages.",
       "noDriver": "Nobody is driving. Take over to send messages."
-    }
+    },
+    "saved": "Work saved after turn {n}",
+    "savedArchive": "archive {size}",
+    "savedNoArchive": "no archive (the upload failed)",
+    "savedRef": "hidden ref {sha}",
+    "savedRefs": "hidden refs in {n} repos",
+    "savedNoRef": "unfinished work not saved",
+    "limit": {
+      "stall": "The agent stalled: nothing new for {n} minutes. The session stopped.",
+      "max-duration": "The session reached its maximum time of {n} minutes and stopped.",
+      "spend-cap": "The task reached its spend cap. The session stopped."
+    },
+    "ticketFiles": "Ticket files ready",
+    "reopenTag": "reopened",
+    "replayedTag": "replayed"
   },
   "taskState": {
     "queued": "Queued",
@@ -896,7 +920,98 @@
     "started": "Started {age} ago",
     "on": "on",
     "copyLink": "Copy the link",
-    "linkCopied": "Link copied"
+    "linkCopied": "Link copied",
+    "ticketFrom": "from Linear",
+    "openInLinear": "Open in Linear",
+    "ticketRemoved": "removed from Linear",
+    "agentGot": "What the agent got",
+    "agentGotSummary": "title, description and labels",
+    "agentGotFiles": {
+      "one": "{n} file",
+      "other": "{n} files"
+    },
+    "agentGotTemplate": "rendered with the project's template",
+    "box": {
+      "label": "Box",
+      "starting": "Starting",
+      "running": "Running",
+      "idle": "Idle",
+      "idleStops": "Idle · stops in {left}",
+      "idleHeader": "Idle, the box stops in {left}",
+      "stopped": "Stopped",
+      "released": "Released",
+      "releasedWhy": "Released · {reason}",
+      "failed": "Failed",
+      "reason": {
+        "prs_closed": "the PRs closed",
+        "idle_expired": "idle too long",
+        "task_deleted": "the task was deleted",
+        "requested": "asked for"
+      }
+    },
+    "spend": "Spend",
+    "spendOf": "{spent} of {cap}",
+    "spendReached": "at its cap",
+    "startedAt": "Started",
+    "ticketGroup": "Ticket",
+    "ticketKey": "Key",
+    "ticketStatus": "Status",
+    "synced": "Synced",
+    "createTicket": "Create ticket",
+    "creatingTicket": "Creating…",
+    "onLinear": "On Linear",
+    "sync": {
+      "move": "Moved the ticket",
+      "comment": "Progress comment",
+      "comment_update": "Updated the comment",
+      "link_pr": "Linked a PR",
+      "link_task": "Linked the task",
+      "create": "Created the ticket",
+      "done": "done",
+      "pending": "pending",
+      "failed": "failed",
+      "retry": "Retry sync",
+      "retrying": "Retrying…"
+    },
+    "prState": {
+      "open": "open",
+      "merged": "merged",
+      "closed": "closed unmerged"
+    },
+    "limit": {
+      "title": "Needs you · {what}",
+      "stall": "stalled",
+      "max-duration": "maximum time reached",
+      "spend-cap": "spend cap reached",
+      "crashed": "crashed",
+      "stallBody": "The agent produced nothing for a while, so ostra stopped the session. Its work is saved.",
+      "max-durationBody": "The session ran for its maximum time, so ostra stopped it. Its work is saved.",
+      "spend-capBody": "The task spent {spent} of its {cap} cap, so ostra stopped the session. Raise the cap to reopen it.",
+      "spend-capTokens": "The task used {spent} tokens of its {cap} cap, so ostra stopped the session. Raise the cap to reopen it.",
+      "crashedBody": "The session ended without finishing. Its work up to the last turn is saved.",
+      "boxLostBody": "The box was lost before the agent answered. Reopen to carry on in a fresh box.",
+      "reopen": "Reopen",
+      "reopening": "Reopening…"
+    },
+    "restoreConflict": {
+      "title": "Needs you · restore conflict",
+      "body": "The unfinished work saved after the last turn conflicts with commits pushed to the branch since. Nothing was restored from it; the agent carries on from the branch's head.",
+      "show": "Show the saved work",
+      "dismiss": "Carry on without it",
+      "footnote": "The saved work stays until the box is released at the end of the task."
+    },
+    "composer": {
+      "idleHint": "The session is idle in the same box. Send starts the next turn.",
+      "reopenHint": "Reopening picks a runner, restores the session and keeps the same branches and PRs.",
+      "reopenPlaceholder": "Reopen with a message…",
+      "reopen": "Reopen",
+      "reopening": "Reopening…",
+      "startingHint": "The task is starting. You can send once the agent is ready.",
+      "mergedHint": "Its pull requests are merged. Start a new task from the ticket to change it again.",
+      "openInInbox": "Open the ticket in the Inbox",
+      "spendCap": "This task reached its spend cap. It can't be reopened until the cap is raised.",
+      "ticketHasTask": "The ticket already has an active task."
+    }
   },
   "linear": {
     "title": "Linear",

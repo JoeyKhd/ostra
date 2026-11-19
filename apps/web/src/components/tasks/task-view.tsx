@@ -5,6 +5,7 @@ import { CheckIcon, GitPullRequestIcon, LinkIcon, SquareIcon } from "lucide-reac
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { clientMessageIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import { deriveTaskState } from "@ostra/task-view";
 
@@ -24,6 +25,7 @@ import { safeHref } from "@/task/renderers";
 import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
+import { AgentGot, LimitBlock, MergedHint, RestoreConflict, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, spendText } from "./task-ticket";
 import { headerActivity, shownInThread, stateTone, taskStateLine } from "./task-words";
 
 type Task = RouterOutputs["tasks"]["get"];
@@ -85,13 +87,15 @@ const CopyLink = () => {
  * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
  * are the only markers. Spend (F-084) and the Changes group (F-027) come later.
  */
-const Properties = ({ task, tokens, context, now, onTakeOver, takingOver }: {
+const Properties = ({ task, tokens, context, now, onTakeOver, takingOver, ticket }: {
   readonly task: Task;
   readonly tokens: { readonly inputTokens: number; readonly outputTokens: number; readonly estimated: boolean };
   readonly context: { readonly used: number; readonly size: number } | null;
   readonly now: number;
   readonly onTakeOver: () => void;
   readonly takingOver: boolean;
+  /** The Ticket and On Linear groups (ticket 36). */
+  readonly ticket: ReactNode;
 }) => {
   const input = Math.max(tokens.inputTokens, task.session?.inputTokens ?? 0);
   const output = Math.max(tokens.outputTokens, task.session?.outputTokens ?? 0);
@@ -150,8 +154,13 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver }: {
             <Mono className="text-muted">{formatTokens(context.used)} / {formatTokens(context.size)}</Mono>
           </PropRow>
         )}
+        {task.box === null ? null : <PropRow label={t("taskPage.box.label")}><span className="truncate">{boxText(task.box, now)}</span></PropRow>}
+        <PropRow label={t("taskPage.spend")}>
+          <Mono className={task.spend.reached ? "text-amber" : ""}>{spendText(task.spend)}</Mono>
+        </PropRow>
         <PropRow label={t("taskPage.time")}><Mono>{formatElapsed(task.createdAt, now)}</Mono></PropRow>
       </PropGroup>
+      {ticket}
       <PropGroup title={t("taskPage.code")}>
         {task.repos.map((repo) => {
           const href = repo.pr === null ? null : safeHref(repo.pr.url);
@@ -163,9 +172,15 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver }: {
               </PropRow>
               <PropRow label={t("taskPage.pr")}>
                 {repo.pr === null || href === null ? <span className="text-faint">{t("taskPage.noPr")}</span> : (
-                  <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-ui text-teal hover:underline" data-testid="pr-link">
-                    #{repo.pr.number}
-                  </a>
+                  <>
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-ui text-teal hover:underline" data-testid="pr-link">
+                      #{repo.pr.number}
+                    </a>
+                    <span className="text-faint">·</span>
+                    <span className={cn("text-ui", repo.pr.state === "merged" ? "text-green" : repo.pr.state === "closed" ? "text-faint" : "text-muted")} data-pr-state={repo.pr.state}>
+                      {t(`taskPage.prState.${repo.pr.state}`)}
+                    </span>
+                  </>
                 )}
               </PropRow>
             </div>
@@ -201,6 +216,12 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     }),
   );
   const takeOver = useMutation(trpc.tasks.takeOver.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) }));
+  const settle = { onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) };
+  const reopen = useMutation(trpc.tasks.reopen.mutationOptions(settle));
+  const retrySync = useMutation(trpc.tasks.retrySync.mutationOptions(settle));
+  const dismiss = useMutation(trpc.tasks.dismissNeedsYou.mutationOptions(settle));
+  const createTicket = useMutation(trpc.tasks.createTicket.mutationOptions(settle));
+  const boards = useQuery(trpc.boards.get.queryOptions(task.data === undefined ? skipToken : { projectId: task.data.projectId }));
 
   const names = useMemo(() => new Map<string, string>((members.data ?? []).map((member) => [member.memberId, member.name] as const)), [members.data]);
   const memberName = useCallback((memberId: string) => names.get(memberId) ?? t("taskPage.someone"), [names]);
@@ -226,7 +247,22 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const summary = data.needsYou.find((item) => item.summary !== null)?.summary ?? null;
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   const stateText = stopping && !stopped ? t("taskPage.stopping") : taskStateLine(data.state, data.reason);
-  const activity = headerActivity(view.activity);
+  const activity = idleHeader(data.box, now) ?? headerActivity(view.activity);
+  const mode = composerMode(composerInputOf(data));
+  const conflict = data.needsYou.find((item) => item.reason === "restore_conflict");
+  const firstBoard = boards.data?.boards[0];
+  const ticketGroups = (
+    <TicketProperties
+      task={{ ticket: data.ticket, sync: data.sync, canRetry: data.capabilities.retrySync }}
+      now={now}
+      retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
+      createTicket={
+        data.source === "prompt" && firstBoard !== undefined
+          ? { run: () => { createTicket.mutate({ taskId, boardId: firstBoard.id }); }, pending: createTicket.isPending, error: errorText(createTicket.error) }
+          : null
+      }
+    />
+  );
   // A member who isn't the driver sees who is, and how to take over, where the composer would be.
   const notDriver =
     data.capabilities.send || !data.capabilities.takeOver || finished ? undefined : (
@@ -271,6 +307,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           now={now}
           takingOver={takeOver.isPending}
           onTakeOver={() => { takeOver.mutate({ taskId }); }}
+          ticket={ticketGroups}
         />
       }
     >
@@ -288,8 +325,25 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             </span>
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>
+          {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
+          {data.source === "ticket" ? <AgentGot files={data.contextFiles} /> : null}
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
-          {data.group === "needs-you" && !shownInThread(data.reason) ? (
+          <LimitBlock
+            task={limitStateOf(data)}
+            reopen={{
+              run: () => { reopen.mutate({ taskId, clientMessageId: clientMessageIdSchema.parse(crypto.randomUUID()) }); },
+              pending: reopen.isPending,
+              error: errorText(reopen.error),
+            }}
+          />
+          {conflict === undefined ? null : (
+            <RestoreConflict
+              savedWorkUrl={null}
+              canAnswer={data.driver?.memberId === me.data?.memberId}
+              dismiss={{ run: () => { dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending }}
+            />
+          )}
+          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined ? (
             <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
               <p className="whitespace-pre-wrap">{summary ?? t("taskPage.needsYouDefault")}</p>
             </NeedsYou>
@@ -303,6 +357,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           memberId={me.data?.memberId ?? null}
           memberName={memberName}
           canSend={data.capabilities.send}
+          canReopen={mode.kind === "reopen"}
+          composerHint={mode.kind === "send" || mode.kind === "reopen" ? mode.hint : null}
+          {...(mode.kind === "merged" ? { instead: <MergedHint inboxHref={data.ticket === null ? null : `/projects/${data.projectId}/inbox?ticket=${encodeURIComponent(data.ticket.key)}`} /> } : {})}
           canInterrupt={data.capabilities.interrupt}
           running={running}
           agent={{ name: data.agent?.agentName ?? t("task.agent"), model: data.agent?.model?.name ?? null }}

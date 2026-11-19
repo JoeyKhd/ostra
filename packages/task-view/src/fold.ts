@@ -460,7 +460,12 @@ export const foldTaskEvents = (
             lastSeq: seq,
             sessionId,
             at: stored.at,
-            author: { memberId: event.memberId, delivery: event.delivery },
+            author: {
+              memberId: event.memberId,
+              delivery: event.delivery,
+              ...(event.reopen === true ? { reopen: true } : {}),
+              ...(event.replayed === true ? { replayed: true } : {}),
+            },
           },
         });
         break;
@@ -758,12 +763,28 @@ export const foldTaskEvents = (
       case "provider.rate_limited":
         // The server holds new dispatches on the provider; the thread has nothing to show.
         break;
-      case "session.saved":
-      case "session.limit_reached":
-      case "ticket.files_ready":
-        // Protocol minor 1. No row until the milestone 2 task page (ticket 36) designs them: a limit
-        // shows through its needs-you item, saved work and ticket files on the task header.
+      case "session.saved": {
+        // Protocol minor 1 (ticket 36): the work saved after a turn.
+        row(seq, sessionId, {
+          type: "data-saved",
+          id: `saved:${String(seq)}`,
+          data: {
+            turnOrdinal: event.turnOrdinal,
+            archiveBytes: event.archive === null ? null : event.archive.size,
+            hiddenRefs: event.repos.flatMap((repo) => (repo.hiddenRefSha === null ? [] : [repo.hiddenRefSha])),
+            unsaved: event.repos.filter((repo) => repo.hiddenRefSha === null).length,
+          },
+        });
         break;
+      }
+      case "session.limit_reached": {
+        row(seq, sessionId, { type: "data-limit", id: `limit:${String(seq)}`, data: { limit: event.limit, observed: event.observed } });
+        break;
+      }
+      case "ticket.files_ready": {
+        row(seq, sessionId, { type: "data-ticket-files", id: `ticket-files:${String(seq)}`, data: { paths: event.files.map((file) => file.path) } });
+        break;
+      }
       case "plan.proposed":
       case "plan.answered":
       case "check.started":

@@ -43,9 +43,9 @@ export const foldCoverage = {
   "session.usage": "assistant message context",
   "provider.rate_limited": "no row (the server holds new dispatches)",
   // Protocol minor 1: no row until the M2 task page (ticket 36) designs them.
-  "session.saved": "no row (ticket 36)",
-  "session.limit_reached": "no row (its needs-you item shows it; ticket 36)",
-  "ticket.files_ready": "no row (ticket 36)",
+  "session.saved": "saved row",
+  "session.limit_reached": "limit row",
+  "ticket.files_ready": "ticket files row",
   "workspace.files_outside_repos": "files outside the repos row",
   // Protocol minor 2: no row until the milestone 3 task page (tickets 43, 46, 47) draws them.
   "plan.proposed": "no row (milestone 3, ticket 43)",

@@ -135,6 +135,23 @@ export type DriverChangeData = { readonly memberId: MemberId; readonly byMemberI
 /** Files the agent left outside every repo (Q133): their names, and how many more. Empty: they're gone. */
 export type FilesOutsideReposData = { readonly paths: readonly string[]; readonly more: number };
 
+/** Work saved after a turn (`session.saved`): the archive's size, and the hidden refs. */
+export type SavedData = {
+  readonly turnOrdinal: number;
+  /** The session archive's size in bytes, or `null` when its upload failed. */
+  readonly archiveBytes: number | null;
+  /** The hidden ref's commit per repo that has one. */
+  readonly hiddenRefs: readonly string[];
+  /** Repos whose unfinished work wasn't saved. */
+  readonly unsaved: number;
+};
+
+/** A runaway limit that stopped the session (`session.limit_reached`, F-068). */
+export type LimitData = { readonly limit: "max-duration" | "stall" | "spend-cap"; readonly observed: number };
+
+/** The ticket's files, written into the workspace for the agent (`ticket.files_ready`). */
+export type TicketFilesData = { readonly paths: readonly string[] };
+
 export type TaskDataParts = {
   plan: { entries: PlanEntry[] };
   question: QuestionData;
@@ -146,6 +163,9 @@ export type TaskDataParts = {
   "session-end": SessionEndData;
   driver: DriverChangeData;
   "files-outside": FilesOutsideReposData;
+  saved: SavedData;
+  limit: LimitData;
+  "ticket-files": TicketFilesData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };
   problem: { seq: number; text: string };
@@ -170,7 +190,7 @@ export type TaskMessageMeta = {
   turnState?: "running" | "ended" | "failed";
   stopReason?: StopReason;
   error?: string;
-  author?: { memberId: MemberId; delivery: MessageDelivery };
+  author?: { memberId: MemberId; delivery: MessageDelivery; reopen?: boolean; replayed?: boolean };
   optimistic?: boolean;
   /** The key proxy's counts for this turn (F-089): what spend comes from. */
   usage?: TokenCounts;

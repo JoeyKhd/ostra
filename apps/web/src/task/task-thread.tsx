@@ -10,7 +10,7 @@ import {
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowUpIcon, InfoIcon, PauseIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
+import { ArrowUpIcon, InfoIcon, PauseIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -61,6 +61,8 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
         {time === null ? null : <Meta dot={false}>{time}</Meta>}
         {delivery === "queued" ? <span className="text-sm text-faint">{t("task.queued")}</span> : null}
         {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
+        {meta?.author?.reopen === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="reopen">{t("task.reopenTag")}</span> : null}
+        {meta?.author?.replayed === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="replayed">{t("task.replayedTag")}</span> : null}
         {meta?.optimistic === true ? <span className="text-sm text-faint">{t("task.sending")}</span> : null}
       </div>
     );
@@ -150,35 +152,43 @@ MessageView.displayName = "MessageView";
  * Send never fires while a turn runs (spike 7, ADR 0036). `Interrupt and send` shows only while a turn
  * runs and the driver may interrupt it.
  */
-const Composer = ({ interrupt, onSend }: { readonly interrupt: boolean; readonly onSend: (text: string, interrupt: boolean) => Promise<void> }) => {
+const Composer = ({ interrupt, onSend, reopen = false, hint = null }: { readonly interrupt: boolean; readonly onSend: (text: string, interrupt: boolean) => Promise<void>; readonly reopen?: boolean; readonly hint?: string | null }) => {
   const text = useAuiState((state) => state.composer.text);
   const aui = useAui();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const send = (interrupt: boolean) => {
     const value = text.trim();
-    if (value === "") return;
+    if (value === "" || busy) return;
     setError(null);
+    setBusy(true);
     onSend(value, interrupt).then(
-      () => { aui.composer.setText(""); },
-      (cause: unknown) => { setError(cause instanceof Error ? cause.message : t("errors.unknown")); },
+      () => { aui.composer.setText(""); setBusy(false); },
+      (cause: unknown) => { setError(cause instanceof Error ? cause.message : t("errors.unknown")); setBusy(false); },
     );
   };
   return (
     <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-3 focus-within:border-[#34363a]" onSubmit={(event) => { event.preventDefault(); send(false); }}>
-      <ComposerPrimitive.Input aria-label={t("task.composer.label")} placeholder={t("task.composer.placeholder")} rows={2} className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none" />
+      <ComposerPrimitive.Input aria-label={t("task.composer.label")} placeholder={reopen ? t("taskPage.composer.reopenPlaceholder") : t("task.composer.placeholder")} rows={2} className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none" />
       {error === null ? null : <p role="alert" className="text-sm text-red">{error}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-faint">
-          <InfoIcon className="size-[13px] shrink-0 stroke-[1.75]" /> <span className="truncate">{t("task.composer.hint")}</span>
+          <InfoIcon className="size-[13px] shrink-0 stroke-[1.75]" /> <span className="truncate">{hint ?? t("task.composer.hint")}</span>
         </span>
         {interrupt ? (
           <Button type="button" onClick={() => { send(true); }} disabled={text.trim() === ""}>
             <PauseIcon /> {t("task.composer.interruptAndSend")}
           </Button>
         ) : null}
-        <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={text.trim() === ""} data-action="send">
-          <ArrowUpIcon /> {t("task.composer.send")}
-        </Button>
+        {reopen ? (
+          <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={text.trim() === "" || busy} data-action="reopen">
+            <RotateCcwIcon /> {busy ? t("taskPage.composer.reopening") : t("taskPage.composer.reopen")}
+          </Button>
+        ) : (
+          <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={text.trim() === ""} data-action="send">
+            <ArrowUpIcon /> {t("task.composer.send")}
+          </Button>
+        )}
       </div>
     </ComposerPrimitive.Root>
   );
@@ -198,17 +208,24 @@ export type TaskThreadProps = {
   readonly approvalSummary: (approvalId: string) => string | null;
   /** In place of the composer when the viewer can't send: the take-over line, or nothing. */
   readonly notDriver?: ReactNode;
+  /** The composer reopens the task (`tasks.reopen`) instead of sending (ticket 36). */
+  readonly canReopen?: boolean;
+  /** The composer's hint line, when the task page has a better one than the agent's. */
+  readonly composerHint?: string | null;
+  /** A line in the composer's place when neither send nor reopen applies (a merged task). */
+  readonly instead?: ReactNode;
   readonly hasEarlier: boolean;
   readonly loadEarlier: () => Promise<void>;
   /** Called after the fold with how long it took, for the render budget's record. */
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, notDriver, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
   const send = useMutation(trpc.tasks.send.mutationOptions());
+  const reopen = useMutation(trpc.tasks.reopen.mutationOptions());
 
   const messages = useMemo(() => {
     const started = performance.now();
@@ -231,20 +248,21 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
       const clientMessageId = clientMessageIdSchema.parse(crypto.randomUUID());
       setOptimistic((list) => [...list, { clientMessageId, memberId, text, delivery: interrupt ? "after-interrupt" : running ? "queued" : "immediate" }]);
       try {
-        await send.mutateAsync({ taskId, clientMessageId, text, delivery: interrupt ? "interrupt" : "queue" });
+        if (canReopen && !canSend) await reopen.mutateAsync({ taskId, clientMessageId, text });
+        else await send.mutateAsync({ taskId, clientMessageId, text, delivery: interrupt ? "interrupt" : "queue" });
       } catch (cause) {
         setOptimistic((list) => list.filter((m) => m.clientMessageId !== clientMessageId));
         throw new Error(errorText({ message: cause instanceof Error ? cause.message : "", data: null }) ?? t("errors.unknown"));
       }
     },
-    [memberId, running, send, taskId],
+    [memberId, running, send, reopen, canReopen, canSend, taskId],
   );
 
   const runtime = useExternalStoreRuntime<TaskUIMessage>({
     messages,
     convertMessage: toThreadMessageLike,
     isRunning: running,
-    isDisabled: !canSend,
+    isDisabled: !canSend && !canReopen,
     // ostra's own Send button sends; this only runs if assistant-ui's composer submits on Enter.
     onNew: async (message) => {
       const text = message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
@@ -283,10 +301,12 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
             ) : null}
             <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
           </ThreadPrimitive.Viewport>
-          {canSend ? (
+          {canSend || canReopen ? (
             <div className="shrink-0 pt-3">
-              <Composer interrupt={running && canInterrupt} onSend={sendText} />
+              <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} />
             </div>
+          ) : instead !== undefined ? (
+            instead
           ) : notDriver === undefined ? null : (
             <div className="shrink-0 pt-3 text-sm text-faint" data-part="not-driver">{notDriver}</div>
           )}
