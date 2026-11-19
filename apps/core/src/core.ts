@@ -55,6 +55,7 @@ import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileBehindHandler, reconcileHandler } from "./code-host/pull-requests.ts";
+import { githubCommentHandler, prCommentHook } from "./code-host/pr-comments.ts";
 import { diffFetchHandler } from "./diff/diff-fetch.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
@@ -332,8 +333,25 @@ export const startCore = async (
     secretStore: adapters.secretStore,
     logger,
     onPush: (input: Parameters<typeof snapshotsOnPush>[1]) => snapshotsOnPush(snapshotDeps, input),
+    // Milestone 3 (ticket 25): an `@ostra` comment on a task's PR is queued as its `github.comment`.
+    onComment: prCommentHook({ db, jobs }),
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
+  await jobs.work(
+    "github.comment",
+    githubCommentHandler({
+      db,
+      jobs,
+      outbox: postgresCommandOutbox,
+      notices,
+      audit: postgresAuditLog,
+      clock: systemClock,
+      adapters,
+      timers,
+      spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
+    }),
+    { localConcurrency: 2 },
+  );
   // Milestone 3 (ticket 24): each live task repo's `behind`, every OSTRA_RECONCILE_MINUTES.
   await jobs.work("task.reconcile-behind", reconcileBehindHandler(prDeps), { localConcurrency: 1 });
   await ensureBehindSchedule({ jobs, reconcileMinutes: settings.reconcileMinutes });

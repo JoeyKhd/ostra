@@ -7,7 +7,7 @@ import type { JobHandler, Jobs } from "@ostra/jobs";
 import { connectionIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 
-import type { WebhookHandler } from "../webhooks/process.ts";
+import type { WebhookDeliveryContext, WebhookHandler, WebhookOutcome } from "../webhooks/process.ts";
 
 // PR states (F-031, F-044, F-046, F-079, ticket 16). Two ways a PR's state reaches its task, which
 // must agree, so both call the domain's one `recordPullRequestState`:
@@ -34,7 +34,12 @@ export type PullRequestStateDeps = {
     readonly connectionId: ConnectionId;
     readonly event: Extract<CodeHostWebhookEvent, { kind: "push" }>;
   }) => Promise<string>;
+  /** Milestone 3 (ticket 25): what an `issue_comment` or a `pull_request_review_comment` does. */
+  readonly onComment?: (context: WebhookDeliveryContext, event: PrCommentEvent) => Promise<WebhookOutcome>;
 };
+
+/** A PR comment's webhook, as the code host's adapter reads it. */
+export type PrCommentEvent = Extract<CodeHostWebhookEvent, { readonly kind: "issue_comment" | "pull_request_review_comment" }>;
 
 const record = (
   deps: PullRequestStateDeps,
@@ -66,8 +71,12 @@ export const githubWebhookHandler =
         ? { outcome: "ignored", reason: snapshot === null ? "no task's base or branch" : `push: ${snapshot}` }
         : { outcome: "processed" };
     }
+    if (event.kind === "issue_comment" || event.kind === "pull_request_review_comment") {
+      // Milestone 3 (F-053, ticket 25): an `@ostra` comment, acted on by its own job.
+      return deps.onComment === undefined ? { outcome: "ignored", reason: "comments aren't read here" } : deps.onComment(context, event);
+    }
     if (event.kind !== "pull_request") {
-      return { outcome: "ignored", reason: `not a pull_request event (${event.kind === "other" ? event.event.slice(0, 64) : event.kind})` };
+      return { outcome: "ignored", reason: `not a pull_request event (${event.event.slice(0, 64)})` };
     }
     const result = await record(deps, {
       organizationId: context.organizationId,

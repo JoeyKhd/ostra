@@ -1,6 +1,6 @@
 # 25: Core: `@ostra` on the PR
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 07, 09
 Features: F-053
@@ -17,9 +17,9 @@ Spec: `../spec.md`, section 4 ("`@ostra`"); ADR 0052, ADR 0041
 
 ## Done when
 
-- [ ] Tests: a linked member's comment reopens the task once, with one reaction, and a replayed delivery does nothing; a line comment carries its path and line; an unlinked commenter, a linked one without access and a bot are dropped with no reply; a comment while a session runs waits for the turn's end; another organization's task is never matched.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ reopen tasks from @ostra on a PR`.
+- [x] Tests: a linked member's comment reopens the task once, with one reaction, and a replayed delivery does nothing; a line comment carries its path and line; an unlinked commenter, a linked one without access and a bot are dropped with no reply; a comment while a session runs waits for the turn's end; another organization's task is never matched.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ reopen tasks from @ostra on a PR`.
 
 ## Decided 2026-11-19
 
