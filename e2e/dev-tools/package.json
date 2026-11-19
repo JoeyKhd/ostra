@@ -1,0 +1,27 @@
+{
+  "name": "@ostra/dev-tools",
+  "version": "0.0.0",
+  "description": "Development-only tools: the mail sink and the dev GitHub link (milestone 4, ticket 40). Never in the production build",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "exports": {
+    "./mail-box": "./src/mail-box.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ostra/adapter-email-smtp": "workspace:*",
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/domain": "workspace:*",
+    "@ostra/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}

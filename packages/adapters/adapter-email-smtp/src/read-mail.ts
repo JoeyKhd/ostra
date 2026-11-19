@@ -1,7 +1,7 @@
 // Reads the raw message the fake SMTP server took, for the tests: the headers, the subject with its
 // encoded words decoded, and the text and HTML parts with their transfer encoding undone. Just
 // enough MIME for what nodemailer writes (a `multipart/alternative` of a text and an HTML part).
-// It reads; it never sends, so it isn't part of the adapter's public surface.
+// It reads; it never sends. The dev mail sink's reader (ticket 40) uses it too, through `./read-mail`.
 
 export type ReadMail = {
   /** Header names in lower case, folded lines joined. The last of a repeated header wins. */

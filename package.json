@@ -23,6 +23,8 @@
     "db:generate": "node packages/db/scripts/generate.ts",
     "dev:reset": "node packages/db/scripts/reset.ts",
     "dev:seed-member": "node packages/api/scripts/seed-member.ts",
+    "dev:mail-sink": "node e2e/dev-tools/src/dev-mail-sink.ts",
+    "dev:link-github": "node e2e/dev-tools/src/dev-link-github.ts",
     "e2e:m1": "node e2e/m1-first-pr/src/demo.ts --checks --clean-up",
     "e2e:m2": "node e2e/m2-tickets-in/src/demo.ts --checks",
     "e2e:m3": "node e2e/m3-step-in/src/demo.ts",

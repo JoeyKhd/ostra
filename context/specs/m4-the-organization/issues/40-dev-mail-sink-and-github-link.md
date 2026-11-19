@@ -1,6 +1,6 @@
 # 40: Dev tools: the mail sink and the dev GitHub link
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 05
 Features: F-002 and F-104 (their demo), F-115
@@ -15,8 +15,10 @@ Spec: `../spec.md`, sections 3 and 8; ADR 0053 ("For development only")
 
 ## Done when
 
-- [ ] Tests: the sink stores a mail sent by milestone 3's SMTP adapter and the helper finds its link; `dev:link-github` refuses with `NODE_ENV=production`; neither script is in the production build.
-- [ ] `docs/development.md` names both, and the settings for the sink.
-- [ ] Committed as `🔧 add the mail sink and the dev GitHub link`.
+- [x] Tests: the sink stores a mail sent by milestone 3's SMTP adapter and the helper finds its link; `dev:link-github` refuses with `NODE_ENV=production`; neither script is in the production build.
+- [x] `docs/development.md` names both, and the settings for the sink.
+- [x] Committed as `🔧 add the mail sink and the dev GitHub link`.
 
 ## Comments
+
+- 2026-11-19: built in `e2e/dev-tools/` (`@ostra/dev-tools`), a workspace package that neither core nor the panel depends on, rather than the root `scripts/`: the root can't import workspace packages, and `turbo prune` leaves the package out of the server image, which the test checks by running the prune. The sink writes to `.ostra-dev/mail/` (the dev data folder, gitignored and cleared by `pnpm dev:reset`) instead of `.data/mail/`. It offers no `STARTTLS`, so the dev stack uses `OSTRA_SMTP_SECURE=none`. The fake SMTP server gained `port` and `onMessage`, and `@ostra/adapter-email-smtp` exports `./read-mail` for the mail box helper. `NODE_ENV` unset counts as development, as for `pnpm dev:seed-member`. Commit: see the next line.

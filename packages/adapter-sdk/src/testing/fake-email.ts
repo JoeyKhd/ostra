@@ -271,6 +271,10 @@ export type FakeSmtpOptions = {
   readonly requireTls?: boolean;
   /** Recipients answered with this reply line, such as `450 4.2.1 Mailbox busy` or `550 5.1.1 No such user`. */
   readonly rejectRecipients?: Readonly<Record<string, string>>;
+  /** Milestone 4 (ticket 40): the loopback port to listen on, for the dev mail sink. Default: a free one. */
+  readonly port?: number;
+  /** Milestone 4 (ticket 40): called with each message as it's taken, for the dev mail sink to write it out. */
+  readonly onMessage?: (message: SmtpReceived) => void;
 };
 
 export type FakeSmtpServer = {
@@ -351,7 +355,9 @@ export const startFakeSmtpServer = async (options: FakeSmtpOptions = {}): Promis
       if (mode === "data") {
         if (line === ".") {
           mode = "command";
-          received.push({ from: from ?? "", to: [...to], data: data.join("\r\n"), tls: secure, user });
+          const message: SmtpReceived = { from: from ?? "", to: [...to], data: data.join("\r\n"), tls: secure, user };
+          received.push(message);
+          options.onMessage?.(message);
           reset();
           reply(`250 2.0.0 Ok: queued as ${randomUUID()}`);
           return;
@@ -499,7 +505,7 @@ export const startFakeSmtpServer = async (options: FakeSmtpOptions = {}): Promis
 
   const server: Server =
     options.implicitTls === true ? createTlsServer({ key: tlsMaterial.key, cert: tlsMaterial.cert }, serve) : createNetServer(serve);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(options.port ?? 0, "127.0.0.1", resolve));
   const port = portOf(server);
   return {
     host: "127.0.0.1",
