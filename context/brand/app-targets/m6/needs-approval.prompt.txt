@@ -1,0 +1,60 @@
+# Prompt for the needs-approval target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). Two generations: the first from the references, the second an edit of the first.
+# Generation 2 (kept). Refs: the first generation, ../m3/needs-you.png (the approved 2048 original), ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+EDIT the first reference image (the ostra "Needs approval" page). Keep its layout, data, spacing, palette, type and every word exactly, and change ONLY these things:
+1. In the expanded amber block, the "Ticket" line: teal mono "BIL-92", then the title "Retry failed invoice exports" in IBM Plex Sans 13px #EDEDEE (not mono), with its first letter a clean, complete capital "R", then a small teal "↗".
+2. In the same block, the values "Default" (Profile) are IBM Plex Sans, not mono; "default" (Pool) stays mono.
+3. Left sidebar, Organization section: the rows read exactly, each with its own thin Lucide icon: "Runner pools" (server icon) with faint "238", "Models" (cpu icon), "GitHub" (git-pull-request icon), "Linear" (ticket icon), "Agent profiles" (sliders-horizontal icon), "Members" (users icon), "Audit log" (scroll-text icon), "Settings" (settings gear icon). "Agent profiles" is spelled with a final "s".
+4. Left sidebar, billing-platform's indented rows each get a thin 15px Lucide icon before the word, like the other references: "Tasks" (list-checks), "Needs approval" (shield-question), "Inbox" (inbox), "Environment" (box), "Automations" (zap), "Memory" (book-open), "Settings" (settings).
+5. Right panel values "Alex Kim, 12 Nov": "Alex Kim," in IBM Plex Sans, only "12 Nov" in mono.
+Everything else stays identical, pixel for pixel: the rows, the amber block, the buttons, the tabs, the properties panel. Amber only where it already is. No gradients, no glow, no purple, no shadows, no cards. Flat straight-on screenshot, crisp text.
+
+# Generation 1. Refs: ../m3/needs-you.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport rendered at 2x, of "ostra", a dark developer console that runs coding agents on tickets. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is the approved "Needs you" page of this same app: match it exactly in style, sidebar, top bar, title, lede, underline tabs, 40px hairline rows with one column grid, the one expanded row with its 2px amber left rule, buttons and the right properties panel, and keep its scale exactly. This picture is a project's "Needs approval" page in that same form. The second reference is the app's Home screen, for the shared sidebar. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+What the page is: tasks that people in Linear started by delegating a ticket to ostra, who are not members of this project. Nothing runs until a member of the project approves. An approved task runs only on a pool runner, on the project's default profile.
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286 only for the switch that is on (a small pill switch, green track, white knob). Buoy Amber #FFB224 ONLY for: the expanded block's 2px left rule, its small hand icon and its title words, its ONE filled "Approve" button (dark #0C1D21 text), and the sidebar's amber count pills. No gradients, no glow, no purple, no blue tint, no cards, never a box inside a box, no drop shadows.
+
+TYPE: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); ticket keys, pool and profile names, counts and ages in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR 232px, identical to the first reference: hinge logo + "Acme Corp" + up-down chevron; search "Search" with "⌘K" and an off-white "+" button; "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects": "calculator" (teal square); "billing-platform" (purple-grey square) expanded, under it indented rows "Tasks 9", "Needs approval" with a small amber pill "3" (SELECTED, background #1A1B1E), "Inbox 6", "Environment", "Automations", "Memory", "Settings"; then "web-storefront", "mobile-app", "data-pipeline", "··· 13 more". Section label "Organization": "Runner pools 238", "Models", "GitHub", "Linear", "Agent profiles", "Members", "Audit log", "Settings". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px, hairline below: breadcrumbs "billing-platform  ›  Needs approval" ("Needs approval" brighter). Nothing on the right.
+
+3) MAIN COLUMN, padding 28px 40px:
+- Title "Needs approval" (Manrope Bold 24px).
+- Muted lede 13.5px: "Tasks started in Linear by people who aren't members of billing-platform. Nothing runs until a member approves."
+- Underline tabs 32px with a hairline under the row: "Waiting" + faint mono "3" (selected, bright with a 2px white underline), "Decided" (muted).
+- 16px below, a header row 28px with faint 11.5px labels: "Ticket", "Title", "Started in Linear by", "Runs on", "Age".
+- Rows 40px, hairlines between, no boxes, one grid (key 84px, title flexible, starter 230px, runs on 170px, age 44px, action 120px):
+  Row 1 (EXPANDED): white 6px unread dot, faint mono "BIL-92" | bright 500 "Retry failed invoice exports" | "Casey Moore" + faint " · not a member" | mono muted "Default · default" | faint mono "4m" | a small ghost chevron-up button at the right.
+  Under row 1, indented to the title column, the expanded block: NO box, only a 2px amber vertical rule on its left and 12px padding:
+    - Amber small hand icon + amber semibold "Needs you · approve an outside task".
+    - 13px line: "Casey Moore delegated BIL-92 to ostra in Linear. No member of Acme Corp has their Linear address, so they count as outside."
+    - A key/value block of three 26px lines, keys muted 110px, values bright: "Ticket" — teal mono "BIL-92" + muted " Retry failed invoice exports" + teal small "↗"; "Profile" — "Default" + faint " · billing-platform's default for code"; "Pool" — mono "default" + faint " · never a personal runner".
+    - A row of 28px buttons, 8px apart: outlined "Reject", amber filled "Approve" (dark text, weight 600).
+    - Faint 12px footnote: "Any member of billing-platform can answer. The first answer counts. Linear's session shows the outcome."
+  Row 2: white unread dot, faint mono "BIL-95" | bright "Add VAT to the CSV export" | "Jordan Lee" + faint " · member, no access here" | mono muted "Default · default" | faint mono "22m" | at the right two compact 26px buttons: ghost "Reject", outlined "Approve".
+  Row 3: no dot, faint mono "BIL-97" | muted "Invoice PDF shows the wrong locale" | "Dana Ortiz" + faint " · not a member" | mono muted "Default · default" | faint mono "1h" | ghost "Reject", outlined "Approve".
+- 20px below the rows, one faint 12px line with a small info icon: "Rejecting asks for a reason. It's posted to the ticket's agent session in Linear."
+Quiet empty space below.
+
+4) RIGHT PROPERTIES PANEL 320px, hairline on its left, padding 20px 18px. Small faint group labels 11px; key/value rows 30px, key muted 104px column, value bright 12.5px:
+- "Outside tasks": a row "Need approval" with a green switch ON at the right; under it a muted 12px paragraph: "On by default. Only an organization admin turns it off: outside tasks then start at once, still on a pool and on the default profile." Then a row Changed — muted "Alex Kim, 12 Nov" (date in mono).
+- hairline. "Runs on": Profile — "Default"; Pool — mono "default"; Personal runners — muted "Never".
+- hairline. "From Linear": Board — "Billing"; Team — mono "BIL"; Agent mode — "On"; then a teal link "Connect Linear →".
+
+Every word spelled exactly as written. Calm, precise, dense, like Linear's inbox. No extra text, no charts, no illustrations.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

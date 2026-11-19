@@ -1,0 +1,52 @@
+# Prompt for the refine-draft target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, kept as made.
+# Refs: ../m3/task-plan-edit.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport rendered at 2x, of "ostra", a dark developer console that runs coding agents on tickets. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is the approved task page of this same app with a plan being edited: match it exactly in style, sidebar, top bar, header (key line, title, status line, ticket strip, context row), the underline tabs, the amber-ruled needs-you block, the single-line text fields with grips and x icons, buttons and the right properties panel, and keep its scale exactly. This picture is a REFINE task: its agent read the code (it can never push) and handed in a typed draft of the ticket, which a member now edits before writing it back to Linear. The "Draft" tab is selected. The second reference is the app's Home screen, for the shared sidebar. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (text fields, the image tile) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA. Buoy Amber #FFB224 ONLY for: the task's status dots and "Needs you · draft ready" words, the draft block's 2px left rule and its title, the ONE filled "Update ticket" button (dark #0C1D21 text), and the sidebar's amber pill and dots. No gradients, no glow, no purple, no blue tint, no cards, never a box inside a box, no drop shadows.
+
+TYPE: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); ticket keys, version numbers, file names, sizes and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR 232px, identical to the first reference: hinge logo + "Acme Corp" + up-down chevron; search, "+"; "Home"; "Needs you" amber pill "5"; "My tasks" "7"; "Projects": "calculator" expanded with "Tasks 17" (SELECTED), "Inbox 4", "Environment", "Automations", "Memory 2", "Repos", "Settings"; "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "··· 13 more"; "Organization": "Runner pools 238", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings"; bottom avatar "AK" "Alex Kim".
+
+2) TOP BAR 44px, hairline below: breadcrumbs "calculator  ›  Tasks  ›  CALC-180". Right: a small ghost copy-link icon button only (no Stop: no turn is running).
+
+3) MAIN COLUMN, padding 28px 40px, top to bottom:
+- Key line faint mono 12px: "CALC-180 · from Linear" then a small outlined chip "refine".
+- Title Manrope Bold 24px: "Users want to see the version somewhere".
+- Status line 13px: amber dot + amber 500 "Needs you · draft ready" · muted "Read-only: this task never pushes" · muted "Started 25 min ago on" faint mono "alex-desktop".
+- Ticket strip: chips 22px "Backlog" (dashed circle icon), "frontend", then teal "Open in Linear ↗".
+- Underline tabs 34px with a hairline under the row: "Activity" (muted), "Draft" (SELECTED, bright with 2px white underline) + faint mono "v3".
+- 14px below, a VERSION LINE, one row: muted "Version" then three small chips 24px: "v1 · agent" (muted outline), "v2 · agent" (muted outline), "v3 · your edit" (selected: #1A1B1E fill, bright text); then faint 12px "Saved 1 min ago"; at the far right a two-option segmented toggle 26px: "Edit" (selected) | "Preview".
+- THE DRAFT BLOCK, no box: a 2px amber vertical rule at the left, 12px left padding, the fields stacked, each with a faint 12px label above:
+  - "Description": a text field #131416, 1px #2A2C30 border, radius 8px, full width, three lines tall, bright 13px text: "Show the app's version in the footer and in the About dialog, read from package.json at build time. Add a /version endpoint so support can check a deploy."
+  - "Acceptance criteria" with faint mono "3": three 30px rows, each a faint grip icon, a faint mono number, a single-line field (#131416, 1px #2A2C30, radius 6px, 26px tall) with bright text, a faint x at the right end:
+    "1" "The footer shows v1.8.2 on every page"
+    "2" "GET /version returns the version and the git SHA as JSON" — and under this row, indented to the field, one faint 11.5px line: "edited by you · the agent's: GET /version returns the version", all faint.
+    "3" "The About dialog shows the same version as the footer"
+    then a teal 12.5px "+ Add a criterion".
+  - "Edge cases" with faint mono "1": one row "1" "A build without a git SHA shows the version alone".
+  - "Open questions" with faint mono "1": one row "1" "Semver only, or the SHA as well in the UI?".
+  - "Sub-tickets" with faint mono "2": two 30px rows, each a faint chevron-right, a field with the bright title, and at its right a faint 12px "3 lines": "Show the version in the footer", "Add a /version endpoint".
+  - "Images" with faint mono "1 of 10": one 52px row: a 64x40 image tile #131416 with a tiny grey UI-sketch thumbnail, mono "version-mock.png", faint mono "48 KB", a faint x; then an outlined 26px button with an upload icon "Upload".
+  - A row of 28px buttons, 8px apart: amber filled "Update ticket", outlined "Mark ready", ghost muted "Discard my edits".
+  - Faint 12px: "Update ticket writes version 3 to CALC-180 on Linear and creates 2 sub-issues. Mark ready moves it to Todo."
+
+4) RIGHT PROPERTIES PANEL 320px, hairline on its left, padding 20px 18px, as in the first reference: faint 11px group labels, key/value rows 28px, key muted 84px column, value bright 12.5px:
+- "Properties": Status — amber dot + "Needs you · draft ready"; Driver — tiny avatar "AK" + "Alex Kim"; Kind — "Refine"; Profile — "Refine" + small faint outlined chip "built-in"; Agent — "OpenCode"; Model — "Claude Sonnet 5.5"; Runner — mono "alex-desktop"; Pushes — muted "None: read-only"; Spend — mono "$0.18" muted " of $25.00".
+- hairline. "Draft": Versions — mono "3"; Latest — "Your edit, 1 min ago"; From agent — "v2, turn 2".
+- hairline. "Ticket": Key — teal mono "CALC-180"; Status — "Backlog"; Board — "Calculator".
+- hairline. "On Linear": one faint 12px line: "Nothing written yet. A draft reaches Linear only when someone presses Update ticket."
+
+Every word spelled exactly as written. Calm, precise, dense, like Linear's issue editor inside a pro console. No extra text, no charts, no illustrations.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

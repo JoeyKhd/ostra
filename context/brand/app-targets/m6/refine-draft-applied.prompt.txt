@@ -1,0 +1,14 @@
+# Prompt for the refine-draft-applied target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, an edit of refine-draft, kept as made.
+# Refs: refine-draft's 2048 generation, ../m2/task-ticket.png (the approved 2048 original), ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+EDIT the first reference image (the ostra refine task's "Draft" tab). Keep its sidebar, top bar, header layout, tabs, version line, field layout, spacing, palette, type and properties panel exactly. The member has now pressed "Update ticket" and then "Mark ready", so this is the APPLIED state of the same page. Change ONLY these things:
+1. Status line under the title: a small grey dot + "Done" in #EDEDEE 500 (no amber anywhere on the line), then muted " · Read-only: this task never pushed", then muted " · Started 31 min ago on" and faint mono "alex-desktop".
+2. Ticket strip: the first chip reads "Todo" with an empty circle icon (instead of "Backlog").
+3. The draft block's left rule becomes a 2px #2A2C30 grey rule (no amber). Every text field becomes read-only: no field border, no field fill, the text sits plain on the page background in #EDEDEE, the grip icons, the x icons, "+ Add a criterion", the "edited by you" line and the "Upload" button are gone. The image row keeps its thumbnail, "version-mock.png" and "48 KB", and gains at its right a small green check icon and muted 12px "attached".
+4. Above the Description label, inside the block, a new line, 13px: a small green check icon, then #EDEDEE "Version 3 applied to CALC-180 by Alex Kim" and faint mono " · 14:52", then muted " · moved to Todo".
+5. The two sub-ticket rows: no chevron and no field box; each shows teal mono key then the title: "CALC-181  Show the version in the footer" and "CALC-182  Add a /version endpoint", and at its right a faint 12px "sub-issue ↗" in teal.
+6. The button row is replaced by one 12px muted line: "Edits now happen in Linear. To refine again, start a new refine task from the ticket." with "start a new refine task" in teal.
+7. Version line: the selected chip reads "v3 · applied" ; "Saved 1 min ago" becomes faint "Applied 2 min ago"; the Edit | Preview toggle stays, with "Preview" selected.
+8. Right panel: Status — grey dot + "Done"; Pushes — muted "None"; Draft group: Versions "3", Applied "v3, 14:52 by Alex Kim", Ready "14:53"; Ticket group: Status "Todo"; the "On Linear" group now has three rows with green "done" at the right of each: "Updated the description", "Attached 1 image", "Created 2 sub-issues", then "Moved to Todo" with green "done".
+9. Sidebar: the "Needs you" pill reads "4".
+Everything else stays identical, all copy spelled exactly as written. No amber on this page except the sidebar's small amber pill and dots. No gradients, no glow, no purple, no shadows, no cards. Flat straight-on screenshot, crisp text.

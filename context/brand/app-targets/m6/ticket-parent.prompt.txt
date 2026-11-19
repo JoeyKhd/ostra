@@ -1,0 +1,51 @@
+# Prompt for the ticket-parent target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, kept as made.
+# Refs: ../m2/task-ticket.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport rendered at 2x, of "ostra", a dark developer console that runs coding agents on tickets. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is the approved task page of this same app for a ticket task: match it exactly in style, sidebar, top bar, header (key line, title, status line, ticket strip), fonts, density, hairline rows and the right properties panel, and keep its scale exactly. The second reference is the app's Home screen, for the grouped rows and the shared sidebar. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+This page is a PARENT TICKET's page. A parent ticket never runs code itself: each of its sub-issues ran as its own task, and this page follows them. There is NO thread, NO tabs and NO composer on this page.
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (group bands, the progress track) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286 (merged, and the merged part of the progress bar); Buoy Amber #FFB224 ONLY for the one needs-you row's dot and word "Needs you", its "Answer" button outline stays neutral, and the sidebar's small amber count pill and dots. No gradients, no glow, no purple, no blue tint, no cards, never a box inside a box, no drop shadows.
+
+TYPE: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); ticket keys, PR numbers, counts, ages and runner names in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR 232px, identical to the first reference: hinge logo + "Acme Corp" + up-down chevron; search "Search" with "⌘K" and an off-white "+" button; "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects": "calculator" expanded (teal 8px square), under it indented rows "Tasks 17", "Inbox 4" (SELECTED, background #1A1B1E), "Environment", "Automations", "Memory 2", "Repos", "Settings"; then "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "··· 13 more". Section label "Organization": "Runner pools 238", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px, hairline below: breadcrumbs "calculator  ›  Inbox  ›  CALC-180" ("CALC-180" brighter, semibold). Right: a small ghost copy-link icon button, then one outlined 28px button with a small play icon: "Start 1 sub-issue".
+
+3) MAIN COLUMN, padding 28px 40px, top to bottom:
+- Key line, faint mono 12px: "CALC-180 · from Linear · parent ticket".
+- Title, Manrope Bold 24px: "Show the app's version".
+- Status line 13px: muted "6 sub-issues on calculator's boards · 5 tasks started 2 h ago by Alex Kim".
+- Ticket strip, one row of small chips 22px tall with 1px #2A2C30 border and muted 12px text: a half-filled circle icon + "In Progress", "frontend", "release", then muted " · High priority", then teal "Open in Linear ↗".
+- 18px below, the PROGRESS block, no box: a line with "Progress" semibold 13px and, right-aligned, faint mono "1 of 6 merged". Under it a full-width 6px tall rounded track #131416: the first sixth filled green #4FB286, the next two sixths filled light grey #9A9DA3, the rest empty track. Under the track one muted 12px line: "1 merged · 2 in review or running · 1 needs you · 1 queued · 1 not started".
+- One hairline.
+- Section title line, 22px below: "Sub-issues" semibold 13px and faint mono "6". Then a header row 28px with faint 11.5px labels: "Ticket", "Title", "Task", "Now", "PRs", "Age". Then SIX body rows, 40px each, hairlines between, no boxes, one column grid for all rows (key 84px, title flexible, task state 130px, now 260px, PRs 90px, age 50px, action 100px):
+  Row 1: faint mono "CALC-181" | bright "Show the version in the footer" | green dot + "Merged" | muted "Merged by Sam Rivera" | teal mono "#495" | faint mono "1h" | nothing.
+  Row 2: faint mono "CALC-182" | bright "Add a /version endpoint" | small grey-green dot + "In review" | muted "Waiting for a reviewer" | teal mono "#497" | faint mono "40m" | nothing.
+  Row 3: faint mono "CALC-183" | bright "Version in the About dialog" | amber dot + amber "Needs you" | muted "Question: semver or the git SHA?" | faint "–" | faint mono "12m" | a small outlined 26px button "Answer".
+  Row 4: faint mono "CALC-184" | bright "Bump the version on release" | white pulsing dot + "Running" | muted "Editing" + mono "scripts/release.ts" | faint "–" | faint mono "8m" | nothing.
+  Row 5: faint mono "CALC-185" | bright "Write the release note" | hollow grey dot + "Queued" | muted "Waiting for a runner on pool" + mono "default" | faint "–" | faint mono "2h" | nothing.
+  Row 6: faint mono "CALC-186" | bright "Document the version format" | faint dashed circle + faint "No task" | muted "Added after the start" | faint "–" | faint "–" | a small outlined 26px button "Start".
+- Section title line, 22px below: "Not on calculator's boards" semibold 13px and faint mono "1". One faint 12px line under it: "Listed, never started here. Start it from its own project." Then ONE 40px row with the same grid: faint mono "MOB-61" | muted "Show the version in the mobile app" | muted "Board Mobile" | muted "in mobile-app" | nothing | nothing | a teal "Open in Linear ↗" at the right.
+- Section title line, 22px below: "Refined" semibold 13px. ONE 40px row: a small faint list-checks icon, faint mono "CALC-180", bright "Refine task", grey dot + "Done", muted "Draft v3 applied by Alex Kim, 18 Nov · 2 sub-issues created", and a teal "Open task" link at the right.
+Quiet empty space below.
+
+4) RIGHT PROPERTIES PANEL 320px, hairline on its left, padding 20px 18px. Small faint group labels 11px; key/value rows 28px, key muted on the left (84px column), value bright, 12.5px IBM Plex Sans (only keys, counts and times in mono); thin hairlines between groups:
+- "Ticket": Key — teal mono "CALC-180"; Status — "In Progress"; Board — "Calculator"; Synced — muted mono "30 s ago".
+- "Sub-issues": On this board — mono "6"; Tasks — mono "5"; Elsewhere — mono "1"; Depth — "2 levels".
+- "On Linear": "Progress comment" with, at the right, faint "edited 3 min ago"; "Moved to In Progress" with green "done" at the right. Under them faint 12px: "One comment on CALC-180, edited as the sub-issues move."
+- "Started": By — tiny avatar "AK" + "Alex Kim"; When — mono "2 h ago"; Profile — "Default".
+
+Every word spelled exactly as written. Calm, precise, dense, like Linear's issue view crossed with a CI dashboard. No extra text, no charts besides the one thin progress bar, no illustrations.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

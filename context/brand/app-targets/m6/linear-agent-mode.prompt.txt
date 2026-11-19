@@ -1,0 +1,53 @@
+# Prompt for the linear-agent-mode target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, kept as made.
+# Refs: ../m2/connect-linear.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport rendered at 2x, of "ostra", a dark developer console that runs coding agents on tickets. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is the approved "Linear" connection page of this same app: match it exactly in style, sidebar, top bar, heading, section title lines, 40px key/value rows split by hairlines, fonts, density and the right properties panel, and keep its scale exactly. This picture is that SAME page, grown: a new "Agent mode" section, a "Start from Linear" board list and "Last session events" now sit under the Connection row. The second reference is the app's Home screen, for the shared sidebar. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286 only on the "Connected", "On", "Reachable" and "Healthy" dots and words and on switches that are on (a small pill switch, green track #4FB286 with a white knob; off is a #2A2C30 track with a grey knob); errors red #E5675C only on one small icon. Buoy Amber #FFB224 appears ONLY as the small "5" pill next to "Needs you" in the sidebar. No gradients, no glow, no purple, no blue tint, no cards, never a box inside a box, no drop shadows.
+
+TYPE: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); scopes, URLs, ticket keys, team keys, times and counts in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR 232px, identical to the first reference: hinge logo + "Acme Corp" + up-down chevron; search "Search" with "⌘K" and an off-white "+" button; "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects": "calculator", "billing-platform", "web-storefront", "mobile-app", "data-pipeline" each with its 8px colour square, "··· 13 more". Section label "Organization": "Runner pools 238", "Models", "GitHub", "Linear" (SELECTED, background #1A1B1E), "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px, hairline below: breadcrumbs "Acme Corp  ›  Linear" ("Linear" brighter). Right: one outlined button with an external-link icon "Open in Linear".
+
+3) MAIN COLUMN, padding 28px 40px, content max 760px, top to bottom:
+- Title "Linear" (Manrope Bold 24px), muted two-line lede 13.5px: "The organization's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent."
+- Section title "Connection" (semibold 13px). One 40px row between hairlines: green dot + green "Connected", mono "acme", muted "Acme", and at the right faint mono "since 12 Nov".
+- Section title "Agent mode" (semibold 13px), 24px below. Under it one muted 12.5px line: "People in Linear delegate a ticket to ostra or @mention it, and follow the work in the ticket's agent session." Then key/value rows, 40px, hairlines between, key column 160px muted, value bright:
+  "State" | green dot + green "On" + muted " · turned on 19 Nov by Alex Kim"
+  "Public address" | small green check icon + mono "https://ostra.acme.dev" + muted " · Reachable: Linear's webhooks arrive here"
+  "App user" | a tiny off-white hinge avatar 16px + mono "ostra" + muted " · offered as a delegate on boards with Start from Linear"
+  "Agent scopes" | two small mono chips 22px tall with 1px #2A2C30 border: "app:assignable" "app:mentionable", then muted " · granted 19 Nov"
+  "Token renewal" | muted "Next renewal in 18 h · last renewed 05:12, with the rotating refresh token"
+- Section title "Start from Linear" (semibold 13px) with faint mono count "2", 24px below. One muted 12.5px line: "One board per Linear team takes its delegations. Agent mode starts code tasks only." Then a header row 28px with faint 11.5px labels "Board", "Team", "Project", and a last right column. Then FIVE rows 40px, hairlines between, columns aligned:
+  "Calculator" | mono "CALC" | muted "calculator" | a switch ON (green) at the right
+  "Billing" | mono "BIL" | muted "billing-platform" | a switch ON (green) at the right
+  "Billing exports" (muted) | mono "BIL" | muted "data-pipeline" | faint 12px "BIL already starts on Billing" then a switch OFF and dimmed (disabled) at the right
+  "Storefront" | mono "WEB" | muted "web-storefront" | a switch OFF at the right
+  "Mobile" | mono "MOB" | muted "mobile-app" | a switch OFF at the right
+- Section title "Last session events" (semibold 13px), 24px below. FOUR rows 36px, hairlines between, one grid: faint mono time 52px | event word 90px | mono ticket key 80px | who | outcome right-aligned muted:
+  faint "14:32" | "Delegated" | mono "CALC-201" | "Sam Rivera" | muted "Started a task"
+  faint "14:18" | "Stop" | mono "CALC-198" | "Jordan Lee" | muted "Turn stopped, final response posted"
+  faint "13:57" | "Delegated" | mono "BIL-92" | "Casey Moore" + faint " · not a member" | muted "Waiting for approval"
+  faint "13:12" | "Mention" | mono "WEB-318" | "Priya Nair" | small red triangle-alert icon + muted "No board takes WEB's delegations"
+Quiet empty space below.
+
+4) RIGHT PROPERTIES PANEL 320px, hairline on its left, padding 20px 18px, exactly as in the first reference: small faint group labels 11px, key/value rows 30px, key muted on the left, value bright on the right.
+- "App": App user — mono "ostra"; Client ID — mono "3b9f…41ac"; Workspace — mono "acme"; Secrets — small lock icon + muted "In the secret store".
+- hairline. "Scopes" with faint count "6" at the right: rows in muted mono on one left edge: "read", "write", "issues:create", "comments:create", "app:assignable", "app:mentionable".
+- hairline. "Agent sessions": Open — mono "3"; Awaiting approval — mono "1"; Heartbeat — "after 20 min of silence"; Posted today — mono "48".
+- hairline. "Webhook events" with faint count "6" at the right: muted mono "Issue", "Comment", "AgentSessionEvent" and a faint "+3 more".
+
+Every word spelled exactly as written. Calm, precise, dense, like Linear's own settings pages. No extra text, no charts, no illustrations.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.
