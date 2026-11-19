@@ -1,0 +1,37 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same app's task page right after a reopen: keep its sidebar, top bar, header, ticket strip, context row, thread row language, composer box and properties panel exactly, and show the later, stopped state described below. The second reference is the approved task page from the same app. The third is the ostra hinge logo mark, drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary #9A9DA3; faint #64676D; links teal #6FB8AA; success green #4FB286; errors red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. NO AMBER on this page except the sidebar's small amber project dots and the amber "5" pill: nothing on this task waits on anyone. No gradients, no glow, no purple, no cards, no shadows.
+
+TYPE: title Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, refs, SHAs, sizes, counts, times in IBM Plex Mono. Thin Lucide icons, 15px, 1.75 stroke.
+
+1) SIDEBAR 232px: identical to the first reference.
+
+2) TOP BAR 44px: breadcrumbs "calculator  ›  Tasks  ›  CALC-174". Right: ghost link icon and one outlined "PR #483" with a pull-request icon. NO Stop button.
+
+3) MAIN COLUMN, left padding 40px:
+- Mono faint "CALC-174 · from Linear"
+- Title "Keep a history of results"
+- Status line: small 7px GREY #64676D dot + bright "Stopped", faint middle dot, muted "The box was released 2 days ago".
+- Ticket strip: muted outlined chips "In Review", "frontend", "history", faint "· High priority", teal "Open in Linear" with arrow-up-right.
+- Context row, collapsed: chevron-right, "What the agent got", faint "title, description, 1 comment, 2 labels, 1 image · rendered with the project's template".
+- One hairline.
+- Thread, rows only, 28px round outlined icons in a 40px gutter, small faint ghost text "Load earlier turns" at the very top:
+  a) Person icon. "Alex Kim" bold + faint mono "Mon 10:02" + faint "reopened the task". Text: "Handle an empty history too."
+  b) System row, muted, play-in-box icon: "Resumed in the same box" + faint mono "alex-laptop · the session was still idle".
+  c) Square terminal agent icon. "OpenCode" bold + faint mono "Mon 10:03 · Claude Sonnet 5.5" + faint "done". Text: "An empty history now shows “No results yet”." One tool row in a strict grid: pencil icon, muted "Edited", mono "src/history/panel.tsx", green "+9", red "−1".
+  d) System row, archive icon: "Work saved after turn 2" + faint mono "archive 2.6 MB · hidden ref 81c02aa".
+  e) Person icon. "Alex Kim" bold + faint mono "Mon 10:20". Text: "Also clear the history when the calculator resets."
+  f) System row in red with a red triangle-alert icon: "The box was lost before OpenCode answered."
+  g) System row, muted, layers icon: "Rebuilt from the template" + faint mono "the archive couldn't be read · 41 messages · 1 branch log".
+  h) System row, muted, corner-down-right icon: "Replayed Alex Kim's unanswered message from Mon 10:20 as the first prompt."
+  i) Square terminal agent icon. "OpenCode" bold + faint mono "Mon 10:24 · Claude Sonnet 5.5" + faint "done". Text: "Reset now clears the history as well." One tool row: pencil, "Edited", mono "src/calculator/state.ts", green "+3".
+  j) System rows, muted: square icon "Sam Rivera stopped the task."; box icon "The box was released."
+- COMPOSER pinned at the bottom, the same box #131416 with border #2A2C30: placeholder "Reopen with a message…", bottom row: faint info icon + "Reopening picks a runner, restores the session and keeps the same branches and PRs." and on the right one off-white filled button "Reopen" with a rotate-counter-clockwise icon. No other button.
+
+4) RIGHT PROPERTIES PANEL 300px, as in the first reference. Group labels 11px faint. Rows 28px, keys muted in an 84px column, values bright 12.5px, no icons in values:
+"Properties": "Status" grey dot "Stopped"; "Driver" avatar "AK" "Alex Kim"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" faint "None"; "Box" "Released"; "Sessions" "3"; "Tokens" mono "188k in · 27k out"; "Spend" mono "$1.61" + muted " of $25.00".
+Hairline. "Ticket": "Key" teal mono "CALC-174"; "Status" "In Review"; "Board" "Calculator"; "Synced" muted mono "2 min ago".
+Hairline. "On Linear", 26px rows, step left, state right-aligned: "Moved to In Progress" green "done"; "Linked the task" green "done"; "Linked PR #483" green "done"; "Moved to In Review" green "done"; "Progress comment" muted "edited 2 days ago".
+Hairline. "Code": "Branch" mono "ostra/calc-174-9f3c…"; mono "calculator-web" with right-aligned teal "#483" + muted " · open".
+
+Calm, precise, dense. Strict grid, crisp small text, all copy spelled exactly as given.

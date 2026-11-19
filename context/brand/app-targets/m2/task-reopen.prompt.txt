@@ -1,0 +1,37 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same app's task page for a ticket task: keep its sidebar, top bar, header, ticket strip, thread row language, composer and properties panel exactly, and show the state described below. The second reference is the approved task page with its amber approval block: use exactly that block's style (a 2px amber left rule, no card) for the restore conflict. The third is the app's Home screen. The fourth is the ostra hinge logo mark, drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; errors and deletions red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the restore conflict (its rule, its title, its one filled button), the status dots of this task, and the sidebar needs-you markers. No gradients, no glow, no purple, no blue tint, no cards inside cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, refs, branch names, SHAs, sizes, counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, identical to the first reference ("Acme Corp", Search ⌘K, Home, Needs you amber "5", My tasks 7, Projects: calculator expanded with Tasks 17 selected, Inbox 4, Environment, Automations, Memory 2, Repos, Settings; billing-platform, web-storefront, mobile-app, data-pipeline, ··· 13 more; Organization: Runner pools 238, Models, Agent profiles, Insights, Memory, Members, Audit log, Background work, Settings; bottom avatar "AK" "Alex Kim").
+
+2) TOP BAR 44px: breadcrumbs "calculator  ›  Tasks  ›  CALC-174". Right: ghost link icon, outlined "PR #483" with a pull-request icon, outlined "Stop" with a square icon.
+
+3) MAIN COLUMN, left padding 40px:
+- Mono faint "CALC-174 · from Linear"
+- Title "Keep a history of results"
+- Status line: small 7px AMBER dot + bright (not amber) "Needs you · restore conflict", faint middle dot, muted "Reopened 1 min ago on" + faint mono "alex-desktop".
+- Ticket strip as in the first reference: muted outlined chips "In Review", "frontend", "history", faint "· High priority", teal "Open in Linear" with arrow-up-right.
+- Context row as in the first reference, collapsed: chevron-right, "What the agent got", faint "title, description, 1 comment, 2 labels, 1 image · rendered with the project's template".
+- One hairline.
+- Thread (rows, no bubbles, 28px round outlined icons in a 40px gutter):
+  a) Three system rows, 28px each, muted text with a small muted icon:
+     archive icon: "Work saved after turn 1" + faint mono "archive 2.4 MB · hidden ref 3be91f0"
+     moon icon: "The box stopped after 15 idle minutes."
+     box icon: "The box was released."
+  b) A day divider: faint mono 12px "Today" at the left, then a hairline to the right edge.
+  c) Person icon. "Alex Kim" bold + faint mono "09:12" + faint "reopened the task". Text: "Also add today's date at the top. And what did you change in your first turn, and why?"
+  d) A system row, history (counter-clockwise arrow around a clock) icon, muted: "Restored from the session archive" + faint mono "on alex-desktop, a fresh box · 214 updates replayed"
+  e) THE RESTORE CONFLICT, not a card: a 2px amber vertical rule on the left, indented to the content column, 12px left padding. Amber git-merge icon + amber semibold "Needs you · restore conflict". Text: "The unfinished work saved after turn 1 conflicts with 2 commits pushed to the branch since. Nothing was restored from it; OpenCode carries on from the branch's head." A small mono code chip on #131416: "refs/ostra/tasks/9f3c2a1b". A row of two small 28px buttons: outlined "Show the saved work", amber filled "Carry on without it" with dark text. Faint 12px plain line: "The saved work stays until the box is released at the end of the task."
+  f) Square terminal agent icon (never a robot). "OpenCode" bold + faint mono "09:13 · Claude Sonnet 5.5" + small teal "working". Text: "In my first turn I added a history panel that keeps the last 50 results in the calculator state, because the ticket asked for results you can reuse. Now adding today's date above it." Then one tool row in the same grid as the first reference: pencil icon, muted "Editing", mono "src/history/panel.tsx".
+- Then the COMPOSER pinned at the bottom: rounded box #131416, border #2A2C30, placeholder "Message the agent…", bottom row: faint info icon + "Send reaches OpenCode at its next step. Interrupt and send stops the turn first." and right: outlined "Interrupt and send" with a pause icon, off-white filled "Send" with an arrow-up icon.
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels 11px faint regular. Rows 28px, keys muted 12.5px in an 84px column, values bright 12.5px, no icons inside values:
+"Properties": "Status" amber dot "Needs you · restore conflict"; "Driver" avatar "AK" "Alex Kim"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "alex-desktop" with muted outlined chips "Personal" "host" on the next line aligned with the values; "Box" "Running · fresh box"; "Session" "2 · restored from the archive"; "Tokens" mono "131k in · 19k out"; "Spend" mono "$1.12" + muted " of $25.00".
+Hairline. "Ticket": "Key" teal mono "CALC-174"; "Status" "In Review"; "Board" "Calculator"; "Synced" muted mono "12 s ago".
+Hairline. "On Linear", 26px rows, step text left, state right-aligned: "Moved to In Progress" green "done"; "Linked the task" green "done"; "Linked PR #483" green "done"; "Moved to In Review" green "done"; "Progress comment" muted "edited just now".
+Hairline. "Code": "Branch" mono "ostra/calc-174-9f3c…"; mono "calculator-web" with right-aligned teal "#483" + muted " · open".
+
+Calm, precise, dense like Linear or a pro IDE console. Strict grid, crisp small text, all copy spelled exactly as given.

@@ -1,0 +1,52 @@
+EDIT the first reference image (the ostra task page for a ticket task). Keep its layout, data, spacing, palette and type exactly, and change ONLY these things:
+1. Sidebar top-left: the organization switcher must read "Acme Corp" (semibold, 13px, #EDEDEE) next to the 20px off-white ostra hinge mark (the rounded shell with one diagonal channel, as in the logo reference), with a small up-down chevron at the far right of that row. Do NOT write the word "ostra" there.
+2. Top bar, right: both outlined buttons use the same git pull-request icon: "PR #483" and "PR #91". Neither has a square icon.
+3. The chips "In Review", "frontend", "history" under the status line and "Personal", "host" in the properties panel: 22px tall, 1px #2A2C30 border, muted #9A9DA3 text at 12px, not bright.
+4. Right panel values "Calculator" (Board) and "In Review" (Status) are IBM Plex Sans 12.5px like "OpenCode", not mono.
+5. Everything else stays identical, including all text, which must be spelled exactly as in the first reference image. No amber anywhere except the sidebar's small amber dots and the amber "5" pill. No gradients, no glow, no purple, no shadows, no cards. Flat straight-on screenshot, crisp text.
+
+References for this edit: the first generation (made by the prompt below), the Hinge logo, and the approved m1 task original.
+
+For reference, the full prompt of the first generation (references: the approved m1 task original, home-graphite.png, the Hinge logo):
+
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is the approved task page of this same app: match it exactly in style, sidebar, top bar, fonts, density, row language, thread rows and properties panel. Same graphite near-black chrome. The second reference is the app's Home screen for the shared sidebar. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar.
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; errors and deletions red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. NO AMBER ANYWHERE on this page except the small amber dots next to other projects in the sidebar and the amber "5" pill: nothing on this task waits on the viewer. No gradients, no glow, no purple, no blue tint, no cards inside cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); task keys, file paths, branch names, commit SHAs, sizes, token counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, identical to the first reference: hinge logo + "Acme Corp" + up-down chevron; search "Search" with "⌘K" and an off-white "+" button; "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects": "calculator" expanded (teal 8px square), under it "Tasks 17" (selected row #1A1B1E), "Inbox 4", "Environment", "Automations", "Memory 2", "Repos", "Settings"; then "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "··· 13 more". Section label "Organization": "Runner pools 238", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px, bottom hairline. Left breadcrumbs: "calculator  ›  Tasks  ›  CALC-174" (last one bright). Right: a small ghost link icon, then two outlined buttons each with a pull-request icon: "PR #483" and "PR #91". NO Stop button.
+
+3) MAIN COLUMN (thread), left padding 40px:
+- Mono faint line: "CALC-174 · from Linear"
+- Title: "Keep a history of results"
+- Status line, 13px: a small 7px GREEN dot + bright "In review", faint middle dot, muted "Idle, the box stops in 11 min", faint middle dot, muted "Started 42 min ago on" + faint mono "alex-laptop".
+- THE TICKET STRIP, one 32px row directly under the status line, no box: a small outlined chip with a half-filled circle glyph "In Review" (muted text, #2A2C30 border, 22px tall), then two more small outlined chips "frontend" and "history", then a faint "· High priority", then a teal "Open in Linear" with a tiny arrow-up-right icon. Plain row, no background.
+- THE CONTEXT ROW, one 32px row under it, no box: a muted chevron-right, bright 13px "What the agent got", then faint 12px "title, description, 1 comment, 2 labels, 1 image · rendered with the project's template". This row is collapsed.
+- One hairline under the header (no tabs).
+- Thread, each message a 28px round outlined avatar icon on the left and content on the right, no bubbles, no boxes:
+  a) A system row (28px, image icon, muted text): "Ticket files ready" then mono faint ".ostra/ticket/1-history-mock.png".
+  b) Small square terminal agent icon (never a robot). "OpenCode" bold + faint mono "14:03 · Claude Sonnet 5.5" + small faint "done". Text: "I added a history panel that keeps the last 50 results, matching the mock in the ticket. Clicking a result loads it back into the input."
+     Then tool rows, 28px tall, in a strict grid: faint 14px icon, a muted verb in a fixed 64px column, then the mono path, so every path starts at the same x; the result sits inline right after the path with a 12px gap:
+     "Read    .ostra/ticket/1-history-mock.png"
+     "Edited  src/history/panel.tsx   +118" (green number)
+     "Edited  src/calculator/state.ts   +24  −6" (green, red)
+     "Ran     pnpm test history   ✓ exit 0" (green)
+  c) System rows, 28px each, muted text with a small muted icon, aligned with the tool rows:
+     git-commit icon: "Pushed" + mono "ostra/calc-174-9f3c2a1b-keep-a-history" + faint mono "7d41e0a"
+     archive icon: "Work saved after turn 1" + faint mono "archive 2.4 MB · hidden ref 3be91f0"
+     pull-request icon: green "Opened a pull request" + teal "#483" + muted "CALC-174: Keep a history of results"
+     pull-request icon: green "Opened a pull request" + teal "#91" + muted "in acme/calculator-api"
+     moon icon: "The session is idle."
+- Generous empty thread space, then the COMPOSER pinned at the bottom: one rounded box #131416 with border #2A2C30, placeholder "Message the agent…", bottom row: faint info icon + "The session is idle in the same box. Send starts the next turn." and on the right only one off-white filled button "Send" with an arrow-up icon. No other button.
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels ("Properties", "Ticket", "On Linear", "Code") are small 11px faint grey #64676D, regular weight. Key/value rows 28px tall, keys muted 12.5px in an 84px column, values bright 12.5px, NO icons inside values so every value starts at the same x:
+"Status" green dot "In review"; "Driver" small avatar "SR" "Sam Rivera"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "alex-laptop", and below it, aligned with the values, two small outlined chips "Personal" "host"; "Box" "Idle · stops in 11 min"; "Tokens" mono "96k in · 14k out"; "Spend" mono "$0.84" + muted " of $25.00".
+Hairline. Label "Ticket": "Key" teal mono "CALC-174"; "Status" "In Review"; "Board" "Calculator"; "Synced" mono muted "40 s ago".
+Hairline. Label "On Linear": a short list, each row 26px, step text left in 12.5px, state right-aligned: "Moved to In Progress" green "done"; "Progress comment" muted "edited 2 min ago"; "Linked the task" green "done"; "Linked PR #483" green "done"; "Linked PR #91" red "failed"; "Moved to In Review" green "done". Under the list a small teal text action "Retry sync".
+Hairline. Label "Code": "Branch" mono "ostra/calc-174-9f3c…"; then two rows: mono "calculator-web" with right-aligned teal "#483" + muted " · open"; mono "calculator-api" with right-aligned teal "#91" + muted " · open".
+
+Calm, precise, dense like Linear or a pro IDE console. Everything aligned to a strict grid, crisp small text, all copy spelled exactly as given.
