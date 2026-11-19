@@ -1,0 +1,54 @@
+REVISION OF THE FIRST ATTACHED IMAGE. Keep its layout, scale, content and copy exactly, row for row and pixel for pixel, and fix only these problems:
+1. TYPO: the description under "Started" must read exactly "When the task starts" (it wrongly reads "Tihen the task starts").
+2. RIGHT PANEL LABELS: the group label "Statuses in CALC" must be small and faint (11px, #64676D, weight 500), the same style as the labels "Board" and "Linear". Its count "8" in faint mono.
+3. RIGHT PANEL VALUES: "Calculator" and "acme" are in IBM Plex Sans, not mono. Only "CALC", "38 open", "2m ago" and "18 Nov 2026" are mono.
+4. SIDEBAR: the "Linear" row's icon is a small neutral grey circle with three diagonal lines (Linear's mark), NOT a ban or circle-slash sign.
+5. The ostra step labels "Open", "Started", "In review", "Done", "Done is moved by", "Magic word" are weight 500, not bold.
+Everything else stays as it is.
+
+A straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective. It is the "Boards" screen of ostra, a self-hosted control panel that runs coding agents on tickets. It must look like the SAME PRODUCT as the attached reference screenshots: the same sidebar, top bar, near-black graphite chrome, hairline rows, small dense type and spacing. Match their scale exactly: body text 13px, nav rows 26px, table rows 40px, page title 24px. Copy every word exactly as written below.
+
+FONTS: page title in Manrope Bold. All interface text in IBM Plex Sans. Team keys, status counts, times and numbers in IBM Plex Mono. Icons are thin Lucide line icons, 15px, 1.75 stroke.
+
+PALETTE (flat, exact): page background #0D0E10. Sidebar #0A0B0C. Raised surfaces (inputs, selects, segmented controls) #131416 with 1px border #2A2C30 and 7px radius. Selected row #1A1B1E. Hairlines #1F2023. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Green #4FB286 only for the small "installed" check and the "receiving" dot. Teal #6FB8AA only for links. Primary button filled off-white #F3F0E8 with dark #0C1D21 text. Amber #FFB224 appears ONLY as the tiny dot next to "calculator" in the sidebar, nowhere else. No gradients, no glow, no shadows, no purple except one 8px project square, never a box inside a box.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px, background #0A0B0C, hairline on its right. From the top: the small white ostra hinge logo (the attached logo, 20px) and "Acme Corp" semibold with an up-down chevron. A search field "Search" with "⌘K", and a small square off-white "+" button. Nav row "Home" (house icon). Faint section label "Projects". "calculator" with an 8px teal-green square and a tiny amber dot at the right end, expanded into indented rows: "Tasks" (list-checks icon, faint count "8"), "Inbox" (inbox icon, faint count "38"), "Environment" (box icon), "Boards" (square-kanban icon, SELECTED, background #1A1B1E), "Repos" (git-branch icon). Then "billing-platform" with an 8px violet square. "New project" with a plus icon, muted. Faint section label "Organization": "Runners" (server icon), "Models" (cpu icon), "GitHub" (github icon), "Linear" (a simple circle-slash-like line icon). At the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px, hairline below: breadcrumbs "calculator  ›  Boards" ("Boards" brighter). On the right one filled off-white primary button "Save mapping".
+
+3) MAIN COLUMN, 40px left padding, content max 760px wide:
+- Page title "Boards" (Manrope Bold 24px).
+- Muted lede, 13.5px: "Linear teams whose tickets reach this project's Inbox. Each board maps ostra's steps to the team's statuses."
+- Section title line: "Attached" in semibold 13px, faint mono count "2".
+  Two hairline rows, 40px tall, no boxes. Columns: a small square-kanban icon, the team name, the team key in faint mono, the open ticket count, the last activity, and on the far right a quiet ghost text button "Detach".
+  Row 1 (SELECTED, background #1A1B1E, 6px radius): "Calculator" · "CALC" · "38 open tickets" · small green dot + "Last event 2m ago" · "Detach"
+  Row 2: "Web platform" · "WEB" · "12 open tickets" · faint grey dot + "Polled 40s ago" · "Detach"
+  Under the rows, one line with a small faint label "Attach a team" then a compact select 260px wide, 28px tall, showing "Mobile · MOB" and a chevron-down, then a small outlined button "Attach".
+- Section title line, 28px below: "Status mapping" in semibold 13px, then faint text "Calculator · CALC". Under it a faint 12.5px note: "Drafted from Linear's status types. Every status of the team is in each picker."
+  A form as hairline rows, 44px tall. Left column 180px: the ostra step name in #EDEDEE 13px with a faint 12px description under it. Right column: the control.
+  Row "Open" / "Tickets the Inbox shows": a multi-select box 360px wide holding three small chips "Triage", "Backlog", "Todo" (each chip with a tiny grey status-type circle icon and a small x), and a chevron-down.
+  Row "Started" / "When the task starts": a select 360px wide showing a small half-filled grey circle icon, "In Progress", chevron-down.
+  Row "In review" / "At the task's first PR": a select showing the same half-filled grey circle icon, "In Review", chevron-down.
+  Row "Done" / "When the last PR merges": a select showing a small grey check-circle icon, "Done", chevron-down.
+  Row "Done is moved by": a two-option segmented control, "Linear's GitHub integration" (selected, slightly raised #1A1B1E) and "ostra". After it, a small green check icon and muted text "Integration installed".
+  Row "Magic word" / "In each PR's body": a two-option segmented control, "Closes" (selected) and "Refs", then faint mono "Closes CALC-142".
+- Then a small faint label "What the next task does on the ticket", and three short numbered lines in muted 12.5px with the status names in #EDEDEE:
+  "1  When the task starts, ostra moves it to In Progress and comments once with a link to the task."
+  "2  At the first PR, ostra moves it to In Review and links the PR."
+  "3  When the last PR merges, Linear's GitHub integration moves it to Done. ostra doesn't."
+Quiet empty near-black space below.
+
+4) RIGHT PROPERTIES PANEL, 300px, hairline on its left, padding 20px. Small faint group labels, key/value rows 30px tall, key muted on the left (96px), value bright on the right, 12.5px.
+- label "Board": Team — "Calculator"; Key — "CALC" (mono); Tickets — "38 open" (mono); Mode — small green dot + "Webhooks"; Last event — "2m ago" (mono); Attached — "18 Nov 2026" (mono).
+- hairline. label "Linear": Workspace — "acme"; GitHub integration — small green check + "Installed".
+- hairline. label "Statuses in CALC" with faint count "8", then a compact list grouped by category, each category a faint 11px label and under it rows with a tiny grey status-type circle icon, the status name, and right-aligned a faint mapped step:
+  Triage: "Triage" → "Open"
+  Backlog: "Backlog" → "Open"
+  Unstarted: "Todo" → "Open"
+  Started: "In Progress" → "Started"; "In Review" → "In review"
+  Completed: "Done" → "Done"
+  Canceled: "Canceled" → "–"; "Duplicate" → "–"
+
+Calm, precise, dense, like Linear's settings pages. All status icons are grey, never coloured. Every word spelled exactly as written. No extra text, no charts, no illustrations, no gradients, no glow.

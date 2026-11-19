@@ -1,0 +1,40 @@
+A straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective. It is the "Repos" screen of a project in ostra, a self-hosted control panel that runs coding agents. It shows the checks ostra runs on each repo's default branch. It must look like the SAME PRODUCT as the attached reference screenshots: the same sidebar, top bar, near-black graphite chrome, hairline rows, small dense type and spacing. Match their scale exactly: body text 13px, nav rows 26px, page title 24px. Copy every word exactly as written below.
+
+FONTS: page title in Manrope Bold. All interface text in IBM Plex Sans. Repo names, branch names, times and numbers in IBM Plex Mono. Icons are thin Lucide line icons, 15px, 1.75 stroke.
+
+PALETTE (flat, exact): page background #0D0E10. Sidebar #0A0B0C. Selected row #1A1B1E. Hairlines #1F2023, control borders #2A2C30. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Green #4FB286 only for passing checks (a small shield-check icon). Red #E5675C only for the one blocking problem (a small ban icon, the red left rule and the words "not supported yet"). A warning is NOT coloured: a thin triangle-alert icon in #EDEDEE. Teal #6FB8AA only for links. Amber #FFB224 appears ONLY as the tiny dot next to "calculator" in the sidebar, nowhere else. No gradients, no glow, no shadows, no cards, never a box inside a box, no purple except one 8px project square.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px, background #0A0B0C, hairline on its right. From the top: the small white ostra hinge logo (the attached logo, 20px) and "Acme Corp" semibold with an up-down chevron. A search field "Search" with "⌘K", and a small square off-white "+" button. Nav row "Home" (house icon). Faint section label "Projects". "calculator" with an 8px teal-green square and a tiny amber dot at the right end, expanded into indented rows: "Tasks" (list-checks icon, faint count "8"), "Inbox" (inbox icon, faint count "38"), "Environment" (box icon), "Boards" (square-kanban icon), "Repos" (git-branch icon, SELECTED, background #1A1B1E). Then "billing-platform" with an 8px violet square. "New project" with a plus icon, muted. Faint section label "Organization": "Runners" (server icon), "Models" (cpu icon), "GitHub" (github icon), "Linear". At the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px, hairline below: breadcrumbs "calculator  ›  Repos" ("Repos" brighter). On the right a quiet outlined button with a refresh icon: "Check again". No filled button on this page.
+
+3) MAIN COLUMN, 40px left padding, content max 760px wide:
+- Page title "Repos" (Manrope Bold 24px).
+- Muted lede, 13.5px: "acme · 4 repos · checked 2 min ago" with "acme" in mono.
+- A blocking notice, NOT a card: a 2px red #E5675C rule on its left, background #131416 very subtle, 6px radius on the right, padding 10px 14px. A small red ban icon, then in #EDEDEE 13px: "Tasks can't start in this project." and in muted text: "acme/calculator-sdk requires signed commits, which ostra doesn't support yet." with the repo name in mono.
+- Then the repos as a list, no boxes. Each repo is a block separated by hairlines, 14px vertical padding. The first line of a block: a small git-branch icon, the repo name in mono 13px #EDEDEE, a tiny lock icon if private, the default branch in faint mono, and on the far right a short verdict in 12.5px. Under the first line, two indented check lines, 26px tall each, 12.5px: an icon, the check's text, and after it faint explanation text.
+  Block 1: "acme/calculator-web" · "main" · verdict muted "Ready".
+     green shield-check icon · "Default branch protected"
+     green shield-check icon · "Signed commits not required"
+  Block 2 (SELECTED, background #1A1B1E, 6px radius): "acme/calculator-api" with lock icon · "main" · verdict "1 warning" in #EDEDEE.
+     white triangle-alert icon · "Default branch not protected" · faint: "Allowed: the agent holds no token, and ostra pushes only the task's own branch."
+     green shield-check icon · "Signed commits not required"
+  Block 3: "acme/calculator-sdk" with lock icon · "main" · verdict in red "Not supported".
+     green shield-check icon · "Default branch protected"
+     red ban icon · "Requires signed commits:" then red "not supported yet" · faint: "ostra's pushes aren't signed, so GitHub would refuse them."
+  Block 4: "acme/calculator-docs" · "gh-pages" · verdict faint "Couldn't check".
+     faint grey circle-help icon · "Couldn't check" · faint: "GitHub refused the read (403). ostra checks again when a task starts."
+- Under the list, a faint 12px footnote with a small info icon: "ostra reads each default branch's rules when you open this page, at most every 10 minutes, and again when a task starts."
+Quiet empty near-black space below.
+
+4) RIGHT PROPERTIES PANEL, 300px, hairline on its left, padding 20px. It shows the selected repo. Small faint group labels, key/value rows 30px tall, key muted on the left (96px), value bright on the right, 12.5px.
+- label "acme/calculator-api" in faint mono: Default branch — "main" (mono); Visibility — "Private"; Checked — "2 min ago" (mono); Protected — "No"; Signed commits — "Not required".
+- hairline. label "Why it's allowed", then a short muted paragraph, 12.5px: "The agent never holds a GitHub token. ostra's git proxy accepts pushes only to the task's branch and its hidden ref, so main stays out of the agent's reach. Protecting main still guards it from everyone else."
+- hairline. label "Protect main", then two short numbered lines in muted 12.5px:
+  "1  On GitHub, open the repo's Settings › Rules."
+  "2  Add a ruleset for main that requires a pull request."
+  and below them a teal link with an arrow-up-right icon: "Open the repo's rules on GitHub".
+
+Calm, precise, dense, like Linear's settings pages. Every word spelled exactly as written. No extra text, no charts, no illustrations, no gradients, no glow.
