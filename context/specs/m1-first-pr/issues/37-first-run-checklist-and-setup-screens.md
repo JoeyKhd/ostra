@@ -25,7 +25,7 @@ The screens of ticket 34 (or the concepts until they're approved), on ticket 30 
 - [x] Each form shows the router's typed failures in words (a 401 from the endpoint, missing App permissions, a repo the App can't see).
 - [x] No form echoes a secret back after it's saved.
 - [x] Package checks pass.
-- [x] Committed: the screens with the panel shell and the tickets after it, and the Playwright run as `14a7b1a` (`🐛 fix review findings in context/specs/m1-first-pr + apps/web`).
+- [x] Committed: the screens with the panel shell and the tickets after it, and the Playwright run as `cbb89a3` (`🐛 fix review findings in context/specs/m1-first-pr + apps/web`).
 
 ## Comments
 
