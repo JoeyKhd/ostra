@@ -598,3 +598,41 @@ describe("the task host", () => {
     }
   }, 120_000);
 });
+
+describe("the environment prepares the box (F-050)", () => {
+  it("F-050: the box is prepared by the environment before the agent starts, and the setup's output goes out as the task's events", async () => {
+    const { dispatch } = await start();
+    launches.length = 0;
+    const { spec, credentials } = taskFor("[[fake:silent]]", 'echo "prepared with $NODE_ENV"\necho "$NODE_ENV" > prepared.txt\necho "a warning" >&2\n');
+    const [repo] = spec.environment.repos;
+    if (repo === undefined) throw new Error("the fixture has a repo");
+    const prepared: TaskSpec = { ...spec, environment: { ...spec.environment, repos: [{ ...repo, files: [{ path: "config/app.json", content: "{}\n" }] }] } };
+    server.tasks.set(spec.taskId, {
+      spec: prepared,
+      credentials: { ...credentials, secrets: [{ repoId: repo.repoId, entries: [{ kind: "file", path: "config/secret.json", content: "{\"k\":1}\n", availableDuringSetup: false }] }] },
+    });
+    dispatch(prepared);
+    await waitForKind(prepared, "turn.started");
+
+    // Everything the environment puts in the workspace is there when the agent starts.
+    const launch = launches.at(-1);
+    if (launch === undefined) throw new Error("no agent was started");
+    expect(await readFile(path.join(launch.cwd, "prepared.txt"), "utf8")).toBe("test\n");
+    expect(await readFile(path.join(launch.cwd, "config", "app.json"), "utf8")).toBe("{}\n");
+    expect(await readFile(path.join(launch.cwd, "config", "secret.json"), "utf8")).toBe('{"k":1}\n');
+    expect(await readFile(path.join(launch.cwd, ".env"), "utf8")).toContain("NODE_ENV=test");
+
+    // The setup's log goes out as the task's events, before the agent's turn.
+    const order = kinds(prepared);
+    expect(order.indexOf("environment.setup_started")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("environment.setup_started")).toBeLessThan(order.indexOf("environment.setup_output"));
+    expect(order.lastIndexOf("environment.setup_output")).toBeLessThan(order.indexOf("environment.setup_finished"));
+    expect(order.indexOf("environment.setup_finished")).toBeLessThan(order.indexOf("turn.started"));
+    const events = eventsOf(prepared).map((item) => item.event);
+    const out = (stream: "stdout" | "stderr"): string =>
+      events.flatMap((event) => (event.kind === "environment.setup_output" && event.stream === stream ? [event.text] : [])).join("");
+    expect(out("stdout")).toContain("prepared with test");
+    expect(out("stderr")).toContain("a warning");
+    expect(events.find((event) => event.kind === "environment.setup_finished")).toMatchObject({ exitCode: 0 });
+  }, 120_000);
+});

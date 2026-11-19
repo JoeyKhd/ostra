@@ -201,7 +201,7 @@ describe("the host executor", () => {
     expect(await executor.state(box)).toEqual({ ok: true, value: "released" });
   });
 
-  it("writes repo A's secret into repo A only, and never commits it", async () => {
+  it("F-050: writes repo A's secret into repo A only, and never commits it", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
@@ -218,6 +218,27 @@ describe("the host executor", () => {
     expect(await readFile(path.join(dirA, "config", "secret.json"), "utf8")).toContain(SECRET_A);
     const status = (await run("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: dirA })).stdout;
     expect(status).toBe("");
+    await executor.release(box);
+  });
+
+  it("F-050: a key both repos need reaches each checkout with its own repo's value, and no other", async () => {
+    const box = newBox();
+    const spec = twoRepoSpec(box, null);
+    const created = await executor.create({ ...box, spec, proxies });
+    if (!created.ok) throw new Error(created.error.message);
+    const valueA = "shared-key-value-of-repo-a-only";
+    const valueB = "shared-key-value-of-repo-b-only";
+    const secrets = [
+      { repoId: repoA, entries: [{ kind: "variable" as const, name: "SHARED_KEY", value: valueA, availableDuringSetup: false }] },
+      { repoId: repoB, entries: [{ kind: "variable" as const, name: "SHARED_KEY", value: valueB, availableDuringSetup: false }] },
+    ];
+    expect((await executor.prepare({ box, spec, secrets, onSetupOutput: () => undefined })).ok).toBe(true);
+    const dirA = path.join(created.value.workspaceDir, "test1");
+    const dirB = path.join(created.value.workspaceDir, "test2");
+    expect(await readFile(path.join(dirA, ".env"), "utf8")).toContain(`SHARED_KEY=${valueA}`);
+    expect(await readFile(path.join(dirB, "local.env"), "utf8")).toContain(`SHARED_KEY=${valueB}`);
+    for (const file of await filesUnder(dirA)) expect((await readFile(file)).includes(valueB), file).toBe(false);
+    for (const file of await filesUnder(dirB)) expect((await readFile(file)).includes(valueA), file).toBe(false);
     await executor.release(box);
   });
 

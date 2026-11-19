@@ -59,7 +59,7 @@ describe("a box's resources", () => {
     expect(envOf(agent).map((line) => line.split("=")[0])).toEqual(["OSTRA_BOX_ID", "OSTRA_BRIDGE_NONCE", "OSTRA_BRIDGE_ADDR", "OSTRA_AGENT_UID", "OSTRA_AGENT_GID"]);
   });
 
-  it("uses the environment's own base image when it names one", () => {
+  it("F-050: uses the environment's own base image when it names one", () => {
     expect(boxResources({ ...input, baseImage: "node:24-bookworm" }, { images }).agent.body.Image).toBe("node:24-bookworm");
   });
 
