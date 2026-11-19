@@ -31,7 +31,7 @@ if (!prepared.ok) {
 const pidFile = path.join(created.value.agentDir, "helper.pid");
 const agent = await executor.startAgent(box, {
   command: process.execPath,
-  args: ["-e", detachedHelperScript(pidFile, { exitAtOnce: true })],
+  args: ["-e", detachedHelperScript(pidFile)],
   env: process.platform === "win32" ? { SystemRoot: process.env["SystemRoot"] ?? "C:\\Windows" } : {},
   cwd: created.value.workspaceDir,
   files: [],

@@ -31,8 +31,11 @@ const pidFile = (box: CreatedBox): string => path.join(box.agentDir, "helper.pid
 const helpers = trackedPids();
 
 const helperCase = (clearEnv: boolean): HelperCase => ({
-  // The agent detaches a helper through a go-between, and both exit at once: no parent is left.
-  launch: (box) => nodeLaunch(detachedHelperScript(pidFile(box), { exitAtOnce: true, clearEnv }), box),
+  // The agent detaches a helper through go-betweens that all exit, and the helper writes its PID
+  // only once its parent is gone, so the box stops only after the helper has fully detached. A stop
+  // while a go-between still lived could reach the helper by its parent link, through a snapshot
+  // that saw that go-between in the agent's tree, and close the gap on one run in many.
+  launch: (box) => nodeLaunch(detachedHelperScript(pidFile(box), { clearEnv }), box),
   readPid: async (box) => {
     try {
       const pid = Number((await readFile(pidFile(box), "utf8")).trim());

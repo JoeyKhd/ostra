@@ -122,7 +122,7 @@ describe("a host task's processes (ticket 42)", () => {
     const executor = await HostExecutor.start({ dataDir: path.join(root, "runner-detached") });
     const { box, created } = await preparedBox(executor, specWith(null));
     const pidFile = path.join(created.agentDir, "helper.pid");
-    const agent = await executor.startAgent(box, nodeLaunch(detachedHelperScript(pidFile, { exitAtOnce: true }), created.workspaceDir));
+    const agent = await executor.startAgent(box, nodeLaunch(detachedHelperScript(pidFile), created.workspaceDir));
     expect(agent.ok).toBe(true);
     const helper = await readPid(pidFile);
     strays.push(helper);
@@ -239,7 +239,7 @@ describe.runIf(process.platform === "linux")("a Linux runner without a cgroup of
     expect(executor.capabilities.processContainment).toBe("process-tree");
     const { box, created } = await preparedBox(executor, specWith(null));
     const pidFile = path.join(created.agentDir, "helper.pid");
-    const agent = await executor.startAgent(box, nodeLaunch(detachedHelperScript(pidFile, { exitAtOnce: true }), created.workspaceDir));
+    const agent = await executor.startAgent(box, nodeLaunch(detachedHelperScript(pidFile), created.workspaceDir));
     expect(agent.ok).toBe(true);
     const helper = await readPid(pidFile);
     strays.push(helper);
