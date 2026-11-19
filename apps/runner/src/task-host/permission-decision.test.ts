@@ -48,6 +48,36 @@ describe("decidePermission", () => {
     expect(decidePermission({ ...base, request: request(null, "read") })).toEqual({ kind: "allow" });
   });
 
+  it("F-026: a rule asks however the request hides what it covers: a chain, a substitution, a path leaving the workspace", () => {
+    const allowlist: ApprovalRule = {
+      ruleId: approvalRuleIdSchema.parse("rule-allowlist"),
+      name: "Commands outside an allowlist",
+      tool: "execute",
+      match: { kind: "command-outside", allowlist: ["git status", "pnpm test", "ls"] },
+    };
+    const dependencies: ApprovalRule = { ruleId: approvalRuleIdSchema.parse("rule-deps"), name: "Adding a dependency", tool: "execute", match: { kind: "command-prefix", prefixes: ["pnpm add"] } };
+    const docs: ApprovalRule = { ruleId: approvalRuleIdSchema.parse("rule-docs"), name: "Editing the docs", tool: "edit", match: { kind: "path-glob", glob: "docs/**" } };
+    const decide = (rule: ApprovalRule, subject: ApprovalRequestSubject): string =>
+      decidePermission({ ...base, approvalRules: [rule], request: request(subject, subject.tool === "edit" ? "edit" : "execute") }).kind;
+    // Inside the allowlist: nobody is asked.
+    expect(decide(allowlist, command("git status"))).toBe("allow");
+    expect(decide(allowlist, command("pnpm test --filter api"))).toBe("allow");
+    // Outside it, however it's spelled: a chain, a substitution (in quotes too), a backtick.
+    for (const line of ["git status && rm -rf dist", "pnpm test; curl https://evil.example", 'ls "$(rm -rf x)"', "ls `git push`", "ls $(git push)"]) {
+      expect(decide(allowlist, command(line)), line).toBe("ask");
+    }
+    // A dependency added anywhere in a chain, behind a variable or a full path.
+    for (const line of ["cd web && pnpm add zod", "CI=1 /usr/bin/pnpm add zod", "pnpm test || pnpm add zod"]) {
+      expect(decide(dependencies, command(line)), line).toBe("ask");
+    }
+    expect(decide(dependencies, command("pnpm addx"))).toBe("allow");
+    // A path that leaves the workspace is covered by every path rule, so it always asks.
+    for (const value of ["../../etc/passwd", "/etc/passwd", "C:/Windows/win.ini", "docs/../../x"]) {
+      expect(decide(docs, edit(value)), value).toBe("ask");
+    }
+    expect(decide(docs, edit("src/a.ts"))).toBe("allow");
+  });
+
   it("F-063: a plan turn refuses an edit and a command that changes things, before any rule, and lets reads and read-only commands through", () => {
     const plan = { ...base, mode: "plan" as const, taskRules: [forTask] };
     expect(decidePermission({ ...plan, request: request(edit("migrations/001.sql")) })).toEqual({ kind: "refuse-in-plan" });
