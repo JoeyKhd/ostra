@@ -210,7 +210,7 @@ export const connectRunner = async (page: Page, settings: DemoSettings, logFile?
   }
   await runner.online;
   await page.goto("/organization/runners");
-  await page.getByTestId("my-runners").getByText(settings.runnerName).waitFor({ timeout: 60_000 });
+  await page.getByTestId("my-runners").getByText(settings.runnerName, { exact: true }).waitFor({ timeout: 60_000 });
   await screenshot(page, settings, "runner-online");
   return runner;
 };
