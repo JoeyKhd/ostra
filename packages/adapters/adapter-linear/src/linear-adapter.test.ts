@@ -1,236 +1,248 @@
-import http from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer } from "node:http";
 
-import { defineTrackerFirstCases, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
-import { ticketKeySchema } from "@ostra/protocol";
+import { sha256Hex } from "@ostra/adapter-sdk";
+import type { TrackerAdapter } from "@ostra/adapter-sdk";
+import { createFakeLinear, defineTrackerContractSuite, fakeLinearSuiteFixture, memoryAdapterContext, memoryRateBudgetStore } from "@ostra/adapter-sdk/testing";
+import type { FakeLinear } from "@ostra/adapter-sdk/testing";
+import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
 
 import { LinearAdapter } from "./linear-adapter.ts";
+import { markdownImages } from "./markdown-images.ts";
 
-// A fake Linear GraphQL API: it answers the few operations the adapter sends, by looking at the
-// query text, and checks the credentials the way Linear does.
+// The Linear adapter against the fake Linear server (spec section 8): the tracker contract suite,
+// then what's Linear's own: how it reads Linear's types, threads, relations and files, and how it
+// keeps the token and ticket text out of every error and log line.
 
-const TOKEN = "lin_api_fake0123456789abcdefghijklmnop";
-const bodySchema = z.looseObject({ query: z.string(), variables: z.record(z.string(), z.unknown()).optional() });
+const originOf = (fake: FakeLinear): string => new URL(fake.apiUrl).origin;
 
-type FakeIssue = {
-  readonly id: string;
-  readonly identifier: string;
-  readonly title: string;
-  readonly description: string | null;
-  readonly priority: number;
-  readonly stateId: string;
-  readonly parent: string | null;
-};
+const adapterOn = (fake: FakeLinear, token: string, kind: "api-key" | "oauth", context?: ReturnType<typeof memoryAdapterContext>) =>
+  new LinearAdapter({ auth: { kind, token }, apiUrl: fake.apiUrl, fileOrigins: [originOf(fake)] }, context);
 
-const states: Readonly<Record<string, string>> = { s1: "Todo", s2: "In Progress", s3: "Done" };
-const stateTypes: Readonly<Record<string, string>> = { s1: "unstarted", s2: "started", s3: "completed" };
-
-const startFake = async () => {
-  const issues: FakeIssue[] = [
-    { id: "uuid-1", identifier: "OST-1", title: "First", description: "Do `rm -rf /` $(whoami)", priority: 2, stateId: "s1", parent: null },
-    { id: "uuid-2", identifier: "OST-2", title: "Second", description: null, priority: 0, stateId: "s2", parent: "OST-1" },
-    { id: "uuid-3", identifier: "OST-3", title: "Third", description: "x", priority: 4, stateId: "s3", parent: null },
-  ];
-  const comments: { readonly issueId: string; readonly body: string }[] = [];
-  const links: string[] = [];
-  const seen: { readonly authorization: string | undefined; readonly query: string }[] = [];
-  const injected: { status: number; headers?: Record<string, string>; body?: unknown }[] = [];
-
-  const issueJson = (issue: FakeIssue) => ({
-    id: issue.id,
-    identifier: issue.identifier,
-    title: issue.title,
-    description: issue.description,
-    url: `https://linear.app/ostra-test/issue/${issue.identifier}`,
-    priority: issue.priority,
-    updatedAt: "2026-11-18T10:00:00.000Z",
-    state: { id: issue.stateId, name: states[issue.stateId] ?? "?", type: stateTypes[issue.stateId] ?? "unstarted" },
-    parent: issue.parent === null ? null : { id: `uuid-of-${issue.parent}`, identifier: issue.parent },
-    labels: { nodes: [] },
-  });
-
-  const server = http.createServer((request, response) => {
-    void (async () => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of request) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-      }
-      const body = bodySchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      seen.push({ authorization: request.headers.authorization, query: body.query });
-      const send = (status: number, payload: unknown, headers: Record<string, string> = {}): void => {
-        response.writeHead(status, { "content-type": "application/json", ...headers });
-        response.end(JSON.stringify(payload));
-      };
-      const next = injected.shift();
-      if (next !== undefined) {
-        send(next.status, next.body ?? { errors: [{ message: "an injected failure mentioning lin_api_secretvalue0123456789" }] }, next.headers);
-        return;
-      }
-      if (request.headers.authorization !== TOKEN && request.headers.authorization !== `Bearer ${TOKEN}`) {
-        send(400, { errors: [{ message: "Authentication required, not authenticated", extensions: { type: "authentication error" } }] });
-        return;
-      }
-      const variables = body.variables ?? {};
-      if (body.query.includes("viewer")) {
-        send(200, { data: { viewer: { id: "me" } } });
-      } else if (body.query.includes("issue(id:")) {
-        const found = issues.find((issue) => issue.identifier === variables["id"]);
-        send(200, found === undefined ? { errors: [{ message: "Entity not found: Issue", extensions: { type: "invalid input" } }] } : { data: { issue: issueJson(found) } });
-      } else if (body.query.includes("issues(")) {
-        const filter = z.looseObject({ state: z.looseObject({ id: z.looseObject({ in: z.array(z.string()) }) }).optional() }).parse(variables["filter"]);
-        const wanted = filter.state?.id.in;
-        const matching = issues.filter((issue) => wanted === undefined || wanted.includes(issue.stateId));
-        const after = variables["after"];
-        const nodes = after === "cursor-1" ? matching.slice(2) : matching.slice(0, 2);
-        send(200, {
-          data: { issues: { nodes: nodes.map(issueJson), pageInfo: { hasNextPage: after !== "cursor-1" && matching.length > 2, endCursor: "cursor-1" } } },
-        });
-      } else if (body.query.includes("issueUpdate")) {
-        const found = issues.findIndex((issue) => issue.id === variables["id"]);
-        const current = issues[found];
-        if (current !== undefined) {
-          issues[found] = { ...current, stateId: z.string().parse(variables["stateId"]) };
-        }
-        send(200, { data: { issueUpdate: { success: found !== -1 } } });
-      } else if (body.query.includes("commentCreate")) {
-        comments.push({ issueId: z.string().parse(variables["issueId"]), body: z.string().parse(variables["body"]) });
-        send(200, { data: { commentCreate: { success: true, comment: { id: `comment-${String(comments.length)}` } } } });
-      } else if (body.query.includes("attachmentLinkGitHubPR")) {
-        links.push(z.string().parse(variables["url"]));
-        send(200, { data: { attachmentLinkGitHubPR: { success: true } } });
-      } else {
-        send(400, { errors: [{ message: "unknown query" }] });
-      }
-    })().catch(() => {
-      response.writeHead(500).end();
-    });
-  });
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address: AddressInfo | string | null = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : 0;
-  return {
-    url: `http://127.0.0.1:${String(port)}/graphql`,
-    comments,
-    links,
-    seen,
-    injected,
-    issues,
-    close: () =>
-      new Promise<void>((resolve) => {
-        server.closeAllConnections();
-        server.close(() => {
-          resolve();
-        });
-      }),
-  };
-};
-
-let suiteFake: Awaited<ReturnType<typeof startFake>> | undefined;
-defineTrackerFirstCases({
-  name: "linear, against a fake Linear",
+defineTrackerContractSuite({
+  name: "linear, on the fake Linear with the app's token",
   create: async () => {
-    suiteFake = await startFake();
+    const fake = await createFakeLinear();
+    const other = await createFakeLinear();
+    const app = fake.createApp({ name: "ostra", redirectUris: ["https://ostra.example.test/oauth/linear/callback"], webhookUrl: null });
+    const token = fake.mintToken("app");
+    const appUser = fake.appUser();
+    if (appUser === undefined) throw new Error("the fake made no app user");
+    const adapter = adapterOn(fake, token.accessToken, "oauth");
     return {
-      adapter: new LinearAdapter({ auth: { kind: "api-key", token: TOKEN }, apiUrl: suiteFake.url }),
-      fixture: {},
-      dispose: () => suiteFake?.close() ?? Promise.resolve(),
+      adapter,
+      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: appUser.id, webhookSecret: app.webhookSecret }),
+      dispose: async () => {
+        await Promise.all([fake.close(), other.close()]);
+      },
     };
   },
 });
 
-const key = (value: string) => ticketKeySchema.parse(value);
-const board = { externalId: "team-1" };
+defineTrackerContractSuite({
+  name: "linear, on the fake Linear with a personal API key (development)",
+  create: async () => {
+    const fake = await createFakeLinear();
+    const other = await createFakeLinear();
+    return {
+      adapter: adapterOn(fake, fake.adminApiKey, "api-key"),
+      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: null, webhookSecret: "lin_wh_dev" }),
+      dispose: async () => {
+        await Promise.all([fake.close(), other.close()]);
+      },
+    };
+  },
+});
 
 describe("the Linear adapter", () => {
-  let fake: Awaited<ReturnType<typeof startFake>>;
-  const context = memoryAdapterContext();
+  let fake: FakeLinear;
   let adapter: LinearAdapter;
+  const context = memoryAdapterContext();
+  const board = () => ({ externalId: fake.team.id });
+
   beforeAll(async () => {
-    fake = await startFake();
-    adapter = new LinearAdapter({ auth: { kind: "api-key", token: TOKEN }, apiUrl: fake.url }, context);
+    fake = await createFakeLinear();
+    adapter = adapterOn(fake, fake.adminApiKey, "api-key", context);
   });
   afterAll(async () => {
     await fake.close();
   });
 
-  it("is healthy with a good key, and down with a bad one", async () => {
-    expect(await adapter.health()).toEqual({ status: "ok" });
-    const bad = new LinearAdapter({ auth: { kind: "api-key", token: "lin_api_wrong" }, apiUrl: fake.url });
-    expect(await bad.health()).toMatchObject({ status: "down" });
-  });
-
   it("sends an API key as it is, and an OAuth token as a bearer", async () => {
-    await adapter.health();
-    await new LinearAdapter({ auth: { kind: "oauth", token: TOKEN }, apiUrl: fake.url }).health();
-    expect(fake.seen.at(-2)?.authorization).toBe(TOKEN);
-    expect(fake.seen.at(-1)?.authorization).toBe(`Bearer ${TOKEN}`);
+    expect(await adapter.health()).toEqual({ status: "ok" });
+    // Linear refuses an OAuth token sent bare, as the fake does.
+    const person = fake.mintToken("person");
+    expect(await adapterOn(fake, person.accessToken, "oauth").health()).toEqual({ status: "ok" });
+    expect(await adapterOn(fake, person.accessToken, "api-key").health()).toMatchObject({ status: "down" });
+    expect(await adapterOn(fake, "lin_api_wrong", "api-key").health()).toMatchObject({ status: "down" });
   });
 
-  it("reads a ticket by its key, with the priority and parent in ostra's terms", async () => {
-    const first = await adapter.getTicket(board, key("OST-1"));
-    expect(first).toMatchObject({
+  it("lists statuses in Linear's board order, with Linear's types in the four categories", async () => {
+    const listed = await adapter.listStatuses(board());
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value.map((status) => [status.name, status.vendorType, status.category, status.position])).toEqual([
+      ["Triage", "triage", "open", 0],
+      ["Backlog", "backlog", "open", 1],
+      ["Todo", "unstarted", "open", 2],
+      ["In Progress", "started", "started", 3],
+      ["In Review", "started", "started", 4],
+      ["Done", "completed", "done", 5],
+      ["Canceled", "canceled", "cancelled", 6],
+    ]);
+    expect(await adapter.listStatuses({ externalId: "team-nope" })).toMatchObject({ ok: false, error: { code: "not-found" } });
+  });
+
+  it("reads priority and parent in ostra's terms, and the text as data, exactly", async () => {
+    const parent = await fake.createIssue({ title: "Parent" });
+    const child = await fake.createIssue({ title: "Child", description: "Do `rm -rf /` $(whoami)", parentId: parent.id });
+    const read = await adapter.getTicket(board(), child.identifier);
+    expect(read).toMatchObject({
       ok: true,
-      value: { key: "OST-1", title: "First", status: { id: "s1", name: "Todo" }, priority: 2, parentKey: null, updatedAt: Date.parse("2026-11-18T10:00:00.000Z") },
+      value: { title: "Child", description: "Do `rm -rf /` $(whoami)", priority: null, parentKey: parent.identifier, parentExternalId: parent.id },
     });
-    // The ticket's text comes back as data, exactly as it is.
-    expect(first.ok && first.value.description).toBe("Do `rm -rf /` $(whoami)");
-    expect(await adapter.getTicket(board, key("OST-2"))).toMatchObject({ ok: true, value: { priority: null, parentKey: "OST-1" } });
-    expect(await adapter.getTicket(board, key("OST-99"))).toMatchObject({ ok: false, error: { code: "not-found" } });
+    expect(await adapter.getTicket(board(), ticketKeySchema.parse("OST-9999"))).toMatchObject({ ok: false, error: { code: "not-found" } });
   });
 
-  it("lists tickets a page at a time, and filters by status", async () => {
-    const first = await adapter.listTickets({ board });
-    expect(first.ok && first.value.tickets.map((ticket) => ticket.key)).toEqual(["OST-1", "OST-2"]);
-    expect(first.ok && first.value.nextCursor).toBe("cursor-1");
-    const second = await adapter.listTickets({ board, cursor: "cursor-1" });
-    expect(second.ok && second.value.tickets.map((ticket) => ticket.key)).toEqual(["OST-3"]);
-    expect(second.ok && second.value.nextCursor).toBeNull();
-    const done = await adapter.listTickets({ board, statusIds: ["s3"] });
-    expect(done.ok && done.value.tickets.map((ticket) => ticket.key)).toEqual(["OST-3"]);
+  it("reads children, relations both ways, comment threads and authors in a ticket's context", async () => {
+    const parent = await fake.createIssue({ title: "Context parent", comments: ["Top comment"] });
+    const child = await fake.createIssue({ title: "Context child", parentId: parent.id });
+    const context = await adapter.getTicketContext(board(), { externalId: parent.id });
+    if (!context.ok) throw new Error(context.error.message);
+    expect(context.value.children.map((summary) => summary.key)).toEqual([child.identifier]);
+    expect(context.value.comments[0]).toMatchObject({ body: "Top comment", author: { id: fake.admin.id, name: fake.admin.name }, parentId: null });
+    const childContext = await adapter.getTicketContext(board(), { key: child.identifier });
+    expect(childContext).toMatchObject({ ok: true, value: { parent: { key: parent.identifier, title: "Context parent" } } });
   });
 
-  it("moves a ticket, comments on it and links a PR", async () => {
-    expect(await adapter.updateStatus(board, key("OST-1"), "s2")).toEqual({ ok: true, value: undefined });
-    expect(fake.issues.find((issue) => issue.identifier === "OST-1")?.stateId).toBe("s2");
-    expect(await adapter.comment(board, key("OST-1"), "Opened a PR: **done**")).toEqual({ ok: true, value: { commentId: "comment-1" } });
-    expect(fake.comments).toEqual([{ issueId: "uuid-1", body: "Opened a PR: **done**" }]);
-    expect(await adapter.linkPullRequest(board, key("OST-1"), "https://github.com/ostra-test/test1/pull/7")).toEqual({ ok: true, value: undefined });
-    expect(fake.links).toEqual(["https://github.com/ostra-test/test1/pull/7"]);
-    expect(await adapter.comment(board, key("OST-99"), "x")).toMatchObject({ ok: false, error: { code: "not-found" } });
+  it("lists only images Linear holds: never sends the token elsewhere", async () => {
+    const issue = await fake.createIssue({ title: "Images", description: "![outside](https://example.test/x.png)", withImage: true });
+    const context = await adapter.getTicketContext(board(), { externalId: issue.id });
+    if (!context.ok) throw new Error(context.error.message);
+    expect(context.value.images).toHaveLength(1);
+    expect(context.value.images[0]?.name).toBe("screenshot.png");
+    expect(await adapter.downloadFile("https://example.test/x.png", 1024)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(await adapter.downloadFile("not a url", 1024)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
   });
 
-  it("maps failures to typed errors, in its own words", async () => {
-    fake.injected.push({ status: 429, headers: { "retry-after": "30" }, body: { errors: [{ message: "Rate limited", extensions: { type: "ratelimited" } }] } });
-    expect(await adapter.getTicket(board, key("OST-1"))).toMatchObject({ ok: false, error: { code: "rate-limited", retryAfterMs: 30_000 } });
-    fake.injected.push({ status: 503, body: { errors: [{ message: "down" }] } });
-    expect(await adapter.getTicket(board, key("OST-1"))).toMatchObject({ ok: false, error: { code: "unavailable" } });
-    const unreachable = new LinearAdapter({ auth: { kind: "api-key", token: TOKEN }, apiUrl: "http://127.0.0.1:1/graphql" });
-    expect(await unreachable.getTicket(board, key("OST-1"))).toMatchObject({ ok: false, error: { code: "unavailable" } });
+  it("stops reading a file past the cap, even when no length is declared", async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "image/png", "transfer-encoding": "chunked" });
+      response.write(Buffer.alloc(4096));
+      response.end(Buffer.alloc(4096));
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("no address");
+    const origin = `http://127.0.0.1:${String(address.port)}`;
+    const files = new LinearAdapter({ auth: { kind: "api-key", token: fake.adminApiKey }, apiUrl: fake.apiUrl, fileOrigins: [origin] });
+    expect(await files.downloadFile(`${origin}/f.png`, 5000)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(await files.downloadFile(`${origin}/f.png`, 10_000)).toMatchObject({ ok: true, value: { contentType: "image/png" } });
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  });
+
+  it("refuses to edit a comment that's on another ticket", async () => {
+    const first = await fake.createIssue({ title: "First" });
+    const second = await fake.createIssue({ title: "Second" });
+    const comment = await adapter.comment(board(), first.identifier, "ostra is working on this");
+    if (!comment.ok) throw new Error(comment.error.message);
+    expect(await adapter.updateComment(board(), { externalId: second.id }, comment.value.commentId, "moved")).toMatchObject({
+      ok: false,
+      error: { code: "not-found" },
+    });
+    expect(fake.issueView(first.id).comments.map((one) => one.body)).toEqual(["ostra is working on this"]);
+  });
+
+  it("links a PR with the board's magic word as Linear's link kind", async () => {
+    const issue = await fake.createIssue({ title: "PR kinds" });
+    expect(await adapter.linkPullRequest(board(), issue.identifier, "https://github.com/ostra-test/test1/pull/1", { kind: "references" })).toEqual({ ok: true, value: undefined });
+    expect(await adapter.linkPullRequest(board(), issue.identifier, "https://github.com/ostra-test/test1/pull/1", { kind: "closes" })).toEqual({ ok: true, value: undefined });
+    expect(fake.issueView(issue.id).attachments).toHaveLength(1);
+  });
+
+  it("doesn't create a ticket on a board it can't see", async () => {
+    expect(await adapter.createTicket({ externalId: "team-nope" }, { title: "x", description: null })).toMatchObject({ ok: false, error: { code: "not-found" } });
+  });
+
+  it("says when Linear's GitHub integration is installed", async () => {
+    fake.setGithubIntegration(true);
+    const tracker: TrackerAdapter = adapter;
+    expect(await tracker.detectCodeHostIntegration(board())).toEqual({ ok: true, value: { installed: true, name: "GitHub" } });
+    fake.setGithubIntegration(false);
+    expect(await tracker.detectCodeHostIntegration(board())).toEqual({ ok: true, value: { installed: false, name: null } });
+  });
+
+  it("reports a write Linear applied and then failed as unavailable, so the writer looks before retrying", async () => {
+    const issue = await fake.createIssue({ title: "Faulty" });
+    fake.injectFaults([{ kind: "fail-after-write" }]);
+    expect(await adapter.comment(board(), issue.identifier, "once")).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    expect(fake.issueView(issue.id).comments).toHaveLength(1);
+  });
+
+  it("waits for the rate limit's reset once Linear says nothing is left, without calling", async () => {
+    const store = memoryRateBudgetStore();
+    const budgets = { ...memoryAdapterContext(), rateBudgets: store };
+    const limited = adapterOn(fake, fake.adminApiKey, "api-key", budgets);
+    await store.set(`linear:${sha256Hex(fake.adminApiKey).slice(0, 16)}`, { remaining: 0, limit: 10, resetAt: budgets.clock.now() + 60_000 });
+    const before = fake.apiCalls()["issue"] ?? 0;
+    expect(await limited.getTicket(board(), ticketKeySchema.parse("OST-1"))).toMatchObject({ ok: false, error: { code: "rate-limited", retryAfterMs: 60_000 } });
+    expect(fake.apiCalls()["issue"] ?? 0).toBe(before);
+    budgets.clock.advance(60_001);
+    fake.injectFaults([{ kind: "rate-limited", retryAfterSeconds: 7 }]);
+    expect(await limited.getTicket(board(), ticketKeySchema.parse("OST-1"))).toMatchObject({ ok: false, error: { code: "rate-limited", retryAfterMs: 7000 } });
   });
 
   it("keeps the token and Linear's messages out of every error and log line", async () => {
-    fake.injected.push({ status: 400 });
-    const failed = await adapter.getTicket(board, key("OST-1"));
-    const bad = await new LinearAdapter({ auth: { kind: "api-key", token: "lin_api_wrongtokenvalue0123456789" }, apiUrl: fake.url }, context).getTicket(board, key("OST-1"));
-    const everything = JSON.stringify([failed, bad, context.logger.records]);
+    fake.injectFaults([{ kind: "http500" }]);
+    const failed = await adapter.getTicket(board(), { externalId: externalTicketIdSchema.parse("nope") });
+    const bad = await adapterOn(fake, "lin_api_wrongtokenvalue0123456789", "api-key", context).getTicket(board(), ticketKeySchema.parse("OST-1"));
+    const missing = await adapter.getTicket(board(), ticketKeySchema.parse("OST-9999"));
+    const everything = JSON.stringify([failed, bad, missing, context.logger.records]);
     expect(everything).not.toContain("lin_api");
-    expect(everything).not.toContain("injected failure");
+    expect(everything).not.toContain(fake.adminApiKey);
+    expect(everything).not.toContain("Internal server error");
     expect(everything).not.toContain("Authentication required");
+    expect(everything).not.toContain("Entity not found");
   });
 
-  it("declares what it has: sub-issues, and no agent sessions or status graph yet", () => {
+  it("declares what it has: sub-issues, comment edits and attachments; no agent sessions, graph or transitions", () => {
     expect(adapter.capabilities).toEqual({
       agentSessions: false,
       subIssues: true,
       statusGraph: false,
       webhooks: false,
-      commentEdit: false,
-      attachments: false,
+      commentEdit: true,
+      attachments: true,
       transitions: false,
     });
+  });
+});
+
+describe("markdown images", () => {
+  it("finds markdown and HTML images in order, each once, and nothing else", () => {
+    const text = [
+      "Intro ![one.png](https://uploads.linear.app/a/one.png) then",
+      '![](<https://uploads.linear.app/b/two.png> "title")',
+      '<img alt="x" src="https://uploads.linear.app/c/three.png">',
+      "[not an image](https://uploads.linear.app/d/doc.pdf)",
+      "![one again](https://uploads.linear.app/a/one.png)",
+    ].join("\n");
+    expect(markdownImages(text).map((image) => image.url)).toEqual([
+      "https://uploads.linear.app/a/one.png",
+      "https://uploads.linear.app/b/two.png",
+      "https://uploads.linear.app/c/three.png",
+    ]);
+  });
+
+  it("reads a long hostile text quickly", () => {
+    const hostile = `${"![".repeat(20_000)}${"](".repeat(20_000)}<img src=${'"'.repeat(20_000)}`;
+    const started = performance.now();
+    markdownImages(hostile);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });

@@ -27,8 +27,8 @@ import type { GraphqlValue, TopLevelField } from "./graphql-lite.ts";
 // and says so where it does:
 // - `orderBy: updatedAt` answers the most recently updated first ("To get most recently updated
 //   resources, you can alternatively order by updatedAt", linear.app/developers/pagination).
-// - `sort: [{ updatedAt: { order: Ascending } }]` answers oldest first. Assumed from Linear's
-//   `IssueSortInput`; not checked against Linear.
+// - `sort: [{ updatedAt: { order: Ascending } }]` answers oldest first. Both orders were checked
+//   against ostra-test on 2026-11-19 (ticket 07's live suite pages with the ascending one).
 // - An issue looked up by an identifier it had before it moved team is not found. Unverified.
 // - A webhook retry is stamped afresh (the spike's assumption, research/spike-linear-agent-mode.md).
 
