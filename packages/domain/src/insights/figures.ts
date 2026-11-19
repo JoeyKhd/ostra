@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { ModelId, ProjectId, RepoId, TaskId, TaskKind } from "@ostra/protocol";
 
 // Insights' six figures (F-108, ADR 0055), as pure functions over rows: the reference definitions
@@ -164,4 +166,40 @@ export const tokensAndSpend = (
     byModel.set(row.modelId, add(byModel.get(row.modelId) ?? zero, row));
   }
   return { total, byProject, byModel };
+};
+
+/**
+ * `InsightDaily.waitingByReason` (F-108): per reason, the duration in ms of each needs-you item that
+ * ended on that day. `insights.compute` (ticket 14) writes it with `waitingDurationsByReason`;
+ * Insights (ticket 28) reads it, so the total, the median per item and the count, overall and per
+ * reason, are exact over any run of days, and equal `timeWaiting`'s.
+ */
+export const insightWaitingByReasonSchema = z.record(z.string().min(1).max(64), z.array(z.number().int().nonnegative()));
+export type InsightWaitingByReason = z.infer<typeof insightWaitingByReasonSchema>;
+
+/** The durations of the items that ended in `period`, by reason: what one day's row stores. */
+export const waitingDurationsByReason = (items: readonly InsightWaitingItem[], period: InsightPeriod): InsightWaitingByReason => {
+  const out: Record<string, number[]> = {};
+  for (const item of items) {
+    if (!within(period, item.endedAt)) {
+      continue;
+    }
+    const list = out[item.reason] ?? [];
+    list.push(Math.max(0, item.endedAt - item.createdAt));
+    out[item.reason] = list;
+  }
+  return out;
+};
+
+/** `timeWaiting`'s figures from stored durations by reason (the days' rows merged). */
+export const waitingFromDurations = (
+  byReason: InsightWaitingByReason,
+): WaitingFigure & { readonly byReason: ReadonlyMap<string, WaitingFigure> } => {
+  const figure = (durations: readonly number[]): WaitingFigure => ({
+    totalMs: durations.reduce((sum, value) => sum + value, 0),
+    medianMs: median(durations),
+    count: durations.length,
+  });
+  const all = Object.values(byReason).flat();
+  return { ...figure(all), byReason: new Map(Object.entries(byReason).map(([reason, durations]) => [reason, figure(durations)])) };
 };

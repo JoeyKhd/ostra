@@ -17,6 +17,7 @@ import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
 import { accountRouter } from "./account.ts";
 import { agentProfilesRouter } from "./agent-profiles.ts";
+import { insightsRouter } from "./insights.ts";
 import { providersRouter } from "./providers.ts";
 import { setupRouter } from "./setup.ts";
 
@@ -46,6 +47,7 @@ export const appRouter = router({
   runners: runnersRouter,
   pools: poolsRouter,
   stream: streamRouter,
+  insights: insightsRouter,
 });
 
 export type AppRouter = typeof appRouter;

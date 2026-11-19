@@ -1,6 +1,6 @@
 # 28: API: Insights
 
-Status: ready-for-agent
+Status: resolved
 Builder: api
 Blocked by: 14
 Features: F-108
@@ -15,7 +15,7 @@ Spec: `../spec.md`, section 4 ("Insights"); ADR 0055
 
 ## Done when
 
-- [ ] Tests named `it("F-108: ...")`: each figure equals ticket 06's reference for a fixture and period; "—" for a merge rate with no closed PR; the medians' counts; a hidden project's name never appears; `computedAt` is the job's.
-- [ ] Committed as `✨ add Insights to the API`.
+- [x] Tests named `it("F-108: ...")`: each figure equals ticket 06's reference for a fixture and period; "—" for a merge rate with no closed PR; the medians' counts; a hidden project's name never appears; `computedAt` is the job's.
+- [x] Committed as `✨ add Insights to the API`.
 
 ## Comments

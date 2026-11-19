@@ -21,3 +21,4 @@ Spec: `../spec.md`, section 4 ("Insights"); ADR 0055, ADR 0035
 - [ ] Committed as `✨ add the Insights job`.
 
 ## Comments
+- 2026-11-19 (ticket 28, the API): `InsightDaily.waitingByReason` holds, per reason, the duration in ms of each needs-you item that ended that day (`insightWaitingByReasonSchema` in `packages/domain/src/insights/figures.ts`). Write it with `waitingDurationsByReason(items, day)`, so `insights.get` can give the exact median per item over any period. `TaskMetric.firstPrAt` and `createdAt` give the first-PR median.
