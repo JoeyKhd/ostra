@@ -147,6 +147,11 @@ export type PullRequestDetails = PullRequest & {
   readonly updatedAt: number;
   readonly mergedAt: number | null;
   readonly closedAt: number | null;
+  /**
+   * Milestone 3: the PR's description as it is now, when the host says, so ostra edits its own
+   * checks section without overwriting a person's edits (F-054). Untrusted text: never logged.
+   */
+  readonly body?: string | null;
 };
 
 /** A verified webhook, read loosely. Only `pull_request` events are read in milestone 2. */
