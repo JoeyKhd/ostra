@@ -15,6 +15,8 @@
     "build": "turbo run build",
     "dev": "node scripts/dev.ts",
     "check:licenses": "node scripts/check-licenses.ts",
+    "check:proof": "node scripts/check-proof.ts",
+    "proof:new": "node scripts/proof-new.ts",
     "format": "prettier --write .",
     "db:dev": "node packages/db/scripts/dev-postgres.ts",
     "db:migrate": "node packages/db/scripts/migrate.ts",
