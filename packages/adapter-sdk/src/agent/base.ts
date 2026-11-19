@@ -284,17 +284,19 @@ export abstract class AgentAdapter {
 
   /**
    * Milestone 2: the command that exports a session to `archivePath`, with the capability
-   * `sessionArchive`. Additive: an adapter answers `unsupported` until it has it (ticket 10).
+   * `sessionArchive`. Additive: an adapter answers `unsupported` until it has it (ticket 10). It
+   * answers asynchronously because naming the command can mean finding and checking the agent's
+   * binary, which the runner's code does with async calls only.
    */
-  exportSession(input: ExportSessionInput): AdapterResult<AgentCommand> {
+  exportSession(input: ExportSessionInput): Promise<AdapterResult<AgentCommand>> {
     this.plumbing.logger.debug("exportSession is not supported", { agentSession: input.agentSessionId.length });
-    return adapterError("unsupported", `${this.name} can't export a session`);
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't export a session`));
   }
 
   /** Milestone 2: the command that imports an archive into a fresh box, bound to its workspace. */
-  importSession(input: ImportSessionInput): AdapterResult<AgentCommand> {
+  importSession(input: ImportSessionInput): Promise<AdapterResult<AgentCommand>> {
     this.plumbing.logger.debug("importSession is not supported", { agentSession: input.agentSessionId.length });
-    return adapterError("unsupported", `${this.name} can't import a session`);
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't import a session`));
   }
 
   /** Connects to the agent's process and starts (or resumes) its session. */

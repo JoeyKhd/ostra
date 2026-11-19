@@ -207,7 +207,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       const agentSessionId = running.agentSessionId;
       await adapter.close(running);
       await started.stop();
-      const exported = adapter.exportSession({
+      const exported = await adapter.exportSession({
         agentSessionId,
         agentDir: fixture.launchInput.agentDir,
         workspaceDir: fixture.launchInput.workspaceDir,
@@ -218,7 +218,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
 
       // A fresh box: another agent folder and workspace. The import binds the session to it.
       const fresh = await archive.freshBox();
-      const imported = adapter.importSession({ agentSessionId, agentDir: fresh.agentDir, workspaceDir: fresh.workspaceDir, archivePath: archive.archivePath });
+      const imported = await adapter.importSession({ agentSessionId, agentDir: fresh.agentDir, workspaceDir: fresh.workspaceDir, archivePath: archive.archivePath });
       if (!imported.ok) throw new Error(`importSession: ${imported.error.message}`);
       expect((await archive.run(imported.value)).code).toBe(0);
       const prepared = await adapter.prepareLaunch(fresh);

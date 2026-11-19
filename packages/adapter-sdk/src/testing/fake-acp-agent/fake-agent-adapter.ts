@@ -63,22 +63,22 @@ export class FakeAgentAdapter extends AgentAdapter {
     return { ...env, HOME: agentDir, USERPROFILE: agentDir, FAKE_AGENT_DATA: FakeAgentAdapter.dataDirOf(agentDir) };
   }
 
-  override exportSession(input: ExportSessionInput): AdapterResult<AgentCommand> {
-    return ok({
+  override exportSession(input: ExportSessionInput): Promise<AdapterResult<AgentCommand>> {
+    return Promise.resolve(ok({
       command: process.execPath,
       args: [MAIN, "export", `--session=${input.agentSessionId}`, `--out=${input.archivePath}`],
       env: this.#baseEnv(input.agentDir),
       cwd: input.workspaceDir,
-    });
+    }));
   }
 
-  override importSession(input: ImportSessionInput): AdapterResult<AgentCommand> {
-    return ok({
+  override importSession(input: ImportSessionInput): Promise<AdapterResult<AgentCommand>> {
+    return Promise.resolve(ok({
       command: process.execPath,
       args: [MAIN, "import", `--in=${input.archivePath}`, `--directory=${input.workspaceDir}`],
       env: this.#baseEnv(input.agentDir),
       cwd: input.workspaceDir,
-    });
+    }));
   }
 
   health(): Promise<HealthReport> {
