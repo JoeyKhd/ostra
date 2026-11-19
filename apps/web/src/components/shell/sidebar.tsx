@@ -110,7 +110,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       ) : null}
 
       <SectionLabel>{t("shell.organization")}</SectionLabel>
-      <NavLink href="/organization/runners" icon={<ServerIcon />} onNavigate={onNavigate}>
+      <NavLink href="/organization/runners" also={["/device"]} icon={<ServerIcon />} onNavigate={onNavigate}>
         {t("shell.runners")}
       </NavLink>
       {admin ? (

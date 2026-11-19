@@ -13,14 +13,16 @@ export type NavLinkProps = {
   readonly end?: ReactNode;
   /** Match only this exact path (Home), not its children. */
   readonly exact?: boolean;
+  /** Other pages that belong to this row's page and select it too: `/device` for Runners. */
+  readonly also?: readonly string[];
   readonly sub?: boolean;
   readonly onNavigate?: () => void;
 };
 
 /** A sidebar row, 26px (app-design.md): the current page is the selected row. */
-export const NavLink = ({ href, icon, children, end, exact = false, sub = false, onNavigate }: NavLinkProps) => {
+export const NavLink = ({ href, icon, children, end, exact = false, also = [], sub = false, onNavigate }: NavLinkProps) => {
   const pathname = usePathname();
-  const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  const active = (exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)) || also.includes(pathname);
   return (
     <Link
       href={href}
