@@ -9,6 +9,7 @@ import { clientMessageIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import { deriveTaskState } from "@ostra/task-view";
 
+import { servicesWaitText } from "@/components/projects/environment-services-words";
 import { RunnerKind } from "@/components/runners/runners-view";
 import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { initials } from "@/components/shell/user-menu";
@@ -325,6 +326,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             </span>
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>
+          {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
+            <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
+          ) : null}
           {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
           {data.source === "ticket" ? <AgentGot files={data.contextFiles} /> : null}
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}

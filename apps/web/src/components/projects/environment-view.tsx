@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, FileIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
@@ -26,7 +27,11 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 
+import { ServicesAndChecks, SnapshotProperties } from "./environment-services";
 import { entriesText, lineCount, withoutFinalNewline } from "./environment-words";
+
+/** The page's two tabs (environment-services.md): `?tab=services`, or none for Setup. */
+type EnvironmentTab = "setup" | "services";
 
 type View = RouterOutputs["environments"]["get"];
 type Detected = RouterOutputs["environments"]["detect"];
@@ -323,6 +328,16 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
     });
   };
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab: EnvironmentTab = params.get("tab") === "services" ? "services" : "setup";
+  const selectTab = (next: EnvironmentTab) => {
+    const query = new URLSearchParams(params.toString());
+    if (next === "services") query.set("tab", "services");
+    else query.delete("tab");
+    const search = query.toString();
+    router.replace(search === "" ? pathname : `${pathname}?${search}`, { scroll: false });
+  };
   const view = environment.data;
   const name = project.data?.name ?? "";
   const created = params.get("created") !== null;
@@ -331,15 +346,20 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   return (
     <PageFrame
       crumbs={[{ label: name, href: `/projects/${projectId}` }, { label: t("shell.environment") }]}
-      actions={admin ? (
+      actions={admin && tab === "setup" ? (
         <Button variant="primary" onClick={submit} disabled={save.isPending || view === undefined}>
           {save.isPending ? t("common.saving") : t("environment.save")}
         </Button>
       ) : undefined}
-      properties={<Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} />}
+      properties={
+        <>
+          <SnapshotProperties projectId={projectId} view={view} admin={admin} servicesTab={tab === "services"} />
+          {tab === "setup" ? <Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} /> : null}
+        </>
+      }
       wideProperties
     >
-      <div className="max-w-[720px]">
+      <div className="max-w-[760px]">
         <PageHeading
           eyebrow={
             view === undefined
@@ -348,6 +368,17 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           }
           title={t("environment.title")}
           lede={created && view?.status === "draft" ? t("environment.createdLede") : t("environment.lede")}
+        />
+        <UnderlineTabs
+          className="mt-3.5"
+          label={t("environment.tabs.label")}
+          idPrefix="environment"
+          tabs={[
+            { id: "setup", label: t("environment.tabs.setup") },
+            { id: "services", label: t("environment.tabs.servicesAndChecks") },
+          ]}
+          selected={tab}
+          onSelect={selectTab}
         />
         {save.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(save.error)}</p>}
         {save.data === undefined ? null : (
@@ -369,8 +400,12 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
               {[0, 1, 2].map((i) => <Skeleton key={i} className="h-[30px] w-full" />)}
             </div>
           ) : null
+        ) : tab === "services" ? (
+          <div role="tabpanel" id="environment-panel-services" aria-labelledby="environment-tab-services">
+            <ServicesAndChecks projectId={projectId} view={view} admin={admin} />
+          </div>
         ) : (
-          <>
+          <div role="tabpanel" id="environment-panel-setup" aria-labelledby="environment-tab-setup">
             <EnvSection title={t("environment.setupScript")} note={t("environment.setupScriptNote")}>
               <ScriptEditor value={setupScript} readOnly={!admin} onChange={setSetupScript} />
             </EnvSection>
@@ -530,7 +565,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
               <ShieldCheckIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75] text-faint" />
               {t("environment.footnote")}
             </p>
-          </>
+          </div>
         )}
       </div>
 
