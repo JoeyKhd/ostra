@@ -659,6 +659,10 @@ export class GitHubAdapter extends CodeHostAdapter {
         updatedAt,
         mergedAt,
         closedAt,
+        // Milestone 3 (F-054): a later turn edits its checks section in the description as it is now,
+        // and keeps a draft a person made. Untrusted text: never logged.
+        body: pr.body ?? null,
+        ...(pr.draft === undefined ? {} : { draft: pr.draft }),
       } satisfies PullRequestDetails);
     });
   }

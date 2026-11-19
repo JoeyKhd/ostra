@@ -268,6 +268,7 @@ export const createFakeGitHub = async (options: {
     title: pr.title,
     head: { ref: pr.head, sha: pr.headSha },
     base: { ref: pr.base },
+    body: pr.body,
   });
 
   const findPull = (repo: string, number: number): FakePullRequest => {

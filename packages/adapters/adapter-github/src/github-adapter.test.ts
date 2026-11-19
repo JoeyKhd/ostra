@@ -161,7 +161,7 @@ const startFake = (): Promise<FakeGitHub> =>
           ".github/pull_request_template.md": template,
           "src/index.ts": "export {};\n",
         },
-        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open", "ostra/drafts", "ostra/closing", "ostra/draft-token"],
+        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open", "ostra/drafts", "ostra/closing", "ostra/draft-token", "ostra/read-back"],
         protectedBranches: ["ostra/classic"],
         rulesets: {
           main: ["deletion", "required_signatures"],
@@ -867,6 +867,19 @@ describe("the GitHub adapter", () => {
       expect(await adapter.findPullRequest(fixture.access, "ostra/drafts")).toMatchObject({ ok: true, value: { number, draft: true } });
       expect(await adapter.setPullRequestDraft(fixture.access, number, false)).toMatchObject({ ok: true, value: { draft: false } });
       expect(fake.draftChanges()).toBe(before + 2);
+    });
+
+    it("F-054: reads a PR's description as it is now and whether it's a draft, so a person's edits and drafts are kept", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/read-back", base: "main", title: "read back", body: "ostra's text", draft: true });
+      if (!opened.ok) throw new Error(opened.error.message);
+      const { number } = opened.value;
+      expect(await adapter.getPullRequest(fixture.access, number)).toMatchObject({ ok: true, value: { number, draft: true, body: "ostra's text" } });
+      // A person edits the description and marks it ready on GitHub.
+      const pr = fake.pulls.find((candidate) => candidate.number === number);
+      if (pr === undefined) throw new Error("no PR");
+      pr.body = "ostra's text\n\nA person's note.";
+      pr.draft = false;
+      expect(await adapter.getPullRequest(fixture.access, number)).toMatchObject({ ok: true, value: { draft: false, body: "ostra's text\n\nA person's note." } });
     });
 
     it("F-054: switches with a token that can write contents and PRs, as GitHub's mutations need, and reads a refusal as forbidden", async () => {

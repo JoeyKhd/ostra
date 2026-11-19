@@ -87,6 +87,9 @@ export const pullRequestDetailsSchema = z.looseObject({
   title: z.string(),
   head: z.looseObject({ ref: z.string(), sha: z.string().min(1) }),
   base: z.looseObject({ ref: z.string() }),
+  /** Milestone 3 (F-054): the description as it is now, and whether it is a draft. */
+  body: z.string().nullish(),
+  draft: z.boolean().optional(),
 });
 
 /** A `pull_request` webhook's payload. */
