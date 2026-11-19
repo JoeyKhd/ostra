@@ -60,7 +60,10 @@
     "settings": "Settings",
     "boards": "Boards",
     "inbox": "Inbox",
-    "inboxCount": "Open tickets: {n}"
+    "inboxCount": "Open tickets: {n}",
+    "email": "Email",
+    "account": "Account",
+    "notifications": "Notifications"
   },
   "signIn": {
     "title": "Sign in",
@@ -1500,5 +1503,167 @@
       "unsupported": "{repo} requires signed commits, which ostra doesn't support yet.",
       "unprotected": "{repo}'s default branch isn't protected."
     }
+  },
+  "moments": {
+    "approval": {
+      "name": "Approvals",
+      "description": "The agent wants to do something its rules hold back"
+    },
+    "question": {
+      "name": "Questions",
+      "description": "The agent asks the driver something"
+    },
+    "plan": {
+      "name": "Plans",
+      "description": "A plan is ready to approve"
+    },
+    "pr_ready": {
+      "name": "Pull requests ready",
+      "description": "A draft pull request waits for review"
+    },
+    "crashed": {
+      "name": "Crashed",
+      "description": "The agent stopped with an error"
+    },
+    "spend_cap": {
+      "name": "Spend cap reached",
+      "description": "The task used its whole spend cap"
+    },
+    "stalled": {
+      "name": "Stalled",
+      "description": "No progress for a while"
+    },
+    "no_changes": {
+      "name": "Finished without changes",
+      "description": "The agent ended and changed nothing"
+    },
+    "setup_failed": {
+      "name": "Setup failed",
+      "description": "A setup command failed on the box"
+    },
+    "ticket_closed": {
+      "name": "Ticket closed",
+      "description": "The ticket closed while the task ran"
+    }
+  },
+  "notificationSettings": {
+    "title": "Notifications",
+    "lede": "When a task needs you, ostra tells you here, on the ticket and by mail. Choose which moments reach you where.",
+    "save": "Save choices",
+    "mailOff": "Mail is off on this install.",
+    "mailOffBody": " Your email choices are kept, and apply once an instance admin sets up mail.",
+    "setUpEmail": "Set up email",
+    "moments": "Moments",
+    "moment": "Moment",
+    "panel": "Panel",
+    "ticket": "Ticket",
+    "email": "Email",
+    "emailOff": " off",
+    "panelAlways": "The panel always shows it.",
+    "boxLabel": "{channel} for {moment}",
+    "footnote": "The panel always shows every moment. Ticket comments go only to tasks with a ticket.",
+    "reset": "Reset to defaults",
+    "saved": "Saved.",
+    "loadFailed": "Couldn't load your choices.",
+    "yourAddress": "Your address",
+    "addressHint": "Your sign-in address.",
+    "addressHintTracker": "Your sign-in address. {tracker} mentions use it too.",
+    "noAddress": "No address on your account",
+    "channels": "Channels",
+    "alwaysOn": "Always on",
+    "noTracker": "No tracker connected",
+    "mailOn": "On",
+    "mailOffShort": "Off on this install",
+    "mail": "Mail",
+    "delay": "Delay",
+    "skippedWhen": "Skipped when",
+    "readInPanel": "read in the panel",
+    "mailCarries": "A mail carries the task's title and key, the moment, one line about it and a link. Never ticket text, agent output or code.",
+    "lastChange": "Last change",
+    "neverChanged": "Never changed. These are the defaults.",
+    "changedOn": "Changed {date}"
+  },
+  "delay": {
+    "none": "none",
+    "seconds": "{n} s",
+    "minutes": "{n} min"
+  },
+  "email": {
+    "title": "Email",
+    "lede": "How ostra mails members when a task needs them. The panel and the ticket work without it.",
+    "save": "Save settings",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "loadFailed": "Couldn't load the email settings.",
+    "provider": "Provider",
+    "off": "Off",
+    "offHint": "no mail is sent",
+    "resend": "Resend",
+    "resendHint": "an API key",
+    "smtp": "SMTP",
+    "smtpHint": "any mail server",
+    "offLine": "Members see what needs them in the panel and on the ticket. Their notification pages say mail is off.",
+    "smtpTitle": "SMTP server",
+    "host": "Host",
+    "port": "Port",
+    "security": "Security",
+    "starttls": "STARTTLS",
+    "tls": "TLS",
+    "none": "None, this machine only",
+    "username": "Username",
+    "password": "Password",
+    "smtpHelp": "Port 587 with STARTTLS, or 465 with TLS, works with most providers.",
+    "resendTitle": "Resend",
+    "apiKey": "API key",
+    "resendHelp": "A key with sending access, from your Resend account. The from address's domain must be verified there.",
+    "sender": "Sender",
+    "fromAddress": "From address",
+    "fromName": "From name",
+    "senderHelp": "Use an address on a domain your mail provider has verified, or mail may be refused.",
+    "test": "Test",
+    "sendTest": "Send a test mail",
+    "sending": "Sending…",
+    "testTo": "to {address}",
+    "saveToTest": "Save your changes to test them.",
+    "noAddress": "Your account has no email address.",
+    "accepted": "Accepted by {provider} at {time}. Check {address} for it.",
+    "footnote": "Secrets go to the secret store and are never shown again. Changes are recorded in the audit log.",
+    "locked": "Set by {settings} on this install. Change them there and restart ostra.",
+    "readOnly": "Only the instance admin can change email.",
+    "invalid": {
+      "host": "A host name, like smtp.example.com.",
+      "port": "A port from 1 to 65535.",
+      "security": "Without TLS, only a mail server on this machine is allowed.",
+      "fromAddress": "An email address, like ostra@example.com.",
+      "apiKey": "A Resend API key starts with re_.",
+      "apiKeyMissing": "Enter the API key."
+    },
+    "status": "Status",
+    "mail": "Mail",
+    "onThrough": "On, through {provider}",
+    "offStatus": "Off",
+    "delay": "Delay",
+    "configuration": "Configuration",
+    "unset": "unset",
+    "lastTest": "Last test",
+    "when": "When",
+    "result": "Result",
+    "acceptedShort": "Accepted",
+    "failedShort": "Failed",
+    "noTest": "No test mail yet.",
+    "today": "today, {time}",
+    "lastChange": "Last change",
+    "neverChanged": "Never changed. Mail is off by default.",
+    "change": {
+      "smtp": "Switched to SMTP by {name}, {date}",
+      "resend": "Set to Resend by {name}, {date}",
+      "off": "Turned off by {name}, {date}",
+      "sender": "Sender changed by {name}, {date}"
+    }
+  },
+  "secret": {
+    "set": "Set",
+    "notSet": "Not set",
+    "replace": "Replace"
   }
 }
