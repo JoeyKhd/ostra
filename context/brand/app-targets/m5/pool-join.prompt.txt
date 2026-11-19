@@ -1,0 +1,23 @@
+# Generation 1 (kept, the only one): an edit of pool-new's generation. References: that generation, app-targets/m4/member-invite-link's generation, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# The page behind the sheet was then dimmed by a script (x0.6 left of the sheet's edge).
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+EDIT THE FIRST ATTACHED IMAGE. Keep everything exactly as it is, pixel for pixel: the Runners page behind, the sidebar, the top bar, the sheet's position, width, left border, padding and the close "X". Change ONLY the content inside the right sheet, which now shows the pool just created and its first join token. Same fonts and scale as the first image: Manrope Bold for the sheet title, IBM Plex Sans for text, IBM Plex Mono for the token, the commands and the dates. The SECOND attached image (an "Invitation created" sheet) shows the style for the code box, the teal copy button and the lines under it: copy that style. Palette: background #0D0E10, code boxes #131416 with a 1px #2A2C30 border and radius 8px, hairlines #1F2023, text #F2F3F4, muted #B4B7BB, faint #8B8E93, teal #6FB8AA only for the copy buttons "Copy token" and "Copy", primary button #F3F0E8 with dark text #0C1D21. No amber, no green, no red in the sheet.
+
+THE SHEET'S NEW CONTENT, top to bottom:
+- Header row: title "Pool created" (Manrope Bold, 19px), the small faint "X" at the far right.
+- Under it, a muted 14px line: "Runners join build-fleet with this token, then wait for an admin to approve them." with "build-fleet" in mono.
+- 20px lower, field label "Join token" (13px muted). Under it a code box filling the sheet's width, holding the full token in IBM Plex Mono 13px white, wrapping onto two lines: "ostra-join-Xb7Rk2qN4vTc9LwY1sHf8" then "eJm3pZa6dQ0uG5yKt2nVr". Directly under the box, at its left, a teal text button with a copy icon: "Copy token".
+- 12px lower, a muted 13px line with a small shield icon: "Anyone with this token can add a runner to this pool."
+- 8px lower, a faint 12.5px line: "Shown once. It expires on 19 Dec 2026."
+- 18px lower, a hairline, then field label "Start a runner" (13px muted). Under it a row of three underline tabs in 14px: "ostra runner" (selected: white, with a 2px off-white underline), "docker run" (muted), "Helm" (muted), with a hairline under the whole tab row.
+- Directly under the tabs, a code box filling the sheet's width, about 110px tall, holding four lines of IBM Plex Mono 12.5px white text, left aligned:
+   "OSTRA_JOIN_TOKEN_FILE=./join-token \"
+   "  npx ostra@0.5.0 runner \"
+   "  --server https://ostra.acme.dev \"
+   "  --executor docker"
+  with a small teal "Copy" text button with a copy icon in the box's top-right corner.
+- 10px lower, a faint 12.5px line with a small file icon: "Save the token to a file named join-token first. The command reads it from there, so it stays out of your shell history."
+- 18px lower, a hairline, then a small faint label "Join tokens" with a faint mono "1" after it. One token row, 48px: "Join token" white 14px, under it faint mono 12px "expires 2026-12-19 · never used", and at the right a muted "Revoke" text button. A hairline under it.
+- Pinned at the BOTTOM of the sheet, a hairline across the sheet, then a row: the primary button "Done" (34px tall, off-white fill, dark text) and next to it a quiet bordered button "Open build-fleet".
+Remove the old form entirely (no Name input, no approval switch, no Max boxes, no radio rows, no project checkboxes, no "Create pool").

@@ -1,0 +1,52 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/runners.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadow around the window. It is the page of one runner pool, "k8s-east", in ostra, a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense type, hairline rows, few boxes. Render at the exact scale and density of the FIRST attached screenshot (the Runners page): same title size, same 38px row height, same text size, same table header style, same meter bars, same chips, same properties panel. Nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; code boxes and the switch track #131416 with a 1px #2A2C30 border; selected row #1A1B1E; hairlines #1F2023; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; green #4FB286 ONLY for the "online" dots; meter fills light grey-green #CFD8D4 on a #2A2C30 track; teal #6FB8AA only for the inline text buttons "Cancel" and "Edit"; primary button filled off-white #F3F0E8 with dark text #0C1D21; the switch when on is filled off-white #F3F0E8 with a dark knob. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no red, no shadows, no cards, no illustrations.
+
+FONTS: page title in Manrope Bold. UI text IBM Plex Sans (section titles semibold 14px, table header labels small and faint). IBM Plex Mono for runner names, task keys, versions, labels, counts and times. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, four regions:
+
+1) LEFT SIDEBAR, 234px wide, background #0A0B0C, a 1px #1F2023 line on its right, exactly like the first reference: the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small off-white square "+" button beside it. Nav rows with icons: "Home"; "Needs you" with a small amber pill "2"; "My tasks" with faint "3". Small faint label "Projects": "calculator" (tiny teal 8px square), "billing-platform" (violet-grey square), "web-storefront" (orange square), "vault" (grey square), "+ New project". Small faint label "Organization": "Runners" (server icon; this row is SELECTED, background #1A1B1E, white text, faint count "24" at its right), "Models" (cpu icon), "GitHub", "Agent profiles" (sliders icon), "Members" (users icon), "Spend" (wallet icon), "Audit log" (scroll icon). At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  Runners  >  k8s-east" ("k8s-east" white medium mono, the rest muted). Right: one primary off-white button with a plus icon "New token".
+
+3) MAIN PAGE COLUMN, padding 28px top, 36px left and right:
+- Page title "k8s-east" (Manrope Bold), and on the same line right after it a small outlined grey chip "kubernetes".
+- A muted one-line lede: "3 runners, 24 of 24 boxes busy, 6 tasks waiting."
+- Under it, a small faint line with a thin globe icon: "The agent has direct internet access: on kubernetes it shares the pod's network. Private ranges, the metadata address and other boxes stay blocked."
+- 24px lower, section head "Runners" (semibold) and a faint mono count "3". A borderless table, header row with faint small labels: "State", "Runner", "Carrier", "Containment", "Labels", "Busy", "Version". Body rows 38px, a 1px #1F2023 hairline between rows:
+  "● online" (green dot) | "k8s-east-a" mono white | "WebSocket" muted | "container" muted | small outlined mono chip "tier:fast" | "10 / 12 busy" mono muted | "v0.5.0" mono muted
+  "● online" (green dot) | "k8s-east-b" | "HTTP" muted | "container" | chips "tier:fast" and "gpu" | "12 / 12 busy" | "v0.5.0"
+  "◐ draining" (grey half-filled dot) | "k8s-east-c" | "WebSocket" | "container" | faint "—" | "2 / 12 busy" | "v0.4.3" and a small outlined grey chip "behind"
+- 24px lower, section head "Projects" and faint mono count "3". Borderless table, header labels: "Project", "Boxes", "Share", "Queued". Rows 38px:
+  teal 8px square "calculator" | a thin 120px meter 100% filled + mono "8 / 8" | "8 boxes" and a small outlined grey chip "at its share" | mono "3"
+  orange square "web-storefront" | meter 75% filled + mono "12 / 16" | "16 boxes" | mono "3"
+  violet-grey square "billing-platform" | meter about 20% filled + mono "4" | faint "No share" | mono "0"
+- 24px lower, section head "Queue" and faint mono count "6", and at the right of that line a faint small text "Priority, then time queued". Borderless table, header labels: "#", "Priority", "Task", "Project", "Waiting", "Why", and an empty last column. Rows 38px, hairlines between:
+  "1" faint mono | a small grey priority icon and "Urgent" | mono "WEB-88" then white "Checkout fails on an empty cart" | orange square "web-storefront" | mono faint "4m" | muted "Pool full, 24 of 24" | teal "Cancel"
+  "2" | "High" | "CALC-214" "Rounding error in tax totals" | teal square "calculator" | "12m" | muted "At its share, 8 boxes" | teal "Cancel"
+  "3" | "Medium" | "WEB-91" "Add a size filter to search" | "web-storefront" | "9m" | "Pool full, 24 of 24" | "Cancel"
+  "4" | "Medium" | a small faint message icon then white "Bump vitest to 3.2" | "calculator" | "7m" | "At its share, 8 boxes" | "Cancel"
+  "5" | "Medium" | "CALC-220" "Parse negative exponents" | "calculator" | "3m" | "At its share, 8 boxes" | "Cancel"
+  "6" | "Low" | "WEB-73" "Tidy the footer links" | "web-storefront" | "26m" | "Pool full, 24 of 24" | "Cancel"
+  Task titles are cut with an ellipsis if they do not fit. All rows use the same column positions.
+
+4) RIGHT PROPERTIES PANEL, 320px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no boxes, exactly like the first reference's panel. Small faint label "Pool". Key/value rows 30px, key muted in a 110px column, value white:
+  Executor | kubernetes (mono)
+  Runners | 2 / 3 online (mono numbers)
+  Busy | 24 / 24 boxes
+  Queue | 6 waiting
+  A hairline. A small faint label "Settings" with a teal "Edit" at the right end of that label row. Rows:
+  Approval | a small switch, ON (off-white track, dark knob), then "Required" white
+  Max boxes | 24 (mono)
+  Token lifetime | 30 days
+  Projects | calculator, +2
+  A hairline. A small faint label "Join tokens" with a faint mono "2" right after it. Token rows with hairlines between:
+   "cluster-east" white, under it faint mono "expires 2026-12-12 · used 3h ago · 2 runners", and a muted "Revoke" text button at the right.
+   "rotation-nov" white, under it faint mono "expires 2026-12-19 · used 1d ago · 1 runner", muted "Revoke" at the right.
+   "initial" faint and struck through, under it faint "revoked 12 Nov".
+
+Overall: dense, calm, precise, lots of near-black space, a tool engineers use all day. All text crisp and legible, spelled exactly as written. No extra content, no charts beyond the thin meters, no illustrations.

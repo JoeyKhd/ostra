@@ -1,0 +1,31 @@
+# Generation 1 (kept, the only one). References: app-targets/m4/member-invite's 2048 original, app-targets/m1/runners.png (the page behind), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# The page behind the sheet was then dimmed by a script (x0.6 left of the sheet's edge).
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective. It is ostra's "Runners" page with the "New pool" side sheet open on the right. ostra is a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: same graphite near-black chrome, same small dense type, hairline rows, few boxes. The sheet copies the FIRST attached screenshot (the "Invite to Acme Corp" sheet) exactly: the same sheet width, position, left border, padding, title size, field labels, input boxes, radio rows, checkbox rows, footer line and footer buttons, at exactly that scale. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs #131416 with a 1px #2A2C30 border, radius 7px; selected row #1A1B1E; hairlines #1F2023; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; primary button filled off-white #F3F0E8 with dark text #0C1D21; checked checkboxes, the selected radio and the switch when on are filled off-white #F3F0E8 with a dark mark or knob. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar. No gradients, no glow, no purple, no blue, no teal in the sheet, no illustrations.
+
+FONTS: Manrope Bold for the page title and the sheet title. IBM Plex Sans for UI text. IBM Plex Mono for the pool name and numbers. Thin Lucide line icons, 15px.
+
+BACKGROUND (the page behind the sheet): the SECOND attached screenshot, the Runners page, exactly as it is (sidebar with "Runners" selected, top bar "Acme Corp > Runners", title "Runners", the Pools table, the Runners table, Your machine), but WITHOUT its right properties panel, and covered by a flat black overlay at 60% so everything behind is dim and clearly inactive. The sheet itself is NOT dimmed.
+
+THE SHEET: a full-height panel on the right edge, 450px wide, background #0D0E10, a 1px #2A2C30 line on its left edge, no rounded corners, padding 24px 28px. Top to bottom:
+- Header row: title "New pool" (Manrope Bold, 19px), and at the far right a small faint "X" close icon.
+- Under it, a muted 14px line: "Runners join a pool with a token, then take its projects' tasks."
+- 20px lower, field label "Name" (13px muted). An input 34px tall filling the sheet's width, value "build-fleet" in IBM Plex Mono white, with a thin text cursor after it.
+- 20px lower, a row 52px tall with hairlines above and below: on the left "Require approval for new runners" white 14px, under it faint 12.5px "An admin approves each runner before it takes a task."; at the far right a small switch, ON (off-white track, dark knob).
+- 20px lower, field label "Max boxes" (13px muted). An input 34px tall and about 120px wide, value "3" in mono white. Beside it, to its right, faint 12.5px text "Across the pool. Empty for no limit."
+- 20px lower, field label "Join tokens last" (13px muted). Three radio rows separated by hairlines, each 40px:
+   (•) selected: "30 days" white, then faint "the default"
+   ( ) "Another" white, then a small disabled input 30px tall, 70px wide, faint placeholder "days"
+   ( ) "No expiry" white, then faint "until someone revokes it"
+- 22px lower, a section line: "Projects" semibold 14px, then faint "optional". Under it a faint 13px line: "Each project picks its pools' order and its share in its own settings."
+  Then a plain list, NO box around it, rows 44px separated by 1px hairlines, top and bottom hairline. Each row: a 14px square checkbox, an 8px coloured square, the project name:
+     [checked, row background #1A1B1E] teal square "calculator"
+     [checked, row background #1A1B1E] orange square "web-storefront"
+     [ ] violet-grey square "billing-platform"
+     [ ] grey square "vault" and a small faint lock icon after it
+- Pinned at the BOTTOM of the sheet, a hairline across the sheet, then 16px below it: a small muted line with a key icon: "Its first join token is shown once, on the next step." Under it, 14px lower, a row: the primary button filled #F3F0E8 with dark text "Create pool" (34px tall), and next to it a quiet bordered button "Cancel".
+
+Everything in the sheet aligned on one clean left edge, calm and dense, crisp small legible text, every word spelled exactly as written.
