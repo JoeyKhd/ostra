@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, LogRecord, SecretRowStore } from "@ostra/adapter-sdk";
+import { ResendEmailAdapter } from "@ostra/adapter-email-resend";
+import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
@@ -154,6 +156,24 @@ const build = async (): Promise<ApiRuntime> => {
       logger,
     }),
     makeLinearTracker: (auth) => new LinearAdapter({ auth }, context),
+    // F-115: the adapters that send "Send a test mail"; core builds its own for the deliveries.
+    email: {
+      adapterFor: (config) =>
+        config.provider === "resend"
+          ? new ResendEmailAdapter({ apiKey: config.apiKey, from: config.fromAddress, fromName: config.fromName }, context)
+          : new SmtpEmailAdapter(
+              {
+                host: config.host,
+                port: config.port,
+                secure: config.secure,
+                from: config.fromAddress,
+                fromName: config.fromName,
+                ...(config.user === null ? {} : { user: config.user }),
+                ...(config.password === null ? {} : { password: config.password }),
+              },
+              context,
+            ),
+    },
     blobStore: {
       name: settings.blobStore.kind,
       // The built-in store lives in the database: it is as healthy as a query. An S3-compatible

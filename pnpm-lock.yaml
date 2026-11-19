@@ -151,6 +151,12 @@ importers:
       '@assistant-ui/react-markdown':
         specifier: 0.14.26
         version: 0.14.26(@assistant-ui/react@0.15.36(@opentelemetry/api@1.10.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(ai@7.0.173(zod@4.6.7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@ostra/adapter-email-resend':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-email-resend
+      '@ostra/adapter-email-smtp':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-email-smtp
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-github

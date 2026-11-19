@@ -17,6 +17,8 @@
   "dependencies": {
     "@assistant-ui/react": "0.15.36",
     "@assistant-ui/react-markdown": "0.14.26",
+    "@ostra/adapter-email-resend": "workspace:*",
+    "@ostra/adapter-email-smtp": "workspace:*",
     "@ostra/adapter-github": "workspace:*",
     "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
