@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDownIcon, PlusIcon, ShieldIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon, ShieldIcon, TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
