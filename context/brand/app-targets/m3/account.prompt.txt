@@ -1,0 +1,45 @@
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the member's own "Account" page of ostra, a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense 13px type, hairline rows, few boxes. Render at the exact scale and density of the first attached screenshot (the Runners page): small crisp text, nothing oversized, quiet empty near-black space below the content. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs and code boxes #131416 with a 1px #2A2C30 border and 7px radius; selected row #1A1B1E; hairlines #1F2023; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; success green #4FB286 only for small status dots; teal #6FB8AA only for inline links and "Copy"; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations, no cards.
+
+FONTS: page title in Manrope Bold 24px. UI text IBM Plex Sans 13px (section titles semibold 13px, table headers 11.5px faint). IBM Plex Mono for the GitHub login, machine names, dates in tables, commands and IDs. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small white ostra hinge logo (the attached logo, tiny, 20px) then "Acme Corp" semibold and a small up-down chevron. A search field "Search  ⌘K" with a small off-white "+" square button beside it. Nav rows 26px with icons: "Home"; "Needs you" (hand icon) with a small amber pill "2"; "My tasks" with faint count "3". Small faint label "Projects": "calculator" with a tiny teal 8px square; "billing-platform" with a tiny violet-grey square; "+ New project". Small faint label "Organization": rows "Runners" (server icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub" (github icon), "Linear", "Storage" (hard-drive icon). NO nav row is selected. At the very bottom the signed-in member row is HIGHLIGHTED with background #1A1B1E: a round grey avatar "AK" and "Alex Kim" in white.
+
+2) TOP BAR, 44px tall, a hairline under it. Left: breadcrumb with one item "Account" in white medium. Right: nothing.
+
+3) MAIN PAGE COLUMN, padding 28px top, 40px left, content max 760px wide, left-aligned:
+- Page title "Account" (Manrope Bold 24px)
+- A muted lede, one line: "Your GitHub account, and the machines where you ran ostra login. Only you see this page."
+
+- Section title "GitHub" (semibold 13px) with a faint inline note "for co-author credit, and for @ostra on a pull request". Under it ONE row, 48px tall, hairlines above and below, no box: a 15px github icon, then "@alexkim" in mono white, then a small green dot and "Linked" in muted text, then faint mono "ID 5829104 · 12 Nov". At the far right of the row a quiet ghost button "Unlink" in muted grey text, no fill.
+- Under the row, 10px down, faint 12.5px help, two lines: "ostra kept your GitHub login and ID, and revoked the sign-in token at once. Commits from your tasks credit 5829104+alexkim@users.noreply.github.com." (the address in mono).
+
+- 30px lower, section title "CLI sessions" (semibold 13px) followed by a faint mono count "2", and a faint inline note "made by ostra login, valid for 30 days".
+  A dense table with faint column headers "Machine", "Created", "Last used", "Expires", and rows 40px tall split by 1px hairlines, no box:
+  row 1: terminal icon + "alex-mbp" (mono white) | "12 Nov" (mono muted) | "4 min ago" (muted) | "12 Dec" (mono muted) | at the far right a quiet ghost "Revoke" in muted grey
+  row 2: terminal icon + "alex-wsl" (mono white) | "3 Nov" | "2d ago" | "3 Dec" | ghost "Revoke"
+- Under the table, 12px down, muted 12.5px: "Sign in another machine: run this, then approve the code it prints."
+- A one-line code box (#131416, 1px #2A2C30 border, 7px radius, 40px tall, full content width): mono "ostra login --server https://ostra.acme.dev", with a teal "Copy" text button at its right end.
+- A faint 12px footnote with a small shield icon: "A CLI session reads only a task's branches and clone URLs. Git uses your own access: ostra hands out no token."
+
+4) RIGHT PROPERTIES PANEL, 300px wide, a 1px hairline on its left, no box, padding 20px 18px:
+- small faint label "You", then key/value rows 30px tall (key muted, value white):
+  Name | Alex Kim
+  Email | alex@acme.dev (mono)
+  Role | Admin of Acme Corp
+  Password | a teal link "Change"
+- a hairline
+- small faint label "GitHub link", then rows:
+  Login | @alexkim (mono)
+  Linked | 12 Nov (mono)
+  Token | Revoked at link time
+- a hairline
+- small faint label "CLI sessions", then rows:
+  Active | 2 (mono)
+  Valid for | 30 days
+  Can read | Branches and clone URLs
+
+Overall: calm, precise, dense, lots of quiet near-black space, crisp small text, perfectly aligned left edges, everything legible.
