@@ -49,6 +49,7 @@ export const loadListedModelsInTx = async (tx: Tx | Db, organizationId: Organiza
     modelId: modelIdSchema.parse(row.id),
     providerId: providerIdSchema.parse(row.providerId),
     name: modelNameOfModel(row),
+    endpointModelId: row.endpointModelId,
     listed: row.listed,
   }));
 

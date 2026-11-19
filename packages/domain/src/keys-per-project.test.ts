@@ -18,7 +18,13 @@ const p2 = providerIdSchema.parse("p2-client-b");
 const p3 = providerIdSchema.parse("p3-client-c");
 const sonnet = modelNameSchema.parse({ kind: "catalog", catalogId: "anthropic/claude-sonnet" });
 const custom = modelNameSchema.parse({ kind: "custom", endpointModelId: "in-house-7b" });
-const row = (id: string, providerId: typeof p1, name: typeof sonnet, listed = true): ListedModel => ({ modelId: modelIdSchema.parse(id), providerId, name, listed });
+const row = (id: string, providerId: typeof p1, name: typeof sonnet, listed = true, endpointModelId = `endpoint-${id}`): ListedModel => ({
+  modelId: modelIdSchema.parse(id),
+  providerId,
+  name,
+  endpointModelId,
+  listed,
+});
 const m1 = row("m1", p1, sonnet);
 const m2 = row("m2", p2, sonnet);
 const m3 = row("m3", p3, custom);
@@ -59,6 +65,23 @@ describe("the resolution", () => {
       expect(resolveProjectModel(entry.list, entry.choices, entry.models, sonnet), entry.name).toEqual(entry.expected);
     }
     expect(resolveProjectModel([p3], [], [m1, m3], custom)).toEqual({ ok: true, providerId: p3, modelId: m3.modelId });
+  });
+
+  it("F-135: one provider that lists a model twice, as x and x:batch, serves it from the plain row, and two providers still need a choice", () => {
+    // An aggregator lists `x` and `x:batch`; the catalog match drops the tag, so both rows carry x's name.
+    const batch = row("a1", p1, sonnet, true, "anthropic/claude-sonnet:batch");
+    const plain = row("a2", p1, sonnet, true, "anthropic/claude-sonnet");
+    expect(resolveProjectModel([p1], [], [batch, plain], sonnet)).toEqual({ ok: true, providerId: p1, modelId: plain.modelId });
+    expect(resolveProjectModel([p1], [], [plain, batch], sonnet)).toEqual({ ok: true, providerId: p1, modelId: plain.modelId });
+    // Two tagged rows: the lowest row ID, whatever order they come in.
+    const free = row("a3", p1, sonnet, true, "anthropic/claude-sonnet:free");
+    expect(resolveProjectModel([p1], [], [free, batch], sonnet)).toEqual({ ok: true, providerId: p1, modelId: batch.modelId });
+    // The plain row unlisted: the tagged one serves it.
+    expect(resolveProjectModel([p1], [], [batch, { ...plain, listed: false }], sonnet)).toEqual({ ok: true, providerId: p1, modelId: batch.modelId });
+    // A second provider on the list still makes it a choice for an admin.
+    expect(resolveProjectModel([p1, p2], [], [batch, plain, m2], sonnet)).toEqual({ ok: false, reason: "no-provider" });
+    // Adding a list's second provider keeps the first, from its plain row.
+    expect(planProviderChange({ list: [p1], choices: [] }, [p1, p2], [batch, plain, m2]).keep).toEqual([{ modelKey: modelNameKey(sonnet), modelId: plain.modelId }]);
   });
 
   it("F-135: the keep rule records the provider serving a model when a list gains a second one", () => {

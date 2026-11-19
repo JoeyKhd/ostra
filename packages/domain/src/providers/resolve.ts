@@ -13,6 +13,8 @@ export type ListedModel = {
   readonly modelId: ModelId;
   readonly providerId: ProviderId;
   readonly name: ModelName;
+  /** The endpoint's own ID: one provider may list a name twice, as `x` and `x:batch`. */
+  readonly endpointModelId: string;
   /** Whether the provider's endpoint still lists it. */
   readonly listed: boolean;
 };
@@ -28,8 +30,8 @@ export type Resolution =
 /**
  * The provider and model row that serve `name` on a list. A choice wins; a chosen row that's no
  * longer usable is `not-listed`, never another provider. Without a choice, the only provider on
- * the list that lists the model serves it; none, or two with no choice (which the keep rule never
- * leaves), is `no-provider`.
+ * the list that lists the model serves it, from its plain row when it lists the name twice; none,
+ * or two providers with no choice (which the keep rule never leaves), is `no-provider`.
  */
 export const resolveProjectModel = (
   list: readonly ProviderId[],
@@ -48,11 +50,27 @@ export const resolveProjectModel = (
     return { ok: true, providerId: chosen.providerId, modelId: chosen.modelId };
   }
   const serving = models.filter((model) => model.listed && onList.has(model.providerId) && modelNameKey(model.name) === key);
-  const [only, second] = serving;
-  if (only === undefined || second !== undefined) {
+  const providers = new Set(serving.map((model) => model.providerId));
+  const [only] = [...serving].sort(byPlainRowFirst);
+  if (only === undefined || providers.size !== 1) {
     return { ok: false, reason: "no-provider" };
   }
   return { ok: true, providerId: only.providerId, modelId: only.modelId };
+};
+
+/** A `:variant` tag on an endpoint's model ID (`:batch`, `:free`), which the catalog match ignores. */
+const VARIANT_TAG = /:[^/:]+$/;
+
+/**
+ * One provider's rows for one name, the plain one first: an endpoint that lists `x` and `x:batch`
+ * serves the name from `x`, and otherwise from its lowest row ID, so it never moves on its own.
+ */
+const byPlainRowFirst = (a: ListedModel, b: ListedModel): number => {
+  const tagged = Number(VARIANT_TAG.test(a.endpointModelId)) - Number(VARIANT_TAG.test(b.endpointModelId));
+  if (tagged !== 0) {
+    return tagged;
+  }
+  return a.modelId < b.modelId ? -1 : a.modelId > b.modelId ? 1 : 0;
 };
 
 /** Every model name some row of these providers lists, once, in a stable order. */
