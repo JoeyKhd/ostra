@@ -1,0 +1,59 @@
+# Generation 1 (kept). References: scratchpad m3-targets/task-changes.png (the approved 2048 original of app-targets/m3/task-changes), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the "Review" screen of one task in "ostra", a self-hosted control panel for coding agents: where a human reviewer reads the task's pull request with the AI reviewer's findings inline, the ticket's acceptance criteria beside it, and sends line comments back to the coding agent. The FIRST attached image is this same product's approved "Changes" tab of a task page: copy its sidebar, top bar, header, the files column, the unified diff rows (line numbers, +/− column, green and red tinted rows), the inline comment blocks with a 2px left rule, the review bar pinned at the bottom, and the right properties panel EXACTLY, at the same small, dense scale. It must look like another page of the same product.
+
+1. SIDEBAR as the first reference: "Home" (house icon), "Needs you" (hand icon) with a small amber pill "3", "My tasks" "4". Faint label "Projects": "calculator" (teal 8px square) expanded, under it indented: "Tasks" (SELECTED, background #1A1B1E) with faint "17", "Inbox" "4", "Environment", "Boards", "Automations", "Memory" "2", "Settings"; then "billing-platform" (violet-grey square), "web-storefront" (ochre square). Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear". Bottom: round grey avatar "AK" and "Alex Kim".
+
+2. TOP BAR: breadcrumbs "calculator  ›  Tasks  ›  CALC-182  ›  Review" ("Review" white). On the right ONE outlined button with a small github mark icon and a tiny arrow-up-right: "Open on GitHub to approve".
+
+3. MAIN COLUMN (padding 28px 36px), top to bottom:
+- Mono faint line: "CALC-182 · from Linear"
+- Title: "Show the app version in Settings"
+- Status line, 13px: a 7px AMBER dot + white "Waiting for your review", faint middle dot, grey "CI passed", faint middle dot, grey "AI review round 2: nothing blocking", faint middle dot, grey "automatic turns" + mono "3 of 4".
+- UNDERLINE TABS, 36px, a full-width hairline under them, one tab per pull request: "calculator-web" mono + faint mono "#512" + faint "4" (SELECTED: white with a 2px off-white underline); "calculator-api" mono + faint mono "#96" + faint "1" (grey).
+- Then TWO COLUMNS:
+  a) FILES column 210px, no box, a file tree: a faint folder row "src/settings" with chevron-down; under it indented file rows 26px, mono 12px: "about-section.tsx" green "+38" and a tiny speech-bubble icon with faint "2" (this row SELECTED, #1A1B1E, 6px radius); "settings-page.tsx" green "+4" red "−1"; then folder row "src" : "version.ts" green "+3" with a tiny speech-bubble icon and faint "2"; then root "vite.config.ts" green "+2".
+  b) DIFF column, the rest, a vertical hairline on its left:
+     - FILE HEADER 34px on #131416 with hairlines above and below: chevron-down, mono white "src/settings/about-section.tsx", green "+38".
+     - HUNK HEADER 24px faint mono on #131416: "@@ -0,0 +1,12 @@"
+     - Added lines, 20px each, mono 12px on a very dark green tint, faint new-line numbers, a green "+":
+       "1 + import { appVersion } from "../version";"
+       "2 + "
+       "3 + export const AboutSection = () => ("
+       "4 +   <section aria-labelledby="about">"
+       "5 +     <h2 id="about">About</h2>"
+       "6 +     <p>Version {appVersion}</p>"
+     - DIRECTLY UNDER LINE 6, AN AI FINDING, indented to the code, no box, a 2px #2A2C30 left rule, 12px left padding: header row: a small grey scan-search icon, white semibold "AI review", faint mono "round 2", a small grey outlined chip "Nit", a small grey outlined chip "Open"; title line white 13.5px weight 500 "Label the version for screen readers"; body grey 13px "Use a <dl> with Version as the term, so it reads as one pair."; then a row of two small buttons: outlined "Fix this" with a wrench icon, ghost grey "Remember this" with a book-marked icon.
+       "7 +   </section>"
+       "8 + );"
+     - SECOND FILE HEADER 34px on #131416: chevron-down, mono white "src/version.ts", green "+3".
+       "1 + export const appVersion ="
+       "2 +   import.meta.env.VITE_APP_VERSION ?? "dev";"
+     - UNDER LINE 2, A RESOLVED AI FINDING, muted, no box, 2px #2A2C30 left rule: header row: grey scan-search icon, grey "AI review", faint mono "round 1", a small outlined chip "Blocking" with RED text, a small outlined chip with a tiny GREEN check "Resolved in round 2"; title in grey "Read the version at build time"; body faint "process.env isn't defined in the browser bundle."
+     - UNDER IT, A DRAFT LINE COMMENT, no box, 2px #2A2C30 left rule: 20px round avatar "AK", white semibold "Alex Kim", a small faint outlined chip "Draft", right-aligned tiny ghost pencil and trash icons; text 13px white: "Say where VITE_APP_VERSION is set for production builds."
+       "3 + "
+  - REVIEW BAR pinned at the bottom of the main column, where a message composer would sit: a box #131416, border #2A2C30, radius 8px, 52px tall: left a grey message-square icon, white semibold "2 draft comments" + grey " on 2 files", and under it faint 12px "Sent to Sam Rivera's agent together as one message. Approve on GitHub; ostra never approves."; right the ONE off-white filled primary button with an arrow-up icon: "Send to agent".
+
+4. RIGHT PROPERTIES PANEL 320px:
+- group label "Ticket": teal mono "CALC-182" then white "Show the app version in Settings" on the next line; faint 12px "Acceptance criteria, from the accepted draft"; then three numbered rows, faint mono numbers, white 13.5px text, wrapping:
+  "1  Settings shows the version under About"
+  "2  The version comes from the build, never a file edited by hand"
+  "3  Screen readers read it as Version 1.8.0"
+- hairline. group label "Reviewers": three rows, each a 20px avatar, a name, and a state on the right:
+  avatar "AK" white "Alex Kim" + faint "you" | right grey "Requested"
+  avatar "PS" white "Priya Shah" | right grey "Commented"
+  a small grey users icon + mono white "@acme/frontend" | right faint "Team · CODEOWNERS"
+  and under them faint 12px: "Approving and merging happen on GitHub."
+- hairline. group label "This pull request": key/value rows: "Driver" avatar "SR" "Sam Rivera"; "Branch" mono "ostra/calc-182-app-ver…"; "Head" mono "4f1c2ab"; "CI" small green check + "Passed · 3 checks"; "AI review" "1 nit open · 1 resolved".
+
+No amber anywhere except the sidebar's "3" pill and the one 7px dot in the status line.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

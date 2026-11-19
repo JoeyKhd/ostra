@@ -1,0 +1,44 @@
+# Generation 1 (kept). References: scratchpad m3-targets/environment-services.png (the approved 2048 original of app-targets/m3/environment-services), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the "Environment" page of a project in "ostra", a self-hosted control panel for coding agents, on its "Proposal" tab: an onboarding task ran the project's setup on a clean box, fixed what failed, and proposed a corrected environment for a project admin to accept. The FIRST attached image is this same product's approved Environment page (its "Services and checks" tab): copy its sidebar, top bar, eyebrow, title, lede, underline tabs, section title lines, dense hairline tables, code text and the right properties panel EXACTLY, at the same small, dense scale. It must look like another tab of the same page.
+
+1. SIDEBAR as the first reference: "+ New task" row; "Home"; "Needs you" (hand icon) with a small amber pill "1". Faint label "Projects": "calculator" (teal 8px square) expanded, indented: "Tasks" "5", "Inbox" "12", "Environment" (SELECTED, #1A1B1E), "Boards", "Automations", "Settings"; "billing-platform"; "+ New project". Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear". Bottom: avatar "AK" and "Alex Kim".
+
+2. TOP BAR: breadcrumbs "calculator  ›  Environment" ("Environment" white). Right: one outlined button with a flask-conical icon "Test this environment", shown DISABLED (dimmed).
+
+3. MAIN COLUMN, content max 780px:
+- faint mono eyebrow "Version 4 · saved 3d ago"
+- Title "Environment"; grey lede "What every task of this project gets: its setup, the services beside it, and the checks after each turn."
+- UNDERLINE TABS, hairline under the row: "Setup" (grey), "Services and checks" (grey), "Proposal" (white, 2px off-white underline).
+- THE TASK LINE, one 36px row, no box: small grey git-branch icon, teal mono "CALC-190", white "Test this environment", faint middle dot, grey "onboarding task · done 4 min ago on" + faint mono "build-01", faint middle dot, teal "AGENTS.md PR #97" with a tiny arrow-up-right.
+- PROPOSAL HEADER: white semibold "Proposed by the onboarding task" + faint " · against version 4". Under it the agent's notes, grey 13.5px, two lines: "The setup failed on a clean box: pnpm wasn't on the path, and the API tests need a database. I enabled corepack, added a db service and the variable's name. All three checks pass."
+- THE DIFF, per repo, no outer box:
+  REPO HEADING 32px: mono white "acme/calculator-web" + faint "2 changes".
+    small faint label "Setup script", then a code block (#131416, 1px #1F2023 border, 7px radius) with diff rows 20px, mono 12px, a +/− column:
+      "  #!/usr/bin/env bash"  (context)
+      "− pnpm install"  (dark red tint, red −)
+      "+ corepack enable"  (dark green tint, green +)
+      "+ pnpm install --frozen-lockfile"  (dark green tint, green +)
+    small faint label "Checks", one 32px row with a dark green tint and green "+": mono white "test" | mono grey "pnpm test" | faint "10 min"
+  REPO HEADING 32px, hairline above: mono white "acme/calculator-api" + faint "1 change".
+    small faint label "Variable names", one row with a green tint and green "+": mono white "DATABASE_URL", and faint 12px "name only · set its value in Setup after you accept"
+  SECTION HEADING 32px, hairline above: white "Services" + faint "for every repo".
+    one row with a green tint and green "+": mono white "db" | faint mono "postgres:17" | mono "5432" | mono grey "pg_isready -U app"
+- THE DECISION ROW, a hairline above, buttons 30px, 8px apart: the ONE off-white filled primary button "Accept", an outlined button "Edit and accept", and a ghost grey button "Reject". On the same row at the right, faint 12px "Accepting saves version 5. Running tasks keep theirs."
+
+4. RIGHT PROPERTIES PANEL 320px:
+- "Proposal": "State" "Proposed"; "Task" teal mono "CALC-190"; "Against" "Version 4"; "Secret scan" small green dot + "No values found"; "Proposed" "4 min ago".
+- hairline. "AGENTS.md": "calculator-web" grey "has one already"; "calculator-api" teal "#97" + grey " · open".
+- hairline. "Not committed": a grey 13px paragraph "The onboarding task commits only AGENTS.md. It left these out:" then two mono rows "package.json" and ".nvmrc" in grey.
+
+No amber anywhere except the sidebar's "1" pill. No red except the one removed line in the setup script.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

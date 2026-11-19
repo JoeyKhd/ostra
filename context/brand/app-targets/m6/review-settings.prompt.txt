@@ -1,0 +1,42 @@
+# Generation 1 (kept). References: scratchpad m4-targets/project-repos.png (the approved 2048 original of app-targets/m4/project-repos, milestone 2's repo-checks grown), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the "Review" tab of a project's Settings in "ostra", a self-hosted control panel for coding agents: what happens after a task's pull request opens (CI, an AI review, and how many times ostra sends problems back to the agent by itself). The FIRST attached image is this same product's approved project Settings page on its "Repos" tab: copy its sidebar, top bar, settings tabs, title and lede style, hairline-separated blocks, small outline chips and the right properties panel EXACTLY, at the same small, dense scale. It must look like another tab of the same page.
+
+1. SIDEBAR as the first reference: "Home"; faint label "Projects": "calculator" (teal 8px square) expanded, indented: "Tasks" "8", "Inbox" "38", "Environment", "Boards", "Automations", "Settings" (SELECTED, #1A1B1E); "billing-platform" (violet square); "New project" muted with a plus. Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear". Bottom: avatar "AK" and "Alex Kim". No amber anywhere on this page.
+
+2. TOP BAR: breadcrumbs "calculator  ›  Settings  ›  Review" ("Review" white). Nothing on the right: every control on this page saves on its own.
+
+3. MAIN COLUMN, content max 760px:
+- SETTINGS TABS row, 28px, hairline under it: "Ticket template", "Repos", "Access", "Review" (white with a 2px off-white underline), "Audit log".
+- Title "Review"; grey lede 15px: "What happens after a task's pull request opens: CI, an AI review, and how often ostra sends problems back to the agent by itself."
+- SECTION 1, no box, a hairline above: left a white semibold "AI review", under it grey 13px "After CI passes, a read-only agent reviews each pull request and posts its findings on GitHub as comments. It never approves." On the far right a toggle SWITCH, ON (track off-white #F3F0E8, dark knob).
+- SECTION 2 "Profiles" (white semibold), two 40px rows with hairlines: row "Review" grey key | a select field 34px (#131416, 1px #2A2C30 border, 7px radius) showing "Review" + a small faint outlined chip "built-in" + chevron-down; row "Refine" | a select showing "Refine" + chip "built-in" + chevron-down. Faint 12px under them: "Both are read-only: they fetch the code and never push."
+- SECTION 3 "Rounds" (white semibold) + a small faint lock icon + faint 12px "set by the install", three 40px rows with hairlines, grey key on the left, white mono value, faint mono setting name on the right:
+  "CI rounds" | "2" | "OSTRA_CI_ROUNDS"
+  "Review rounds" | "2" | "OSTRA_REVIEW_ROUNDS"
+  "Automatic turns" | "4" | "OSTRA_AUTOMATIC_TURNS"
+  faint 12px under them: "Counted since a person last acted on the task. At a limit, the driver decides."
+- SECTION 4: left white semibold "Outside tasks need approval", grey 13px under it "A task someone starts in Linear who isn't a member of calculator waits until a member approves it." On the far right a toggle switch ON but DISABLED (dimmed). Under it, faint 12px with a tiny lock icon: "Only an organization admin can turn this off."
+- SECTION 5 "CI as ostra last saw it" (white semibold), rows 40px with hairlines, one per repo, mono white repo name on the left, then a status, then faint detail:
+  "acme/calculator-web" | small GREEN check-circle + white "Passed" | faint "build, test, lint · on " + faint mono "4f1c2ab" + faint " · 6 min ago"
+  "acme/calculator-api" | small grey circle-dashed + grey "No CI" | faint "nothing reported within 2 minutes of a push"
+  "acme/calculator-sdk" | small RED x-circle + white "Failed" | faint "e2e · on " + faint mono "9a03d1e" + faint " · 1 h ago"
+  faint 12px footnote with a small info icon: "ostra reads check runs and commit statuses on each pull request's head, leaving out its own."
+
+4. RIGHT PROPERTIES PANEL 320px:
+- "How a pull request goes" (small faint label), then four numbered steps, faint mono numbers, grey 13.5px text, wrapping:
+  "1  CI runs. A failure goes back to the agent with its logs."
+  "2  The AI review posts findings. Blocking ones go back to the agent."
+  "3  At a limit, the task needs its driver."
+  "4  The reviewers approve on GitHub."
+- hairline. "This project": "AI review" "On"; "Review profile" "Review"; "Model" "Claude Sonnet 5.5"; "Outside tasks" "Need approval"; "Changed by" avatar "DO" "Dana Ortiz".
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.
