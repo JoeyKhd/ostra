@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, ChevronRightIcon, MenuIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronRightIcon, MenuIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment } from "react";
@@ -36,7 +36,7 @@ export type PageFrameProps = {
  * pictures' (app-targets/m1/README.md, "Scale").
  */
 export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, decorative = false, padded = true, children }: PageFrameProps) => {
-  const { openNavigation, passwordChange } = useShell();
+  const { openNavigation, openSearch, passwordChange } = useShell();
   const path = usePathname();
   return (
     <>
@@ -68,7 +68,21 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
             );
           })}
         </nav>
-        {actions === undefined ? null : <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/* F-080 (ticket 35): the top bar's way in to the search palette, beside the sidebar's box. */}
+          <button
+            type="button"
+            onClick={openSearch}
+            aria-label={t("search.palette.open")}
+            data-testid="topbar-search"
+            className="flex h-[30px] items-center gap-2 rounded-md border border-line bg-surface px-2 text-faint hover:border-line-2 hover:text-muted md:w-[200px] md:px-2.5"
+          >
+            <SearchIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75]" />
+            <span className="hidden text-ui md:inline">{t("shell.search")}</span>
+            <kbd className="ml-auto hidden font-mono text-[11.5px] font-medium md:inline">⌘K</kbd>
+          </button>
+          {actions}
+        </div>
       </header>
       <DefaultPasswordBanner passwordChange={passwordChange} path={path} />
       <div

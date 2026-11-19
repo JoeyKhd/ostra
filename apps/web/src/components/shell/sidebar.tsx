@@ -1,16 +1,15 @@
 "use client";
 
-import { BellIcon, ChartNoAxesColumnIcon, CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { BellIcon, ChartNoAxesColumnIcon, CheckIcon, ChevronsUpDownIcon, CircleUserRoundIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, ScrollTextIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { CommandMenu } from "./command-menu";
+import { useShell } from "./app-shell";
 import { NavLink } from "./nav-link";
 import { ProjectNav } from "./project-nav";
 import { UserMenu } from "./user-menu";
@@ -64,7 +63,7 @@ export type SidebarProps = {
  */
 export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
   const admin = me.organization?.role === "admin";
-  const [searching, setSearching] = useState(false);
+  const { openSearch } = useShell();
   const trpc = useTRPC();
   // Ticket 44: the member's open, unread notifications, kept fresh while the panel is open.
   const unread = useQuery({ ...trpc.notifications.unreadCount.queryOptions(), refetchInterval: 10_000 });
@@ -76,9 +75,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       <div className="mb-3 mt-2.5 flex gap-1.5">
         <button
           type="button"
-          onClick={() => {
-            setSearching(true);
-          }}
+          onClick={openSearch}
           className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-faint hover:border-line-2 hover:text-muted"
         >
           <SearchIcon aria-hidden className="size-4 shrink-0 stroke-[1.75]" />
@@ -95,14 +92,6 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           <PlusIcon aria-hidden className="size-4 stroke-[1.75]" />
         </Link>
       </div>
-      <CommandMenu
-        open={searching}
-        onOpenChange={(open) => {
-          setSearching(open);
-          if (!open) onNavigate();
-        }}
-        admin={admin}
-      />
 
       <NavLink href="/" exact icon={<HouseIcon />} onNavigate={onNavigate}>
         {t("shell.home")}
@@ -117,7 +106,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       </NavLink>
 
       <SectionLabel>{t("shell.projects")}</SectionLabel>
-      <ProjectNav onNavigate={onNavigate} admin={admin} />
+      <ProjectNav onNavigate={onNavigate} />
       {admin ? (
         <NavLink href="/projects/new" icon={<PlusIcon />} onNavigate={onNavigate}>
           {t("shell.newProject")}
@@ -141,22 +130,36 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           </NavLink>
         </>
       ) : null}
-      {me.instanceAdmin ? (
-        <>
-        <NavLink href="/organization/email" icon={<MailIcon />} onNavigate={onNavigate}>
-          {t("shell.email")}
-        </NavLink>
-        <NavLink href="/organization/storage" icon={<HardDriveIcon />} onNavigate={onNavigate}>
-          {t("shell.storage")}
-        </NavLink>
-        </>
-      ) : null}
       <NavLink href="/organization/agent-profiles" icon={<SlidersHorizontalIcon />} onNavigate={onNavigate}>
         {t("shell.agentProfiles")}
       </NavLink>
       <NavLink href="/organization/insights" icon={<ChartNoAxesColumnIcon />} onNavigate={onNavigate}>
         {t("shell.insights")}
       </NavLink>
+      <NavLink href="/organization/members" icon={<UsersIcon />} onNavigate={onNavigate}>
+        {t("shell.members")}
+      </NavLink>
+      {admin ? (
+        <NavLink href="/organization/audit" icon={<ScrollTextIcon />} onNavigate={onNavigate}>
+          {t("shell.auditLog")}
+        </NavLink>
+      ) : null}
+
+      {/* instance-settings.md: the install's own pages, for the instance admin alone (ticket 33). */}
+      {me.instanceAdmin ? (
+        <>
+          <SectionLabel>{t("shell.instance")}</SectionLabel>
+          <NavLink href="/instance/accounts" icon={<CircleUserRoundIcon />} onNavigate={onNavigate}>
+            {t("shell.accounts")}
+          </NavLink>
+          <NavLink href="/organization/storage" icon={<HardDriveIcon />} onNavigate={onNavigate}>
+            {t("shell.storage")}
+          </NavLink>
+          <NavLink href="/organization/email" icon={<MailIcon />} onNavigate={onNavigate}>
+            {t("shell.email")}
+          </NavLink>
+        </>
+      ) : null}
 
       <div className="mt-auto pt-3">
         <UserMenu me={me} />

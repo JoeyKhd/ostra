@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BoxIcon, ChartNoAxesColumnIcon, GitBranchIcon, InboxIcon, ListChecksIcon, SettingsIcon, SquareKanbanIcon } from "lucide-react";
+import { BoxIcon, ChartNoAxesColumnIcon, GitBranchIcon, InboxIcon, ListChecksIcon, LockIcon, SettingsIcon, SquareKanbanIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -17,7 +17,7 @@ import { projectColour } from "./project-colour";
  * something waits on the member there. The open project expands into its pages: Tasks, with the
  * count of its active tasks (every state but stopped, merged and done), and Environment.
  */
-export const ProjectNav = ({ onNavigate, admin }: { readonly onNavigate: () => void; readonly admin: boolean }) => {
+export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) => {
   const trpc = useTRPC();
   const pathname = usePathname();
   const projects = useQuery(trpc.projects.list.queryOptions());
@@ -35,6 +35,7 @@ export const ProjectNav = ({ onNavigate, admin }: { readonly onNavigate: () => v
             >
               <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(project.id) }} />
               <span className="min-w-0 truncate">{project.name}</span>
+              {project.access === "restricted" ? <LockIcon aria-label={t("shell.restrictedProject")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}
               {project.needsYouCount > 0 ? (
                 <span className="ml-auto size-1.5 rounded-full bg-amber" aria-label={t("shell.needsYouHere", { n: project.needsYouCount })} />
               ) : null}
@@ -76,11 +77,10 @@ export const ProjectNav = ({ onNavigate, admin }: { readonly onNavigate: () => v
                 <NavLink sub href={`/projects/${project.id}/insights`} icon={<ChartNoAxesColumnIcon />} onNavigate={onNavigate}>
                   {t("shell.insights")}
                 </NavLink>
-                {admin ? (
-                  <NavLink sub href={`/projects/${project.id}/settings`} icon={<SettingsIcon />} onNavigate={onNavigate}>
-                    {t("shell.settings")}
-                  </NavLink>
-                ) : null}
+                {/* Every member who can open the project reads its Access tab (F-087); its admins edit. */}
+                <NavLink sub href={`/projects/${project.id}/settings`} icon={<SettingsIcon />} onNavigate={onNavigate}>
+                  {t("shell.settings")}
+                </NavLink>
               </>
             ) : null}
           </div>

@@ -10,6 +10,7 @@ import {
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useMutation } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { ArrowUpIcon, InfoIcon, PauseIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -98,7 +99,9 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
       data-role={role}
       data-turn-state={meta?.turnState}
       data-optimistic={meta?.optimistic === true ? "true" : undefined}
-      className={cn("flex gap-3", system ? "py-0.5 pl-10" : "py-2.5")}
+      data-first-seq={meta?.firstSeq}
+      data-last-seq={meta?.lastSeq}
+      className={cn("flex gap-3 rounded-md data-[event-focus=true]:bg-sel", system ? "py-0.5 pl-10" : "py-2.5")}
     >
       {system ? null : (
         <span className="mt-0.5 inline-grid size-7 shrink-0 place-items-center rounded-full border border-line-2 text-muted">
@@ -239,6 +242,11 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
   const send = useMutation(trpc.tasks.send.mutationOptions());
   const reopen = useMutation(trpc.tasks.reopen.mutationOptions());
 
+  // F-080 (ticket 35): `?event={seq}` opens the thread at the message holding that event (a search hit).
+  const focusParam = Number.parseInt(useSearchParams().get("event") ?? "", 10);
+  const focusSeq = Number.isInteger(focusParam) && focusParam > 0 ? focusParam : null;
+  const focused = useRef<number | null>(null);
+
   const messages = useMemo(() => {
     const started = performance.now();
     const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current });
@@ -307,11 +315,36 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
     [store, memberName, agentName, agentModel, approvalSummary, approvalCard, approvalReceipt, questionCard],
   );
 
+  useEffect(() => {
+    if (focusSeq === null || focused.current === focusSeq) return;
+    let frame = 0;
+    let tries = 0;
+    const find = () => {
+      const holder = [...document.querySelectorAll<HTMLElement>("[data-first-seq]")].find((element) => {
+        const first = Number(element.dataset["firstSeq"]);
+        const last = Number(element.dataset["lastSeq"]);
+        return first <= focusSeq && focusSeq <= last;
+      });
+      if (holder === undefined) {
+        // The runtime draws the messages a frame or two after the fold; look again for a moment.
+        tries += 1;
+        if (tries < 30) frame = requestAnimationFrame(find);
+        return;
+      }
+      focused.current = focusSeq;
+      for (const element of document.querySelectorAll<HTMLElement>("[data-event-focus]")) element.removeAttribute("data-event-focus");
+      holder.dataset["eventFocus"] = "true";
+      holder.scrollIntoView({ block: "center" });
+    };
+    find();
+    return () => { cancelAnimationFrame(frame); };
+  }, [focusSeq, messages]);
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TaskContext.Provider value={context}>
         <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
-          <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
+          <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
             {hasEarlier ? (
               <div className="py-2">
                 <Button size="sm" variant="ghost" data-action="load-earlier" onClick={() => void loadEarlier()}>
