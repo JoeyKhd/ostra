@@ -102,9 +102,9 @@ Every integration is an adapter with a shared contract: trackers, code hosts, ag
 
 ## Contributing
 
-The project isn't taking code yet. Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues).
+Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues), and code in pull requests. ostra is still on its way to v1, so open an issue before a big change.
 
-Outside contributions will need a contributor license agreement (CLA). It lets the maintainer keep offering the hosted version and commercial licenses with contributed code in them. The CLA is chosen before the first outside contribution is accepted.
+A pull request needs one tick: its author agrees to the short contributor agreement in [`CONTRIBUTING.md`](CONTRIBUTING.md). You keep your copyright, and you let the licensor license your contribution on any terms. That lets the hosted version and commercial licenses include contributed code.
 
 Coding agents working in this repo follow [`AGENTS.md`](AGENTS.md).
 

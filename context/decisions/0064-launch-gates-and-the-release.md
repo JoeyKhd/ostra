@@ -1,6 +1,6 @@
 # The launch gates, and how v1 is released
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 7's spec). Settles Q256, Q257, Q258 and Q259. Amends ADR 0045 (publishing in practice) and ADR 0061 (the load test as the gate). Covers F-076's measure, F-117's gate, the security review of the box, and publishing. **It answers none of the maintainer's legal items** (Q109, Q110 and the legal review of ADR 0048): it plans around them, and the release waits for them.
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 7's spec). Settles Q256, Q257, Q258 and Q259. Amends ADR 0045 (publishing in practice) and ADR 0061 (the load test as the gate). Covers F-076's measure, F-117's gate, the security review of the box, and publishing. **It answers none of the maintainer's legal items** (Q109, Q110 and the legal review of ADR 0048): it plans around them, and the release waits for them. **Amended 2026-11-19:** Q109 and Q110 were settled the same day (ADR 0048) with no lawyer's review, so the legal gate below is now the repo's own state, and the release waits for nothing legal.
 
 v1 is public when every gate below holds and the maintainer says go. Each gate leaves evidence in the repo, and none passes on a fake.
 
@@ -13,11 +13,11 @@ v1 is public when every gate below holds and the maintainer says go. Each gate l
 | **The 30-minute measure** (F-076) | Two people new to ostra each go from the install guide's first command to their first agent-made PR in under 30 minutes, following only the docs site | `context/specs/m7-launch/measure/` |
 | **The load test** (F-117) | ADR 0061's run that counts passes on the release candidate | `context/specs/m7-launch/load/` |
 | **The security review of the box** | The review is written, its adversarial run passed, and no finding rated critical or high is open | `context/specs/m7-launch/security-review.md` |
-| **The legal items** | The maintainer has settled Q110, then Q109, and had the license, the licensor line and the CLA reviewed (ADR 0048) | The maintainer's dated line in milestone 7's ticket for them |
+| **The legal items** | Q109 and Q110 are settled (ADR 0048, 2026-11-19), so this gate is the repo's own state: the contributor agreement and its pull request check are in place, and the licensor line is the same in every `LICENSE`, `NOTICE` and published package. A lawyer's review is the maintainer's choice and a paid service, so it isn't a gate | `CONTRIBUTING.md`, `.github/workflows/contributor-agreement.yml`, and the licensor-line test of milestone 7's ticket 30 |
 | **The names** | The maintainer has registered the npm scope, the CLI's package name and the image namespace (Q80, Q82), and, if wanted, the docs' domain | The same ticket |
 | **The go** | The maintainer says go, after reading the gates' evidence | The same ticket, dated |
 
-Until the legal items, the names and the go, everything else is built, run and dry-run, so the release is one workflow run once they're in.
+Until the names and the go, everything else is built, run and dry-run, so the release is one workflow run once they're in.
 
 ## The 30-minute measure (Q256)
 
@@ -85,7 +85,7 @@ ADR 0061's run that counts, unchanged in its bars: 1,000 tasks on three core rep
 
 ## Consequences
 
-- Launch can't happen before the maintainer's legal items, the names and the go, however finished the code is. The spec says so plainly, and the README never says "released" before the workflow has run.
+- Launch can't happen before the names and the maintainer's go, however finished the code is (the legal items were settled on 2026-11-19, ADR 0048). The spec says so plainly, and the README never says "released" before the workflow has run.
 - The hardware the gates need (a Linux machine with Docker for the measure and the load test, a 16-vCPU machine for the load test) is the maintainer's, as ADR 0061 already planned.
 - A failed gate is recorded with its evidence, fixed, and run again; it never turns into a note that moves the bar without the maintainer.
 - ADR 0045's "Publishing starts at the v1 launch" now has its mechanism.

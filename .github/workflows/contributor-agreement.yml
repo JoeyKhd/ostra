@@ -1,0 +1,66 @@
+name: Contributor agreement
+
+# Fails a pull request whose author hasn't ticked the box of the contributor agreement
+# (CONTRIBUTING.md, ADR 0048). It is its own small workflow, so ci.yml keeps to the everyday checks.
+#
+# pull_request_target runs this file as it is on main, so a pull request can't change its own check,
+# and it runs for a first-time contributor without anyone's approval. That is safe only because the
+# job checks out nothing, uses no action, holds no permission and no secret, and reads the pull
+# request's text as data. Never add a checkout here, and never run anything from the pull request.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: contributor-agreement-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  agreed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: The author agreed to the contributor agreement
+        env:
+          # The pull request's own words reach the script only as environment variables, never as
+          # part of the script.
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          BODY: ${{ github.event.pull_request.body }}
+          # The licensor needs no agreement with itself, and the licensor owns this repository.
+          OWNER: ${{ github.repository_owner }}
+          # Accounts that pass without the box, separated by spaces. Dependabot only bumps versions.
+          # A bot that opens pull requests for people, such as ostra's own App, joins this list only
+          # once everyone it works for has agreed in a pull request of their own (CONTRIBUTING.md).
+          NO_BOX_NEEDED: "dependabot[bot]"
+        run: |
+          set -f
+
+          if [ "$AUTHOR" = "$OWNER" ]; then
+            echo "Opened by the repository's owner, who is the licensor: no agreement is needed."
+            exit 0
+          fi
+
+          for account in $NO_BOX_NEEDED; do
+            if [ "$AUTHOR" = "$account" ]; then
+              echo "Opened by an account on this workflow's list: no box is needed."
+              exit 0
+            fi
+          done
+
+          if [ "$AUTHOR_TYPE" = "Bot" ]; then
+            echo "::error title=Contributor agreement::A bot can't agree for anyone. A person opens the pull request and ticks the box, or the bot's account joins the list in .github/workflows/contributor-agreement.yml once everyone it works for has agreed (CONTRIBUTING.md)."
+            exit 1
+          fi
+
+          # The box of .github/pull_request_template.md, ticked. Change the two together.
+          ticked='^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]+I agree to the \[?ostra contributor agreement'
+          if printf '%s\n' "$BODY" | grep -Eiq "$ticked"; then
+            echo "The author ticked the contributor agreement's box."
+            exit 0
+          fi
+
+          echo "::error title=Contributor agreement::Tick the box in this pull request's description: \"- [x] I agree to the ostra contributor agreement\". The agreement is in CONTRIBUTING.md."
+          exit 1

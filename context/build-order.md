@@ -237,7 +237,7 @@ Secrets for development live in `~/.config/ostra-dev/`, never in the repo.
 | Signing certificates for runner binaries: an Apple Developer Program membership and a Windows code-signing certificate (F-085) | After v1 | Not needed for v1: signed binaries are dropped from the v1 list |
 | A Mac | The `host` executor's containment case on macOS (ADR 0029, Q126; milestone 2's ticket 42), which F-014's "done" waits on, and the macOS halves of spikes 1 and 6 | For the maintainer |
 | Whether Anthropic's terms let ostra's public images include Claude Code (Q266, ADR 0062) | Milestone 7, only to drop the local agent image; nothing waits for it | For the maintainer |
-| Legal review of the license, the licensor line and the CLA (ADR 0048, Q109, Q110) | Milestone 7 launch at the latest. The licensor (Q110) comes first, and both are due before anyone but the licensor contributes code, the maintainer's team included | For the maintainer |
+| The contributor agreement and the licensor (ADR 0048, Q109, Q110) | Before anyone but the licensor contributes code, the maintainer's team included | **Done 2026-11-19:** the agreement is in `CONTRIBUTING.md`, a check on each pull request asks for its box, and the licensor line stays as it is. No lawyer's review is waited for. Before someone else gets write access, they agree in one pull request of their own |
 
 ## How each milestone runs
 

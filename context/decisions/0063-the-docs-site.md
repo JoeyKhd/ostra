@@ -20,7 +20,7 @@
   5. **Using ostra:** tasks, the three kinds, steering, approvals, reopening, review loops, automations, memory, budgets. Short, one page each, linking the panel's own words.
   6. **Security:** what the box does and doesn't contain, what `host` doesn't isolate, the key and git proxies, the security review's summary (ADR 0064), and how to report a vulnerability (`SECURITY.md`).
   7. **Reference:** the configuration reference (`docs/configuration.md`), the CLI's commands, the runner protocol's version window, the ports.
-  8. **Contributing:** the adapter guide (each of the eight kinds, its base class, its contract suite, the tiny adapters as the worked example, ADR 0025), and the CLA's status (Q109), stated as it is.
+  8. **Contributing:** the adapter guide (each of the eight kinds, its base class, its contract suite, the tiny adapters as the worked example, ADR 0025), and the contributor agreement, linked to `CONTRIBUTING.md` (ADR 0048).
 - **Every page's commands are checked.** A test reads each fenced `sh` block of the install guide and the runner pages, and runs the ones marked `run` against a fresh stack in the proof job, so a guide can't drift from what works.
 
 ## Where it's hosted

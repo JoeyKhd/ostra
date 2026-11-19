@@ -33,7 +33,7 @@ Read from the code on `main` on 2026-11-19, and from milestones 2 to 6's specs f
 - **Setup in the panel** is milestone 1's checklist (F-076 `building`; its proof's second condition, the measure, is missing: `context/proof/F-076.md`).
 - **Milestone 5 leaves** the load test's harness and this machine's ramp (F-117 `building`), the three images built in the Linux proof job but never published (F-039 `building`), the snapshot builder on `docker` and BuildKit with the registry on `kubernetes`, the runner's report of its capabilities, the manual `proof.yml` jobs on `ubuntu-24.04` and `macos-15` (ADR 0061).
 - **Milestone 6 leaves** protocol minor 5, the read-only refine and review kinds, automatic turns with the neutral reply to an ACP elicitation, and `submit_draft`, `submit_review` and `propose_environment` on the sidecar's MCP server.
-- **The maintainer's legal items are open:** Q110 (the licensor) and Q109 (the CLA), and the legal review ADR 0048 asks for before launch. So are the names (Q80, Q82: the npm scope, the CLI's package name, the image namespace). `build-order.md`'s "Outside the code" lists them.
+- **The maintainer's legal items are settled** (2026-11-19, ADR 0048): the contributor agreement is in `CONTRIBUTING.md` with its pull request check (Q109), the licensor line stays as it is (Q110), and no lawyer's review is waited for. **The names are open** (Q80, Q82: the npm scope, the CLI's package name, the image namespace). `build-order.md`'s "Outside the code" lists them.
 
 ### What is in, and what is not
 
@@ -47,8 +47,7 @@ Read from the code on `main` on 2026-11-19, and from milestones 2 to 6's specs f
 - other languages than English: v1 ships the message files and the pseudo-locale that proves a new file is enough (F-083)
 - signed runner binaries: F-085, after v1
 - a hosted version: the maintainer's, after v1 (ADR 0048)
-- outside contributions: none until the CLA exists (Q109)
-- answers to Q109 and Q110: the maintainer's and a lawyer's. This spec plans around them
+- a lawyer's review of the license, the licensor line or the contributor agreement: the maintainer's choice, and not a gate (ADR 0048, amended 2026-11-19)
 
 ### On this machine
 
@@ -58,7 +57,7 @@ The same adjustment as milestones 1 to 6: the demo's first part runs here on the
 - **Kubernetes:** Claude Code's agent image through BuildKit and the registry, and a Claude Code task in a pod, in the kind job of `proof.yml`. No row of this milestone waits on it alone.
 - **macOS:** Claude Code on a `host` runner on a Mac, in the `macos-15` job with the stub model. Nothing else of this milestone is specific to it.
 - **This Windows machine, as it is:** Claude Code runs from its `win32-x64` package. Its Bash tool needs Git for Windows' `bash.exe`; without it Claude Code falls back to PowerShell (`research/claude-code-acp.md`, D7), so the runner finds `bash.exe` from the `git` it already uses and passes it as `CLAUDE_CODE_GIT_BASH_PATH` (ticket 06). The palette's shortcut here is Ctrl+K. The adversarial run's `host` half runs here only with attempts that are safe by construction (ticket 28), and its Linux-only attempts (`/proc/*/environ`, `docker`, `kubectl`) are reported "not applicable on Windows", never as passed.
-- **People:** the two newcomers of the measure, the maintainer's legal items and names, the maintainer's yes to three dependencies, and the go.
+- **People:** the two newcomers of the measure, the names the maintainer registers, the maintainer's yes to three dependencies, and the go.
 
 ---
 
@@ -339,7 +338,7 @@ Five builders, as before: **core**, **runner**, **web**, **api** and **adapters*
 | 30 | Release: versions, `release.yml` and its dry run, `SECURITY.md`, `CONTRIBUTING.md` | core | 29, ticket 34's yes or the fallback |
 | 31 | Proof jobs: Claude Code on Linux, kind and macOS | runner | 07, 08, 35 |
 | 32 | The end-to-end demo and the ledger | core (lead) | 03, 06 to 11, 13 to 24, 31, 35 to 38 |
-| 33 | The launch: the release run, after the go | maintainer, with core | 25 to 32, 35 to 38, ticket 34's legal items, names and go |
+| 33 | The launch: the release run, after the go | maintainer, with core | 25 to 32, 35 to 38, ticket 34's names and go |
 | 34 | The maintainer's steps outside the code | maintainer | none for the decisions |
 | 35 | Runner: agent images on `docker` and `kubernetes` | runner | 08 |
 | 36 | Domain: the palette's actions, setup's timeline and the theme | core | 04 |
@@ -414,7 +413,7 @@ No spike code is ported for Claude Code: it was never spiked (`build-order.md`),
 
 ## 12. Choices this spec makes
 
-The maintainer delegated every decision of this spec on 2026-11-19. Each choice below is the recommendation applied, recorded in `context/open-questions.md` under its number and, where it's hard to reverse, in an ADR. If the maintainer disagrees with one, it moves back to the open list and the ticket that holds it changes. **None of them answers Q109 or Q110**, which stay open for the maintainer and a lawyer, **or Q266** (whether ostra's public images may include Claude Code), which this spec opens for the same reason and designs around.
+The maintainer delegated every decision of this spec on 2026-11-19. Each choice below is the recommendation applied, recorded in `context/open-questions.md` under its number and, where it's hard to reverse, in an ADR. If the maintainer disagrees with one, it moves back to the open list and the ticket that holds it changes. **None of them answers Q109 or Q110**, which were settled the same day in ADR 0048, **or Q266** (whether ostra's public images may include Claude Code), which this spec opens as a legal reading and designs around.
 
 1. **How ostra runs Claude Code** (Q250, ADR 0062). `@agentclientprotocol/claude-agent-acp` 0.108.1 through ostra's own driver, launched with the runner's own Node and `--hide-claude-auth`, its binary's SHA-256 checked, `CLAUDE_CODE_EXECUTABLE` never set; `ANTHROPIC_BASE_URL` at the key proxy, the placeholder in `ANTHROPIC_API_KEY`, the profile's model in all five model variables with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`, auto memory, telemetry, error reports, updates, nonessential traffic and prompt suggestions off; on Windows, Git Bash's path from the runner's `git`.
 2. **What Claude Code declares, and its repo config** (Q251, ADR 0062). Every capability but `projectConfigOverride`, each as the suite proves it; its config in the task's `CLAUDE_CONFIG_DIR`; the repo's `.claude/settings.json`, `.claude/settings.local.json` and `.mcp.json` hidden for the task; the repo's `CLAUDE.md`, `AGENTS.md` and `.claude/` skills, commands and agents left visible, with hooks, inline shell and bypass mode off in ostra's `settings.json`.

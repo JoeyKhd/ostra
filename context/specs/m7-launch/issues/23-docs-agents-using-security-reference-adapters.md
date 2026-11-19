@@ -13,7 +13,7 @@ Spec: `../spec.md`, section 6; ADR 0063 (sections 4 to 8 of "What the site holds
 - **Using ostra:** one short page per concept, linking the panel's own words.
 - **Security:** what the box holds and doesn't, the proxies, `host` isn't isolated, the review's summary and its open mediums and lows (ticket 27), how to report (`SECURITY.md`).
 - **Reference:** the configuration reference (rendered by ticket 21), the CLI's commands from its own `--help`, the protocol's window, the ports.
-- **Contributing:** the adapter guide for each of the eight kinds (the base class, its capabilities, its contract suite, the tiny adapters as the worked example, ADR 0025), and the CLA's status as it is (Q109): no outside code until it exists.
+- **Contributing:** the adapter guide for each of the eight kinds (the base class, its capabilities, its contract suite, the tiny adapters as the worked example, ADR 0025), and the contributor agreement: what it asks and how to agree, linked to `CONTRIBUTING.md` (ADR 0048).
 
 ## Done when
 

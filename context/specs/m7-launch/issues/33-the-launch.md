@@ -2,7 +2,7 @@
 
 Status: ready-for-human
 Builder: maintainer, with core
-Blocked by: 25 to 32, 35 to 38; ticket 34's steps 3, 4 and 9 (the legal items, the names, the go)
+Blocked by: 25 to 32, 35 to 38; ticket 34's steps 4 and 9 (the names, the go)
 Features: F-039, F-058 (published), every v1 row's final status
 Packages: none but the record: this ticket's `## Comments`, `context/features.md`, `README.md`
 Spec: `../spec.md`, sections 1 and 4; ADR 0064 ("The gates", "The release")
@@ -14,7 +14,7 @@ A release is the maintainer's act, and it waits for decisions only the maintaine
 ## What to do
 
 1. **The gates,** checked against ADR 0064's table, each with its evidence linked here: the ledger, two agents, the measure, the load test, the security review, the legal items, the names.
-2. **The licensor line,** set to Q110's answer in the one place ticket 30 reads it from, with `LICENSE`, `NOTICE` and every published `package.json` matching, in its own commit before the release. If Q110's answer is the line as it is today, this ticket says so.
+2. **The licensor line.** Q110's answer is the line as it is today, "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra" (ADR 0048, settled 2026-11-19), so there is nothing to set: ticket 30's test shows that `LICENSE`, `NOTICE` and every published `package.json` match it. Only if a company has become the licensor by then does the line change, in the one place ticket 30 reads it from, in its own commit before the release.
 3. **The maintainer's go,** written here with the date.
 4. **`gh workflow run Release -f version=1.0.0 -f dry-run=false`,** by the maintainer. Its run is linked here, with each image's digest and each package's version.
 5. **One `docker run`:** on the maintainer's Linux machine, the published runner image started with a pool's join token (F-039's "a new pool runner is one `docker run` with a join token"), joining the pool and taking a task; its log is kept as F-039's live evidence.
