@@ -169,6 +169,8 @@ model Organization {
   // Milestone 4, keys per project (ADR 0065).
   providerListEntries ProviderListEntry[]
   modelChoices        ModelChoice[]
+  // Milestone 4, the account mails (ticket 19).
+  accountMailDeliveries AccountMailDelivery[]
 
   @@unique([slug])
   @@map("organization")
@@ -2030,6 +2032,33 @@ model NotificationPreference {
   @@map("notification_preference")
 }
 
+/// One account mail's sending (F-002, F-115, ADR 0053; ticket 19): an invitation, a membership's
+/// verification or a reset, by the record's ID. `account-mail.send` sends each once; a replay finds
+/// it `sent` and sends nothing. Its `error` is what the invitation's row shows the admin ("Mail
+/// failed: ..."). Never the mail, its address or its link: those exist only while it's sent.
+model AccountMailDelivery {
+  id                String             @id @default(uuid(7))
+  organizationId    String
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purpose           AccountMailPurpose
+  /// The invitation's, the membership's or the reset link's ID. No foreign key: the three tables differ.
+  recordId          String
+  /// The adapter's registered name, `resend` or `smtp`, once one was used.
+  adapter           String?
+  state             DeliveryState      @default(pending)
+  attempts          Int                @default(0)
+  /// The provider's words for the last failure, or why it was skipped. Never a mail's body, an address or a link.
+  error             String?
+  providerMessageId String?
+  sentAt            DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([purpose, recordId])
+  @@index([organizationId, recordId])
+  @@map("account_mail_delivery")
+}
+
 /// A member's `ostra login` (F-103, ADR 0051): its own credential, made by a device-code grant.
 model CliSession {
   id             String    @id @default(uuid(7))
@@ -2475,6 +2504,13 @@ enum NotificationKind {
   password_reset
   budget_warning
   budget_reached
+}
+
+/// What an account mail is for (ticket 19): the job's purposes.
+enum AccountMailPurpose {
+  invitation
+  email_verification
+  password_reset
 }
 
 enum NotificationChannel {

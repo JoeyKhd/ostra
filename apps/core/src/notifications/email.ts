@@ -3,7 +3,7 @@ import type { ResendEmailAdapterOptions } from "@ostra/adapter-email-resend";
 import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
 import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
 import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { AdapterContext, Logger, Notification, NotificationAdapter, SecretStoreAdapter } from "@ostra/adapter-sdk";
+import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, Result, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { emailStillNeeded, momentHeading, momentKindOf, renderNeedsYouEmail } from "@ostra/domain";
 import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
@@ -33,6 +33,15 @@ export const realEmailFactories: EmailAdapterFactories = {
   resend: (options, context) => new ResendEmailAdapter(options, context),
   smtp: (options, context) => new SmtpEmailAdapter(options, context),
 };
+
+/**
+ * The provider an account mail goes through now (milestone 4, ticket 19), or why there's none: mail
+ * off, or settings that can't be used. Account mails skip the delay and the members' choices.
+ */
+export type AccountSender =
+  | { readonly kind: "off" }
+  | { readonly kind: "failed"; readonly error: string }
+  | { readonly kind: "ready"; readonly adapter: string; readonly send: (notification: AccountNotification) => Promise<Result<SendResult, AdapterError>> };
 
 export type EmailChannelDeps = {
   readonly db: Db;
@@ -69,7 +78,7 @@ const usd = (microUsd: number): string => `$${(microUsd / 1_000_000).toFixed(2)}
 
 const askedAtOf = (at: Date): string => `${at.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 
-export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { readonly close: () => void } => {
+export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { readonly accountSender: () => Promise<AccountSender>; readonly close: () => void } => {
   const context: AdapterContext = { logger: deps.logger, clock: { now: () => deps.clock.now() } };
   // The adapter in use, kept while the settings stay as they were; a change rebuilds it.
   let current: { readonly fingerprint: string; readonly adapter: NotificationAdapter } | null = null;
@@ -277,8 +286,21 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
   };
 
+  const accountSender = async (): Promise<AccountSender> => {
+    const configured = await configOf();
+    if ("failed" in configured) {
+      return { kind: "failed", error: configured.failed };
+    }
+    if (configured.config.provider === "off") {
+      return { kind: "off" };
+    }
+    const adapter = adapterFor(configured.fingerprint, configured.config);
+    return { kind: "ready", adapter: adapter.name, send: (notification) => adapter.send(notification) };
+  };
+
   return {
     deliver,
+    accountSender,
     close: () => {
       if (current !== null) {
         closeIfClosable(current.adapter);

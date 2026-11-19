@@ -1,6 +1,6 @@
 # 19: Core: account mails
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 04, 06
 Features: F-002, F-115
@@ -16,7 +16,9 @@ Spec: `../spec.md`, section 4 ("An invitation", "A reset"); ADR 0053, ADR 0050
 
 ## Done when
 
-- [ ] Tests named `it("F-002: ...")` and `it("F-115: ...")` against the fake Resend and the fake SMTP server: each purpose sends one mail with its link in both parts; a replayed job sends nothing twice; a revoked invitation sends nothing; no log line, payload or delivery row holds the link (searched by value).
-- [ ] Committed as `✨ add the account mails`.
+- [x] Tests named `it("F-002: ...")` and `it("F-115: ...")` against the fake Resend and the fake SMTP server: each purpose sends one mail with its link in both parts; a replayed job sends nothing twice; a revoked invitation sends nothing; no log line, payload or delivery row holds the link (searched by value).
+- [x] Committed as `✨ add the account mails`.
 
 ## Comments
+
+- 2026-11-19: built in `apps/core/src/reactions/account-mail.ts`, wired in `core.ts` beside `notify.deliver`, sending through the email channel's new `accountSender` (the same Resend or SMTP adapter the moments use, no delay, no member choices). A new `AccountMailDelivery` row (migration `20261121200000_account_mail_delivery`, additive) keeps each purpose and record once, its attempts and the provider's words of a failure, which ticket 22 shows on the invitation's row as "Mail failed: ...". A verification and a reset each mint a fresh token at the send, kept only as its SHA-256 (`packages/domain/src/mail/account-mail-links.ts`); the reset's token is better-auth's own `reset-password:` row. Log lines name the delivery row, never the record: an invitation's ID is its link. Enqueueing (and enqueueing nothing with email off) is ticket 22's. Break-its: the revoked check dropped, and the replay guard loosened, each failed its test. Commit: see the next line.

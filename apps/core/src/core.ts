@@ -51,6 +51,7 @@ import type { LimitDeps } from "./limits/limits.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
 import { createEmailChannel, createNotificationChannels, notifyDeliverHandler, notifyFanoutHandler, realEmailFactories } from "./notifications/index.ts";
 import type { NotifyDeps } from "./notifications/index.ts";
+import { accountMailSendHandler } from "./reactions/account-mail.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
@@ -443,6 +444,12 @@ export const startCore = async (
   };
   await jobs.work("notify.fanout", notifyFanoutHandler(notifyDeps), { localConcurrency: 4 });
   await jobs.work("notify.deliver", notifyDeliverHandler(notifyDeps), { localConcurrency: 4 });
+  // The account mails (milestone 4, ticket 19): an invitation, a verification or a reset, at once.
+  await jobs.work(
+    "account-mail.send",
+    accountMailSendHandler({ db, clock: systemClock, logger, publicUrl: settings.publicUrl, accountSender: emailChannel.accountSender, verificationHours: settings.resetLinkHours }),
+    { localConcurrency: 4 },
+  );
   // Cleanup and retention (ticket 20): a box's release, its idle days, and the daily retention pass.
   const cleanupDeps: CleanupDeps = {
     db,
