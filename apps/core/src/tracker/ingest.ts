@@ -1,7 +1,7 @@
 import type { Logger, Ticket } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { boardsOnSameTeam, ingestTicketHint, markTicketRemovedInTx, upsertTicketCacheInTx } from "@ostra/domain";
-import type { ChangeNotices, Clock } from "@ostra/domain";
+import { boardsOnSameTeam, ingestTicketHint, markTicketRemovedInTx, recordTicketsClosed, upsertTicketCacheInTx } from "@ostra/domain";
+import type { ChangeNotices, Clock, TicketClosedDeps } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { boardIdSchema, connectionIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { BoardId, OrganizationId } from "@ostra/protocol";
@@ -40,6 +40,22 @@ export type TrackerIngestDeps = {
   readonly notices: ChangeNotices;
   readonly clock: Clock;
   readonly logger: Logger;
+  /**
+   * Milestone 3 (F-066, ticket 24): what a ticket closed while its task runs needs, to interrupt
+   * the turn and raise `ticket_closed`. Without it, a closed ticket only updates the cache.
+   */
+  readonly closed?: Omit<TicketClosedDeps, "db" | "notices" | "clock">;
+};
+
+/** The tickets a read moved to done or cancelled: each running task on one hears it. */
+const tellRunningTasks = async (deps: TrackerIngestDeps, organizationId: OrganizationId, ticketIds: readonly string[]): Promise<void> => {
+  if (deps.closed === undefined || ticketIds.length === 0) {
+    return;
+  }
+  const told = await recordTicketsClosed({ db: deps.db, notices: deps.notices, clock: deps.clock, ...deps.closed }, { organizationId, ticketIds });
+  if (told.raised > 0) {
+    deps.logger.info("ticket.closed-while-running", { tasks: told.raised, interrupted: told.interrupted });
+  }
 };
 
 /** `webhook.process`'s handler for a tracker connection: the hint, then the read and the upsert. */
@@ -67,6 +83,10 @@ export const trackerWebhookHandler =
     }
     const key = ingested.ticketIds.length === 0 ? hint.value.ticketKey : await keyOf(deps.db, ingested.ticketIds[0] ?? null);
     context.logger.info("ticket.ingested", { outcome: ingested.outcome, rows: ingested.ticketIds.length, event: hint.value.event });
+    // A ticket closed by someone else (never ostra's own write: that's `own-echo`) while its task runs.
+    if (ingested.outcome === "upserted") {
+      await tellRunningTasks(deps, context.organizationId, ingested.closedTicketIds ?? []);
+    }
     switch (ingested.outcome) {
       case "upserted":
       case "removed":
@@ -134,11 +154,13 @@ export const pollBoard = async (
     pages += 1;
     const listed: readonly Ticket[] = page.value.tickets;
     // One transaction per page: the copies, then the cursor, which moves only as far as this page.
+    const closedHere: string[] = [];
     const pageChanged = await db.$transaction(async (tx) => {
       let count = 0;
       for (const ticket of listed) {
         const upserted = await upsertTicketCacheInTx(tx, teamBoards, ticket);
         count += upserted.changed;
+        closedHere.push(...upserted.closed);
         // A ticket listed here that a copy on another team's board holds has moved: marked there.
         const others = await tx.ticket.findMany({
           where: { connectionId: board.connectionId, externalId: ticket.externalId, board: { externalId: { not: board.externalId } }, removedAt: null },
@@ -164,6 +186,7 @@ export const pollBoard = async (
       }
       return count;
     });
+    await tellRunningTasks(deps, input.organizationId, closedHere);
     tickets += listed.length;
     changed += pageChanged;
     for (const ticket of listed) newestChange = Math.max(newestChange, ticket.updatedAt);

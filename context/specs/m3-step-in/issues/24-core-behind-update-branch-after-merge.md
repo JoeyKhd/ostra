@@ -1,6 +1,6 @@
 # 24: Core: behind, update branch, and after the merge
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 07, 09
 Features: F-070, F-066
@@ -16,9 +16,9 @@ Spec: `../spec.md`, section 4 ("Behind and update branch", "After a merge", "A t
 
 ## Done when
 
-- [ ] Tests: a push to `main` updates `behindBy` once; update branch sends one message naming only the repos behind; a reopen after a merge makes `-2` from the base, keeps the merged PR, leaves an unmerged repo's branch alone, and a second merge and reopen makes `-3`; a ticket cancelled mid-turn interrupts once and raises one item; a close after the merge does nothing.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
-- [ ] Committed as `✨ add update branch and fresh branches`.
+- [x] Tests: a push to `main` updates `behindBy` once; update branch sends one message naming only the repos behind; a reopen after a merge makes `-2` from the base, keeps the merged PR, leaves an unmerged repo's branch alone, and a second merge and reopen makes `-3`; a ticket cancelled mid-turn interrupts once and raises one item; a close after the merge does nothing.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
+- [x] Committed as `✨ add update branch and fresh branches`.
 
 ## Comments
 

@@ -1,7 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostWebhookEvent, Logger, PullRequestDetails, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { recordPullRequestState } from "@ostra/domain";
+import { reconcileBehind, recordPullRequestState, recordPush } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, RecordPullRequestStateResult } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { connectionIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
@@ -52,10 +52,19 @@ export const githubWebhookHandler =
       return { outcome: "ignored", reason: "the delivery could not be read" };
     }
     const event = parsed.value;
-    if (event.kind === "push" && deps.onPush !== undefined) {
-      const outcome = await deps.onPush({ organizationId: context.organizationId, connectionId: context.connectionId, event });
-      context.logger.info("push.read", { outcome });
-      return outcome === "rebuilding" ? { outcome: "processed" } : { outcome: "ignored", reason: `push: ${outcome}` };
+    if (event.kind === "push") {
+      // Milestone 3 (F-070, F-072, ticket 24): a base branch moved, or a task's branch did.
+      const pushed = await recordPush(
+        { db: deps.db, jobs: deps.jobs, notices: deps.notices, clock: deps.clock, adapters: { codeHost: deps.codeHost, secretStore: deps.secretStore } },
+        { organizationId: context.organizationId, connectionId: context.connectionId, hostRepoId: event.hostRepoId, ref: event.ref, after: event.after },
+      );
+      context.logger.info("push.behind", { checked: pushed.checked, changed: pushed.changed, failed: pushed.failed, taskBranches: pushed.taskBranches });
+      // Milestone 3 (ticket 26): the same push, for the snapshot's lockfile trigger.
+      const snapshot = deps.onPush === undefined ? null : await deps.onPush({ organizationId: context.organizationId, connectionId: context.connectionId, event });
+      if (snapshot !== null) context.logger.info("push.read", { outcome: snapshot });
+      return pushed.checked + pushed.taskBranches === 0 && snapshot !== "rebuilding"
+        ? { outcome: "ignored", reason: snapshot === null ? "no task's base or branch" : `push: ${snapshot}` }
+        : { outcome: "processed" };
     }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.kind === "other" ? event.event.slice(0, 64) : event.kind})` };
@@ -173,3 +182,18 @@ export const createReconcileSchedules = (deps: { readonly db: Db; readonly jobs:
     },
   };
 };
+
+/**
+ * `task.reconcile-behind` (F-070, ticket 24): every OSTRA_RECONCILE_MINUTES, the live task repos'
+ * `behind`, the least recently checked first, so a base that moved without a webhook still shows.
+ */
+export const reconcileBehindHandler =
+  (deps: PullRequestStateDeps): JobHandler<"task.reconcile-behind"> =>
+  async (context) => {
+    const pass = await reconcileBehind({ db: deps.db, notices: deps.notices, clock: deps.clock, adapters: { codeHost: deps.codeHost, secretStore: deps.secretStore } });
+    context.logger.info("behind.reconciled", { checked: pass.checked, changed: pass.changed, failed: pass.failed });
+  };
+
+/** The one `task.reconcile-behind` schedule: an idempotent pass over every organization's task repos. */
+export const ensureBehindSchedule = (deps: { readonly jobs: Pick<Jobs, "schedule">; readonly reconcileMinutes: number }): Promise<void> =>
+  deps.jobs.schedule("task.reconcile-behind", "all", everyMinutes(deps.reconcileMinutes), {});

@@ -38,20 +38,22 @@ const columnsOf = (ticket: TrackerTicket) => ({
 /**
  * Upserts the ticket's copy on each board, in the caller's transaction. A copy holding a newer read
  * is left alone, unless it was marked removed (the ticket came back). Answers the rows' IDs and
- * whether any changed.
+ * whether any changed, and (milestone 3, F-066) the rows this read moved to a `done` or `cancelled`
+ * category from an open one, which a task running on them hears.
  */
 export const upsertTicketCacheInTx = async (
   tx: Tx,
   boards: readonly CacheBoard[],
   ticket: TrackerTicket,
-): Promise<{ readonly ticketIds: readonly TicketId[]; readonly changed: number }> => {
+): Promise<{ readonly ticketIds: readonly TicketId[]; readonly changed: number; readonly closed: readonly TicketId[] }> => {
   const ticketIds: TicketId[] = [];
+  const closed: TicketId[] = [];
   let changed = 0;
   const columns = columnsOf(ticket);
   for (const board of boards) {
     const existing = await tx.ticket.findUnique({
       where: { boardId_externalId: { boardId: board.id, externalId: ticket.externalId } },
-      select: { id: true, trackerUpdatedAt: true, removedAt: true },
+      select: { id: true, trackerUpdatedAt: true, removedAt: true, statusCategory: true },
     });
     if (existing === null) {
       const created = await tx.ticket.create({
@@ -79,8 +81,11 @@ export const upsertTicketCacheInTx = async (
     }
     await tx.ticket.update({ where: { id: existing.id }, data: columns });
     changed += 1;
+    if (!isOpenCategory(ticket.status.category) && (existing.statusCategory === null || isOpenCategory(existing.statusCategory))) {
+      closed.push(ticketIdSchema.parse(existing.id));
+    }
   }
-  return { ticketIds, changed };
+  return { ticketIds, changed, closed };
 };
 
 /**
@@ -205,7 +210,13 @@ export const ingestTicketHintBody: IngestTicketHint = async (deps, change) => {
     const outcome: IngestTicketHintResult = { ok: true, outcome: result.removed.length > 0 ? "removed" : "not-on-a-board", ticketIds: result.removed, externalId };
     return outcome;
   }
-  return { ok: true, outcome: ownEcho ? "own-echo" : "upserted", ticketIds: result.upserted.ticketIds, externalId: externalTicketIdSchema.parse(ticket.externalId) };
+  return {
+    ok: true,
+    outcome: ownEcho ? "own-echo" : "upserted",
+    ticketIds: result.upserted.ticketIds,
+    externalId: externalTicketIdSchema.parse(ticket.externalId),
+    ...(result.upserted.closed.length === 0 ? {} : { closedTicketIds: result.upserted.closed }),
+  };
 };
 
 /** A change notice for a project whose Inbox changed: its project's record. */

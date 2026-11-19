@@ -350,10 +350,12 @@ describe("the three steps (ADR 0039)", () => {
 });
 
 describe("what a reopen refuses (F-032, spec section 11, item 12)", () => {
-  it("refuses a merged task, a working one, a missing message, and a task at its spend cap", async () => {
+  it("refuses a merged task with no merged repo, a working one, a missing message, and a task at its spend cap", async () => {
     const task = await inReview();
+    // Milestone 3 reopens a merged task on a fresh branch (F-066, ticket 24); one whose repos record
+    // no merge has nothing to start the fresh branch from.
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "merged", subState: null } });
-    expect(await reopen(task.taskId, "more")).toMatchObject({ ok: false, error: "merged_reopen_later" });
+    expect(await reopen(task.taskId, "more")).toMatchObject({ ok: false, error: "not-reopenable" });
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "in_review", subState: "waiting_for_reviewer" } });
     expect(await reopen(task.taskId)).toMatchObject({ ok: false, error: "text-required" });
     // At the spend cap: tokens, since the model has no price.

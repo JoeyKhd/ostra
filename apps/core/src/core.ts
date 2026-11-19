@@ -53,7 +53,7 @@ import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } fr
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
-import { createReconcileSchedules, githubWebhookHandler, reconcileHandler } from "./code-host/pull-requests.ts";
+import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileBehindHandler, reconcileHandler } from "./code-host/pull-requests.ts";
 import { diffFetchHandler } from "./diff/diff-fetch.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
@@ -317,7 +317,7 @@ export const startCore = async (
     logger,
     ...(options.linearApiUrl === undefined ? {} : { linearApiUrl: options.linearApiUrl }),
   });
-  const ingestDeps = { db, trackers, notices, clock: systemClock, logger };
+  const ingestDeps = { db, trackers, notices, clock: systemClock, logger, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
   // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.
   const prDeps = {
     db,
@@ -331,6 +331,9 @@ export const startCore = async (
     onPush: (input: Parameters<typeof snapshotsOnPush>[1]) => snapshotsOnPush(snapshotDeps, input),
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
+  // Milestone 3 (ticket 24): each live task repo's `behind`, every OSTRA_RECONCILE_MINUTES.
+  await jobs.work("task.reconcile-behind", reconcileBehindHandler(prDeps), { localConcurrency: 1 });
+  await ensureBehindSchedule({ jobs, reconcileMinutes: settings.reconcileMinutes });
   // Milestone 3's diff (ticket 22): one compare per head, cached, and outdated comments.
   const diffLimits = { maxFiles: settings.diffMaxFiles, maxPatchBytes: settings.diffMaxPatchBytes };
   await jobs.work("diff.fetch", diffFetchHandler({ db, notices, clock: systemClock, adapters, limits: diffLimits, logger }), { localConcurrency: 2 });

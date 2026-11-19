@@ -7,6 +7,7 @@ import {
   needsYouItemIdSchema,
   organizationIdSchema,
   projectIdSchema,
+  repoIdSchema,
   runnerLimits,
   sessionIdSchema,
   taskEventSchema,
@@ -19,10 +20,13 @@ import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { taskFromColumns } from "../lifecycles/mapping.ts";
 import { transitionTask } from "../lifecycles/task.ts";
+import type { TaskInput } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import { reopenCarryOnText } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { freshBranchesInTx } from "./fresh-branch.ts";
+import type { FreshBranch } from "./fresh-branch.ts";
 import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 import { appendServerEvent } from "./server-events.ts";
 import { endSessionTimersInTx } from "./sessions-m2.ts";
@@ -100,7 +104,11 @@ export const reopenTaskInputSchema = z.strictObject({
 export type ReopenTaskInput = z.infer<typeof reopenTaskInputSchema>;
 
 export type ReopenTaskResult = UseCaseResult<
-  { readonly sessionId: SessionId },
+  {
+    readonly sessionId: SessionId;
+    /** Milestone 3 (F-066): each merged repo's fresh branch, when the task had one. */
+    readonly freshBranches?: readonly FreshBranch[];
+  },
   | "not-found"
   | "forbidden"
   /** In milestone 2 a merged task isn't reopened: its fresh branch is F-066, milestone 3. */
@@ -167,14 +175,15 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   if (sent !== null) {
     return { ok: true, sessionId: sessionIdSchema.parse(sent.sessionId) };
   }
-  if (task.state === "merged") {
-    return refused("merged_reopen_later", "A merged task can't be reopened yet: its fresh branch comes in a later release. Start a new task instead");
-  }
+  // Milestone 3 (F-066, ticket 24): a merged repo reopens on a fresh branch from its base. A merged
+  // task moves by `reopen_after_merge`; one with a repo merged and another in review, by `reopen`.
+  const mergedRepoIds = (await tx.taskRepo.findMany({ where: { taskId: task.id, state: "merged" }, select: { repoId: true } })).map((row) => repoIdSchema.parse(row.repoId));
+  const reopenInput: TaskInput = task.state === "merged" ? { type: "reopen_after_merge", mergedRepoIds } : { type: "reopen" };
   const current = taskFromColumns(task);
   if (!current.ok) {
     throw new Error(`a task row breaks its lifecycle: ${current.reason}`);
   }
-  if (!transitionTask(current.value, { type: "reopen" }).ok) {
+  if (!transitionTask(current.value, reopenInput).ok) {
     return refused("not-reopenable", "The task is still working: there's nothing to reopen");
   }
   if (input.text === undefined && !oneClick(task)) {
@@ -272,7 +281,8 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   }
 
   await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId } });
-  await moveTaskInTx(moveDeps, task, { type: "reopen" });
+  await moveTaskInTx(moveDeps, task, reopenInput);
+  const freshBranches = mergedRepoIds.length === 0 ? [] : await freshBranchesInTx(tx, task, new Date(now));
   // The reopen answers what the task needed: a limit, a crash, no changes.
   await resolveNeedsYouItemsInTx(
     deps,
@@ -293,10 +303,10 @@ export const reopenTask: ReopenTask = async (deps, input) => {
     action: "task.reopened",
     entity: "task",
     entityId: task.id,
-    data: { sessionId, from: task.state, replayed: owed.length },
+    data: { sessionId, from: task.state, replayed: owed.length, freshBranches: freshBranches.length },
   });
   await deps.notices.emitInTx(tx, { organizationId: organization, projectId, entity: "task", entityId: task.id });
-  return { ok: true, sessionId };
+  return { ok: true, sessionId, ...(freshBranches.length === 0 ? {} : { freshBranches }) };
 };
 
 // ---------- "Carry on without it" (ticket 18, router ticket 30) ----------

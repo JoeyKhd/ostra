@@ -52,6 +52,8 @@ export type IngestTicketHintResult = UseCaseResult<
       | "removed";
     readonly ticketIds: readonly TicketId[];
     readonly externalId: ExternalTicketId | null;
+    /** Milestone 3 (F-066): the rows this read moved from an open category to `done` or `cancelled`. */
+    readonly closedTicketIds?: readonly TicketId[];
   },
   "tracker-failed" | "rate-limited"
 >;

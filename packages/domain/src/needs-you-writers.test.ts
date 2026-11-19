@@ -38,6 +38,9 @@ const WRITE = /needsYouItem\s*\.\s*(create|createMany|createManyAndReturn|update
 /** The helpers that write and enqueue. */
 const HELPERS = /\b(createNeedsYouItemInTx|resolveNeedsYouItemsInTx|setNeedsYouSummaryInTx)\b/;
 
+/** Reading every source file of the repo takes longer than 5 s on a slow disk (Windows, a loaded machine). */
+const SCAN_TIMEOUT_MS = 60_000;
+
 const rel = (file: string): string => path.relative(root, file).split(path.sep).join("/");
 
 describe("every write of a needs-you item enqueues its fan-out", () => {
@@ -51,7 +54,7 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
     }
     // The helpers' own file, and the browser suite's seed, which makes a task in a state and needs no notification.
     expect(writers.sort()).toEqual(["apps/web/e2e/seed-task.ts", "packages/domain/src/use-cases/needs-you-items.ts"]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("F-036: the helpers are called from the places that create, answer and dismiss items, and from nowhere new unnoticed", async () => {
     const files = [...(await sourceFiles(path.join(root, "apps"))), ...(await sourceFiles(path.join(root, "packages")))];
@@ -66,6 +69,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "apps/core/src/ingest/ingest.ts",
       "packages/api/src/routers/tasks.ts",
       "packages/domain/src/use-cases/approvals.ts",
+      // Ticket 24: a ticket closed while its task runs, and "Keep working".
+      "packages/domain/src/use-cases/after-merge.ts",
       "packages/domain/src/use-cases/ingest-events.ts",
       "packages/domain/src/use-cases/record-session-end.ts",
       "packages/domain/src/use-cases/reopen.ts",
@@ -73,7 +78,7 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("F-036: a reason notifies the moment of its name, a ready draft PR is pr_ready, and the reasons with no moment of their own notify nobody", () => {
     expect(notificationKindOfReason("draft_ready")).toBe("pr_ready");
