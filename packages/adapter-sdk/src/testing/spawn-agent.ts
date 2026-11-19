@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { AgentLaunch } from "../agent/base.ts";
+import type { AgentCommand, AgentLaunch } from "../agent/base.ts";
 import { killTree } from "../agent/acp/process-tree.ts";
 import type { StartedAgent } from "./agent-suite.ts";
 
@@ -35,4 +36,41 @@ export const spawnAgentProcess = async (launch: AgentLaunch): Promise<StartedAge
       await killTree(pid);
     },
   };
+};
+
+/**
+ * Runs an agent's export or import command as an executor would: an argument array, the command's
+ * own environment and nothing inherited, its standard output written to `stdoutTo` when it names a
+ * file. For contract suites.
+ */
+export const runAgentCommand = async (command: AgentCommand): Promise<{ readonly code: number | null }> => {
+  const sink = command.stdoutTo === undefined ? undefined : createWriteStream(command.stdoutTo);
+  if (sink !== undefined) {
+    await new Promise<void>((resolve, reject) => {
+      sink.once("open", () => {
+        resolve();
+      });
+      sink.once("error", reject);
+    });
+  }
+  const child = spawn(command.command, [...command.args], {
+    cwd: command.cwd,
+    env: { ...command.env },
+    stdio: ["ignore", sink ?? "ignore", "ignore"],
+    windowsHide: true,
+  });
+  const code = await new Promise<number | null>((resolve) => {
+    child.on("error", () => {
+      resolve(null);
+    });
+    child.on("close", (exit) => {
+      resolve(exit);
+    });
+  });
+  if (sink !== undefined) {
+    await new Promise<void>((resolve) => {
+      sink.end(resolve);
+    });
+  }
+  return { code };
 };

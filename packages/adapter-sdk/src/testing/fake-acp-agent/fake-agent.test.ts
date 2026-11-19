@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,7 +12,7 @@ import type { AgentSession } from "../../agent/base.ts";
 import { defineAgentContractSuite } from "../agent-suite.ts";
 import type { PrepareLaunchInput } from "../../agent/base.ts";
 import type { AgentFixture } from "../agent-suite.ts";
-import { spawnAgentProcess } from "../spawn-agent.ts";
+import { runAgentCommand, spawnAgentProcess } from "../spawn-agent.ts";
 import { fakeMarker } from "./agent.ts";
 import type { FakeAgentProfile } from "./agent.ts";
 import { FakeAgentAdapter } from "./fake-agent-adapter.ts";
@@ -91,18 +90,7 @@ const fixtureFor = async (): Promise<AgentFixture> => {
       steerable: fakeMarker("steerable"),
     },
     archive: {
-      run: async (command) => {
-        const child = spawn(command.command, [...command.args], { cwd: command.cwd, env: { ...command.env }, stdio: "ignore", windowsHide: true });
-        const code = await new Promise<number | null>((resolve) => {
-          child.on("error", () => {
-            resolve(null);
-          });
-          child.on("close", (exit) => {
-            resolve(exit);
-          });
-        });
-        return { code };
-      },
+      run: runAgentCommand,
       freshBox: async () => {
         const fresh = path.join(root, `fresh-${String(Date.now())}`);
         const freshWorkspace = path.join(fresh, "workspace");

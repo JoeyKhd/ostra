@@ -209,6 +209,12 @@ export type AgentCommand = {
   /** An allowlist, as the agent's own launch has (ADR 0030). */
   readonly env: Readonly<Record<string, string>>;
   readonly cwd: string;
+  /**
+   * A file that receives the command's standard output, for an agent whose export prints the archive
+   * (OpenCode's `session export` has no output flag). The executor opens it and wires the child's
+   * stdout to it: no shell, no `>`. Absent: the command writes its own output files.
+   */
+  readonly stdoutTo?: string;
 };
 
 export type ExportSessionInput = {
@@ -216,7 +222,7 @@ export type ExportSessionInput = {
   /** The box's agent folder and workspace, as the agent was launched with. */
   readonly agentDir: string;
   readonly workspaceDir: string;
-  /** Where the command writes the archive. The runner gzips and uploads it (ticket 22). */
+  /** Where the archive ends up, written by the command itself or through its `stdoutTo`. The runner gzips and uploads it (ticket 22). */
   readonly archivePath: string;
 };
 
