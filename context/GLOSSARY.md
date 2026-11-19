@@ -264,12 +264,8 @@ _Avoid_: team (a Linear team is something else), tenant, workspace
 A person who belongs to an organization, and may belong to several. A restricted project lists the members who can open it.
 _Avoid_: user, seat
 
-**Setup token**:
-A one-time secret that the server prints in its log at first start. Creating the first account needs it, so a fresh install belongs to whoever can read the log. It stops working once that account exists.
-_Avoid_: install key, license key
-
 **Admin**:
-A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is also its instance admin, who can create more organizations.
+A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is seeded by the server when it starts with no account, and is also its instance admin, who can create more organizations.
 _Avoid_: owner, operator
 
 **CLI session**:
