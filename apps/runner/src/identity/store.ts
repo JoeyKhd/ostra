@@ -109,9 +109,26 @@ export const forgetIdentity = async (dataDir: string): Promise<void> => {
   await rm(dataPaths(dataDir).identityDir, { recursive: true, force: true });
 };
 
+/**
+ * What to do when the server refused this identity for good: revoked, or a key it doesn't know.
+ * Only then: for any other refusal, deleting the identity would cost a new approval for nothing.
+ */
+export const signInAgainAdvice = (dataDir: string): string =>
+  `To sign in again, delete ${dataPaths(dataDir).identityDir} and start the runner again.`;
+
 // ---------- status.json ----------
 
-export const refusalReasonSchema = z.enum(["revoked", "version-unsupported", "replaced", "unreachable", "invalid-response"]);
+export const refusalReasonSchema = z.enum([
+  "revoked",
+  "unknown-key",
+  "clock-skew",
+  "replayed",
+  "token-refused",
+  "version-unsupported",
+  "replaced",
+  "unreachable",
+  "invalid-response",
+]);
 export type RefusalReason = z.infer<typeof refusalReasonSchema>;
 
 export const runnerStatusRecordSchema = z.strictObject({

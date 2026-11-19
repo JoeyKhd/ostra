@@ -18,10 +18,11 @@ export const PROTOCOL_MAJOR = 1;
 /**
  * This build's minor. Milestone 1 shipped minor 0. Milestone 2 shipped minor 1: sessions across
  * turns, the bulk path, the `release` command, restores and limits. Milestone 3 ships minor 2:
- * approval rules and task rules, questions, plan first, checks, snapshots, services and the
- * profile's skills and MCP servers. A minor-1 peer still works inside the window: it's never
- * sent `question-answer`, `plan-answer`, `snapshot-build` or the new spec sections, and it sends
- * no new event. A minor-0 peer is outside the window and refused at `hello`.
+ * approval rules and task rules, questions, plan first, checks, snapshots, services, the
+ * profile's skills and MCP servers, and why a token was refused. A minor-1 peer still works inside
+ * the window: it's never sent `question-answer`, `plan-answer`, `snapshot-build`, the new spec
+ * sections or a token refusal's `reason`, and it sends no new event. A minor-0 peer is outside the
+ * window and refused at `hello`.
  */
 export const PROTOCOL_MINOR = 2;
 

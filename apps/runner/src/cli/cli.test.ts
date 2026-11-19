@@ -34,7 +34,7 @@ const start = async (options: FakeServerOptions = {}): Promise<FakeServer> => {
 
 type Run = { readonly code: number; readonly lines: readonly string[]; readonly signedIn: SignedIn | undefined };
 
-const run = async (args: readonly string[], env: CliDeps["env"] = {}): Promise<Run> => {
+const run = async (args: readonly string[], env: CliDeps["env"] = {}, now?: () => number): Promise<Run> => {
   const terminal = createCapturingTerminal();
   let signedIn: SignedIn | undefined;
   const code = await runCli(args, {
@@ -47,12 +47,19 @@ const run = async (args: readonly string[], env: CliDeps["env"] = {}): Promise<R
     },
     runSidecar: () => Promise.resolve(exitCodes.usage),
     deviceFlow: { sleep: () => Promise.resolve() },
+    ...(now === undefined ? {} : { now }),
   });
   return { code, lines: terminal.lines(), signedIn };
 };
 
 const runner = (fake: FakeServer, ...extra: string[]): Promise<Run> =>
   run(["runner", "--server", fake.url, "--data-dir", dataDir, "--name", "laptop", ...extra]);
+
+/** `ostra runner` on a machine whose clock reads `offsetMs` from the real one. */
+const runnerWithClock = (fake: FakeServer, offsetMs: number): Promise<Run> =>
+  run(["runner", "--server", fake.url, "--data-dir", dataDir, "--name", "laptop"], {}, () => Date.now() + offsetMs);
+
+const HOUR = 3_600_000;
 
 describe("ostra runner: the first sign-in", () => {
   it("runs the device flow, registers, stores the key, and the server revokes the session", async () => {
@@ -132,6 +139,75 @@ describe("ostra runner: refusals", () => {
     const status = await run(["runner", "status", "--data-dir", dataDir]);
     expect(status.code).toBe(exitCodes.ok);
     expect(status.lines.join("")).toMatch(/Last refusal +\S+ revoked:/);
+  });
+
+  it("F-013: a clock an hour behind the server's is named with its offset, and sign-in hands over to the connection instead of exiting", async () => {
+    const fake = await start();
+    await runner(fake);
+    const skewed = await runnerWithClock(fake, -HOUR);
+    // It went on to connect, which asks again with its backoff: no exit, no refusal for good.
+    expect(skewed.code).toBe(exitCodes.ok);
+    expect(skewed.signedIn).toBeDefined();
+    const output = skewed.lines.join("");
+    expect(output).toContain("this machine's clock is 3600 s behind the server's");
+    expect(output).toContain("Retrying until the clocks agree");
+    // The identity is fine, so nothing says to delete it, and nothing calls it revoked.
+    expect(output).not.toContain(dataPaths(dataDir).identityDir);
+    expect(output).not.toContain("revoked");
+    expect(fake.tokenRequests.at(-1)?.minor).toBe("2");
+    const status = await run(["runner", "status", "--data-dir", dataDir]);
+    expect(status.lines.join("")).toMatch(/Last refusal +\S+ clock-skew: .*3600 s behind/);
+    // And an hour ahead says so the other way round.
+    const ahead = await runnerWithClock(fake, HOUR);
+    expect(ahead.code).toBe(exitCodes.ok);
+    expect(ahead.lines.join("")).toContain("this machine's clock is 3600 s ahead of the server's");
+  });
+
+  it("F-013: a key the server doesn't know stops the runner with its own message and the advice to sign in again", async () => {
+    const fake = await start();
+    await runner(fake);
+    fake.runners.clear();
+    const refused = await runner(fake);
+    expect(refused.code).toBe(exitCodes.refused);
+    const output = refused.lines.join("");
+    expect(output).toContain("The server doesn't know this runner's key");
+    expect(output).not.toContain("revoked");
+    expect(output).toContain(`To sign in again, delete ${dataPaths(dataDir).identityDir} and start the runner again.`);
+    const status = await run(["runner", "status", "--data-dir", dataDir]);
+    expect(status.lines.join("")).toMatch(/Last refusal +\S+ unknown-key:/);
+  });
+
+  it("F-013: a nonce the server says it saw is retried at once with a fresh assertion", async () => {
+    const fake = await start();
+    await runner(fake);
+    const before = fake.tokenRequests.length;
+    fake.tokenRefusals.push({
+      status: 401,
+      body: { error: { code: "unauthorized", message: "the assertion was already used", reason: "replayed" } },
+    });
+    const again = await runner(fake);
+    expect(again.code).toBe(exitCodes.ok);
+    expect(again.signedIn).toBeDefined();
+    const asked = fake.tokenRequests.slice(before);
+    expect(asked).toHaveLength(2);
+    expect(asked[0]?.nonce).not.toBe(asked[1]?.nonce);
+    expect(again.lines.join("")).not.toContain("refused");
+  });
+
+  it("F-061: against a server before minor 2, a 401 without a reason is told as such and handed to the connection, never an exit", async () => {
+    const fake = await start();
+    await runner(fake);
+    // A minor-1 server's 401: ostra's error body, with no reason.
+    fake.tokenRefusals.push({ status: 401, body: { error: { code: "unauthorized", message: "the assertion was already used" } } });
+    const result = await runner(fake);
+    expect(result.code).toBe(exitCodes.ok);
+    expect(result.signedIn).toBeDefined();
+    const output = result.lines.join("");
+    expect(output).toContain("The server refused the access token (401) without a reason. Retrying.");
+    expect(output).not.toContain(dataPaths(dataDir).identityDir);
+    // Its 403 was only ever a revoked runner, and still ends it.
+    fake.tokenRefusals.push({ status: 403, body: { error: { code: "unauthorized", message: "this runner is revoked" } } });
+    expect((await runner(fake)).code).toBe(exitCodes.refused);
   });
 
   it("refuses a server whose version window excludes this runner, with the fix", async () => {

@@ -17,7 +17,11 @@ export const exitCodes = {
   ok: 0,
   failed: 1,
   usage: 2,
-  /** The server refused this runner for good (revoked): restarting won't help. */
+  /**
+   * The server refused this runner for good: revoked, or a key it doesn't know. Restarting won't
+   * help; signing in again with a new identity will. A refusal that can pass, such as clocks that
+   * disagree, never ends the runner.
+   */
   refused: 3,
 } as const;
 
@@ -134,7 +138,8 @@ const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDep
   });
   if (!signedIn.ok) {
     deps.terminal.warn(signedIn.failure.message);
-    return signedIn.failure.reason === "revoked" ? exitCodes.refused : exitCodes.failed;
+    const reason = signedIn.failure.reason;
+    return reason === "revoked" || reason === "unknown-key" ? exitCodes.refused : exitCodes.failed;
   }
   return deps.runSignedIn({ signedIn: signedIn.value, config, dataDir, terminal: deps.terminal, signal: deps.signal });
 };

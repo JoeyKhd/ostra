@@ -4,21 +4,26 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { silentLogger } from "@ostra/adapter-sdk";
+import { recordingLogger } from "@ostra/adapter-sdk/testing";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { notifyRunnerInTx, postgresCommandOutbox } from "@ostra/domain";
+import { notifyRunnerInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox } from "@ostra/domain";
 import {
   closeCodes,
   infoResponseSchema,
   registerResponseSchema,
+  runnerHeaders,
+  runnerHttpErrorSchema,
+  runnerIdSchema,
   runnerLabelSchema,
   runnerPaths,
   sessionIdSchema,
   taskIdSchema,
   tokenResponseSchema,
 } from "@ostra/protocol";
-import type { OrganizationId, RunnerId, Status } from "@ostra/protocol";
+import type { OrganizationId, RunnerId, Status, TokenAssertion } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { connectPeer, makeRunnerKey, signAssertion } from "../testing/fake-peer.ts";
 import type { FakePeer } from "../testing/fake-peer.ts";
@@ -190,6 +195,128 @@ describe("token", () => {
     // Signed by another key.
     const forged = signAssertion(await makeRunnerKey(), runner.runnerId);
     expect((await postJson(`${harness.url}${runnerPaths.token}`, forged)).status).toBe(401);
+  });
+});
+
+const HOUR = 3_600_000;
+
+/** `POST /runner/v1/token` as a runner of `minor` sends it; without `minor`, as one before minor 2 (no header). */
+const postToken = async (url: string, assertion: TokenAssertion, minor?: number): Promise<{ readonly status: number; readonly body: unknown }> => {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(minor === undefined ? {} : { [runnerHeaders.minor]: String(minor) }) },
+    body: JSON.stringify(assertion),
+  });
+  const body: unknown = await response.json();
+  return { status: response.status, body };
+};
+
+/** Minor 1's error body, as strict as a minor-1 runner reads it: no `reason`, no `serverTime`. */
+const minor1ErrorSchema = z.strictObject({
+  error: z.strictObject({ code: z.string(), message: z.string(), currentEpoch: z.number().optional() }),
+});
+
+describe("refused tokens", () => {
+  it("F-013: say why, and core logs each with the runner ID and the reason only: clock skew with the server's time, one answer for an unknown runner and a bad signature, revoked, and a replayed nonce", async () => {
+    const log = recordingLogger();
+    let serverAheadMs = 0;
+    const clocked = await startGateway(test.db, test.url, {
+      logger: log,
+      ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: { now: () => Date.now() + serverAheadMs } },
+    });
+    try {
+      const runner = await registerPersonal(clocked, test.db, fixture.a.member);
+      const url = `${clocked.url}${runnerPaths.token}`;
+      const sent: TokenAssertion[] = [];
+      const sign = (key = runner.key, runnerId: RunnerId = runner.runnerId): TokenAssertion => {
+        const assertion = signAssertion(key, runnerId);
+        sent.push(assertion);
+        return assertion;
+      };
+
+      // The server's clock jumped an hour ahead of the runner's.
+      serverAheadMs = HOUR;
+      const early = sign();
+      const skewed = await postToken(url, early, 2);
+      serverAheadMs = 0;
+      expect(skewed.status).toBe(401);
+      const skew = runnerHttpErrorSchema.parse(skewed.body).error;
+      expect(skew).toMatchObject({ code: "unauthorized", reason: "clock-skew" });
+      expect(Math.abs((skew.serverTime ?? 0) - early.issuedAt - HOUR)).toBeLessThan(10_000);
+
+      // An unknown runner and a bad signature get one answer, word for word.
+      const unknown = await postToken(url, sign(runner.key, runnerIdSchema.parse("no-such-runner")), 2);
+      const forged = await postToken(url, sign(await makeRunnerKey()), 2);
+      expect(unknown.status).toBe(401);
+      expect(runnerHttpErrorSchema.parse(unknown.body).error).toMatchObject({ code: "unauthorized", reason: "unknown-key" });
+      expect(forged).toEqual(unknown);
+      expect(runnerHttpErrorSchema.parse(unknown.body).error.serverTime).toBeUndefined();
+
+      // A nonce is good once.
+      const once = sign();
+      const issued = await postToken(url, once, 2);
+      expect(issued.status).toBe(200);
+      const { accessToken } = tokenResponseSchema.parse(issued.body);
+      const replayed = await postToken(url, once, 2);
+      expect(replayed.status).toBe(401);
+      expect(runnerHttpErrorSchema.parse(replayed.body).error).toMatchObject({ code: "unauthorized", reason: "replayed" });
+
+      // Revoked: the one 403.
+      await test.db.runner.update({ where: { id: runner.runnerId }, data: { state: "revoked", revokedAt: new Date() } });
+      const revoked = await postToken(url, sign(), 2);
+      expect(revoked.status).toBe(403);
+      expect(runnerHttpErrorSchema.parse(revoked.body).error).toMatchObject({ code: "unauthorized", reason: "revoked" });
+
+      // Every refusal is logged once, with the runner ID and the reason.
+      const refusals = log.records.filter((record) => record.message === "runner.token-refused");
+      expect(refusals.map((record) => record.fields["reason"])).toEqual(["clock-skew", "unknown-key", "unknown-key", "replayed", "revoked"]);
+      expect(refusals.map((record) => record.fields["runnerId"])).toEqual([
+        runner.runnerId,
+        "no-such-runner",
+        runner.runnerId,
+        runner.runnerId,
+        runner.runnerId,
+      ]);
+      expect(refusals.every((record) => record.level === "warn")).toBe(true);
+      expect(Math.abs(Number(refusals[0]?.fields["skewMs"]) + HOUR)).toBeLessThan(10_000);
+      // Never the assertion, its nonce or signature, or a token.
+      const logged = JSON.stringify(log.records);
+      for (const assertion of sent) {
+        expect(logged).not.toContain(assertion.nonce);
+        expect(logged).not.toContain(assertion.signature);
+      }
+      expect(logged).not.toContain(accessToken);
+    } finally {
+      await clocked.stop();
+    }
+  });
+
+  it("F-061: a runner before minor 2 sends no minor and gets minor 1's refusal body, and still gets its token; a server at minor 1 names no reason", async () => {
+    const runner = await registerPersonal(harness, test.db, fixture.a.member);
+    const url = `${harness.url}${runnerPaths.token}`;
+    const stale = (): TokenAssertion => signAssertion(runner.key, runner.runnerId, Date.now() - 5 * 60_000);
+
+    const old = await postToken(url, stale());
+    expect(old.status).toBe(401);
+    expect(minor1ErrorSchema.parse(old.body)).toEqual({
+      error: { code: "unauthorized", message: "the assertion's issuedAt is too far from the server's clock; check this machine's time" },
+    });
+    const forged = await postToken(url, signAssertion(await makeRunnerKey(), runner.runnerId));
+    expect(forged.status).toBe(401);
+    expect(minor1ErrorSchema.safeParse(forged.body).success).toBe(true);
+    expect((await postToken(url, signAssertion(runner.key, runner.runnerId))).status).toBe(200);
+    // The same runner at this minor hears the reason.
+    expect(runnerHttpErrorSchema.parse((await postToken(url, stale(), 2)).body).error.reason).toBe("clock-skew");
+
+    // A server at minor 1 speaks minor 1 to a minor-2 runner too.
+    const older = await startGateway(test.db, test.url, { serverMinor: 1 });
+    try {
+      const refused = await postToken(`${older.url}${runnerPaths.token}`, stale(), 2);
+      expect(refused.status).toBe(401);
+      expect(minor1ErrorSchema.safeParse(refused.body).success).toBe(true);
+    } finally {
+      await older.stop();
+    }
   });
 });
 

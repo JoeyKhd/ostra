@@ -2,17 +2,20 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { registerPersonalRunner } from "@ostra/domain";
 import {
+  encodeRunnerHttpErrorForMinor,
   infoResponseSchema,
+  minorFromHeader,
   minorWindow,
   organizationIdSchema,
   poolIdSchema,
   PROTOCOL_MAJOR,
   registerRequestSchema,
+  runnerHeaders,
   runnerIdSchema,
   runnerPaths,
   tokenAssertionSchema,
 } from "@ostra/protocol";
-import type { RegisterRequest, RegisterResponse } from "@ostra/protocol";
+import type { RegisterRequest, RegisterResponse, RunnerHttpError, TokenAssertion, TokenRefusalReason } from "@ostra/protocol";
 
 import { readJsonBody, sendError, sendJson } from "../http.ts";
 import { bearerToken } from "./access-token.ts";
@@ -166,34 +169,67 @@ const register = async (context: GatewayContext, http: IncomingMessage, response
   sendJson(response, 201, { runnerId: result.runnerId, kind: result.kind, poolId: result.poolId });
 };
 
+/** The token endpoint's four refusals (ADR 0034): only `revoked` and `unknown-key` are for good. */
+const tokenRefusals = {
+  "clock-skew": { status: 401, message: "the assertion's issuedAt is too far from the server's clock; check this machine's time" },
+  // One answer for an unknown runner and a bad signature: nothing about which runners exist leaks.
+  "unknown-key": { status: 401, message: "the assertion is not signed by a known runner" },
+  revoked: { status: 403, message: "this runner is revoked; register it again" },
+  replayed: { status: 401, message: "the assertion was already used" },
+} as const satisfies Record<TokenRefusalReason, { readonly status: 401 | 403; readonly message: string }>;
+
+/**
+ * Refuses a token, saying why to a runner of minor 2 or later (`x-ostra-minor`), and logs it with the
+ * runner ID and the reason: never the assertion, its nonce or signature, or a token.
+ */
+const refuseToken = (
+  context: GatewayContext,
+  http: IncomingMessage,
+  response: ServerResponse,
+  assertion: TokenAssertion,
+  reason: TokenRefusalReason,
+  now: number,
+): void => {
+  const { status, message } = tokenRefusals[reason];
+  const header = http.headers[runnerHeaders.minor];
+  // A runner before minor 2 sends no minor here, and gets minor 1's body: its schema is strict.
+  const minor = Math.min(context.serverMinor, minorFromHeader(typeof header === "string" ? header : undefined));
+  const skewMs = reason === "clock-skew" ? assertion.issuedAt - now : undefined;
+  context.logger.warn("runner.token-refused", { runnerId: assertion.runnerId, reason, status, minor, skewMs });
+  const body: RunnerHttpError = {
+    error: { code: "unauthorized", message, reason, ...(reason === "clock-skew" ? { serverTime: now } : {}) },
+  };
+  sendJson(response, status, encodeRunnerHttpErrorForMinor(body, minor));
+};
+
 const token = async (context: GatewayContext, http: IncomingMessage, response: ServerResponse): Promise<void> => {
   const body = await readJsonBody(http, 4 * 1024);
   const parsed = body.ok ? tokenAssertionSchema.safeParse(body.value) : undefined;
   if (parsed?.success !== true) {
+    context.logger.warn("runner.token-refused", { reason: "bad-request", status: 400 });
     sendError(response, 400, "bad-request", "the body is not a signed assertion");
     return;
   }
   const assertion = parsed.data;
   const now = context.ports.clock.now();
   if (!assertionFresh(assertion.issuedAt, now)) {
-    sendError(response, 401, "unauthorized", "the assertion's issuedAt is too far from the server's clock; check this machine's time");
+    refuseToken(context, http, response, assertion, "clock-skew", now);
     return;
   }
   const runner = await context.db.runner.findUnique({
     where: { id: assertion.runnerId },
     select: { id: true, organizationId: true, publicKey: true, state: true, revokedAt: true },
   });
-  // The same answer for an unknown runner and a bad signature: nothing about which runners exist leaks.
   if (runner === null || !verifyAssertionSignature(assertion, runner.publicKey)) {
-    sendError(response, 401, "unauthorized", "the assertion is not signed by a known runner");
+    refuseToken(context, http, response, assertion, "unknown-key", now);
     return;
   }
   if (runner.state === "revoked" || runner.revokedAt !== null) {
-    sendError(response, 403, "unauthorized", "this runner is revoked; register it again");
+    refuseToken(context, http, response, assertion, "revoked", now);
     return;
   }
   if (!context.nonces.firstUse(assertion.runnerId, assertion.nonce, now)) {
-    sendError(response, 401, "unauthorized", "the assertion was already used");
+    refuseToken(context, http, response, assertion, "replayed", now);
     return;
   }
   const issued = context.tokens.issue(assertion.runnerId, organizationIdSchema.parse(runner.organizationId), now);

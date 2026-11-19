@@ -7,14 +7,14 @@ import { exitCodes } from "./cli/cli.ts";
 import { createBoxDispatcher } from "./box-dispatcher.ts";
 import { startConnection } from "./connection/peer.ts";
 import type { CommandHandlers, ConnectionHooks, PeerStatus, RunnerConnection } from "./connection/peer.ts";
-import { updateStatus } from "./identity/store.ts";
+import { signInAgainAdvice, updateStatus } from "./identity/store.ts";
 import { defaultAgents } from "./task-host/agents.ts";
 import { fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
 import { RUNNER_VERSION } from "./version.ts";
 
 // `ostra runner` once it's signed in: the connection to the server, and what runs the tasks it's
-// dispatched, until Ctrl-C or a revocation.
+// dispatched, until Ctrl-C or a refusal for good (revoked, or a key the server doesn't know).
 // - `host`: the task host, in this process, on a worktree per task ("personal, not isolated").
 // - `docker`: a box per task on this machine's Docker Engine; each box's sidecar runs its task.
 
@@ -163,8 +163,9 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
   const end = await live.done;
   await work.shutdown();
   await live.stop();
-  if (end.kind === "revoked") {
-    terminal.warn(`${end.message}. To sign in again, delete the identity folder in ${dataDir} and start the runner again.`);
+  if (end.kind !== "stopped") {
+    // Refused for good (revoked, or a key the server doesn't know): only then is a new identity the fix.
+    terminal.warn(`${end.message} ${signInAgainAdvice(dataDir)}`);
     return exitCodes.refused;
   }
   terminal.say("Runner stopped.");

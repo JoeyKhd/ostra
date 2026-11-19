@@ -6,6 +6,8 @@ import {
   blobChunkQuerySchema,
   blobUploadFinishRequestSchema,
   blobUploadStartRequestSchema,
+  encodeRunnerHttpErrorForMinor,
+  minorFromHeader,
   minorWindow,
   parseJson,
   PROTOCOL_MAJOR,
@@ -19,7 +21,15 @@ import {
   tokenAssertionCanonicalString,
   tokenAssertionSchema,
 } from "@ostra/protocol";
-import type { InfoResponse, RegisterRequest, RunnerId, TaskCredentials, TaskSpec } from "@ostra/protocol";
+import type {
+  InfoResponse,
+  RegisterRequest,
+  RunnerHttpError,
+  RunnerId,
+  TaskCredentials,
+  TaskSpec,
+  TokenRefusalReason,
+} from "@ostra/protocol";
 
 // A fake ostra server for the runner's tests (spec section 8: the runner's tests run against a
 // fake built from the protocol's schemas). It plays core's `/runner/v1/*` HTTP endpoints and the
@@ -64,6 +74,8 @@ export type FakeServerOptions = {
   readonly deviceOutcome?: "approve" | "deny";
   /** The join tokens the server accepts. */
   readonly joinTokens?: readonly string[];
+  /** The server's clock, which a token's `issuedAt` is checked against (ADR 0034's skew window). */
+  readonly now?: () => number;
 };
 
 export type FakeServer = {
@@ -75,6 +87,13 @@ export type FakeServer = {
   readonly tokensIssued: Map<RunnerId, number>;
   /** The access tokens issued, so a gateway can check them. */
   readonly accessTokens: Map<string, RunnerId>;
+  /**
+   * Refusals the token endpoint answers first, one per request and in order, before it checks
+   * anything: as core words them (minor 2, with a `reason`), or as a server before minor 2 did.
+   */
+  readonly tokenRefusals: { readonly status: number; readonly body: RunnerHttpError }[];
+  /** Every token request's nonce and `x-ostra-minor` header, in order. */
+  readonly tokenRequests: { readonly nonce: string; readonly issuedAt: number; readonly minor: string | undefined }[];
   readonly requests: string[];
   /** Tasks the server can hand out: their spec, and the credentials issued after the lease check. */
   readonly tasks: Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>;
@@ -131,6 +150,8 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const sessions = new Map<string, { revoked: boolean }>();
   const tokensIssued = new Map<RunnerId, number>();
   const accessTokens = new Map<string, RunnerId>();
+  const tokenRefusals: FakeServer["tokenRefusals"] = [];
+  const tokenRequests: FakeServer["tokenRequests"] = [];
   const requests: string[] = [];
   const tasks = new Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>();
   const credentialsIssued = new Map<string, number>();
@@ -369,23 +390,48 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
         ostraError(response, 400, "bad-request", "the assertion doesn't match the protocol");
         return;
       }
-      const runner = runners.get(parsed.data.runnerId);
-      if (runner === undefined || runner.revoked) {
-        ostraError(response, 403, "unauthorized", "this runner is revoked");
+      const minorHeader = request.headers[runnerHeaders.minor];
+      tokenRequests.push({
+        nonce: parsed.data.nonce,
+        issuedAt: parsed.data.issuedAt,
+        minor: typeof minorHeader === "string" ? minorHeader : undefined,
+      });
+      const scripted = tokenRefusals.shift();
+      if (scripted !== undefined) {
+        send(response, scripted.status, scripted.body);
         return;
       }
-      const publicKey = createPublicKey({
-        key: { kty: "OKP", crv: "Ed25519", x: runner.request.publicKey },
-        format: "jwk",
-      });
-      const signed = verify(
-        null,
-        Buffer.from(tokenAssertionCanonicalString(parsed.data), "utf8"),
-        publicKey,
-        Buffer.from(parsed.data.signature, "base64url"),
-      );
-      if (!signed || seenNonces.has(parsed.data.nonce)) {
-        ostraError(response, 401, "unauthorized", "bad assertion");
+      // Core's four checks, in core's order, each with its reason for a runner of minor 2 or later.
+      const now = options.now?.() ?? Date.now();
+      const refuse = (status: 401 | 403, reason: TokenRefusalReason, message: string): void => {
+        const body: RunnerHttpError = {
+          error: { code: "unauthorized", message, reason, ...(reason === "clock-skew" ? { serverTime: now } : {}) },
+        };
+        send(response, status, encodeRunnerHttpErrorForMinor(body, minorFromHeader(typeof minorHeader === "string" ? minorHeader : undefined)));
+      };
+      if (Math.abs(now - parsed.data.issuedAt) > runnerLimits.assertionSkewMs) {
+        refuse(401, "clock-skew", "the assertion's issuedAt is too far from the server's clock");
+        return;
+      }
+      const runner = runners.get(parsed.data.runnerId);
+      const signed =
+        runner !== undefined &&
+        verify(
+          null,
+          Buffer.from(tokenAssertionCanonicalString(parsed.data), "utf8"),
+          createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: runner.request.publicKey }, format: "jwk" }),
+          Buffer.from(parsed.data.signature, "base64url"),
+        );
+      if (runner === undefined || !signed) {
+        refuse(401, "unknown-key", "the assertion is not signed by a known runner");
+        return;
+      }
+      if (runner.revoked) {
+        refuse(403, "revoked", "this runner is revoked");
+        return;
+      }
+      if (seenNonces.has(parsed.data.nonce)) {
+        refuse(401, "replayed", "the assertion was already used");
         return;
       }
       seenNonces.add(parsed.data.nonce);
@@ -455,6 +501,8 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     sessions,
     tokensIssued,
     accessTokens,
+    tokenRefusals,
+    tokenRequests,
     requests,
     tasks,
     credentialsIssued,

@@ -33,7 +33,8 @@ import type {
 import type { Logger } from "@ostra/adapter-sdk";
 import WebSocket from "ws";
 import type { RawData } from "ws";
-import type { AccessTokenResult } from "../server/access-token.ts";
+import { isTerminalRefusal } from "../server/access-token.ts";
+import type { AccessTokenResult, TerminalRefusal } from "../server/access-token.ts";
 import { userAgent, RUNNER_VERSION } from "../version.ts";
 import { createLiveTextBuffer } from "./live-text.ts";
 import type { LiveSegment } from "./live-text.ts";
@@ -75,14 +76,20 @@ export type PeerStatus = {
   readonly running: readonly SessionId[];
 };
 
+/** Why the server refused this peer, as `onRefused` reports it. */
+export type RefusedReason = TerminalRefusal | "clock-skew" | "replayed" | "token-refused" | "replaced" | "version-unsupported";
+
 export type ConnectionHooks = {
   /** The self-fence fired: stop these sessions' agents, keep their workspaces. */
   readonly onSelfFence?: (sessions: readonly SessionId[]) => void;
   /** The server refused a session's lease epoch; its spool is discarded. Stop its agent. */
   readonly onStaleLease?: (sessionId: SessionId) => void;
   readonly onConnected?: (at: number) => void;
-  /** The server refused this peer, for good or until it's updated. */
-  readonly onRefused?: (reason: "revoked" | "replaced" | "version-unsupported", message: string) => void;
+  /**
+   * The server refused this peer: for good (`revoked`, `unknown-key`), until it's updated, or for
+   * now, while the connection keeps asking (the clocks disagree, say).
+   */
+  readonly onRefused?: (reason: RefusedReason, message: string) => void;
 };
 
 export type ConnectionTimers = {
@@ -151,7 +158,8 @@ export type SessionChannel = SessionRef & {
   readonly drained: () => Promise<void>;
 };
 
-export type ConnectionEnd = { readonly kind: "stopped" } | { readonly kind: "revoked"; readonly message: string };
+/** How the connection ended: stopped, or refused for good. `message` is a sentence for the person. */
+export type ConnectionEnd = { readonly kind: "stopped" } | { readonly kind: TerminalRefusal; readonly message: string };
 
 export type ConnectionReport = {
   readonly connected: boolean;
@@ -191,6 +199,8 @@ type SocketEnd =
   | { readonly kind: "goaway"; readonly afterMs: number }
   | { readonly kind: "lost"; readonly welcomed: boolean; readonly detail: string }
   | { readonly kind: "stopped" };
+
+const REVOKED_BY_SERVER = "This runner was revoked in the panel.";
 
 /** Bytes of an `events` frame besides its events: `{"type":"events","events":[...]}` and commas. */
 const EVENTS_FRAME_OVERHEAD = 64;
@@ -590,7 +600,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         log.warn("server error", { code: frame.code, sessionId: frame.sessionId });
         return;
       case "evict":
-        end(frame.reason === "revoked" ? { kind: "revoked", message: "the runner was revoked" } : { kind: "replaced" });
+        end(frame.reason === "revoked" ? { kind: "revoked", message: REVOKED_BY_SERVER } : { kind: "replaced" });
         return;
       default:
         frame satisfies never;
@@ -651,7 +661,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         if (status === 401) {
           finish({ kind: "token-expired" });
         } else if (status === 403) {
-          finish({ kind: "revoked", message: "the server refused the runner at the upgrade" });
+          finish({ kind: "revoked", message: "The server refused this runner at the upgrade: it was revoked in the panel." });
         } else if (status === 426) {
           finish({ kind: "version", message: "the server refused this runner's version at the upgrade" });
         } else {
@@ -722,7 +732,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         stopController.signal.removeEventListener("abort", onStop);
         switch (code) {
           case closeCodes.revoked:
-            finish({ kind: "revoked", message: "the runner was revoked" });
+            finish({ kind: "revoked", message: REVOKED_BY_SERVER });
             return;
           case closeCodes.replaced:
             finish({ kind: "replaced" });
@@ -775,12 +785,34 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         break;
       }
       if (!token.ok) {
-        if (token.reason === "revoked") {
-          hooks.onRefused?.("revoked", token.message);
-          return { kind: "revoked", message: token.message };
+        if (isTerminalRefusal(token)) {
+          hooks.onRefused?.(token.reason, token.message);
+          log.error("the server refused this runner for good", { reason: token.reason });
+          return { kind: token.reason, message: token.message };
         }
-        log.warn("no access token", { reason: token.reason, attempt });
-        await sleep(backoff(attempt), signal);
+        const wait = backoff(attempt);
+        switch (token.reason) {
+          case "clock-skew":
+          case "replayed":
+          case "token-refused":
+            // Not for good: the identity is fine. Asked again with the backoff, so once the server
+            // agrees (its clock and this machine's within its window, say), the runner connects.
+            hooks.onRefused?.(token.reason, token.message);
+            log.warn(token.message, {
+              reason: token.reason,
+              ...(token.reason === "clock-skew" && token.offsetMs !== null ? { offsetMs: token.offsetMs } : {}),
+              attempt,
+              retryInMs: wait,
+            });
+            break;
+          case "unreachable":
+          case "invalid-response":
+            log.warn("no access token", { reason: token.reason, attempt, retryInMs: wait });
+            break;
+          default:
+            token satisfies never;
+        }
+        await sleep(wait, signal);
         attempt += 1;
         continue;
       }
@@ -790,6 +822,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           break;
         case "revoked":
           hooks.onRefused?.("revoked", end.message);
+          log.error("the server refused this runner for good", { reason: "revoked" });
           return { kind: "revoked", message: end.message };
         case "replaced":
           // Another connection with this identity took over: don't fight it.

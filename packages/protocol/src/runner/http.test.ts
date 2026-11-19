@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { runnerIdSchema } from "../ids.ts";
 import {
+  encodeRunnerHttpErrorForMinor,
   infoResponseSchema,
   parseHttpUpBody,
   registerRequestSchema,
@@ -13,6 +14,7 @@ import {
   taskSpecQuerySchema,
   tokenAssertionCanonicalString,
   tokenAssertionSchema,
+  tokenRefusalReasonSchema,
 } from "./http.ts";
 import { PROTOCOL_MINOR } from "./version.ts";
 
@@ -119,5 +121,29 @@ describe("the runner endpoints", () => {
     expect(bad.ok).toBe(false);
     expect(bad.ok ? "" : bad.detail).toMatch(/^frames\.1: /);
     expect(parseHttpUpBody([status], PROTOCOL_MINOR).ok).toBe(false);
+  });
+});
+
+describe("the token endpoint's refusals (minor 2)", () => {
+  it("F-061: name their reason and the server's time to a minor-2 runner, and leave both out for a minor-1 one", () => {
+    expect(tokenRefusalReasonSchema.options).toEqual(["clock-skew", "unknown-key", "revoked", "replayed"]);
+    const refusal = {
+      error: { code: "unauthorized", message: "the clocks disagree", reason: "clock-skew", serverTime: 1_900_000_000_000 },
+    } as const;
+    expect(runnerHttpErrorSchema.parse(refusal)).toEqual(refusal);
+    expect(encodeRunnerHttpErrorForMinor(refusal, 2)).toEqual(refusal);
+    expect(encodeRunnerHttpErrorForMinor(refusal, 3)).toEqual(refusal);
+    // Minor 1's schema is strict and knows neither field: the body it gets has exactly its own.
+    for (const minor of [0, 1]) {
+      expect(encodeRunnerHttpErrorForMinor(refusal, minor)).toEqual({ error: { code: "unauthorized", message: "the clocks disagree" } });
+    }
+    expect(encodeRunnerHttpErrorForMinor({ error: { code: "stale-lease", message: "stale", currentEpoch: 4 } }, 1)).toEqual({
+      error: { code: "stale-lease", message: "stale", currentEpoch: 4 },
+    });
+    // A body from a server before minor 2 still parses: both fields are optional.
+    expect(runnerHttpErrorSchema.parse({ error: { code: "unauthorized", message: "refused" } })).toEqual({
+      error: { code: "unauthorized", message: "refused" },
+    });
+    expect(runnerHttpErrorSchema.safeParse({ error: { ...refusal.error, reason: "expired" } }).success).toBe(false);
   });
 });

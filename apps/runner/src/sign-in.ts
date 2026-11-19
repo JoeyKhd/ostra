@@ -2,7 +2,7 @@ import os from "node:os";
 import type { InfoResponse, RunnerConfig } from "@ostra/protocol";
 import type { Terminal } from "./cli/terminal.ts";
 import { generateRunnerKeyPair } from "./identity/key-pair.ts";
-import { dataPaths, loadIdentity, saveIdentity, updateStatus } from "./identity/store.ts";
+import { dataPaths, loadIdentity, saveIdentity, signInAgainAdvice, updateStatus } from "./identity/store.ts";
 import type { RefusalReason, RunnerIdentity } from "./identity/store.ts";
 import { createAccessTokens } from "./server/access-token.ts";
 import type { AccessTokens } from "./server/access-token.ts";
@@ -18,7 +18,9 @@ import type { RegisterProof } from "./server/register.ts";
 // - the first time: read `/runner/v1/info`, refuse a server outside the version window, run the
 //   device flow against the panel (or use the join token of a pool runner), make the key pair,
 //   register, and keep the runner ID and the key
-// - every start after: the key signs an assertion for a 10-minute access token, held in memory
+// - every start after: the key signs an assertion for a 10-minute access token, held in memory.
+//   Only a revoked runner or a key the server doesn't know stops here; a refusal that can pass (the
+//   clocks disagree, say) is told and left to the connection, which asks again with its backoff
 //
 // The device session is used once, as the bearer of the register call, and forgotten.
 
@@ -171,12 +173,27 @@ export const signIn = async (input: SignInInput): Promise<SignInResult> => {
   });
   const first = await tokens.get();
   if (!first.ok) {
-    if (first.reason === "revoked") {
-      const message = `${first.message} To sign in again, delete ${dataPaths(dataDir).identityDir} and start the runner again.`;
-      await recordRefusal(input, "revoked", message);
-      return fail("revoked", message);
+    switch (first.reason) {
+      case "revoked":
+      case "unknown-key": {
+        const message = `${first.message} ${signInAgainAdvice(dataDir)}`;
+        await recordRefusal(input, first.reason, message);
+        return fail(first.reason, message);
+      }
+      case "clock-skew":
+      case "replayed":
+      case "token-refused":
+        // Not for good: the connection asks again with its backoff, and connects once the server
+        // agrees. The identity is fine, so nothing here says to delete it.
+        terminal.warn(first.message);
+        await recordRefusal(input, first.reason, first.message);
+        break;
+      case "unreachable":
+      case "invalid-response":
+        return fail(first.reason, `Can't get an access token: ${first.message}.`);
+      default:
+        return first satisfies never;
     }
-    return fail(first.reason, `Can't get an access token: ${first.message}.`);
   }
   return { ok: true, value: { identity, info, tokens } };
 };

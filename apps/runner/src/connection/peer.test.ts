@@ -4,16 +4,19 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { silentLogger } from "@ostra/adapter-sdk";
+import { recordingLogger } from "@ostra/adapter-sdk/testing";
 import { leaseEpochSchema, runnerIdSchema, segmentIdSchema, sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { SessionId, TaskEvent } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { generateRunnerKeyPair } from "../identity/key-pair.ts";
+import { createAccessTokens, UNKNOWN_KEY_MESSAGE } from "../server/access-token.ts";
 import { makeCommand, startFakeGateway } from "../testing/fake-gateway.ts";
 import type { FakeGateway, FakeGatewayOptions } from "../testing/fake-gateway.ts";
 import { startFakeServer } from "../testing/fake-server.ts";
 import type { FakeServer } from "../testing/fake-server.ts";
 import { rejectAllHandlers } from "../testing/handlers.ts";
 import { startConnection } from "./peer.ts";
-import type { CommandHandlers, ConnectionHooks, ConnectionOptions, RunnerConnection, SessionChannel } from "./peer.ts";
+import type { CommandHandlers, ConnectionHooks, ConnectionOptions, ConnectionEnd, RefusedReason, RunnerConnection, SessionChannel, TokenSource } from "./peer.ts";
 
 // Ticket 16's "done when", against a fake gateway built from the protocol's schemas.
 
@@ -70,6 +73,61 @@ const connect = async (
   connections.push(connection);
   return connection;
 };
+
+/** The runner's real access tokens, signed with a key the fake server knows, on a clock `now`. */
+const signedTokens = async (fake: FakeServer, now: () => number = Date.now): Promise<TokenSource> => {
+  const keyPair = await generateRunnerKeyPair();
+  fake.runners.set(runnerId, {
+    runnerId,
+    proof: "device-session",
+    revoked: false,
+    request: {
+      publicKey: keyPair.publicKey,
+      name: "laptop",
+      executor: "host",
+      capacity: 1,
+      labels: [],
+      os: { platform: "win32", arch: "x64", release: "10.0" },
+      version: "0.0.0",
+    },
+  });
+  return createAccessTokens({ serverUrl: fake.url, runnerId, keyPair, now });
+};
+
+/** A connection with the runner's real access tokens, recording what it logs and how the server refused it. */
+const connectSigned = async (
+  fake: FakeServer,
+  tokens: TokenSource,
+): Promise<{ readonly connection: RunnerConnection; readonly log: ReturnType<typeof recordingLogger>; readonly refused: RefusedReason[] }> => {
+  const log = recordingLogger();
+  const refused: RefusedReason[] = [];
+  const connection = await startConnection({
+    serverUrl: fake.url,
+    peer: { kind: "runner", runnerId },
+    tokens,
+    dataDir,
+    handlers: rejectAllHandlers,
+    status: () => ({ executor: "host", capacity: 1, freeSlots: 1, labels: [], running: [] }),
+    logger: log,
+    timers: { backoffMinMs: 5, backoffMaxMs: 20, checkMs: 10, liveTextIntervalMs: 20 },
+    hooks: { onRefused: (reason) => refused.push(reason) },
+  });
+  connections.push(connection);
+  return { connection, log, refused };
+};
+
+/** Whether `done` settled within `ms`: a connection that keeps retrying never does. */
+const settledWithin = async (done: Promise<ConnectionEnd>, ms: number): Promise<boolean> =>
+  Promise.race([
+    done.then(() => true),
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        resolve(false);
+      }, ms);
+    }),
+  ]);
+
+const HOUR = 3_600_000;
 
 const line = (index: number): TaskEvent => ({ kind: "environment.setup_output", stream: "stdout", text: `line ${String(index)}` });
 
@@ -362,6 +420,78 @@ describe("the connection's lifecycle", () => {
     await gw.waitFor(() => gw.connected());
     gw.send({ type: "evict", reason: "revoked" });
     expect(await connection.done).toMatchObject({ kind: "revoked" });
+  });
+});
+
+describe("a refused access token", () => {
+  it("F-013: a clock an hour behind the server's is retried with the backoff and logged with its offset, and the runner connects once the clocks agree", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    let offsetMs = -HOUR;
+    const { connection, log, refused } = await connectSigned(fake, await signedTokens(fake, () => Date.now() + offsetMs));
+    await gw.waitFor(() => log.records.filter((record) => record.fields["reason"] === "clock-skew").length >= 3);
+    const warned = log.records.find((record) => record.fields["reason"] === "clock-skew");
+    expect(warned?.level).toBe("warn");
+    expect(warned?.message).toContain("this machine's clock is 3600 s behind the server's");
+    expect(Math.round(Number(warned?.fields["offsetMs"]) / 1000)).toBe(3600);
+    // Retried, never ended: no connection yet, no refusal for good.
+    expect(await settledWithin(connection.done, 50)).toBe(false);
+    expect(gw.connections()).toBe(0);
+    expect(refused.every((reason) => reason === "clock-skew")).toBe(true);
+    // The clocks agree again: the next try gets a token and connects.
+    offsetMs = 0;
+    await gw.waitFor(() => gw.connected());
+    expect(fake.tokensIssued.get(runnerId)).toBe(1);
+    expect(log.records.some((record) => record.level === "error")).toBe(false);
+  });
+
+  it("F-013: a key the server doesn't know ends the connection for good, with its own message", async () => {
+    const { server: fake } = await setup();
+    const tokens = await signedTokens(fake);
+    fake.runners.clear();
+    const { connection, refused } = await connectSigned(fake, tokens);
+    expect(await connection.done).toEqual({ kind: "unknown-key", message: UNKNOWN_KEY_MESSAGE });
+    expect(refused).toEqual(["unknown-key"]);
+    expect(fake.tokenRequests).toHaveLength(1);
+  });
+
+  it("F-013: a revoked runner's token request ends the connection for good", async () => {
+    const { server: fake } = await setup();
+    const tokens = await signedTokens(fake);
+    for (const entry of fake.runners.values()) {
+      entry.revoked = true;
+    }
+    const { connection, refused } = await connectSigned(fake, tokens);
+    const end = await connection.done;
+    expect(end.kind).toBe("revoked");
+    expect(end.kind === "stopped" ? "" : end.message).toContain("revoked in the panel");
+    expect(refused).toEqual(["revoked"]);
+  });
+
+  it("F-013: a replayed nonce is asked again at once with a fresh assertion, and the runner connects", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    const tokens = await signedTokens(fake);
+    fake.tokenRefusals.push({ status: 401, body: { error: { code: "unauthorized", message: "used", reason: "replayed" } } });
+    const { log, refused } = await connectSigned(fake, tokens);
+    await gw.waitFor(() => gw.connected());
+    expect(fake.tokenRequests).toHaveLength(2);
+    expect(fake.tokenRequests[0]?.nonce).not.toBe(fake.tokenRequests[1]?.nonce);
+    expect(refused).toEqual([]);
+    expect(log.records.some((record) => record.level === "warn")).toBe(false);
+  });
+
+  it("F-061: against a server before minor 2, a 401 without a reason is retried with the backoff, never the end", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    const tokens = await signedTokens(fake);
+    for (let index = 0; index < 3; index += 1) {
+      fake.tokenRefusals.push({ status: 401, body: { error: { code: "unauthorized", message: "the assertion was already used" } } });
+    }
+    const { connection, log, refused } = await connectSigned(fake, tokens);
+    await gw.waitFor(() => gw.connected());
+    expect(refused).toEqual(["token-refused", "token-refused", "token-refused"]);
+    const warned = log.records.filter((record) => record.fields["reason"] === "token-refused");
+    expect(warned).toHaveLength(3);
+    expect(warned[0]?.message).toBe("The server refused the access token (401) without a reason. Retrying.");
+    expect(await settledWithin(connection.done, 50)).toBe(false);
   });
 });
 

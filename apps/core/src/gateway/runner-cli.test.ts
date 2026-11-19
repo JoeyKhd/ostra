@@ -11,10 +11,12 @@ import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import { silentLogger } from "@ostra/adapter-sdk";
+import { recordingLogger } from "@ostra/adapter-sdk/testing";
 import { createAuth, ensureFirstAdmin } from "@ostra/api/auth";
 import type { OstraAuth } from "@ostra/api/auth";
 import { cookieHeaderFrom, TEST_PASSWORD } from "@ostra/api/testing";
 import { createTestDatabase } from "@ostra/db/testing";
+import { exitCodes } from "@ostra/runner";
 import type { TestDatabase } from "@ostra/db/testing";
 import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import { organizationIdSchema, replicaIdSchema, runnerIdSchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
@@ -22,7 +24,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createCoreServer } from "../server.ts";
-import { signAssertion } from "../testing/fake-peer.ts";
+import { makeRunnerKey, signAssertion } from "../testing/fake-peer.ts";
 import { postJson } from "../testing/harness.ts";
 import type { CoreServer } from "../server.ts";
 import { BOOTSTRAP_JOIN_TOKEN_FILE, ensureBootstrapJoinToken } from "./bootstrap-join-token.ts";
@@ -44,6 +46,11 @@ let test: TestDatabase;
 let auth: OstraAuth;
 let organizationId: string;
 const signingKey = randomBytes(32);
+/** How far core's clock reads from the real one: a test moves it, as a clock that jumped. */
+let coreClockOffsetMs = 0;
+const coreClock = { now: (): number => Date.now() + coreClockOffsetMs };
+/** What every core of this file logged. */
+const coreLog = recordingLogger();
 
 // ---------- core on a fixed port, so it can come back where the runner left it ----------
 
@@ -104,17 +111,19 @@ const authRoute = async (request: IncomingMessage, response: ServerResponse, url
   return true;
 };
 
-const startCore = async (): Promise<Core> => {
+const startCore = async (key: Buffer = signingKey): Promise<Core> => {
   const gateway = createGateway({
     db: test.db,
     databaseUrl: test.url,
     replicaId: replicaIdSchema.parse(`test:${randomBytes(4).toString("hex")}`),
     serverVersion: "0.0.0",
     panelUrl: coreUrl(),
-    signingKey,
+    signingKey: key,
     deviceSessions: postgresDeviceSessions(test.db),
-    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
-    logger: silentLogger,
+    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: coreClock },
+    // A ping a second, so a peer core counts dead is found within a second, not twenty.
+    timers: { pingMs: 1_000 },
+    logger: coreLog,
   });
   // Every upgraded socket, the runner's WebSocket, so a test can cut it as a dropped network does.
   const sockets = new Set<Duplex>();
@@ -149,6 +158,8 @@ type CliRunner = {
   readonly lines: string[];
   readonly line: (pattern: RegExp, timeoutMs?: number) => Promise<RegExpExecArray>;
   readonly exited: Promise<number | null>;
+  /** Ends the process and keeps its data folder, for a start after it. */
+  readonly kill: () => Promise<void>;
   readonly stop: () => Promise<void>;
 };
 
@@ -163,8 +174,10 @@ const cleanEnv = (home: string): NodeJS.ProcessEnv => {
   return { ...env, HOME: home, USERPROFILE: home, TEMP: home, TMP: home, TMPDIR: home };
 };
 
-const startCliRunner = async (executor: "host" | "docker", ...args: string[]): Promise<CliRunner> => {
-  const dataDir = await mkdtemp(path.join(tmpdir(), "ostra-f013-"));
+const startCliRunner = async (executor: "host" | "docker", ...args: string[]): Promise<CliRunner> =>
+  spawnCliRunner(await mkdtemp(path.join(tmpdir(), "ostra-f013-")), executor, args);
+
+const spawnCliRunner = (dataDir: string, executor: "host" | "docker", args: readonly string[]): CliRunner => {
   const child = spawn(process.execPath, [runnerMain, "runner", "--server", coreUrl(), "--data-dir", dataDir, "--executor", executor, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -207,7 +220,7 @@ const startCliRunner = async (executor: "host" | "docker", ...args: string[]): P
       });
     });
   };
-  const stop = async (): Promise<void> => {
+  const kill = async (): Promise<void> => {
     if (child.exitCode === null && child.pid !== undefined) {
       if (process.platform === "win32") {
         spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
@@ -216,9 +229,12 @@ const startCliRunner = async (executor: "host" | "docker", ...args: string[]): P
       }
       await exited;
     }
+  };
+  const stop = async (): Promise<void> => {
+    await kill();
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
   };
-  const started: CliRunner = { child, dataDir, lines, line, exited, stop };
+  const started: CliRunner = { child, dataDir, lines, line, exited, kill, stop };
   runners.push(started);
   return started;
 };
@@ -264,6 +280,15 @@ const signInPersonal = async (name: string): Promise<{ readonly runner: CliRunne
 
 const runnerRow = (runnerId: string) => test.db.runner.findUniqueOrThrow({ where: { id: runnerId } });
 
+const HOUR = 3_600_000;
+
+/** Core's log lines for the token refusals of `runnerId`, of one `reason` when it's given. */
+const tokenRefusals = (runnerId: string, reason?: string) =>
+  coreLog.records.filter(
+    (record) =>
+      record.message === "runner.token-refused" && record.fields["runnerId"] === runnerId && (reason === undefined || record.fields["reason"] === reason),
+  );
+
 beforeAll(async () => {
   test = await createTestDatabase();
   port = await freePort();
@@ -283,6 +308,8 @@ beforeAll(async () => {
 
 afterEach(async () => {
   for (const runner of runners.splice(0)) await runner.stop();
+  coreClockOffsetMs = 0;
+  core ??= await startCore();
 });
 
 afterAll(async () => {
@@ -384,5 +411,71 @@ describe("ostra runner against core", () => {
     const again = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId } });
     expect(again.connectionEpoch).toBeGreaterThan(first.connectionEpoch);
     expect(again.disconnectedAt).toBeNull();
+  });
+
+  it("F-013: when core's clock and its own disagree, it says by how much, keeps asking, and connects once they agree", async () => {
+    const { runner, runnerId } = await signInPersonal("clock");
+    await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
+    const first = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId } });
+
+    // Core's clock jumps an hour ahead of the runner's (2026-11-19): core counts the peer dead and
+    // drops it, the token the runner holds has expired by core's clock, and its new assertion is an
+    // hour old by core's.
+    coreClockOffsetMs = HOUR;
+    await runner.line(/this machine's clock is 3600 s behind the server's/);
+    await waitFor("a second clock-skew refusal", () => Promise.resolve(tokenRefusals(runnerId, "clock-skew").length >= 2));
+    // It keeps asking: no exit, and nothing calls it revoked or says to delete its identity.
+    expect(runner.child.exitCode).toBeNull();
+    const output = runner.lines.join("\n");
+    expect(output).not.toContain("To sign in again");
+    expect(output).not.toContain("revoked");
+
+    // The clocks agree again: it connects by itself, with the identity it had.
+    coreClockOffsetMs = 0;
+    await waitFor(
+      "the runner connected again",
+      async () => {
+        const presence = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId } });
+        return presence.connectionEpoch > first.connectionEpoch && presence.disconnectedAt === null;
+      },
+      45_000,
+    );
+    await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
+    expect(runner.child.exitCode).toBeNull();
+    expect(tokenRefusals(runnerId).every((record) => record.fields["reason"] === "clock-skew")).toBe(true);
+  });
+
+  it("F-013: a revoked runner stops with the refused exit code and the advice to sign in again", async () => {
+    const { runner, runnerId } = await signInPersonal("revoked");
+    await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
+    await runner.kill();
+    await test.db.runner.update({ where: { id: runnerId }, data: { state: "revoked", revokedAt: new Date() } });
+
+    // Its next start asks for a token with the identity it kept.
+    const again = spawnCliRunner(runner.dataDir, "host", ["--name", "revoked"]);
+    expect(await again.exited).toBe(exitCodes.refused);
+    const output = again.lines.join("\n");
+    expect(output).toContain("The server refused this runner's key: it was revoked in the panel.");
+    expect(output).toContain(`To sign in again, delete ${path.join(runner.dataDir, "identity")} and start the runner again.`);
+    expect(output).not.toContain("doesn't know");
+    expect(tokenRefusals(runnerId).map((record) => record.fields["reason"])).toEqual(["revoked"]);
+  });
+
+  it("F-013: a key core doesn't know ends the runner with its own message, not as revoked", async () => {
+    const { runner, runnerId } = await signInPersonal("forgotten");
+    await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
+
+    // Core comes back after a reset: a new token key, and another key on this runner's row.
+    await killCore();
+    await test.db.runner.update({ where: { id: runnerId }, data: { publicKey: (await makeRunnerKey()).publicKey } });
+    core = await startCore(randomBytes(32));
+
+    // The connection asks for a token, and stops for good.
+    expect(await runner.exited).toBe(exitCodes.refused);
+    const output = runner.lines.join("\n");
+    expect(output).toContain("The server doesn't know this runner's key");
+    expect(output).toContain(`To sign in again, delete ${path.join(runner.dataDir, "identity")} and start the runner again.`);
+    expect(output).not.toContain("revoked");
+    expect(tokenRefusals(runnerId).map((record) => record.fields["reason"])).toEqual(["unknown-key"]);
   });
 });

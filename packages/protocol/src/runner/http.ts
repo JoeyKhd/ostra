@@ -55,7 +55,9 @@ export const runnerPaths = {
 export const runnerHeaders = {
   /**
    * The negotiated minor, on every HTTP carrier request. Minor 1: also on the spec request, so
-   * core answers in that minor's shape. A request without it is read as minor 0.
+   * core answers in that minor's shape. Minor 2: also on the token request, with the runner's own
+   * minor (nothing is negotiated yet), so core says why it refused (`tokenRefusalReasonSchema`).
+   * A request without it is read as minor 0.
    */
   minor: "x-ostra-minor",
   /** The connection epoch from `welcome`; a newer connection answers `409`. */
@@ -76,6 +78,29 @@ export const minorFromHeader = (value: string | null | undefined): number => {
   return Number(value);
 };
 
+/**
+ * Minor 2: why `POST /runner/v1/token` refused an assertion, in the error body's `reason`. Core
+ * names it to a runner whose request says minor 2 or later in `x-ostra-minor`, and leaves it out
+ * for an older one (`encodeRunnerHttpErrorForMinor`). Only `revoked` and `unknown-key` are for good.
+ */
+export const tokenRefusalReasonSchema = z.enum([
+  /**
+   * 401. `issuedAt` is more than `runnerLimits.assertionSkewMs` from the server's clock; `serverTime`
+   * says what the server's read. The runner retries with its backoff and connects once the clocks agree.
+   */
+  "clock-skew",
+  /**
+   * 401. No runner has this ID, or its key doesn't verify the signature: one answer for both, so
+   * nothing about which runners exist leaks. The runner's identity is of no use on this server.
+   */
+  "unknown-key",
+  /** 403. The runner was revoked: it registers again, with a new identity. */
+  "revoked",
+  /** 401. The nonce was used before, as when a proxy resends a request: the runner signs a fresh assertion. */
+  "replayed",
+]);
+export type TokenRefusalReason = z.infer<typeof tokenRefusalReasonSchema>;
+
 /** Any runner endpoint's error body. */
 export const runnerHttpErrorSchema = z.strictObject({
   error: z.strictObject({
@@ -94,9 +119,25 @@ export const runnerHttpErrorSchema = z.strictObject({
     ]),
     message: z.string().max(2000),
     currentEpoch: leaseEpochSchema.optional(),
+    /** Minor 2, on the token endpoint's refusals: why. */
+    reason: tokenRefusalReasonSchema.optional(),
+    /** Minor 2, with `clock-skew`: the server's clock when it refused, in ms since the epoch. */
+    serverTime: epochMsSchema.optional(),
   }),
 });
 export type RunnerHttpError = z.infer<typeof runnerHttpErrorSchema>;
+
+/**
+ * An error body as a runner at `minor` reads it. Every field is strict, so below minor 2 it goes
+ * without the token refusal's `reason` and `serverTime`, and parses as it did in minor 1.
+ */
+export const encodeRunnerHttpErrorForMinor = (body: RunnerHttpError, minor: number): RunnerHttpError => {
+  if (minor >= 2) {
+    return body;
+  }
+  const { code, message, currentEpoch } = body.error;
+  return { error: { code, message, ...(currentEpoch === undefined ? {} : { currentEpoch }) } };
+};
 
 // ---------- GET /runner/v1/info ----------
 
@@ -172,7 +213,8 @@ const TOKEN_ASSERTION_TAG = "ostra-runner-token-v1";
  *     <nonce>
  *
  * The signature is sent in base64url without padding (86 characters). The server refuses an
- * `issuedAt` more than `runnerLimits.assertionSkewMs` from its clock, and a nonce it has seen.
+ * `issuedAt` more than `runnerLimits.assertionSkewMs` from its clock, and a nonce it has seen. From
+ * minor 2 its refusal names why, in `reason` (`tokenRefusalReasonSchema`).
  */
 export const tokenAssertionSchema = z
   .strictObject({
