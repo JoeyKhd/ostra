@@ -1,0 +1,43 @@
+Two flat, straight-on, pixel-precise phone screenshots side by side in one image, dark mode, of ostra, a developer console for coding agents, at phone width. Each screen is exactly 390x844 CSS pixels drawn at 1.5x (585x1266 image pixels), a plain rectangle with square corners and a 1px #2A2C30 outline, no device frame, no bezel, no notch, no status bar, no perspective, no shadow. The two screens stand on a flat plain #26282C canvas, vertically centred, with an equal gap of about 140 image pixels between them and at the left and right edges. Nothing else on the canvas: no captions, no labels, no arrows. Match the attached reference screenshots exactly in style: the same near-black neutral graphite chrome, the same fonts, the same hairline rows, the same quiet density as the attached phone screens, and the same amber "Needs you" approval treatment as the attached desktop task page (an amber left rule, not a card; the amber filled "Approve once" button). No gradients, no glow, no purple, no illustrations, no emoji, no bottom tab bar, no cards with shadows, never a box inside a box.
+
+PALETTE (exact hex): page background #0D0E10; sheets #0A0B0C; raised surfaces (code, group header bands) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; link teal #6FB8AA; Needs-you amber #FFB224, with near-black #0C1D21 text on amber fills. Amber appears ONLY on the needs-you labels, the left rules, the hand icons and the two amber buttons. Project colour squares: calculator #5DB89B, billing-platform #8B7CF6, mobile-app #4A9EE8, each only as an 8px square.
+
+TYPE: page titles Manrope Bold 22px; everything else IBM Plex Sans 14px body, 12.5px secondary (buttons weight 500, section titles 600); IBM Plex Mono for ticket keys, commands, paths, times and ages. Icons are thin Lucide line icons, 16px, stroke 1.75, grey unless amber is stated.
+
+LEFT SCREEN: the "Needs you" page, an approval answered inline.
+- TOP BAR 44px, 1px bottom hairline, 16px side padding: a menu icon (three lines) at the left, then "Needs you" in white weight 500.
+- PAGE, 16px side padding: title "Needs you"; under it one muted 13px line: "5 open across 3 projects · newest first".
+- underline tabs, 36px, a hairline under the row: "Open" in white weight 500 with a faint "5" and a 2px white underline; "Done" in muted.
+- a GROUP BAND 32px, full bleed, background #131416: an 8px #5DB89B square, "calculator" weight 600 13px, a faint "2".
+- the FIRST ITEM, unread and open, with a 2px amber left rule running its whole height and 14px of space after the rule:
+   - line 1: an amber hand icon and amber 13px weight 500 "Needs you · approval", and at the far right faint mono "4m"
+   - line 2: faint mono "CALC-142" then white 15px weight 500 "Retry webhook delivery on 5xx"
+   - line 3, white 14px: "OpenCode wants to add a dependency:"
+   - a code box, background #131416, 1px #2A2C30 border, 6px radius, mono 13px white: "pnpm add p-retry"
+   - one muted 12.5px line: "Rule: Adding a dependency"
+   - the amber primary button, full width, 44px tall, 8px radius, filled #FFB224, near-black #0C1D21 text weight 600: [check icon] "Approve once"
+   - under it, two outline buttons side by side, each 44px tall, 1px #2A2C30 border, 8px radius, no fill, white text weight 500: "Approve for this task" and "Deny"
+   - one faint 12px line: "For this task allows pnpm add … in CALC-142, with any package."
+   - one faint 12px line: "Any member of calculator can answer. The first answer wins."
+- a hairline, then a SECOND ITEM, read, 64px, a 2px amber left rule: line 1 amber 12.5px "Needs you · setup failed" and at the right faint mono "41m"; line 2 faint mono "CALC-150" and white 14px "Export history as CSV"; at the far right of the item, vertically centred, a small outline button 32px tall "Open task".
+- a GROUP BAND 32px #131416: an 8px #8B7CF6 square, "billing-platform" weight 600, a faint "1".
+- a THIRD ITEM, unread, 64px, a 2px amber left rule: line 1 amber hand icon + amber 12.5px "Needs you · plan" and at the right faint mono "11m"; line 2 faint mono "BIL-88" and white 14px "Prorate seat changes"; at the far right, vertically centred, a small outline button 32px tall "Review plan".
+- at the very bottom edge, cut off, the top of a GROUP BAND with an 8px #4A9EE8 square and "mobile-app".
+
+RIGHT SCREEN: the same "Needs you" page with BIL-88's plan open in a bottom sheet.
+- Behind the sheet, dimmed by a flat 55% black overlay: the same top bar, title, muted line, tabs and the calculator group band.
+- the BOTTOM SHEET covers the lower 80% of the screen: background #0A0B0C, a 1px #2A2C30 top border, 14px top corner radius, a small grey grab handle centred at its top. Inside, 16px padding:
+   - faint mono "BIL-88" then muted " · billing-platform" at the left, and at the right a teal link "Open task" with a tiny arrow-up-right icon
+   - the title in white 18px semibold: "Prorate seat changes"
+   - one 13px line: an amber hand icon and amber weight 500 "Needs you · plan", then muted " · you're driving"
+   - a hairline, then the agent's message, no bubble: a small round outlined bot icon, "OpenCode" semibold + faint mono "plan turn · 14:20", and two lines of muted 13.5px text: "I read the billing service and the seat model. Nothing is changed yet; this is how I'd do it."
+   - the small label "Plan" 13px semibold, then four rows 40px tall separated by 1px #1F2023 hairlines, each with a faint mono number on the left and white 14px text:
+      "1" "Add prorate() in src/billing/proration.ts" (the path in mono)
+      "2" "Charge the difference when seats are added mid-cycle"
+      "3" "Credit removed seats on the next invoice"
+      "4" "Tests for upgrades, downgrades and the last day of a cycle"
+   - the amber primary button, full width, 44px tall, filled #FFB224, near-black text weight 600: [check icon] "Approve plan"
+   - under it, two outline buttons side by side, 44px tall, 1px #2A2C30 border, no fill, white text weight 500: [pencil icon] "Edit and approve" and [message icon] "Ask for changes"
+   - one faint 12px line with an info icon: "Only the driver answers a plan. The agent starts from the approved text."
+
+The overall feel: calm, precise, dense yet comfortable for a thumb, the same product as the references. Clean, crisp, perfectly legible text, every word spelled exactly as written above, aligned to a strict grid, nothing decorative.
