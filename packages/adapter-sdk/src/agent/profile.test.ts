@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { TaskEvent, TurnMode } from "@ostra/protocol";
+import type { EffortLevel, TaskEvent, TurnMode } from "@ostra/protocol";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { ok } from "../common/result.ts";
@@ -38,6 +38,7 @@ const capabilities = (planMode: AgentCapabilities["planMode"]): AgentCapabilitie
   mcp: { http: false, stdio: false },
   projectConfigOverride: false,
   memory: "index-only",
+  reasoningEffort: "none",
 });
 
 const unusedDriver: DriverPort = {
@@ -55,6 +56,9 @@ class ModeAgent extends AgentAdapter {
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });
   }
+  effortLevels(): readonly EffortLevel[] {
+    return ["default"];
+  }
   prepareLaunch(): Promise<AdapterResult<AgentLaunch>> {
     return Promise.resolve(ok({ command: "x", args: [], env: {}, cwd: ".", files: [] }));
   }
@@ -71,12 +75,13 @@ const sessionWith = (connection: Partial<DriverConnection>): AgentSession => ({
   sessionId: sessionIdSchema.parse("session-1"),
   agentSessionId: "agent-session-1",
   replayedUpdates: 0,
+  configOptions: [],
   connection: {
     agentName: null,
     agentVersion: null,
     steeringAdvertised: false,
-    newSession: () => Promise.resolve(ok({ agentSessionId: "x" })),
-    loadSession: () => Promise.resolve(ok(undefined)),
+    newSession: () => Promise.resolve(ok({ agentSessionId: "x", configOptions: [] })),
+    loadSession: () => Promise.resolve(ok({ configOptions: [] })),
     prompt: () => Promise.resolve(ok({ stopReason: "end_turn" as const })),
     cancel: () => Promise.resolve(),
     steer: () => Promise.resolve(ok(undefined)),

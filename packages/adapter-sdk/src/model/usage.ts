@@ -122,6 +122,9 @@ const anthropicUsage = z.looseObject({
   output_tokens: count.nullish(),
   cache_read_input_tokens: count.nullish(),
   cache_creation_input_tokens: count.nullish(),
+  // F-137: how many of the billed output tokens were thinking. Streamed, it's on the final
+  // `message_delta` only (Anthropic, "Extended thinking").
+  output_tokens_details: z.looseObject({ thinking_tokens: count.nullish() }).nullish(),
 });
 
 const anthropicBody = z.looseObject({
@@ -164,6 +167,7 @@ type AnthropicFields = {
   output: number | undefined;
   cacheRead: number | undefined;
   cacheWrite: number | undefined;
+  reasoning: number | undefined;
 };
 
 /** Later Anthropic usage objects carry cumulative values: a present field replaces the earlier one. */
@@ -172,6 +176,8 @@ const mergeAnthropic = (into: AnthropicFields, usage: z.infer<typeof anthropicUs
   if (usage.output_tokens !== undefined && usage.output_tokens !== null) into.output = usage.output_tokens;
   if (usage.cache_read_input_tokens !== undefined && usage.cache_read_input_tokens !== null) into.cacheRead = usage.cache_read_input_tokens;
   if (usage.cache_creation_input_tokens !== undefined && usage.cache_creation_input_tokens !== null) into.cacheWrite = usage.cache_creation_input_tokens;
+  const thinking = usage.output_tokens_details?.thinking_tokens;
+  if (thinking !== undefined && thinking !== null) into.reasoning = thinking;
 };
 
 const anthropicToUsage = (fields: AnthropicFields): TokenUsage | undefined => {
@@ -181,7 +187,8 @@ const anthropicToUsage = (fields: AnthropicFields): TokenUsage | undefined => {
     output: fields.output ?? 0,
     cacheRead: fields.cacheRead ?? 0,
     cacheWrite: fields.cacheWrite ?? 0,
-    reasoning: 0,
+    // A part of `output`, as OpenAI's is: never added to it.
+    reasoning: fields.reasoning ?? 0,
   };
 };
 
@@ -262,7 +269,7 @@ export const createUsageMeter = (format: WireFormat, streamed: boolean): UsageMe
   let usage: TokenUsage | undefined;
   let responseModel: string | undefined;
   let outputBytes = 0;
-  const anthropic: AnthropicFields = { input: undefined, output: undefined, cacheRead: undefined, cacheWrite: undefined };
+  const anthropic: AnthropicFields = { input: undefined, output: undefined, cacheRead: undefined, cacheWrite: undefined, reasoning: undefined };
 
   const onData = (data: string): void => {
     if (data === "[DONE]") return;

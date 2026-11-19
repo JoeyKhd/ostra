@@ -6,6 +6,7 @@ export * from "./code-host-suite.ts";
 export * from "./fake-reviews-and-checks.ts";
 export * from "./agent-suite.ts";
 export * from "./agent-memory-cases.ts";
+export * from "./agent-effort-cases.ts";
 export * from "./fake-memory-core.ts";
 export * from "./executor-suite.ts";
 export * from "./model-provider-suite.ts";

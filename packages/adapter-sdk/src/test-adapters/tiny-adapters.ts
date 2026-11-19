@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { repoFullNameSchema, segmentIdSchema } from "@ostra/protocol";
 import { z } from "zod";
-import type { BoxState, GitPerson, OrganizationId, RepoFullName, StopReason, TaskEvent } from "@ostra/protocol";
+import type { BoxState, EffortLevel, GitPerson, OrganizationId, RepoFullName, StopReason, TaskEvent } from "@ostra/protocol";
 
 import { AgentAdapter } from "../agent/base.ts";
 import type {
@@ -1067,9 +1067,9 @@ export const scriptedDriver = (): DriverPort => ({
       steeringAdvertised: false,
       newSession: () => {
         sessions += 1;
-        return Promise.resolve(ok({ agentSessionId: `scripted-${String(sessions)}` }));
+        return Promise.resolve(ok({ agentSessionId: `scripted-${String(sessions)}`, configOptions: [] }));
       },
-      loadSession: () => Promise.resolve(ok(undefined)),
+      loadSession: () => Promise.resolve(ok({ configOptions: [] })),
       prompt: (agentSessionId, text) => {
         handlers.onUpdate(agentSessionId, {
           sessionUpdate: "agent_message_chunk",
@@ -1119,9 +1119,13 @@ export class TinyAgent extends AgentAdapter {
     skills: false,
     mcp: { http: false, stdio: false },
     projectConfigOverride: false,
-    // Milestone 4: no MCP, so the memory block alone.
+    // Milestone 4: no MCP, so the memory block alone; and no reasoning level (F-137).
     memory: "index-only",
+    reasoningEffort: "none",
   };
+  effortLevels(): readonly EffortLevel[] {
+    return ["default"];
+  }
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });
   }

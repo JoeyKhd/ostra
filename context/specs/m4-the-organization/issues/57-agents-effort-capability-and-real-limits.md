@@ -1,6 +1,6 @@
 # 57: Agent SDK and OpenCode: the effort capability, the levels and the real limits
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 02, 07, 56
 Features: F-137, F-019
@@ -43,9 +43,11 @@ Spec: `../spec.md`, sections 4 ("Reasoning effort") and 5.6; ADR 0066; `context/
 
 ## Done when
 
-- [ ] Tests named `it("F-137: ...")`: every case above, on OpenCode and on the fakes (`session-option` and `none`).
-- [ ] The capability is declared by every adapter, and the fakes keep adapter parity tested (`AGENTS.md`).
-- [ ] The whole-repo checks pass (spec section 9): it runs agent output.
-- [ ] Committed as `✨ add reasoning effort to the agent interface`.
+- [x] Tests named `it("F-137: ...")`: every case above, on OpenCode and on the fakes (`session-option` and `none`).
+- [x] The capability is declared by every adapter, and the fakes keep adapter parity tested (`AGENTS.md`).
+- [x] The whole-repo checks pass (spec section 9): it runs agent output.
+- [x] Committed as `✨ add reasoning effort to the agent interface`.
 
 ## Comments
+
+- 2026-11-19: built in `✨ add reasoning effort to the agent interface`. `AgentCapabilities.reasoningEffort` is declared by every adapter (OpenCode `session-option`; the existing fakes, the tiny agent and the docs' sample `none`; a new `session-option` fake, `new FakeAgentAdapter("rich", undefined, undefined, "mcp", "session-option")`, whose option's ID is `reasoning`, not OpenCode's `effort`, so the base class finds it by category). The base class has abstract `effortLevels(model)`, `effortValue(level, model)` and `setEffort(session, level, model)`: it takes the model (`effortModelOf(spec model)`) because `effortValue` reads it; the runner (ticket 60) passes the spec's. The driver's `newSession` and `loadSession` return the session's `configOptions`, and `PrepareLaunchInput.model` gains `reasoning` and `limits`. OpenCode's levels are a port of its `Variant.resolve` at 2.3.2 (`adapter-opencode/src/effort.ts`, read from the tag's `packages/core/src/variant.ts`). The config carries `capabilities.reasoning` and the real `limit`; the catalog file now decodes (a `release_date`, the v1 reasoning fields, the same limits), and a recording proxy shows OpenCode still fetches nothing (removing `OPENCODE_DISABLE_MODELS_FETCH` makes it call `models.opencode.ai`). The key proxy reads Anthropic's `thinking_tokens`. The shared suite's cases are `adapter-sdk/src/testing/agent-effort-cases.ts`; the proof cites the OpenCode-named and fake-named tests, since `check:proof` takes `*.test.ts` files only. Proofs in `context/proof/F-137.md`.

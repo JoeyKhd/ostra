@@ -9,6 +9,7 @@ import type { TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { effortModelOf } from "../../agent/base.ts";
 import type { AgentSession } from "../../agent/base.ts";
 
 import { sampleMemoryBlock } from "../agent-memory-cases.ts";
@@ -21,7 +22,7 @@ import { runAgentCommand, spawnAgentProcess } from "../spawn-agent.ts";
 import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, fakeMarker } from "./agent.ts";
 import type { FakeAgentProfile } from "./agent.ts";
 import { FakeAgentAdapter } from "./fake-agent-adapter.ts";
-import type { FakeAgentMemory } from "./fake-agent-adapter.ts";
+import type { FakeAgentEffort, FakeAgentMemory } from "./fake-agent-adapter.ts";
 
 // The agent contract suite, against the scripted fake ACP agent in both profiles, as a real child
 // process through ostra's ACP driver (ticket 10).
@@ -148,6 +149,8 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture
       repos: REPOS,
     },
     canary: { prompt: (absolutePath) => fakeMarker("shell-read", absolutePath) },
+    // Milestone 4 (F-137): no model behind the fake, so it says its level instead.
+    effort: { modelIds: [base.model.endpointModelId], sayEffort: fakeMarker("effort") },
   };
 };
 
@@ -164,6 +167,13 @@ defineAgentContractSuite({
   create: async () => ({ adapter: new FakeAgentAdapter("plain", undefined, undefined, "index-only"), fixture: await fixtureFor("index-only") }),
 });
 
+// Milestone 4 (ticket 57, F-137): the fake that takes a reasoning level as a `thought_level`
+// session option, beside the fakes above, which declare `none`.
+defineAgentContractSuite({
+  name: "the scripted fake ACP agent, rich profile, session-option effort",
+  create: async () => ({ adapter: new FakeAgentAdapter("rich", undefined, undefined, "mcp", "session-option"), fixture: await fixtureFor() }),
+});
+
 // F-019: the fakes stand for what OpenCode lacks. `rich` declares native plan updates and
 // reject-and-continue, and both happen; `plain` declares neither, and can't be steered.
 
@@ -172,10 +182,10 @@ const turnOf = (n: number) => turnIdSchema.parse(`fake-f019-turn-${String(n)}`);
 const runFake = async (
   profile: FakeAgentProfile,
   body: (adapter: FakeAgentAdapter, session: AgentSession, events: TaskEvent[], fixture: AgentFixture) => Promise<void>,
-  milestone4: { readonly memory?: FakeAgentMemory; readonly launch?: Partial<PrepareLaunchInput> } = {},
+  milestone4: { readonly memory?: FakeAgentMemory; readonly launch?: Partial<PrepareLaunchInput>; readonly effort?: FakeAgentEffort } = {},
 ): Promise<void> => {
   const fixture = await fixtureFor(milestone4.memory);
-  const adapter = new FakeAgentAdapter(profile, undefined, undefined, milestone4.memory);
+  const adapter = new FakeAgentAdapter(profile, undefined, undefined, milestone4.memory, milestone4.effort);
   const launch = await adapter.prepareLaunch({ ...fixture.launchInput, ...milestone4.launch });
   if (!launch.ok) throw new Error(launch.error.message);
   const started = await spawnAgentProcess(launch.value);
@@ -326,5 +336,53 @@ describe("the fake ACP agents and ADR 0035's canary (F-073)", () => {
       const done = events.find((event) => event.kind === "tool.completed" && call?.kind === "tool.called" && event.toolCallId === call.toolCallId);
       expect(JSON.stringify(done)).toContain("canary-value-1234");
     });
+  }, 60_000);
+});
+
+// Milestone 4 (ticket 57, F-137): the scripted fakes keep adapter parity for reasoning effort.
+
+describe("F-137 on the scripted fakes", () => {
+  const model: PrepareLaunchInput["model"] = {
+    endpointModelId: "stub-model",
+    apiFormat: "openai-compatible",
+    baseUrl: "http://127.0.0.1:9/key-proxy/v1",
+    placeholderKey: "ostra-fake-key-for-this-task",
+    reasoning: { supported: true, toggle: true, effort: ["low", "high"] },
+  };
+
+  it("F-137: the session-option fake advertises a thought_level option with the model's levels and records each value set; a level it lacks is clamped first", async () => {
+    let turns = 0;
+    await runFake(
+      "rich",
+      async (adapter, session, events) => {
+        const effortModel = effortModelOf(model);
+        expect(adapter.capabilities.reasoningEffort).toBe("session-option");
+        expect(adapter.effortLevels(effortModel)).toEqual(["default", "none", "low", "high", "on"]);
+        const option = session.configOptions.find((candidate) => candidate.category === "thought_level");
+        expect(option).toEqual({ id: "reasoning", category: "thought_level", currentValue: "default", values: ["none", "low", "high", "on", "default"] });
+        for (const [asked, ran] of [["high", "high"], ["max", "high"], ["low", "low"], ["default", "default"]] as const) {
+          const set = await adapter.setEffort(session, asked, effortModel);
+          expect(set, asked).toMatchObject({ ok: true, value: { level: ran } });
+        }
+        turns += 1;
+        expect(await adapter.prompt(session, turnIdSchema.parse(`fake-effort-${String(turns)}`), fakeMarker("effort"))).toMatchObject({ ok: true });
+        // `max` was clamped to `high`, which the session already had: nothing was sent for it.
+        const said = events.flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
+        expect(said).toContain("effort: default set: high,low,default");
+      },
+      { effort: "session-option", launch: { model } },
+    );
+  }, 60_000);
+
+  it("F-137: the fakes that declare none advertise no level, and setEffort leaves them at default", async () => {
+    for (const profile of ["rich", "plain"] as const) {
+      await runFake(profile, async (adapter, session) => {
+        const effortModel = effortModelOf(model);
+        expect(adapter.capabilities.reasoningEffort).toBe("none");
+        expect(adapter.effortLevels(effortModel)).toEqual(["default"]);
+        expect(session.configOptions).toEqual([]);
+        expect(await adapter.setEffort(session, "high", effortModel)).toEqual({ ok: true, value: { session, level: "default", adjustedFrom: "high", events: [] } });
+      }, { launch: { model } });
+    }
   }, 60_000);
 });

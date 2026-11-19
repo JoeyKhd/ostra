@@ -13,6 +13,8 @@ import type {
   PrepareLaunchInput,
   QuestionAnswer,
 } from "../agent/base.ts";
+import { defineAgentEffortCases } from "./agent-effort-cases.ts";
+import type { AgentEffortProbes } from "./agent-effort-cases.ts";
 import { defineAgentMemoryCases } from "./agent-memory-cases.ts";
 import type { AgentCanaryProbe, AgentMemoryProbes } from "./agent-memory-cases.ts";
 import { defineAgentProfileCases } from "./agent-profile-cases.ts";
@@ -114,6 +116,8 @@ export type AgentFixture = {
   readonly memory?: AgentMemoryProbes;
   /** Milestone 4 (ADR 0035, F-073): the canary control. Absent: skipped. */
   readonly canary?: AgentCanaryProbe;
+  /** Milestone 4 (ADR 0066, F-137): the reasoning effort cases. Absent: skipped. */
+  readonly effort?: AgentEffortProbes;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -147,6 +151,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       mcp: "object",
       projectConfigOverride: "boolean",
       memory: "string",
+      reasoningEffort: "string",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -551,6 +556,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
 
     // Milestone 4: memory, the repos side by side, and the canary (ADR 0044, ADR 0035).
     defineAgentMemoryCases(subject);
+
+    // Milestone 4: reasoning effort, the research's probe (ADR 0066).
+    defineAgentEffortCases(subject);
   });
 };
 

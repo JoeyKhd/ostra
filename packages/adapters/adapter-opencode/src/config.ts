@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { composeLaunchInstructions, GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
+import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
 import type { LaunchFile, LaunchMcpServer, PrepareLaunchInput } from "@ostra/adapter-sdk";
 
 import { agentForMode, buildPermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
@@ -33,8 +33,42 @@ const CATALOG_NPM_BY_FORMAT = {
   "anthropic-messages": "@ai-sdk/anthropic",
 } as const;
 
-const DEFAULT_CONTEXT = 128_000;
-const DEFAULT_OUTPUT = 16_000;
+/** The limits written when the model's own aren't known (F-137): each falls back alone. */
+export const DEFAULT_CONTEXT = 128_000;
+export const DEFAULT_OUTPUT = 16_000;
+
+/**
+ * The model's limits as OpenCode reads them (research section 4): the real context window and
+ * output limit, so compaction starts near the real window and a long thought isn't cut at 16,000.
+ */
+export const modelLimit = (input: PrepareLaunchInput): { readonly context: number; readonly output: number } => {
+  const { limits } = effortModelOf(input.model);
+  return { context: limits.contextWindow ?? DEFAULT_CONTEXT, output: limits.maxOutputTokens ?? DEFAULT_OUTPUT };
+};
+
+/**
+ * The model's reasoning controls in OpenCode's config (`capabilities.reasoning`, models.dev v2's
+ * shape), so its variants are the model's own and never guessed from the package (ADR 0066).
+ * A model with none gets `{ supported: false }`: no effort at all.
+ */
+export const modelReasoning = (input: PrepareLaunchInput): Record<string, unknown> => ({ ...effortModelOf(input.model).reasoning });
+
+/** The same controls in models.dev's v1 catalog shape (`reasoning`, `reasoning_options`), which OpenCode converts back. */
+const catalogReasoning = (input: PrepareLaunchInput): Record<string, unknown> => {
+  const { reasoning } = effortModelOf(input.model);
+  if (!reasoning.supported) {
+    return { reasoning: false };
+  }
+  const options = [
+    ...(reasoning.toggle === true ? [{ type: "toggle" }] : []),
+    ...(reasoning.effort === undefined ? [] : [{ type: "effort", values: reasoning.effort }]),
+    ...(reasoning.budget === undefined ? [] : [{ type: "budget_tokens", ...reasoning.budget }]),
+  ];
+  return { reasoning: true, ...(options.length === 0 ? {} : { reasoning_options: options }) };
+};
+
+/** The catalog file's release date: required for OpenCode to decode the entry, and read for nothing else. */
+const CATALOG_RELEASE_DATE = "2026-01-01";
 
 /** The task's folders under its agent directory: nothing shared with the runner's user or another task. */
 export const taskDirs = (agentDir: string) => ({
@@ -98,7 +132,9 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
   const { model } = input;
   const providerModel = {
     name: model.endpointModelId,
-    limit: { context: DEFAULT_CONTEXT, output: DEFAULT_OUTPUT },
+    limit: modelLimit(input),
+    // Milestone 4 (F-137): the model's own levels, as OpenCode's variants.
+    capabilities: { reasoning: modelReasoning(input) },
   };
   const mcpServers = input.mcpServers ?? [];
   const skills = input.skills ?? [];
@@ -153,7 +189,9 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
 
 /**
  * The model catalog as a file, in models.dev's shape, which OpenCode reads from `OPENCODE_MODELS_PATH`
- * so the agent never fetches it (ADR 0033: "the agent never fetches the catalog").
+ * so the agent never fetches it (ADR 0033: "the agent never fetches the catalog"). Milestone 4
+ * (F-137): with a `release_date`, which OpenCode 2.3.2 needs to decode an entry at all (research
+ * section 1.7, S4), and the model's reasoning and limits, so it agrees with the config.
  */
 export const buildModelsCatalog = (input: PrepareLaunchInput): Record<string, unknown> => ({
   [PROVIDER_ID]: {
@@ -165,8 +203,10 @@ export const buildModelsCatalog = (input: PrepareLaunchInput): Record<string, un
       [input.model.endpointModelId]: {
         id: input.model.endpointModelId,
         name: input.model.endpointModelId,
+        release_date: CATALOG_RELEASE_DATE,
         tool_call: true,
-        limit: { context: DEFAULT_CONTEXT, output: DEFAULT_OUTPUT },
+        ...catalogReasoning(input),
+        limit: modelLimit(input),
       },
     },
   },

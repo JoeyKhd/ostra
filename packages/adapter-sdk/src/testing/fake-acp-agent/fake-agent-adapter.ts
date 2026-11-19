@@ -5,11 +5,12 @@ import { mcpSubjectValue } from "@ostra/protocol";
 import type { ApprovalRequestSubject } from "@ostra/protocol";
 
 import { createAcpDriver } from "../../agent/acp/driver.ts";
-import { AgentAdapter, composeLaunchInstructions } from "../../agent/base.ts";
+import { AgentAdapter, composeLaunchInstructions, effortModelOf, orderedEffortLevels } from "../../agent/base.ts";
 import type {
   AgentCommand,
   AgentLaunch,
   DriverPort,
+  EffortModel,
   ExportSessionInput,
   ImportSessionInput,
   MappedUpdate,
@@ -22,6 +23,7 @@ import { ok } from "../../common/result.ts";
 import type { AdapterResult, HealthReport } from "../../common/result.ts";
 import { FAKE_AGENT_REPO_CONFIG, fakeAgentCapabilities } from "./agent.ts";
 import type { FakeAgentConfig, FakeAgentProfile } from "./agent.ts";
+import type { EffortLevel } from "@ostra/protocol";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 
@@ -30,6 +32,13 @@ const PASSTHROUGH = process.platform === "win32" ? ["PATH", "Path", "SystemRoot"
 
 /** Milestone 4 (ticket 02): how a fake takes memory. `index-only` is the third fake: no ostra MCP server. */
 export type FakeAgentMemory = "mcp" | "index-only";
+
+/**
+ * Milestone 4 (F-137, ADR 0066): how a fake takes a reasoning level. The existing fakes declare
+ * `none`; `session-option` advertises a `thought_level` option (its ID is `reasoning`, not
+ * OpenCode's `effort`) with the model's levels, and records each value set on it.
+ */
+export type FakeAgentEffort = "session-option" | "none";
 
 /**
  * The scripted fake ACP agent, run through ostra's driver like any agent (ADR 0032). It declares
@@ -47,10 +56,16 @@ export class FakeAgentAdapter extends AgentAdapter {
   override readonly repoConfigPaths: readonly string[] = [FAKE_AGENT_REPO_CONFIG];
   readonly #profile: FakeAgentProfile;
 
-  constructor(profile: FakeAgentProfile, driver: DriverPort = createAcpDriver(), context?: AdapterContext, memory: FakeAgentMemory = "mcp") {
+  constructor(
+    profile: FakeAgentProfile,
+    driver: DriverPort = createAcpDriver(),
+    context?: AdapterContext,
+    memory: FakeAgentMemory = "mcp",
+    effort: FakeAgentEffort = "none",
+  ) {
     super(driver, context);
     this.#profile = profile;
-    this.name = memory === "mcp" ? `fake-acp-agent-${profile}` : `fake-acp-agent-${profile}-index-only`;
+    this.name = `fake-acp-agent-${profile}${memory === "mcp" ? "" : "-index-only"}${effort === "none" ? "" : "-effort"}`;
     const declared = fakeAgentCapabilities[profile];
     this.capabilities = {
       ...declared,
@@ -58,7 +73,20 @@ export class FakeAgentAdapter extends AgentAdapter {
       modelBaseUrlAndPlaceholderKey: true,
       sessionArchive: true,
       memory,
+      reasoningEffort: effort,
     };
+  }
+
+  /**
+   * The fake's levels (F-137): a `none` fake has `default` alone. A `session-option` one offers the
+   * model's effort list, or `none` and `on` for a toggle; a budget alone it can't send.
+   */
+  effortLevels(model: EffortModel): readonly EffortLevel[] {
+    const { reasoning } = model;
+    if (this.capabilities.reasoningEffort === "none" || !reasoning.supported) {
+      return ["default"];
+    }
+    return orderedEffortLevels([...(reasoning.effort ?? []), ...(reasoning.toggle === true ? (["none", "on"] as const) : [])]);
   }
 
   /** The agent's own folder for its sessions, in the box's agent folder. */
@@ -92,7 +120,16 @@ export class FakeAgentAdapter extends AgentAdapter {
       instructions: instructions === "" ? null : instructions,
       mcpServers: mcpServers.map((server) => ({ name: server.name, transport: server.transport, readOnly: server.readOnly })),
       ...(memoryTools ? { ostraMcp: { url: input.mcp.url, ...(input.mcp.bearer === undefined ? {} : { bearer: input.mcp.bearer }) } } : {}),
+      // Milestone 4 (F-137): the values its `thought_level` option advertises, from the model's controls.
+      effortValues: this.#effortValues(input),
     };
+  }
+
+  #effortValues(input: PrepareLaunchInput): string[] {
+    const model = effortModelOf(input.model);
+    return this.effortLevels(model)
+      .filter((level) => level !== "default")
+      .map((level) => this.effortValue(level, model));
   }
 
   /** An MCP call is a tool call of kind `other` naming its server and tool; the rest are ACP's standard kinds. */

@@ -204,6 +204,38 @@ describe("usage parsing: other shapes", () => {
     });
   });
 
+  it("F-137: reads Anthropic's thinking tokens from the final message_delta, as a part of the output", () => {
+    const meter = createUsageMeter("anthropic-messages", true);
+    const events = [
+      { type: "message_start", message: { model: "claude-sonnet-5", usage: { input_tokens: 40, output_tokens: 1 } } },
+      { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm" } },
+      { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "hi" } },
+      { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 120, output_tokens_details: { thinking_tokens: 95 } } },
+      { type: "message_stop" },
+    ];
+    meter.push(Buffer.from(events.map((event) => `event: ${event.type}
+data: ${JSON.stringify(event)}
+
+`).join("")));
+    // The output stays the endpoint's own figure, thinking included: the reasoning is never added to it.
+    expect(meter.end().usage).toEqual({ input: 40, output: 120, cacheRead: 0, cacheWrite: 0, reasoning: 95 });
+
+    const plain = createUsageMeter("anthropic-messages", false);
+    plain.push(Buffer.from(JSON.stringify({ model: "m", usage: { input_tokens: 5, output_tokens: 30, output_tokens_details: { thinking_tokens: 12 } } })));
+    expect(plain.end().usage).toEqual({ input: 5, output: 30, cacheRead: 0, cacheWrite: 0, reasoning: 12 });
+
+    // An answer that reports no thinking has none.
+    const none = createUsageMeter("anthropic-messages", false);
+    none.push(Buffer.from(JSON.stringify({ model: "m", usage: { input_tokens: 5, output_tokens: 30 } })));
+    expect(none.end().usage?.reasoning).toBe(0);
+  });
+
+  it("F-137: reads OpenAI's completion_tokens_details.reasoning_tokens, as a part of the output", () => {
+    const meter = createUsageMeter("openai-chat", false);
+    meter.push(Buffer.from(JSON.stringify({ model: "m", usage: { prompt_tokens: 10, completion_tokens: 50, completion_tokens_details: { reasoning_tokens: 32 } } })));
+    expect(meter.end().usage).toEqual({ input: 10, output: 50, cacheRead: 0, cacheWrite: 0, reasoning: 32 });
+  });
+
   it("ignores a body that isn't JSON, and a [DONE] marker", () => {
     const meter = createUsageMeter("openai-chat", true);
     meter.push(Buffer.from("data: not json\n\ndata: [DONE]\n\n"));

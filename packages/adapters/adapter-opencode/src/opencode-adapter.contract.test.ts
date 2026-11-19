@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { effortModelOf } from "@ostra/adapter-sdk";
 import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import {
   createScenarioBrain,
@@ -16,10 +17,11 @@ import {
   startFakeMemoryCore,
   startStubModelServer,
   stubMarker,
+  wireReasoningOf,
 } from "@ostra/adapter-sdk/testing";
 import type { AgentFixture, FakeMemoryCore, StubServer } from "@ostra/adapter-sdk/testing";
 import { approvalRuleIdSchema, turnIdSchema } from "@ostra/protocol";
-import type { ApiFormat, ApprovalRule, TaskEvent } from "@ostra/protocol";
+import type { ApiFormat, ApprovalRule, EffortLevel, TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -160,6 +162,13 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
       propose: (title) => `${stubMarker("memory-propose", title)} propose it`,
       core: () => core,
       repos: REPOS,
+    },
+    // Milestone 4 (ticket 57, F-137): the research's probe on the pinned binary. A current Claude, a
+    // manual one (whose effort list becomes a budget) and one that always thinks, by the model ID;
+    // an OpenAI-compatible model's levels don't depend on it. The stub records each request's body.
+    effort: {
+      modelIds: format === "anthropic-messages" ? ["claude-sonnet-5", "claude-sonnet-4-5", "claude-mythos-5"] : ["gpt-5.5"],
+      requests: () => stub.calls.filter((call) => call.toolNames.length > 0).map((call) => call.body),
     },
   };
 };
@@ -553,6 +562,194 @@ describe("milestone 4 on the pinned OpenCode", () => {
       expect(profiled.asked).toEqual([]);
     } finally {
       await profiled.stop();
+    }
+  }, 120_000);
+});
+
+// Milestone 4 (ticket 57, F-137): the catalog file now decodes (a `release_date` and the model's
+// reasoning), and OpenCode still fetches nothing: `OPENCODE_DISABLE_MODELS_FETCH` keeps it off
+// models.dev (research section 7, item 7). Every outside request goes through a recording proxy;
+// OpenCode adds the loopback hosts to NO_PROXY itself, so the stub is reached directly.
+
+/** A forward proxy that refuses everything and notes each host asked for. */
+const startRecordingProxy = async (): Promise<{ readonly url: string; readonly hosts: string[]; readonly close: () => Promise<void> }> => {
+  const { createServer } = await import("node:http");
+  const hosts: string[] = [];
+  const server = createServer((req, res) => {
+    hosts.push(req.headers.host ?? req.url ?? "?");
+    res.writeHead(502).end();
+  });
+  server.on("connect", (req, socket) => {
+    hosts.push(req.url ?? "?");
+    socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no proxy address");
+  return {
+    url: `http://127.0.0.1:${String(address.port)}`,
+    hosts,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
+};
+
+/** A session on the pinned OpenCode with the model given, and the bodies its endpoint got since it started. */
+const openEffort = async (format: ApiFormat, model: Partial<PrepareLaunchInput["model"]>, again?: { readonly fixture: AgentFixture; readonly resume: string }) => {
+  const adapter = new OpenCodeAdapter();
+  const fixture = again?.fixture ?? (await fixtureFor(format));
+  const input: PrepareLaunchInput = { ...fixture.launchInput, model: { ...fixture.launchInput.model, ...model } };
+  const launch = await adapter.prepareLaunch(input);
+  if (!launch.ok) throw new Error(launch.error.message);
+  const started = await fixture.start(launch.value);
+  const session = await adapter.startSession({
+    taskId: input.taskId,
+    sessionId: input.sessionId,
+    io: started.io,
+    cwd: input.workspaceDir,
+    mcpServers: [],
+    onEvents: () => undefined,
+    onPermission: () => Promise.resolve({ outcome: "cancelled" }),
+    onQuestion: () => Promise.resolve({ outcome: "cancelled" }),
+    ...(again === undefined ? {} : { resumeAgentSessionId: again.resume }),
+  });
+  if (!session.ok) {
+    await started.stop();
+    throw new Error(session.error.message);
+  }
+  const effortModel = effortModelOf(input.model);
+  let turns = 0;
+  return {
+    adapter,
+    fixture,
+    effortModel,
+    session: session.value,
+    /** Sets the level, runs a turn, and answers what its request asked of the model's reasoning. */
+    turnAt: async (level: EffortLevel | null) => {
+      if (level !== null) {
+        const set = await adapter.setEffort(session.value, level, effortModel);
+        if (!set.ok) throw new Error(set.error.message);
+      }
+      turns += 1;
+      const done = await adapter.prompt(session.value, turnOf(500 + turns), `${stubMarker("hello")} hi`);
+      if (!done.ok) throw new Error(done.error.message);
+      return wireReasoningOf(fixture.effort?.requests?.().at(-1));
+    },
+    stop: async () => {
+      await adapter.close(session.value);
+      await started.stop();
+    },
+  };
+};
+
+describe("ticket 57 on the pinned OpenCode", () => {
+  it("F-137: on the pinned OpenCode, each level's request carries it, and Default carries none, in both formats", async () => {
+    const none = { effort: null, thinking: null, budget: null };
+    // OpenAI-compatible: `reasoning_effort`.
+    const openai = await openEffort("openai-compatible", { endpointModelId: "gpt-5.5", reasoning: { supported: true, effort: ["none", "low", "high", "xhigh"] } });
+    try {
+      expect(await openai.turnAt(null)).toMatchObject(none);
+      expect(await openai.turnAt("low")).toMatchObject({ effort: "low" });
+      expect(await openai.turnAt("xhigh")).toMatchObject({ effort: "xhigh" });
+      expect(await openai.turnAt("none")).toMatchObject({ effort: "none" });
+      expect(await openai.turnAt("default")).toMatchObject(none);
+    } finally {
+      await openai.stop();
+    }
+    // Anthropic Messages, a current Claude: adaptive thinking with `output_config.effort`, and disabled for Off.
+    const claude = await openEffort("anthropic-messages", { endpointModelId: "claude-sonnet-5", reasoning: { supported: true, toggle: true, effort: ["low", "max"] } });
+    try {
+      expect(await claude.turnAt(null)).toMatchObject(none);
+      expect(await claude.turnAt("max")).toMatchObject({ effort: "max", thinking: "adaptive" });
+      expect(await claude.turnAt("none")).toMatchObject({ effort: null, thinking: "disabled" });
+      expect(await claude.turnAt("default")).toMatchObject(none);
+    } finally {
+      await claude.stop();
+    }
+    // A thinking budget: `budget_tokens`, half the ceiling and the ceiling less one (research section 1.4).
+    const budget = await openEffort("anthropic-messages", {
+      endpointModelId: "claude-sonnet-4-5",
+      reasoning: { supported: true, budget: { min: 1024 } },
+      limits: { contextWindow: 200_000, maxOutputTokens: 64_000 },
+    });
+    try {
+      expect(await budget.turnAt("high")).toMatchObject({ thinking: "enabled", budget: 16_000, maxTokens: 64_000 });
+      expect(await budget.turnAt("max")).toMatchObject({ thinking: "enabled", budget: 31_999, maxTokens: 64_000 });
+    } finally {
+      await budget.stop();
+    }
+  }, 180_000);
+
+  it("F-137: OpenCode's request asks for the model's own output limit, and 16,000 only when none is known", async () => {
+    const known = await openEffort("openai-compatible", { limits: { contextWindow: 1_000_000, maxOutputTokens: 128_000 } });
+    try {
+      expect((await known.turnAt(null)).maxTokens).toBe(128_000);
+    } finally {
+      await known.stop();
+    }
+    const unknown = await openEffort("anthropic-messages", {});
+    try {
+      expect((await unknown.turnAt(null)).maxTokens).toBe(16_000);
+    } finally {
+      await unknown.stop();
+    }
+  }, 120_000);
+
+  it("F-137: a level OpenCode doesn't advertise is clamped to the nearest it does and never sent, and the level survives a kill and session/load", async () => {
+    const reasoning = { supported: true, effort: ["low", "high", "max"] } as const;
+    const model = { endpointModelId: "gpt-5.5", reasoning: { ...reasoning, effort: [...reasoning.effort] } };
+    const first = await openEffort("openai-compatible", model);
+    const agentSessionId = first.session.agentSessionId;
+    try {
+      // `xhigh` sits between `high` and `max`: the higher wins, and `xhigh` never reaches OpenCode,
+      // which would refuse it (research section 1.7, S13).
+      const set = await first.adapter.setEffort(first.session, "xhigh", first.effortModel);
+      expect(set).toMatchObject({ ok: true, value: { level: "max", adjustedFrom: "xhigh" } });
+      expect(await first.turnAt(null)).toMatchObject({ effort: "max" });
+    } finally {
+      // The kill.
+      await first.stop();
+    }
+    const loaded = await openEffort("openai-compatible", model, { fixture: first.fixture, resume: agentSessionId });
+    try {
+      expect(loaded.session.configOptions.find((option) => option.category === "thought_level")?.currentValue).toBe("max");
+      expect(await loaded.turnAt(null)).toMatchObject({ effort: "max" });
+    } finally {
+      await loaded.stop();
+    }
+    const bodies = first.fixture.effort?.requests?.() ?? [];
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies.map((body) => wireReasoningOf(body).effort)).not.toContain("xhigh");
+  }, 120_000);
+
+  it("F-137: with the catalog file decoding, OpenCode fetches no model catalog, and runs at the model's levels", async () => {
+    const proxy = await startRecordingProxy();
+    try {
+      const proxied = { HTTPS_PROXY: proxy.url, HTTP_PROXY: proxy.url, https_proxy: proxy.url, http_proxy: proxy.url };
+      const fixture = await fixtureFor("anthropic-messages");
+      const reasoning = { supported: true, toggle: true, effort: ["low", "high", "max"] } as const;
+      const profiled = await openProfiled({
+        extraEnv: { ...fixture.launchInput.extraEnv, ...proxied },
+        model: { ...fixture.launchInput.model, endpointModelId: "claude-sonnet-5", reasoning: { ...reasoning, effort: [...reasoning.effort] } },
+      });
+      try {
+        expect(await profiled.prompt(`${stubMarker("hello")} hi`)).toBe("end_turn");
+        // The catalog decodes and agrees with the config: the option is the model's own levels.
+        const option = profiled.session.configOptions.find((candidate) => candidate.category === "thought_level");
+        expect([...(option?.values ?? [])].sort()).toEqual(["default", "high", "low", "max", "none"]);
+      } finally {
+        await profiled.stop();
+      }
+      expect(proxy.hosts).toEqual([]);
+    } finally {
+      await proxy.close();
     }
   }, 120_000);
 });

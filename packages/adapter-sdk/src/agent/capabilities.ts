@@ -48,4 +48,14 @@ export type AgentCapabilities = {
    * alone, the index and the "always" notes (`index-only`).
    */
   readonly memory: "mcp" | "index-only";
+
+  // ---- milestone 4 (ADR 0066, F-137) ----
+  /**
+   * How the agent takes a reasoning level: an ACP session config option of category
+   * `thought_level`, set with `session/set_config_option` after each session start and between
+   * turns (`session-option`, OpenCode), a relaunch with the level's launch and `session/load`
+   * (`relaunch`), or not at all (`none`: every task runs at the agent's default, and the panel
+   * shows no control).
+   */
+  readonly reasoningEffort: "session-option" | "relaunch" | "none";
 };

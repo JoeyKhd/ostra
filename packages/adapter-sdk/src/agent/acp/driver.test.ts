@@ -267,7 +267,7 @@ describe("the ACP driver, in process", () => {
     const before = peer.updates.length;
     expect(before).toBeGreaterThan(0);
     // The fake replays two updates per line of history: none of them may reach the handler.
-    expect(await peer.connection.loadSession({ agentSessionId: id, cwd: process.cwd(), mcpServers: [] })).toEqual({ ok: true, value: undefined });
+    expect(await peer.connection.loadSession({ agentSessionId: id, cwd: process.cwd(), mcpServers: [] })).toEqual({ ok: true, value: { configOptions: [] } });
     expect(peer.updates.length).toBe(before);
     // The session carries on, and its new updates do arrive.
     await peer.connection.prompt(id, fakeMarker("say"));

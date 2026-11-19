@@ -18,6 +18,7 @@ import type {
   PermissionRequest,
   QuestionAnswer,
   QuestionRequest,
+  SessionConfigOption,
 } from "../base.ts";
 import { createAcpMapper } from "./map.ts";
 import type { AcpMapper, LiveTextDelta } from "./map.ts";
@@ -170,6 +171,55 @@ const initializeSchema = z.looseObject({
 });
 
 const sessionNewSchema = z.looseObject({ sessionId: z.string().min(1) });
+
+/** One value of a select option, or a group of them (ACP's `SessionConfigSelectOptions`). */
+const selectValueSchema = z.looseObject({ value: z.string() });
+const selectGroupSchema = z.looseObject({ options: z.array(z.unknown()) });
+
+/** A session's `configOptions` (milestone 4, F-137): read loosely, one option at a time. */
+const configOptionsSchema = z.looseObject({ configOptions: z.array(z.unknown()).nullish() });
+const configOptionSchema = z.looseObject({
+  id: z.string().min(1),
+  category: z.string().nullish(),
+  currentValue: z.unknown().optional(),
+  options: z.array(z.unknown()).nullish(),
+});
+
+const valuesOf = (entries: readonly unknown[]): readonly string[] =>
+  entries.flatMap((entry): readonly string[] => {
+    const value = selectValueSchema.safeParse(entry);
+    if (value.success) {
+      return [value.data.value];
+    }
+    const group = selectGroupSchema.safeParse(entry);
+    return group.success ? valuesOf(group.data.options) : [];
+  });
+
+/**
+ * The config options a `session/new` or `session/load` answer advertised. The agent owns their
+ * shape, so one that doesn't parse is skipped, never the session.
+ */
+export const parseConfigOptions = (response: unknown): readonly SessionConfigOption[] => {
+  const parsed = configOptionsSchema.safeParse(response);
+  if (!parsed.success) {
+    return [];
+  }
+  return (parsed.data.configOptions ?? []).flatMap((raw): readonly SessionConfigOption[] => {
+    const option = configOptionSchema.safeParse(raw);
+    if (!option.success) {
+      return [];
+    }
+    const current = option.data.currentValue;
+    return [
+      {
+        id: option.data.id,
+        category: option.data.category ?? null,
+        currentValue: typeof current === "string" || typeof current === "number" || typeof current === "boolean" ? String(current) : null,
+        values: valuesOf(option.data.options ?? []),
+      },
+    ];
+  });
+};
 const promptSchema = z.looseObject({ stopReason: z.string() });
 const configResponseSchema = z.looseObject({
   configOptions: z.array(z.looseObject({ id: z.string(), currentValue: z.unknown().optional() })).nullish(),
@@ -459,7 +509,7 @@ const connectAgent = async (
       }
       const parsed = sessionNewSchema.safeParse(created.value);
       return parsed.success
-        ? ok({ agentSessionId: parsed.data.sessionId })
+        ? ok({ agentSessionId: parsed.data.sessionId, configOptions: parseConfigOptions(created.value) })
         : adapterError("invalid-response", "the agent's new session had no ID");
     },
 
@@ -478,7 +528,7 @@ const connectAgent = async (
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
         });
-        return loaded.ok ? ok(undefined) : loaded;
+        return loaded.ok ? ok({ configOptions: parseConfigOptions(loaded.value) }) : loaded;
       } finally {
         replaying.delete(input.agentSessionId);
       }

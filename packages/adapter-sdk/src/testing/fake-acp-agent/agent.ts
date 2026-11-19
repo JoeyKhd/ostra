@@ -77,6 +77,11 @@ export const fakeAgentConfigSchema = z.looseObject({
   mcpServers: z.array(z.looseObject({ name: z.string(), transport: z.enum(["http", "stdio"]), readOnly: z.boolean() })).optional(),
   /** Milestone 4: ostra's own MCP server, for the memory tools; absent for an agent without them. */
   ostraMcp: z.looseObject({ url: z.string(), bearer: z.string().optional() }).optional(),
+  /**
+   * Milestone 4 (F-137): the values the agent's `thought_level` option advertises, `default` aside,
+   * for a `session-option` fake. Absent or empty: the agent advertises no such option.
+   */
+  effortValues: z.array(z.string()).optional(),
 });
 export type FakeAgentConfig = z.infer<typeof fakeAgentConfigSchema>;
 
@@ -129,6 +134,9 @@ export const fakeScripts = [
   "remember",
   /** Says everything it said before in the session, oldest first. */
   "recall",
+  // Milestone 4 (F-137).
+  /** Says the session's reasoning level and every value set on it, as `effort: <current> set: <a,b>`. */
+  "effort",
   /** A long turn: a thought every 100 ms for the seconds given (default 2), then a message. */
   "long",
   /** Ticket 44: moves a file inside the session's folder. */
@@ -200,6 +208,12 @@ type Session = {
   /** Set while a `steerable` turn waits for a steer. */
   steer: ((text: string) => void) | undefined;
   running: boolean;
+  /** Milestone 4 (F-137): the values its `thought_level` option advertises, `default` aside. */
+  readonly effortValues: readonly string[];
+  /** The option's current value. */
+  effort: string;
+  /** Every value `session/set_config_option` set on it, in order. */
+  readonly effortsSet: string[];
 };
 
 const sleep = async (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -294,9 +308,12 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     }
   };
 
-  const newSession = async (id: string, cwd: string | null, mcp: readonly string[], history: string[]): Promise<Session> => {
+  const newSession = async (id: string, cwd: string | null, mcp: readonly string[], history: string[], effort = "default"): Promise<Session> => {
     const config = await readConfig();
     return {
+      effortValues: config.effortValues ?? [],
+      effort,
+      effortsSet: [],
       id,
       cwd,
       mode: config.mode ?? "build",
@@ -322,6 +339,29 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     ],
   });
 
+  /** Milestone 4 (F-137): the session's config options, as `session/new`, `session/load` and a set answer them. */
+  const EFFORT_OPTION = "reasoning";
+  const configOptionsOf = (session: Session) =>
+    session.effortValues.length === 0
+      ? []
+      : [
+          {
+            // Found by its category, not its ID: the ID is the fake's own (OpenCode's is `effort`).
+            id: EFFORT_OPTION,
+            name: "Reasoning",
+            category: "thought_level",
+            type: "select" as const,
+            currentValue: session.effort,
+            options: [...session.effortValues, "default"].map((value) => ({ value, name: value })),
+          },
+        ];
+
+  const keep = async (session: Session): Promise<void> => {
+    if (options.dataDir !== undefined) {
+      await saveFakeSession(options.dataDir, { id: session.id, cwd: session.cwd, history: [...session.history], effort: session.effort });
+    }
+  };
+
   const sessionOf = (id: string): Session => {
     const found = sessions.get(id);
     if (found === undefined) {
@@ -344,8 +384,13 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       const cwd: unknown = Reflect.get(Object(ctx.params), "cwd");
       const session = await newSession(id, typeof cwd === "string" ? cwd : null, mcpNamesOf(ctx.params), []);
       sessions.set(id, session);
+      const configOptions = configOptionsOf(session);
       // Only an agent with session modes says it has them (ADR 0049).
-      return capabilities.planMode === "session-mode" ? { sessionId: id, modes: modes(session.mode) } : { sessionId: id };
+      return {
+        sessionId: id,
+        ...(capabilities.planMode === "session-mode" ? { modes: modes(session.mode) } : {}),
+        ...(configOptions.length === 0 ? {} : { configOptions }),
+      };
     })
     .onRequest(acp.methods.agent.session.load, async (ctx) => {
       const id = ctx.params.sessionId;
@@ -358,7 +403,8 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         throw acp.RequestError.invalidParams(undefined, "the session belongs to another directory");
       }
       const session =
-        sessions.get(id) ?? (await newSession(id, kept?.cwd ?? cwd, mcpNamesOf(ctx.params), kept === undefined ? ["(an earlier turn)"] : [...kept.history]));
+        sessions.get(id) ??
+        (await newSession(id, kept?.cwd ?? cwd, mcpNamesOf(ctx.params), kept === undefined ? ["(an earlier turn)"] : [...kept.history], kept?.effort));
       if (capabilities.planMode === "relaunch") {
         // A relaunch carries the new mode in the task config: a loaded session takes it.
         session.mode = (await readConfig()).mode ?? "build";
@@ -375,7 +421,21 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
           update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: line } },
         });
       }
-      return {};
+      const configOptions = configOptionsOf(session);
+      return configOptions.length === 0 ? {} : { configOptions };
+    })
+    // Milestone 4 (F-137): the reasoning level, by the option of category `thought_level`. A value
+    // the option doesn't advertise is refused, as OpenCode refuses it (`-32602`).
+    .onRequest(acp.methods.agent.session.setConfigOption, async (ctx) => {
+      const session = sessionOf(ctx.params.sessionId);
+      const value: unknown = Reflect.get(Object(ctx.params), "value");
+      if (ctx.params.configId !== EFFORT_OPTION || session.effortValues.length === 0 || typeof value !== "string" || ![...session.effortValues, "default"].includes(value)) {
+        throw acp.RequestError.invalidParams(undefined, "no such option or value");
+      }
+      session.effort = value;
+      session.effortsSet.push(value);
+      await keep(session);
+      return { configOptions: configOptionsOf(session) };
     })
     .onNotification(acp.methods.agent.session.cancel, (ctx) => {
       sessions.get(ctx.params.sessionId)?.cancel.abort();
@@ -436,9 +496,7 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     } finally {
       session.running = false;
       session.steer = undefined;
-      if (options.dataDir !== undefined) {
-        await saveFakeSession(options.dataDir, { id: session.id, cwd: session.cwd, history: [...session.history] });
-      }
+      await keep(session);
     }
   });
 
@@ -692,6 +750,10 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         await say(`Earlier in this session I said: ${earlier === "" ? "nothing" : earlier}`);
         return "end_turn";
       }
+
+      case "effort":
+        await say(`effort: ${session.effort} set: ${session.effortsSet.join(",")}`);
+        return "end_turn";
 
       case "long": {
         const seconds = Number.parseFloat(args);

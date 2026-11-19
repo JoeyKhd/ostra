@@ -1,16 +1,20 @@
 import type { Readable, Writable } from "node:stream";
 
+import { clampEffort, effortLevels as allEffortLevels, noReasoning } from "@ostra/protocol";
 import type {
   ApiFormat,
   ApprovalRequestSubject,
   ApprovalRule,
+  EffortLevel,
   OptionId,
   QuestionField,
+  ReasoningControls,
   SessionId,
   StopReason,
   TaskEvent,
   TaskId,
   TaskRule,
+  TaskSpecModelLimits,
   ToolCallId,
   TurnId,
   TurnMode,
@@ -79,6 +83,36 @@ export type AgentLaunch = {
   readonly files: readonly LaunchFile[];
 };
 
+/**
+ * Milestone 4 (F-137, ADR 0066): what an adapter reads to know a model's reasoning levels. The
+ * controls are the model's effective ones (an admin's, else the catalog's), and the limits its
+ * real context window and output limit, each `null` when unknown.
+ */
+export type EffortModel = {
+  readonly reasoning: ReasoningControls;
+  readonly apiFormat: ApiFormat;
+  readonly endpointModelId: string;
+  readonly limits: TaskSpecModelLimits;
+};
+
+/** No limit known: the adapter keeps its fixed ones. */
+export const unknownModelLimits: TaskSpecModelLimits = { contextWindow: null, maxOutputTokens: null };
+
+/** The model of a launch as `effortLevels` reads it: no controls means no reasoning (ADR 0066). */
+export const effortModelOf = (model: PrepareLaunchInput["model"]): EffortModel => ({
+  reasoning: model.reasoning ?? noReasoning,
+  apiFormat: model.apiFormat,
+  endpointModelId: model.endpointModelId,
+  limits: model.limits ?? unknownModelLimits,
+});
+
+/**
+ * Levels in `effortLevels`' order (low to high, `default` first, each once): what an adapter's
+ * `effortLevels` answers from the levels it found.
+ */
+export const orderedEffortLevels = (levels: readonly EffortLevel[]): readonly EffortLevel[] =>
+  allEffortLevels.filter((level) => level === "default" || levels.includes(level));
+
 export type PrepareLaunchInput = {
   readonly taskId: TaskId;
   readonly sessionId: SessionId;
@@ -93,6 +127,13 @@ export type PrepareLaunchInput = {
     readonly baseUrl: string;
     /** The task's fake key: valid for this task, at the key proxy only. */
     readonly placeholderKey: string;
+    /**
+     * Milestone 4 (F-137, ADR 0066): the model's effective reasoning controls, which the agent's
+     * config carries so its levels are the model's own. Absent: `{ supported: false }`, no effort.
+     */
+    readonly reasoning?: ReasoningControls;
+    /** Milestone 4 (F-137): the model's real limits. Absent, or both `null`: the adapter's fixed ones. */
+    readonly limits?: TaskSpecModelLimits;
   };
   /** ostra's MCP tools for this task (ticket 20). */
   readonly mcp: {
@@ -216,18 +257,40 @@ export type DriverHandlers = {
 
 export type McpServer = { readonly name: string; readonly url: string; readonly headers: Readonly<Record<string, string>> };
 
+/**
+ * Milestone 4 (F-137): a session config option as the agent advertised it on `session/new` or
+ * `session/load` (ACP's `configOptions`, the `/unstable` field). Vendor data, read loosely: the
+ * agent owns its IDs and values.
+ */
+export type SessionConfigOption = {
+  readonly id: string;
+  /** ACP's semantic category, such as `thought_level`; `null` when the agent gave none. */
+  readonly category: string | null;
+  /** The current value, as text; `null` when it isn't one ostra can read. */
+  readonly currentValue: string | null;
+  /** A select's values, its groups flattened, in the agent's order. Empty for a boolean. */
+  readonly values: readonly string[];
+};
+
+/** ACP's reserved category for a reasoning level selector (ACP, "Session Config Options"). */
+export const THOUGHT_LEVEL_CATEGORY = "thought_level";
+
 /** One initialized ACP connection to one agent process. */
 export type DriverConnection = {
   readonly agentName: string | null;
   readonly agentVersion: string | null;
   /** The agent advertised mid-turn steering on `initialize` (ADR 0032). */
   readonly steeringAdvertised: boolean;
-  readonly newSession: (input: { readonly cwd: string; readonly mcpServers: readonly McpServer[] }) => Promise<AdapterResult<{ readonly agentSessionId: string }>>;
+  /** Milestone 4 (F-137): with the session's config options, as the agent advertised them. */
+  readonly newSession: (input: {
+    readonly cwd: string;
+    readonly mcpServers: readonly McpServer[];
+  }) => Promise<AdapterResult<{ readonly agentSessionId: string; readonly configOptions: readonly SessionConfigOption[] }>>;
   readonly loadSession: (input: {
     readonly agentSessionId: string;
     readonly cwd: string;
     readonly mcpServers: readonly McpServer[];
-  }) => Promise<AdapterResult<void>>;
+  }) => Promise<AdapterResult<{ readonly configOptions: readonly SessionConfigOption[] }>>;
   readonly prompt: (agentSessionId: string, text: string) => Promise<AdapterResult<{ readonly stopReason: StopReason }>>;
   readonly cancel: (agentSessionId: string) => Promise<void>;
   readonly steer: (agentSessionId: string, text: string) => Promise<AdapterResult<void>>;
@@ -286,6 +349,11 @@ export type StartSessionInput = {
    * provides it; without it, a `relaunch` adapter can't change mode.
    */
   readonly relaunch?: (mode: TurnMode) => Promise<AdapterResult<AgentIo>>;
+  /**
+   * Milestone 4 (F-137, ADR 0066): for a `reasoningEffort: "relaunch"` adapter's `setEffort`, the
+   * same as `relaunch`, with the launch written for the reasoning level given. The runner provides it.
+   */
+  readonly relaunchAtEffort?: (level: EffortLevel) => Promise<AdapterResult<AgentIo>>;
 };
 
 /** A running session, as the base class hands it back. */
@@ -296,6 +364,23 @@ export type AgentSession = {
   readonly connection: DriverConnection;
   /** How many updates `session/load` replayed when the session was resumed: `session.restored`'s count. */
   readonly replayedUpdates: number;
+  /** Milestone 4 (F-137): the session's config options as the agent advertised them when it started or loaded. */
+  readonly configOptions: readonly SessionConfigOption[];
+};
+
+/** Milestone 4 (F-137): what `setEffort` did. */
+export type EffortSet = {
+  /** The session to use from then on: a `relaunch` adapter's is a new one. */
+  readonly session: AgentSession;
+  /** The level the session runs at now, after the clamp to what the agent advertised (ADR 0066). */
+  readonly level: EffortLevel;
+  /** The level asked for, when the clamp changed it. */
+  readonly adjustedFrom?: EffortLevel;
+  /**
+   * The `session.config_changed` event, for the caller to number and spool: an agent sends no
+   * update for a change ostra made. Empty when nothing changed.
+   */
+  readonly events: readonly TaskEvent[];
 };
 
 // ---------- milestone 2: moving a session to another box (ADR 0039) ----------
@@ -369,6 +454,8 @@ export abstract class AgentAdapter {
   readonly #turns = new Map<string, TurnId>();
   readonly #emitters = new Map<string, (events: readonly TaskEvent[]) => void>();
   readonly #starts = new Map<string, StartSessionInput>();
+  /** Milestone 4 (F-137): each session's config options, as last advertised or set. */
+  readonly #configs = new Map<string, readonly SessionConfigOption[]>();
 
   /**
    * Milestone 3 (ADR 0049, Q171): the repo files that hold this agent's own config, relative to a
@@ -423,6 +510,22 @@ export abstract class AgentAdapter {
     return describeStandardPermission(request, cwd);
   }
 
+  /**
+   * Milestone 4 (F-137, ADR 0066): the reasoning levels this agent can send for a model, low to
+   * high, with `default` first. They're the model's controls as far as the agent can send them,
+   * for its API format. An adapter with `reasoningEffort: "none"` answers `["default"]`.
+   */
+  abstract effortLevels(model: EffortModel): readonly EffortLevel[];
+
+  /**
+   * Milestone 4 (F-137): the agent's own value for a level, as its `thought_level` option names it,
+   * or as its relaunch writes it. The default is ostra's name, and `default` for a model that
+   * doesn't reason, which has no other level.
+   */
+  effortValue(level: EffortLevel, model: EffortModel): string {
+    return model.reasoning.supported ? level : "default";
+  }
+
   /** Milestone 3 (F-063): the agent's own ID of a mode, for `session/set_mode`. The default is ostra's name. */
   protected modeIdFor(mode: TurnMode): string {
     return mode;
@@ -473,14 +576,32 @@ export abstract class AgentAdapter {
         cwd: input.cwd,
         mcpServers: input.mcpServers,
       });
-      return loaded.ok
-        ? ok({ taskId: input.taskId, sessionId: input.sessionId, agentSessionId: input.resumeAgentSessionId, connection, replayedUpdates: replayed })
-        : loaded;
+      if (!loaded.ok) {
+        return loaded;
+      }
+      this.#configs.set(sessionKey, loaded.value.configOptions);
+      return ok({
+        taskId: input.taskId,
+        sessionId: input.sessionId,
+        agentSessionId: input.resumeAgentSessionId,
+        connection,
+        replayedUpdates: replayed,
+        configOptions: loaded.value.configOptions,
+      });
     }
     const created = await connection.newSession({ cwd: input.cwd, mcpServers: input.mcpServers });
-    return created.ok
-      ? ok({ taskId: input.taskId, sessionId: input.sessionId, agentSessionId: created.value.agentSessionId, connection, replayedUpdates: 0 })
-      : created;
+    if (!created.ok) {
+      return created;
+    }
+    this.#configs.set(sessionKey, created.value.configOptions);
+    return ok({
+      taskId: input.taskId,
+      sessionId: input.sessionId,
+      agentSessionId: created.value.agentSessionId,
+      connection,
+      replayedUpdates: 0,
+      configOptions: created.value.configOptions,
+    });
   }
 
   /**
@@ -573,12 +694,84 @@ export abstract class AgentAdapter {
     }
   }
 
+  /**
+   * Milestone 4 (F-137, ADR 0066): sets the session's reasoning level, between turns, and answers
+   * the level it runs at. A level the agent doesn't advertise is never sent: it's clamped first
+   * (`clampEffort`), so a turn never fails on it.
+   * - `session-option`: `session/set_config_option` on the option of category `thought_level`
+   *   (found by category, not by the agent's ID), with the value `effortValue` names, among the
+   *   values the option advertises. `default` is sent only to undo a level the session has.
+   * - `relaunch`: the agent is started again with the level's launch (`relaunchAtEffort`) and its
+   *   session loaded, as `setMode` does.
+   * - `none`: nothing; the session runs at the agent's default.
+   */
+  async setEffort(session: AgentSession, level: EffortLevel, model: EffortModel): Promise<AdapterResult<EffortSet>> {
+    const key = String(session.sessionId);
+    const reasoningEffort = this.capabilities.reasoningEffort;
+    const outcome = (now: AgentSession, used: EffortLevel, events: readonly TaskEvent[]): EffortSet =>
+      used === level ? { session: now, level: used, events } : { session: now, level: used, adjustedFrom: level, events };
+    switch (reasoningEffort) {
+      case "none":
+        return ok(outcome(session, "default", []));
+      case "session-option": {
+        const options = this.#configs.get(key) ?? session.configOptions;
+        const option = options.find((candidate) => candidate.category === THOUGHT_LEVEL_CATEGORY);
+        if (option === undefined) {
+          // The agent offers no level for this model: it runs at its default.
+          return ok(outcome(session, "default", []));
+        }
+        const offered = allEffortLevels.filter((candidate) => option.values.includes(this.effortValue(candidate, model)));
+        const clamped = clampEffort(level, offered).level;
+        const value = this.effortValue(clamped, model);
+        if (option.currentValue === value || !option.values.includes(value)) {
+          // Already there, or `default` on an agent that can't be set back: nothing to send.
+          return ok(outcome(session, clamped, []));
+        }
+        const setConfigOption = session.connection.setConfigOption;
+        if (setConfigOption === undefined) {
+          return adapterError("unsupported", `${this.name}'s driver can't set a session config option`);
+        }
+        const set = await setConfigOption(session.agentSessionId, option.id, value);
+        if (!set.ok) {
+          return set;
+        }
+        this.#configs.set(
+          key,
+          options.map((candidate) => (candidate.id === option.id ? { ...candidate, currentValue: value } : candidate)),
+        );
+        return ok(outcome(session, clamped, set.value));
+      }
+      case "relaunch": {
+        const start = this.#starts.get(key);
+        if (!this.capabilities.sessionLoad || start?.relaunchAtEffort === undefined) {
+          return adapterError("unsupported", `${this.name} can't be relaunched at another level here`);
+        }
+        const clamped = clampEffort(level, this.effortLevels(model)).level;
+        await session.connection.close();
+        // Between turns: the load's replay must never be mapped as the last turn's new events.
+        this.#turns.delete(key);
+        const io = await start.relaunchAtEffort(clamped);
+        if (!io.ok) {
+          return io;
+        }
+        const resumed = await this.startSession({ ...start, io: io.value, resumeAgentSessionId: session.agentSessionId });
+        if (!resumed.ok) {
+          return resumed;
+        }
+        return ok(outcome(resumed.value, clamped, [{ kind: "session.config_changed", key: "effort", value: this.effortValue(clamped, model).slice(0, 2000) }]));
+      }
+      default:
+        return reasoningEffort satisfies never;
+    }
+  }
+
   /** Ends the session's connection. */
   async close(session: AgentSession): Promise<void> {
     const key = String(session.sessionId);
     this.#turns.delete(key);
     this.#emitters.delete(key);
     this.#starts.delete(key);
+    this.#configs.delete(key);
     this.#driver.closeSession?.(session.sessionId);
     await session.connection.close();
   }

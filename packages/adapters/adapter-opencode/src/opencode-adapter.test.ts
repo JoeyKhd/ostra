@@ -73,7 +73,7 @@ describe("the OpenCode adapter's launch", () => {
         package: "@opencode/ai/providers/openai-compatible",
         settings: { baseURL: "http://127.0.0.1:8123/v1" },
         compatibility: { streamUsage: true },
-        models: { "acme/model-1": { name: "acme/model-1", limit: { context: 128_000, output: 16_000 } } },
+        models: { "acme/model-1": { name: "acme/model-1", limit: { context: 128_000, output: 16_000 }, capabilities: { reasoning: { supported: false } } } },
       },
     });
     expect(config["mcp"]).toEqual({
@@ -271,6 +271,8 @@ describe("the OpenCode adapter's capabilities", () => {
       projectConfigOverride: true,
       // Milestone 4 (ticket 02).
       memory: "mcp",
+      // Milestone 4 (ticket 57, F-137).
+      reasoningEffort: "session-option",
     });
     expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });

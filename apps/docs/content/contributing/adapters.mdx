@@ -60,10 +60,11 @@ export const capabilities = {
   mcp: { http: true, stdio: false },
   projectConfigOverride: false,
   memory: "index-only",
+  reasoningEffort: "none",
 } as const satisfies AgentCapabilities;
 ```
 
-ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, and gives it memory's index without the memory tools. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
+ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, and runs every task at the agent's default reasoning level, with no effort control in the panel. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
 
 ## The agent kind
 
@@ -71,6 +72,7 @@ An agent adapter writes only what is particular to its agent. ostra drives agent
 
 - **`prepareLaunch`:** the command, the environment (an allowlist, never the runner's own) and the config files the agent starts with, from the task's profile: its model at the key proxy's base URL with the placeholder key, its permissions, skills and MCP servers;
 - **`mapUpdate`:** how the agent's ACP updates map to ostra's events: text, thinking, tool calls with their input and output, plans and usage;
+- **`effortLevels`:** the reasoning levels the agent can send for a model, from its controls, API format and model ID, with `default` first. With `reasoningEffort: "session-option"`, the base class's `setEffort` sets the level on the session's ACP option of category `thought_level`, clamped to the values the agent advertised;
 - **`capabilities`**, as above, each one checked by the agent suite.
 
 The agent itself is installed by the base image, pinned and checked, never by the adapter at run time.

@@ -9,6 +9,7 @@ import type {
   AgentCommand,
   AgentLaunch,
   DriverPort,
+  EffortModel,
   ExportSessionInput,
   HealthReport,
   ImportSessionInput,
@@ -18,11 +19,12 @@ import type {
   PrepareLaunchInput,
 } from "@ostra/adapter-sdk";
 import { checkoutDirSchema, mcpSubjectValue } from "@ostra/protocol";
-import type { ApprovalRequestSubject } from "@ostra/protocol";
+import type { ApprovalRequestSubject, EffortLevel } from "@ostra/protocol";
 
 import { ARCHIVE_VERIFIED_VERSIONS, OPENCODE_VERSION, resolveOpenCodeBinary } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
 import { buildAgentEnv, buildCliEnv, launchFiles, taskDirs } from "./config.ts";
+import { OPENCODE_ON_VARIANT, openCodeEffortLevels } from "./effort.ts";
 import { OSTRA_MCP_SERVER } from "./permissions.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 import type { TodoTracker } from "./todo-plan.ts";
@@ -112,6 +114,10 @@ export class OpenCodeAdapter extends AgentAdapter {
     // tools; the block goes into its instructions file (`instructionsText`). Native memory: OpenCode
     // has none of its own, so there is nothing to turn off.
     memory: "mcp",
+    // Milestone 4 (ADR 0066, ticket 57): OpenCode's ACP `effort` option, of category `thought_level`,
+    // set with `session/set_config_option` and kept with the session (research section 3). Its
+    // values are the variants the config's `capabilities.reasoning` gives (`effortLevels`).
+    reasoningEffort: "session-option",
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */
@@ -125,6 +131,16 @@ export class OpenCodeAdapter extends AgentAdapter {
   constructor(options: OpenCodeAdapterOptions = {}, context?: AdapterContext) {
     super(options.driver ?? createAcpDriver(), context);
     this.#resolveBinary = options.resolveBinary ?? (() => resolveOpenCodeBinary());
+  }
+
+  /** The levels OpenCode 2.3.2 builds for the model (its `Variant.resolve`, `effort.ts`). */
+  effortLevels(model: EffortModel): readonly EffortLevel[] {
+    return openCodeEffortLevels(model);
+  }
+
+  /** OpenCode names the toggle's "on" `thinking`; every other level by its own name. */
+  override effortValue(level: EffortLevel, model: EffortModel): string {
+    return level === "on" ? OPENCODE_ON_VARIANT : super.effortValue(level, model);
   }
 
   async health(): Promise<HealthReport> {

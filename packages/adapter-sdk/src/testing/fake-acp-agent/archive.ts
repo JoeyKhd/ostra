@@ -17,6 +17,8 @@ export const fakeSessionSchema = z.strictObject({
   cwd: z.string().nullable(),
   /** What the agent said, oldest first: `session/load` replays it. */
   history: z.array(z.string()),
+  /** Milestone 4 (F-137): the session's reasoning level, as its `thought_level` option names it. */
+  effort: z.string().optional(),
 });
 export type FakeStoredSession = z.infer<typeof fakeSessionSchema>;
 

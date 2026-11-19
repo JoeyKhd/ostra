@@ -381,6 +381,7 @@ export const startStubModelServer = async (options: StubServerOptions): Promise<
       toolNames: request.toolNames,
       tools: request.tools,
       messages: request.messages,
+      body: json,
     };
 
     if (!ok) {

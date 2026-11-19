@@ -79,6 +79,8 @@ export type StubCallRecord = {
   readonly toolNames: readonly string[];
   readonly tools: readonly unknown[];
   readonly messages: readonly NormalizedMessage[];
+  /** Milestone 4 (F-137): the request's whole JSON body, so a case can read what the agent sent (`reasoning_effort`, `thinking`, `max_tokens`). */
+  readonly body: unknown;
   /** The ground truth the stub billed, whether or not it was reported in the response. */
   readonly billed: StubUsage | undefined;
   /** Whether that usage was written into the response. */
