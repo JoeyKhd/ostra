@@ -35,6 +35,25 @@ export const taskStateText = (state: TaskState): string => {
   }
 };
 
+type TaskReason = RouterOutputs["tasks"]["get"]["reason"];
+
+/** The reasons the thread itself shows as an amber block: the header names them, without a note. */
+export const shownInThread = (reason: TaskReason): boolean => reason === "approval" || reason === "question";
+
+/**
+ * A task's state for its header and properties (task.md, "Header status line"): needs-you states
+ * name what waits when it's an approval or a question, `Needs you · approval`.
+ */
+export const taskStateLine = (state: TaskState, reason: TaskReason): string => {
+  if (state === "needs_you" && reason === "approval") return t("taskState.needsYouApproval");
+  if (state === "needs_you" && reason === "question") return t("taskState.needsYouQuestion");
+  return taskStateText(state);
+};
+
+/** Activity that only repeats the state (waiting on an approval or an answer) isn't said twice. */
+export const headerActivity = (activity: TaskActivity): string =>
+  activity.kind === "waiting-approval" || activity.kind === "waiting-answer" ? "" : activityText(activity);
+
 /** Amber means only "needs you" (app-design.md, the colour table). */
 export const stateTone = (state: TaskState): Tone => {
   switch (state) {

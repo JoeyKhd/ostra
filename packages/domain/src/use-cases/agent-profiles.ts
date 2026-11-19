@@ -9,6 +9,12 @@ import type { AgentProfileId, OrganizationId } from "@ostra/protocol";
 export const BUILT_IN_PROFILE_NAME = "OpenCode";
 export const BUILT_IN_PROFILE_ADAPTER = "opencode";
 
+/** The agents' names as the panel shows them, by their `AgentAdapter`'s registered name. */
+const agentDisplayNames: Readonly<Record<string, string>> = { opencode: "OpenCode", "claude-code": "Claude Code" };
+
+/** An agent adapter's display name: `opencode` is "OpenCode"; one this list lacks shows as registered. */
+export const agentDisplayName = (adapter: string): string => agentDisplayNames[adapter] ?? adapter;
+
 /** The organization's built-in OpenCode profile, created on first use. Idempotent. */
 export const ensureBuiltInAgentProfile = async (tx: Tx, organizationId: OrganizationId): Promise<AgentProfileId> => {
   const existing = await tx.agentProfile.findFirst({

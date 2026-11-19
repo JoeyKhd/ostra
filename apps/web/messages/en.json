@@ -478,6 +478,7 @@
       "editing": "Editing",
       "edited": "Edited",
       "ran": "Ran",
+      "runningVerb": "Running",
       "running": "running",
       "failed": "failed",
       "cancelled": "cancelled",
@@ -527,19 +528,23 @@
       "placeholder": "Message the agent…",
       "hint": "Send queues. Interrupt and send stops the current turn.",
       "send": "Send",
-      "interruptAndSend": "Interrupt and send"
+      "interruptAndSend": "Interrupt and send",
+      "notDriver": "{name} is driving. Take over to send messages.",
+      "noDriver": "Nobody is driving. Take over to send messages."
     }
   },
   "taskState": {
     "queued": "Queued",
     "preparing": "Preparing",
     "running": "Running",
-    "awaitingApproval": "Approval",
+    "awaitingApproval": "Awaiting approval",
     "needsYou": "Needs you",
     "inReview": "In review",
     "stopped": "Stopped",
     "merged": "Merged",
-    "done": "Done"
+    "done": "Done",
+    "needsYouApproval": "Needs you · approval",
+    "needsYouQuestion": "Needs you · question"
   },
   "taskGroup": {
     "needsYou": "Needs you",
@@ -656,6 +661,13 @@
     "reconnecting": "Reconnecting…",
     "needsYou": "Needs you",
     "needsYouDefault": "The agent stopped and waits on a person.",
-    "someone": "A member"
+    "someone": "A member",
+    "agent": "Agent",
+    "model": "Model",
+    "time": "Time",
+    "started": "Started {age} ago",
+    "on": "on",
+    "copyLink": "Copy the link",
+    "linkCopied": "Link copied"
   }
 }

@@ -599,3 +599,14 @@ describe("the render budget", () => {
     expect(cold).toBeLessThan(300);
   });
 });
+
+describe("message times", () => {
+  it("stamps a member's message and an agent's turn with their first event's time", () => {
+    const at = 1_795_000_000_000;
+    const messages = foldTaskEvents(storeEvents([f["user.message"], f["turn.started"], f["agent.message"]], { at }), []);
+    expect(messages.map((message) => [message.role, message.metadata?.at])).toEqual([
+      ["user", at],
+      ["assistant", at + 1],
+    ]);
+  });
+});

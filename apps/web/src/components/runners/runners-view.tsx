@@ -21,7 +21,8 @@ export const RunnerKind = ({ runner }: { readonly runner: Pick<Runner, "kind" | 
   <span className="inline-flex flex-wrap items-center gap-1.5">
     <Chip>{runner.kind === "personal" ? t("runners.personal") : t("runners.pool")}</Chip>
     <Chip className="font-mono">{runner.executor}</Chip>
-    {runner.isolated ? null : <Chip className="text-amber">{t("runners.notIsolated")}</Chip>}
+    {/* Amber means only "needs you" (app-design.md): not being isolated is a fact, said in --muted. */}
+    {runner.isolated ? null : <Chip><TriangleAlertIcon aria-hidden className="stroke-[1.75]" />{t("runners.notIsolated")}</Chip>}
   </span>
 );
 

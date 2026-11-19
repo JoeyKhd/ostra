@@ -10,8 +10,9 @@ import {
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useMutation } from "@tanstack/react-query";
-import { BotIcon, InfoIcon, PauseIcon, SendIcon, UserIcon } from "lucide-react";
+import { ArrowUpIcon, InfoIcon, PauseIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { clientMessageIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
@@ -22,6 +23,7 @@ import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
+import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
@@ -35,14 +37,28 @@ import type { TaskContextValue } from "./task-context";
 // render-only parts. ostra's own store feeds it: the fold of the task's events, the partial text
 // and the driver's unsent messages. This folder is the only place that imports assistant-ui.
 
+/** One mono 12px `--faint` fact in a message header, after a ` · ` when it isn't the first. */
+const Meta = ({ children, dot = true, className }: { readonly children: string; readonly dot?: boolean; readonly className?: string }) => (
+  <span className={cn("font-mono text-sm text-faint", className)}>
+    {dot ? <span className="text-faint"> · </span> : null}
+    {children}
+  </span>
+);
+
+/**
+ * A message's header (task.md, "Message header"): the author (13px, 600), then the time in mono
+ * `--faint`; the agent's adds its model and a status word, a member's how it was delivered.
+ */
 const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
-  const { memberName } = useTaskContext();
+  const { memberName, agent } = useTaskContext();
   const meta = message.metadata;
+  const time = meta?.at === undefined ? null : formatClock(meta.at);
   if (message.role === "user") {
     const delivery = meta?.author?.delivery;
     return (
-      <div className="mb-0.5 flex items-baseline gap-2">
+      <div className="flex items-baseline gap-2">
         <span className="font-semibold">{meta?.author === undefined ? "" : memberName(meta.author.memberId)}</span>
+        {time === null ? null : <Meta dot={false}>{time}</Meta>}
         {delivery === "queued" ? <span className="text-sm text-faint">{t("task.queued")}</span> : null}
         {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
         {meta?.optimistic === true ? <span className="text-sm text-faint">{t("task.sending")}</span> : null}
@@ -51,11 +67,15 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
   }
   if (message.role === "assistant") {
     return (
-      <div className="mb-0.5 flex items-baseline gap-2">
-        <span className="font-semibold">{t("task.agent")}</span>
-        {meta?.turnState === "running" ? <span className="text-sm text-teal">{t("task.working")}</span> : null}
-        {meta?.turnState === "failed" ? <span className="text-sm text-red">{t("task.turnFailed")}</span> : null}
-        {meta?.stopReason === "cancelled" ? <span className="text-sm text-faint">{t("task.turnStopped")}</span> : null}
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+        <span className="font-semibold">{agent.name}</span>
+        <span className="min-w-0">
+          {time === null ? null : <Meta dot={false}>{time}</Meta>}
+          {agent.model === null ? null : <Meta dot={time !== null}>{agent.model}</Meta>}
+          {meta?.turnState === "running" ? <Meta className="text-teal">{t("task.working")}</Meta> : null}
+          {meta?.turnState === "failed" ? <Meta className="text-red">{t("task.turnFailed")}</Meta> : null}
+          {meta?.stopReason === "cancelled" ? <Meta>{t("task.turnStopped")}</Meta> : null}
+        </span>
       </div>
     );
   }
@@ -77,7 +97,7 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
     >
       {system ? null : (
         <span className="mt-0.5 inline-grid size-7 shrink-0 place-items-center rounded-full border border-line-2 text-muted">
-          {role === "user" ? <UserIcon className="size-[14px]" /> : <BotIcon className="size-[14px]" />}
+          {role === "user" ? <UserIcon className="size-[14px] stroke-[1.75]" /> : <SquareTerminalIcon className="size-[14px] stroke-[1.75]" />}
         </span>
       )}
       <div className="min-w-0 flex-1">
@@ -125,8 +145,12 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
 });
 MessageView.displayName = "MessageView";
 
-/** ostra's own Send: assistant-ui's stock Send never fires while a turn runs (spike 7, ADR 0036). */
-const Composer = ({ running, onSend }: { readonly running: boolean; readonly onSend: (text: string, interrupt: boolean) => Promise<void> }) => {
+/**
+ * The composer, pinned under the thread (task.md, "Composer"). ostra's own Send: assistant-ui's stock
+ * Send never fires while a turn runs (spike 7, ADR 0036). `Interrupt and send` shows only while a turn
+ * runs and the driver may interrupt it.
+ */
+const Composer = ({ interrupt, onSend }: { readonly interrupt: boolean; readonly onSend: (text: string, interrupt: boolean) => Promise<void> }) => {
   const text = useAuiState((state) => state.composer.text);
   const aui = useAui();
   const [error, setError] = useState<string | null>(null);
@@ -140,20 +164,20 @@ const Composer = ({ running, onSend }: { readonly running: boolean; readonly onS
     );
   };
   return (
-    <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-2.5" onSubmit={(event) => { event.preventDefault(); send(false); }}>
-      <ComposerPrimitive.Input aria-label={t("task.composer.label")} placeholder={t("task.composer.placeholder")} rows={2} className="w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none" />
+    <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-3 focus-within:border-[#34363a]" onSubmit={(event) => { event.preventDefault(); send(false); }}>
+      <ComposerPrimitive.Input aria-label={t("task.composer.label")} placeholder={t("task.composer.placeholder")} rows={2} className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none" />
       {error === null ? null : <p role="alert" className="text-sm text-red">{error}</p>}
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-faint">
-          <InfoIcon className="size-[13px] shrink-0" /> {t("task.composer.hint")}
+          <InfoIcon className="size-[13px] shrink-0 stroke-[1.75]" /> <span className="truncate">{t("task.composer.hint")}</span>
         </span>
-        {running ? (
+        {interrupt ? (
           <Button type="button" onClick={() => { send(true); }} disabled={text.trim() === ""}>
             <PauseIcon /> {t("task.composer.interruptAndSend")}
           </Button>
         ) : null}
         <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={text.trim() === ""} data-action="send">
-          <SendIcon /> {t("task.composer.send")}
+          <ArrowUpIcon /> {t("task.composer.send")}
         </Button>
       </div>
     </ComposerPrimitive.Root>
@@ -166,14 +190,21 @@ export type TaskThreadProps = {
   readonly memberId: MemberId | null;
   readonly memberName: (memberId: string) => string;
   readonly canSend: boolean;
+  /** The driver may interrupt the running turn (`capabilities.interrupt`). */
+  readonly canInterrupt: boolean;
   readonly running: boolean;
+  /** The agent's display name and model, for its message headers. */
+  readonly agent: { readonly name: string; readonly model: string | null };
+  readonly approvalSummary: (approvalId: string) => string | null;
+  /** In place of the composer when the viewer can't send: the take-over line, or nothing. */
+  readonly notDriver?: ReactNode;
   readonly hasEarlier: boolean;
   readonly loadEarlier: () => Promise<void>;
   /** Called after the fold with how long it took, for the render budget's record. */
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, log, memberId, memberName, canSend, running, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, notDriver, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -231,7 +262,12 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, running
   useLayoutEffect(() => {
     store.publish();
   }, [index, store]);
-  const context = useMemo<TaskContextValue>(() => ({ store, memberName }), [store, memberName]);
+  const agentName = agent.name;
+  const agentModel = agent.model;
+  const context = useMemo<TaskContextValue>(
+    () => ({ store, memberName, agent: { name: agentName, model: agentModel }, approvalSummary }),
+    [store, memberName, agentName, agentModel, approvalSummary],
+  );
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -249,9 +285,11 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, running
           </ThreadPrimitive.Viewport>
           {canSend ? (
             <div className="shrink-0 pt-3">
-              <Composer running={running} onSend={sendText} />
+              <Composer interrupt={running && canInterrupt} onSend={sendText} />
             </div>
-          ) : null}
+          ) : notDriver === undefined ? null : (
+            <div className="shrink-0 pt-3 text-sm text-faint" data-part="not-driver">{notDriver}</div>
+          )}
         </ThreadPrimitive.Root>
       </TaskContext.Provider>
     </AssistantRuntimeProvider>

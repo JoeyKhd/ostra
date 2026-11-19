@@ -34,3 +34,18 @@ export const formatDuration = (ms: number): string => {
   const seconds = Math.round((ms % 60_000) / 1000);
   return `${String(minutes)}m ${String(seconds).padStart(2, "0")}s`;
 };
+
+/** How long something has run, in words: "1 min", "14 min", "2 h 5 min", "3 d". Under a minute is "1 min". */
+export const formatElapsed = (since: number, now: number = Date.now()): string => {
+  const minutes = Math.max(1, Math.floor((now - since) / 60_000));
+  if (minutes < 60) return `${String(minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return minutes % 60 === 0 ? `${String(hours)} h` : `${String(hours)} h ${String(minutes % 60)} min`;
+  return `${String(Math.floor(hours / 24))} d`;
+};
+
+/** A clock time, 24-hour: "14:02". */
+export const formatClock = (at: number): string => {
+  const date = new Date(at);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};

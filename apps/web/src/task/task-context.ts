@@ -71,6 +71,10 @@ export type TaskContextValue = {
   readonly store: TaskIndexStore;
   /** Names of the organization's members, for "Approved by Alex" and the user rows. */
   readonly memberName: (memberId: string) => string;
+  /** The agent's display name and its model's, for the agent's message header. */
+  readonly agent: { readonly name: string; readonly model: string | null };
+  /** What an open approval asks, in the descriptor's words (the needs-you item's summary), or `null`. */
+  readonly approvalSummary: (approvalId: string) => string | null;
 };
 
 export const TaskContext = createContext<TaskContextValue | null>(null);

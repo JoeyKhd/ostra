@@ -392,6 +392,9 @@ export const foldTaskEvents = (
     });
   };
 
+  // When the event being folded was recorded: a message's time is its first event's.
+  let at: number | undefined;
+
   const ensureTurn = (turnId: TurnId, sessionId: SessionId, seq: number): Builder => {
     const existing = turns.get(turnId);
     if (existing !== undefined) {
@@ -402,7 +405,7 @@ export const foldTaskEvents = (
       id: `turn:${turnId}`,
       role: "assistant",
       slots: [{ t: "part", part: { type: "step-start" } }],
-      meta: { firstSeq: seq, lastSeq: seq, sessionId, turnId, turnState: "running" },
+      meta: { firstSeq: seq, lastSeq: seq, sessionId, turnId, turnState: "running", ...(at === undefined ? {} : { at }) },
     });
     turns.set(turnId, builder);
     lastTurnBySession.set(sessionId, builder);
@@ -444,6 +447,7 @@ export const foldTaskEvents = (
 
   for (const stored of events) {
     const { seq, sessionId, event } = stored;
+    at = stored.at;
     switch (event.kind) {
       case "user.message": {
         committedClientIds.add(event.clientMessageId);
@@ -455,6 +459,7 @@ export const foldTaskEvents = (
             firstSeq: seq,
             lastSeq: seq,
             sessionId,
+            at: stored.at,
             author: { memberId: event.memberId, delivery: event.delivery },
           },
         });

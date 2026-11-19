@@ -231,6 +231,8 @@ describe("tasks.list and tasks.get", () => {
     const seen = await (await harness.as(a.insider)).tasks.get({ taskId: created.taskId });
     expect(seen).toMatchObject({ id: created.taskId, state: "queued", driver: { memberId: a.member.id }, capabilities: { send: false, takeOver: true, stop: true } });
     expect((await (await harness.as(a.member)).tasks.get({ taskId: created.taskId })).capabilities.takeOver).toBe(false);
+    // The agent and model it runs with: the session's profile, named for the panel.
+    expect(seen.agent).toMatchObject({ name: "OpenCode", adapter: "opencode", agentName: "OpenCode", model: { id: world.modelId, name: "World model" } });
     // Another organization's member and its admin get NOT_FOUND, and its list is empty.
     await expect((await harness.as(b.admin)).tasks.get({ taskId: created.taskId })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect((await harness.as(b.admin)).tasks.history({ taskId: created.taskId })).rejects.toMatchObject({ code: "NOT_FOUND" });

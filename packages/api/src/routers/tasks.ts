@@ -28,6 +28,7 @@ import type { OrganizationId, StoredEvent, TaskId, ToolKind } from "@ostra/proto
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { loadAgentProfileView } from "./agent-profile-view.ts";
 import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
 // F-097, F-023, F-025, F-014 (picking the runner), ticket 33: tasks. A task is visible to every
@@ -271,14 +272,20 @@ export const tasksRouter = router({
     if (task === null) {
       throw notFoundTask();
     }
-    const [driver, creator, lease] = await Promise.all([
+    const session = task.sessions[0];
+    // The agent and model of the newest session, or the project's default code profile before there's one.
+    const profileId =
+      session?.agentProfileId ??
+      (await db.project.findFirst({ where: { id: task.projectId, organizationId }, select: { defaultCodeProfileId: true } }))?.defaultCodeProfileId ??
+      null;
+    const [driver, creator, lease, agent] = await Promise.all([
       task.driverMemberId === null ? null : db.member.findFirst({ where: { id: task.driverMemberId, organizationId }, select: { id: true, user: { select: { name: true } } } }),
       task.creatorMemberId === null ? null : db.member.findFirst({ where: { id: task.creatorMemberId, organizationId }, select: { id: true, user: { select: { name: true } } } }),
       db.lease.findFirst({ where: { taskId: task.id, state: "active" }, include: { runner: { select: { id: true, name: true, kind: true, executor: true } } } }),
+      loadAgentProfileView(db, organizationId, profileId),
     ]);
     const pinnedRunner = lease === null && task.runnerId !== null ? await db.runner.findFirst({ where: { id: task.runnerId, organizationId }, select: { id: true, name: true, kind: true, executor: true } }) : null;
     const runner = lease === null ? pinnedRunner : lease.runner;
-    const session = task.sessions[0];
     const isDriver = task.driverMemberId === ctx.scope.memberId;
     const state = task.state;
     // What the caller may do: send and interrupt as the driver of a task with a session going, answer
@@ -327,6 +334,8 @@ export const tasksRouter = router({
               cacheReadTokens: session.cacheReadTokens,
               cacheWriteTokens: session.cacheWriteTokens,
             },
+      /** The agent profile the task runs with: its agent and model (task.md, the properties panel). */
+      agent,
       needsYou: task.needsYouItems.map((item) => ({ reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
       capabilities: {
         send: isDriver && sessionGoing && (state === "running" || state === "needs_you"),

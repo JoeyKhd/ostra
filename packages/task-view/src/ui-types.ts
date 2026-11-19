@@ -160,6 +160,8 @@ export type TaskMessageMeta = {
   firstSeq: number;
   lastSeq: number;
   sessionId?: SessionId;
+  /** When its first event was recorded, in ms since the epoch: the time in the message's header. */
+  at?: number;
   turnId?: TurnId;
   turnState?: "running" | "ended" | "failed";
   stopReason?: StopReason;

@@ -9,7 +9,6 @@ import {
   FileTextIcon,
   GitBranchIcon,
   GitPullRequestIcon,
-  HandIcon,
   InfoIcon,
   PencilIcon,
   SquareTerminalIcon,
@@ -23,6 +22,7 @@ import type { ReactNode } from "react";
 import { approvalMetadataSchema } from "@ostra/task-view";
 import type { TaskDataPart } from "@ostra/task-view";
 
+import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
 import { t } from "@/lib/messages";
@@ -70,39 +70,63 @@ export const AssistantText = ({ streaming }: { readonly streaming: boolean }) =>
 );
 
 export const Reasoning = ({ text, streaming }: { readonly text: string; readonly streaming: boolean }) => (
-  <details data-part="reasoning" data-streaming={streaming ? "true" : "false"} open={streaming} className="group my-1 text-muted">
-    <summary className="flex cursor-pointer list-none items-center gap-2 text-sm">
-      <BrainIcon className="size-[13px]" /> {streaming ? t("task.thinking") : t("task.thought")}
+  <details data-part="reasoning" data-streaming={streaming ? "true" : "false"} open={streaming} className="group text-muted">
+    <summary className="flex min-h-7 cursor-pointer list-none items-center text-body hover:text-text">
+      <span className="flex w-8 shrink-0 pl-1.5 text-faint"><BrainIcon className="size-[14px] stroke-[1.75]" /></span>
+      {streaming ? t("task.thinking") : t("task.thought")}
     </summary>
-    <p className="mt-1 whitespace-pre-wrap border-l border-line pl-3 text-sm">{text}</p>
+    <p className="mb-1 ml-8 whitespace-pre-wrap border-l border-line pl-3 text-sm">{text}</p>
   </details>
 );
 
-/** One activity line: icon, verb, subject, and what's on its right. */
-const Line = ({ icon, children, end, tone }: { readonly icon: ReactNode; readonly children: ReactNode; readonly end?: ReactNode; readonly tone?: "red" | "muted" | undefined }) => (
-  <div className={cn("flex min-h-7 min-w-0 items-center gap-2.5 text-body", tone === "red" && "text-red", tone === "muted" && "text-muted")}>
-    <span className="shrink-0 text-faint [&_svg]:size-[14px]">{icon}</span>
-    <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">{children}</span>
-    {end === undefined ? null : <span className="ml-auto shrink-0 text-sm">{end}</span>}
+/**
+ * One activity line (task.md, "Tool rows"): a 32px icon column, the verb in a fixed 72px column so
+ * every path starts at the same x, the subject, then its result inline after it (never pushed to the
+ * far edge). A line without a verb (a system line) runs its text from the verb's column.
+ */
+const Line = ({ icon, verb, children, end, tone }: {
+  readonly icon: ReactNode;
+  readonly verb?: ReactNode;
+  readonly children: ReactNode;
+  readonly end?: ReactNode;
+  readonly tone?: "red" | "muted" | undefined;
+}) => (
+  <div className={cn("flex min-h-7 min-w-0 items-center text-body", tone === "red" && "text-red", tone === "muted" && "text-muted")}>
+    <span className="flex w-8 shrink-0 pl-1.5 text-faint [&_svg]:size-[14px] [&_svg]:stroke-[1.75]">{icon}</span>
+    {verb === undefined ? null : <span className="w-[72px] shrink-0 text-muted">{verb}</span>}
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+      {children}
+      {end === undefined ? null : <span className="ml-1 shrink-0 font-mono text-sm">{end}</span>}
+    </span>
   </div>
 );
 
+/** The teal "Show the output" under a line, at the path column; underlined on hover only. */
+const Disclosure = ({ open, onToggle, children }: { readonly open: boolean; readonly onToggle: () => void; readonly children: ReactNode }) => (
+  <button type="button" className="ml-[104px] block text-sm text-teal hover:underline" aria-expanded={open} onClick={onToggle}>
+    {children}
+  </button>
+);
+
 const Mono = ({ children }: { readonly children: ReactNode }) => <span className="min-w-0 break-all font-mono text-[12.5px] text-text">{children}</span>;
+
+/** A tool's verb while it runs ("Running", "Editing") and after ("Ran", "Edited"). */
+const runningVerb = (running: boolean, now: string, then: string): string => (running ? now : then);
 
 const running = (part: ToolLikePart): boolean =>
   part.state === "input-available" || part.state === "input-streaming" || (part.state === "output-available" && part.preliminary === true);
 
 const ToolStatus = ({ part }: { readonly part: ToolLikePart }) => {
-  if (part.state === "output-error") return <span className="text-red">{part.errorText === "cancelled" ? t("task.tool.cancelled") : t("task.tool.failed")}</span>;
-  if (part.state === "output-denied") return <span className="text-red">{t("task.tool.denied")}</span>;
-  if (part.state === "approval-requested") return <span className="text-amber">{t("task.tool.needsApproval")}</span>;
-  if (running(part)) return <span className="text-faint">{t("task.tool.running")}</span>;
+  if (part.state === "output-error") return <span className="font-sans text-red">{part.errorText === "cancelled" ? t("task.tool.cancelled") : t("task.tool.failed")}</span>;
+  if (part.state === "output-denied") return <span className="font-sans text-red">{t("task.tool.denied")}</span>;
+  if (part.state === "approval-requested") return <span className="font-sans text-amber">{t("task.tool.needsApproval")}</span>;
+  if (running(part)) return <span className="font-sans text-faint">{t("task.tool.running")}</span>;
   return null;
 };
 
 /** A unified diff, as text: additions green, deletions red, never HTML. */
 const Diff = ({ patch }: { readonly patch: string }) => (
-  <pre className="my-1 max-h-96 overflow-auto rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-[1.6]">
+  <pre className="my-1 ml-[104px] max-h-80 overflow-auto rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-[1.6]">
     {patch.split("\n").map((line, i) => (
       <div key={i} className={line.startsWith("+") && !line.startsWith("+++") ? "text-green" : line.startsWith("-") && !line.startsWith("---") ? "text-red" : "text-muted"}>
         {line === "" ? " " : line}
@@ -112,24 +136,50 @@ const Diff = ({ patch }: { readonly patch: string }) => (
 );
 
 const Output = ({ text, truncated }: { readonly text: string; readonly truncated: boolean }) => (
-  <pre data-part="command-output" className="my-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-[1.6] text-muted">
+  <pre data-part="command-output" className="my-1 ml-[104px] max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3 py-2 font-mono text-[12px] leading-[1.6] text-muted">
     {text === "" ? t("task.tool.noOutput") : text}
     {truncated ? `\n${t("task.tool.truncated")}` : ""}
   </pre>
 );
 
-/** The approval, read-only in milestone 1: answering comes with F-026 in milestone 3. */
+/** What a pending approval asks to run: the command, the paths, or the tool's title. */
+const approvalSubject = (part: ToolLikePart): string | null => {
+  switch (part.type) {
+    case "tool-execute":
+      return part.input?.command ?? null;
+    case "tool-read":
+      return part.input?.path ?? null;
+    case "tool-edit":
+      return part.input?.paths?.join(", ") ?? null;
+    case "dynamic-tool":
+      return part.title ?? null;
+    default:
+      return part satisfies never;
+  }
+};
+
+/**
+ * The approval (task.md, "Approval block"): pending, the shared amber-ruled `NeedsYou` block with the
+ * descriptor's summary and the command; answered, one muted line. Read-only in milestone 1:
+ * answering comes with F-026 in milestone 3, so the buttons' place holds the read-only line.
+ */
 const ApprovalNote = ({ part }: { readonly part: ToolLikePart }) => {
-  const { memberName } = useTaskContext();
+  const { memberName, approvalSummary } = useTaskContext();
   const metadata = approvalMetadataSchema.safeParse(part.toolMetadata);
   if (!metadata.success) return null;
   const receipt = metadata.data.approval.descriptor.receipt;
   if (receipt === undefined) {
+    const summary = approvalSummary(metadata.data.approval.id);
+    const subject = approvalSubject(part);
     return (
-      <div data-part="approval" data-state="pending" className="my-2 border-l-2 border-amber pl-3">
-        <div className="flex items-center gap-2 font-medium text-amber"><HandIcon className="size-[14px]" /> {t("task.approval.title")}</div>
-        <p className="text-sm text-muted">{t("task.approval.readOnly")}</p>
-      </div>
+      <NeedsYou data-testid="approval" title={t("task.approval.title")} className="my-2.5" footer={t("task.approval.readOnly")}>
+        <div data-part="approval" data-state="pending">
+          {summary === null ? null : <p className="whitespace-pre-wrap">{summary}</p>}
+          {subject === null ? null : (
+            <code className="mt-2 inline-block max-w-full break-all rounded-sm border border-line bg-surface px-2.5 py-1.5 font-mono text-[12.5px] leading-[1.4] text-text">{subject}</code>
+          )}
+        </div>
+      </NeedsYou>
     );
   }
   let text: string;
@@ -151,7 +201,7 @@ const ApprovalNote = ({ part }: { readonly part: ToolLikePart }) => {
     default:
       return receipt satisfies never;
   }
-  return <div data-part="approval" data-state={receipt.state} className="ml-6 text-sm text-muted">{text}</div>;
+  return <div data-part="approval" data-state={receipt.state} className="ml-[104px] text-sm text-muted">{text}</div>;
 };
 
 const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
@@ -159,8 +209,7 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
   switch (part.type) {
     case "tool-read":
       return (
-        <Line icon={<FileTextIcon />} end={<ToolStatus part={part} />} tone={part.state === "output-error" ? "red" : undefined}>
-          <span className="text-muted">{t("task.tool.read")}</span>
+        <Line icon={<FileTextIcon />} verb={t("task.tool.read")} end={<ToolStatus part={part} />} tone={part.state === "output-error" ? "red" : undefined}>
           <Mono>{part.input?.path ?? ""}</Mono>
           {part.state === "output-error" ? <span className="text-sm text-red">{part.errorText}</span> : null}
         </Line>
@@ -176,19 +225,19 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
             <Line
               key={file.path}
               icon={<PencilIcon />}
+              verb={runningVerb(!done, t("task.tool.editing"), t("task.tool.edited"))}
               end={<ToolStatus part={part} />}
             >
-              <span className="text-muted">{done ? t("task.tool.edited") : t("task.tool.editing")}</span>
               <Mono>{file.path}</Mono>
-              {file.added === null ? null : <span className="font-mono text-sm text-green">+{file.added}</span>}
+              {file.added === null ? null : <span className="ml-1 font-mono text-sm text-green">+{file.added}</span>}
               {file.removed === null || file.removed === 0 ? null : <span className="font-mono text-sm text-red">−{file.removed}</span>}
             </Line>
           ))}
           {patch === "" ? null : (
             <>
-              <button type="button" className="ml-6 text-sm text-teal hover:underline" aria-expanded={open} onClick={() => { setOpen((v) => !v); }}>
+              <Disclosure open={open} onToggle={() => { setOpen((v) => !v); }}>
                 {open ? t("task.tool.hideDiff") : t("task.tool.showDiff")}
-              </button>
+              </Disclosure>
               {open ? <Diff patch={patch} /> : null}
             </>
           )}
@@ -202,6 +251,7 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
         <div>
           <Line
             icon={<TerminalIcon />}
+            verb={runningVerb(running(part), t("task.tool.runningVerb"), t("task.tool.ran"))}
             tone={part.state === "output-error" ? "red" : undefined}
             end={
               exit === undefined ? <ToolStatus part={part} /> : exit === 0 ? (
@@ -211,25 +261,23 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
               )
             }
           >
-            <span className="text-muted">{running(part) ? t("task.tool.running") : t("task.tool.ran")}</span>
             <Mono>{part.input?.command ?? ""}</Mono>
           </Line>
           {output === null ? null : (
             <>
-              <button type="button" className="ml-6 text-sm text-teal hover:underline" aria-expanded={open} onClick={() => { setOpen((v) => !v); }}>
+              <Disclosure open={open} onToggle={() => { setOpen((v) => !v); }}>
                 {open ? t("task.tool.hideOutput") : t("task.tool.showOutput")}
-              </button>
+              </Disclosure>
               {open ? <Output text={output.output} truncated={output.truncated} /> : null}
             </>
           )}
-          {part.state === "output-error" ? <p className="ml-6 text-sm text-red">{part.errorText}</p> : null}
+          {part.state === "output-error" ? <p className="ml-[104px] text-sm text-red">{part.errorText}</p> : null}
         </div>
       );
     }
     case "dynamic-tool":
       return (
-        <Line icon={part.toolName === "execute" ? <SquareTerminalIcon /> : <WrenchIcon />} end={<ToolStatus part={part} />} tone={part.state === "output-error" ? "red" : undefined}>
-          <span className="text-muted">{part.toolName}</span>
+        <Line icon={part.toolName === "execute" ? <SquareTerminalIcon /> : <WrenchIcon />} verb={<span className="block truncate pr-2">{part.toolName}</span>} end={<ToolStatus part={part} />} tone={part.state === "output-error" ? "red" : undefined}>
           <span className="min-w-0 truncate">{part.title ?? ""}</span>
           {part.state === "output-error" ? <span className="text-sm text-red">{part.errorText}</span> : null}
         </Line>
@@ -243,7 +291,7 @@ export const ToolRow = ({ toolCallId }: { readonly toolCallId: string }) => {
   const part = useToolPart(toolCallId);
   if (part === undefined) return null;
   return (
-    <div data-part="tool" data-tool-kind={part.type === "dynamic-tool" ? part.toolName : part.type.slice(5)} data-state={part.state} className="my-0.5">
+    <div data-part="tool" data-tool-kind={part.type === "dynamic-tool" ? part.toolName : part.type.slice(5)} data-state={part.state}>
       <ToolBody part={part} />
       <ApprovalNote part={part} />
     </div>
@@ -253,18 +301,22 @@ export const ToolRow = ({ toolCallId }: { readonly toolCallId: string }) => {
 const PlanStatus = ({ status }: { readonly status: "pending" | "in_progress" | "completed" }) =>
   status === "completed" ? <CheckIcon className="size-3 text-green" /> : status === "in_progress" ? <CircleDotIcon className="size-3 text-teal" /> : <CircleIcon className="size-3 text-faint" />;
 
+/** Done and pending steps are muted (no line-through: it reads as deleted); the current one is `--text`. */
+const planTone = (status: "pending" | "in_progress" | "completed"): string => (status === "in_progress" ? "text-text" : "text-muted");
+
 const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
   const { memberName } = useTaskContext();
   const [open, setOpen] = useState(false);
   switch (part.type) {
     case "data-plan":
       return (
-        <div data-part="plan" className="my-1.5">
-          <div className="mb-1 text-sm font-medium text-muted">{t("task.plan")}</div>
-          <ul className="space-y-0.5">
+        <div data-part="plan" className="my-2">
+          <div className="mb-0.5 text-sm text-faint">{t("task.plan")}</div>
+          <ul>
             {part.data.entries.map((entry, i) => (
-              <li key={i} className={cn("flex items-center gap-2 text-body", entry.status === "completed" && "text-muted line-through")}>
-                <PlanStatus status={entry.status} /> {entry.content}
+              <li key={i} data-status={entry.status} className={cn("flex min-h-6 items-center text-body", planTone(entry.status))}>
+                <span className="flex w-8 shrink-0 pl-1.5"><PlanStatus status={entry.status} /></span>
+                {entry.content}
               </li>
             ))}
           </ul>
@@ -273,16 +325,19 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
     case "data-question": {
       const status = part.data.status;
       return (
-        <div data-part="question" className="my-2 border-l-2 border-amber pl-3">
-          <div className="flex items-center gap-2 font-medium text-amber"><HandIcon className="size-[14px]" /> {t("task.question.title")}</div>
-          <p className="whitespace-pre-wrap">{part.data.message}</p>
-          <p className="text-sm text-muted">
-            {status.state === "open"
-              ? t("task.question.readOnly")
-              : status.state === "answered"
-                ? t("task.question.answered", { name: memberName(status.answeredBy) })
-                : t("task.question.closed", { reason: status.closedReason })}
-          </p>
+        <div data-part="question">
+          {status.state === "open" ? (
+            <NeedsYou data-testid="question" title={t("task.question.title")} className="my-2.5" footer={t("task.question.readOnly")}>
+              <p className="whitespace-pre-wrap">{part.data.message}</p>
+            </NeedsYou>
+          ) : (
+            <div className="my-1">
+              <p className="whitespace-pre-wrap">{part.data.message}</p>
+              <p className="text-sm text-muted">
+                {status.state === "answered" ? t("task.question.answered", { name: memberName(status.answeredBy) }) : t("task.question.closed", { reason: status.closedReason })}
+              </p>
+            </div>
+          )}
         </div>
       );
     }
@@ -301,7 +356,7 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
             icon={<SquareTerminalIcon />}
             tone={setup.state === "failed" ? "red" : undefined}
             end={
-              setup.state === "running" ? <span className="text-faint">{t("task.tool.running")}</span> : (
+              setup.state === "running" ? <span className="font-sans text-faint">{t("task.tool.running")}</span> : (
                 <span className={setup.state === "succeeded" ? "text-green" : "text-red"}>
                   {setup.state === "succeeded" ? t("task.setup.ok") : setup.exitCode === null || setup.exitCode === undefined ? t("task.tool.killed") : t("task.tool.exit", { code: setup.exitCode })}
                   {setup.durationMs === undefined ? "" : ` · ${formatDuration(setup.durationMs)}`}
@@ -313,9 +368,9 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           </Line>
           {text === "" ? null : (
             <>
-              <button type="button" className="ml-6 text-sm text-teal hover:underline" aria-expanded={open || setup.state === "failed"} onClick={() => { setOpen((v) => !v); }}>
+              <Disclosure open={open || setup.state === "failed"} onToggle={() => { setOpen((v) => !v); }}>
                 {open ? t("task.setup.hide") : t("task.setup.show")}
-              </button>
+              </Disclosure>
               {open || setup.state === "failed" ? <Output text={text} truncated={false} /> : null}
             </>
           )}
@@ -336,9 +391,9 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           <Line icon={<GitPullRequestIcon />} tone="muted">
             {t("task.prText")} <span className="text-text">{part.data.title}</span>
           </Line>
-          <button type="button" className="ml-6 text-sm text-teal hover:underline" aria-expanded={open} onClick={() => { setOpen((v) => !v); }}>
+          <Disclosure open={open} onToggle={() => { setOpen((v) => !v); }}>
             {open ? t("task.prBodyHide") : t("task.prBodyShow")}
-          </button>
+          </Disclosure>
           {open ? <Output text={part.data.body} truncated={false} /> : null}
         </div>
       );
