@@ -25,6 +25,7 @@ import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Skeleton, SkeletonRows } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
@@ -383,21 +384,8 @@ const ConnectForm = () => {
   ];
   return (
     <Section title={t("github.createSection")}>
-      <div role="tablist" className="mb-6 mt-1 flex gap-[18px] border-b border-line">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={path === tab.id}
-            onClick={() => { setPath(tab.id); }}
-            className={cn("-mb-px border-b-2 border-transparent pb-2.5 pt-1 font-medium text-muted hover:text-text", path === tab.id && "border-text text-text")}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel">
+      <UnderlineTabs tabs={tabs} selected={path} onSelect={setPath} label={t("github.createSection")} idPrefix="github-app" className="mb-6 mt-1" />
+      <div role="tabpanel" id={`github-app-panel-${path}`} aria-labelledby={`github-app-tab-${path}`}>
         {path === "existing" ? <ExistingAppForm /> : <NewAppForm webhookPossible={request.data?.webhookPossible} />}
       </div>
     </Section>

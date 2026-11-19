@@ -31,6 +31,9 @@
   --shell: #f3f0e8;
   --ink: #0c1d21;
   --mist: #cfd8d4;
+  /* The diff's line fills (task-changes.md): --green and --red at 10%. */
+  --add-bg: rgba(79, 178, 134, 0.1);
+  --del-bg: rgba(229, 103, 92, 0.1);
 
   /* The type scale. Body is 14.5px, secondary 13px, small 12px; mono uses the same steps. */
   --fs-xs: 12px;
@@ -61,6 +64,8 @@
   --color-shell: var(--shell);
   --color-ink: var(--ink);
   --color-mist: var(--mist);
+  --color-add-bg: var(--add-bg);
+  --color-del-bg: var(--del-bg);
 
   /* The faces come from next/font (src/app/fonts.ts), which sets these variables on <html>. */
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;

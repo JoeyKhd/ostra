@@ -1840,5 +1840,107 @@
       "canRead": "Can read",
       "canReadValue": "Branches and clone URLs"
     }
+  },
+  "changes": {
+    "asOf": "As of the last turn · ",
+    "aheadBehind": "{ahead} ahead · {behind} behind",
+    "aheadUpToDate": "{ahead} ahead · up to date with {base}",
+    "behindOne": {
+      "one": "{repo} is {n} commit behind {base}",
+      "other": "{repo} is {n} commits behind {base}"
+    },
+    "behindSeveral": "{count} repos are behind their base: {list}",
+    "updateBranch": "Update branch",
+    "updating": "Updating…",
+    "updateTitle": "Ask the agent to merge {base} into the task's branch and fix any conflicts.",
+    "updateAsked": " · asked {agent} to merge it",
+    "driving": "{name} is driving.",
+    "takeOver": "Take over",
+    "binary": "binary",
+    "tooLarge": "too large",
+    "commentsOnFile": {
+      "one": "{n} comment",
+      "other": "{n} comments"
+    },
+    "files": "Files",
+    "fetching": "Fetching the diff from GitHub…",
+    "nothingPushed": "Nothing pushed yet. The diff shows here after the agent's first turn that changes code.",
+    "noChanges": "No changes against {base}.",
+    "filesTruncated": "GitHub sent the first {n} files.",
+    "seeAll": "See all on GitHub",
+    "loadFailed": "The diff couldn't be loaded: {error}",
+    "tryAgain": "Try again",
+    "tooLargeRow": "Too large to show here",
+    "binaryRow": "Binary file, not shown",
+    "renamedRow": "Renamed, no changes",
+    "openOnGitHub": "Open on GitHub",
+    "noNewline": "No newline at end of file",
+    "unchanged": {
+      "one": "{n} unchanged line",
+      "other": "{n} unchanged lines"
+    },
+    "commentOn": "Comment on line {n}",
+    "outdatedComments": "Outdated comments",
+    "sent": "Sent",
+    "draft": "Draft",
+    "outdated": "Outdated",
+    "outdatedWhere": "line {n} · {sha}",
+    "editDraft": "Edit",
+    "deleteDraft": "Delete",
+    "placeholder": "Comment on line {n}…",
+    "onlyYou": "Only you see a draft until you send it.",
+    "saveDraft": "Save draft",
+    "savingDraft": "Saving…",
+    "lineGone": "This line changed since you opened it. Copy your comment and reload the diff.",
+    "deleted": "Draft deleted.",
+    "undo": "Undo",
+    "review": {
+      "drafts": {
+        "one": "{n} draft comment",
+        "other": "{n} draft comments"
+      },
+      "files": {
+        "one": " on {n} file",
+        "other": " on {n} files"
+      },
+      "send": {
+        "one": "Send {n} comment to the agent",
+        "other": "Send {n} comments to the agent"
+      },
+      "sending": "Sending…",
+      "idle": "Sent together as one message. The session is idle, so they start the next turn.",
+      "steer": "Sent together as one message. {agent} reads them at its next step.",
+      "afterTurn": "Sent together as one message, after the current turn.",
+      "reopen": "Sent together as one message. Sending reopens the task.",
+      "notDriver": "{name} is driving. Take over to send your comments.",
+      "sentLine": {
+        "one": "Sent {n} comment as one message.",
+        "other": "Sent {n} comments as one message."
+      },
+      "seeActivity": "See it in Activity",
+      "tooMany": "At most 50 comments go in one message. Delete some to send the rest."
+    },
+    "counter": "{n} / {max}",
+    "diffLabel": "The diff"
+  },
+  "intent": {
+    "diffComments": {
+      "one": " · {n} comment on the diff",
+      "other": " · {n} comments on the diff"
+    },
+    "diffCommentsNoCount": " · comments on the diff",
+    "updateBranch": " · update branch",
+    "prComment": " · from a PR comment",
+    "fixChecks": " · fix the checks",
+    "keepWorking": " · keep working",
+    "planRevision": " · changes to the plan"
+  },
+  "afterMerge": {
+    "freshBranch": "Reopened after the merge on a fresh branch, {branch}, from {base}.",
+    "prs": "Pull requests",
+    "merged": "merged",
+    "open": "open",
+    "closed": "closed",
+    "draft": "draft"
   }
 }

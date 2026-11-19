@@ -29,6 +29,7 @@
     "@ostra/protocol": "workspace:*",
     "@ostra/task-view": "workspace:*",
     "@tanstack/react-query": "5.107.1",
+    "@tanstack/react-virtual": "3.14.26",
     "@trpc/client": "11.28.6",
     "@trpc/server": "11.28.6",
     "@trpc/tanstack-react-query": "11.28.6",
