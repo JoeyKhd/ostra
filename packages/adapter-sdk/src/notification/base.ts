@@ -39,6 +39,12 @@ export type NotificationRecipient = {
   readonly trackerMention: string | null;
 };
 
+/**
+ * Where the moment stands, for the channels that edit (`update`): `open` while it waits for an
+ * answer, `answered` or `dismissed` after. Absent means `open`.
+ */
+export type NotificationMomentState = "open" | "answered" | "dismissed";
+
 /** An email's three parts, from the domain's pure renderers (ADR 0050). Never logged. */
 export type RenderedEmail = { readonly subject: string; readonly html: string; readonly text: string };
 
@@ -66,6 +72,8 @@ export type Notification = {
   readonly taskId?: TaskId | null;
   /** The task's ticket, for the tracker channel; `null` for a prompt task or a test. */
   readonly ticket?: TicketRef | null;
+  /** Where the moment stands (ticket 11): the panel's row and the ticket's comment follow it on `update`. Absent: `open`. */
+  readonly state?: NotificationMomentState;
 };
 
 /** A recipient the channel refused, without failing the others. `reason` is words, never a vendor's body. */
