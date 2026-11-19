@@ -211,7 +211,10 @@ const releaseOldWorktree = async (settings: M2Settings, runner: RunningRunner, t
   await rm(path.join(settings.runnerDataDir, "tasks", taskId), { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 });
 };
 
-const REOPEN_MESSAGE = "Also add today's date at the top. And what did you change in your first turn, and why?";
+// Spec section 3 asks for today's date at the top, which an agent sometimes writes in its first turn
+// already: then the reopen has nothing to commit, and the PR can't show the update. This sentence
+// can't be there before.
+const REOPEN_MESSAGE = 'Also add this sentence at the end of the file: "Reopened from its session archive." And what did you change in your first turn, and why?';
 
 const reopenTask = async (page: Page, settings: M2Settings, taskId: TaskId): Promise<void> => {
   await page.goto(`/tasks/${taskId}`);
