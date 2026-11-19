@@ -182,6 +182,11 @@ export type MoveResult = {
   readonly status: TicketStatus;
 };
 
+/** How a PR's link relates to its ticket: the board's magic word, `Closes` or `Refs` (spec section 11, item 5). */
+export type PullRequestLinkKind = "closes" | "references";
+
+export type PullRequestLinkOptions = { readonly kind?: PullRequestLinkKind };
+
 /** ostra's link to the task on the ticket (F-031). Made once per URL. */
 export type TaskLink = {
   readonly url: string;
@@ -295,8 +300,17 @@ export abstract class TrackerAdapter {
   /** Adds a comment, written by ostra. */
   abstract comment(board: BoardRef, key: TicketKey, markdown: string): Promise<AdapterResult<{ readonly commentId: string }>>;
 
-  /** Links a PR to a ticket. Linking the same URL again links it once. */
-  abstract linkPullRequest(board: BoardRef, key: TicketKey, pullRequestUrl: string): Promise<AdapterResult<void>>;
+  /**
+   * Links a PR to a ticket. Linking the same URL again links it once. `options.kind` (milestone 2)
+   * is the board's magic word: `closes` for `Closes`, `references` for `Refs`. A tracker that
+   * can't say how a link relates ignores it; without it, the tracker's default.
+   */
+  abstract linkPullRequest(
+    board: BoardRef,
+    key: TicketKey,
+    pullRequestUrl: string,
+    options?: PullRequestLinkOptions,
+  ): Promise<AdapterResult<void>>;
 
   // ---------- milestone 2 ----------
 
