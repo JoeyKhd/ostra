@@ -33,6 +33,7 @@ A settled question leaves this file. Its answer lives on in the ADR (`decisions/
 | Q-27 | F-058 in v1 |
 | Q-28 | ADR 0018: Claude Code through ACP. Amended by ADR 0032: OpenCode through ACP first |
 | Q60–Q63, the panel's look (asked in chat 2026-11-18) | `brand/app-design.md`: neutral graphite chrome with brand accents, denser type, few boxes, concepts in real HTML; direction B picked |
+| Q164 agent reach on `host` | `AGENTS.md` Boundaries (2026-11-19): enforced by the box on `docker` and `kubernetes`; `host` is labelled not isolated (ADR 0029, ADR 0031) |
 
 ### Delegated on 2026-11-18
 
@@ -264,8 +265,6 @@ The maintainer delegated these calls too, and each recommendation of the finding
 **Q126 👤 Containing a task's processes on the `host` executor** (ADR 0029, `research/spike-how-should-the-runner-drive-opencode.md`, item 6). The decision is made: a Windows job object, a Linux cgroup. Two things aren't. How does a Node runner create a Windows job object (a native addon or a small helper program, either of which is a new dependency)? And what does macOS use, which has neither? Until it is settled, milestone 1's `host` executor on Windows ends the agent's process tree and says so in the panel, and `host` on macOS reaps a process group and walks the tree, recorded as the third allowed difference in ADR 0029. *Recommendation:* a small helper program for Windows, so the runner needs no native addon on a laptop, and for macOS test a process group plus a sweep for orphans against a detached helper, and record the result.
 
 **Q127 👤 Dependencies waiting for a yes** (ADR 0007, "pending the maintainer"). `@tanstack/react-virtual` for the task page's long lists (Q112), `dockerode`, `@kubernetes/client-node`, `nodemailer`, and whatever Q126 picks. Each is added only when the feature that needs it is built, and only after the maintainer confirms it and its license. *Recommendation:* yes to all four named ones, since each has no standard-library or already-listed alternative. *Added 2026-11-19:* an S3 client, such as `@aws-sdk/client-s3`, for the S3-compatible blob store (ADR 0043, F-114, `specs/m2-tickets-in/issues/11-s3-blob-store-adapter.md`).
-
-**Q164 👤 `AGENTS.md` says an agent's reach ends at its task's workspace** (spike 10, finding 8, `research/spike-is-opencode-good-enough.md`). That is a goal only a box meets. On `host`, OpenCode's `external_directory` deny bounds its file tools and not its shell, which reaches whatever the member's account does (ADR 0029, ADR 0031). Milestone 1's spec now says so, and `AGENTS.md`'s Boundaries line is the maintainer's to change. *Recommendation:* reword it to "An agent's reach ends at its task's workspace on `docker` and `kubernetes`, enforced by the box. The `host` executor is labelled not isolated, and its agent can reach what the account can." The same file's Phase line still reads "milestone 0, spikes"; it can say that milestone 0 is done and milestone 1 is in progress.
 
 ### Raised by milestone 1 (2026-11-19)
 

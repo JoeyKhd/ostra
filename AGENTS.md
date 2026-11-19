@@ -2,7 +2,7 @@
 
 Source-available, self-hostable control panel that connects an organization's tracker (Linear, later Jira) to its coding agents (OpenCode first, Claude Code before launch, more later through the same interface). A ticket or a prompt becomes a task, and an agent works it on its own branch on a runner. Members can steer it and reopen it at any time, and it ships a GitHub PR for each repo it changes. The brief: `context/project.md`.
 
-**Phase: milestone 0, spikes** (`context/build-order.md`). The plan was signed off on 2026-11-17 and reworked on 2026-11-18, and product code starts with milestone 1. The repo's skeleton is already in place (ADR 0045): the workspace, the strict tooling, CI, the license check and the branded IDs in `packages/protocol`. Every other piece of code until milestone 1 is a spike: throwaway code that answers one question. It lives in `spikes/<kebab-question>/`, and its finding goes into `context/research/`.
+**Phase: milestone 1, first PR** (`context/build-order.md`). Milestone 0 is done: all ten spikes answered their questions, and their findings are in `context/research/` and folded into the ADRs. Milestone 1 (a prompt becomes a task, and an agent opens a PR from a runner) is being built and verified against `context/specs/m1-first-pr/`; milestone 2 is specced in `context/specs/m2-tickets-in/`. When a question still needs throwaway code, it's a spike in `spikes/<kebab-question>/`, and its finding goes into `context/research/`.
 
 ## Context
 
@@ -92,7 +92,7 @@ Everything is **strictly typed**, end to end. The maintainer: "everything needs 
 - Develop and test only against the test workspaces: a Linear workspace and a GitHub org set up for ostra. Use a real team's tracker or repos only when the maintainer names it.
 - Ticket text, PR comments and agent output are untrusted input:
   - ostra passes them as data and never interpolates them into a shell command.
-  - An agent's reach ends at its task's workspace.
+  - An agent's reach ends at its task's workspace on `docker` and `kubernetes`, enforced by the box. The `host` executor is labelled not isolated, and its agent can reach what the account can (ADR 0029, ADR 0031).
 - Ask before adding a dependency, or building on a vendor or paid service the maintainer hasn't chosen.
 - Migrations run on other teams' installs, which upgrade on their own schedule. Add first; drop or rename in a later release.
 - `.agents/skills/` and `.claude/skills/` are installed tooling. Change them only through the `skills` CLI (`skills-lock.json`).
