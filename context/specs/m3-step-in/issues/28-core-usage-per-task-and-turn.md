@@ -1,6 +1,6 @@
 # 28: Core: usage per task and per turn
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 06
 Features: F-084
@@ -16,8 +16,8 @@ Spec: `../spec.md`, section 2 (F-084)
 
 ## Done when
 
-- [ ] Tests: the totals equal the sum of the task's `usage.recorded` events across two sessions; an estimated event marks the turn and the task; agent time excludes the time a turn waited for nobody (between turns); another organization's usage is invisible.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
-- [ ] Committed as `✨ add usage per task and turn`.
+- [x] Tests: the totals equal the sum of the task's `usage.recorded` events across two sessions; an estimated event marks the turn and the task; agent time excludes the time a turn waited for nobody (between turns); another organization's usage is invisible.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
+- [x] Committed as `✨ add usage per task and turn`.
 
 ## Comments

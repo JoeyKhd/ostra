@@ -151,6 +151,9 @@ const withPreviousBox = async (tx: Tx, taskId: TaskId, session: Session, item: R
   return { ...item, event: { ...item.event, previousBox } };
 };
 
+/** A turn's agent time in ms, clamped to the column. */
+const agentTimeMs = (startedAt: number, endedAt: number): number => Math.min(Math.max(0, endedAt - startedAt), 2_147_483_647);
+
 /** The session's ID, branded: the row was found by it. */
 const item0SessionId = (session: Session): SessionId => sessionIdSchema.parse(session.id);
 
@@ -217,12 +220,17 @@ const applyEffects = async (
         const open = await tx.turn.findFirst({
           where: { sessionId: session.id, endedAt: null },
           orderBy: { ordinal: "desc" },
-          select: { id: true },
+          select: { id: true, startedAt: true },
         });
         if (open !== null) {
           await tx.turn.update({
             where: { id: open.id },
-            data: { endedAt: new Date(item.at), stopReason: event.kind === "turn.ended" ? event.stopReason : "failed" },
+            data: {
+              endedAt: new Date(item.at),
+              stopReason: event.kind === "turn.ended" ? event.stopReason : "failed",
+              // F-084: the agent's time in the turn, from its start to its end. The wait between turns is in neither.
+              agentMs: agentTimeMs(open.startedAt.getTime(), item.at),
+            },
           });
         }
         await moveSessionInTx(moveDeps, current, { type: "turn_ended" });
@@ -255,6 +263,23 @@ const applyEffects = async (
         if (cost > 0) {
           await tx.$executeRaw`UPDATE "session" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${session.id}`;
           await tx.$executeRaw`UPDATE "task" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${task.id}`;
+        }
+        // F-084: the turn it belongs to (the session's latest, open while the agent works) keeps its own figures.
+        const turn = await tx.turn.findFirst({ where: { sessionId: session.id }, orderBy: { ordinal: "desc" }, select: { id: true } });
+        if (turn !== null) {
+          await tx.turn.update({
+            where: { id: turn.id },
+            data: {
+              inputTokens: { increment: event.inputTokens },
+              outputTokens: { increment: event.outputTokens },
+              cacheReadTokens: { increment: event.cacheReadTokens },
+              cacheWriteTokens: { increment: event.cacheWriteTokens },
+              ...(event.estimated ? { estimated: true } : {}),
+            },
+          });
+          if (cost > 0) {
+            await tx.$executeRaw`UPDATE "turn" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${turn.id}`;
+          }
         }
         break;
       }
