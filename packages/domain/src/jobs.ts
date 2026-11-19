@@ -3,9 +3,15 @@ import {
   boxIdSchema,
   boxReleaseReasonSchema,
   connectionIdSchema,
+  gitShaSchema,
   leaseEpochSchema,
+  needsYouItemIdSchema,
+  notificationDeliveryIdSchema,
+  notificationIdSchema,
   organizationIdSchema,
+  projectIdSchema,
   providerIdSchema,
+  repoIdSchema,
   sessionIdSchema,
   taskIdSchema,
   taskSeqSchema,
@@ -43,6 +49,15 @@ export const jobNames = [
   "box.release-after-idle",
   "retention.sweep",
   "blob.gc",
+  // ---- milestone 3 (spec section 5.4) ----
+  "notify.fanout",
+  "notify.deliver",
+  "diff.fetch",
+  "task.reconcile-behind",
+  "github.comment",
+  "snapshot.schedule",
+  "snapshot.nightly",
+  "cli-session.expire",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -96,6 +111,40 @@ export const jobPayloadSchemas = {
   "retention.sweep": z.strictObject({}),
   /** Delete blobs no task or session refers to any more (F-114, ticket 12). */
   "blob.gc": z.strictObject({}),
+
+  // ---- milestone 3 ----
+  /**
+   * An item was created, answered or dismissed (F-036, ticket 20): resolve its audience, write the
+   * notifications and their deliveries. A test mail has a notification and no item.
+   */
+  "notify.fanout": z.strictObject({
+    organizationId: organizationIdSchema,
+    needsYouItemId: needsYouItemIdSchema.nullable(),
+    notificationId: notificationIdSchema.nullable(),
+    change: z.enum(["created", "answered", "dismissed"]),
+  }),
+  /** Send one delivery through its channel's adapter (tickets 20, 21); email's is delayed by the setting. */
+  "notify.deliver": z.strictObject({ organizationId: organizationIdSchema, deliveryId: notificationDeliveryIdSchema }),
+  /** Fetch and cache a repo's compare of a base and a head (F-027, ticket 22). */
+  "diff.fetch": z.strictObject({ ...taskScope, repoId: repoIdSchema, baseSha: gitShaSchema, headSha: gitShaSchema }),
+  /** Recompute every open task repo's `behind` from the compare (F-070, ticket 24). An idempotent pass: a schedule. */
+  "task.reconcile-behind": z.strictObject({}),
+  /** Act on an `@ostra` PR comment the inbox saved (F-053, ticket 25), by its connection and the host's comment ID. */
+  "github.comment": z.strictObject({
+    organizationId: organizationIdSchema,
+    connectionId: connectionIdSchema,
+    commentId: z.string().min(1).max(64).regex(/^[0-9]+$/, "a code host's comment ID"),
+  }),
+  /** Build a project's snapshot (F-051, ticket 26): the environment changed, a lockfile moved, or the nightly. */
+  "snapshot.schedule": z.strictObject({
+    organizationId: organizationIdSchema,
+    projectId: projectIdSchema,
+    reason: z.enum(["environment-changed", "lockfile-changed", "nightly"]),
+  }),
+  /** Once a night: schedule a snapshot for each project whose default branch moved (F-051, ticket 26). */
+  "snapshot.nightly": z.strictObject({}),
+  /** Revoke the CLI sessions past their expiry (F-103, ticket 39). */
+  "cli-session.expire": z.strictObject({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -121,6 +170,17 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "box.release-after-idle": (payload) => `box:${payload.boxId}:release-after-idle`,
   "retention.sweep": () => "retention:sweep",
   "blob.gc": () => "blob:gc",
+  "notify.fanout": (payload) =>
+    payload.needsYouItemId === null
+      ? `notification:${payload.notificationId ?? "none"}:fanout:${payload.change}`
+      : `item:${payload.needsYouItemId}:fanout:${payload.change}`,
+  "notify.deliver": (payload) => `delivery:${payload.deliveryId}:deliver`,
+  "diff.fetch": (payload) => `repo:${payload.repoId}:diff:${payload.baseSha}:${payload.headSha}`,
+  "task.reconcile-behind": () => "tasks:reconcile-behind",
+  "github.comment": (payload) => `connection:${payload.connectionId}:comment:${payload.commentId}`,
+  "snapshot.schedule": (payload) => `project:${payload.projectId}:snapshot:${payload.reason}`,
+  "snapshot.nightly": () => "snapshots:nightly",
+  "cli-session.expire": () => "cli-sessions:expire",
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -155,7 +215,20 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "box.release-after-idle": { kind: "timer" },
   "retention.sweep": { kind: "schedule" },
   "blob.gc": { kind: "schedule" },
+  "notify.fanout": { kind: "event" },
+  // Email's delivery waits OSTRA_EMAIL_DELAY_SECONDS: sent with that delay, in the fan-out's transaction.
+  "notify.deliver": { kind: "event" },
+  "diff.fetch": { kind: "event", throttle: "connection" },
+  "task.reconcile-behind": { kind: "schedule" },
+  "github.comment": { kind: "event" },
+  // Several reasons a minute apart build once (`snapshotScheduleSingletonSeconds`).
+  "snapshot.schedule": { kind: "event" },
+  "snapshot.nightly": { kind: "schedule" },
+  "cli-session.expire": { kind: "schedule" },
 };
+
+/** `snapshot.schedule`'s singleton window (spec section 5.4): one build per project and reason a minute. */
+export const snapshotScheduleSingletonSeconds = 60;
 
 const typedSchemas: { readonly [N in JobName]: z.ZodType<JobPayload<N>> } = jobPayloadSchemas;
 

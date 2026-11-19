@@ -1,6 +1,6 @@
 # 07: Domain: inputs, rules, audiences, templates, prompts, use cases, jobs and settings
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: 01, 06
 Features: F-021, F-024, F-026, F-063, F-036, F-115, F-072, F-054, F-070, F-066, F-053, F-051
@@ -20,10 +20,10 @@ Spec: `../spec.md`, section 5.4; ADRs 0049 to 0052
 
 ## Done when
 
-- [ ] Tests: every new lifecycle input, every rule case, every audience case, every template's snapshot, every prompt's marked blocks; `seedMember` refused with `NODE_ENV=production`.
-- [ ] Every setting is in `docs/configuration.md` with its default, and a config with none of them set parses.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `domain` and its dependents.
-- [ ] Committed as `✨ add the milestone 3 domain`.
+- [x] Tests: every new lifecycle input, every rule case, every audience case, every template's snapshot, every prompt's marked blocks; `seedMember` refused with `NODE_ENV=production`.
+- [x] Every setting is in `docs/configuration.md` with its default, and a config with none of them set parses.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `domain` and its dependents.
+- [x] Committed as `✨ add the milestone 3 domain`.
 
 ## Decided 2026-11-19
 
@@ -36,3 +36,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **The email templates** (`email-needs-you.md`, open points): no web fonts, only the system stack the build spec names, and no `@font-face`. No `List-Unsubscribe` header in milestone 3 (ticket 21); the footer's Notifications link is how a member turns a kind off.
 
 ## Comments
+
+- 2026-11-19, core (contracts): done in `✨ add the milestone 3 domain`. **Lifecycles:** `plan_proposed` (running to needs you, `plan`), `plan_answered { boxWarm }` (from a plan's needs you to running when the box is warm, queued when not), `ticket_closed` (running to needs you, `ticket_closed`), `keep_working { boxWarm }` (from that needs you only) and `reopen_after_merge { mergedRepoIds }` (a merged code task with at least one merged repo named, to queued; refine and review refuse it), each with `satisfies never` in the switches. The approval's answer takes an optional `taskRule` (only with `allow_task`) and `reason` (trimmed, only with `deny`), each in the answered state only when given, so an answer without them keeps its milestone 1 shape; `mapping.ts` maps the reason to `denyReason` and back. **Rules** (`src/rules/`): re-exports ticket 01's matcher and pattern rule, and adds the four presets (`presetRules(preset, newRuleId)`, `presetsIn`, `PRESET_NAMES`) with ADR 0049's dependency files and commands, migration globs and default allowlist; "reaching the network" is `fetch` with `any` and `mcp` with `mcp-not-read-only`. **Notifications** (`src/notifications/`): `resolveAudience` (the driver; the project's members when there's no driver; nobody who can't open the project; `pr_ready` goes to the driver until reviewers exist, Q172), `defaultChoice`, `wantsChannel` (the panel is always on), `channelsFor`, `deliveryKey`, `trackerDelivery` (a later moment within `OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES` edits the last comment; an answer edits its own), `emailDueAt` and `emailStillNeeded`; `renderNeedsYouEmail` renders every kind's `{ subject, html, text }` per the build spec (table layout, inline styles, the mark from the public address, HTML escaped, the subject one line, the one line cut at 200 characters). **Prompts** (`src/prompts/`): re-exports the runner's, and adds diff comments, update branch (merge, never rebase), an `@ostra` comment, fix the checks and keep working, each piece of member, PR or check text in a marked block. **Use cases:** `src/use-cases/m3-signatures.ts` types the 28 use cases of section 5.4 over `M3Deps`; bodies come with their tickets. **Jobs:** `notify.fanout`, `notify.deliver`, `diff.fetch`, `task.reconcile-behind`, `github.comment`, `snapshot.schedule`, `snapshot.nightly` and `cli-session.expire`, with payloads, keys, sending and queue settings in `@ostra/jobs`. **Settings:** the 17 of section 5.4, each with its default and its row in `docs/configuration.md`; `email` is `{ source: "panel" }` when `OSTRA_EMAIL_PROVIDER` is unset, and a locked provider names what it lacks, never a value. **`seedMember`** (`src/use-cases/seed-member.ts`, and `@ostra/domain/testing`'s wrapper) shares `createCredentialAccountInTx` with the first admin's seed, and refuses unless `NODE_ENV` is `development` or `test`; `pnpm dev:seed-member <username>` runs it from `packages/api/scripts/`, outside the build. Tests: `src/milestone-3.test.ts` (45, with every mail's snapshot); 23 break-it checks, each caught; `seams.test.ts`'s job catalogue lists the new jobs.

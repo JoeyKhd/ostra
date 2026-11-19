@@ -60,6 +60,24 @@ export const settingNames = [
   "OSTRA_S3_REGION",
   "OSTRA_S3_ACCESS_KEY_ID",
   "OSTRA_S3_SECRET_ACCESS_KEY",
+  // ---- milestone 3 (spec section 5.4) ----
+  "OSTRA_EMAIL_PROVIDER",
+  "OSTRA_EMAIL_FROM",
+  "OSTRA_EMAIL_FROM_NAME",
+  "OSTRA_RESEND_API_KEY",
+  "OSTRA_SMTP_HOST",
+  "OSTRA_SMTP_PORT",
+  "OSTRA_SMTP_SECURE",
+  "OSTRA_SMTP_USER",
+  "OSTRA_SMTP_PASSWORD",
+  "OSTRA_EMAIL_DELAY_SECONDS",
+  "OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES",
+  "OSTRA_CHECK_TIMEOUT_SECONDS",
+  "OSTRA_CHECKS_TOTAL_MINUTES",
+  "OSTRA_CLI_SESSION_DAYS",
+  "OSTRA_SNAPSHOT_NIGHTLY_HOUR",
+  "OSTRA_DIFF_MAX_FILES",
+  "OSTRA_DIFF_MAX_PATCH_KIB",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -220,6 +238,75 @@ export const settingFields = {
     default: "unset; required with OSTRA_BLOB_STORE=s3",
     description: "The access key's secret. Never logged. Read only with OSTRA_BLOB_STORE=s3.",
   },
+  // ---- milestone 3 ----
+  OSTRA_EMAIL_PROVIDER: {
+    default: "unset: the panel decides, and mail is off until an admin sets it",
+    description: "The install's email (F-115): resend, smtp or off. Set, it locks the panel's email settings to it; unset, an instance admin chooses in the panel, and mail stays off until they do. Everything else works without email.",
+  },
+  OSTRA_EMAIL_FROM: {
+    default: "unset; required with OSTRA_EMAIL_PROVIDER=resend or smtp",
+    description: "The address mail comes from, such as ostra@example.com. Its domain must be one the provider sends for.",
+  },
+  OSTRA_EMAIL_FROM_NAME: {
+    default: "ostra",
+    description: "The name mail comes from.",
+  },
+  OSTRA_RESEND_API_KEY: {
+    default: "unset; required with OSTRA_EMAIL_PROVIDER=resend",
+    description: "Resend's API key. Never logged. Read only when the provider is resend.",
+  },
+  OSTRA_SMTP_HOST: {
+    default: "unset; required with OSTRA_EMAIL_PROVIDER=smtp",
+    description: "The SMTP server's host. Read only when the provider is smtp.",
+  },
+  OSTRA_SMTP_PORT: {
+    default: "587",
+    description: "The SMTP server's port. Read only when the provider is smtp.",
+  },
+  OSTRA_SMTP_SECURE: {
+    default: "starttls",
+    description: "How SMTP is secured: starttls (upgrade a plain connection, port 587), tls (TLS from the start, port 465) or none (a local relay only). Read only when the provider is smtp.",
+  },
+  OSTRA_SMTP_USER: {
+    default: "unset: no sign-in",
+    description: "The SMTP user, when the server wants a sign-in. Read only when the provider is smtp.",
+  },
+  OSTRA_SMTP_PASSWORD: {
+    default: "unset",
+    description: "The SMTP user's password. Never logged. Read only when the provider is smtp.",
+  },
+  OSTRA_EMAIL_DELAY_SECONDS: {
+    default: "120",
+    description: "How long a needs-you mail waits after its moment. It isn't sent if the member read it in the panel meanwhile, or the item closed (ADR 0050).",
+  },
+  OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES: {
+    default: "10",
+    description: "Within this many minutes of a task's last notification comment on its ticket, a later moment edits that comment instead of posting a new one (ADR 0050).",
+  },
+  OSTRA_CHECK_TIMEOUT_SECONDS: {
+    default: "600",
+    description: "A check's timeout, unless the check sets its own (F-054). At most 3600.",
+  },
+  OSTRA_CHECKS_TOTAL_MINUTES: {
+    default: "30",
+    description: "All of a turn's checks together; past it, the rest are timed out (F-054).",
+  },
+  OSTRA_CLI_SESSION_DAYS: {
+    default: "30",
+    description: "How long an ostra login session lasts (F-103). A member can revoke one sooner in Account.",
+  },
+  OSTRA_SNAPSHOT_NIGHTLY_HOUR: {
+    default: "3",
+    description: "The hour, in UTC (0 to 23), at which projects whose default branch moved get a fresh snapshot (F-051).",
+  },
+  OSTRA_DIFF_MAX_FILES: {
+    default: "300",
+    description: "Past this many changed files, the Changes tab links to the code host instead of drawing the diff (F-027).",
+  },
+  OSTRA_DIFF_MAX_PATCH_KIB: {
+    default: "1024",
+    description: "A file whose diff is over this many KiB shows \"Too large to show here\", with a link to the code host (F-027).",
+  },
 } as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
 /** Variables ostra's development setup reads, which the settings don't refuse (docs/development.md). */
@@ -314,6 +401,24 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_S3_REGION: z.string().min(1).max(64).optional().describe(describe("OSTRA_S3_REGION")),
   OSTRA_S3_ACCESS_KEY_ID: z.string().min(1).max(256).optional().describe(describe("OSTRA_S3_ACCESS_KEY_ID")),
   OSTRA_S3_SECRET_ACCESS_KEY: z.string().min(1).max(512).optional().describe(describe("OSTRA_S3_SECRET_ACCESS_KEY")),
+  // ---- milestone 3 ----
+  OSTRA_EMAIL_PROVIDER: z.enum(["resend", "smtp", "off"]).optional().describe(describe("OSTRA_EMAIL_PROVIDER")),
+  OSTRA_EMAIL_FROM: z.email().max(320).optional().describe(describe("OSTRA_EMAIL_FROM")),
+  OSTRA_EMAIL_FROM_NAME: z.string().trim().min(1).max(100).regex(/^[^\r\n<>"]+$/, "one line, no angle brackets or quotes").default("ostra").describe(describe("OSTRA_EMAIL_FROM_NAME")),
+  OSTRA_RESEND_API_KEY: z.string().min(1).max(512).optional().describe(describe("OSTRA_RESEND_API_KEY")),
+  OSTRA_SMTP_HOST: z.string().min(1).max(253).regex(/^[A-Za-z0-9.-]+$/, "a host name").optional().describe(describe("OSTRA_SMTP_HOST")),
+  OSTRA_SMTP_PORT: port.default(587).describe(describe("OSTRA_SMTP_PORT")),
+  OSTRA_SMTP_SECURE: z.enum(["starttls", "tls", "none"]).default("starttls").describe(describe("OSTRA_SMTP_SECURE")),
+  OSTRA_SMTP_USER: z.string().min(1).max(320).optional().describe(describe("OSTRA_SMTP_USER")),
+  OSTRA_SMTP_PASSWORD: z.string().min(1).max(512).optional().describe(describe("OSTRA_SMTP_PASSWORD")),
+  OSTRA_EMAIL_DELAY_SECONDS: whole(0, 24 * 3600).default(120).describe(describe("OSTRA_EMAIL_DELAY_SECONDS")),
+  OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES: whole(0, 24 * 60).default(10).describe(describe("OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES")),
+  OSTRA_CHECK_TIMEOUT_SECONDS: whole(1, 3600).default(600).describe(describe("OSTRA_CHECK_TIMEOUT_SECONDS")),
+  OSTRA_CHECKS_TOTAL_MINUTES: whole(1, 24 * 60).default(30).describe(describe("OSTRA_CHECKS_TOTAL_MINUTES")),
+  OSTRA_CLI_SESSION_DAYS: whole(1, 365).default(30).describe(describe("OSTRA_CLI_SESSION_DAYS")),
+  OSTRA_SNAPSHOT_NIGHTLY_HOUR: whole(0, 23).default(3).describe(describe("OSTRA_SNAPSHOT_NIGHTLY_HOUR")),
+  OSTRA_DIFF_MAX_FILES: whole(1, 3000).default(300).describe(describe("OSTRA_DIFF_MAX_FILES")),
+  OSTRA_DIFF_MAX_PATCH_KIB: whole(1, 16 * 1024).default(1024).describe(describe("OSTRA_DIFF_MAX_PATCH_KIB")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -367,7 +472,54 @@ export type ServerSettings = {
   /** OSTRA_RETENTION_DAYS, or `null` (keep). A retention saved in the panel wins: `retentionDaysInEffect`. */
   readonly retentionDays: number | null;
   readonly blobStore: BlobStoreSettings;
+  // ---- milestone 3 ----
+  /** OSTRA_EMAIL_*: the install's email when settings set it, which locks the panel's; `panel` when they don't. Holds secrets: never logged. */
+  readonly email: EmailFromSettings;
+  /** OSTRA_EMAIL_DELAY_SECONDS. */
+  readonly emailDelaySeconds: number;
+  /** OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES. */
+  readonly trackerNotifyCoalesceMinutes: number;
+  /** OSTRA_CHECK_TIMEOUT_SECONDS. */
+  readonly checkTimeoutSeconds: number;
+  /** OSTRA_CHECKS_TOTAL_MINUTES. */
+  readonly checksTotalMinutes: number;
+  /** OSTRA_CLI_SESSION_DAYS. */
+  readonly cliSessionDays: number;
+  /** OSTRA_SNAPSHOT_NIGHTLY_HOUR, in UTC. */
+  readonly snapshotNightlyHour: number;
+  /** OSTRA_DIFF_MAX_FILES. */
+  readonly diffMaxFiles: number;
+  /** OSTRA_DIFF_MAX_PATCH_KIB, in bytes. */
+  readonly diffMaxPatchBytes: number;
 };
+
+/**
+ * The install's email as the settings give it (F-115, ADR 0050). `panel`: no `OSTRA_EMAIL_PROVIDER`,
+ * so an instance admin chooses in the panel. The others lock the panel's choice to it.
+ */
+export type EmailFromSettings =
+  | { readonly source: "panel"; readonly fromName: string }
+  | { readonly source: "settings"; readonly provider: "off" }
+  | {
+      readonly source: "settings";
+      readonly provider: "resend";
+      readonly from: string;
+      readonly fromName: string;
+      /** Never logged. */
+      readonly apiKey: string;
+    }
+  | {
+      readonly source: "settings";
+      readonly provider: "smtp";
+      readonly from: string;
+      readonly fromName: string;
+      readonly host: string;
+      readonly port: number;
+      readonly secure: "starttls" | "tls" | "none";
+      readonly user: string | null;
+      /** Never logged. */
+      readonly password: string | null;
+    };
 
 /** OSTRA_BLOB_STORE and its settings. The S3 one holds a secret: never logged. */
 export type BlobStoreSettings =
@@ -453,6 +605,10 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       secretAccessKey,
     };
   }
+  const email = emailFromSettings(value);
+  if (!email.ok) {
+    return { ok: false, errors: email.errors };
+  }
   return {
     ok: true,
     settings: {
@@ -490,6 +646,57 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       boxReleaseIdleDays: value.OSTRA_BOX_RELEASE_IDLE_DAYS,
       retentionDays: value.OSTRA_RETENTION_DAYS ?? null,
       blobStore,
+      email: email.value,
+      emailDelaySeconds: value.OSTRA_EMAIL_DELAY_SECONDS,
+      trackerNotifyCoalesceMinutes: value.OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES,
+      checkTimeoutSeconds: value.OSTRA_CHECK_TIMEOUT_SECONDS,
+      checksTotalMinutes: value.OSTRA_CHECKS_TOTAL_MINUTES,
+      cliSessionDays: value.OSTRA_CLI_SESSION_DAYS,
+      snapshotNightlyHour: value.OSTRA_SNAPSHOT_NIGHTLY_HOUR,
+      diffMaxFiles: value.OSTRA_DIFF_MAX_FILES,
+      diffMaxPatchBytes: value.OSTRA_DIFF_MAX_PATCH_KIB * 1024,
+    },
+  };
+};
+
+/** The email settings, checked: a locked provider needs what it sends with. The errors name variables, never values. */
+const emailFromSettings = (
+  value: z.infer<typeof rawSettingsSchema>,
+): { readonly ok: true; readonly value: EmailFromSettings } | { readonly ok: false; readonly errors: readonly string[] } => {
+  const provider = value.OSTRA_EMAIL_PROVIDER;
+  const fromName = value.OSTRA_EMAIL_FROM_NAME;
+  if (provider === undefined) {
+    return { ok: true, value: { source: "panel", fromName } };
+  }
+  if (provider === "off") {
+    return { ok: true, value: { source: "settings", provider: "off" } };
+  }
+  const from = value.OSTRA_EMAIL_FROM;
+  if (provider === "resend") {
+    const apiKey = value.OSTRA_RESEND_API_KEY;
+    if (from === undefined || apiKey === undefined) {
+      const missing = [from === undefined ? "OSTRA_EMAIL_FROM" : null, apiKey === undefined ? "OSTRA_RESEND_API_KEY" : null];
+      return { ok: false, errors: missing.flatMap((name) => (name === null ? [] : [`${name} is required with OSTRA_EMAIL_PROVIDER=resend`])) };
+    }
+    return { ok: true, value: { source: "settings", provider, from, fromName, apiKey } };
+  }
+  const host = value.OSTRA_SMTP_HOST;
+  if (from === undefined || host === undefined) {
+    const missing = [from === undefined ? "OSTRA_EMAIL_FROM" : null, host === undefined ? "OSTRA_SMTP_HOST" : null];
+    return { ok: false, errors: missing.flatMap((name) => (name === null ? [] : [`${name} is required with OSTRA_EMAIL_PROVIDER=smtp`])) };
+  }
+  return {
+    ok: true,
+    value: {
+      source: "settings",
+      provider,
+      from,
+      fromName,
+      host,
+      port: value.OSTRA_SMTP_PORT,
+      secure: value.OSTRA_SMTP_SECURE,
+      user: value.OSTRA_SMTP_USER ?? null,
+      password: value.OSTRA_SMTP_PASSWORD ?? null,
     },
   };
 };

@@ -60,6 +60,16 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "box.release-after-idle": { ...base, retryLimit: 3 },
   "retention.sweep": { ...base, retryLimit: 2, expireInSeconds: 1800 },
   "blob.gc": { ...base, retryLimit: 2, expireInSeconds: 1800 },
+  // Milestone 3 (its ticket 07's names; tickets 20 to 26 and 39 build them).
+  "notify.fanout": { ...base, retryLimit: 5 },
+  // A failing channel retries on its own with backoff, never holding the others (ADR 0050).
+  "notify.deliver": { ...base, retryLimit: 8, retryDelayMax: 900 },
+  "diff.fetch": { ...base, retryLimit: 5, groupConcurrency: 2 },
+  "task.reconcile-behind": { ...base, retryLimit: 2, expireInSeconds: 600 },
+  "github.comment": { ...base, retryLimit: 8 },
+  "snapshot.schedule": { ...base, retryLimit: 3, expireInSeconds: 600 },
+  "snapshot.nightly": { ...base, retryLimit: 2, expireInSeconds: 600 },
+  "cli-session.expire": { ...base, retryLimit: 2 },
 };
 
 /**

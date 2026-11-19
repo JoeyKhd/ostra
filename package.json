@@ -22,6 +22,7 @@
     "db:migrate": "node packages/db/scripts/migrate.ts",
     "db:generate": "node packages/db/scripts/generate.ts",
     "dev:reset": "node packages/db/scripts/reset.ts",
+    "dev:seed-member": "node packages/api/scripts/seed-member.ts",
     "e2e:m1": "node e2e/m1-first-pr/src/demo.ts --checks --clean-up",
     "ostra": "node apps/runner/src/main.ts"
   },

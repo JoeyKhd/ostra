@@ -37,6 +37,7 @@ export * from "./use-cases/accept-offer.ts";
 export * from "./use-cases/add-model-provider.ts";
 export * from "./use-cases/connect-github-app.ts";
 export * from "./use-cases/seed-first-admin.ts";
+export * from "./use-cases/seed-member.ts";
 export * from "./use-cases/check-secrets-key.ts";
 export * from "./use-cases/create-project.ts";
 export * from "./use-cases/create-prompt-task.ts";
@@ -66,3 +67,9 @@ export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";
 export * from "./use-cases/repo-checks.ts";
 export * from "./environment/detect.ts";
+
+// Milestone 3.
+export * from "./rules/index.ts";
+export * from "./notifications/index.ts";
+export * from "./prompts/index.ts";
+export * from "./use-cases/m3-signatures.ts";

@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./accounts": "./src/accounts.ts",
     "./branch-name": "./src/branch-name.ts",
-    "./ticket-template": "./src/tickets/ticket-template.ts"
+    "./ticket-template": "./src/tickets/ticket-template.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

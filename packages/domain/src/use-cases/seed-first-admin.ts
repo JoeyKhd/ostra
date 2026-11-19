@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Db } from "@ostra/db";
+import type { Db, Tx } from "@ostra/db";
 import { memberIdSchema, organizationIdSchema, userIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, UserId } from "@ostra/protocol";
 import { z } from "zod";
@@ -59,6 +59,43 @@ export type SeedFirstAdminDeps = {
 
 export type SeedFirstAdmin = (deps: SeedFirstAdminDeps, input: SeedFirstAdminInput) => Promise<SeedFirstAdminResult>;
 
+/**
+ * An account with a password, as better-auth's credential provider reads it: the user row and its
+ * `credential` account. The first admin's seed and `seedMember` both use it (Q165).
+ */
+export const createCredentialAccountInTx = async (
+  tx: Pick<Tx, "user">,
+  input: {
+    readonly userId: UserId;
+    readonly username: string;
+    /** Lower case. */
+    readonly email: string;
+    readonly passwordHash: string;
+    /** `admin` for the instance admin; `null` for everyone else. */
+    readonly instanceRole: "admin" | null;
+    readonly mustChangePassword: boolean;
+    readonly now: Date;
+  },
+): Promise<void> => {
+  await tx.user.create({
+    data: {
+      id: input.userId,
+      name: input.username,
+      email: input.email,
+      emailVerified: false,
+      username: input.username,
+      displayUsername: input.username,
+      role: input.instanceRole,
+      mustChangePassword: input.mustChangePassword,
+      createdAt: input.now,
+      updatedAt: input.now,
+      accounts: {
+        create: { id: randomUUID(), accountId: input.userId, providerId: "credential", password: input.passwordHash, createdAt: input.now, updatedAt: input.now },
+      },
+    },
+  });
+};
+
 /** A fixed key for the advisory lock that serialises "who is the first account". */
 export const FIRST_ACCOUNT_LOCK_KEY = 4_270_901;
 
@@ -89,22 +126,14 @@ export const seedFirstAdmin: SeedFirstAdmin = async (deps, input) => {
 
     const userId = userIdSchema.parse(randomUUID());
     // The instance admin's role lives on `user.role`, apart from the organization roles (ADR 0003).
-    await tx.user.create({
-      data: {
-        id: userId,
-        name: input.username,
-        email,
-        emailVerified: false,
-        username: input.username,
-        displayUsername: input.username,
-        role: "admin",
-        mustChangePassword: input.mustChangePassword,
-        createdAt: now,
-        updatedAt: now,
-        accounts: {
-          create: { id: randomUUID(), accountId: userId, providerId: "credential", password: passwordHash, createdAt: now, updatedAt: now },
-        },
-      },
+    await createCredentialAccountInTx(tx, {
+      userId,
+      username: input.username,
+      email,
+      passwordHash,
+      instanceRole: "admin",
+      mustChangePassword: input.mustChangePassword,
+      now,
     });
 
     const organizationId = organizationIdSchema.parse(randomUUID());

@@ -49,6 +49,23 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_S3_REGION` | unset: us-east-1 | The store's region, which AWS S3 needs and most other stores ignore. Read only with `OSTRA_BLOB_STORE=s3`. |
 | `OSTRA_S3_ACCESS_KEY_ID` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's ID. |
 | `OSTRA_S3_SECRET_ACCESS_KEY` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's secret. Never logged. |
+| `OSTRA_EMAIL_PROVIDER` | unset: the panel decides, and mail is off until an admin sets it | The install's email (F-115): `resend`, `smtp` or `off`. Set, it locks the panel's email settings to it; unset, an instance admin chooses in the panel, and mail stays off until they do. Everything else works without email. |
+| `OSTRA_EMAIL_FROM` | unset; required with `OSTRA_EMAIL_PROVIDER=resend` or `smtp` | The address mail comes from, such as `ostra@example.com`. Its domain must be one the provider sends for. |
+| `OSTRA_EMAIL_FROM_NAME` | `ostra` | The name mail comes from. |
+| `OSTRA_RESEND_API_KEY` | unset; required with `OSTRA_EMAIL_PROVIDER=resend` | Resend's API key. Never logged. Read only when the provider is `resend`. |
+| `OSTRA_SMTP_HOST` | unset; required with `OSTRA_EMAIL_PROVIDER=smtp` | The SMTP server's host. Read only when the provider is `smtp`. |
+| `OSTRA_SMTP_PORT` | `587` | The SMTP server's port. Read only when the provider is `smtp`. |
+| `OSTRA_SMTP_SECURE` | `starttls` | How SMTP is secured: `starttls` (upgrade a plain connection, port 587), `tls` (TLS from the start, port 465) or `none` (a local relay only). Read only when the provider is `smtp`. |
+| `OSTRA_SMTP_USER` | unset: no sign-in | The SMTP user, when the server wants a sign-in. Read only when the provider is `smtp`. |
+| `OSTRA_SMTP_PASSWORD` | unset | The SMTP user's password. Never logged. Read only when the provider is `smtp`. |
+| `OSTRA_EMAIL_DELAY_SECONDS` | `120` | How long a needs-you mail waits after its moment. It isn't sent if the member read it in the panel meanwhile, or the item closed (ADR 0050). |
+| `OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES` | `10` | Within this many minutes of a task's last notification comment on its ticket, a later moment edits that comment instead of posting a new one (ADR 0050). |
+| `OSTRA_CHECK_TIMEOUT_SECONDS` | `600` | A check's timeout, unless the check sets its own (F-054). At most `3600`. |
+| `OSTRA_CHECKS_TOTAL_MINUTES` | `30` | All of a turn's checks together; past it, the rest are timed out (F-054). |
+| `OSTRA_CLI_SESSION_DAYS` | `30` | How long an `ostra login` session lasts (F-103). A member can revoke one sooner in Account. |
+| `OSTRA_SNAPSHOT_NIGHTLY_HOUR` | `3` | The hour, in UTC (0 to 23), at which projects whose default branch moved get a fresh snapshot (F-051). |
+| `OSTRA_DIFF_MAX_FILES` | `300` | Past this many changed files, the Changes tab links to the code host instead of drawing the diff (F-027). |
+| `OSTRA_DIFF_MAX_PATCH_KIB` | `1024` | A file whose diff is over this many KiB shows "Too large to show here", with a link to the code host (F-027). |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 

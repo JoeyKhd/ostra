@@ -1,5 +1,5 @@
 import type { DbEnum } from "@ostra/db";
-import type { SessionLimit, TaskKind } from "@ostra/protocol";
+import type { RepoId, SessionLimit, TaskKind } from "@ostra/protocol";
 
 import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
@@ -80,6 +80,20 @@ export type TaskInput =
   | { readonly type: "reopen" }
   /** A runaway limit stopped the session (F-068): the maximum duration, the stall or the spend cap. */
   | { readonly type: "limit_reached"; readonly limit: SessionLimit }
+  // ---- milestone 3 ----
+  /** A plan turn ended with its plan (`plan.proposed`, F-063): the driver approves it or asks for changes. */
+  | { readonly type: "plan_proposed" }
+  /** The driver answered the plan. `boxWarm`: the box is still there, so the next turn runs at once. */
+  | { readonly type: "plan_answered"; readonly boxWarm: boolean }
+  /** The ticket moved to done or cancelled while the task ran, outside ostra's own writes (F-066, ADR 0052). */
+  | { readonly type: "ticket_closed" }
+  /** "Keep working" on a task whose ticket closed: it carries on. `boxWarm` as above. */
+  | { readonly type: "keep_working"; readonly boxWarm: boolean }
+  /**
+   * A member reopened a task whose PR merged (F-066): it's queued again, and each merged repo gets a
+   * fresh branch from its base (`<old branch>-2`, `-3`) and a new PR on its first push.
+   */
+  | { readonly type: "reopen_after_merge"; readonly mergedRepoIds: readonly RepoId[] }
   // ---- code ----
   /**
    * The session ended; `withChanges` when any repo's branch is ahead (F-030, F-065).
@@ -156,6 +170,19 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
       return from === "stopped" || from === "needs_you" ? moveTo({ state: "queued" }) : refuse(input, from);
     case "limit_reached":
       return from === "running" ? moveTo({ state: "needs_you", reason: limitReason(input.limit) }) : refuse(input, from);
+    case "plan_proposed":
+      return from === "running" ? moveTo({ state: "needs_you", reason: "plan" }) : refuse(input, from);
+    case "plan_answered":
+      return status.state === "needs_you" && status.reason === "plan"
+        ? moveTo(input.boxWarm ? { state: "running" } : { state: "queued" })
+        : refuse(input, from);
+    case "ticket_closed":
+      return from === "running" ? moveTo({ state: "needs_you", reason: "ticket_closed" }) : refuse(input, from);
+    case "keep_working":
+      return status.state === "needs_you" && status.reason === "ticket_closed"
+        ? moveTo(input.boxWarm ? { state: "running" } : { state: "queued" })
+        : refuse(input, from);
+    case "reopen_after_merge":
     case "session_ended":
     case "work_saved":
     case "ci_passed":
@@ -265,6 +292,9 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
         return moveTo({ state: "queued" });
       }
       break;
+    case "reopen_after_merge":
+      // A merged task only, and only with the repos whose PR merged named (F-066).
+      return status.state === "merged" && input.mergedRepoIds.length > 0 ? moveTo({ state: "queued" }) : refuse(input, from);
     case "stop":
       if (status.state === "in_review" || status.state === "merged") {
         return moveTo({ state: "stopped", reason: input.reason });
@@ -279,6 +309,10 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
     case "runner_accepted":
     case "box_ready":
     case "setup_failed":
+    case "plan_proposed":
+    case "plan_answered":
+    case "ticket_closed":
+    case "keep_working":
       break;
     default:
       return input satisfies never;
@@ -308,6 +342,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "all_prs_closed":
     case "pr_reopened":
     case "findings_posted":
+    case "reopen_after_merge":
       return refuse(input, from);
     case "approve":
     case "reject":
@@ -318,6 +353,10 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "needs_you":
     case "member_acted":
     case "limit_reached":
+    case "plan_proposed":
+    case "plan_answered":
+    case "ticket_closed":
+    case "keep_working":
       return isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     default:
       return input satisfies never;
@@ -345,6 +384,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "pr_reopened":
     case "draft_handed_in":
     case "draft_accepted":
+    case "reopen_after_merge":
       return refuse(input, from);
     case "approve":
     case "reject":
@@ -355,6 +395,10 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "needs_you":
     case "member_acted":
     case "limit_reached":
+    case "plan_proposed":
+    case "plan_answered":
+    case "ticket_closed":
+    case "keep_working":
       return isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     default:
       return input satisfies never;

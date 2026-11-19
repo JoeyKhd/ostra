@@ -234,9 +234,9 @@ export const taskRepoFromColumns = (row: TaskRepoColumns): Decoded<TaskRepoLifec
 
 // ---------- approval ----------
 
-export type ApprovalColumns = Pick<Approval, "state" | "decision" | "optionId" | "answeredByMemberId" | "ruleId" | "closedReason">;
+export type ApprovalColumns = Pick<Approval, "state" | "decision" | "optionId" | "answeredByMemberId" | "ruleId" | "closedReason" | "denyReason">;
 
-const noAnswer = { decision: null, optionId: null, answeredByMemberId: null, ruleId: null, closedReason: null } as const;
+const noAnswer = { decision: null, optionId: null, answeredByMemberId: null, ruleId: null, closedReason: null, denyReason: null } as const;
 
 export const approvalToColumns = (approval: ApprovalLifecycle): ApprovalColumns => {
   switch (approval.state) {
@@ -249,6 +249,7 @@ export const approvalToColumns = (approval: ApprovalLifecycle): ApprovalColumns 
         decision: approval.decision,
         optionId: approval.optionId,
         answeredByMemberId: approval.memberId,
+        denyReason: approval.reason ?? null,
       };
     case "answered_by_rule":
       return { ...noAnswer, state: "answered_by_rule", decision: approval.decision, ruleId: approval.ruleId };
@@ -271,6 +272,8 @@ export const approvalFromColumns = (row: ApprovalColumns): Decoded<ApprovalLifec
             decision: row.decision,
             optionId: optionIdSchema.parse(row.optionId),
             memberId: memberIdSchema.parse(row.answeredByMemberId),
+            // Milestone 3: a deny's reason (the task rule lives in its own row, TaskApprovalRule).
+            ...(row.denyReason === null ? {} : { reason: row.denyReason }),
           });
     case "answered_by_rule":
       return row.decision === null || row.ruleId === null
