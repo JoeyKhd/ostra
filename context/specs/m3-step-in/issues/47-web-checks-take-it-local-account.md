@@ -29,3 +29,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **Turn numbers** are the real ones, and may skip (point 2).
 
 ## Comments
+
+- 2026-11-19: the parts are in, `57d40d6` (`✨ add the checks, take it local and Account parts`). Checked by eye against `task-checks`, `take-it-local` and `account`: they match; the popover's text is about 1px smaller than the picture's. **Not done yet:** the Checks tab in the task page, the Account route, the device page's wording and the Playwright run wait on ticket 39 (`tasks.checks`, `tasks.local`, `account.*`) and ticket 33, not on `main` yet.
