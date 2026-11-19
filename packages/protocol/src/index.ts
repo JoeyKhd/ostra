@@ -12,6 +12,8 @@ export * from "./events/message-deliveries.ts";
 export * from "./agent/rules.ts";
 export * from "./agent/prompts.ts";
 
+export * from "./memory/notes.ts";
+
 export * from "./task/spec.ts";
 export * from "./task/credentials.ts";
 

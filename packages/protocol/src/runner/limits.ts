@@ -124,6 +124,30 @@ export const runnerLimits = {
   approvalRulesMax: 200,
   /** F-094: the most services one environment starts. */
   servicesMax: 20,
+
+  // ---- milestone 4, protocol minor 3 (working values) ----
+  /** ADR 0044, F-109: a memory note's title, in characters. */
+  memoryNoteTitleMaxChars: 120,
+  /** ADR 0044, F-109: a memory note's body, in UTF-8 bytes. */
+  memoryNoteBodyMaxBytes: 4 * KiB,
+  /** ADR 0044, F-110: the most notes the index lists (`OSTRA_MEMORY_INDEX_MAX_NOTES`). */
+  memoryIndexMaxNotes: 100,
+  /** ADR 0044, F-110: the index's size (`OSTRA_MEMORY_INDEX_MAX_KIB`). */
+  memoryIndexMaxBytes: 8 * KiB,
+  /** ADR 0044, F-110: the "always" notes' size together (`OSTRA_MEMORY_ALWAYS_MAX_KIB`). */
+  memoryAlwaysMaxBytes: 8 * KiB,
+  /** ADR 0044, F-110: the memory block a spec carries: the "always" notes, the index and the instruction. */
+  memoryBlockMaxBytes: 24 * KiB,
+  /** ADR 0044, F-110: a memory search's query, in characters. */
+  memoryQueryMaxChars: 500,
+  /** ADR 0044, F-110: the most results one memory search returns. */
+  memorySearchResultsMax: 20,
+  /** ADR 0044, F-111: the most proposals one task makes (`OSTRA_MEMORY_PROPOSALS_PER_TASK`). */
+  memoryProposalsPerTask: 20,
+  /** ADR 0054, F-080: one search entry's text, in UTF-8 bytes (`OSTRA_SEARCH_ENTRY_MAX_KIB`). */
+  searchEntryMaxBytes: 8 * KiB,
+  /** ADR 0027, F-098: the most repos a project holds (`OSTRA_PROJECT_MAX_REPOS`), and so a PR's "Related" list. */
+  projectReposMax: 10,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;

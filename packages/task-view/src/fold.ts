@@ -808,6 +808,14 @@ export const foldTaskEvents = (
       case "pr.comment_received":
         // Protocol minor 2. No row until the milestone 3 task page (tickets 43, 46, 47) draws them.
         break;
+      case "memory.used":
+      case "memory.proposed":
+      case "turn.held":
+      case "turn.released":
+      case "review.check_updated":
+      case "pr.related_updated":
+        // Protocol minor 3. No row until the milestone 4 task page draws them.
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

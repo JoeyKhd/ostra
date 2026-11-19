@@ -4,15 +4,18 @@ import {
   approvalRuleIdSchema,
   blobIdSchema,
   boxIdSchema,
+  budgetIdSchema,
   checkIdSchema,
   clientMessageIdSchema,
   commandIdSchema,
   diffCommentIdSchema,
   memberIdSchema,
   modelIdSchema,
+  noteIdSchema,
   optionIdSchema,
   organizationIdSchema,
   projectIdSchema,
+  proposalIdSchema,
   providerIdSchema,
   questionIdSchema,
   replicaIdSchema,
@@ -29,8 +32,17 @@ import {
   uploadIdSchema,
 } from "../ids.ts";
 import type { ApprovalRule, TaskRule } from "../agent/rules.ts";
+import type { MemoryIndexEntry, MemoryNote, MemoryProposalInput } from "../memory/notes.ts";
 import type { TaskEvent, TaskEventKind, TaskEventOf } from "../events/agent-events.ts";
 import type { Command, CommandKind } from "../runner/commands.ts";
+import type {
+  MemoryNoteResponse,
+  MemoryProposalRefusal,
+  MemoryProposalRequest,
+  MemoryProposalResponse,
+  MemorySearchRequest,
+  MemorySearchResponse,
+} from "../runner/http.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import type { SnapshotCredentials, TaskCredentials } from "../task/credentials.ts";
 import type { TaskSpec } from "../task/spec.ts";
@@ -77,6 +89,12 @@ export const fixtureIds = {
   diffComment: diffCommentIdSchema.parse("0196f1a0-0000-7000-8000-000000000018"),
   skillBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000019"),
   skillFileBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-00000000001a"),
+  // Minor 3 (milestone 4).
+  note: noteIdSchema.parse("0196f1a0-0000-7000-8000-00000000001b"),
+  alwaysNote: noteIdSchema.parse("0196f1a0-0000-7000-8000-00000000001c"),
+  proposal: proposalIdSchema.parse("0196f1a0-0000-7000-8000-00000000001d"),
+  budget: budgetIdSchema.parse("0196f1a0-0000-7000-8000-00000000001e"),
+  secondRepo: repoIdSchema.parse("0196f1a0-0000-7000-8000-00000000001f"),
 } as const;
 
 const ids = fixtureIds;
@@ -304,6 +322,26 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     login: "ostra-test-member",
     path: "src/add.ts",
     line: 12,
+  },
+  // Minor 3 (milestone 4).
+  "memory.used": { kind: "memory.used", noteIds: [ids.note, ids.alwaysNote], via: "index" },
+  "memory.proposed": { kind: "memory.proposed", proposalId: ids.proposal, title: "Run the tests with pnpm test" },
+  "turn.held": { kind: "turn.held", origin: "message", budgetId: ids.budget, scope: "project" },
+  "turn.released": { kind: "turn.released", budgetId: ids.budget },
+  "review.check_updated": {
+    kind: "review.check_updated",
+    repoId: ids.repo,
+    prNumber: 7,
+    headSha: fixtureDigests.headSha,
+    status: "passed",
+    approverMemberId: ids.otherMember,
+    reason: "Approved by a member who isn't the task's driver",
+  },
+  "pr.related_updated": {
+    kind: "pr.related_updated",
+    repoId: ids.repo,
+    prNumber: 7,
+    related: [{ repoId: ids.secondRepo, prNumber: 3 }],
   },
 };
 
@@ -677,3 +715,86 @@ export const snapshotCredentialsFixture: SnapshotCredentials = snapshotCredentia
     },
   ],
 });
+
+// ---------- minor 3 (milestone 4) ----------
+
+/** A spec at minor 3: memory with tools, the closing turn on, and two repos with their own bots. */
+export const taskSpecMinor3Fixture: TaskSpec = {
+  ...taskSpecMinor2Fixture,
+  repos: [
+    {
+      repoId: ids.repo,
+      fullName: "ostra-test/test1",
+      cloneUrl: "https://github.com/ostra-test/test1.git",
+      defaultBranch: "main",
+      checkoutDir: "test1",
+      lfsActionHosts: ["github-cloud.githubusercontent.com"],
+      prTemplate: null,
+      gitIdentity: taskSpecFixture.gitIdentity,
+    },
+    {
+      repoId: ids.secondRepo,
+      fullName: "client-org/api",
+      cloneUrl: "https://github.com/client-org/api.git",
+      defaultBranch: "main",
+      checkoutDir: "api",
+      lfsActionHosts: [],
+      prTemplate: null,
+      gitIdentity: { name: "client-app[bot]", email: "9911+client-app[bot]@users.noreply.github.com" },
+    },
+  ],
+  agent: { ...taskSpecMinor2Fixture.agent, closingTurn: true },
+  memory: {
+    block: "## Project memory\n\nThese are the organization's and the project's approved notes.",
+    indexNoteIds: [ids.note],
+    alwaysNoteIds: [ids.alwaysNote],
+    omitted: 2,
+    tools: true,
+  },
+};
+
+/** An approved note, as `memory_read` returns it. */
+export const memoryNoteFixture: MemoryNote = {
+  noteId: ids.note,
+  title: "Run the tests with pnpm test",
+  body: "Use `pnpm test` at the repo root; `npm test` skips the workspace packages.",
+  kind: "command",
+  scope: "project",
+  version: 3,
+};
+
+/** One line of the index. */
+export const memoryIndexEntryFixture: MemoryIndexEntry = {
+  noteId: ids.note,
+  title: "Run the tests with pnpm test",
+  kind: "command",
+  scope: "project",
+};
+
+/** A proposal that contradicts a note. */
+export const memoryProposalInputFixture: MemoryProposalInput = {
+  title: "Tests run with vitest directly",
+  body: "`pnpm test` now runs `vitest run`; the old script is gone.",
+  kind: "command",
+  scope: "project",
+  relatesTo: ids.note,
+  relation: "contradicts",
+};
+
+/** The sidecar's memory endpoints, a request and an answer each (F-110, F-111). */
+export const memoryHttpFixtures = {
+  searchRequest: { query: "how do I run the tests", limit: 5 } satisfies MemorySearchRequest,
+  searchResponse: {
+    results: [{ noteId: ids.note, title: "Run the tests with pnpm test", line: "Use `pnpm test` at the repo root", kind: "command", scope: "project" }],
+  } satisfies MemorySearchResponse,
+  noteResponse: memoryNoteFixture satisfies MemoryNoteResponse,
+  proposalRequest: memoryProposalInputFixture satisfies MemoryProposalRequest,
+  proposalAccepted: { proposalId: ids.proposal } satisfies MemoryProposalResponse,
+} as const;
+
+/** Each refusal of a proposal. */
+export const memoryProposalRefusalFixtures = {
+  "secret-found": { code: "secret-found", found: ["a GitHub token", "a model-control token"] },
+  "limit-reached": { code: "limit-reached" },
+  invalid: { code: "invalid" },
+} as const satisfies { readonly [K in MemoryProposalRefusal["code"]]: Extract<MemoryProposalRefusal, { code: K }> };

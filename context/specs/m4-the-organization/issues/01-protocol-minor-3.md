@@ -1,6 +1,6 @@
 # 01: Protocol: minor 3
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none (milestone 3's ticket 01, minor 2, lands first)
 Features: F-110, F-111, F-037, F-098, F-104 (their wire shapes)
@@ -21,9 +21,11 @@ Every change is additive. The schema is written once, Zod first; the types are `
 
 ## Done when
 
-- [ ] Tests: every new shape round-trips; minor-2 and minor-1 specs still parse; a minor-2 peer's codec drops `memory` and `closingTurn`; a strict object refuses an unknown field; the server-only set includes the five new kinds; the fixtures in `src/testing/` cover each new kind and endpoint.
-- [ ] Every caller in the repo still compiles, and no existing schema changed shape.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add protocol minor 3`.
+- [x] Tests: every new shape round-trips; minor-2 and minor-1 specs still parse; a minor-2 peer's codec drops `memory` and `closingTurn`; a strict object refuses an unknown field; the server-only set includes the five new kinds; the fixtures in `src/testing/` cover each new kind and endpoint.
+- [x] Every caller in the repo still compiles, and no existing schema changed shape.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add protocol minor 3`.
 
 ## Comments
+
+- 2026-11-19: built in `packages/protocol` (minor 3; `src/memory/notes.ts`; the memory endpoints in `src/runner/http.ts`; `taskSpecSchemaV2` kept for minor-2 runners; `taskSpecNeedsMinor3`; ticket 46's per-repo `gitIdentity` included, since it's minor 3's). Tests in `src/runner/minor-3.test.ts`, with break-its (dropped the minor-2 strip in `encodeTaskSpecForMinor`; dropped `turn.held` from `serverOnlyKinds`). Callers updated: task-view's fold and coverage, the domain's ingest switch, and core and runner tests that pinned minor 2 or connected at minor 1. Whole-repo typecheck, lint, test, check:licenses and check:proof green. Commit: `✨ add protocol minor 3`.

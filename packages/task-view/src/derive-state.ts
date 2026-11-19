@@ -229,6 +229,12 @@ export const deriveTaskState = (
       case "diff.comments_sent":
       case "ticket.closed":
       case "pr.comment_received":
+      case "memory.used":
+      case "memory.proposed":
+      case "turn.held":
+      case "turn.released":
+      case "review.check_updated":
+      case "pr.related_updated":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

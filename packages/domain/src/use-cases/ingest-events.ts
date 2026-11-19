@@ -531,6 +531,12 @@ const applyEffects = async (
       case "diff.comments_sent":
       case "ticket.closed":
       case "pr.comment_received":
+      case "memory.used":
+      case "memory.proposed":
+      case "turn.held":
+      case "turn.released":
+      case "review.check_updated":
+      case "pr.related_updated":
         // Stored for the task page; nothing else moves.
         break;
       default:

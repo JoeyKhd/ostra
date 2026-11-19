@@ -59,4 +59,11 @@ export const foldCoverage = {
   "diff.comments_sent": "no row (milestone 3, ticket 43)",
   "ticket.closed": "no row (milestone 3, ticket 43)",
   "pr.comment_received": "no row (milestone 3, ticket 43)",
+  // Protocol minor 3: no row until the milestone 4 task page draws them.
+  "memory.used": "no row (milestone 4)",
+  "memory.proposed": "no row (milestone 4)",
+  "turn.held": "no row (milestone 4)",
+  "turn.released": "no row (milestone 4)",
+  "review.check_updated": "no row (milestone 4)",
+  "pr.related_updated": "no row (milestone 4)",
 } as const satisfies Record<TaskEventKind, string>;

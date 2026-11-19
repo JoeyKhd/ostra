@@ -6,6 +6,7 @@ import {
   checkIdSchema,
   clientMessageIdSchema,
   modelIdSchema,
+  noteIdSchema,
   organizationIdSchema,
   projectIdSchema,
   providerIdSchema,
@@ -30,6 +31,7 @@ import {
 import { approvalRulesSchema, taskRulesSchema } from "../agent/rules.ts";
 import { ticketFileNameSchema, turnModeSchema } from "../events/agent-events.ts";
 import { blobRefSchema, contentTypeSchema } from "../runner/blobs.ts";
+import { utf8ByteLength } from "../json.ts";
 import { runnerLimits } from "../runner/limits.ts";
 
 // The task spec: what a dispatch hands the runner, fetched from
@@ -58,7 +60,19 @@ export const hostNameSchema = z
   .max(253)
   .regex(/^[A-Za-z0-9.-]+(?::\d{1,5})?$/, "a host name");
 
-export const taskSpecRepoSchema = z.strictObject({
+/**
+ * A person as git writes them in a commit or a `Co-authored-by` trailer. Neither part may hold
+ * `<`, `>` or a line break, so a name can't forge another trailer. The email is checked loosely,
+ * because a GitHub App's bot address (`123+app[bot]@users.noreply.github.com`) is not RFC-shaped.
+ */
+export const gitPersonSchema = z.strictObject({
+  name: z.string().min(1).max(256).regex(/^[^<>\r\n]+$/, "no angle brackets or line breaks"),
+  email: z.string().min(3).max(320).regex(/^[^\s<>@]+@[^\s<>@]+$/, "an email address"),
+});
+export type GitPerson = z.infer<typeof gitPersonSchema>;
+
+/** A repo of the task at minors 0 to 2. */
+export const taskSpecRepoSchemaV0 = z.strictObject({
   repoId: repoIdSchema,
   fullName: repoFullNameSchema,
   /** The code host's HTTPS clone URL. The runner clones through its git proxy, never directly. */
@@ -70,6 +84,15 @@ export const taskSpecRepoSchema = z.strictObject({
   lfsActionHosts: z.array(hostNameSchema),
   /** The repo's PR template, when it has one (F-078). The agent fills it in for the PR body. */
   prTemplate: z.string().max(65_536).nullable(),
+});
+
+/**
+ * A repo of the task at the current minor (3): minor 0's, with the bot of that repo's App (F-136,
+ * ADR 0065). Missing means the spec's top-level `gitIdentity`.
+ */
+export const taskSpecRepoSchema = taskSpecRepoSchemaV0.extend({
+  /** Minor 3: the bot that authors this repo's commits, when its App isn't the task's first. */
+  gitIdentity: gitPersonSchema.optional(),
 });
 export type TaskSpecRepo = z.infer<typeof taskSpecRepoSchema>;
 
@@ -137,8 +160,8 @@ export const taskSpecMcpServerSchema = z.discriminatedUnion("transport", [
 ]);
 export type TaskSpecMcpServer = z.infer<typeof taskSpecMcpServerSchema>;
 
-/** The agent section at the current minor (2): minor 1's, with the profile's skills, MCP servers and rules. */
-export const taskSpecAgentSchema = taskSpecAgentSchemaV1.extend({
+/** The agent section at minor 2: minor 1's, with the profile's skills, MCP servers and rules. */
+export const taskSpecAgentSchemaV2 = taskSpecAgentSchemaV1.extend({
   /** Minor 2: the profile's skills. */
   skills: z.array(taskSpecSkillSchema).max(runnerLimits.skillsMax).optional(),
   /** Minor 2: the profile's MCP servers. */
@@ -149,6 +172,15 @@ export const taskSpecAgentSchema = taskSpecAgentSchemaV1.extend({
   taskRules: taskRulesSchema.optional(),
   /** Minor 2: the profile's plan first. The task's first session starts in plan mode (`firstTurnMode`). */
   planFirst: z.boolean().optional(),
+});
+
+/** The agent section at the current minor (3): minor 2's, with the profile's closing turn. */
+export const taskSpecAgentSchema = taskSpecAgentSchemaV2.extend({
+  /**
+   * Minor 3: the profile's closing turn (F-111, ADR 0044). After the task's last turn the runner
+   * runs one more, asking the agent to propose what the next task should know. Missing means off.
+   */
+  closingTurn: z.boolean().optional(),
 });
 export type TaskSpecAgent = z.infer<typeof taskSpecAgentSchema>;
 
@@ -183,17 +215,6 @@ export const taskSpecEnvironmentSchema = z.strictObject({
   ),
 });
 export type TaskSpecEnvironment = z.infer<typeof taskSpecEnvironmentSchema>;
-
-/**
- * A person as git writes them in a commit or a `Co-authored-by` trailer. Neither part may hold
- * `<`, `>` or a line break, so a name can't forge another trailer. The email is checked loosely,
- * because a GitHub App's bot address (`123+app[bot]@users.noreply.github.com`) is not RFC-shaped.
- */
-export const gitPersonSchema = z.strictObject({
-  name: z.string().min(1).max(256).regex(/^[^<>\r\n]+$/, "no angle brackets or line breaks"),
-  email: z.string().min(3).max(320).regex(/^[^\s<>@]+@[^\s<>@]+$/, "an email address"),
-});
-export type GitPerson = z.infer<typeof gitPersonSchema>;
 
 // ---------- minor 1's additions (milestone 2) ----------
 
@@ -303,7 +324,7 @@ const taskSpecShapeV0 = {
   /** The same branch name in every repo of the task (spec section 11, item 10). */
   branchName: branchNameSchema,
   leaseEpoch: leaseEpochSchema,
-  repos: z.array(taskSpecRepoSchema).min(1),
+  repos: z.array(taskSpecRepoSchemaV0).min(1),
   agent: taskSpecAgentSchemaV1,
   environment: taskSpecEnvironmentSchema,
   /** The App's bot identity, which authors every commit (F-078, ADR 0040). */
@@ -385,14 +406,9 @@ export const taskSpecSnapshotSchema = z
   .nullable();
 export type TaskSpecSnapshot = z.infer<typeof taskSpecSnapshotSchema>;
 
-/**
- * The task spec at the current minor (2). Every minor-1 and minor-2 field is optional, so a
- * minor-1 or minor-0 spec parses.
- */
-export const taskSpecSchema = z
-  .strictObject({
+const taskSpecShapeV2 = {
     ...taskSpecShapeV1,
-    agent: taskSpecAgentSchema,
+    agent: taskSpecAgentSchemaV2,
     /** Minor 2: how the session's first turn runs. `plan` only for a task's first session with plan first. */
     firstTurnMode: turnModeSchema.optional(),
     /** Minor 2: the environment's checks, in order. */
@@ -406,9 +422,60 @@ export const taskSpecSchema = z
     services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
     /** Minor 2: what the box starts from. */
     snapshot: taskSpecSnapshotSchema.optional(),
+};
+
+/** Minor 2's task spec, kept for the spec endpoint's answer to a minor-2 runner. */
+export const taskSpecSchemaV2 = z
+  .strictObject(taskSpecShapeV2)
+  .describe("The task spec a dispatch hands a minor-2 runner. It holds no secret.");
+
+// ---------- minor 3's additions (milestone 4) ----------
+
+/**
+ * The memory section (F-110, ADR 0044): the block core rendered, which the runner writes where
+ * the agent reads its instructions, so the runner needs no renderer. The ID lists are what the
+ * runner reports in `memory.used`. The block's text is never logged.
+ */
+export const taskSpecMemorySchema = z
+  .strictObject({
+    /** The "always" notes, the index and the standing instruction, within the limits. Never logged. */
+    block: z
+      .string()
+      .max(runnerLimits.memoryBlockMaxBytes)
+      .refine((block) => utf8ByteLength(block) <= runnerLimits.memoryBlockMaxBytes, "at most the memory block's size"),
+    /** The notes the index lists, in its order. */
+    indexNoteIds: z.array(noteIdSchema).max(runnerLimits.memoryIndexMaxNotes),
+    /** The notes carried in full. */
+    alwaysNoteIds: z.array(noteIdSchema).max(runnerLimits.memoryIndexMaxNotes),
+    /** How many notes didn't fit, for the block's "N more notes" line. */
+    omitted: z.number().int().nonnegative(),
+    /** Whether the agent gets `memory_search`, `memory_read` and `memory_propose` (an MCP agent). */
+    tools: z.boolean(),
+  })
+  .describe("The task's memory: the block's text is never logged.");
+export type TaskSpecMemory = z.infer<typeof taskSpecMemorySchema>;
+
+/**
+ * The task spec at the current minor (3). Every field added since minor 0 is optional, so a
+ * minor-2, minor-1 or minor-0 spec parses.
+ */
+export const taskSpecSchema = z
+  .strictObject({
+    ...taskSpecShapeV2,
+    repos: z.array(taskSpecRepoSchema).min(1),
+    agent: taskSpecAgentSchema,
+    /** Minor 3: the organization's and the project's approved notes, or `null` for none. */
+    memory: taskSpecMemorySchema.nullable().optional(),
   })
   .describe("The task spec a dispatch hands the runner. It holds no secret.");
 export type TaskSpec = z.infer<typeof taskSpecSchema>;
+
+/** Minor 2's spec as a stripping object: parsing a current spec keeps minor 2's fields. */
+const taskSpecStripV2 = z.object({
+  ...taskSpecShapeV2,
+  repos: z.array(z.object(taskSpecRepoSchemaV0.shape)).min(1),
+  agent: z.object(taskSpecAgentSchemaV2.shape),
+});
 
 /** Minor 1's spec as a stripping object: parsing a current spec keeps minor 1's top-level fields. */
 const taskSpecStripV1 = z.object({ ...taskSpecShapeV1, agent: z.object(taskSpecAgentSchemaV1.shape) });
@@ -425,11 +492,17 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
 });
 
 /**
- * The spec in the shape a runner at `minor` reads: below minor 2, minor 2's fields are dropped;
- * below minor 1, minor 1's too. Core never dispatches a task that needs minor 2 (plan first,
- * checks, services, profile rules) to a minor-1 runner, so nothing it needs is lost.
+ * The spec in the shape a runner at `minor` reads: below minor 3, minor 3's fields are dropped
+ * (the memory section, the closing turn and each repo's git identity: core has folded the memory
+ * block into `agent.instructions` for such a runner); below minor 2, minor 2's; below minor 1,
+ * minor 1's. Core never dispatches a task that needs a minor to a runner below it
+ * (`taskSpecNeedsMinor2`, `taskSpecNeedsMinor3`), so nothing it needs is lost.
  */
-export const encodeTaskSpecForMinor = (spec: TaskSpec, minor: number): TaskSpec => {
+export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSpec => {
+  if (minor >= 3) {
+    return current;
+  }
+  const spec: TaskSpec = taskSpecStripV2.parse(current);
   if (minor >= 2) {
     return spec;
   }
@@ -466,12 +539,27 @@ export const taskSpecNeedsMinor2 = (spec: TaskSpec): boolean =>
   (spec.agent.skills?.length ?? 0) > 0 ||
   (spec.agent.mcpServers?.length ?? 0) > 0;
 
+/**
+ * Whether a spec uses anything a runner below minor 3 can't do: repos whose commits need
+ * different bots (F-136). Memory needs no minor 3, since a minor-2 runner gets it folded into its
+ * instructions.
+ */
+export const taskSpecNeedsMinor3 = (spec: TaskSpec): boolean =>
+  spec.repos.some(
+    (repo) =>
+      repo.gitIdentity !== undefined &&
+      (repo.gitIdentity.name !== spec.gitIdentity.name || repo.gitIdentity.email !== spec.gitIdentity.email),
+  );
+
 /** The spec endpoint's answer schema for a runner at `minor`. */
 export const taskSpecResponseSchemaFor = (
   minor: number,
-): typeof taskSpecSchema | typeof taskSpecSchemaV1 | typeof taskSpecSchemaV0 => {
-  if (minor >= 2) {
+): typeof taskSpecSchema | typeof taskSpecSchemaV2 | typeof taskSpecSchemaV1 | typeof taskSpecSchemaV0 => {
+  if (minor >= 3) {
     return taskSpecSchema;
+  }
+  if (minor >= 2) {
+    return taskSpecSchemaV2;
   }
   return minor >= 1 ? taskSpecSchemaV1 : taskSpecSchemaV0;
 };

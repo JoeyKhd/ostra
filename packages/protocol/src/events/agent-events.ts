@@ -4,12 +4,15 @@ import {
   approvalIdSchema,
   approvalRuleIdSchema,
   blobIdSchema,
+  budgetIdSchema,
   checkIdSchema,
   clientMessageIdSchema,
   diffCommentIdSchema,
   memberIdSchema,
   modelIdSchema,
+  noteIdSchema,
   optionIdSchema,
+  proposalIdSchema,
   providerIdSchema,
   questionIdSchema,
   repoIdSchema,
@@ -34,6 +37,7 @@ import {
   taskSeqSchema,
 } from "../common.ts";
 import { approvalSubjectSchema, taskRuleSchema } from "../agent/rules.ts";
+import { memoryNoteTitleSchema, memoryUseViaSchema } from "../memory/notes.ts";
 import { blobRefSchema } from "../runner/blobs.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { toolKindSchema } from "./tools.ts";
@@ -522,6 +526,82 @@ const minor2NewEventOptions = [
   }),
 ] as const;
 
+// ---------- protocol minor 3's vocabularies (milestone 4) ----------
+
+/**
+ * What starts a turn, for the budget gate (F-037, ADR 0055): one closed list, so every origin
+ * passes the same gate and a new one can't skip it.
+ */
+export const turnOriginSchema = z.enum([
+  "dispatch",
+  "reopen",
+  "message",
+  "diff-comments",
+  "update-branch",
+  "pr-comment",
+  "keep-working",
+  "closing-turn",
+  "automatic-round",
+]);
+export type TurnOrigin = z.infer<typeof turnOriginSchema>;
+
+/** Whose budget held a turn: the organization's or the project's (ADR 0055). */
+export const budgetScopeSchema = z.enum(["organization", "project"]);
+export type BudgetScope = z.infer<typeof budgetScopeSchema>;
+
+/** The independent-review check's result on one head (F-104, ADR 0040). */
+export const reviewCheckStatusSchema = z.enum(["pending", "passed"]);
+export type ReviewCheckStatus = z.infer<typeof reviewCheckStatusSchema>;
+
+const prNumberSchema = z.number().int().positive();
+
+/** A PR of another repo of the same task, for a PR's "Related" section (F-098). */
+export const relatedPullRequestSchema = z.strictObject({ repoId: repoIdSchema, prNumber: prNumberSchema });
+export type RelatedPullRequest = z.infer<typeof relatedPullRequestSchema>;
+
+// ---------- the events new in minor 3 ----------
+
+const minor3NewEventOptions = [
+  // ---- memory (F-110, F-111, ADR 0044) ----
+  z.strictObject({
+    kind: z.literal("memory.used"),
+    /** The notes the session saw this way. IDs only, never a note's text. */
+    noteIds: z.array(noteIdSchema).min(1).max(runnerLimits.memoryIndexMaxNotes * 2),
+    via: memoryUseViaSchema,
+  }),
+  // ---- server-only (milestone 4) ----
+  z.strictObject({
+    kind: z.literal("memory.proposed"),
+    proposalId: proposalIdSchema,
+    /** The proposal's title, for the thread. Never logged. */
+    title: memoryNoteTitleSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("turn.held"),
+    origin: turnOriginSchema,
+    budgetId: budgetIdSchema,
+    scope: budgetScopeSchema,
+  }),
+  z.strictObject({ kind: z.literal("turn.released"), budgetId: budgetIdSchema }),
+  z.strictObject({
+    kind: z.literal("review.check_updated"),
+    repoId: repoIdSchema,
+    prNumber: prNumberSchema,
+    headSha: gitShaSchema,
+    status: reviewCheckStatusSchema,
+    /** The member whose approval passed it, or `null` while it's pending. */
+    approverMemberId: memberIdSchema.nullable(),
+    /** Words for the thread, never a review's text. */
+    reason: z.string().max(2000),
+  }),
+  z.strictObject({
+    kind: z.literal("pr.related_updated"),
+    repoId: repoIdSchema,
+    prNumber: prNumberSchema,
+    related: z.array(relatedPullRequestSchema).max(runnerLimits.projectReposMax),
+  }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -671,8 +751,29 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (2). */
+/** The event union at the current minor (3). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessageV2,
+  sessionRestoredV2,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReadyV2,
+  workspaceFilesOutsideRepos,
+  turnStarted,
+  approvalRequested,
+  approvalAnswered,
+  setupFinished,
+  ...minor2NewEventOptions,
+  ...minor3NewEventOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 2's event union, kept for the codecs (ADR 0034): a minor-2 peer's events parse with it,
+ * and it refuses minor 3's kinds.
+ */
+export const taskEventSchemaV2 = z.discriminatedUnion("kind", [
   userMessageV2,
   sessionRestoredV2,
   sessionCrashed,
@@ -743,6 +844,14 @@ export const minor2EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
 );
 
 /**
+ * The kinds minor 3 added (milestone 4). A minor-3 runner talking to a minor-2 server sends no
+ * `memory.used`; the rest are the server's own.
+ */
+export const minor3EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor3NewEventOptions.map((option) => option.shape.kind.value),
+);
+
+/**
  * The kinds a runner may also send outside a task, in a `runner-event` frame: a snapshot build's
  * result when no task triggered the build (F-051).
  */
@@ -753,6 +862,9 @@ export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEv
 
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor3EventKinds.has(kind)) {
+    return 3;
+  }
   if (minor2EventKinds.has(kind)) {
     return 2;
   }
@@ -805,7 +917,7 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
 
 /**
  * An event as a peer at `minor` reads it: below minor 2, the fields minor 2 added are dropped;
- * below minor 1, minor 1's too. A kind the minor lacks is returned as it is, and that peer
+ * below minor 1, minor 1's too. Minor 3 added kinds only, no field to an existing one. A kind the minor lacks is returned as it is, and that peer
  * refuses it: senders check `eventKindSupportedAt` first.
  */
 export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
@@ -861,6 +973,12 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "diff.comments_sent",
   "ticket.closed",
   "pr.comment_received",
+  // Minor 3 (milestone 4):
+  "memory.proposed",
+  "turn.held",
+  "turn.released",
+  "review.check_updated",
+  "pr.related_updated",
 ]);
 
 // ---------- the read side ----------
@@ -916,6 +1034,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 2's `runnerEventSchema`, for the up codec of a minor-2 peer. */
+export const runnerEventSchemaV2 = runnerEventSchema.extend({
+  event: taskEventSchemaV2.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 1's `runnerEventSchema`, for the up codec of a minor-1 peer. */
 export const runnerEventSchemaV1 = runnerEventSchema.extend({

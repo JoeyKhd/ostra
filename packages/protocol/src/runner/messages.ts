@@ -14,6 +14,7 @@ import {
   runnerEventSchema,
   runnerEventSchemaV0,
   runnerEventSchemaV1,
+  runnerEventSchemaV2,
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
@@ -87,6 +88,11 @@ export const eventsFrameSchema = z.strictObject({
   events: z.array(runnerEventSchema).min(1).max(runnerLimits.eventsPerFrameMax),
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
+
+/** Minor 2's `events` frame: its events refuse minor 3's kinds. */
+const eventsFrameSchemaV2 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV2).min(1).max(runnerLimits.eventsPerFrameMax),
+});
 
 /** Minor 1's `events` frame: its events refuse minor 2's kinds and fields. */
 const eventsFrameSchemaV1 = eventsFrameSchema.extend({
@@ -171,9 +177,17 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV2 = z.discriminatedUnion("type", [
+const upFrameV3 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
+const upFrameV2 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV2,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
@@ -193,7 +207,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV2>;
+export type UpFrame = z.infer<typeof upFrameV3>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -354,12 +368,14 @@ const encodeDownFrameFor =
 export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 0, decode: upFrameV0, encode: encodeUpFrameFor(0) },
   { minor: 1, decode: upFrameV1, encode: encodeUpFrameFor(1) },
-  { minor: 2, decode: upFrameV2, encode: (frame) => frame },
+  { minor: 2, decode: upFrameV2, encode: encodeUpFrameFor(2) },
+  { minor: 3, decode: upFrameV3, encode: (frame) => frame },
 ]);
 
 /**
  * Down frames, one codec per kept minor. Minor 1 added the `release` command; minor 2 added three
  * commands and two command fields, which a lower minor's encode drops and its decode refuses.
+ * Minor 3 added no command, so minor 2's codec serves it.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },

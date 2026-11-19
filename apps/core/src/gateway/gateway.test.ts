@@ -11,6 +11,7 @@ import { notifyRunnerInTx, postgresAuditLog, postgresChangeNotices, postgresComm
 import {
   closeCodes,
   infoResponseSchema,
+  PROTOCOL_MINOR,
   registerResponseSchema,
   runnerHeaders,
   runnerHttpErrorSchema,
@@ -77,8 +78,8 @@ describe("info", () => {
     const info = infoResponseSchema.parse(await response.json());
     expect(info).toEqual({
       protocolMajor: 1,
-      serverMinor: 2,
-      supported: { min: 1, max: 3 },
+      serverMinor: PROTOCOL_MINOR,
+      supported: { min: PROTOCOL_MINOR - 1, max: PROTOCOL_MINOR + 1 },
       serverVersion: "0.0.0",
       panelUrl: "http://localhost:3000",
       deviceClientId: "ostra-runner",
@@ -334,7 +335,7 @@ describe("the WebSocket", () => {
   it("says welcome, marks the runner online and holds its presence", async () => {
     const peer = track(await connect(harness, runner));
     const welcome = await peer.next("welcome");
-    expect(welcome).toMatchObject({ minor: 2, creditFrames: 256, creditBytes: 4 * 1024 * 1024, pingMs: 20_000 });
+    expect(welcome).toMatchObject({ minor: PROTOCOL_MINOR, creditFrames: 256, creditBytes: 4 * 1024 * 1024, pingMs: 20_000 });
     const row = await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
     expect(row.state).toBe("online");
     const presence = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId: runner.runnerId } });

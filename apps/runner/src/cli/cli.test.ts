@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { PROTOCOL_MINOR } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkOwnerOnly } from "../identity/owner-only.ts";
 import { dataPaths, loadIdentity } from "../identity/store.ts";
@@ -154,7 +155,7 @@ describe("ostra runner: refusals", () => {
     // The identity is fine, so nothing says to delete it, and nothing calls it revoked.
     expect(output).not.toContain(dataPaths(dataDir).identityDir);
     expect(output).not.toContain("revoked");
-    expect(fake.tokenRequests.at(-1)?.minor).toBe("2");
+    expect(fake.tokenRequests.at(-1)?.minor).toBe(String(PROTOCOL_MINOR));
     const status = await run(["runner", "status", "--data-dir", dataDir]);
     expect(status.lines.join("")).toMatch(/Last refusal +\S+ clock-skew: .*3600 s behind/);
     // And an hour ahead says so the other way round.

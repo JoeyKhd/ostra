@@ -182,7 +182,7 @@ describe("releasing a box (F-079)", () => {
     const harness = await startGateway(test.db, test.url, { hooks: { ingest, liveText: liveText.write } });
     try {
       const registered = await registerPersonal(harness, test.db, fixture.a.member);
-      const first = await connect(harness, registered, { minor: 1 });
+      const first = await connect(harness, registered, { minor: 2 });
       await first.next("welcome");
       first.close();
       await first.closed;
@@ -195,7 +195,7 @@ describe("releasing a box (F-079)", () => {
         jobContext("box.release", { organizationId, taskId: taskIdSchema.parse(task.id), boxId: boxIdSchema.parse(box.id), reason: "prs-closed" }, logger),
       );
       expect(await test.db.box.findUniqueOrThrow({ where: { id: box.id } })).toMatchObject({ state: "released", releasedAt: null });
-      const again = await connect(harness, registered, { minor: 1 });
+      const again = await connect(harness, registered, { minor: 2 });
       const delivered = await again.next("command");
       expect(delivered).toMatchObject({ kind: "release", body: { boxId: box.id, reason: "prs-closed" } });
       expect(await releaseCommands(box.id)).toHaveLength(1);

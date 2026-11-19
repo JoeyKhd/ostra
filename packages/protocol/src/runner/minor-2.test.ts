@@ -29,6 +29,7 @@ import {
   taskSpecSchema,
   taskSpecSchemaV0,
   taskSpecSchemaV1,
+  taskSpecSchemaV2,
 } from "../task/spec.ts";
 import {
   commandFixtures,
@@ -90,14 +91,14 @@ const eventsFrame = (event: TaskEvent): UpFrame => ({
 const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
 describe("the version", () => {
-  it("F-061: is minor 2; a minor-1 peer is inside the window and a minor-0 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(2);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 1, max: 3 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 1 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 2)).toEqual({ ok: true, minor: 2 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 0)).toEqual({ ok: false, reason: "minor", window: { min: 1, max: 3 } });
+  it("F-061: at a minor-2 server, a minor-1 peer is inside the window and a minor-0 peer is outside it", () => {
+    expect(PROTOCOL_MINOR).toBeGreaterThanOrEqual(2);
+    expect(minorWindow(2)).toEqual({ min: 1, max: 3 });
+    expect(negotiate(2, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 1 });
+    expect(negotiate(2, PROTOCOL_MAJOR, 2)).toEqual({ ok: true, minor: 2 });
+    expect(negotiate(2, PROTOCOL_MAJOR, 0)).toEqual({ ok: false, reason: "minor", window: { min: 1, max: 3 } });
     // A minor-2 runner against a minor-1 server speaks minor 1.
-    expect(negotiate(1, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 1 });
+    expect(negotiate(1, PROTOCOL_MAJOR, 2)).toEqual({ ok: true, minor: 1 });
   });
 
   it("names the working values", () => {
@@ -372,7 +373,7 @@ describe("the task spec at minor 2", () => {
   it("picks the response schema by the negotiated minor", () => {
     expect(taskSpecResponseSchemaFor(0)).toBe(taskSpecSchemaV0);
     expect(taskSpecResponseSchemaFor(1)).toBe(taskSpecSchemaV1);
-    expect(taskSpecResponseSchemaFor(2)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(2)).toBe(taskSpecSchemaV2);
     expect(taskSpecResponseSchemaFor(3)).toBe(taskSpecSchema);
   });
 

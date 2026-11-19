@@ -237,7 +237,7 @@ export const spoolingRunner = (registered: RegisteredAt): SpoolingRunner => {
         throw new Error(`token answered ${String(token.status)}`);
       }
       const next = await connectPeer(url, tokenResponseSchema.parse(token.body).accessToken, registered.runnerId, {
-        minor: 1,
+        minor: 2,
         lastCommandSeq,
         sessions: [...sessions.values()].map((place) => ({
           taskId: place.taskId,

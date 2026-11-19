@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { poolIdSchema, runnerIdSchema, snapshotIdSchema, taskIdSchema } from "../ids.ts";
+import { noteIdSchema, poolIdSchema, runnerIdSchema, snapshotIdSchema, taskIdSchema } from "../ids.ts";
 import {
   epochMsSchema,
   executorKindSchema,
@@ -9,10 +9,19 @@ import {
   runnerKindSchema,
   runnerLabelSchema,
 } from "../common.ts";
+import {
+  memoryKindSchema,
+  memoryNoteSchema,
+  memoryNoteTitleSchema,
+  memoryProposalInputSchema,
+  memoryProposalRefSchema,
+  memoryScopeSchema,
+} from "../memory/notes.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import { taskSpecSchema } from "../task/spec.ts";
 import { downFrameCodec, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
 import type { DownFrame, UpFrame } from "./messages.ts";
+import { runnerLimits } from "./limits.ts";
 import { RUNNER_PATH_PREFIX } from "./version.ts";
 
 // The runner's HTTP endpoints beside the WebSocket (ADR 0034): request and response schemas only.
@@ -49,6 +58,15 @@ export const runnerPaths = {
   /** `POST`: a snapshot build's credentials, only for the runner the build was sent to (F-051). */
   snapshotCredentials: (snapshotId: string): string =>
     `${RUNNER_PATH_PREFIX}/snapshots/${encodeURIComponent(snapshotId)}/credentials`,
+  // Minor 3 (milestone 4): the sidecar's memory tools, on behalf of one task, with its task token.
+  /** `POST`: search the task's organization's and project's approved notes (F-110). */
+  taskMemorySearch: (taskId: string): string => `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/memory/search`,
+  /** `GET`: one approved note, in full (F-110). */
+  taskMemoryNote: (taskId: string, noteId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/memory/notes/${encodeURIComponent(noteId)}`,
+  /** `POST`: propose a note, for a member to approve (F-111). */
+  taskMemoryProposals: (taskId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/memory/proposals`,
 } as const;
 
 /** Headers the HTTP carrier uses (ADR 0034). */
@@ -304,6 +322,65 @@ export const taskTokenResponseSchema = z.strictObject({
   taskToken: z.string().startsWith(TASK_TOKEN_PREFIX).min(TASK_TOKEN_PREFIX.length + 1).max(4096),
 });
 export type TaskTokenResponse = z.infer<typeof taskTokenResponseSchema>;
+
+// ---------- project memory (minor 3, milestone 4, ADR 0044) ----------
+
+/**
+ * `POST /tasks/:taskId/memory/search`: the agent's `memory_search`. Core searches only the
+ * task's organization's and project's approved notes, with the query as a bound parameter. The
+ * query is never logged.
+ */
+export const memorySearchRequestSchema = z
+  .strictObject({
+    query: z.string().trim().min(1).max(runnerLimits.memoryQueryMaxChars),
+    limit: z.number().int().min(1).max(runnerLimits.memorySearchResultsMax),
+  })
+  .describe("A memory search. The query is never logged.");
+export type MemorySearchRequest = z.infer<typeof memorySearchRequestSchema>;
+
+/** One result: the note's title and the line that matched, never its whole body. Never logged. */
+export const memorySearchResultSchema = z.strictObject({
+  noteId: noteIdSchema,
+  title: memoryNoteTitleSchema,
+  /** The best-matching line of the note. Never logged. */
+  line: z.string().max(runnerLimits.memoryQueryMaxChars),
+  kind: memoryKindSchema,
+  scope: memoryScopeSchema,
+});
+export type MemorySearchResult = z.infer<typeof memorySearchResultSchema>;
+
+export const memorySearchResponseSchema = z
+  .strictObject({ results: z.array(memorySearchResultSchema).max(runnerLimits.memorySearchResultsMax) })
+  .describe("A memory search's results. Their text is never logged.");
+export type MemorySearchResponse = z.infer<typeof memorySearchResponseSchema>;
+
+/** `GET /tasks/:taskId/memory/notes/:noteId`: the agent's `memory_read`, one approved note. */
+export const memoryNoteResponseSchema = memoryNoteSchema;
+export type MemoryNoteResponse = z.infer<typeof memoryNoteResponseSchema>;
+
+/** `POST /tasks/:taskId/memory/proposals`: the agent's `memory_propose`. Its text is never logged. */
+export const memoryProposalRequestSchema = memoryProposalInputSchema;
+export type MemoryProposalRequest = z.infer<typeof memoryProposalRequestSchema>;
+
+/**
+ * Why core refused a proposal, whose words the tool returns to the agent: a secret or a
+ * model-control token was found (`found` names each kind, never the value), the task's
+ * proposals reached their cap, or the input doesn't parse.
+ */
+export const memoryProposalRefusalSchema = z.discriminatedUnion("code", [
+  z.strictObject({
+    code: z.literal("secret-found"),
+    /** What was found, by kind, such as `a GitHub token` or `a model-control token`. Never the value. */
+    found: z.array(z.string().min(1).max(100)).min(1).max(20),
+  }),
+  z.strictObject({ code: z.literal("limit-reached") }),
+  z.strictObject({ code: z.literal("invalid") }),
+]);
+export type MemoryProposalRefusal = z.infer<typeof memoryProposalRefusalSchema>;
+
+/** The proposal's answer: its ID, or a refusal. */
+export const memoryProposalResponseSchema = z.union([memoryProposalRefSchema, memoryProposalRefusalSchema]);
+export type MemoryProposalResponse = z.infer<typeof memoryProposalResponseSchema>;
 
 // ---------- the HTTP fallback carrier (milestone 5) ----------
 

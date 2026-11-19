@@ -334,6 +334,42 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
+  "memory.used": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "memory.proposed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "turn.held": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "turn.released": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "review.check_updated": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "pr.related_updated": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
   "pr.opened": {
     prefix: [f["pr.text_set"]],
     check: (m) => {

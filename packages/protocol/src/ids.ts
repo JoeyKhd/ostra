@@ -243,3 +243,25 @@ export type CliSessionId = z.infer<typeof cliSessionIdSchema>;
 /** The ID of a skill of an agent profile (F-021). */
 export const agentProfileSkillIdSchema = idBase.brand<"AgentProfileSkillId">();
 export type AgentProfileSkillId = z.infer<typeof agentProfileSkillIdSchema>;
+
+// ---------- milestone 4 ----------
+
+/** The ID of an invitation to join an organization (F-002, ADR 0053). */
+export const invitationIdSchema = idBase.brand<"InvitationId">();
+export type InvitationId = z.infer<typeof invitationIdSchema>;
+
+/** The ID of a reset link an admin or a member made (F-002, ADR 0053). */
+export const resetLinkGrantIdSchema = idBase.brand<"ResetLinkGrantId">();
+export type ResetLinkGrantId = z.infer<typeof resetLinkGrantIdSchema>;
+
+/** The ID of one row of the search table (F-080, ADR 0054). */
+export const searchEntryIdSchema = idBase.brand<"SearchEntryId">();
+export type SearchEntryId = z.infer<typeof searchEntryIdSchema>;
+
+/** The ID of a turn the budget gate held (F-037, ADR 0055). */
+export const heldTurnIdSchema = idBase.brand<"HeldTurnId">();
+export type HeldTurnId = z.infer<typeof heldTurnIdSchema>;
+
+/** The ID of a task PR's independent-review check (F-104, ADR 0040). */
+export const reviewCheckIdSchema = idBase.brand<"ReviewCheckId">();
+export type ReviewCheckId = z.infer<typeof reviewCheckIdSchema>;
