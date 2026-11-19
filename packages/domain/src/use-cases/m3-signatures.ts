@@ -36,6 +36,7 @@ import type { MemberScope } from "../access.ts";
 import type { NotificationChannel, NotificationChoice, NotificationKind } from "../notifications/choices.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import type { ReopenTaskResult } from "./reopen.ts";
 
 // Milestone 3's use cases (spec section 5.4): each one's input, result and signature, with its
 // ports. The signature is the contract the routers, core's workers and the tests are written
@@ -45,6 +46,12 @@ import type { UseCaseResult } from "./common.ts";
 
 /** What a milestone 3 use case takes: the database and the ports. */
 export type M3Deps = { readonly db: Db } & Ports;
+
+/**
+ * Why a message sent to a task with no session going wasn't sent: the reopen it makes refused
+ * (milestone 2's `reopenTask`). Added 2026-11-19 by tickets 22 to 25, which send as the composer does.
+ */
+export type ReopenRefusal = Exclude<ReopenTaskResult, { readonly ok: true }>["error"];
 
 // ---------- agent profiles (F-021, ADR 0049; tickets 16, 34) ----------
 
@@ -248,7 +255,7 @@ export type SendDiffComments = (
   deps: M3Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-) => Promise<UseCaseResult<{ readonly sent: number; readonly delivery: "steer" | "reopen" }, "not-found" | "no-drafts" | "take-over-to-send" | "too-many">>;
+) => Promise<UseCaseResult<{ readonly sent: number; readonly delivery: "steer" | "reopen" }, "not-found" | "no-drafts" | "take-over-to-send" | "too-many" | ReopenRefusal>>;
 
 // ---------- checks, behind, update branch, @ostra (F-054, F-070, F-053; tickets 23 to 25) ----------
 
@@ -269,7 +276,7 @@ export type RequestUpdateBranch = (
   deps: M3Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-) => Promise<UseCaseResult<{ readonly repos: number; readonly delivery: "steer" | "reopen" }, "not-found" | "nothing-behind" | "take-over-to-send">>;
+) => Promise<UseCaseResult<{ readonly repos: number; readonly delivery: "steer" | "reopen" }, "not-found" | "nothing-behind" | "take-over-to-send" | ReopenRefusal>>;
 
 /** A repo's `behind` recomputed from the compare (the reconcile and `push` webhooks). */
 export type RecordBehind = (
@@ -291,7 +298,7 @@ export type AcceptPrComment = (
     readonly path: string | null;
     readonly line: number | null;
   },
-) => Promise<UseCaseResult<{ readonly taskId: TaskId; readonly delivery: "queued" | "reopen" }, "no-task" | "not-a-member" | "no-access">>;
+) => Promise<UseCaseResult<{ readonly taskId: TaskId; readonly delivery: "queued" | "reopen" }, "no-task" | "not-a-member" | "no-access" | ReopenRefusal>>;
 
 // ---------- the verified link, after a merge, a closed ticket (F-119, F-066; tickets 24, 25, 39) ----------
 

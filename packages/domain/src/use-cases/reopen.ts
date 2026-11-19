@@ -3,6 +3,7 @@ import type { Tx } from "@ostra/db";
 import {
   clientMessageIdSchema,
   leaseEpochSchema,
+  messageIntentSchema,
   needsYouItemIdSchema,
   organizationIdSchema,
   projectIdSchema,
@@ -88,6 +89,11 @@ export const reopenTaskInputSchema = z.strictObject({
    * Never logged.
    */
   text: z.string().trim().min(1).max(runnerLimits.steerTextMaxChars).optional(),
+  /**
+   * Milestone 3: why the message was written, when ostra rendered it for a panel action or a PR
+   * comment (diff comments, "Update branch", `@ostra`, ...). Missing means the member typed it.
+   */
+  intent: messageIntentSchema.optional(),
 });
 export type ReopenTaskInput = z.infer<typeof reopenTaskInputSchema>;
 
@@ -244,7 +250,15 @@ export const reopenTask: ReopenTask = async (deps, input) => {
       taskId: task.id,
       sessionId,
       at: now,
-      event: { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", reopen: true },
+      event: {
+        kind: "user.message",
+        memberId: scope.memberId,
+        clientMessageId: input.clientMessageId,
+        text,
+        delivery: "queued",
+        reopen: true,
+        ...(input.intent === undefined ? {} : { intent: input.intent }),
+      },
     });
   }
 

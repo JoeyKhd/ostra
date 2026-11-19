@@ -125,8 +125,12 @@ export const jobPayloadSchemas = {
   }),
   /** Send one delivery through its channel's adapter (tickets 20, 21); email's is delayed by the setting. */
   "notify.deliver": z.strictObject({ organizationId: organizationIdSchema, deliveryId: notificationDeliveryIdSchema }),
-  /** Fetch and cache a repo's compare of a base and a head (F-027, ticket 22). */
-  "diff.fetch": z.strictObject({ ...taskScope, repoId: repoIdSchema, baseSha: gitShaSchema, headSha: gitShaSchema }),
+  /**
+   * Fetch and cache a repo's compare of a base and a head (F-027, ticket 22). `baseSha: null` (added
+   * 2026-11-19, ticket 22) compares on the task repo's base branch, from the merge base the code host
+   * finds: ostra keeps no base SHA, and a head's diff then never changes.
+   */
+  "diff.fetch": z.strictObject({ ...taskScope, repoId: repoIdSchema, baseSha: gitShaSchema.nullable(), headSha: gitShaSchema }),
   /** Recompute every open task repo's `behind` from the compare (F-070, ticket 24). An idempotent pass: a schedule. */
   "task.reconcile-behind": z.strictObject({}),
   /** Act on an `@ostra` PR comment the inbox saved (F-053, ticket 25), by its connection and the host's comment ID. */
@@ -175,7 +179,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
       ? `notification:${payload.notificationId ?? "none"}:fanout:${payload.change}`
       : `item:${payload.needsYouItemId}:fanout:${payload.change}`,
   "notify.deliver": (payload) => `delivery:${payload.deliveryId}:deliver`,
-  "diff.fetch": (payload) => `repo:${payload.repoId}:diff:${payload.baseSha}:${payload.headSha}`,
+  "diff.fetch": (payload) => `repo:${payload.repoId}:diff:${payload.baseSha ?? "merge-base"}:${payload.headSha}`,
   "task.reconcile-behind": () => "tasks:reconcile-behind",
   "github.comment": (payload) => `connection:${payload.connectionId}:comment:${payload.commentId}`,
   "snapshot.schedule": (payload) => `project:${payload.projectId}:snapshot:${payload.reason}`,
