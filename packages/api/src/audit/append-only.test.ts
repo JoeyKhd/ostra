@@ -60,7 +60,8 @@ describe("the audit log is append-only (F-073)", () => {
 
   it("F-073: every audit write goes through recordAudit: no other source file creates an entry", async () => {
     const port = path.join(repoRoot, "packages", "domain", "src", "audit", "record-audit.ts");
-    const hits = await hitsOf(creates, (file) => file !== port && !/\.test\.tsx?$/.test(file));
+    // Tests, and the test seams under a `testing/` folder (Vitest only), seed entries; nothing else may.
+    const hits = await hitsOf(creates, (file) => file !== port && !/\.test\.tsx?$/.test(file) && !file.split(path.sep).includes("testing"));
     expect(hits).toEqual([]);
     // The port itself is found, so the scan reads the files it should.
     expect(await hitsOf(creates, (file) => file === port)).toHaveLength(1);

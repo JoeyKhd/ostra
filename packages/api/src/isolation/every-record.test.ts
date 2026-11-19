@@ -1,0 +1,528 @@
+import { randomUUID } from "node:crypto";
+
+import { mapMember } from "@ostra/db";
+import type { Db } from "@ostra/db";
+import { buildIsolationRows, isolationModelNames, isolationProjectModels } from "@ostra/db/testing";
+import type { IsolationModelName, SeededMember } from "@ostra/db/testing";
+import { postgresChangeNotices, searchTasks } from "@ostra/domain";
+import type { MemberScope } from "@ostra/domain";
+import { memberIdSchema, organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
+import { TRPCError } from "@trpc/server";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
+
+import { appRouter } from "../routers/app-router.ts";
+import { openStream } from "../stream/subscribe.ts";
+import { createApiHarness, seedConnectionAndModel } from "../testing/index.ts";
+import type { ApiHarness, AppCaller } from "../testing/index.ts";
+
+// Milestone 4, ticket 09 (F-049, F-087, F-003; ADR 0053, ADR 0026): isolation for every kind of
+// record. Every model with `organizationId` (the list in `@ostra/db/testing`'s isolation-models.ts)
+// is built in organization A (an open and a restricted project) and in organization B, which the
+// fixtures make. Then every query procedure of the panel's API is called by every role of A, and
+// no output holds an ID of B's, nor, for a role that can't open the restricted project, an ID of
+// that project's records. A guard fails when the router gains a query procedure this file has no
+// row for. The live stream and search are in it too. And the matrix: each procedure, called by
+// each role on the restricted project, gives the result the table says.
+
+let harness: ApiHarness;
+
+/** Each project's rows, by model. */
+let open: ReadonlyMap<IsolationModelName, string>;
+let restricted: ReadonlyMap<IsolationModelName, string>;
+let other: ReadonlyMap<IsolationModelName, string>;
+/** Every ID of a row of B's, and of a row inside A's restricted project. */
+let idsOfB: readonly string[];
+let idsOfRestricted: readonly string[];
+let projectAdmin: SeededMember;
+
+const tablesWith = async (db: Db, column: "organizationId" | "projectId"): Promise<readonly string[]> =>
+  z
+    .array(z.object({ table: z.string() }))
+    .parse(
+      await db.$queryRaw`
+        SELECT c.table_name AS "table" FROM information_schema.columns c
+        WHERE c.table_schema = 'public' AND c.column_name = ${column}
+          AND EXISTS (SELECT 1 FROM information_schema.columns i WHERE i.table_schema = 'public' AND i.table_name = c.table_name AND i.column_name = 'id')`,
+    )
+    .map((row) => row.table);
+
+/** Every `id` of every table's rows whose column holds the value. */
+const idsWhere = async (db: Db, column: "organizationId" | "projectId", value: string): Promise<readonly string[]> => {
+  const ids: string[] = [];
+  for (const table of await tablesWith(db, column)) {
+    const rows = z.array(z.object({ id: z.string() })).parse(await db.$queryRawUnsafe(`SELECT id::text AS id FROM "${table}" WHERE "${column}" = $1`, value));
+    ids.push(...rows.map((row) => row.id));
+  }
+  return ids;
+};
+
+beforeAll(async () => {
+  harness = await createApiHarness();
+  // A working GitHub App and model provider first, as an install has them, so the admin's GitHub
+  // and model reads run for real; the rows below are beside them.
+  await seedConnectionAndModel(harness);
+  const { a, b } = harness.fixture;
+  const rowsA = await buildIsolationRows(harness.test.db, { organizationId: a.organization.id, memberId: a.admin.id, userId: a.admin.userId }, [a.openProject.id, a.restrictedProject.id]);
+  const rowsB = await buildIsolationRows(harness.test.db, { organizationId: b.organization.id, memberId: b.admin.id, userId: b.admin.userId }, [b.project.id]);
+  const need = <T,>(value: T | undefined): T => {
+    if (value === undefined) {
+      throw new Error("a project's rows weren't built");
+    }
+    return value;
+  };
+  open = need(rowsA.get(a.openProject.id));
+  restricted = need(rowsA.get(a.restrictedProject.id));
+  other = need(rowsB.get(b.project.id));
+  idsOfB = [b.organization.id, ...(await idsWhere(harness.test.db, "organizationId", b.organization.id))];
+  idsOfRestricted = [a.restrictedProject.id, ...(await idsWhere(harness.test.db, "projectId", a.restrictedProject.id))];
+  // A project admin of the restricted project, who is an ordinary member of the organization.
+  const user = await harness.test.db.user.create({ data: { id: randomUUID(), name: "Project admin", email: `padmin-${randomUUID()}@example.com`, username: `padmin-${randomUUID().slice(0, 8)}` } });
+  const row = await harness.test.db.member.create({ data: { id: randomUUID(), organizationId: a.organization.id, userId: user.id, role: "member", createdAt: new Date() } });
+  await harness.test.db.projectMember.create({ data: { organizationId: a.organization.id, projectId: a.restrictedProject.id, memberId: row.id, role: "admin" } });
+  projectAdmin = mapMember(row);
+  await harness.hub.start();
+}, 120_000);
+
+afterAll(async () => {
+  await harness.dispose();
+});
+
+// ---------- the procedures ----------
+
+type Rows = ReadonlyMap<IsolationModelName, string>;
+/** What a procedure is called with: the rows of the project it's about, and that project's ID. */
+type Target = { readonly rows: Rows; readonly projectId: string };
+type InputOf = (target: Target) => unknown;
+
+const row = (target: Target, model: IsolationModelName): string => {
+  const value = target.rows.get(model);
+  if (value === undefined) {
+    throw new Error(`no ${model} row`);
+  }
+  return value;
+};
+
+const none: InputOf = () => undefined;
+const project: InputOf = (target) => ({ projectId: target.projectId });
+const task: InputOf = (target) => ({ taskId: row(target, "Task") });
+
+/**
+ * Every query procedure, with its input. `about` says whether its input names a record inside a
+ * project (`project`), so the matrix calls it on the restricted project, or nothing of a project
+ * (`organization`).
+ */
+const procedures: Readonly<Record<string, { readonly input: InputOf; readonly about: "project" | "organization" }>> = {
+  "account.cliSessions.list": { input: none, about: "organization" },
+  "account.deviceRequest": { input: () => ({ userCode: "ABCD-EFGH" }), about: "organization" },
+  "account.github.get": { input: none, about: "organization" },
+  "agentProfiles.agents": { input: none, about: "organization" },
+  "agentProfiles.effortLevels": { input: (target) => ({ adapter: "opencode", modelId: row(target, "Model") }), about: "organization" },
+  "agentProfiles.forStart": { input: (target) => ({ projectId: target.projectId, kind: "code" }), about: "project" },
+  "agentProfiles.get": { input: (target) => ({ profileId: row(target, "AgentProfile") }), about: "organization" },
+  "agentProfiles.list": { input: none, about: "organization" },
+  "agentProfiles.presets": { input: none, about: "organization" },
+  "agentProfiles.ruleCoverage": { input: () => ({ rules: [], mcpServers: [] }), about: "organization" },
+  "approvals.preview": { input: (target) => ({ approvalId: row(target, "Approval") }), about: "project" },
+  "boards.available": { input: project, about: "project" },
+  "boards.get": { input: project, about: "project" },
+  "diff.comments.list": { input: task, about: "project" },
+  "diff.get": { input: task, about: "project" },
+  "email.settings.get": { input: none, about: "organization" },
+  "email.status": { input: none, about: "organization" },
+  "environments.checks.list": { input: project, about: "project" },
+  "environments.get": { input: project, about: "project" },
+  "environments.services.list": { input: project, about: "project" },
+  "environments.snapshot.get": { input: project, about: "project" },
+  "github.appRequest": { input: none, about: "organization" },
+  "github.connection": { input: none, about: "organization" },
+  "github.detect": { input: () => ({ installationId: "9001", fullName: "ostra-test/test1", ref: "main" }), about: "organization" },
+  "github.installations": { input: none, about: "organization" },
+  "github.repos": { input: () => ({ installationId: "9001" }), about: "organization" },
+  "home.board": { input: project, about: "project" },
+  "home.needsYou": { input: () => ({}), about: "organization" },
+  "home.overview": { input: none, about: "organization" },
+  "inbox.filters": { input: project, about: "project" },
+  "inbox.get": { input: (target) => ({ projectId: target.projectId, ticketId: row(target, "Ticket") }), about: "project" },
+  "inbox.list": { input: project, about: "project" },
+  "insights.get": { input: (target) => ({ projectId: target.projectId, period: { kind: "preset", days: 30 } }), about: "project" },
+  "linear.status": { input: none, about: "organization" },
+  "me.get": { input: none, about: "organization" },
+  "notifications.list": { input: () => ({ tab: "open" }), about: "organization" },
+  "notifications.preferences.get": { input: none, about: "organization" },
+  "notifications.unreadCount": { input: none, about: "organization" },
+  "organization.get": { input: none, about: "organization" },
+  "organization.members": { input: none, about: "organization" },
+  "organization.storage": { input: none, about: "organization" },
+  "pools.joinTokens": { input: (target) => ({ poolId: row(target, "RunnerPool") }), about: "organization" },
+  "pools.list": { input: none, about: "organization" },
+  "projects.get": { input: project, about: "project" },
+  "projects.getTicketTemplate": { input: project, about: "project" },
+  "projects.list": { input: none, about: "organization" },
+  "providers.list": { input: none, about: "organization" },
+  "providers.models": { input: (target) => ({ providerId: row(target, "ModelProvider") }), about: "organization" },
+  "runners.list": { input: none, about: "organization" },
+  "runners.mine": { input: none, about: "organization" },
+  "setup.status": { input: none, about: "organization" },
+  "tasks.checks": { input: task, about: "project" },
+  "tasks.get": { input: task, about: "project" },
+  "tasks.history": { input: task, about: "project" },
+  "tasks.list": { input: project, about: "project" },
+  "tasks.local": { input: task, about: "project" },
+};
+
+/** Which procedures read each model's rows: what the suite calls for it. */
+const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
+  Member: ["organization.members", "me.get"],
+  Invitation: ["organization.members"],
+  OrganizationSetting: ["setup.status"],
+  AuditEntry: ["environments.snapshot.get", "email.settings.get"],
+  ChangeNotice: ["stream.subscribe"],
+  Connection: ["github.connection", "linear.status", "setup.status"],
+  CodeHostInstallation: ["github.installations", "github.repos"],
+  ModelProvider: ["providers.list", "providers.models"],
+  Model: ["providers.models", "agentProfiles.get", "agentProfiles.effortLevels"],
+  RunnerPool: ["pools.list", "pools.joinTokens"],
+  JoinToken: ["pools.joinTokens", "pools.list"],
+  Runner: ["runners.list", "runners.mine"],
+  RunnerPresence: ["runners.list", "runners.mine"],
+  AgentProfile: ["agentProfiles.list", "agentProfiles.get", "agentProfiles.forStart"],
+  AgentProfileMember: ["agentProfiles.get"],
+  AgentProfileSkill: ["agentProfiles.get"],
+  Secret: [],
+  Project: ["projects.list", "projects.get", "home.overview"],
+  ProjectMember: ["projects.get"],
+  ProjectPool: ["projects.get", "pools.list"],
+  Repo: ["projects.get", "tasks.get"],
+  Board: ["boards.get", "inbox.filters"],
+  Ticket: ["inbox.list", "inbox.get"],
+  TicketWrite: ["tasks.get"],
+  Environment: ["environments.get"],
+  EnvironmentEntry: ["environments.get"],
+  Service: ["environments.services.list"],
+  Check: ["environments.checks.list", "tasks.checks"],
+  Snapshot: ["environments.snapshot.get"],
+  Automation: [],
+  Task: ["tasks.list", "tasks.get", "home.board", "home.overview"],
+  TaskRepo: ["tasks.get", "diff.get"],
+  TaskCoAuthor: ["tasks.get"],
+  Box: ["tasks.get", "tasks.local"],
+  SidecarCommand: [],
+  Lease: ["tasks.get", "runners.list"],
+  Session: ["tasks.get", "tasks.history"],
+  Turn: ["tasks.history"],
+  Event: ["tasks.history", "stream.subscribe"],
+  Command: [],
+  Approval: ["approvals.preview", "tasks.get"],
+  NeedsYouItem: ["home.needsYou", "tasks.get"],
+  WebhookDelivery: [],
+  IdempotencyRecord: [],
+  RateBudget: [],
+  Blob: ["organization.storage"],
+  BlobUpload: [],
+  BlobChunk: [],
+  OAuthState: [],
+  TaskApprovalRule: ["tasks.get"],
+  DiffComment: ["diff.comments.list"],
+  DiffCache: ["diff.get"],
+  TaskPullRequest: ["tasks.get", "home.board"],
+  CheckRun: ["tasks.checks"],
+  Notification: ["notifications.list", "notifications.unreadCount"],
+  NotificationDelivery: ["notifications.list"],
+  NotificationPreference: ["notifications.preferences.get"],
+  AccountMailDelivery: ["organization.members"],
+  CliSession: ["account.cliSessions.list"],
+  DeviceCode: ["account.deviceRequest"],
+  SearchEntry: ["search"],
+  SpendDaily: ["insights.get", "tasks.get"],
+  Budget: ["insights.get"],
+  BudgetNotice: [],
+  HeldTurn: ["tasks.get"],
+  TaskMetric: ["insights.get"],
+  InsightDaily: ["insights.get"],
+  InsightRun: ["insights.get"],
+  MemoryNote: [],
+  MemoryNoteVersion: [],
+  MemoryProposal: [],
+  MemoryUse: ["tasks.get"],
+  ReviewCheck: ["tasks.get"],
+  ProviderListEntry: ["providers.list", "projects.get"],
+  ModelChoice: ["providers.list", "projects.get"],
+};
+
+/** Calls a procedure by its dotted path, as the panel does. */
+const call = async (caller: AppCaller, path: string, input: unknown): Promise<{ readonly ok: true; readonly output: unknown } | { readonly ok: false; readonly code: string }> => {
+  let target: unknown = caller;
+  for (const part of path.split(".")) {
+    target = Reflect.get(Object(target), part);
+  }
+  if (typeof target !== "function") {
+    throw new Error(`no procedure ${path}`);
+  }
+  try {
+    const output: unknown = await Reflect.apply(target, undefined, input === undefined ? [] : [input]);
+    return { ok: true, output };
+  } catch (error) {
+    if (error instanceof TRPCError) {
+      return { ok: false, code: error.code };
+    }
+    throw error;
+  }
+};
+
+const leaked = (output: unknown, ids: readonly string[]): readonly string[] => {
+  const text = output === undefined ? "" : JSON.stringify(output);
+  return ids.filter((id) => text.includes(id));
+};
+
+/** The panel's query procedures, read from the router itself. */
+const queryPaths = (): readonly string[] =>
+  Object.entries(appRouter._def.procedures)
+    .filter(([, procedure]) => Reflect.get(Object(Reflect.get(Object(procedure), "_def")), "type") === "query")
+    .map(([path]) => path)
+    .sort();
+
+describe("the guards (F-049)", () => {
+  it("F-049: every query procedure of the router has a row in this suite, and no row names a procedure that's gone", () => {
+    const paths = queryPaths();
+    expect(paths.filter((path) => !Object.hasOwn(procedures, path)), "a new query procedure: add its row (and its readers)").toEqual([]);
+    expect(Object.keys(procedures).filter((path) => !paths.includes(path))).toEqual([]);
+  });
+
+  it("F-049: the readers table names every listed model, and only procedures the suite calls", () => {
+    expect(Object.keys(readers).sort()).toEqual([...isolationModelNames()].sort());
+    const known = new Set([...Object.keys(procedures), "stream.subscribe", "search"]);
+    for (const paths of Object.values(readers)) {
+      for (const path of paths) {
+        expect(known.has(path), path).toBe(true);
+      }
+    }
+  });
+});
+
+// ---------- the roles ----------
+
+type Role = "organization admin" | "organization member" | "project admin" | "project member" | "not listed";
+const roles: readonly Role[] = ["organization admin", "organization member", "project admin", "project member", "not listed"];
+
+const memberOf = (role: Role): SeededMember => {
+  const { a } = harness.fixture;
+  switch (role) {
+    case "organization admin":
+      return a.admin;
+    case "organization member":
+    case "not listed":
+      return a.member;
+    case "project admin":
+      return projectAdmin;
+    case "project member":
+      return a.insider;
+    default:
+      return role satisfies never;
+  }
+};
+
+/** The organization member works in the open project; every other role is called on the restricted one. */
+const targetOf = (role: Role): Target =>
+  role === "organization member" ? { rows: open, projectId: harness.fixture.a.openProject.id } : { rows: restricted, projectId: harness.fixture.a.restrictedProject.id };
+
+/** Whether the role may see the restricted project's records. */
+const seesRestricted = (role: Role): boolean => role === "organization admin" || role === "project admin" || role === "project member";
+
+describe("no query crosses organizations, or opens a restricted project (F-049, F-087)", () => {
+  it.each(roles)("F-049, F-087: every query procedure, called by the %s, returns no row of another organization, nor of a project they can't open", async (role) => {
+    const caller = await harness.as(memberOf(role));
+    const target = targetOf(role);
+    const crossed: string[] = [];
+    const hidden: string[] = [];
+    for (const [path, procedure] of Object.entries(procedures)) {
+      const result = await call(caller, path, procedure.input(target));
+      if (!result.ok) {
+        continue;
+      }
+      crossed.push(...leaked(result.output, idsOfB).map((id) => `${path}: ${id}`));
+      if (!seesRestricted(role)) {
+        hidden.push(...leaked(result.output, idsOfRestricted).map((id) => `${path}: ${id}`));
+      }
+    }
+    expect(crossed).toEqual([]);
+    expect(hidden).toEqual([]);
+  });
+
+  it("F-049: every query procedure, called by an admin of A with B's IDs, finds nothing of B's", async () => {
+    const caller = await harness.as(harness.fixture.a.admin);
+    const target: Target = { rows: other, projectId: harness.fixture.b.project.id };
+    const crossed: string[] = [];
+    for (const [path, procedure] of Object.entries(procedures)) {
+      const result = await call(caller, path, procedure.input(target));
+      if (result.ok) {
+        crossed.push(...leaked(result.output, idsOfB).map((id) => `${path}: ${id}`));
+      } else if (procedure.about === "project") {
+        // A project or task of B's is no project of A's: not found, never forbidden.
+        expect(result.code, path).toBe("NOT_FOUND");
+      }
+    }
+    expect(crossed).toEqual([]);
+  });
+
+  it("F-049, F-087: the live stream sends a member no change notice of another organization's, nor of a project they can't open", async () => {
+    const { a, b } = harness.fixture;
+    const context = await harness.contextOf(a.member);
+    const scope = context.member?.scope;
+    if (scope === undefined) {
+      throw new Error("no scope");
+    }
+    const controller = new AbortController();
+    const seen: unknown[] = [];
+    const reading = (async () => {
+      try {
+        for await (const value of openStream({ ...context, scope }, {}, controller.signal)) {
+          seen.push(value);
+        }
+      } catch {
+        // Stopped.
+      }
+    })();
+    const notice = async (organizationId: string, projectId: string): Promise<string> => {
+      const entityId = taskIdSchema.parse(randomUUID());
+      await harness.test.db.$transaction((tx) =>
+        postgresChangeNotices.emitInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId: projectIdSchema.parse(projectId), entity: "task", entityId }),
+      );
+      return entityId;
+    };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const ofB = await notice(b.organization.id, b.project.id);
+    const ofRestricted = await notice(a.organization.id, a.restrictedProject.id);
+    const ofOpen = await notice(a.organization.id, a.openProject.id);
+    const deadline = Date.now() + 8_000;
+    while (!JSON.stringify(seen).includes(ofOpen) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    controller.abort();
+    await reading;
+    const text = JSON.stringify(seen);
+    expect(text).toContain(ofOpen);
+    expect(text).not.toContain(ofB);
+    expect(text).not.toContain(ofRestricted);
+  });
+
+  it("F-049, F-087: search returns a member no task of another organization's, nor of a project they can't open", async () => {
+    const { a } = harness.fixture;
+    const scopeOf = (memberId: string, role: "admin" | "member", projectRoles: MemberScope["projectRoles"]): MemberScope => ({
+      organizationId: organizationIdSchema.parse(a.organization.id),
+      memberId: memberIdSchema.parse(memberId),
+      role,
+      projectRoles,
+    });
+    const query = { text: "fixture", ticketKey: null, repoId: null, memberId: null, state: null, limit: 100 };
+    const asMember = (await searchTasks(harness.test.db, scopeOf(a.member.id, "member", new Map()), query)).map((result) => result.taskId);
+    expect(asMember).toContain(row({ rows: open, projectId: a.openProject.id }, "Task"));
+    expect(leaked(asMember, idsOfB)).toEqual([]);
+    expect(leaked(asMember, idsOfRestricted)).toEqual([]);
+    const asInsider = (await searchTasks(harness.test.db, scopeOf(a.insider.id, "member", new Map([[projectIdSchema.parse(a.restrictedProject.id), "member" as const]])), query)).map((result) => result.taskId);
+    expect(asInsider).toContain(row({ rows: restricted, projectId: a.restrictedProject.id }, "Task"));
+    expect(leaked(asInsider, idsOfB)).toEqual([]);
+  });
+
+  it("F-087: the fixture holds every kind of project record in the restricted project, so the calls above cover each", () => {
+    for (const model of isolationProjectModels) {
+      expect(restricted.get(model), model).toEqual(expect.any(String));
+    }
+    // Every project record with an `id` column is among them (a few are keyed by their parents).
+    expect(idsOfRestricted.length).toBeGreaterThan(40);
+    expect(idsOfB.length).toBeGreaterThan(60);
+  });
+});
+
+// ---------- the matrix ----------
+
+type Outcome = "ok" | "FORBIDDEN" | "NOT_FOUND" | "PRECONDITION_FAILED";
+const outcomeSchema = z.enum(["ok", "FORBIDDEN", "NOT_FOUND", "PRECONDITION_FAILED"]);
+
+/**
+ * Each query procedure, called by each role: the organization admin, an organization member (on the
+ * open project), the restricted project's admin and member, and an organization member not listed
+ * on it. A refusal of a project the member can't open is NOT_FOUND, never FORBIDDEN. The fixture's
+ * organization admin is no instance admin, so the instance's own settings refuse every role here.
+ * Linear isn't connected, so its teams are a precondition that fails for the two who may ask.
+ */
+const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outcome, Outcome]>> = {
+  "account.cliSessions.list": ["ok", "ok", "ok", "ok", "ok"],
+  "account.deviceRequest": ["ok", "ok", "ok", "ok", "ok"],
+  "account.github.get": ["ok", "ok", "ok", "ok", "ok"],
+  "agentProfiles.agents": ["ok", "ok", "ok", "ok", "ok"],
+  "agentProfiles.effortLevels": ["ok", "ok", "ok", "ok", "ok"],
+  "agentProfiles.forStart": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "agentProfiles.get": ["ok", "ok", "ok", "ok", "ok"],
+  "agentProfiles.list": ["ok", "ok", "ok", "ok", "ok"],
+  "agentProfiles.presets": ["ok", "ok", "ok", "ok", "ok"],
+  "agentProfiles.ruleCoverage": ["ok", "ok", "ok", "ok", "ok"],
+  "approvals.preview": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "boards.available": ["PRECONDITION_FAILED", "FORBIDDEN", "PRECONDITION_FAILED", "FORBIDDEN", "NOT_FOUND"],
+  "boards.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "diff.comments.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "diff.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "email.settings.get": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "email.status": ["ok", "ok", "ok", "ok", "ok"],
+  "environments.checks.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.services.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.snapshot.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "github.appRequest": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "github.connection": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "github.detect": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "github.installations": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "github.repos": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "home.board": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "home.needsYou": ["ok", "ok", "ok", "ok", "ok"],
+  "home.overview": ["ok", "ok", "ok", "ok", "ok"],
+  "inbox.filters": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "inbox.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "inbox.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "insights.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "linear.status": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "me.get": ["ok", "ok", "ok", "ok", "ok"],
+  "notifications.list": ["ok", "ok", "ok", "ok", "ok"],
+  "notifications.preferences.get": ["ok", "ok", "ok", "ok", "ok"],
+  "notifications.unreadCount": ["ok", "ok", "ok", "ok", "ok"],
+  "organization.get": ["ok", "ok", "ok", "ok", "ok"],
+  "organization.members": ["ok", "ok", "ok", "ok", "ok"],
+  "organization.storage": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "pools.joinTokens": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "pools.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "projects.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "projects.getTicketTemplate": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
+  "projects.list": ["ok", "ok", "ok", "ok", "ok"],
+  "providers.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "providers.models": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "runners.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "runners.mine": ["ok", "ok", "ok", "ok", "ok"],
+  "setup.status": ["ok", "ok", "ok", "ok", "ok"],
+  "tasks.checks": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.history": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.local": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+};
+
+describe("the matrix of procedures and roles (F-003, F-087)", () => {
+  it("F-003, F-087: every query procedure, called by each role, gives the result the table says", async () => {
+    const actual: Record<string, Outcome[]> = {};
+    for (const [path, procedure] of Object.entries(procedures)) {
+      const results: Outcome[] = [];
+      for (const role of roles) {
+        const result = await call(await harness.as(memberOf(role)), path, procedure.input(targetOf(role)));
+        results.push(outcomeSchema.parse(result.ok ? "ok" : result.code));
+      }
+      actual[path] = results;
+    }
+    expect(actual).toEqual(matrix);
+  });
+
+  it("F-003, F-087: a project admin reads what only a project admin may, a project member can't, and neither is an organization admin", () => {
+    const admins = Object.entries(matrix).filter(([, row]) => row[2] === "ok" && row[3] === "FORBIDDEN").map(([path]) => path);
+    expect(admins).toContain("projects.getTicketTemplate");
+    const organizationOnly = Object.entries(matrix).filter(([, row]) => row[0] === "ok" && row[2] === "FORBIDDEN").map(([path]) => path);
+    expect(organizationOnly).toEqual(expect.arrayContaining(["providers.list", "runners.list", "pools.list"]));
+  });
+});

@@ -52,8 +52,9 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
         writers.push(rel(file));
       }
     }
-    // The helpers' own file, and the browser suite's seed, which makes a task in a state and needs no notification.
-    expect(writers.sort()).toEqual(["apps/web/e2e/seed-task.ts", "packages/domain/src/use-cases/needs-you-items.ts"]);
+    // The helpers' own file, the browser suite's seed, which makes a task in a state and needs no
+    // notification, and the isolation suite's fixture rows (milestone 4, ticket 09), which notify no one.
+    expect(writers.sort()).toEqual(["apps/web/e2e/seed-task.ts", "packages/db/src/testing/isolation-models.ts", "packages/domain/src/use-cases/needs-you-items.ts"]);
   }, SCAN_TIMEOUT_MS);
 
   it("F-036: the helpers are called from the places that create, answer and dismiss items, and from nowhere new unnoticed", async () => {

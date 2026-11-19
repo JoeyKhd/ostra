@@ -1,6 +1,6 @@
 # 09: Core: isolation for every kind of record
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 05, 06
 Features: F-049, F-087, F-003
@@ -18,10 +18,12 @@ Spec: `../spec.md`, sections 2 and 8; ADR 0053 ("Proving isolation for every kin
 
 ## Done when
 
-- [ ] The suite passes over every model and every query procedure on `main`, milestones 1 to 4's included.
-- [ ] Break-it: a dropped organization filter in one router, and a model added without a fixture, each fail the suite; recorded in `context/proof/F-049.md` and `F-087.md`.
-- [ ] Tests named `it("F-049: ...")`, `it("F-087: ...")` and `it("F-003: ...")`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✅ prove isolation for every kind of record`.
+- [x] The suite passes over every model and every query procedure on `main`, milestones 1 to 4's included.
+- [x] Break-it: a dropped organization filter in one router, and a model added without a fixture, each fail the suite; recorded in `context/proof/F-049.md` and `F-087.md`.
+- [x] Tests named `it("F-049: ...")`, `it("F-087: ...")` and `it("F-003: ...")`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✅ prove isolation for every kind of record`.
 
 ## Comments
+
+- 2026-11-19: `packages/db/src/testing/isolation-models.ts` lists the 75 models with `organizationId`, each with a fixture builder (its parents made once per organization, its project records once per project), and the allowlist of the 9 without it, each with its reason; `packages/db/src/isolation-models.test.ts` is the guard (models and fields parsed from `schema.prisma` and checked against the client's `Prisma.ModelName`) and builds every model in two organizations and a restricted project. `packages/api/src/isolation/every-record.test.ts` builds every model in A's open and restricted projects and in B, then calls all 57 query procedures (read from `appRouter._def.procedures`; a second guard fails on one with no row) as five roles (organization admin, organization member on the open project, the restricted project's admin and member, a member not listed on it): no output holds any ID of B's rows, nor, for the two roles that can't open the restricted project, any ID of its records. The same procedures called by A's admin with B's IDs find nothing (a project input is NOT_FOUND). The live stream sends a member no change notice of B's or of the restricted project, and `searchTasks` returns neither. The matrix is the 57 procedures by the five roles, written out and checked whole. `stream.subscribe` is the only subscription; mutations are each router's own tests. The readers table maps each model to the procedures that read it. A query procedure added later (tickets 25 to 29) needs its row here, which the guard asks for. Break-its: `runners.list` without its organization filter, `projects.list` without `visibleProjects`, and `Secret` off the model list each failed. `append-only.test.ts` (ticket 10) now lets test seams under a `testing/` folder seed audit entries, as the model list does. While this ticket waited, main gave `DeviceCode` an `organizationId` (F-103's organization binding) and the panel a new query, `agentProfiles.effortLevels`: both guards failed on the rebase, naming them, and each now has its builder and its row. Commit: see the next line.

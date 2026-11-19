@@ -2,3 +2,4 @@
 export * from "./test-database.ts";
 export * from "./isolation.ts";
 export * from "./installations.ts";
+export * from "./isolation-models.ts";
