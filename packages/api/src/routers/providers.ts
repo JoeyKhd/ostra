@@ -1,4 +1,4 @@
-import { BUILT_IN_PROFILE_ADAPTER, syncProviderModels, addModelProvider, setModelReasoningInTx } from "@ostra/domain";
+import { BUILT_IN_PROFILE_ADAPTER, syncProviderModels, addModelProvider, setModelPrice, setModelReasoningInTx } from "@ostra/domain";
 import {
   addModelProviderInputSchema,
   apiFormatSchema,
@@ -117,6 +117,8 @@ const toCatalogView = (entry: CatalogEntry) => ({
 });
 
 const MAX_PRICE = 1_000_000;
+/** An admin's price in dollars per million tokens: the column holds `Decimal(12, 6)`. */
+const priceInputSchema = z.number().min(0).max(999_999).nullable();
 
 export const providersRouter = router({
   /**
@@ -404,5 +406,35 @@ export const providersRouter = router({
         await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: providerIdSchema.parse(model.providerId) });
         return { id: input.modelId };
       });
+    }),
+
+  /**
+   * F-037 (ticket 27; ADR 0055): an organization admin's four prices for a model, in dollars per
+   * million tokens, each `null` when unknown. They apply from now on: spend already counted keeps
+   * its price. The source is then `admin`.
+   */
+  setModelPrice: adminProcedure
+    .input(
+      z.strictObject({
+        modelId: modelIdSchema,
+        inputPerMTok: priceInputSchema,
+        outputPerMTok: priceInputSchema,
+        cacheReadPerMTok: priceInputSchema,
+        cacheWritePerMTok: priceInputSchema,
+      }),
+    )
+    .output(z.object({ priceChangedAt: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      const micro = (dollars: number | null): number | null => (dollars === null ? null : Math.round(dollars * 1_000_000));
+      const saved = await setModelPrice({ db, audit: ports.audit, clock: ports.clock, notices: ports.notices }, ctx.scope, {
+        modelId: input.modelId,
+        inputPerMTok: micro(input.inputPerMTok),
+        outputPerMTok: micro(input.outputPerMTok),
+        cacheReadPerMTok: micro(input.cacheReadPerMTok),
+        cacheWritePerMTok: micro(input.cacheWritePerMTok),
+      });
+      const result = unwrap(saved, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "invalid-input": "BAD_REQUEST" });
+      return { priceChangedAt: result.priceChangedAt };
     }),
 });

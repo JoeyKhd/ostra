@@ -104,6 +104,8 @@ const row = (target: Target, model: IsolationModelName): string => {
 };
 
 const none: InputOf = () => undefined;
+/** The month `SpendDaily`'s fixture rows fall in (`isolation-models.ts` writes them on 2026-11-01). */
+const currentMonth = (): string => "2026-11";
 const project: InputOf = (target) => ({ projectId: target.projectId });
 const task: InputOf = (target) => ({ taskId: row(target, "Task") });
 
@@ -164,11 +166,15 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "runners.list": { input: none, about: "organization" },
   "runners.mine": { input: none, about: "organization" },
   "setup.status": { input: none, about: "organization" },
+  "spend.currentMonth": { input: none, about: "organization" },
+  "spend.month": { input: () => ({ month: currentMonth() }), about: "organization" },
+  "spend.project": { input: (target) => ({ projectId: target.projectId, month: currentMonth() }), about: "project" },
   "tasks.checks": { input: task, about: "project" },
   "tasks.get": { input: task, about: "project" },
   "tasks.history": { input: task, about: "project" },
   "tasks.list": { input: project, about: "project" },
   "tasks.local": { input: task, about: "project" },
+  "tasks.startCheck": { input: project, about: "project" },
 };
 
 /** Which procedures read each model's rows: what the suite calls for it. */
@@ -234,8 +240,8 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   CliSession: ["account.cliSessions.list"],
   DeviceCode: ["account.deviceRequest"],
   SearchEntry: ["search"],
-  SpendDaily: ["insights.get", "tasks.get"],
-  Budget: ["insights.get"],
+  SpendDaily: ["insights.get", "tasks.get", "spend.month", "spend.project"],
+  Budget: ["insights.get", "spend.month", "spend.project", "tasks.startCheck"],
   BudgetNotice: [],
   HeldTurn: ["tasks.get"],
   TaskMetric: ["insights.get"],
@@ -498,11 +504,15 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "runners.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "runners.mine": ["ok", "ok", "ok", "ok", "ok"],
   "setup.status": ["ok", "ok", "ok", "ok", "ok"],
+  "spend.currentMonth": ["ok", "ok", "ok", "ok", "ok"],
+  "spend.month": ["ok", "ok", "ok", "ok", "ok"],
+  "spend.project": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.checks": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.history": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.local": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.startCheck": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
 };
 
 describe("the matrix of procedures and roles (F-003, F-087)", () => {

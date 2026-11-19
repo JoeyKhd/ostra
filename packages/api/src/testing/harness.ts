@@ -142,6 +142,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       email: { source: "panel", fromName: "ostra" },
       emailDelaySeconds: 120,
       cliSessionDays: 30,
+      budgetWarnPercent: 80,
+      projectMaxRepos: 10,
     },
     blobStore: {
       name: "postgres",

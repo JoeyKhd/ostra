@@ -18,6 +18,7 @@ import { approvalsRouter, tasksRouter } from "./tasks.ts";
 import { accountRouter } from "./account.ts";
 import { agentProfilesRouter } from "./agent-profiles.ts";
 import { insightsRouter } from "./insights.ts";
+import { budgetsRouter, spendRouter } from "./spend.ts";
 import { providersRouter } from "./providers.ts";
 import { setupRouter } from "./setup.ts";
 
@@ -48,6 +49,8 @@ export const appRouter = router({
   pools: poolsRouter,
   stream: streamRouter,
   insights: insightsRouter,
+  spend: spendRouter,
+  budgets: budgetsRouter,
 });
 
 export type AppRouter = typeof appRouter;

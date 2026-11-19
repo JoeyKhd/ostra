@@ -34,6 +34,9 @@ export type ApiSettings = Pick<
   | "email"
   | "emailDelaySeconds"
   | "cliSessionDays"
+  // Milestone 4: the budget page's warn share (ticket 27), a project's repo limit (ticket 30).
+  | "budgetWarnPercent"
+  | "projectMaxRepos"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */

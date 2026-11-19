@@ -80,16 +80,23 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
       if (match?.kind === "catalog") {
         matched += 1;
         const entry = match.entry;
+        // F-037 (ADR 0055): an admin's price comes last in the order and wins, so a refresh keeps it.
+        const prices =
+          row?.priceSource === "admin"
+            ? {}
+            : {
+                inputPricePerMTok: entry.inputPricePerMTok,
+                outputPricePerMTok: entry.outputPricePerMTok,
+                // Q163: the cache prices when the catalog has them; unknown ones price at the input price.
+                cacheReadPricePerMTok: entry.cacheReadPricePerMTok ?? null,
+                cacheWritePricePerMTok: entry.cacheWritePricePerMTok ?? null,
+              };
         const values = {
           catalogId: entry.catalogId,
           displayName: entry.name,
           contextWindow: entry.contextWindow ?? model.contextWindow,
           maxOutputTokens: entry.maxOutputTokens,
-          inputPricePerMTok: entry.inputPricePerMTok,
-          outputPricePerMTok: entry.outputPricePerMTok,
-          // Q163: the cache prices when the catalog has them; unknown ones price at the input price.
-          cacheReadPricePerMTok: entry.cacheReadPricePerMTok ?? null,
-          cacheWritePricePerMTok: entry.cacheWritePricePerMTok ?? null,
+          ...prices,
           // F-137 (ADR 0066): the catalog's reasoning controls. An admin's (`adminReasoning`) are
           // never written here, so a refresh never undoes them.
           catalogReasoning: reasoningControlsSchema.parse(entry.reasoning),
