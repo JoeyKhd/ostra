@@ -6,6 +6,7 @@ import type { ClientMessageId, MessageIntent, SessionId, TaskId, TaskSeq } from 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
+import { checkBudget, holdTurnInTx, sessionModelIdInTx, turnOriginOfIntent } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveTaskInTx } from "./moves.ts";
 import { reopenTask } from "./reopen.ts";
@@ -43,7 +44,14 @@ export type SendMemberMessageInput = {
 export type MemberMessageDelivery = "steer" | "reopen";
 
 export type SendMemberMessageResult = UseCaseResult<
-  { readonly delivery: MemberMessageDelivery; readonly sessionId: SessionId; readonly seq: TaskSeq | null; readonly duplicate: boolean },
+  {
+    readonly delivery: MemberMessageDelivery;
+    readonly sessionId: SessionId;
+    readonly seq: TaskSeq | null;
+    readonly duplicate: boolean;
+    /** Milestone 4 (F-037): the budget gate held the turn; the message is saved and waits for the release. */
+    readonly held?: true;
+  },
   "not-found" | "take-over-to-send" | Exclude<ReopenTaskResult, { readonly ok: true }>["error"]
 >;
 
@@ -91,18 +99,33 @@ export const sendMemberMessageInTx = async (
   const text = fitText(input.text);
   const [lease, session] = await Promise.all([
     tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { runnerId: true } }),
-    tx.session.findFirst({ where: { taskId: task.id, state: { in: [...GOING_SESSION_STATES] } }, orderBy: { startedAt: "desc" }, select: { id: true } }),
+    tx.session.findFirst({
+      where: { taskId: task.id, state: { in: [...GOING_SESSION_STATES] } },
+      orderBy: { startedAt: "desc" },
+      select: { id: true, state: true, agentProfileId: true, modelId: true },
+    }),
   ]);
   const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
+  const origin = turnOriginOfIntent(input.intent);
   if (!going) {
     const reopened = await reopenTask(
-      { tx, scope, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock, spendCap: deps.spendCap, timers: deps.timers },
+      {
+        tx,
+        scope,
+        jobs: deps.jobs,
+        notices: deps.notices,
+        audit: deps.audit,
+        clock: deps.clock,
+        spendCap: deps.spendCap,
+        timers: deps.timers,
+        origin: origin === "message" ? "reopen" : origin,
+      },
       { taskId: task.id, clientMessageId: input.clientMessageId, text, intent: input.intent },
     );
     if (!reopened.ok) {
       return reopened;
     }
-    return { ok: true, delivery: "reopen", sessionId: reopened.sessionId, seq: null, duplicate: false };
+    return { ok: true, delivery: "reopen", sessionId: reopened.sessionId, seq: null, duplicate: false, ...(reopened.held === true ? { held: true as const } : {}) };
   }
   if (input.sender === "driver" && task.driverMemberId !== scope.memberId) {
     return { ok: false, error: "take-over-to-send", message: "Take over to send" };
@@ -110,6 +133,29 @@ export const sendMemberMessageInTx = async (
   const now = deps.clock.now();
   const projectId = projectIdSchema.parse(task.projectId);
   const sessionId = sessionIdSchema.parse(session.id);
+  // Milestone 4 (F-037, ADR 0055): a message to an idle session starts a turn, so it passes the
+  // budget gate first. A session with a turn going takes it into that turn, gate or not.
+  if (session.state === "idle") {
+    const gate = await checkBudget(tx, {
+      organizationId: organizationIdSchema.parse(organizationId),
+      projectId,
+      modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }),
+      origin,
+      now,
+    });
+    if (gate.kind === "held") {
+      const heldSeq = await appendServerEvent(tx, {
+        organizationId: organizationIdSchema.parse(organizationId),
+        projectId,
+        taskId: task.id,
+        sessionId,
+        at: now,
+        event: { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent },
+      });
+      await holdTurnInTx(deps, tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: heldSeq, now, queued: false });
+      return { ok: true, delivery: "steer", sessionId, seq: heldSeq, duplicate: false, held: true };
+    }
+  }
   if (task.state === "needs_you") {
     // The message answers what the task waited on, as the composer's send does.
     await moveTaskInTx({ tx, notices: deps.notices }, task, { type: "member_acted", boxWarm: true });

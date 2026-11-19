@@ -71,6 +71,7 @@ export * from "./use-cases/email-settings.ts";
 export * from "./use-cases/usage.ts";
 export * from "./use-cases/sessions-m2.ts";
 export * from "./use-cases/spend.ts";
+export * from "./use-cases/budgets.ts";
 export * from "./use-cases/rebuild-history.ts";
 export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";

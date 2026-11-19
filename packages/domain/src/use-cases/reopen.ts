@@ -13,7 +13,7 @@ import {
   taskEventSchema,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { BlobRef, BoxId, ClientMessageId, MemberId, NeedsYouItemId, PendingMessage, SessionId, TaskId } from "@ostra/protocol";
+import type { BlobRef, BoxId, ClientMessageId, MemberId, NeedsYouItemId, PendingMessage, SessionId, TaskId, TaskSeq, TurnOrigin } from "@ostra/protocol";
 import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
@@ -23,6 +23,7 @@ import { transitionTask } from "../lifecycles/task.ts";
 import type { TaskInput } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import { reopenCarryOnText } from "../tickets/contracts.ts";
+import { checkBudget, holdTurnInTx, sessionModelIdInTx } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { freshBranchesInTx } from "./fresh-branch.ts";
@@ -108,6 +109,11 @@ export type ReopenTaskResult = UseCaseResult<
     readonly sessionId: SessionId;
     /** Milestone 3 (F-066): each merged repo's fresh branch, when the task had one. */
     readonly freshBranches?: readonly FreshBranch[];
+    /**
+     * Milestone 4 (F-037): the budget gate was closed, so the reopen is saved and waits: the message
+     * is kept, a `HeldTurn` and `turn.held` say so, and nothing is dispatched until the release.
+     */
+    readonly held?: true;
   },
   | "not-found"
   | "forbidden"
@@ -135,6 +141,8 @@ export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock">
   readonly spendCap?: SpendCapSettings | undefined;
   /** The old session's timer goes with it. */
   readonly timers?: SessionTimers | undefined;
+  /** Milestone 4 (F-037): what wants the turn, for the budget gate. `reopen` when left out. */
+  readonly origin?: TurnOrigin | undefined;
 };
 
 /**
@@ -234,6 +242,15 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   const organization = organizationIdSchema.parse(organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
   const moveDeps = { tx, notices: deps.notices };
+  // Milestone 4 (F-037, ADR 0055): the budget gate, in the task's lock. A closed one still saves the
+  // reopen and its message, and holds the turn: no dispatch until the budget's release.
+  const gate = await checkBudget(tx, {
+    organizationId: organization,
+    projectId,
+    modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: reopenProfile.profileId }),
+    origin: deps.origin ?? "reopen",
+    now,
+  });
 
   // The old session ends here: one active session per task. The dispatch decides whether the new
   // one carries on in the same box (ADR 0039).
@@ -268,8 +285,9 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   }
   // The member's message, or the one-click reopen's words, unless a replayed message already says it.
   const text = input.text ?? (owed.length > 0 ? null : reopenCarryOnText);
+  let messageSeq: TaskSeq | null = null;
   if (text !== null) {
-    await appendServerEvent(tx, {
+    messageSeq = await appendServerEvent(tx, {
       organizationId: organization,
       projectId,
       taskId: task.id,
@@ -297,12 +315,16 @@ export const reopenTask: ReopenTask = async (deps, input) => {
     { taskId: task.id, reasonNotIn: ["restore_conflict", "files_outside_repos"] },
     { state: "answered", at: new Date(now), byMemberId: scope.memberId },
   );
-  await deps.jobs.enqueueInTx(tx, "task.dispatch", {
-    organizationId: organization,
-    taskId: task.id,
-    sessionId,
-    leaseEpoch: leaseEpochSchema.parse(task.leaseEpoch + 1),
-  });
+  if (gate.kind === "held") {
+    await holdTurnInTx(deps, tx, { organizationId: organization, projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: messageSeq, now, queued: true });
+  } else {
+    await deps.jobs.enqueueInTx(tx, "task.dispatch", {
+      organizationId: organization,
+      taskId: task.id,
+      sessionId,
+      leaseEpoch: leaseEpochSchema.parse(task.leaseEpoch + 1),
+    });
+  }
   await deps.audit.recordInTx(tx, {
     organizationId: organization,
     projectId,
@@ -313,7 +335,7 @@ export const reopenTask: ReopenTask = async (deps, input) => {
     data: { sessionId, from: task.state, replayed: owed.length, freshBranches: freshBranches.length },
   });
   await deps.notices.emitInTx(tx, { organizationId: organization, projectId, entity: "task", entityId: task.id });
-  return { ok: true, sessionId, ...(freshBranches.length === 0 ? {} : { freshBranches }) };
+  return { ok: true, sessionId, ...(freshBranches.length === 0 ? {} : { freshBranches }), ...(gate.kind === "held" ? { held: true as const } : {}) };
 };
 
 // ---------- "Carry on without it" (ticket 18, router ticket 30) ----------

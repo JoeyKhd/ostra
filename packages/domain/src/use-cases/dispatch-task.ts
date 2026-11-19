@@ -9,6 +9,7 @@ import type { Ports } from "../ports.ts";
 import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
 import { runnerStartsServices } from "../environment/services.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
+import { budgetWaitOf, checkBudget, sessionModelIdInTx } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { chooseReopenStep } from "./reopen.ts";
 import { PROFILE_FEATURES_MINOR, profileNeedsMinor2 } from "./task-profile.ts";
@@ -239,6 +240,18 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const provider = profile?.model?.provider;
   if (provider === undefined) {
     return noRunner({ code: "no-model" });
+  }
+  // Milestone 4 (F-037, ADR 0055): the budget gate, in the task's lock. A closed one leaves the task
+  // queued with its reason; the release (or the requeue sweep) offers it again.
+  const gate = await checkBudget(tx, {
+    organizationId: organizationIdSchema.parse(task.organizationId),
+    projectId: projectIdSchema.parse(task.projectId),
+    modelId: await sessionModelIdInTx(tx, task.organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }),
+    origin: "dispatch",
+    now,
+  });
+  if (gate.kind === "held") {
+    return noRunner(budgetWaitOf(gate));
   }
   if (provider.dispatchHeldUntil !== null && provider.dispatchHeldUntil.getTime() > now) {
     return noRunner({ code: "provider-held", until: provider.dispatchHeldUntil.getTime() });

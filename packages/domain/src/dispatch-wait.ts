@@ -50,6 +50,10 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
   z.strictObject({ code: z.literal("no-provider-for-model"), modelName: z.string().min(1).max(256) }),
   /** Milestone 4 (F-135): the session's provider is no longer on its project's list. */
   z.strictObject({ code: z.literal("provider-not-allowed") }),
+  /** Milestone 4 (F-037, ADR 0055): this month's budget of the project or the organization is reached. */
+  z.strictObject({ code: z.literal("budget-reached"), scope: z.enum(["organization", "project"]) }),
+  /** Milestone 4 (F-037, ADR 0055): a budget applies and the task's model has no price, so it can't be counted. */
+  z.strictObject({ code: z.literal("model-unpriced") }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -96,6 +100,10 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
       return `No provider on this project's list serves ${wait.modelName}: an organization admin adds one under Models.`;
     case "provider-not-allowed":
       return "The session's model provider is no longer allowed in this project.";
+    case "budget-reached":
+      return `The ${wait.scope === "project" ? "project's" : "organization's"} budget for this month is reached: the task waits until it's raised or the month ends.`;
+    case "model-unpriced":
+      return "This model has no price, so the budget can't count it";
     default:
       return wait satisfies never;
   }

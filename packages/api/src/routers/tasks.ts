@@ -5,7 +5,11 @@ import {
   keepWorking,
   requestUpdateBranchWith,
   appendServerEvent,
+  checkBudget,
   checkProjectRepos,
+  holdTurnInTx,
+  sessionModelIdInTx,
+  turnOriginOfIntent,
   createPromptTask,
   createPromptTaskInputSchema,
   createTicketForTask,
@@ -621,6 +625,36 @@ export const tasksRouter = router({
       const now = ports.clock.now();
       const projectId = projectIdSchema.parse(task.projectId);
       const sessionId = sessionIdSchema.parse(session.id);
+      // Milestone 4 (F-037, ADR 0055): between turns a message starts one, so it passes the budget
+      // gate first; a closed gate saves it and holds the turn. A turn going takes it, gate or not.
+      if (session.state === "idle") {
+        const gate = await checkBudget(tx, {
+          organizationId,
+          projectId,
+          modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }),
+          origin: turnOriginOfIntent(input.intent),
+          now,
+        });
+        if (gate.kind === "held") {
+          const heldSeq = await appendServerEvent(tx, {
+            organizationId,
+            projectId,
+            taskId: input.taskId,
+            sessionId,
+            at: now,
+            event: {
+              kind: "user.message",
+              memberId: ctx.scope.memberId,
+              clientMessageId: input.clientMessageId,
+              text: input.text,
+              delivery: "queued",
+              ...(input.intent === undefined ? {} : { intent: input.intent }),
+            },
+          });
+          await holdTurnInTx(ports, tx, { organizationId, projectId, taskId: input.taskId, sessionId, held: gate, pendingMessageSeq: heldSeq, now, queued: false });
+          return { seq: heldSeq, duplicate: false as const, held: true as const };
+        }
+      }
       if (lifecycle.status.state === "needs_you") {
         const moved = transitionTask(lifecycle, { type: "member_acted", boxWarm: true });
         if (moved.ok) {
@@ -657,7 +691,7 @@ export const tasksRouter = router({
         task: { taskId: input.taskId, projectId },
       });
       await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: input.taskId });
-      return { seq, duplicate: false as const };
+      return { seq, duplicate: false as const, held: false as const };
     });
   }),
 
@@ -740,7 +774,7 @@ const sessionAdapterInTx = async (tx: Tx, profileId: string | null, organization
 const activeLeaseAndSession = async (tx: Tx, taskId: string) => {
   const [lease, session] = await Promise.all([
     tx.lease.findFirst({ where: { taskId, state: "active" }, select: { runnerId: true, epoch: true } }),
-    tx.session.findFirst({ where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } }, select: { id: true, state: true, agentProfileId: true } }),
+    tx.session.findFirst({ where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } }, select: { id: true, state: true, agentProfileId: true, modelId: true } }),
   ]);
   return { lease, session };
 };

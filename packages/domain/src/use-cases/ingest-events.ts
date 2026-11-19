@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
 import type { Session, Tx } from "@ostra/db";
-import { boxIdSchema, organizationIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
+import { boxIdSchema, organizationIdSchema, projectIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
 import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -19,6 +19,7 @@ import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
+import { recordSpendInTx } from "./budgets.ts";
 import { modelTokenPrices, priceTokens } from "./spend.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 
@@ -66,6 +67,8 @@ export type IngestEventsDeps = Pick<Ports, "jobs" | "notices" | "clock"> & Parti
   readonly logger?: Logger;
   /** Milestone 2: the session's and the box's timers (tickets 17, 19, 20). */
   readonly timers?: SessionTimers;
+  /** Milestone 4: `OSTRA_BUDGET_WARN_PERCENT`, the share of a budget that warns its admins (F-037). */
+  readonly budgetWarnPercent?: number | undefined;
 };
 
 export type IngestEvents = (deps: IngestEventsDeps, input: IngestEventsInput) => Promise<IngestEventsResult>;
@@ -265,6 +268,22 @@ const applyEffects = async (
         if (cost > 0) {
           await tx.$executeRaw`UPDATE "session" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${session.id}`;
           await tx.$executeRaw`UPDATE "task" SET "spentMicroUsd" = LEAST("spentMicroUsd"::bigint + ${cost}, 2147483647) WHERE "id" = ${task.id}`;
+        }
+        // Milestone 4 (F-037, ticket 12): the project's, day's and model's rollup, and a `budget.check`
+        // when this call takes a budget's month past its warn share or 100%. A model of another
+        // organization has no row here, so it's never counted.
+        if (model !== null) {
+          await recordSpendInTx({ jobs: deps.jobs, budgetWarnPercent: deps.budgetWarnPercent }, tx, {
+            organizationId,
+            projectId: projectIdSchema.parse(task.projectId),
+            modelId: event.modelId,
+            at: item.at,
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+            cacheReadTokens: event.cacheReadTokens,
+            cacheWriteTokens: event.cacheWriteTokens,
+            spentMicroUsd: prices === null ? null : cost,
+          });
         }
         // F-084: the turn it belongs to (the session's latest, open while the agent works) keeps its own figures.
         const turn = await tx.turn.findFirst({ where: { sessionId: session.id }, orderBy: { ordinal: "desc" }, select: { id: true } });

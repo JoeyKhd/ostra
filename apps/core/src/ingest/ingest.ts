@@ -206,6 +206,8 @@ export const createIngest = (options: {
   readonly timers?: SessionTimers;
   /** Milestone 2: the outbox, for the `stop` a runner's `session.limit_reached` asks for (ticket 19). */
   readonly outbox?: CommandOutbox;
+  /** Milestone 4: `OSTRA_BUDGET_WARN_PERCENT` (F-037). */
+  readonly budgetWarnPercent?: number;
 }): Ingest => {
   const logger = options.logger.child({ component: "ingest" });
 
@@ -220,6 +222,7 @@ export const createIngest = (options: {
           logger,
           ...(options.timers === undefined ? {} : { timers: options.timers }),
           ...(options.outbox === undefined ? {} : { outbox: options.outbox }),
+          budgetWarnPercent: options.budgetWarnPercent,
         },
         { runnerId: runner.runnerId, events: [...events] },
       );
