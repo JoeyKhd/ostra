@@ -349,7 +349,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
     setOpenKey(rule.key);
   };
   const submit = (): void => {
-    save.mutate(saveInputOf(current, profileId, newId, new Map()));
+    save.mutate(saveInputOf(current, profileId, newId));
   };
   const newSkill = (): SkillDraft => ({ key: nextKey("skill"), name: "", body: "", files: [] });
   const title = current.name.trim() === "" ? (profileId === null ? t("agentProfiles.editor.newTitle") : (data?.name ?? "")) : current.name;

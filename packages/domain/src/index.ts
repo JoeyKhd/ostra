@@ -56,6 +56,7 @@ export * from "./use-cases/server-events.ts";
 export * from "./use-cases/agent-profiles.ts";
 export * from "./use-cases/agent-profile-setup.ts";
 export * from "./use-cases/task-profile.ts";
+export * from "./panel-blob-token.ts";
 export * from "./use-cases/approvals.ts";
 export * from "./use-cases/plans-questions.ts";
 export * from "./use-cases/pools.ts";

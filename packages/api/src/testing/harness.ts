@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { CatalogEntry, LogRecord, ModelProviderAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
-import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { hashPassword } from "better-auth/crypto";
@@ -40,6 +40,8 @@ const callerFactory = createCallerFactory(appRouter);
 /** A router caller: what a test calls procedures on. */
 export type AppCaller = ReturnType<typeof callerFactory>;
 
+export type UploadedBlob = { readonly organizationId: string; readonly purpose: string; readonly blobId: string; readonly size: number };
+
 export type BareHarness = {
   readonly test: TestDatabase;
   readonly deps: ApiDeps;
@@ -61,6 +63,8 @@ export type BareHarness = {
   };
   /** Every line the API logged, to check that nothing sensitive reached one. */
   readonly logs: readonly LogRecord[];
+  /** The files the panel handed to the blob store, in order. */
+  readonly uploads: readonly UploadedBlob[];
   /** The models.dev catalog the routers see: a test pushes entries into it. */
   readonly catalogEntries: CatalogEntry[];
   /** A caller for a context a test built (other settings, another session). */
@@ -116,6 +120,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const trackerTokens: string[] = [];
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
   const catalogEntries: CatalogEntry[] = [];
+  const uploads: UploadedBlob[] = [];
   const emailDirectory: EmailDirectory = options.email ?? noEmailDirectory;
 
   const deps: ApiDeps = {
@@ -138,7 +143,31 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       emailDelaySeconds: 120,
       cliSessionDays: 30,
     },
-    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }), read: postgresBlobReader(test.db) },
+    blobStore: {
+      name: "postgres",
+      health: () => Promise.resolve({ status: "ok" }),
+      read: postgresBlobReader(test.db),
+      // Core's blob service stands behind this in a real install: here it is a row, as core writes one.
+      upload: async ({ organizationId, purpose, bytes }) => {
+        if (bytes.length > profileLimits.skillFileMaxBytes) {
+          return { kind: "too-large" };
+        }
+        const row = await test.db.blob.create({
+          data: {
+            organizationId,
+            store: "postgres",
+            key: `panel-${crypto.randomUUID()}`,
+            purpose,
+            contentType: "application/octet-stream",
+            size: bytes.length,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+          },
+          select: { id: true },
+        });
+        uploads.push({ organizationId, purpose, blobId: row.id, size: bytes.length });
+        return { kind: "stored", blobId: row.id, size: bytes.length };
+      },
+    },
     linear: createLinearAppKit(options.linearEndpoints === undefined ? {} : { endpoints: options.linearEndpoints }),
     trackers: createTrackerDirectory({
       db: test.db,
@@ -200,6 +229,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     hub,
     fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens },
     logs,
+    uploads,
     catalogEntries,
     callerFor: (context) => callerFactory(context),
     anonymous: (resHeaders = new Headers()) => callerFactory({ deps, headers: new Headers(), resHeaders, user: null, member: null, revalidate: () => Promise.resolve(null) }),

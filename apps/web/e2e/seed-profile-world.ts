@@ -53,6 +53,7 @@ if (builtIn.modelId === null) {
   await db.agentProfile.update({ where: { id: builtIn.id }, data: { modelId: model.id } });
 }
 
-const project = await db.project.findFirstOrThrow({ where: { organizationId }, orderBy: { createdAt: "asc" }, select: { name: true } });
-process.stdout.write(`${JSON.stringify({ members, projectName: project.name })}\n`);
+// The project the earlier specs made, if they ran: only the specs that start a task need it.
+const project = await db.project.findFirst({ where: { organizationId }, orderBy: { createdAt: "asc" }, select: { name: true } });
+process.stdout.write(`${JSON.stringify({ members, projectName: project?.name ?? null })}\n`);
 await db.$disconnect();

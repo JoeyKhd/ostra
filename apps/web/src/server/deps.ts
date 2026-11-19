@@ -9,7 +9,7 @@ import { GitHubAdapter } from "@ostra/adapter-github";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
 import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
-import { createApiRuntime, createCatalogSource, postgresBlobReader } from "@ostra/api";
+import { corePanelUploader, createApiRuntime, createCatalogSource, postgresBlobReader } from "@ostra/api";
 import type { ApiDeps, ApiRuntime } from "@ostra/api";
 import { createDb } from "@ostra/db";
 import { repoRoot } from "@ostra/db/dev";
@@ -118,7 +118,8 @@ const build = async (): Promise<ApiRuntime> => {
   const db = createDb(settings.databaseUrl);
   const context: AdapterContext = { logger, clock: adapterClock };
 
-  const key = parseSecretsKey(await loadSecretsKey(settings));
+  const secretsKeyText = await loadSecretsKey(settings);
+  const key = parseSecretsKey(secretsKeyText);
   if (!key.ok) throw new Error("OSTRA_SECRETS_KEY is not a 32-byte key (64 hex characters or base64)");
   const secretStore = new BuiltinSecretStore({ rows: prismaSecretRows(db), key: key.value }, context);
   // A key that can't read the database's secrets stops the panel at start, as it stops core (Q136).
@@ -188,6 +189,8 @@ const build = async (): Promise<ApiRuntime> => {
       },
       // A check's full output (F-054) is read from the built-in store's tables; a blob kept in S3 is core's to serve.
       read: postgresBlobReader(db),
+      // A member's file (a skill's) goes to core's blob service, whichever store the install keeps blobs in.
+      upload: corePanelUploader({ coreUrl: settings.coreInternalUrl, secret: secretsKeyText, logger }),
     },
     logger,
   });

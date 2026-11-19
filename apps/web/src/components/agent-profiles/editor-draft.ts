@@ -11,11 +11,12 @@ import type { RuleDraft } from "./rule-drafts";
 // The profile editor's draft (agent-profile.md): what the admin is changing before "Save profile".
 // UI state only; the save turns it into the router's input. Pure, so it's tested alone.
 
-/** A skill file: stored (its blob) or picked just now (its bytes, base64, uploaded with the save). */
+/** A skill file: its path in the skill's folder, its size, and the blob that holds its bytes (uploaded when it was picked). */
 export type SkillFileDraft = {
   readonly path: string;
   readonly size: number;
-} & ({ readonly kind: "stored"; readonly blobId: string } | { readonly kind: "new"; readonly contentBase64: string });
+  readonly blobId: string;
+};
 
 export type SkillDraft = {
   readonly key: string;
@@ -115,6 +116,22 @@ export const skillProblem = (skill: SkillDraft, others: readonly SkillDraft[]): 
   return null;
 };
 
+/**
+ * What stops a file picked in the skill's Sheet from being added, or `null`. A file with the path of
+ * one already in the skill replaces it, so it never counts against the limit twice.
+ */
+export const pickedFileProblem = (files: readonly SkillFileDraft[], picked: { readonly name: string; readonly size: number }): SkillProblem | null => {
+  if (picked.name === "SKILL.md" || picked.name.length > 512) return { field: "files", key: "agentProfiles.skill.errorReserved", path: picked.name };
+  if (picked.size === 0) return { field: "files", key: "agentProfiles.skill.errorEmpty", path: picked.name };
+  if (picked.size > SKILL_FILE_MAX_BYTES) return { field: "files", key: "agentProfiles.skill.errorSize", path: picked.name };
+  if (files.length >= SKILL_FILES_MAX && !files.some((file) => file.path === picked.name)) return { field: "files", key: "agentProfiles.skill.errorCount" };
+  return null;
+};
+
+/** The files with `file` added, or in the place of the one that has its path. */
+export const withFile = (files: readonly SkillFileDraft[], file: SkillFileDraft): readonly SkillFileDraft[] =>
+  files.some((entry) => entry.path === file.path) ? files.map((entry) => (entry.path === file.path ? file : entry)) : [...files, file];
+
 export type ServerProblem = { readonly field: "name" | "url" | "command"; readonly key: MessageKey };
 
 const httpUrl = (value: string): boolean => {
@@ -155,7 +172,7 @@ export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
     key: nextKey("skill"),
     name: skill.name,
     body: skill.body,
-    files: skill.files.map((file) => ({ path: file.path, size: file.size ?? 0, kind: "stored" as const, blobId: file.blobId })),
+    files: skill.files.map((file) => ({ path: file.path, size: file.size ?? 0, blobId: file.blobId })),
   })),
   servers: detail.mcpServers.map((server): ServerDraft =>
     server.transport === "http"
@@ -195,16 +212,8 @@ export const newDraft = (adapter: string, modelId: string | null): ProfileDraft 
 
 type SaveInput = RouterInputs["agentProfiles"]["save"];
 
-/**
- * The router's input for the draft. A header with no new value keeps the stored one (`null`); a
- * skill file picked just now is named by the blob `uploaded` maps its path to.
- */
-export const saveInputOf = (
-  draft: ProfileDraft,
-  profileId: AgentProfileId | null,
-  newId: () => string,
-  uploaded: ReadonlyMap<string, string>,
-): SaveInput => ({
+/** The router's input for the draft. A header with no new value keeps the stored one (`null`). */
+export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | null, newId: () => string): SaveInput => ({
   ...(profileId === null ? {} : { profileId }),
   name: draft.name.trim(),
   adapter: draft.adapter,
@@ -236,9 +245,6 @@ export const saveInputOf = (
   skills: draft.skills.map((skill) => ({
     name: skill.name,
     body: skill.body,
-    files: skill.files.flatMap((file) => {
-      const blobId = file.kind === "stored" ? file.blobId : uploaded.get(`${skill.key}/${file.path}`);
-      return blobId === undefined ? [] : [{ path: file.path, blobId: blobIdSchema.parse(blobId) }];
-    }),
+    files: skill.files.map((file) => ({ path: file.path, blobId: blobIdSchema.parse(file.blobId) })),
   })),
 });

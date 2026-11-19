@@ -158,6 +158,8 @@ const main = async (): Promise<void> => {
       OSTRA_GITHUB_API_URL: github.apiUrl,
       // The stub model endpoint above listens on loopback, which the server refuses unless told.
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
+      // Core as the panel reaches it: the panel hands core the files a member uploads (a skill's files, ticket 42).
+      OSTRA_CORE_INTERNAL_URL: coreUrl,
     },
   });
 

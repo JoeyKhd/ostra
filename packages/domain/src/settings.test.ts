@@ -39,6 +39,7 @@ describe("the server's settings", () => {
       corePort: 8787,
       publicUrl: "http://localhost:3000",
       corePublicUrl: "http://localhost:8787",
+      coreInternalUrl: "http://127.0.0.1:8787",
       githubApiUrl: "https://api.github.com",
       secretsKey: null,
       catalogFetch: true,

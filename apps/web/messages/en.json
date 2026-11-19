@@ -2477,6 +2477,9 @@
       "errorCount": "A skill holds at most 20 files.",
       "errorSize": "{path} is over 1 MiB.",
       "errorBody": "Write the SKILL.md.",
+      "errorReserved": "{path} can't be a file of the skill: SKILL.md is the box above.",
+      "errorEmpty": "{path} is empty.",
+      "errorUpload": "{path} couldn't be uploaded. Try again.",
       "uploading": "Uploading…"
     },
     "server": {

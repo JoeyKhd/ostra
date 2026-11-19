@@ -27,6 +27,7 @@ export const settingNames = [
   "OSTRA_CORE_PORT",
   "OSTRA_PUBLIC_URL",
   "OSTRA_CORE_PUBLIC_URL",
+  "OSTRA_CORE_INTERNAL_URL",
   "OSTRA_GITHUB_API_URL",
   "OSTRA_GITHUB_LFS_HOSTS",
   "OSTRA_DATA_DIR",
@@ -111,6 +112,10 @@ export const settingFields = {
   OSTRA_CORE_PUBLIC_URL: {
     default: "http://localhost:8787",
     description: "Core's address as runners and webhooks reach it.",
+  },
+  OSTRA_CORE_INTERNAL_URL: {
+    default: "http://127.0.0.1:<OSTRA_CORE_PORT>",
+    description: "Core's address as the panel reaches it, to hand it the files a member uploads (a skill's files). Set it only when the panel and core run apart.",
   },
   OSTRA_GITHUB_API_URL: {
     default: "https://api.github.com",
@@ -414,6 +419,7 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_CORE_PORT: port.default(8787).describe(describe("OSTRA_CORE_PORT")),
   OSTRA_PUBLIC_URL: url.default("http://localhost:3000").describe(describe("OSTRA_PUBLIC_URL")),
   OSTRA_CORE_PUBLIC_URL: url.default("http://localhost:8787").describe(describe("OSTRA_CORE_PUBLIC_URL")),
+  OSTRA_CORE_INTERNAL_URL: url.optional().describe(describe("OSTRA_CORE_INTERNAL_URL")),
   OSTRA_GITHUB_API_URL: url.default("https://api.github.com").describe(describe("OSTRA_GITHUB_API_URL")),
   OSTRA_GITHUB_LFS_HOSTS: z
     .string()
@@ -504,6 +510,8 @@ export type ServerSettings = {
   readonly corePort: number;
   readonly publicUrl: string;
   readonly corePublicUrl: string;
+  /** OSTRA_CORE_INTERNAL_URL: core as the panel reaches it, without a trailing slash. */
+  readonly coreInternalUrl: string;
   /** OSTRA_GITHUB_API_URL: the GitHub REST API, without a trailing slash. */
   readonly githubApiUrl: string;
   /** OSTRA_GITHUB_LFS_HOSTS: where a task's git proxy may send LFS transfers, besides the code host itself. */
@@ -719,6 +727,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       corePort: value.OSTRA_CORE_PORT,
       publicUrl: value.OSTRA_PUBLIC_URL,
       corePublicUrl: value.OSTRA_CORE_PUBLIC_URL,
+      coreInternalUrl: (value.OSTRA_CORE_INTERNAL_URL ?? `http://127.0.0.1:${String(value.OSTRA_CORE_PORT)}`).replace(/\/+$/, ""),
       githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
       githubLfsHosts: value.OSTRA_GITHUB_LFS_HOSTS,
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),

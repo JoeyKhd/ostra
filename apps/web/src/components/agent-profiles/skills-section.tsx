@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpenIcon, FileIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -10,9 +10,10 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { plural, t } from "@/lib/messages";
 
 import { EditorSection } from "./editor-section";
-import { skillDescription, skillProblem } from "./editor-draft";
-import type { SkillDraft } from "./editor-draft";
+import { pickedFileProblem, skillDescription, skillProblem, withFile } from "./editor-draft";
+import type { SkillDraft, SkillFileDraft, SkillProblem } from "./editor-draft";
 import { AddButton, RemoveButton } from "./rules-section";
+import { uploadSkillFile } from "./skill-file-upload";
 
 // The editor's Skills section and its Sheet (agent-profile.md, "Skills"): each skill's name, the
 // description read from its SKILL.md, its files, and the Sheet that edits them. Saving still
@@ -33,10 +34,39 @@ const SkillSheet = ({ skill, others, onDone, onClose }: {
   const id = useId();
   const [draft, setDraft] = useState(skill);
   const [tried, setTried] = useState(false);
+  const [uploading, setUploading] = useState(0);
+  const [pickProblem, setPickProblem] = useState<SkillProblem | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const problem = skillProblem(draft, others);
   const shown = tried ? problem : null;
-  const errorOf = (field: "name" | "body" | "files"): string | null =>
-    shown?.field === field ? t(shown.key, shown.path === undefined ? undefined : { path: shown.path }) : null;
+  const shownProblem = pickProblem ?? shown;
+  const errorOf = (field: "name" | "body" | "files"): string | null => {
+    const found = field === "files" ? shownProblem : shown;
+    return found?.field === field ? t(found.key, found.path === undefined ? undefined : { path: found.path }) : null;
+  };
+
+  // Each picked file is checked, then goes up at once; it joins the skill only when core has it.
+  const pick = async (picked: readonly File[]): Promise<void> => {
+    setPickProblem(null);
+    let files: readonly SkillFileDraft[] = draft.files;
+    for (const file of picked) {
+      const refused = pickedFileProblem(files, file);
+      if (refused !== null) {
+        setPickProblem(refused);
+        continue;
+      }
+      setUploading((n) => n + 1);
+      const sent = await uploadSkillFile(file);
+      setUploading((n) => n - 1);
+      if (!sent.ok) {
+        setPickProblem({ field: "files", key: sent.key, path: file.name });
+        continue;
+      }
+      files = withFile(files, sent.file);
+      const added = sent.file;
+      setDraft((current) => ({ ...current, files: withFile(current.files, added) }));
+    }
+  };
 
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -71,11 +101,19 @@ const SkillSheet = ({ skill, others, onDone, onClose }: {
                 ))}
               </ul>
             )}
-            {/* Picking new files waits on the panel's upload route to core's blob service (ticket 42's comments). */}
+            <input ref={picker} type="file" multiple hidden data-testid="skill-file-input" aria-label={t("agentProfiles.skill.addFiles")}
+              onChange={(event) => {
+                const picked = [...(event.target.files ?? [])];
+                event.target.value = "";
+                void pick(picked);
+              }} />
+            <AddButton disabled={uploading > 0} onClick={() => { picker.current?.click(); }}>
+              {uploading > 0 ? t("agentProfiles.skill.uploading") : t("agentProfiles.skill.addFiles")}
+            </AddButton>
             {errorOf("files") === null ? <p className="mt-1.5 text-sm text-faint">{draft.files.length === 0 ? t("agentProfiles.skill.noFiles") : t("agentProfiles.skill.filesHelp")}</p> : <p role="alert" className="mt-1.5 text-sm text-red">{errorOf("files")}</p>}
           </div>
           <div className="mt-auto flex justify-end">
-            <Button variant="primary" onClick={() => {
+            <Button variant="primary" disabled={uploading > 0} onClick={() => {
               setTried(true);
               if (problem === null) onDone(draft);
             }}>{t("agentProfiles.skill.done")}</Button>

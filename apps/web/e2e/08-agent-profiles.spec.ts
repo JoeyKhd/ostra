@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -22,7 +23,7 @@ const UNLISTED = "e2e-unlisted";
 const CAREFUL = "Careful e2e";
 const TEAM = "Team default e2e";
 
-const seededSchema = z.object({ members: z.array(z.object({ username: z.string(), memberId: z.string() })), projectName: z.string() });
+const seededSchema = z.object({ members: z.array(z.object({ username: z.string(), memberId: z.string() })), projectName: z.string().nullable() });
 
 /** The two members, a model on the built-in profile, and the project to start in (`seed-profile-world.ts`). */
 const seedWorld = async (): Promise<z.infer<typeof seededSchema>> => {
@@ -76,6 +77,7 @@ test("F-021, F-026, F-063: an admin makes a profile with a preset rule, plan fir
   test.setTimeout(180_000);
   const origins = watchOrigins(page);
   const { projectName } = await seedWorld();
+  if (projectName === null) throw new Error("this case starts tasks in the project 03-first-run makes: run that spec first");
   await signIn(page);
 
   // The profile: a preset rule that opens editable with its coverage line, plan first, one listed member.
@@ -153,5 +155,77 @@ test("F-021, F-026, F-063: an admin makes a profile with a preset rule, plan fir
   await page.goto("/organization/agent-profiles");
   await expect(page.locator(`tr[data-profile="${CAREFUL}"]`)).toHaveCount(0);
 
+  expect(origins.foreign()).toEqual([]);
+});
+
+const skillSchema = z.object({
+  skills: z.array(
+    z.object({
+      name: z.string(),
+      files: z.array(
+        z.object({
+          path: z.string(),
+          blob: z.object({ purpose: z.string(), size: z.number(), sha256: z.string(), store: z.string(), taskId: z.string().nullable(), projectId: z.string().nullable(), organizationId: z.string() }).nullable(),
+        }),
+      ),
+    }),
+  ),
+});
+
+const readSkillFiles = async (profileName: string): Promise<z.infer<typeof skillSchema>> => {
+  const { databaseUrl } = await readStack();
+  const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "read-skill-file.ts"), JSON.stringify({ databaseUrl, profileName })], {
+    cwd: path.resolve(import.meta.dirname, ".."),
+  });
+  return skillSchema.parse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}"));
+};
+
+const SKILLED = "Skilled e2e";
+
+test("F-021: an admin adds a skill with one file in the skill Sheet; it goes to core's blob store on pick, saves with the profile and is there after a reload", { tag: "@desktop-only" }, async ({ page }) => {
+  test.setTimeout(180_000);
+  const origins = watchOrigins(page);
+  // The model the new profile starts with is the built-in profile's: seeded when no earlier spec left one.
+  await seedWorld();
+  await signIn(page);
+  await startProfile(page, SKILLED);
+  await page.getByRole("button", { name: "Skill", exact: true }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("Name", { exact: true }).fill("changelog");
+  await sheet.getByLabel("SKILL.md").fill("# Changelog\n\nOne line per change, newest first.\n");
+
+  // What can't be a file is refused where it is picked, and nothing is uploaded for it.
+  const picker = sheet.getByTestId("skill-file-input");
+  await picker.setInputFiles({ name: "SKILL.md", mimeType: "text/markdown", buffer: Buffer.from("again") });
+  await expect(sheet.getByRole("alert")).toContainText("SKILL.md is the box above");
+  await picker.setInputFiles({ name: "big.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(1024 * 1024 + 1) });
+  await expect(sheet.getByRole("alert")).toContainText("big.bin is over 1 MiB");
+  await picker.setInputFiles({ name: "empty.txt", mimeType: "text/plain", buffer: Buffer.alloc(0) });
+  await expect(sheet.getByRole("alert")).toContainText("empty.txt is empty");
+
+  // One file: it goes up when it is picked, and the Sheet lists it with its size.
+  const text = "2026-11-19: example line\n";
+  await picker.setInputFiles({ name: "example.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
+  await expect(sheet.getByText("example.txt", { exact: true })).toBeVisible();
+  await expect(sheet.getByText(`${String(text.length)} B`)).toBeVisible();
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Done" }).click();
+  await expect(page.locator('[data-skill="changelog"]')).toContainText("SKILL.md · 1 file");
+  await saveProfile(page);
+
+  // The profile names a blob core holds: the organization's, with no task, as many bytes and the
+  // digest of the file that was picked.
+  const [skill] = (await readSkillFiles(SKILLED)).skills;
+  expect(skill?.name).toBe("changelog");
+  expect(skill?.files.map((file) => file.path)).toEqual(["example.txt"]);
+  const blob = skill?.files[0]?.blob;
+  expect(blob).toMatchObject({ purpose: "skill-file", size: text.length, store: "postgres", taskId: null, projectId: null });
+  expect(blob?.sha256).toBe(createHash("sha256").update(text).digest("hex"));
+
+  // After a reload the file is still the skill's.
+  await page.reload();
+  await expect(page.locator('[data-skill="changelog"]')).toContainText("SKILL.md · 1 file");
+  await page.locator('[data-skill="changelog"]').getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByRole("dialog").getByText("example.txt", { exact: true })).toBeVisible();
   expect(origins.foreign()).toEqual([]);
 });

@@ -59,6 +59,10 @@ describe("the logger", () => {
     ]);
   });
 
+  it("F-021: redacts the token the panel gives core to store a member's file, and what follows its prefix", () => {
+    expect(redactTokens("storing ostra-panel-eyJ2IjoxfQ.abc_DEF-123 for the organization")).toBe(`storing ${REDACTED} for the organization`);
+  });
+
   it("keeps IDs and ordinary words", () => {
     expect(redactTokens("task 0196f1a0-0000-7000-8000-000000000004 moved to running")).toBe(
       "task 0196f1a0-0000-7000-8000-000000000004 moved to running",

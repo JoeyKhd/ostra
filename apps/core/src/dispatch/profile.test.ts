@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 
-import { createLogger, secretRefSchema } from "@ostra/adapter-sdk";
+import { createLogger, secretRefSchema, silentLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
+import { corePanelUploader } from "@ostra/api";
 import type { Db, Prisma } from "@ostra/db";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
@@ -36,6 +37,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBlobService } from "../blobs/blob-service.ts";
 import type { BlobService } from "../blobs/blob-service.ts";
+import { handlePanelBlobEndpoint } from "../blobs/panel-endpoints.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { accessToken, postJson, registerPersonal, startGateway } from "../testing/harness.ts";
 import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
@@ -54,6 +56,7 @@ let world: World;
 let otherWorld: World;
 let harness: GatewayHarness;
 let blobs: BlobService;
+const panelSecret = randomBytes(32).toString("hex");
 const codeHost = new FakeCodeHost();
 const secretStore = new FakeSecretStore();
 const records: LogRecord[] = [];
@@ -146,6 +149,7 @@ beforeAll(async () => {
   otherWorld = await seedWorld(test.db, { codeHost, secretStore }, fixture.b.organization.id, fixture.b.project.id, { fullName: "other-org/repo" });
   blobs = createBlobService({ db: test.db, settings: { kind: "postgres", maxBytes: 8 * 1024 * 1024 }, context: { logger, clock: systemClock } });
   harness = await startGateway(test.db, test.url, {}, (gateway) => [
+    handlePanelBlobEndpoint({ blobs, secret: () => Promise.resolve(panelSecret), clock: systemClock, logger }),
     handleTaskEndpoint({
       db: test.db,
       tokens: gateway.context.tokens,
@@ -260,14 +264,19 @@ describe("the spec's agent section", () => {
         { name: "local-tool", transport: "stdio", command: "local-tool", args: ["--serve"], env: { LOG_LEVEL: "info" }, readOnly: false },
       ],
     });
-    // The skill's extra file is the organization's blob, as the profile editor uploads it.
-    const file = await blobs.put({ organizationId: world.organizationId, task: null }, { purpose: "agent-skill-upload", contentType: "text/plain", bytes: new TextEncoder().encode("2026-11-19: example line\n") });
-    if (!file.ok) {
-      throw new Error("the blob service refused");
+    // The skill's extra file is the organization's blob, as the profile editor uploads it: through the
+    // panel's uploader and core's endpoint for it (ticket 42), not written into the store directly.
+    const file = await corePanelUploader({ coreUrl: harness.url, secret: panelSecret, logger: silentLogger })({
+      organizationId: world.organizationId,
+      purpose: "skill-file",
+      bytes: new TextEncoder().encode("2026-11-19: example line\n"),
+    });
+    if (file.kind !== "stored") {
+      throw new Error("core refused the skill's file");
     }
-    skillFileBlobId = file.value.blobId;
+    skillFileBlobId = file.blobId;
     await test.db.agentProfileSkill.create({
-      data: { organizationId: world.organizationId, profileId: careful, name: "changelog", body: "# changelog\nOne line per change.", files: [{ path: "example.txt", blobId: file.value.blobId }] },
+      data: { organizationId: world.organizationId, profileId: careful, name: "changelog", body: "# changelog\nOne line per change.", files: [{ path: "example.txt", blobId: file.blobId }] },
     });
     runner = await personalRunner(fixture.a.member, 2);
   });

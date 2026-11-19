@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { presetRules } from "@ostra/domain";
 import { agentProfileIdSchema, memberIdSchema } from "@ostra/protocol";
 
-import { draftProblem, isDirty, newDraft, saveInputOf, serverProblem, skillDescription, skillProblem } from "./editor-draft";
-import type { ProfileDraft, ServerDraft, SkillDraft } from "./editor-draft";
+import { draftProblem, isDirty, newDraft, pickedFileProblem, saveInputOf, serverProblem, skillDescription, skillProblem, withFile } from "./editor-draft";
+import type { ProfileDraft, ServerDraft, SkillDraft, SkillFileDraft } from "./editor-draft";
 import { defaultChoices } from "./project-defaults";
 import { startFacts } from "./profile-picker";
 import type { StartProfile } from "./profile-picker";
@@ -23,13 +23,13 @@ const filled = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({ ...newDraf
 describe("the profile editor's draft", () => {
   it("F-021, F-063: saves the name, model, plan first, the listed members and the preset's rules as the router takes them", () => {
     const rules = groupRules(presetRules("dependency", newId));
-    const input = saveInputOf(filled({ planFirst: true, access: "listed", members: [member], rules, instructions: "  " }), null, newId, new Map());
+    const input = saveInputOf(filled({ planFirst: true, access: "listed", members: [member], rules, instructions: "  " }), null, newId);
     expect(input).toMatchObject({ name: "Careful", adapter: "opencode", modelId: MODEL, planFirst: true, instructions: null, access: { kind: "listed", members: [member] } });
     expect(input).not.toHaveProperty("profileId");
     expect(input.approvalRules).toHaveLength(presetRules("dependency", newId).length);
     expect(new Set(input.approvalRules.map((rule) => rule.preset))).toEqual(new Set(["dependency"]));
     const profileId = agentProfileIdSchema.parse("01900000-0000-7000-8000-0000000000bb");
-    expect(saveInputOf(filled(), profileId, newId, new Map())).toMatchObject({ profileId, access: { kind: "everyone" } });
+    expect(saveInputOf(filled(), profileId, newId)).toMatchObject({ profileId, access: { kind: "everyone" } });
   });
 
   it("F-021: a stored header keeps its secret unless a new value is typed; nothing else is sent for it", () => {
@@ -45,13 +45,13 @@ describe("the profile editor's draft", () => {
         { key: "h3", name: " ", value: "dropped", stored: false },
       ],
     };
-    const [saved] = saveInputOf(filled({ servers: [server] }), null, newId, new Map()).mcpServers;
+    const [saved] = saveInputOf(filled({ servers: [server] }), null, newId).mcpServers;
     expect(saved).toEqual({ name: "release-names", transport: "http", url: "https://names.acme.internal/mcp", readOnly: true, headers: [{ name: "Authorization", value: null }, { name: "X-Team", value: "typed now" }] });
   });
 
   it("F-063: a new profile starts with plan first off, open to everyone, with the built-in profile's model", () => {
     expect(newDraft("opencode", MODEL)).toMatchObject({ planFirst: false, access: "everyone", members: [], modelId: MODEL, rules: [], skills: [], servers: [] });
-    expect(saveInputOf(filled(), null, newId, new Map()).planFirst).toBe(false);
+    expect(saveInputOf(filled(), null, newId).planFirst).toBe(false);
   });
 
   it("F-021: Save profile waits for a name, a model, a listed member and valid rules", () => {
@@ -74,7 +74,7 @@ describe("the profile editor's draft", () => {
     expect(skillProblem(skill, [skill])).toBeNull();
     expect(skillProblem({ ...skill, name: "Change Log" }, [])?.key).toBe("agentProfiles.skill.errorName");
     expect(skillProblem(skill, [{ ...skill, key: "b" }])?.key).toBe("agentProfiles.skill.errorTaken");
-    expect(skillProblem({ ...skill, files: [{ path: "big.bin", size: 2 * 1024 * 1024, kind: "stored", blobId: "b" }] }, [])).toEqual({ field: "files", key: "agentProfiles.skill.errorSize", path: "big.bin" });
+    expect(skillProblem({ ...skill, files: [{ path: "big.bin", size: 2 * 1024 * 1024, blobId: "b" }] }, [])).toEqual({ field: "files", key: "agentProfiles.skill.errorSize", path: "big.bin" });
     expect(skillDescription(skill.body)).toBe("How a changelog line reads");
     expect(skillDescription("# Releases\n\nHow we cut one")).toBe("Releases");
   });
@@ -116,5 +116,33 @@ describe("the start picker and the project's defaults", () => {
     const ids = (current: string | null) => defaultChoices(profiles, current).map((profile) => profile.id.slice(-1));
     expect(ids(null)).toEqual(["1"]);
     expect(ids(profiles[3]?.id ?? null)).toEqual(["1", "4"]);
+  });
+});
+
+describe("a file picked for a skill", () => {
+  const stored = (path: string): SkillFileDraft => ({ path, size: 3, blobId: "b" });
+
+  it("F-021: SKILL.md, an empty file, a file over 1 MiB and a 21st file are each refused with their own message", () => {
+    expect(pickedFileProblem([], { name: "SKILL.md", size: 5 })?.key).toBe("agentProfiles.skill.errorReserved");
+    expect(pickedFileProblem([], { name: "a.txt", size: 0 })?.key).toBe("agentProfiles.skill.errorEmpty");
+    expect(pickedFileProblem([], { name: "a.txt", size: 1024 * 1024 })).toBeNull();
+    expect(pickedFileProblem([], { name: "a.txt", size: 1024 * 1024 + 1 })).toEqual({ field: "files", key: "agentProfiles.skill.errorSize", path: "a.txt" });
+    const twenty = Array.from({ length: 20 }, (_, index) => stored(`f${String(index)}`));
+    expect(pickedFileProblem(twenty, { name: "extra", size: 1 })?.key).toBe("agentProfiles.skill.errorCount");
+    // A file with the path of one already there replaces it, so it is no 21st.
+    expect(pickedFileProblem(twenty, { name: "f3", size: 1 })).toBeNull();
+  });
+
+  it("F-021: a new file is added, and one with a path already in the skill takes its place", () => {
+    const first = stored("a.txt");
+    const second = { path: "b.txt", size: 9, blobId: "c" };
+    expect(withFile([first], second)).toEqual([first, second]);
+    expect(withFile([first, second], { path: "a.txt", size: 7, blobId: "d" })).toEqual([{ path: "a.txt", size: 7, blobId: "d" }, second]);
+  });
+
+  it("F-021: the profile's save names each file's blob, whether it was stored before or picked now", () => {
+    const blob = "01900000-0000-7000-8000-0000000000ee";
+    const skill: SkillDraft = { key: "a", name: "changelog", body: "# x", files: [{ path: "examples/one.md", size: 3, blobId: blob }] };
+    expect(saveInputOf(filled({ skills: [skill] }), null, newId).skills).toEqual([{ name: "changelog", body: "# x", files: [{ path: "examples/one.md", blobId: blob }] }]);
   });
 });

@@ -46,6 +46,8 @@ const tokenPatterns: readonly RegExp[] = [
   /\bostra-(?:fake|runner|join|setup)-[A-Za-z0-9_-]+/g,
   // A task token (ADR 0034): its body and its MAC, joined by a dot.
   /\bostra-task-[A-Za-z0-9_.-]+/g,
+  // A panel token (ticket 42): what the panel gives core to store a member's file; body and MAC, joined by a dot.
+  /\bostra-panel-[A-Za-z0-9_.-]+/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 

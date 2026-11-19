@@ -29,6 +29,7 @@ import { replicaIdSchema } from "@ostra/protocol";
 import { createBlobService } from "./blobs/blob-service.ts";
 import type { BlobService } from "./blobs/blob-service.ts";
 import { handleBlobEndpoint } from "./blobs/endpoints.ts";
+import { handlePanelBlobEndpoint } from "./blobs/panel-endpoints.ts";
 import { blobGcHandler, ensureBlobGcSchedule } from "./blobs/gc.ts";
 
 import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
@@ -58,7 +59,7 @@ import { enqueueSearchBackfill, searchBackfillHandler } from "./search/backfill.
 import { reviewEvaluateHandler } from "./reactions/review-check.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
-import { openSecretStore } from "./secrets.ts";
+import { loadSecretsKey, openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileBehindHandler, reconcileHandler } from "./code-host/pull-requests.ts";
 import { githubCommentHandler, prCommentHook } from "./code-host/pr-comments.ts";
@@ -323,6 +324,9 @@ export const startCore = async (
     clock: systemClock,
     logger,
   });
+  // The panel's own way in for a member's file (ticket 42): its token is made under the secrets key,
+  // which the panel and core both hold.
+  const panelBlobEndpoints = handlePanelBlobEndpoint({ blobs, secret: () => loadSecretsKey(settings), clock: systemClock, logger });
   await jobs.work("blob.gc", blobGcHandler({ db, clock: systemClock, logger, ...(s3 === undefined ? {} : { s3 }) }), { localConcurrency: 1 });
   // The webhook inbox (ticket 13): verify, claim, 200; `webhook.process` acts from the queue.
   const inbox = createWebhookInbox({
@@ -508,7 +512,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, snapshotEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, snapshotEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

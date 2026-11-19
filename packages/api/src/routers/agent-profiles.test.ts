@@ -5,6 +5,7 @@ import type { ApprovalRule, ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { serveSkillFileUpload } from "../services/skill-file-upload.ts";
 import { createApiHarness, seedConnectionAndModel, seedProject } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
 
@@ -156,6 +157,20 @@ describe("agentProfiles.save and .archive (F-021)", () => {
     await expect(a.agentProfiles.save(base({ mcpServers: [{ transport: "http", name: "Bad Name", url: "https://mcp.example.com", headers: [] }] }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(a.agentProfiles.save(base({ mcpServers: [{ transport: "http", name: "x", url: "ftp://nope", headers: [] }] }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(a.agentProfiles.save(base({ mcpServers: [{ transport: "stdio", name: "x", command: "  ", args: [], env: {} }] }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("F-021: a file uploaded for a skill is the blob its profile saves with, and the profile reads back with its path and size", async () => {
+    const a = await admin();
+    const sent = await serveSkillFileUpload(
+      await harness.contextOf(harness.fixture.a.admin),
+      new Request("http://panel.test/api/agent-profiles/skill-files", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: "One line per change.\n" }),
+    );
+    expect(sent.status).toBe(200);
+    const uploaded = z.object({ blobId: blobIdSchema, size: z.number() }).parse(await sent.json());
+    const saved = await a.agentProfiles.save(base({ skills: [{ name: "changelog", body: "# Changelog", files: [{ path: "examples/line.md", blobId: uploaded.blobId }] }] }));
+    expect((await a.agentProfiles.get({ profileId: saved.profileId })).skills).toEqual([
+      { name: "changelog", body: "# Changelog", files: [{ path: "examples/line.md", blobId: uploaded.blobId, size: 21 }] },
+    ]);
   });
 
   it("F-021: an MCP header's value goes to the secret store and never comes back; only its name and that it is set do", async () => {

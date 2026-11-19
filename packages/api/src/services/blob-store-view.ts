@@ -1,9 +1,11 @@
 import type { HealthReport } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
+import type { PanelBlobPurpose } from "@ostra/domain";
 
 // What the panel needs of the blob store (F-114, ADR 0043): its name and health for the storage page,
 // and a way to read one blob for the member who may see it (a check's full output, F-054). The
-// panel writes no blob: core's blob service does. It reads only what its own database holds, the
+// panel writes no blob itself: core's blob service does, and `upload` is the panel asking it to
+// (ADR 0043; a skill's files, ticket 42). It reads only what its own database holds, the
 // built-in store's chunks, and says so for a blob kept elsewhere.
 
 /** A blob's bytes with what a download needs. */
@@ -19,11 +21,19 @@ export type BlobReadResult =
   | { readonly kind: "not-found" }
   | { readonly kind: "other-store"; readonly store: string };
 
+/** Why core didn't store a member's file: it is over the cap, or core didn't take it. */
+export type BlobUploadResult =
+  | { readonly kind: "stored"; readonly blobId: string; readonly size: number }
+  | { readonly kind: "too-large" }
+  | { readonly kind: "unavailable" };
+
 export type BlobStoreView = {
   readonly name: "postgres" | "s3";
   readonly health: () => Promise<HealthReport>;
   /** A blob of one task of one organization; another task's or organization's is `not-found`. */
   readonly read: (organizationId: string, taskId: string, blobId: string) => Promise<BlobReadResult>;
+  /** Stores a member's file for the organization through core's blob service (never a task's blob). */
+  readonly upload: (input: { readonly organizationId: string; readonly purpose: PanelBlobPurpose; readonly bytes: Uint8Array }) => Promise<BlobUploadResult>;
 };
 
 /** Reads a blob from the built-in store's tables, in the database the panel already uses. */
