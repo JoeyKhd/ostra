@@ -408,6 +408,14 @@ export const devOnlyEnvNames = [
   "OSTRA_DEV_GITHUB_REPOS",
   "OSTRA_DEV_PUBLIC_URL",
   "OSTRA_DEV_BLOCK_WEBHOOKS",
+  // Milestone 5's dev tools (ticket 36): `pnpm dev`'s core replicas and the fakes' ports.
+  "OSTRA_DEV_CORE_REPLICAS",
+  "OSTRA_DEV_DATA_DIR",
+  "OSTRA_DEV_FAKE_KUBE_PORT",
+  "OSTRA_DEV_REGISTRY_PORT",
+  "OSTRA_DEV_REGISTRY_AUTH",
+  "OSTRA_DEV_NPM_REGISTRY_PORT",
+  "OSTRA_DEV_NET_PROXIES_PORT",
 ] as const;
 
 /**
