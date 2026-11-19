@@ -40,6 +40,8 @@ import type { Gateway } from "./gateway/gateway.ts";
 import { loadRunnerTokenKey, RUNNER_TOKEN_KEY_FILE } from "./gateway/keys.ts";
 import { cancelGraceInTx, cancelSidecarGraceInTx, graceHandler, startGraceInTx, startSidecarGraceInTx } from "./ingest/grace.ts";
 import type { GraceDeps } from "./ingest/grace.ts";
+import { applyReleaseResultsInTx, boxReleaseHandler, ensureRetentionSchedule, releaseAfterIdleHandler, retentionSweepHandler } from "./cleanup/cleanup.ts";
+import type { CleanupDeps } from "./cleanup/cleanup.ts";
 import { createIngest } from "./ingest/ingest.ts";
 import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler } from "./limits/limits.ts";
 import type { LimitDeps } from "./limits/limits.ts";
@@ -182,6 +184,7 @@ export const startCore = async (
       onCommandResultsInTx: async (tx, runner, results) => {
         await applyOfferResultsInTx(dispatcherDeps, tx, runner, results);
         await applyStopResultsInTx(reactionDeps, tx, runner, results);
+        await applyReleaseResultsInTx({ clock: systemClock, logger }, tx, runner, results);
       },
     },
     logger,
@@ -298,6 +301,26 @@ export const startCore = async (
   // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
   // written where no queue was at hand (a task's move), every 2 s.
   await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
+  // Cleanup and retention (ticket 20): a box's release, its idle days, and the daily retention pass.
+  const cleanupDeps: CleanupDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    adapters,
+    logger,
+    deleteBlob: async (organizationId, blobId) => {
+      const deleted = await blobs.delete(organizationId, blobId);
+      return deleted.ok || deleted.error === "not-found";
+    },
+    retentionDays: settings.retentionDays,
+    releaseAfterIdleMs: settings.boxReleaseIdleDays * 24 * 3_600_000,
+  };
+  await jobs.work("box.release", boxReleaseHandler(cleanupDeps), { localConcurrency: 4 });
+  await jobs.work("box.release-after-idle", releaseAfterIdleHandler(cleanupDeps), { localConcurrency: 4 });
+  await jobs.work("retention.sweep", retentionSweepHandler(cleanupDeps), { localConcurrency: 1 });
   // A ticket task's context, images and first prompt, then its dispatch (ticket 18).
   await jobs.work("ticket.fetch-context", fetchContextHandler({ db, jobs, notices, clock: systemClock, trackers, blobs, logger }), { localConcurrency: 4 });
   const drain = setInterval(() => {
@@ -331,6 +354,9 @@ export const startCore = async (
     });
     await ensureBlobGcSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "blob.gc", error: error instanceof Error ? error.name : "unknown" });
+    });
+    await ensureRetentionSchedule(jobs).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "retention.sweep", error: error instanceof Error ? error.name : "unknown" });
     });
     await ensureStallSweepSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "session.stall-sweep", error: error instanceof Error ? error.name : "unknown" });
