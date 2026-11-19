@@ -99,6 +99,9 @@ export const setup = async (project: TestProject): Promise<void> => {
       password,
       authMethod: "scram-sha-256",
       initdbFlags: [...embeddedInitdbFlags],
+      // Every test file holds a client pool, a queue's pool and listeners at once, and a package's
+      // files run side by side: Postgres's default of 100 connections runs out.
+      postgresFlags: ["-c", "max_connections=400"],
       // Kept on stop, and removed below with retries: on Windows the files can stay busy for a moment.
       persistent: true,
       onLog: () => undefined,
