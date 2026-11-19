@@ -1,0 +1,24 @@
+# Prompt for the org-switcher target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, kept as made.
+# Refs: ../m1/home.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no glow, no gradients, no purple, no illustrations. Product: "ostra", a self-hosted control panel for coding agents. The FIRST attached image is the approved Home screen of this product: copy its top bar, page heading, Needs you section, Projects table, Recent activity, right panel with the bar chart, fonts, density and colours EXACTLY, row for row, at the same small dense scale. The ONE change: the organization switcher at the top of the sidebar is OPEN, showing a dropdown menu.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces and the menu #131416; selected nav and the highlighted menu row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary #9A9DA3; faint #64676D. Amber #FFB224 only where the reference has it (the needs-you dot, the "5" badge, the amber numbers, the one "Approve" button). Primary button off-white #F3F0E8 with dark #0C1D21 text.
+
+FONTS: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (menu rows regular 13px); IBM Plex Mono for keys, numbers and times. Icons: thin Lucide line icons, 15px, stroke 1.75.
+
+THE SIDEBAR (232px, #0A0B0C), as in the reference, except:
+- The switcher row at the top (the 20px off-white logo mark from the attached logo image, "Acme Corp" semibold, a small up-down chevron at the far right) is PRESSED: background #1A1B1E, 6px radius.
+- Nav rows: "Home" (SELECTED), "Needs you" with the amber "5" pill, "My tasks" faint "7". Label "Projects": "calculator", "billing-platform", "web-storefront", "mobile-app", "data-pipeline", each with its 8px colour square as in the reference, "··· 13 more". Label "Organization": "Runners" (server icon), "Models" (cpu icon), "GitHub" (git-pull-request icon), "Linear", "Members" (users icon), "Audit log" (scroll icon). Bottom: grey avatar "AK" and "Alex Kim".
+
+THE OPEN MENU: directly under the switcher row, 6px below it, left-aligned with it, 264px wide (it overlaps the sidebar's right edge and the page a little), background #131416, 1px #2A2C30 border, 8px radius, 6px inner padding, a soft dark shadow. It covers the sidebar rows under it. Inside, top to bottom:
+- a tiny faint label, 11px weight 500 #64676D: "Organizations", with a faint mono "3" at the right end of the same line.
+- three rows, 32px tall, 6px radius. Each row: a 20px rounded square tile (5px radius, #1F2023 fill, 1px #2A2C30 border) holding one white letter in Manrope Bold 11px, then the organization name in #EDEDEE 13px, then at the right a faint 12px role word, and for the active one a small white check icon at the far right.
+  Row 1 (ACTIVE, background #1A1B1E): tile "A" · "Acme Corp" · faint "Admin" · white check icon.
+  Row 2: tile "S" · "Second" · faint "Admin".
+  Row 3: tile "H" · "Harbor Labs" · faint "Member".
+- a 1px #2A2C30 hairline across the menu, 6px margin above and below.
+- one row, 32px: a plus icon in #9A9DA3, then "New organization" in #EDEDEE 13px, and at the right a tiny faint outlined chip "instance admin" in 11px.
+Nothing else in the menu. The page behind is not dimmed.
+
+All text must be spelled exactly as given, sharp and legible. Calm, precise, dense, like Linear's workspace switcher. No extra text.

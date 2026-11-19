@@ -1,0 +1,33 @@
+# Prompt for the org-switcher-switched target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation.
+# Refs: the m2 home-first-run generation before its illustration was composited (scratch home-first-run-g1.png, the approved ../m2/home-first-run picture with an empty right column), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+# The right column was asked for empty, then composited with ../../files/web/sign-in-illustration.webp (B-017) as ../m2/home-first-run.md says: 162.5% of the column's width, centred, top-aligned, at 0.85 over --side #0A0B0C. The toast was pasted back over it from the generation.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no glow, no gradients, no purple, no illustrations. Product: "ostra", a self-hosted control panel for coding agents. The FIRST attached image is an approved page of this product: the Home of a brand-new organization in its first-run state, with the "Set up ostra" checklist. Copy its sidebar, top bar, heading, checklist rows, sections, fonts, density and colours EXACTLY, at the same small dense scale. This is the same first-run Home for a second organization named "Second", just after the member landed in it, with one small notice (a toast) at the bottom right.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces and the toast #131416; selected nav #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary #9A9DA3; faint #64676D; success green #4FB286 only for the one filled tick circle of the done step; teal #6FB8AA only for inline links; primary button filled off-white #F3F0E8 with dark #0C1D21 text. NO amber anywhere on this screen.
+
+FONTS: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles weight 600); IBM Plex Mono for the date eyebrow, numbers and counts. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px, #0A0B0C, right hairline: the 20px off-white logo mark (from the attached logo image) + "Second" semibold + small up-down chevron. Search field "Search" with "⌘K" and a small off-white square "+" button. Nav rows: "Home" (SELECTED, #1A1B1E, house icon), "Needs you" (hand icon), "My tasks" (user-circle icon). Faint label "Projects", then one muted row with a plus icon: "New project". Faint label "Organization": "Runners" (server icon), "Models" (cpu icon), "GitHub" (git-pull-request icon), "Linear", "Members" (users icon), "Settings" (gear icon). Bottom: grey circle avatar "AK" and "Alex Kim".
+2) TOP BAR 44px with bottom hairline: breadcrumbs "Second  ›  Home" ("Home" brighter). Far right: an OUTLINE button "+ New task" (#131416 fill, #2A2C30 border), not filled.
+3) MAIN COLUMN (padding 28px top, 40px left), exactly like the reference:
+ - Eyebrow in faint mono: "Thursday 19 November"
+ - Title: "Second"
+ - Lede in secondary grey: "Your organization's projects and what waits on you."
+ - SECTION "Set up ostra", at the far right faint mono "1 of 7". Seven rows of 52px separated by hairlines, each with a 22px circle, a title (13px weight 500) with a one-line body under it (12.5px grey), and an action on the right:
+   row 1: filled green circle with a dark check | title "Create the first admin" in grey | body "You're signed in as the admin." | no action
+   row 2 (THE NEXT STEP): circle with a white border and mono "2" | title "Add a model provider" in white | body "A base URL and a token. ostra lists the models and tests the connection." | the page's ONE PRIMARY button, filled off-white: "Add a provider →"
+   row 3: circle "3" | "Connect GitHub" | "A GitHub App opens every pull request. Use an existing App or create one." | outline button "Connect GitHub →"
+   row 4: circle "4" | "Connect Linear" | "Tickets become tasks, and ostra keeps their status in step. Skip it to run on prompts alone." | teal text link "Skip for now" then outline button "Connect Linear →"
+   row 5: circle "5" | "Create a project" | "Pick a repo. ostra drafts its environment from the repo's files." | outline button "Create a project →"
+   row 6: circle "6" | "Connect a runner" | "Run one command on a machine. Tasks run there." | outline button "Connect a runner →"
+   row 7: circle "7" | "Start the first task" | "Type a prompt and watch the agent work, then review its pull request." | outline button "New task →"
+   Outline buttons: #131416 fill, #2A2C30 border, white 12.5px text, 28px tall, right-aligned to the same edge.
+ - SECTION "Projects" with faint mono count "0". One row between hairlines, faint: "No projects yet. Create one from the checklist."
+ - SECTION "Recent activity". One row between hairlines, faint: "Nothing has happened yet."
+4) RIGHT COLUMN 320px with a left hairline: plain flat #0A0B0C from top to bottom, EMPTY, no text, no image, nothing in it, except the toast below which overlaps its lower part.
+
+THE TOAST: bottom-right of the window, 24px from the right edge and 24px from the bottom, 360px wide, about 64px tall, background #131416, 1px #2A2C30 border, 8px radius, a soft dark shadow, padding 12px 14px. At its left a 15px arrow-left-right icon in #9A9DA3. Then two lines: "Switched to Second" in #EDEDEE 13px weight 500; under it muted 12.5px "You're its admin. Acme Corp is in the switcher." At its top right a tiny x close icon in faint grey.
+
+All text must be spelled exactly as given, sharp and legible. Calm and precise. No illustrations, no octopus, no sparkles, no Linear logo.

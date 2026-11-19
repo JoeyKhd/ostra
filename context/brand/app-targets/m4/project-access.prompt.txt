@@ -1,0 +1,37 @@
+# Prompt for the project-access target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, kept as made.
+# Refs: ../m2/project-boards.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective. It is the "Access" tab of a project's Settings in ostra, a self-hosted control panel that runs coding agents. An admin decides here who can open the project "vault": open to the whole organization, or restricted to listed members, each with a project role. It must look like the SAME PRODUCT as the first attached screenshot (the same sidebar, top bar, near-black graphite chrome, hairline rows, small dense type and spacing) and keep that screenshot's scale exactly: body text 13px, nav rows 26px, page title 24px. Copy every word exactly as written below.
+
+FONTS: page title in Manrope Bold. All interface text in IBM Plex Sans. Email addresses, dates, counts and numbers in IBM Plex Mono. Icons are thin Lucide line icons, 15px, 1.75 stroke.
+
+PALETTE (flat, exact): page background #0D0E10. Sidebar #0A0B0C. Raised surfaces (selects, the add row's controls) #131416 with 1px border #2A2C30 and 7px radius. Selected row #1A1B1E. Hairlines #1F2023. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Teal #6FB8AA only for the one link "Audit log →". Amber #FFB224 appears ONLY as the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No red, no green on this screen. No gradients, no glow, no shadows, no cards, never a box inside a box, no purple, no blue.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px, background #0A0B0C, hairline on its right, exactly like the attached screenshot. From the top: the small white ostra hinge logo (the attached logo, 20px) and "Acme Corp" semibold with an up-down chevron. A search field "Search" with "⌘K", and a small square off-white "+" button. Nav rows: "Home" (house icon); "Needs you" (hand icon) with a small amber pill "2"; "My tasks" (user-circle icon) with faint "3". Faint section label "Projects". "calculator" with an 8px teal-green square. "web-storefront" with an 8px ochre square. "vault" with an 8px grey square and a tiny faint lock icon after the name, expanded into indented rows: "Tasks" (list-checks icon, faint count "2"), "Inbox" (inbox icon), "Environment" (box icon), "Boards" (square-kanban icon), "Settings" (settings gear icon, SELECTED, background #1A1B1E). "New project" with a plus icon, muted. Faint section label "Organization": "Runners" (server icon), "Models" (cpu icon), "GitHub" (git-pull-request icon), "Members" (users icon), "Audit log" (scroll icon). At the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px, hairline below: breadcrumbs "vault  ›  Settings  ›  Access" ("Access" brighter). Nothing on the right: every change on this page applies at once.
+
+3) MAIN COLUMN, 40px left padding, content max 760px wide:
+- At the very top of the column, a row of four plain text tabs, 13px, 28px tall, with a 1px hairline under the whole row: "Ticket template", "Repos", "Access", "Audit log". "Access" is the active tab: #EDEDEE text with a 2px #EDEDEE underline; the others are #9A9DA3. No pills, no boxes.
+- 24px below: page title "Access" (Manrope Bold 24px).
+- Muted lede, 13.5px: "Who can open vault, and what each person may change in it."
+- Section title line, 26px below: "Who can open it" in semibold 13px. Then two hairline rows, 48px tall, no boxes, each with a round radio button at the left (16px), a label in #EDEDEE 13px weight 500, and a muted 12.5px description on the same line after it:
+  Row 1: empty radio · "Open" · "Everyone in Acme Corp can open it and start tasks."
+  Row 2 (CHOSEN: filled white radio with a dark centre dot, row background #1A1B1E with a 6px radius): filled radio · small lock icon · "Restricted" · "Only the people listed below, and the organization's admins. Nobody else sees that it exists."
+- Section title line, 28px below: "Members" in semibold 13px, faint mono count "2".
+  A header row 30px with faint 11.5px labels: "Member", "Project role", "Added", and an empty last column. Then two body rows, 44px tall, hairlines between them, no boxes. Columns line up in every row.
+  Row 1: a round grey avatar "SR", "Sam Rivera" in #EDEDEE and after it faint mono "sam@acme.dev" | a compact select 120px wide, 28px tall, showing "Admin" and a chevron-down | faint mono "16 Nov" | at the far right a quiet ghost text button "Remove" in muted grey.
+  Row 2: a faint mail icon in place of the avatar, mono "jordan@acme.dev" in #EDEDEE and after it a small faint outlined chip "invited" | plain muted text "Member" (no select) | faint text "joins on accepting" | nothing at the right.
+  Under the rows, one line 12px below the last hairline: a small faint label "Add member", then a compact select 240px wide, 28px tall, showing a tiny grey avatar "JO" and "Jun Ota" and a chevron-down, then a compact select 120px wide showing "Member" and a chevron-down, then a small outlined button "Add".
+- 22px below, one quiet line, no box: a small faint shield icon, then 12.5px muted text: "Alex Kim and Priya Nair always see vault and can change it: organization admins see every project, listed or not."
+- 10px below, one faint 12px line: "A project admin changes its repos, boards, environment and access. A project member starts, drives and reopens its tasks."
+Quiet empty near-black space below.
+
+4) RIGHT PROPERTIES PANEL, 300px, hairline on its left, padding 20px. Small faint group labels, key/value rows 30px tall, key muted on the left (104px), value bright on the right, 12.5px regular IBM Plex Sans (only dates and counts in mono).
+- label "vault": Access — small lock icon + "Restricted"; Can open — "3 people" (3 in mono); Project admins — "Sam Rivera"; Created — "16 Nov" (mono) "by Alex Kim".
+- hairline. label "Organization admins" with faint mono count "2": two rows, each a tiny round grey avatar and a name in #EDEDEE: "AK" "Alex Kim"; "PN" "Priya Nair". Under them a faint 12px line: "They see every project. They aren't listed here."
+- hairline. label "Last change": one muted 12.5px line "Alex Kim restricted vault" and a faint mono "2d ago" at its right. Under it a teal link "Audit log →".
+
+Calm, precise, dense, like Linear's settings pages. Every word spelled exactly as written. No extra text, no charts, no illustrations, no gradients, no glow.

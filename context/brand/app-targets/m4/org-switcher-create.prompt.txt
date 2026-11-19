@@ -1,0 +1,34 @@
+# Prompts for the org-switcher-create target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). Two generations.
+# Refs: ../m1/home.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png.
+# Both generations squeezed the page behind the sheet into a narrower layout. The kept picture is the FIRST generation's sheet (x >= 1530 of 2048) pasted over ../m1/home.png darkened to 40% (a 60% black overlay), so the page behind is the approved Home, unchanged.
+
+## The second generation (an edit of the first; not kept)
+
+REVISION OF THE FIRST ATTACHED IMAGE. Keep the sheet on the right (the "New organization" form, 400px, its header, text, Name field holding "Second", the "It starts with" rows, the note and the "Cancel" and "Create organization" buttons) EXACTLY as it is, word for word and pixel for pixel. Fix only the page BEHIND the sheet:
+1. The page behind must NOT be squeezed or reflowed. It is the SECOND attached image (the Home screen of "Acme Corp") at its full 1440px width and its exact layout: the same sidebar, the same column widths, the Needs you rows each on ONE line, the Projects table and Recent activity at their full width, the right panel with the bar chart at the right edge. The sheet simply covers the right part of that page; whatever is under the sheet is hidden.
+2. The sidebar is the one in the second attached image: "Home" selected, "Needs you" with the amber "5", "My tasks", the five projects and "··· 13 more", then "Organization" with "Runner pools", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Avatar "AK" "Alex Kim" at the bottom.
+3. Everything behind the sheet, sidebar and top bar included, sits under the same flat black overlay at 60% opacity, so it reads dark but recognisable. The sheet is not dimmed.
+No gradients, no glow, no purple. Flat straight-on screenshot, crisp text.
+
+## The first generation (its sheet is the one kept)
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no glow, no gradients, no purple, no illustrations. Product: "ostra", a self-hosted control panel for coding agents. The FIRST attached image is the approved Home screen of this product: copy its sidebar, top bar, page and right panel EXACTLY as the background, at the same small dense scale. Over it, a SHEET slides in from the right edge: the "New organization" form. Everything behind the sheet is dimmed by a flat black overlay at 60% opacity (the page stays recognisable but dark); the sheet itself is not dimmed.
+
+PALETTE (exact hex): page background #0D0E10; sidebar #0A0B0C; the sheet #0D0E10 with a 1px #2A2C30 line on its left edge; inputs #131416 with 1px #2A2C30 border and 7px radius; hairlines #1F2023; text #EDEDEE; secondary #9A9DA3; faint #64676D. Primary button off-white #F3F0E8 with dark #0C1D21 text. Amber only where the reference has it, under the dim overlay. No green, no red, no teal in the sheet.
+
+FONTS: everything IBM Plex Sans; the sheet title semibold 15px; body 13px; field labels 12.5px weight 500 #9A9DA3; help text 12px faint; IBM Plex Mono only for the pool name "default". Icons: thin Lucide line icons, 15px, stroke 1.75.
+
+THE BACKGROUND: the reference Home screen of "Acme Corp" (sidebar with "Acme Corp" at the top, "Home" selected; Needs you; Projects table; Recent activity; the right panel with the bar chart), all of it under the 60% black overlay.
+
+THE SHEET: full height, 400px wide, flush with the window's right edge, padding 24px. Top to bottom:
+- Header line: "New organization" semibold 15px #EDEDEE on the left; a small x close icon button in #9A9DA3 on the right.
+- 8px below, muted 13px, two lines max: "A separate space with its own projects, runners, model providers and members. Nothing in Acme Corp is shared with it."
+- 24px below, a field: label "Name", then an input 36px tall, full sheet width, holding "Second" in #EDEDEE with a thin text caret after it, the input's border slightly brighter (#3A3C40) because it has focus. Under it, faint 12px help: "Members see it in the switcher. You can rename it later."
+- 26px below, a small section title "It starts with" in semibold 13px, then three hairline rows, 34px each, no boxes. Each: a 15px grey icon, a label in #EDEDEE 13px, and a muted value on the right:
+  server icon · "Runner pool" · mono "default"
+  sliders-horizontal icon · "Agent profile" · "Built-in"
+  user-round icon · "Admin" · "Alex Kim (you)"
+- 14px below, faint 12.5px, two lines: "It has no model provider, GitHub App, Linear connection, member or project yet. Its first-run checklist walks you through them."
+- Footer pinned to the bottom of the sheet: a 1px #1F2023 hairline across the sheet, then 16px below it two buttons right-aligned, 30px tall: an outline button "Cancel" (#131416 fill, #2A2C30 border, #EDEDEE text), 8px gap, then the filled off-white primary button "Create organization".
+
+All text must be spelled exactly as given, sharp and legible. Calm, precise, dense, like Linear's settings sheets. No extra text.
