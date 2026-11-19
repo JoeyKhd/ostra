@@ -62,6 +62,22 @@ const expectWaiting = async (taskId: TaskId, reason: DispatchWait): Promise<void
 
 const ourRunner = () => seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id });
 
+describe("a ticket task waits for its rendered ticket", () => {
+  it("F-064: a dispatch before the ticket's prompt is rendered offers nothing, and the one after it offers the task", async () => {
+    const runner = await ourRunner();
+    const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+    // As `tasks.startFromTicket` leaves it: a ticket task whose prompt `ticket.fetch-context` writes.
+    await test.db.task.update({ where: { id: task.taskId }, data: { source: "ticket", ticketKey: "OST-1", prompt: null } });
+    // The requeue sweep's dispatch, ahead of the render (milestone 3's demo: the agent got no ticket).
+    expect(await dispatch(task)).toMatchObject({ ok: false, error: "stale" });
+    expect(await test.db.lease.count({ where: { taskId: task.taskId } })).toBe(0);
+    expect(await test.db.command.count({ where: { taskId: task.taskId } })).toBe(0);
+    // The render writes the prompt, and its own dispatch offers the task.
+    await test.db.task.update({ where: { id: task.taskId }, data: { prompt: "Set releaseName in config/settings.json" } });
+    expect(await dispatch(task)).toMatchObject({ ok: true, runnerId: runner.runnerId });
+  });
+});
+
 describe("why a queued task waits (Q132)", () => {
   it("F-014: a new task waits for nothing yet, and an open offer reads as offered, with the runner's name", async () => {
     const runner = await ourRunner();

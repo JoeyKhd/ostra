@@ -66,6 +66,8 @@ describe("keys per project at a task's start", () => {
 
     await setOwnList(projectId, [world.providerId]);
     const started = await member.tasks.startFromTicket({ projectId, ticketId });
+    // `ticket.fetch-context` renders the ticket first: a ticket task's dispatch waits for its prompt.
+    await harness.test.db.task.update({ where: { id: started.taskId }, data: { prompt: "Fix the cart total" } });
     // An admin takes the provider off the project's list before the dispatch: the release job
     // (`providers.release-boxes`) clears what the waiting session recorded, and the dispatch resolves again.
     await setOwnList(projectId, []);

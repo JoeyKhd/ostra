@@ -224,6 +224,11 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   if (task.state !== "queued" || task.leaseEpoch + 1 !== input.leaseEpoch) {
     return stale("the task isn't waiting for this dispatch");
   }
+  // A ticket task starts from its rendered ticket: `ticket.fetch-context` writes the prompt and
+  // dispatches it. A requeue sweep that comes first would start the agent with no ticket at all.
+  if (task.source === "ticket" && task.prompt === null) {
+    return stale("the ticket's prompt isn't rendered yet");
+  }
   const session = await tx.session.findFirst({ where: { id: input.sessionId, taskId: task.id, state: "starting" } });
   if (session === null) {
     return stale("the session isn't waiting to start");
