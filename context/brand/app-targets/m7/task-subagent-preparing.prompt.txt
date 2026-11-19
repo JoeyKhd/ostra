@@ -1,0 +1,34 @@
+# Generation 1 (kept). References: app-targets/m1/task.png (the approved 2048 original of app-targets/m1/task), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the page of one task in "ostra", a self-hosted control panel for coding agents, in the moment BEFORE the task starts: the task will be worked by the coding agent Claude Code, and the runner it was given does not have Claude Code yet, so the runner is preparing it. The FIRST attached image is this same product's approved task page: copy its sidebar, top bar, header (key line, title, status line), thread rows with a 28px round outlined icon in a 40px gutter, the tool rows' strict grid, the composer pinned at the bottom and the right properties panel EXACTLY, at the same small, dense scale. It must look like the same page in an earlier state, with a lot of quiet empty space.
+
+1. SIDEBAR as the first reference: "Home", "Needs you" (hand icon) with a small amber pill "1", "My tasks" "4". Faint label "Projects": "calculator" (teal 8px square) expanded, indented: "Tasks" (SELECTED, #1A1B1E) faint "17", "Inbox" "4", "Environment", "Boards", "Automations", "Memory", "Settings"; then "billing-platform", "web-storefront". Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear". Bottom: avatar "AK" and "Alex Kim".
+
+2. TOP BAR: breadcrumbs "calculator  ›  Tasks  ›  CALC-188" (last white). Right: a small ghost link icon, an outlined button with an x icon "Cancel".
+
+3. MAIN COLUMN (padding 28px 36px):
+- Mono faint line: "CALC-188 · from Linear"
+- Title: "Show the app version in Settings"
+- Status line: a small grey dashed-circle icon + white "Queued", faint middle dot, grey "Preparing Claude Code on" + faint mono "build-fleet-07", faint middle dot, grey "2 min". Then at the end of the same line THE AGENT BADGE: a small 22px chip with a 1px #2A2C30 border, 6px radius, #131416 fill, a tiny grey monochrome asterisk-like mark and white 12.5px weight 500 "Claude Code".
+- One hairline under the header.
+- THE THREAD:
+  a) Row: outlined circle with a user icon; "Alex Kim" semibold + faint mono "14:00"; text "Show the app version and the commit in Settings, read at build time."
+  b) Row: outlined circle with a grey server icon in the gutter; white semibold "Preparing Claude Code on this runner" + faint mono "14:00"; under it, in the strict tool grid, three 28px rows: a green check + grey "Downloaded" + mono "@agentclientprotocol/claude-agent-acp 0.108.1"; a green check + grey "Checked" + mono "SHA-256 matched the pinned checksum"; a small spinning loader icon + white "Building" + mono "the agent image from ostra-runner@sha256:4c1e9a07" + faint "1 min 12 s". Under them one faint 12px line: "The task starts as soon as Claude Code is ready. It's downloaded from npm under Anthropic's terms." and a teal 12px "Open build-fleet-07".
+- A lot of quiet empty space, then the COMPOSER pinned at the bottom: one rounded box #131416 with border #2A2C30, placeholder "Message the agent…", bottom row: faint info icon + "The task hasn't started. A message waits for its first turn." and on the right an off-white filled button "Send" with an arrow-up icon.
+
+4. RIGHT PROPERTIES PANEL 320px:
+- "Properties": "Status" a grey dashed-circle icon "Queued · preparing the agent"; "Driver" 18px avatar "AK" "Alex Kim"; "Agent" "Claude Code"; "Profile" "Claude Code, default"; "Model" "Claude Sonnet 5.5"; "Runner" mono "build-fleet-07" and under it two small outlined chips "Pool" "docker"; "Spend" mono "$0.00".
+- hairline. "Agent on this runner": "Claude Code" grey "Preparing"; "Version" mono "0.108.1"; "Image" faint "building".
+- hairline. "Code": "Repo" mono "acme/calculator-web"; "Branch" faint "made when the task starts".
+
+Nothing on this page is amber except the sidebar's "1" pill. No needs-you block.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

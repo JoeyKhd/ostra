@@ -1,0 +1,38 @@
+# Generation 1 (kept). References: app-targets/m3/account.png (the approved 2048 original of app-targets/m3/account), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the member's own Account page in "ostra", a self-hosted control panel for coding agents, with a new first section, "Appearance", where the member picks the panel's theme. The FIRST attached image is this same product's approved Account page: copy its sidebar (with the member row "Alex Kim" at the bottom highlighted #1A1B1E), top bar, title, lede, section title lines, hairline rows, the GitHub section and the right properties panel EXACTLY, at the same small, dense scale. It must look like the same page with one section added above GitHub.
+
+1. SIDEBAR as the first reference: "Home", "Needs you" (hand icon) with a small amber pill "2", "My tasks" "3". Faint label "Projects": "calculator" (teal 8px square), "billing-platform" (violet-grey square), "+ New project". Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Linear", "Storage". Bottom: the member row, avatar "AK" and "Alex Kim", with the selected #1A1B1E fill.
+
+2. TOP BAR: one breadcrumb "Account" (white). No buttons.
+
+3. PAGE (padding 28px 36px, content max 760px):
+- Title "Account"; lede (grey, one line): "Your theme, your GitHub account, and the machines where you ran ostra login. Only you see this page."
+- SECTION "Appearance" (white semibold) + grey inline note "saved to your account, so every browser you sign in to follows it".
+- THREE THEME PREVIEWS in one row, each 236px wide, 18px apart. Each is a small flat SCHEMATIC thumbnail of the panel, 236x148px, 8px radius, 1px #2A2C30 border, showing only blocks: a narrow sidebar strip on the left with three short text bars and one tiny amber dot, a top bar line, two thin text bars and three hairline rows on the page, no real text inside the thumbnail:
+  a) "Dark": the thumbnail in near-black graphite (#0D0E10 page, #0A0B0C sidebar, grey bars).
+  b) "Light": the same thumbnail in warm paper (#FBFAF6 page, #F3F0E8 sidebar, dark blue-green bars).
+  c) "Match my system": the same thumbnail split by ONE clean diagonal from top-right to bottom-left: dark graphite on the upper-left half, warm paper on the lower-right half.
+  Under each thumbnail, 10px below, a row: a 14px radio circle and the label 14px. The THIRD one, "Match my system", is SELECTED: its thumbnail has a 2px #F2F3F4 outline with 3px offset, its radio is filled off-white with a dark centre dot, its label white weight 500. The other two: grey radio rings, labels grey.
+  Under "Match my system", a faint 12px line: "Your system is dark now."
+- 14px under the previews, a faint 12px line with a small keyboard icon: "Press" + a small key cap "?" + "anywhere to see every keyboard shortcut." + teal "Keyboard shortcuts".
+- SECTION "GitHub" + grey note "for co-author credit, and for @ostra on a pull request", exactly as the first reference: one 48px hairline row: github icon, mono "@alexkim", a green dot + grey "Linked", faint mono "ID 5829104 · 12 Nov", and at the right a ghost "Unlink". Under it two faint 12.5px help lines: "ostra kept your GitHub login and ID, and revoked the sign-in token at once." and "Commits from your tasks credit 5829104+alexkim@users.noreply.github.com."
+- SECTION "CLI sessions" + faint mono "2" + grey note "made by ostra login, valid for 30 days", then the table header row "Machine  Created  Last used  Expires" and its first row: terminal icon + mono "alex-mbp", mono "12 Nov", "4 min ago", mono "12 Dec", ghost "Revoke". The page continues below the fold.
+
+4. RIGHT PROPERTIES PANEL 320px:
+- "You": "Name" "Alex Kim"; "Email" mono "alex@acme.dev"; "Role" "Admin of Acme Corp"; "Password" teal "Change".
+- hairline. "Appearance": "Theme" "Match my system"; "Now" "Dark"; "Shortcuts" teal "Show all".
+- hairline. "GitHub link": "Login" mono "@alexkim"; "Linked" mono "12 Nov".
+- hairline. "CLI sessions": "Active" mono "2"; "Valid for" "30 days".
+
+Nothing on this page is amber except the sidebar's "2" pill and the tiny amber dots inside the thumbnails.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, SHAs, file paths, commands, check names, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.
