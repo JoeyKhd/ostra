@@ -1,0 +1,240 @@
+start 2026-11-19T15:20:04Z
+$ node e2e/m2-tickets-in/src/demo.ts --checks
+[demo] step 2: the seeded admin chooses its own password
+[demo] screenshot context\specs\m2-tickets-in\demo\01-change-password.png
+[demo] step 3: add the model provider
+[demo] screenshot context\specs\m2-tickets-in\demo\02-provider-tested.png
+[demo] step 3: allow the provider on personal runners
+[demo] step 3: make the dev model the built-in OpenCode profile's model
+[demo] screenshot context\specs\m2-tickets-in\demo\03-provider-saved.png
+[demo] step 4: connect the existing GitHub App
+[demo] screenshot context\specs\m2-tickets-in\demo\04-github-connected.png
+[demo] step 5: create the project
+[demo] screenshot context\specs\m2-tickets-in\demo\05-project-new.png
+[demo] screenshot context\specs\m2-tickets-in\demo\06-environment-draft.png
+[demo] screenshot context\specs\m2-tickets-in\demo\07-environment-saved.png
+[demo] step 1 (seed): Linear connection 01a1f465-1474-77c9-8e9c-b914403ebd1d on ostra-test, webhooks on the tunnel
+[demo] screenshot context\specs\m2-tickets-in\demo\08-linear-connected.png
+[demo] step 2: attach OST
+[demo] screenshot context\specs\m2-tickets-in\demo\09-board-attached.png
+[demo] step 3: create a ticket in OST
+[demo] step 3: OST-77 https://linear.app/ostra-test/issue/OST-77/add-greeting-ed50md-that-says-hello-from-ostra
+[demo] step 6: start the runner demo-runner
+[runner] This runner isn't signed in yet. Approve it in the panel:
+[runner] 
+[runner]   Open   http://localhost:3210/device?user_code=U575KEGF
+[runner]   Code   U575KEGF
+[runner] 
+[runner] The code works for 10 minutes. Waiting for approval...
+[demo] step 6: approve the runner's code in the panel
+[demo] screenshot context\specs\m2-tickets-in\demo\10-device-approve.png
+[runner] info runner registered runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b kind=personal
+[runner] Signed in. This is runner 01a1f465-3ba0-76d0-bc4d-2987de67b97b (personal).
+[runner] Runner 01a1f465-3ba0-76d0-bc4d-2987de67b97b (personal, host, not isolated, job-object containment) is connecting to http://localhost:8810. Press Ctrl-C to stop.
+[runner] info connected runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b minor=2 connectionEpoch=1 replicaId=core:772ade13-0784-4004-8df1-dffe60dde49d
+[demo] screenshot context\specs\m2-tickets-in\demo\11-runner-online.png
+[demo] step 3: OST-77 is in the ticket cache after 0.3 s, and the Inbox shows it after 10 s
+[demo] screenshot context\specs\m2-tickets-in\demo\12-inbox.png
+[demo] screenshot context\specs\m2-tickets-in\demo\13-inbox-started.png
+[demo] step 4: task 01a1f465-4fd9-75ae-b2e2-72d19efbf612 started from OST-77
+[demo] screenshot context\specs\m2-tickets-in\demo\14-task-queued.png
+[runner] info dispatch accepted runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b component=task-host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1
+[demo] step 4: on Linear, OST-77 is "In Progress", with ostra's comment and the task link, after 3.2 s
+[runner] info box created runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425 repos=1
+[demo] screenshot context\specs\m2-tickets-in\demo\15-task-ticket.png
+[demo] screenshot context\specs\m2-tickets-in\demo\16-working.png
+[runner] info host cache prepared runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host projectId=01a1f465-0450-758f-88c3-8da38034fa76 repos=1 reused=false
+[runner] info box ready runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425 setupExitCode=null dependencyCache=cold
+[runner] info ticket files written runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 written=1 skipped=0
+[runner] info agent started runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425 pid=44416 containment=job-object
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=4951 ms=380
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=6544 ms=906
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=12656 ms=1140
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=14452 ms=936
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=3272 ms=646
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=9010 ms=957
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2680 ms=540
+[runner] info pull request text set runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=mcp-tools repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 titleChars=55 bodyChars=144
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=3338 ms=1014
+[runner] info turn ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 stopReason=end_turn mode=build
+[runner] info files outside the repos changed runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 count=0
+[runner] info git proxy forwarded a push runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=2
+[runner] info pushed runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 ahead=1
+[runner] info git proxy forwarded a push runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info hidden ref saved runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 turnOrdinal=1 saved=1
+[runner] info agent command ran runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425 exitCode=0
+[runner] info work saved after the turn runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 turnOrdinal=1 afterTurnMs=3565 archiveBytes=4167 hiddenRefs=1 branchPushed=true checks=0
+[demo] screenshot context\specs\m2-tickets-in\demo\17-pull-request.png
+[demo] step 6: https://github.com/ostra-test/test1/pull/73
+[demo] PASS step 6: the PR is linked on the ticket: OST-77 is "In Progress", 2 attachments
+[demo] step 7: waiting for the box to go idle and stop (OSTRA_BOX_IDLE_MINUTES=2)
+[runner] info the session was idle for its limit: ending it runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 idleMinutes=2
+[runner] info agent ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425 exitedInGrace=true
+[runner] info task run ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f465-4fe3-746f-9420-8956b0dd77de leaseEpoch=1 ending=idle turns=1
+[runner] info box kept runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b component=task-host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425
+[demo] screenshot context\specs\m2-tickets-in\demo\18-idle-stopped.png
+[demo] PASS step 7: the session ended on the idle timer: the session is ended after 115 s
+[demo] PASS step 7: the hidden ref and the archive are kept: archive blob 43546535-8a58-466e-8b2c-349f71ba5d94, refs/ostra/wip/01a1f465-4fd9-75ae-b2e2-72d19efbf612 a15f5a937076467ebf96bf4d4357dafcc0282767
+[demo] PASS the hidden ref starts no CI (F-096): 0 workflow runs for a15f5a9 at least 60 s after it was pushed
+[demo] step 8: the first runner is stopped and its worktree is gone
+[demo] step 6: start the runner demo-runner-2
+[runner] This runner isn't signed in yet. Approve it in the panel:
+[runner] 
+[runner]   Open   http://localhost:3210/device?user_code=V5SH4GQZ
+[runner]   Code   V5SH4GQZ
+[runner] 
+[runner] The code works for 10 minutes. Waiting for approval...
+[demo] step 6: approve the runner's code in the panel
+[demo] screenshot context\specs\m2-tickets-in\demo\19-device-approve.png
+[runner] info runner registered runnerId=01a1f467-93e4-743c-9102-a75b005d118b kind=personal
+[runner] Signed in. This is runner 01a1f467-93e4-743c-9102-a75b005d118b (personal).
+[runner] Runner 01a1f467-93e4-743c-9102-a75b005d118b (personal, host, not isolated, job-object containment) is connecting to http://localhost:8810. Press Ctrl-C to stop.
+[runner] info connected runnerId=01a1f467-93e4-743c-9102-a75b005d118b minor=2 connectionEpoch=1 replicaId=core:772ade13-0784-4004-8df1-dffe60dde49d
+[demo] screenshot context\specs\m2-tickets-in\demo\20-runner-online.png
+[demo] screenshot context\specs\m2-tickets-in\demo\21-reopen-composer.png
+[runner] info dispatch accepted runnerId=01a1f467-93e4-743c-9102-a75b005d118b component=task-host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2
+[runner] info box created runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e repos=1
+[runner] info host cache prepared runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host projectId=01a1f465-0450-758f-88c3-8da38034fa76 repos=1 reused=false
+[runner] info box ready runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e setupExitCode=null dependencyCache=cold
+[runner] info hidden ref restored runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 applied=1 conflicts=0
+[runner] info agent command ran runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e exitCode=0
+[runner] info ticket files written runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 written=1 skipped=0
+[runner] info agent started runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e pid=3344 containment=job-object
+[runner] info session restored runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 origin=restored hiddenRef=applied replayedUpdates=28 fellBack=false pending=1
+[demo] screenshot context\specs\m2-tickets-in\demo\22-restored.png
+[demo] PASS step 8: restored from the session archive: the thread's marker says restored, after 7.6 s
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=9013 ms=870
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=13018 ms=2471
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=11523 ms=1917
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=12697 ms=659
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=3268 ms=400
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=7213 ms=1896
+[runner] info pull request text set runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=mcp-tools repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 titleChars=55 bodyChars=202
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=32731 ms=1459
+[runner] info turn ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 stopReason=end_turn mode=build
+[runner] info files outside the repos changed runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 count=0
+[runner] info git proxy forwarded a push runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=2
+[runner] info pushed runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 ahead=1
+[runner] info git proxy forwarded a push runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info hidden ref saved runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 turnOrdinal=1 saved=1
+[runner] info agent command ran runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e exitCode=0
+[runner] info work saved after the turn runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 turnOrdinal=1 afterTurnMs=3768 archiveBytes=6599 hiddenRefs=1 branchPushed=true checks=0
+[demo] screenshot context\specs\m2-tickets-in\demo\23-reopened-commit.png
+[demo] PASS step 8: the reopen's commit updates the same PR: https://github.com/ostra-test/test1/pull/73 head is now 698356c
+[demo] PASS step 8: the agent answers about its first turn: its answer names GREETING-ed50.md, the file its first turn created
+[demo] step 9: merge the PR
+[runner] info the session was idle for its limit: ending it runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 idleMinutes=2
+[runner] info agent ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e exitedInGrace=true
+[runner] info task run ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 sessionId=01a1f467-9c08-71f8-acb8-3f5286f25a21 leaseEpoch=2 ending=idle turns=1
+[runner] info box kept runnerId=01a1f467-93e4-743c-9102-a75b005d118b component=task-host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e
+[runner] info box released runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e reason=prs-closed
+[runner] info box released runnerId=01a1f467-93e4-743c-9102-a75b005d118b component=task-host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f467-9cb1-77dc-93af-a571c743c58e reason=prs-closed kept=true leftovers=2
+[demo] screenshot context\specs\m2-tickets-in\demo\24-merged.png
+[demo] PASS step 9: the ticket moved to done: OST-77 is "Done"
+[demo] PASS no duplicates on the ticket (F-046): 1 progress comment, 1 PR link, 1 task link
+[demo] PASS one status change per mapped step (F-046): moves: Done
+[demo] PASS one PR on GitHub (F-046): 1 PR on ostra/ost-77-9efbf612-add-greeting-ed50-md-that-says-hello-fro
+[demo] PASS the PR names the ticket: title "OST-77: Add GREETING-ed50.md that says hello from ostra", branch ostra/ost-77-9efbf612-add-greeting-ed50-md-that-says-hello-fro
+GET /repos/ostra-test/test1/git/ref/ostra%2Fwip%2F01a1f465-4fd9-75ae-b2e2-72d19efbf612 - 404 with id 10C1:3833BF:B810370:11430DD4:6AFF1532 in 405ms
+[demo] PASS one tracker write per step (F-046): moves started → in-review → done, 1 comment, 1 task link, 16 of 16 writes done
+[demo] PASS cleanup after the merge (F-079): hidden ref deleted, boxes released, released
+[demo] PASS no credential reached the event log or a log line: searched the event log and 3 logs for 27 values and the GitHub token pattern
+[demo] PASS the Linear key is nowhere on the runners: searched 153 files in both runners' folders
+[demo] checks: a second task, for Create ticket and the rebuild template
+[demo] screenshot context\specs\m2-tickets-in\demo\25-prompt.png
+[demo] task 01a1f46a-e1db-74ab-9fb7-4e24576a514b started
+[runner] info dispatch accepted runnerId=01a1f467-93e4-743c-9102-a75b005d118b component=task-host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1
+[runner] info box created runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 repos=1
+[runner] info host cache prepared runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host projectId=01a1f465-0450-758f-88c3-8da38034fa76 repos=1 reused=true
+[runner] info box ready runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 setupExitCode=null dependencyCache=warm
+[runner] info agent started runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 pid=55444 containment=job-object
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=17770 ms=917
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=14782 ms=1040
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=4786 ms=492
+[runner] info turn ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 stopReason=end_turn mode=build
+[runner] info files outside the repos changed runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 count=0
+[runner] info git proxy forwarded a push runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=2
+[runner] info pushed runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b ahead=1
+[runner] info git proxy forwarded a push runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info hidden ref saved runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b turnOrdinal=1 saved=1
+[runner] info agent command ran runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 exitCode=0
+[runner] info work saved after the turn runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 turnOrdinal=1 afterTurnMs=3511 archiveBytes=1745 hiddenRefs=1 branchPushed=true checks=0
+[demo] screenshot context\specs\m2-tickets-in\demo\26-create-ticket.png
+[demo] PASS Create ticket links a prompt task both ways (F-097): OST-78 on Linear links the task, and the task names OST-78
+[runner] info dispatch accepted runnerId=01a1f467-93e4-743c-9102-a75b005d118b component=task-host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2
+[runner] info agent ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 exitedInGrace=true
+[runner] info task run ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 ending=idle turns=1
+[runner] warn server refused the session's lease runnerId=01a1f467-93e4-743c-9102-a75b005d118b sessionId=01a1f46a-e1e2-7139-91c7-7c855a4d9e2e leaseEpoch=1 currentEpoch=2 unacked=1
+[runner] info box resumed runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83
+[runner] info agent started runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 pid=43496 containment=job-object
+[runner] info session restored runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 origin=resumed hiddenRef=none replayedUpdates=7 fellBack=false pending=1
+[demo] screenshot context\specs\m2-tickets-in\demo\27-resumed.png
+[demo] PASS a reopen on the warm box resumes it (F-033): the thread says resumed
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2816 ms=3335
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=16652 ms=3960
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=30996 ms=1950
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2822 ms=542
+[runner] info model call runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2666 ms=384
+[runner] info turn ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 stopReason=end_turn mode=build
+[runner] info files outside the repos changed runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 count=0
+[runner] info git proxy forwarded a push runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=2
+[runner] info pushed runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b ahead=1
+[runner] info git proxy forwarded a push runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info hidden ref saved runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b turnOrdinal=1 saved=1
+[runner] info agent command ran runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 exitCode=0
+[runner] info work saved after the turn runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 turnOrdinal=1 afterTurnMs=4370 archiveBytes=3723 hiddenRefs=1 branchPushed=true checks=0
+[runner] info the session was idle for its limit: ending it runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 idleMinutes=2
+[runner] info agent ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83 exitedInGrace=true
+[runner] info task run ended runnerId=01a1f467-93e4-743c-9102-a75b005d118b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46b-3dbf-71d4-a258-147fa750910b leaseEpoch=2 ending=idle turns=1
+[runner] info box kept runnerId=01a1f467-93e4-743c-9102-a75b005d118b component=task-host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46a-e880-72cb-b26f-47cccf239a83
+[demo] checks: deleted 2 session archives of task 01a1f46a-e1db-74ab-9fb7-4e24576a514b
+[demo] step 6: start the runner demo-runner
+[runner] Runner 01a1f465-3ba0-76d0-bc4d-2987de67b97b (personal, host, not isolated, job-object containment) is connecting to http://localhost:8810. Press Ctrl-C to stop.
+[demo] step 6: the runner is already signed in
+[runner] info connected runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b minor=2 connectionEpoch=2 replicaId=core:772ade13-0784-4004-8df1-dffe60dde49d
+[runner] info box released runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b component=task-host taskId=01a1f465-4fd9-75ae-b2e2-72d19efbf612 boxId=01a1f465-5a7b-713b-86eb-436303ed3425 reason=prs-closed kept=false leftovers=1
+[demo] screenshot context\specs\m2-tickets-in\demo\28-runner-online.png
+[runner] info dispatch accepted runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b component=task-host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3
+[runner] info box created runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac repos=1
+[runner] info host cache prepared runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host projectId=01a1f465-0450-758f-88c3-8da38034fa76 repos=1 reused=true
+[runner] info box ready runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac setupExitCode=null dependencyCache=warm
+[runner] info hidden ref restored runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b applied=1 conflicts=0
+[runner] info agent started runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac pid=44272 containment=job-object
+[runner] info session restored runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 origin=rebuilt hiddenRef=applied replayedUpdates=0 fellBack=false pending=1
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=26089 ms=753
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=5765 ms=1285
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=7164 ms=1176
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=13251 ms=661
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=64788 ms=5113
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=8661 ms=1859
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=2847 ms=504
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=38529 ms=1571
+[runner] info pull request text set runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=mcp-tools repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 titleChars=69 bodyChars=270
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=17058 ms=1473
+[runner] info turn ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 stopReason=end_turn mode=build
+[runner] info files outside the repos changed runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 count=0
+[runner] info git proxy forwarded a push runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info pushed runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b ahead=1
+[runner] info git proxy forwarded a push runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info hidden ref saved runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b turnOrdinal=1 saved=1
+[runner] info agent command ran runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac exitCode=0
+[runner] info work saved after the turn runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 turnOrdinal=1 afterTurnMs=3498 archiveBytes=6325 hiddenRefs=1 branchPushed=true checks=0
+[runner] info model call runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=key-proxy format=openai-chat status=200 streamed=true bytesOut=1531 ms=1437
+[runner] info turn ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 stopReason=end_turn mode=build
+[runner] info git proxy forwarded a push runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info pushed runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b ahead=1
+[runner] info git proxy forwarded a push runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 component=git-proxy repoId=01a1f465-0453-736a-ae86-6036e6a4ce64 refCount=1
+[runner] info hidden ref saved runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b turnOrdinal=2 saved=1
+[runner] info agent command ran runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac exitCode=0
+[runner] info work saved after the turn runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 turnOrdinal=2 afterTurnMs=3473 archiveBytes=6629 hiddenRefs=1 branchPushed=true checks=0
+[demo] screenshot context\specs\m2-tickets-in\demo\29-rebuilt.png
+[demo] PASS reopened from the rebuild template alone (F-033): the session was rebuilt; 5 of 5 answers right
+[demo] PASS with webhooks off, a ticket change still arrives (F-044): OST-77's new title reached the cache 116 s after the edit, with no webhook (the drift poll runs every 2 min)
+[runner] info the session was idle for its limit: ending it runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 idleMinutes=2
+[runner] info agent ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b adapterKind=executor adapter=host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac exitedInGrace=true
+[runner] info task run ended runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b sessionId=01a1f46d-71aa-7084-ae3c-856087e5a783 leaseEpoch=3 ending=idle turns=2
+[runner] info box kept runnerId=01a1f465-3ba0-76d0-bc4d-2987de67b97b component=task-host taskId=01a1f46a-e1db-74ab-9fb7-4e24576a514b boxId=01a1f46d-78d0-76e8-bcf3-f0c401c3ecac
+[demo] PASS a private install gets every ticket change by polling (F-042): in polling mode, OST-77's new title reached the cache 19 s after the edit
+[demo] WAIT repo checks (F-055, F-060): waiting on ticket 40's steps 1 to 4
+exit=0
+end 2026-11-19T15:33:09Z
