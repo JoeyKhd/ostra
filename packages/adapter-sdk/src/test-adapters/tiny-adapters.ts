@@ -52,6 +52,7 @@ import type {
 import type { CodeHostCapabilities } from "../code-host/capabilities.ts";
 import { adapterError, ok } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
+import type { AdapterContext } from "../common/context.ts";
 import { ExecutorAdapter } from "../executor/base.ts";
 import type {
   AgentProcess,
@@ -69,7 +70,7 @@ import type { CheckRunResult, RunChecksInput } from "../executor/checks.ts";
 import { ModelProviderAdapter } from "../model-provider/base.ts";
 import type { CatalogEntry, CatalogMatch, ConnectionTest, EndpointModel, ModelEndpoint } from "../model-provider/base.ts";
 import type { ModelProviderCapabilities } from "../model-provider/capabilities.ts";
-import { NotificationAdapter } from "../notification/base.ts";
+import { emailRecipients, NotificationAdapter, refuseAccountMail } from "../notification/base.ts";
 import type { Notification, SendResult } from "../notification/base.ts";
 import type { SecretRowStore } from "../plumbing/stores.ts";
 import { SecretStoreAdapter, secretRefSchema } from "../secret-store/base.ts";
@@ -199,8 +200,8 @@ export class TinyNotifier extends NotificationAdapter {
   readonly #channel: "panel" | "email";
   #rateLimitMs: number | null = null;
 
-  constructor(channel: "panel" | "email" = "panel") {
-    super();
+  constructor(channel: "panel" | "email" = "panel", context?: AdapterContext) {
+    super(context);
     this.#channel = channel;
     this.name = `tiny-notifier-${channel}`;
     this.capabilities = { channels: [channel], edits: channel === "panel" };
@@ -228,11 +229,17 @@ export class TinyNotifier extends NotificationAdapter {
     if (this.#channel === "email" && notification.rendered === null) {
       return Promise.resolve(adapterError("invalid-input", "an email needs its rendered parts"));
     }
-    const reachable = notification.recipients.filter((recipient) => this.#channel === "panel" || recipient.email !== null);
-    const refused = notification.recipients
+    if (this.#channel === "panel" && notification.category === "account") {
+      return Promise.resolve(refuseAccountMail("panel"));
+    }
+    const recipients = emailRecipients(notification);
+    // Milestone 4: an address without an @ is refused, as a real provider refuses it.
+    const reachable = recipients.filter((recipient) => this.#channel === "panel" || (recipient.email?.includes("@") ?? false));
+    const refused = recipients
       .filter((recipient) => !reachable.includes(recipient))
       .map((recipient) => ({ memberId: recipient.memberId, reason: "the member has no email address" }));
     this.sent.push(notification);
+    this.plumbing.logger.info("tiny_notifier.sent", { kind: notification.kind, recipients: reachable.length, refused: refused.length });
     const providerMessageId = reachable.length === 0 ? null : `tiny-${randomUUID()}`;
     if (providerMessageId !== null) {
       this.delivered.push({

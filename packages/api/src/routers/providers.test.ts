@@ -19,6 +19,8 @@ const claude: CatalogEntry = {
   maxOutputTokens: 64_000,
   inputPricePerMTok: 3,
   outputPricePerMTok: 15,
+  cacheReadPricePerMTok: null,
+  cacheWritePricePerMTok: null,
   logoPath: "/assets/models/anthropic.svg",
 };
 

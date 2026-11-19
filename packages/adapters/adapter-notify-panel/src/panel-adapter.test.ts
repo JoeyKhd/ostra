@@ -1,5 +1,5 @@
 import type { NotificationRecipient } from "@ostra/adapter-sdk";
-import { defineNotificationContractSuite, memoryAdapterContext, sampleNotification, suiteRecipient } from "@ostra/adapter-sdk/testing";
+import { defineNotificationContractSuite, memoryAdapterContext, sampleAccountMail, sampleNotification, suiteRecipient } from "@ostra/adapter-sdk/testing";
 import { notificationIdSchema, organizationIdSchema } from "@ostra/protocol";
 import type { NotificationId } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
@@ -24,7 +24,8 @@ defineNotificationContractSuite({
   name: "panel, on in-memory rows",
   create: () => {
     const rows = createMemoryPanelRows();
-    const adapter = new PanelNotificationAdapter({ rows }, memoryAdapterContext());
+    const context = memoryAdapterContext();
+    const adapter = new PanelNotificationAdapter({ rows }, context);
     const reachable = suiteRecipient("ada", { email: false, mention: false });
     const alsoReachable = suiteRecipient("grace", { email: false, mention: false });
     return Promise.resolve({
@@ -32,6 +33,7 @@ defineNotificationContractSuite({
       fixture: {
         reachable,
         alsoReachable,
+        logs: () => context.logger.records,
         // A panel row belongs to one member, so each notification gets a fresh row for the first recipient.
         prepare: (notification) => {
           const notificationId = nextRowId();
@@ -74,6 +76,15 @@ const setup = () => {
 };
 
 describe("the panel notification adapter", () => {
+  it("F-115: refuses an account mail as unsupported, and delivers no row", async () => {
+    const { adapter, rows, row } = setup();
+    const id = row();
+    const mail = sampleAccountMail("newcomer@example.com");
+    expect(await adapter.send(mail)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    expect(await adapter.update(mail, id)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    expect(rows.get({ organizationId, notificationId: id })?.deliveredAt).toBeNull();
+  });
+
   it("F-036: declares the panel channel, which edits, and is healthy", async () => {
     const { adapter } = setup();
     expect(adapter.name).toBe("panel");

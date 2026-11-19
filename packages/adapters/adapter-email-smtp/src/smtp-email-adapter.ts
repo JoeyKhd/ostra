@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { adapterError, idempotencyKey, NotificationAdapter, ok } from "@ostra/adapter-sdk";
+import { adapterError, emailRecipientKey, emailRecipients, idempotencyKey, NotificationAdapter, ok } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
@@ -8,7 +8,7 @@ import type {
   HealthReport,
   Notification,
   NotificationCapabilities,
-  NotificationRecipient,
+  EmailRecipient,
   RefusedRecipient,
   SendResult,
 } from "@ostra/adapter-sdk";
@@ -295,9 +295,9 @@ export class SmtpEmailAdapter extends NotificationAdapter {
       return adapterError("invalid-input", this.#problem ?? "the SMTP settings can't be used");
     }
     const refused: RefusedRecipient[] = [];
-    const sendable: { readonly recipient: NotificationRecipient; readonly address: string }[] = [];
+    const sendable: { readonly recipient: EmailRecipient; readonly address: string }[] = [];
     const seen = new Set<string>();
-    for (const recipient of notification.recipients) {
+    for (const recipient of emailRecipients(notification)) {
       const address = recipient.email?.trim() ?? "";
       if (address === "") {
         refused.push({ memberId: recipient.memberId, reason: "the member has no email address" });
@@ -334,12 +334,12 @@ export class SmtpEmailAdapter extends NotificationAdapter {
   async #sendOne(
     notification: Notification,
     rendered: { readonly subject: string; readonly html: string; readonly text: string },
-    recipient: NotificationRecipient,
+    recipient: EmailRecipient,
     address: string,
   ): Promise<RecipientOutcome> {
-    const messageId = smtpMessageId(notification.idempotencyKey, recipient.memberId, this.#domain);
+    const messageId = smtpMessageId(notification.idempotencyKey, emailRecipientKey(recipient), this.#domain);
     const tag = notificationTag(notification.idempotencyKey);
-    const key = idempotencyKey("email-smtp", notification.organizationId, notification.idempotencyKey, recipient.memberId);
+    const key = idempotencyKey("email-smtp", notification.organizationId, notification.idempotencyKey, emailRecipientKey(recipient));
     const transmit = async (): Promise<Recorded> => {
       const outcome = await this.#transmit(rendered, address, messageId, tag);
       if (outcome.kind === "failed") {

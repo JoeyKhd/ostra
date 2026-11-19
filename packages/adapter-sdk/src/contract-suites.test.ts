@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import { organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
 import { fixtureIds, taskSpecFixture } from "@ostra/protocol/testing";
 
-import { memorySecretRowStore } from "./testing/memory.ts";
+import { memoryAdapterContext, memorySecretRowStore } from "./testing/memory.ts";
 import { defineAgentContractSuite } from "./testing/agent-suite.ts";
 import { defineCodeHostContractSuite } from "./testing/code-host-suite.ts";
 import { defineExecutorContractSuite } from "./testing/executor-suite.ts";
@@ -45,7 +45,8 @@ for (const channel of ["panel", "email"] as const) {
   defineNotificationContractSuite({
     name: `tiny notifier, ${channel}`,
     create: () => {
-      const adapter = new TinyNotifier(channel);
+      const context = memoryAdapterContext();
+      const adapter = new TinyNotifier(channel, context);
       return Promise.resolve({
         adapter,
         fixture: {
@@ -57,6 +58,7 @@ for (const channel of ["panel", "email"] as const) {
             adapter.rateLimitNext(2000);
           },
           delivered: () => Promise.resolve(adapter.delivered),
+          logs: () => context.logger.records,
         },
       });
     },
@@ -386,6 +388,8 @@ defineModelProviderContractSuite({
             maxOutputTokens: 8192,
             inputPricePerMTok: 1,
             outputPricePerMTok: 2,
+            cacheReadPricePerMTok: 0.1,
+            cacheWritePricePerMTok: null,
             logoPath: null,
           },
         ],

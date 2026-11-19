@@ -250,7 +250,7 @@ describe("fan-out and delivery", () => {
     expect(jobsRun).toBe(7);
     const sent = await deliveriesOf(itemId);
     expect(sent.every((row) => row.state === "sent")).toBe(true);
-    expect(b.channels.panel.sent.map((notification) => notification.recipients[0]?.memberId).sort()).toEqual(everyone);
+    expect(b.channels.panel.sent.map((notification) => (notification.category === "account" ? null : notification.recipients[0]?.memberId)).sort()).toEqual(everyone);
     expect(b.email.calls()).toBe(3);
     // One comment on the ticket, mentioning the two people the tracker knows, and one lookup for all three.
     const comments = commentsOf(b.site, externalIdOf(externalId));

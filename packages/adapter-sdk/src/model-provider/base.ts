@@ -44,9 +44,13 @@ export type CatalogEntry = {
   /** US dollars per million tokens. */
   readonly inputPricePerMTok: number | null;
   readonly outputPricePerMTok: number | null;
-  /** Milestone 2 (Q163): the cache-read and cache-write prices, when the catalog has them. */
-  readonly cacheReadPricePerMTok?: number | null;
-  readonly cacheWritePricePerMTok?: number | null;
+  /**
+   * Milestone 2 (Q163) added the cache-read and cache-write prices; milestone 4 (F-037, ADR 0055)
+   * makes all four always present, each `null` when the catalog has none, so spend prices every
+   * kind of token the same way.
+   */
+  readonly cacheReadPricePerMTok: number | null;
+  readonly cacheWritePricePerMTok: number | null;
   /** The logo's path on ostra's own server, never the vendor's (F-088). */
   readonly logoPath: string | null;
 };
@@ -81,6 +85,10 @@ export abstract class ModelProviderAdapter {
 
   abstract listModels(endpoint: ModelEndpoint & { readonly apiFormat: ApiFormat }): Promise<AdapterResult<readonly EndpointModel[]>>;
 
-  /** Matches each model to a catalog entry, or marks it custom. Pure: no call. */
+  /**
+   * Matches each model to a catalog entry, or marks it custom. Pure: no call. A match carries the
+   * entry's four prices per million tokens (fresh input, output, cache read, cache write) as the
+   * catalog has them, each `null` where it has none (milestone 4, F-037).
+   */
   abstract matchCatalog(models: readonly EndpointModel[], catalog: readonly CatalogEntry[]): readonly CatalogMatch[];
 }

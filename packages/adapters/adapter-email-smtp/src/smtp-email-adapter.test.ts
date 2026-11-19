@@ -1,7 +1,8 @@
-import type { HealthReport, Notification, NotificationRecipient } from "@ostra/adapter-sdk";
+import type { HealthReport, MomentNotification, NotificationRecipient } from "@ostra/adapter-sdk";
 import {
   defineNotificationContractSuite,
   memoryAdapterContext,
+  sampleAccountMail,
   sampleNotification,
   startFakeSmtpServer,
   suiteRecipient,
@@ -63,7 +64,7 @@ const adapterFor = (server: FakeSmtpServer, extra: Partial<SmtpEmailAdapterOptio
   return adapter;
 };
 
-const notify = (recipients: readonly NotificationRecipient[], extra: Partial<Notification> = {}): Notification => ({
+const notify = (recipients: readonly NotificationRecipient[], extra: Partial<MomentNotification> = {}): MomentNotification => ({
   ...sampleNotification(recipients),
   ...extra,
 });
@@ -99,10 +100,12 @@ defineNotificationContractSuite({
       requireTls: true,
       rejectRecipients: { [bad.email ?? ""]: "550 5.1.1 No such user" },
     });
-    const adapter = new SmtpEmailAdapter(optionsFor(server), memoryAdapterContext());
+    const context = memoryAdapterContext();
+    const adapter = new SmtpEmailAdapter(optionsFor(server), context);
     return {
       adapter,
       fixture: {
+        logs: () => context.logger.records,
         reachable: ada,
         alsoReachable: grace,
         refused: bad,
@@ -117,6 +120,29 @@ defineNotificationContractSuite({
 });
 
 describe("the SMTP email adapter", () => {
+  it("F-115: mails an account mail once to its one address, the link in the HTML and the text and never in a log line or the answer", async () => {
+    const server = await startServer({ starttls: "offered", rejectRecipients: { "refused-newcomer@example.com": "550 5.1.1 No such user" } });
+    const context = memoryAdapterContext();
+    const adapter = adapterFor(server, {}, context);
+    const mail = sampleAccountMail("newcomer@example.com");
+    const sent = await adapter.send(mail);
+    if (!sent.ok) throw new Error(sent.error.message);
+    expect(await adapter.send(mail)).toEqual(sent);
+    expect(server.received).toHaveLength(1);
+    expect(server.received[0]?.to).toEqual(["newcomer@example.com"]);
+    const read = readMail(server.received[0]?.data ?? "");
+    expect(read.subject).toBe(mail.rendered.subject);
+    expect(read.html).toContain(mail.url);
+    expect(read.text).toContain(mail.url);
+    const refused = await adapter.send(sampleAccountMail("refused-newcomer@example.com"));
+    expect(refused).toMatchObject({ ok: true, value: { refused: [{ memberId: null }] } });
+    const surface = JSON.stringify({ sent, refused, logs: context.logger.records });
+    for (const secret of [mail.url, "newcomer@example.com"]) {
+      expect(surface).not.toContain(secret);
+    }
+    expect(context.logger.records.length).toBeGreaterThan(0);
+  });
+
   it("F-115: declares the email channel, which can't edit a sent mail, and says so on update", async () => {
     const server = await startServer();
     const adapter = adapterFor(server);

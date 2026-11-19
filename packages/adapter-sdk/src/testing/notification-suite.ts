@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import type { Notification, NotificationAdapter, NotificationRecipient } from "../notification/base.ts";
+import type { AccountNotification, MomentNotification, NotificationAdapter, NotificationRecipient } from "../notification/base.ts";
+import type { LogRecord } from "../plumbing/logger.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
@@ -36,7 +39,9 @@ export type NotificationSuiteFixture = {
   /** Everything the channel delivered so far. */
   readonly delivered: () => Promise<readonly DeliveredNotification[]>;
   /** Fills in what this channel needs of a notification (the ticket, the row), around the suite's own fields. */
-  readonly prepare?: (notification: Notification) => Notification | Promise<Notification>;
+  readonly prepare?: (notification: MomentNotification) => MomentNotification | Promise<MomentNotification>;
+  /** Milestone 4: every line the adapter logged so far, to check an account mail's link and address never reach one. */
+  readonly logs: () => readonly LogRecord[];
 };
 
 const organizationId = organizationIdSchema.parse("org-notification-suite");
@@ -44,7 +49,7 @@ const organizationId = organizationIdSchema.parse("org-notification-suite");
 let keys = 0;
 
 /** A notification of an approval, with a key of its own and its parts rendered for email. */
-export const sampleNotification = (recipients: readonly NotificationRecipient[]): Notification => {
+export const sampleNotification = (recipients: readonly NotificationRecipient[]): MomentNotification => {
   keys += 1;
   const url = `https://ostra.example/t/task-1?item=${String(keys)}`;
   const subject = "Add CONTRIBUTING.md";
@@ -71,7 +76,7 @@ export const defineNotificationContractSuite = (options: ContractSuiteOptions<No
     const subject = useSubject(options);
     defineCommonCases(subject, "notification", { channels: "array", edits: "boolean" });
 
-    const make = async (recipients: readonly NotificationRecipient[]): Promise<Notification> => {
+    const make = async (recipients: readonly NotificationRecipient[]): Promise<MomentNotification> => {
       const notification = sampleNotification(recipients);
       return (await subject().fixture.prepare?.(notification)) ?? notification;
     };
@@ -143,7 +148,7 @@ export const defineNotificationContractSuite = (options: ContractSuiteOptions<No
       const sent = await adapter.send(notification);
       if (!sent.ok) throw new Error(sent.error.message);
       const id = sent.value.providerMessageId;
-      const changed: Notification = { ...notification, body: `Answered: approved once. ${notification.url}` };
+      const changed: MomentNotification = { ...notification, body: `Answered: approved once. ${notification.url}` };
       if (!adapter.capabilities.edits || id === null) {
         expect(await adapter.update(changed, id ?? "none")).toMatchObject({ ok: false, error: { code: "unsupported" } });
         return;
@@ -154,8 +159,132 @@ export const defineNotificationContractSuite = (options: ContractSuiteOptions<No
       expect(delivered.length).toBe(before);
       expect(delivered.find((candidate) => candidate.providerMessageId === id)?.text).toContain("Answered: approved once.");
     });
+
+    // ---- milestone 4: budget notices and account mails (ticket 04) ----
+
+    it("F-037: a budget notice is a moment, delivered as milestone 3's are", async () => {
+      const { adapter, fixture } = subject();
+      const notification: MomentNotification = { ...(await make([fixture.reachable])), kind: "budget_warning", category: "moment" };
+      const sent = await adapter.send(notification);
+      if (!sent.ok) throw new Error(sent.error.message);
+      expect(sent.value.refused).toEqual([]);
+      expect((await fixture.delivered()).at(-1)?.providerMessageId).toBe(sent.value.providerMessageId);
+    });
+
+    it("F-115: an account mail reaches one address that belongs to no member yet, its link in both the HTML and the text", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.channels.includes("email")) {
+        context.skip();
+        return;
+      }
+      const address = "newcomer@example.com";
+      const mail = sampleAccountMail(address);
+      const sent = await adapter.send(mail);
+      if (!sent.ok) throw new Error(sent.error.message);
+      expect(sent.value.refused).toEqual([]);
+      const delivered = (await fixture.delivered()).find((candidate) => candidate.providerMessageId === sent.value.providerMessageId);
+      expect(delivered?.to).toEqual([address]);
+      expect(delivered?.subject).toBe(mail.rendered.subject);
+      expect(delivered?.html).toContain(mail.url);
+      expect(delivered?.text).toContain(mail.url);
+    });
+
+    it("F-115: an account mail's link and address are never in a log line, an error or what send returns", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.channels.includes("email")) {
+        context.skip();
+        return;
+      }
+      const address = "private-person@example.com";
+      const returned: unknown[] = [];
+      const mail = sampleAccountMail(address);
+      returned.push(await adapter.send(mail), await adapter.send(mail));
+      if (fixture.rateLimitNext !== undefined) {
+        const limited = sampleAccountMail(address);
+        fixture.rateLimitNext();
+        const failed = await adapter.send(limited);
+        expect(failed.ok).toBe(false);
+        returned.push(failed, await adapter.send(limited));
+      }
+      const refusedAddress = fixture.refused?.email ?? "not-an-address";
+      returned.push(await adapter.send(sampleAccountMail(refusedAddress)));
+      const surface = leakSurface(returned, fixture.logs());
+      expect(surface).not.toContain("ostra.example/accept");
+      expect(surface).not.toContain(mail.url.split("=").at(-1));
+      expect(surface).not.toContain("private-person");
+      expect(surface).not.toContain(refusedAddress);
+      expect(fixture.logs().length).toBeGreaterThan(0);
+    });
+
+    it("F-115: an account mail to an address the channel refuses is reported, not thrown", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.channels.includes("email")) {
+        context.skip();
+        return;
+      }
+      const before = (await fixture.delivered()).length;
+      const sent = await adapter.send(sampleAccountMail(fixture.refused?.email ?? "not-an-address"));
+      if (!sent.ok) throw new Error(sent.error.message);
+      expect(sent.value.refused).toHaveLength(1);
+      expect(sent.value.refused[0]?.memberId).toBeNull();
+      expect(sent.value.refused[0]?.reason.length).toBeGreaterThan(0);
+      expect((await fixture.delivered()).length).toBe(before);
+    });
+
+    it("F-115: a channel without email refuses an account mail as unsupported, and delivers nothing", async (context) => {
+      const { adapter, fixture } = subject();
+      if (adapter.capabilities.channels.includes("email")) {
+        context.skip();
+        return;
+      }
+      const before = (await fixture.delivered()).length;
+      const mail = sampleAccountMail("newcomer@example.com");
+      const sent = await adapter.send(mail);
+      expect(sent).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(JSON.stringify(sent)).not.toContain(mail.url);
+      expect((await fixture.delivered()).length).toBe(before);
+    });
   });
 };
+
+let accountMails = 0;
+
+/**
+ * Milestone 4 (ADR 0053): an invitation to an address that belongs to no member yet, with a bearer
+ * link of its own in both parts. The link's code is random, so a search for it finds only this mail.
+ */
+export const sampleAccountMail = (email: string): AccountNotification => {
+  accountMails += 1;
+  // Short enough that the logger's token redaction wouldn't hide it: the case checks the adapter, not the logger.
+  const token = `code${String(accountMails)}x${randomUUID().slice(0, 8)}`;
+  const url = `https://ostra.example/accept?code=${token}`;
+  const organization = "Acme";
+  return {
+    category: "account",
+    kind: "invitation",
+    organizationId,
+    title: "You're invited",
+    body: `Ada invited you to ${organization} on ostra. Accept: ${url}`,
+    url,
+    idempotencyKey: `suite-account:${String(accountMails)}:${String(Date.now())}`,
+    subject: organization,
+    to: { email, memberId: null },
+    rendered: {
+      subject: `Join ${organization} on ostra`,
+      html: `<table><tr><td><p>Ada invited you to <strong>${organization}</strong>.</p><p><a href="${url}">Accept the invitation</a></p><p>It expires in 7 days.</p></td></tr></table>`,
+      text: `Ada invited you to ${organization}.
+
+Accept the invitation: ${url}
+
+It expires in 7 days.
+`,
+    },
+  };
+};
+
+/** Everything a send returned but the provider's message ID, and every log line, as text to search. */
+const leakSurface = (returned: unknown, logs: readonly LogRecord[]): string =>
+  JSON.stringify({ returned, logs }, (key: string, value: unknown) => (key === "providerMessageId" ? null : value));
 
 /** A recipient for a fixture: a member, with an address and a mention or without. */
 export const suiteRecipient = (name: string, reach: { readonly email: boolean; readonly mention: boolean }): NotificationRecipient => ({

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { adapterError, NotificationAdapter, ok } from "@ostra/adapter-sdk";
-import type { AdapterError, AdapterResult, BoardRef, HealthReport, Notification, NotificationCapabilities, SendResult, TrackerAdapter } from "@ostra/adapter-sdk";
+import { adapterError, NotificationAdapter, ok, refuseAccountMail } from "@ostra/adapter-sdk";
+import type { AdapterError, AdapterResult, BoardRef, HealthReport, MomentNotification, Notification, NotificationCapabilities, SendResult, TrackerAdapter } from "@ostra/adapter-sdk";
 import { adfToMarkdown } from "@ostra/adapter-sdk/testing";
 import type { JiraSite } from "@ostra/adapter-sdk/testing";
 import type { Db } from "@ostra/db";
@@ -51,7 +51,7 @@ export class RecordingNotifier extends NotificationAdapter {
 }
 
 /** The words of a ticket comment for a notification: the moment, the mentions, the task's title in quotes and its link. */
-const commentOf = (notification: Notification): string =>
+const commentOf = (notification: MomentNotification): string =>
   [
     `**${notification.title}**: "${notification.subject}"`,
     notification.body,
@@ -91,6 +91,9 @@ export class CommentNotifier extends NotificationAdapter {
     if (this.failWith !== null) {
       return { ok: false, error: this.failWith };
     }
+    if (notification.category === "account") {
+      return refuseAccountMail("tracker");
+    }
     if (notification.ticket === null || notification.ticket === undefined || !("key" in notification.ticket)) {
       return adapterError("invalid-input", "the notification has no ticket key");
     }
@@ -105,6 +108,9 @@ export class CommentNotifier extends NotificationAdapter {
   }
 
   override async update(notification: Notification, providerMessageId: string): Promise<AdapterResult<void>> {
+    if (notification.category === "account") {
+      return refuseAccountMail("tracker");
+    }
     if (notification.ticket === null || notification.ticket === undefined) {
       return adapterError("invalid-input", "the notification has no ticket");
     }

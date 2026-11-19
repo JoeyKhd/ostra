@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { adapterError, NotificationAdapter, ok, parseRetryAfter, parseVendor } from "@ostra/adapter-sdk";
+import { adapterError, emailRecipientKey, emailRecipients, NotificationAdapter, ok, parseRetryAfter, parseVendor } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
@@ -8,7 +8,7 @@ import type {
   HealthReport,
   Notification,
   NotificationCapabilities,
-  NotificationRecipient,
+  EmailRecipient,
   RefusedRecipient,
   SendResult,
 } from "@ostra/adapter-sdk";
@@ -138,9 +138,9 @@ export class ResendEmailAdapter extends NotificationAdapter {
       return adapterError("invalid-input", "the from address isn't an email address");
     }
     const refused: RefusedRecipient[] = [];
-    const sendable: { readonly recipient: NotificationRecipient; readonly address: string }[] = [];
+    const sendable: { readonly recipient: EmailRecipient; readonly address: string }[] = [];
     const seen = new Set<string>();
-    for (const recipient of notification.recipients) {
+    for (const recipient of emailRecipients(notification)) {
       const address = recipient.email?.trim() ?? "";
       if (address === "") {
         refused.push({ memberId: recipient.memberId, reason: "the member has no email address" });
@@ -177,12 +177,12 @@ export class ResendEmailAdapter extends NotificationAdapter {
   async #sendOne(
     notification: Notification,
     rendered: { readonly subject: string; readonly html: string; readonly text: string },
-    recipient: NotificationRecipient,
+    recipient: EmailRecipient,
     address: string,
   ): Promise<RecipientOutcome> {
     const response = await this.#client.emails.send(
       { from: this.#from, to: [address], subject: rendered.subject, html: rendered.html, text: rendered.text },
-      { idempotencyKey: resendIdempotencyKey(notification.idempotencyKey, recipient.memberId), signal: AbortSignal.timeout(this.#timeoutMs) },
+      { idempotencyKey: resendIdempotencyKey(notification.idempotencyKey, emailRecipientKey(recipient)), signal: AbortSignal.timeout(this.#timeoutMs) },
     );
     if (response.error !== null) {
       return this.#failure({ name: response.error.name, statusCode: response.error.statusCode, headers: response.headers });

@@ -1,4 +1,4 @@
-import type { Notification, NotificationRecipient, TicketContext, TrackerAdapter } from "@ostra/adapter-sdk";
+import type { MomentNotification, NotificationRecipient, TicketContext, TrackerAdapter } from "@ostra/adapter-sdk";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import {
   createFakeLinear,
@@ -7,6 +7,7 @@ import {
   fakeLinearSuiteFixture,
   memoryAdapterContext,
   memoryIdempotencyStore,
+  sampleAccountMail,
   sampleNotification,
   suiteRecipient,
 } from "@ostra/adapter-sdk/testing";
@@ -66,9 +67,10 @@ const commentsOf = async (tracker: TrackerAdapter, suite: TrackerSuiteFixture, t
 };
 
 /** What the suite needs of a channel: seed a ticket per notification, and read the comments back. */
-const notificationFixture = (subject: Subject): NotificationSuiteFixture => {
+const notificationFixture = (subject: Subject, logs: NotificationSuiteFixture["logs"]): NotificationSuiteFixture => {
   const seeded: Seeded[] = [];
   return {
+    logs,
     reachable: ada,
     alsoReachable: grace,
     prepare: async (notification) => {
@@ -97,13 +99,21 @@ const notificationFixture = (subject: Subject): NotificationSuiteFixture => {
   };
 };
 
+/** The tracker channel over a subject, with a recording logger the suite reads. */
+const withLogs = (subject: Subject) => {
+  const context = memoryAdapterContext();
+  return {
+    adapter: new TrackerNotificationAdapter({ tracker: subject.tracker, board: subject.suite.board }, context),
+    fixture: notificationFixture(subject, () => context.logger.records),
+  };
+};
+
 defineNotificationContractSuite({
   name: "tracker, on the fake Linear",
   create: async () => {
     const subject = await linearSubject();
     return {
-      adapter: new TrackerNotificationAdapter({ tracker: subject.tracker, board: subject.suite.board }, memoryAdapterContext()),
-      fixture: notificationFixture(subject),
+      ...withLogs(subject),
       dispose: subject.dispose,
     };
   },
@@ -114,8 +124,7 @@ defineNotificationContractSuite({
   create: () => {
     const subject = jiraSubject();
     return Promise.resolve({
-      adapter: new TrackerNotificationAdapter({ tracker: subject.tracker, board: subject.suite.board }, memoryAdapterContext()),
-      fixture: notificationFixture(subject),
+      ...withLogs(subject),
       dispose: subject.dispose,
     });
   },
@@ -134,7 +143,7 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     const adapter = new TrackerNotificationAdapter({ tracker: subject.tracker, board: subject.suite.board }, context);
     const ticket = await subject.suite.seedTicket({ title: "Add CONTRIBUTING.md" });
     const comments = () => commentsOf(subject.tracker, subject.suite, ticket);
-    const notify = (recipients: readonly NotificationRecipient[], extra: Partial<Notification> = {}): Notification => ({
+    const notify = (recipients: readonly NotificationRecipient[], extra: Partial<MomentNotification> = {}): MomentNotification => ({
       ...sampleNotification(recipients),
       ticket: { externalId: ticket.externalId },
       ...extra,
@@ -307,5 +316,17 @@ describe("the tracker notification adapter on a tracker that can't edit comments
     const comments = await commentsOf(subject.tracker, subject.suite, ticket);
     expect(comments).toHaveLength(1);
     expect(comments[0]?.body).not.toContain("(answered)");
+  });
+});
+
+describe("the tracker notification adapter and account mails", () => {
+  it("F-115: refuses an account mail as unsupported, and posts no comment with its link", async () => {
+    const subject = jiraSubject();
+    const adapter = new TrackerNotificationAdapter({ tracker: subject.tracker, board: subject.suite.board }, memoryAdapterContext());
+    const ticket = await subject.suite.seedTicket({ title: "Add CONTRIBUTING.md" });
+    const mail = sampleAccountMail("newcomer@example.com");
+    expect(await adapter.send(mail)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    expect(await adapter.update(mail, "comment-1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    expect(await commentsOf(subject.tracker, subject.suite, ticket)).toEqual([]);
   });
 });

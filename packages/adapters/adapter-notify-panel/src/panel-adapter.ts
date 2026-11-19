@@ -1,4 +1,4 @@
-import { adapterError, NotificationAdapter, ok } from "@ostra/adapter-sdk";
+import { adapterError, NotificationAdapter, ok, refuseAccountMail } from "@ostra/adapter-sdk";
 import type { AdapterContext, AdapterResult, HealthReport, Notification, NotificationCapabilities, SendResult } from "@ostra/adapter-sdk";
 import { notificationIdSchema } from "@ostra/protocol";
 import type { NotificationId } from "@ostra/protocol";
@@ -34,6 +34,10 @@ export class PanelNotificationAdapter extends NotificationAdapter {
   }
 
   async send(notification: Notification): Promise<AdapterResult<SendResult>> {
+    // Milestone 4: an account mail is for a person who may not be able to sign in, so never a row.
+    if (notification.category === "account") {
+      return refuseAccountMail("panel");
+    }
     const id = notification.notificationId;
     if (id === undefined || id === null) {
       return adapterError("invalid-input", "a panel notification needs the row it delivers");
@@ -62,6 +66,9 @@ export class PanelNotificationAdapter extends NotificationAdapter {
   }
 
   override async update(notification: Notification, providerMessageId: string): Promise<AdapterResult<void>> {
+    if (notification.category === "account") {
+      return refuseAccountMail("panel");
+    }
     const parsed = notificationIdSchema.safeParse(providerMessageId);
     if (!parsed.success) {
       return adapterError("invalid-input", "the panel's notification IDs are the row's ID");

@@ -86,5 +86,37 @@ export const defineModelProviderContractSuite = (
         [fixture.unknownModelId, "custom"],
       ]);
     });
+
+    it("F-037: a catalog match carries all four prices per million tokens, each null where the catalog has none", () => {
+      const { adapter, fixture } = subject();
+      const known = fixture.catalog.find((entry) => entry.catalogId === fixture.knownModelId || entry.aliases.includes(fixture.knownModelId));
+      if (known === undefined) throw new Error("the fixture's catalog lacks its known model");
+      const priced: CatalogEntry = { ...known, inputPricePerMTok: 3, outputPricePerMTok: 15, cacheReadPricePerMTok: 0.3, cacheWritePricePerMTok: 3.75 };
+      const unpriced: CatalogEntry = {
+        ...known,
+        catalogId: "ostra-suite-unpriced",
+        aliases: ["ostra-suite-unpriced"],
+        inputPricePerMTok: null,
+        outputPricePerMTok: null,
+        cacheReadPricePerMTok: null,
+        cacheWritePricePerMTok: null,
+      };
+      const matches = adapter.matchCatalog(
+        [
+          { endpointModelId: fixture.knownModelId, displayName: null, contextWindow: null },
+          { endpointModelId: "ostra-suite-unpriced", displayName: null, contextWindow: null },
+        ],
+        [priced, unpriced],
+      );
+      const prices = matches.map((match) =>
+        match.match.kind === "catalog"
+          ? [match.match.entry.inputPricePerMTok, match.match.entry.outputPricePerMTok, match.match.entry.cacheReadPricePerMTok, match.match.entry.cacheWritePricePerMTok]
+          : "custom",
+      );
+      expect(prices).toEqual([
+        [3, 15, 0.3, 3.75],
+        [null, null, null, null],
+      ]);
+    });
   });
 };

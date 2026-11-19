@@ -14,6 +14,8 @@ const entry = (catalogId: string): CatalogEntry => ({
   maxOutputTokens: 100,
   inputPricePerMTok: 1,
   outputPricePerMTok: 2,
+  cacheReadPricePerMTok: null,
+  cacheWritePricePerMTok: null,
   logoPath: null,
 });
 

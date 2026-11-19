@@ -1,10 +1,11 @@
-import { adapterError, idempotencyKey, NotificationAdapter, ok } from "@ostra/adapter-sdk";
+import { adapterError, idempotencyKey, NotificationAdapter, ok, refuseAccountMail } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
   AdapterResult,
   BoardRef,
   HealthReport,
+  MomentNotification,
   Notification,
   NotificationCapabilities,
   SendResult,
@@ -71,6 +72,10 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
   }
 
   async send(notification: Notification): Promise<AdapterResult<SendResult>> {
+    // Milestone 4: an account mail carries a bearer link, and never goes on a ticket.
+    if (notification.category === "account") {
+      return refuseAccountMail("tracker");
+    }
     const ticket = notification.ticket;
     if (ticket === undefined || ticket === null) {
       return adapterError("invalid-input", "a ticket notification needs the task's ticket");
@@ -115,6 +120,9 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
   }
 
   override async update(notification: Notification, providerMessageId: string): Promise<AdapterResult<void>> {
+    if (notification.category === "account") {
+      return refuseAccountMail("tracker");
+    }
     if (!this.capabilities.edits) {
       return super.update(notification, providerMessageId);
     }
@@ -135,11 +143,11 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
     return ok(undefined);
   }
 
-  #mentions(notification: Notification): readonly string[] {
+  #mentions(notification: MomentNotification): readonly string[] {
     return usableMentions(notification.recipients.map((recipient) => recipient.trackerMention));
   }
 
-  #markdown(notification: Notification): string | undefined {
+  #markdown(notification: MomentNotification): string | undefined {
     return renderTrackerComment({
       title: notification.title,
       subject: notification.subject,

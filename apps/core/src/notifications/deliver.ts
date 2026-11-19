@@ -1,4 +1,4 @@
-import type { AdapterError, BoardRef, Logger, Notification, NotificationAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
+import type { AdapterError, BoardRef, Logger, MomentNotification, NotificationAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db, Prisma } from "@ostra/db";
 import {
   deliveryChangeOf,
@@ -152,8 +152,8 @@ export const baseNotification = async (
   deps: NotifyDeps,
   row: DeliveryRow,
   change: "created" | "answered" | "dismissed",
-  recipients: Notification["recipients"],
-): Promise<Notification> => {
+  recipients: MomentNotification["recipients"],
+): Promise<MomentNotification> => {
   const task = row.notification.task;
   const line = await lineOf(deps, row, change);
   return {
@@ -266,7 +266,7 @@ const trackerOutcome = async (deps: NotifyDeps, row: DeliveryRow, change: "creat
     }
   }
   const recipients = people.map((person) => ({ memberId: person.memberId, email: null, trackerMention: mentions.get(person.email.toLowerCase()) ?? null }));
-  const notification: Notification = {
+  const notification: MomentNotification = {
     ...(await baseNotification(deps, row, change, recipients)),
     ticket: { key: ticketKeySchema.parse(task.ticket.key) },
   };

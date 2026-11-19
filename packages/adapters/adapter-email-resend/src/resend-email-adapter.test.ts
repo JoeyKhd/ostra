@@ -1,7 +1,8 @@
-import type { Notification, NotificationRecipient } from "@ostra/adapter-sdk";
+import type { MomentNotification, NotificationRecipient } from "@ostra/adapter-sdk";
 import {
   defineNotificationContractSuite,
   memoryAdapterContext,
+  sampleAccountMail,
   sampleNotification,
   startFakeResendApi,
   suiteRecipient,
@@ -70,9 +71,11 @@ defineNotificationContractSuite({
   create: async () => {
     const api = await startFakeResendApi();
     api.refuse.add(bad.email ?? "");
+    const context = memoryAdapterContext();
     return {
-      adapter: adapterFor(api),
+      adapter: adapterFor(api, {}, context),
       fixture: {
+        logs: () => context.logger.records,
         reachable: ada,
         alsoReachable: grace,
         refused: bad,
@@ -86,12 +89,39 @@ defineNotificationContractSuite({
   },
 });
 
-const notify = (recipients: readonly NotificationRecipient[], extra: Partial<Notification> = {}): Notification => ({
+const notify = (recipients: readonly NotificationRecipient[], extra: Partial<MomentNotification> = {}): MomentNotification => ({
   ...sampleNotification(recipients),
   ...extra,
 });
 
 describe("the Resend email adapter", () => {
+  it("F-115: mails an account mail once to its one address, the link in the HTML and the text and never in a log line, an error or the answer", async () => {
+    const api = await start();
+    api.refuse.add("refused-newcomer@example.com");
+    const context = memoryAdapterContext();
+    const adapter = adapterFor(api, {}, context);
+    const mail = sampleAccountMail("newcomer@example.com");
+    const sent = await adapter.send(mail);
+    if (!sent.ok) throw new Error(sent.error.message);
+    expect(await adapter.send(mail)).toEqual(sent);
+    expect(api.received).toHaveLength(1);
+    expect(api.received[0]).toMatchObject({ to: ["newcomer@example.com"], subject: mail.rendered.subject });
+    expect(api.received[0]?.html).toContain(mail.url);
+    expect(api.received[0]?.text).toContain(mail.url);
+    expect(sent.value).toEqual({ providerMessageId: api.received[0]?.id, refused: [] });
+    const refused = await adapter.send(sampleAccountMail("refused-newcomer@example.com"));
+    expect(refused).toMatchObject({ ok: true, value: { refused: [{ memberId: null }] } });
+    api.rateLimitNext(2);
+    const limited = sampleAccountMail("newcomer@example.com");
+    const failed = await adapter.send(limited);
+    expect(failed).toMatchObject({ ok: false, error: { code: "rate-limited" } });
+    const surface = JSON.stringify({ refused, failed, logs: context.logger.records });
+    for (const secret of [mail.url, limited.url, "newcomer@example.com"]) {
+      expect(surface).not.toContain(secret);
+    }
+    expect(context.logger.records.length).toBeGreaterThan(0);
+  });
+
   it("F-115: declares the email channel, which can't edit a sent mail, and says so on update", async () => {
     const api = await start();
     const adapter = adapterFor(api);
@@ -325,7 +355,7 @@ const readBack = async (baseUrl: string, apiKey: string, id: string): Promise<un
 const sendAndReadBack = async (options: { readonly baseUrl: string; readonly apiKey: string; readonly from: string; readonly to: string }) => {
   const adapter = new ResendEmailAdapter({ apiKey: options.apiKey, from: options.from, baseUrl: options.baseUrl }, memoryAdapterContext());
   const recipient: NotificationRecipient = { ...suiteRecipient("test", { email: false, mention: false }), email: options.to };
-  const notification: Notification = { ...sampleNotification([recipient]), kind: "test" };
+  const notification: MomentNotification = { ...sampleNotification([recipient]), kind: "test" };
   const sent = await adapter.send(notification);
   if (!sent.ok || sent.value.providerMessageId === null) throw new Error(sent.ok ? "no message ID" : sent.error.message);
   return { notification, id: sent.value.providerMessageId, delivery: await readBack(options.baseUrl, options.apiKey, sent.value.providerMessageId) };

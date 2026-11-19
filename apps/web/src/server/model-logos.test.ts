@@ -17,6 +17,8 @@ const entry = (logoPath: string | null): CatalogEntry => ({
   maxOutputTokens: null,
   inputPricePerMTok: null,
   outputPricePerMTok: null,
+  cacheReadPricePerMTok: null,
+  cacheWritePricePerMTok: null,
   logoPath,
 });
 const catalog = (...paths: (string | null)[]) => ({ entries: () => Promise.resolve(paths.map(entry)) });

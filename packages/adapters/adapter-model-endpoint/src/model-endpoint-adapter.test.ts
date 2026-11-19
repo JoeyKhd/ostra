@@ -20,6 +20,8 @@ const catalog: readonly CatalogEntry[] = [
     maxOutputTokens: 64_000,
     inputPricePerMTok: 3,
     outputPricePerMTok: 15,
+    cacheReadPricePerMTok: null,
+    cacheWritePricePerMTok: null,
     logoPath: "/model-logos/anthropic.svg",
   },
 ];
@@ -298,6 +300,18 @@ describe("the model endpoint adapter", () => {
       ]);
       expect(parseModelsDevCatalog({ acme: { models: "nope" } })).toMatchObject({ ok: false, error: { code: "invalid-response" } });
       expect(parseModelsDevCatalog({})).toMatchObject({ ok: false });
+    });
+
+    it("F-037: a catalog model without cache prices, or without any, gets null for each, never a missing price", () => {
+      const parsed = parseModelsDevCatalog({
+        acme: { models: { half: { id: "half", cost: { input: 2, output: 8 } }, bare: { id: "bare" } } },
+      });
+      if (!parsed.ok) throw new Error(parsed.error.message);
+      const prices = parsed.value.map((entry) => [entry.catalogId, entry.inputPricePerMTok, entry.outputPricePerMTok, entry.cacheReadPricePerMTok, entry.cacheWritePricePerMTok]);
+      expect(prices).toEqual([
+        ["acme/half", 2, 8, null, null],
+        ["acme/bare", null, null, null, null],
+      ]);
     });
   });
 

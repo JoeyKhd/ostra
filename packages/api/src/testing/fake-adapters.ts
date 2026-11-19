@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { CodeHostAdapter, ModelProviderAdapter, NotificationAdapter, SecretStoreAdapter, adapterError, ok, secretRefSchema } from "@ostra/adapter-sdk";
+import { CodeHostAdapter, ModelProviderAdapter, NotificationAdapter, SecretStoreAdapter, adapterError, emailRecipients, ok, secretRefSchema } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
   BranchRules,
@@ -336,7 +336,7 @@ export class FakeMailAdapter extends NotificationAdapter {
       return Promise.resolve(adapterError(failure.code, failure.message));
     }
     this.sent.push(notification);
-    const refused = notification.recipients.filter((recipient) => recipient.email !== null && this.refuse.has(recipient.email)).map((recipient) => ({ memberId: recipient.memberId, reason: "the address was refused" }));
+    const refused = emailRecipients(notification).filter((recipient) => recipient.email !== null && this.refuse.has(recipient.email)).map((recipient) => ({ memberId: recipient.memberId, reason: "the address was refused" }));
     return Promise.resolve(ok({ providerMessageId: `fake-mail-${String(this.sent.length)}`, refused }));
   }
 }
