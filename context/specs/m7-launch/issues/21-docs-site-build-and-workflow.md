@@ -18,7 +18,7 @@ Spec: `../spec.md`, sections 2 and 4; ADR 0063
 ## Done when
 
 - [x] Tests named for `F-058`: the configuration reference page lists every setting `packages/domain`'s settings test knows, with its default (break-it: a setting removed from `docs/configuration.md` fails both tests); the export builds with no server route.
-- [ ] `docs.yml` ran once by hand and deployed, its run linked under `## Comments`, if Pages is enabled (ticket 34); otherwise its dry run (build only) is linked.
+- [x] `docs.yml` ran once by hand and deployed, its run linked under `## Comments`, if Pages is enabled (ticket 34); otherwise its dry run (build only) is linked.
 - [x] `pnpm check:licenses` passes: `apps/docs` imports no Sustainable Use package.
 - [x] Committed as `✨ add the docs site`.
 
@@ -30,3 +30,4 @@ Spec: `../spec.md`, sections 2 and 4; ADR 0063
 - 2026-11-19: Open points, as recommended: dark first, with the toggle remembered in `localStorage`; the repo's address from one constant (`src/lib/site.ts`); "Last changed in" left out until a release tags a build; steps as plain `h2`s; development settings kept, labelled `dev`; the "Start here" list fixed in `src/lib/site.ts`; the version chip reads the release tag (`OSTRA_DOCS_VERSION` in `docs.yml`, else the newest tag, else `dev`). The install guide downloads the compose file from `releases/latest/download/compose.yaml`, so no page has to type a version. `OSTRA_DOCS_URL` itself is ticket 36's setting; its default is `https://joeykhd.github.io/ostra/` (`siteUrl` here).
 - 2026-11-19: Screenshot-compared against `docs-home`, `docs-home-light`, `docs-guide`, `docs-guide-phone`, `docs-reference`, `docs-search` and `docs-search-empty` at 1440×956 and 390×844, dark and light.
 - 2026-11-19: `docs.yml` hasn't run yet. GitHub Pages isn't enabled on the repo (its Pages address answers 404; ticket 34), and this session had no way to start a workflow. Its dry run is `gh workflow run Docs -f deploy=false` (build and the export check, no deploy); once Pages is on, `gh workflow run Docs` publishes, and the run's link goes here.
+- 2026-11-19, lead: the maintainer ran `docs.yml` by hand. Run https://github.com/JoeyKhd/ostra/actions/runs/44572257453 at e1ec1f9: build, `check:export` and the Pages deploy all passed, and the site is live at https://joeykhd.github.io/ostra/. The lead checked that the home page and every page it links answer 200, as does the stylesheet.
