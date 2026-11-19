@@ -2,7 +2,9 @@ import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
 
 // A runner's lifecycle (domain-model.md, "A runner's lifecycle"; ADR 0029). `revoked` is final:
-// a revoked runner can't connect again.
+// a revoked runner can't connect again. `draining` is an admin's hold: a disconnect or a reconnect
+// leaves it draining, and only a resume lifts it (Q108). Any state but `revoked` can be revoked
+// (Q131).
 
 export type RunnerLifecycle =
   | { readonly state: "joining" }
@@ -18,9 +20,11 @@ export type RunnerInput =
   | { readonly type: "reject" }
   | { readonly type: "disconnected" }
   | { readonly type: "reconnected" }
-  /** An admin drains it: no new tasks. */
+  /** An admin drains it: no new tasks, until an admin resumes it. */
   | { readonly type: "drain" }
-  /** An admin revokes it. */
+  /** An admin lifts the drain; `connected` says whether the runner holds a connection now. */
+  | { readonly type: "resume"; readonly connected: boolean }
+  /** An admin, or the member who owns a personal runner, revokes it. */
   | { readonly type: "revoke" };
 
 export const transitionRunner = (runner: RunnerLifecycle, input: RunnerInput): Transition<RunnerLifecycle> => {
@@ -31,13 +35,21 @@ export const transitionRunner = (runner: RunnerLifecycle, input: RunnerInput): T
     case "reject":
       return from === "joining" ? moveTo({ state: "revoked" }) : refuse(input, from);
     case "disconnected":
+      if (from === "draining") {
+        return moveTo({ state: "draining" });
+      }
       return from === "online" ? moveTo({ state: "offline" }) : refuse(input, from);
     case "reconnected":
+      if (from === "draining") {
+        return moveTo({ state: "draining" });
+      }
       return from === "offline" ? moveTo({ state: "online" }) : refuse(input, from);
     case "drain":
-      return from === "online" ? moveTo({ state: "draining" }) : refuse(input, from);
+      return from === "online" || from === "offline" ? moveTo({ state: "draining" }) : refuse(input, from);
+    case "resume":
+      return from === "draining" ? moveTo({ state: input.connected ? "online" : "offline" }) : refuse(input, from);
     case "revoke":
-      return from === "draining" ? moveTo({ state: "revoked" }) : refuse(input, from);
+      return from === "revoked" ? refuse(input, from) : moveTo({ state: "revoked" });
     default:
       return input satisfies never;
   }

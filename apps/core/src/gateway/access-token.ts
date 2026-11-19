@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import type { Db } from "@ostra/db";
 import { organizationIdSchema, parseJson, runnerIdSchema, runnerLimits } from "@ostra/protocol";
 import type { OrganizationId, RunnerId } from "@ostra/protocol";
 import { z } from "zod";
@@ -68,4 +69,18 @@ export const bearerToken = (header: string | undefined): string | null => {
   }
   const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
   return match?.[1] ?? null;
+};
+
+/**
+ * Whether the runner an access token names may still act: its row exists in that organization and
+ * isn't revoked. An access token lives 10 minutes and a revoke is at once (Q131), so every endpoint
+ * that takes one reads the runner's row too: the WebSocket upgrade, the task's spec and
+ * credentials, and the bulk path.
+ */
+export const runnerIsLive = async (
+  db: Pick<Db, "runner">,
+  claims: Pick<AccessClaims, "runnerId" | "organizationId">,
+): Promise<boolean> => {
+  const row = await db.runner.findFirst({ where: { id: claims.runnerId, organizationId: claims.organizationId }, select: { state: true, revokedAt: true } });
+  return row !== null && row.state !== "revoked" && row.revokedAt === null;
 };

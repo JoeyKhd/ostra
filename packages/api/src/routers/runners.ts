@@ -1,9 +1,9 @@
-import { approveRunner, generateJoinToken, hashJoinToken, rejectRunner } from "@ostra/domain";
+import { approveRunner, generateJoinToken, hashJoinToken, rejectRunner, revokeRunner, revokeRunnerInputSchema } from "@ostra/domain";
 import { joinTokenIdSchema, memberIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { adminProcedure, memberProcedure, router } from "../trpc/init.ts";
+import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-013, F-014, F-091 (first slice), ticket 33: runners, runner pools and their join tokens. A
 // personal runner shows as "personal, not isolated" in the panel (ADR 0029). Join tokens are shown
@@ -119,6 +119,21 @@ export const runnersRouter = router({
     }
     ctx.deps.logger.info("runner.rejected", { runnerId: input.runnerId, connected: result.wasConnected });
     return { runnerId: input.runnerId, state: result.state };
+  }),
+
+  /**
+   * Revokes a runner at once (Q131, ticket 41): an organization admin, any runner of it; a member,
+   * a personal runner they own. Its connection closes with 4403, its leases end, and each task it
+   * held stops as `runner_lost`, ready to reopen elsewhere. A runner already revoked answers the
+   * same and changes nothing. The row's `busy` count is how many tasks the confirm says it stops.
+   */
+  revoke: memberProcedure.input(revokeRunnerInputSchema).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) => revokeRunner({ tx, scope: ctx.scope, notices: ports.notices, audit: ports.audit, clock: ports.clock }, input), {
+      timeout: 30_000,
+    });
+    const revoked = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
+    return { runnerId: revoked.runnerId, alreadyRevoked: revoked.alreadyRevoked, stoppedTasks: revoked.stoppedTaskIds.length };
   }),
 });
 

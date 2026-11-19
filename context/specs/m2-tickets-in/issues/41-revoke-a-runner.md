@@ -31,12 +31,19 @@ Settled as Q131 and Q108 on 2026-11-19 (`context/open-questions.md`, Settled). A
 
 ## Done when
 
-- [ ] Lifecycle tests: every input from every state, as the domain model's table says.
-- [ ] Against the fake peer: revoking an online runner closes its socket with `4403` at once. In the same transaction its tasks are stopped as `runner_lost` and their epochs raised. A late event batch, a spec read and a credentials request with its still-valid access token are each refused, and its next token request fails. A reopened task dispatches to another runner.
-- [ ] Revoking an offline, a joining and a draining runner does the same. Another organization's admin is refused, and so is a member who doesn't own the runner.
+- [x] Lifecycle tests: every input from every state, as the domain model's table says.
+- [x] Against the fake peer: revoking an online runner closes its socket with `4403` at once. In the same transaction its tasks are stopped as `runner_lost` and their epochs raised. A late event batch, a spec read and a credentials request with its still-valid access token are each refused, and its next token request fails. A reopened task dispatches to another runner.
+- [x] Revoking an offline, a joining and a draining runner does the same. Another organization's admin is refused, and so is a member who doesn't own the runner.
 - [ ] Once ticket 38 has made `e2e/m2-failure-suite/`, it gains a case: a runner revoked mid-turn, and the task reopened on a second runner with its context.
-- [ ] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
-- [ ] The whole-repo checks pass (spec section 9: credentials, the runner protocol).
-- [ ] Committed as `✨ add revoking a runner`.
+- [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
+- [x] The whole-repo checks pass (spec section 9: credentials, the runner protocol).
+- [x] Committed as `✨ add revoking a runner`.
 
 ## Comments
+- 2026-11-19, core: done in `✨ add revoking a runner`, except the failure-suite case (`e2e/m2-failure-suite/` doesn't exist yet: ticket 38 adds the case when it makes the suite) and the panel's Revoke action, which waits for the Runners target to be amended and approved.
+  - **Lifecycle** (`packages/domain/src/lifecycles/runner.ts`): `revoke` from any state but `revoked`; `drain` from `online` and `offline`; `resume { connected }` from `draining`; `disconnected` and `reconnected` leave a draining runner draining. `lifecycles.test.ts` checks every input from every state against the domain model's table.
+  - **`revokeRunner`** (`packages/domain/src/use-cases/revoke-runner.ts`), one transaction: the task rows are locked first, by ID, then the runner's row, in the order the dispatch, a stop and the outbox take them. Leases end with `endReason` `runner-revoked` (`RUNNER_REVOKED_END_REASON`), epochs go up, tasks stop as `runner_lost`, sessions stop, boxes move as the grace's end moves them, `notifyRunnerInTx(revoked)`, a `task.stopped` audit entry per task and one `runner.revoked` with `from` and `stoppedTasks`. No `stop` command is queued: the runner can't connect again.
+  - **The token:** `runnerIsLive` (`apps/core/src/gateway/access-token.ts`) reads the runner's row on every endpoint that takes an access token: the WebSocket upgrade and the task's spec and credentials now; ticket 12's bulk path calls it too.
+  - **The dispatch** locks the chosen runner's row and reads it again before the grant, so a revoke that commits while a dispatch reads its candidates never gets a lease.
+  - **`runners.revoke { runnerId }`** (memberProcedure): an admin any runner of the organization, a member their own personal runner (`FORBIDDEN` otherwise, `NOT_FOUND` for another organization's). It answers `{ runnerId, alreadyRevoked, stoppedTasks }`; the confirm's count is the row's `busy` from `runners.list` and `runners.mine`.
+  - Tests: `apps/core/src/gateway/revoke.test.ts` (fake peer: 4403 within 5 s with the sweep at 60 s, the late batch, spec, credentials, upgrade and token refused, a failed transaction changing nothing, the reopen dispatched to the other pool runner, offline/joining/draining, the refusals) and `packages/api/src/routers/runners-revoke.test.ts`. Proof rows: F-091 (each runner revoked on its own, `partial`: rotation is ticket m1-42's) and F-092 (revoke, `partial`: no row action yet, drain is milestone 5).

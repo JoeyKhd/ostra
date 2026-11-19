@@ -25,7 +25,7 @@ import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import { z } from "zod";
 
-import { bearerToken } from "./access-token.ts";
+import { bearerToken, runnerIsLive } from "./access-token.ts";
 import type { AckedCommand, GatewayContext, RunnerRef } from "./context.ts";
 import { databaseErrorCodes } from "./database-error.ts";
 
@@ -602,10 +602,9 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       return;
     }
     const runner: RunnerRef = { runnerId: claims.runnerId, organizationId: claims.organizationId };
-    db.runner
-      .findFirst({ where: { id: runner.runnerId, organizationId: runner.organizationId }, select: { state: true, revokedAt: true } })
-      .then((row) => {
-        if (row === null || row.state === "revoked" || row.revokedAt !== null) {
+    runnerIsLive(db, runner)
+      .then((live) => {
+        if (!live) {
           rejectUpgrade(socket, 403, "unauthorized", "this runner is revoked; register it again");
           return;
         }

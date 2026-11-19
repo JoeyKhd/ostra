@@ -16,7 +16,7 @@ import {
 } from "@ostra/protocol";
 import type { LeaseEpoch, TaskId } from "@ostra/protocol";
 
-import { bearerToken } from "../gateway/access-token.ts";
+import { bearerToken, runnerIsLive } from "../gateway/access-token.ts";
 import type { AccessTokens } from "../gateway/access-token.ts";
 import { readJsonBody, sendError, sendJson } from "../http.ts";
 import { buildTaskSpec } from "./task-spec.ts";
@@ -66,6 +66,12 @@ export const handleTaskEndpoint =
       return true;
     }
     const logger = deps.logger.child({ component: "task-endpoints", taskId: taskId.data, runnerId: claims.runnerId });
+    // A revoked runner's token is refused, though its 10 minutes may not be over (Q131).
+    if (!(await runnerIsLive(deps.db, claims))) {
+      logger.info("task.runner-revoked", {});
+      sendError(response, 403, "unauthorized", "this runner is revoked; register it again");
+      return true;
+    }
 
     if (which === "spec" && request.method === "GET") {
       const query = taskSpecQuerySchema.safeParse({ leaseEpoch: url.searchParams.get("leaseEpoch") });

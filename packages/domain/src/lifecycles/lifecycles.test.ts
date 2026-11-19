@@ -151,23 +151,86 @@ describe("box (and the host worktree)", () => {
 
 describe("runner", () => {
   const r = (state: RunnerLifecycle["state"]): RunnerLifecycle => ({ state });
-  lifecycleCases<RunnerLifecycle, RunnerInput>(
-    transitionRunner,
-    [
-      [r("joining"), { type: "accept" }, r("online")],
-      [r("joining"), { type: "reject" }, r("revoked")],
-      [r("online"), { type: "disconnected" }, r("offline")],
-      [r("offline"), { type: "reconnected" }, r("online")],
-      [r("online"), { type: "drain" }, r("draining")],
-      [r("draining"), { type: "revoke" }, r("revoked")],
-    ],
-    [
-      [r("joining"), { type: "drain" }],
-      [r("online"), { type: "accept" }],
-      [r("offline"), { type: "drain" }],
-      [r("draining"), { type: "reconnected" }],
-      [r("revoked"), { type: "reconnected" }],
-    ],
+  const states = ["joining", "online", "offline", "draining", "revoked"] as const;
+  const inputs = [
+    ["accept", { type: "accept" }],
+    ["reject", { type: "reject" }],
+    ["disconnected", { type: "disconnected" }],
+    ["reconnected", { type: "reconnected" }],
+    ["drain", { type: "drain" }],
+    ["resume-connected", { type: "resume", connected: true }],
+    ["resume-not-connected", { type: "resume", connected: false }],
+    ["revoke", { type: "revoke" }],
+  ] as const satisfies readonly (readonly [string, RunnerInput])[];
+  type InputName = (typeof inputs)[number][0];
+  type State = RunnerLifecycle["state"];
+  /**
+   * The domain model's table (domain-model.md, "A runner's lifecycle"; Q108, Q131): every input from
+   * every state, and where it goes, or `null` where it's refused.
+   */
+  const table: Record<State, Record<InputName, State | null>> = {
+    joining: {
+      accept: "online",
+      reject: "revoked",
+      disconnected: null,
+      reconnected: null,
+      drain: null,
+      "resume-connected": null,
+      "resume-not-connected": null,
+      revoke: "revoked",
+    },
+    online: {
+      accept: null,
+      reject: null,
+      disconnected: "offline",
+      reconnected: null,
+      drain: "draining",
+      "resume-connected": null,
+      "resume-not-connected": null,
+      revoke: "revoked",
+    },
+    offline: {
+      accept: null,
+      reject: null,
+      disconnected: null,
+      reconnected: "online",
+      drain: "draining",
+      "resume-connected": null,
+      "resume-not-connected": null,
+      revoke: "revoked",
+    },
+    draining: {
+      accept: null,
+      reject: null,
+      disconnected: "draining",
+      reconnected: "draining",
+      drain: null,
+      "resume-connected": "online",
+      "resume-not-connected": "offline",
+      revoke: "revoked",
+    },
+    revoked: {
+      accept: null,
+      reject: null,
+      disconnected: null,
+      reconnected: null,
+      drain: null,
+      "resume-connected": null,
+      "resume-not-connected": null,
+      revoke: null,
+    },
+  };
+
+  it.each(states.flatMap((state) => inputs.map(([name, input]) => [state, name, table[state][name], input] as const)))(
+    "F-091: from %s, %s goes to %s (null: refused), as the domain model's table says",
+    (state, _name, expected, input) => {
+      const moved = transitionRunner(r(state), input);
+      if (expected === null) {
+        expect(moved).toMatchObject({ ok: false });
+      } else {
+        expect(moved).toEqual({ ok: true, state: r(expected) });
+      }
+    },
   );
 
   it("takes tasks only online", () => {

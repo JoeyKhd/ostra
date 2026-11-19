@@ -177,6 +177,14 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   if (runner === undefined) {
     return noRunner(unavailable);
   }
+  // The runner's row, locked before the grant (the outbox takes the same lock for its counter). A
+  // revoke that committed while this read the candidates is seen here, so no lease goes to a
+  // revoked runner (Q131).
+  const fresh = await tx.$queryRaw<readonly unknown[]>`
+    SELECT 1 FROM "runner" WHERE "id" = ${runner.id} AND "state" = 'online' AND "revokedAt" IS NULL FOR NO KEY UPDATE`;
+  if (fresh.length === 0) {
+    return noRunner(unavailable);
+  }
 
   // The grant, in this one transaction: box, lease (the epoch goes up), the command, the timer.
   const organizationId = organizationIdSchema.parse(task.organizationId);
