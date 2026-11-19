@@ -160,7 +160,19 @@ export const ChangePasswordForm = ({ email }: { readonly email: string }) => {
         />
       </div>
       {message === null ? null : <FormMessage id={MESSAGE_ID}>{message}</FormMessage>}
-      <Button type="submit" variant="primary" size="xl" className="mt-[23px] w-full" disabled={busy || brokenRuleOf(password) !== null || confirm === ""}>
+      {/* Pressing the button keeps the focus where it is: a blur of the second field would show the
+          mismatch line first, which moves the button down before the click lands. The submit
+          checks the match itself and focuses the second field. */}
+      <Button
+        type="submit"
+        variant="primary"
+        size="xl"
+        className="mt-[23px] w-full"
+        disabled={busy || brokenRuleOf(password) !== null || confirm === ""}
+        onMouseDown={(event) => {
+          event.preventDefault();
+        }}
+      >
         {busy ? (
           <>
             <LoaderCircleIcon strokeWidth={1.75} className="motion-safe:animate-spin" aria-hidden />
