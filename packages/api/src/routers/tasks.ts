@@ -58,9 +58,7 @@ type TaskState = keyof typeof stateGroups;
 
 const groupOf = (state: TaskState): TaskGroup => stateGroups[state];
 
-/** What the agent is doing now, for the list: a kind the panel words, and for a tool its title. */
-export type Doing = { readonly kind: string; readonly detail: string | null };
-
+/** The kinds of event the list words as "what the agent is doing now", newest wins. */
 const doingKinds = [
   "tool.called",
   "agent.message",
@@ -72,9 +70,14 @@ const doingKinds = [
   "git.pushed",
 ] as const;
 
+export type DoingKind = (typeof doingKinds)[number];
+
+/** What the agent is doing now, for the list: a kind the panel words, and for a tool its title. */
+export type Doing = { readonly kind: DoingKind; readonly detail: string | null };
+
 const DETAIL_MAX = 160;
 
-const doingOf = (kind: string, payload: unknown): Doing => {
+const doingOf = (kind: DoingKind, payload: unknown): Doing => {
   const title: unknown = typeof payload === "object" && payload !== null ? Reflect.get(payload, "title") : undefined;
   return {
     kind,
@@ -82,7 +85,7 @@ const doingOf = (kind: string, payload: unknown): Doing => {
   };
 };
 
-const latestDoingRow = z.object({ taskId: z.string(), kind: z.string(), payload: z.unknown() });
+const latestDoingRow = z.object({ taskId: taskIdSchema, kind: z.enum(doingKinds), payload: z.unknown() });
 
 // ---------- locking ----------
 
@@ -161,8 +164,9 @@ export const tasksRouter = router({
 
     const summaries = rows.map((row) => {
       const runner = runnerById.get(leaseRunner.get(row.id) ?? row.runnerId ?? "");
+      const id = taskIdSchema.parse(row.id);
       return {
-        id: taskIdSchema.parse(row.id),
+        id,
         key: row.ticketKey ?? row.id.slice(0, 8),
         title: row.title,
         kind: row.kind,
@@ -171,7 +175,7 @@ export const tasksRouter = router({
         /** Why it needs a person, or why it stopped. */
         reason: row.needsYouReason ?? row.stoppedReason,
         group: groupOf(row.state),
-        doing: doing.get(row.id) ?? null,
+        doing: doing.get(id) ?? null,
         runner: runner === undefined ? null : { id: runnerIdSchema.parse(runner.id), name: runner.name, kind: runner.kind, executor: runner.executor, isolated: runner.executor !== "host" },
         driver: row.driverMemberId === null ? null : { memberId: memberIdSchema.parse(row.driverMemberId), name: driverName.get(row.driverMemberId) ?? "" },
         prs: row.repos.flatMap((repo) => (repo.prUrl === null || repo.prNumber === null ? [] : [{ repoId: repo.repoId, number: repo.prNumber, url: repo.prUrl, state: repo.state }])),

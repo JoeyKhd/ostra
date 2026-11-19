@@ -129,6 +129,6 @@ export const doingText = (doing: Doing | null): string => {
     case "git.pushed":
       return t("doing.pushing");
     default:
-      return "";
+      return doing.kind satisfies never;
   }
 };
