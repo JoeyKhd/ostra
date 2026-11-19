@@ -61,6 +61,9 @@ describe("the sidecar's MCP proxy (F-021)", () => {
     expect(line?.fields["requestBytes"]).toBe(Buffer.byteLength(call));
     expect(JSON.stringify(logs)).not.toContain(TOKEN);
     expect(JSON.stringify(logs)).not.toContain("tools/call");
+    // The server's real address is a credential too (it can carry a key): no log line holds it.
+    expect(JSON.stringify(logs)).not.toContain(server.urlFor("docs"));
+    expect(JSON.stringify(logs)).not.toContain(new URL(server.urlFor("docs")).host);
   });
 
   it("F-021: the reply stream (SSE) comes through as it's sent, not when it ends", async () => {
@@ -97,9 +100,14 @@ describe("the sidecar's MCP proxy (F-021)", () => {
   });
 
   it("F-021: a server that can't be reached answers 502, and the proxy goes on", async () => {
-    const { upstream: server, proxy: mcp } = await start();
+    const { upstream: server, proxy: mcp, logs } = await start();
+    const real = server.urlFor("docs");
     await server.close();
     upstream = undefined;
     expect((await post(mcp.urlFor("/mcp/docs"), rpc(1, "tools/list"))).status).toBe(502);
+    // The failure is logged by the server's name: never its address, which only the credentials hold.
+    expect(logs.find((record) => record.message === "an MCP server couldn't be reached")?.fields).toMatchObject({ server: "docs" });
+    expect(JSON.stringify(logs)).not.toContain(real);
+    expect(JSON.stringify(logs)).not.toContain(new URL(real).host);
   });
 });
