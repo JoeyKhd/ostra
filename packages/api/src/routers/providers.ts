@@ -358,7 +358,7 @@ export const providersRouter = router({
 });
 
 const agentProfileViewSchema = z.object({
-  id: z.string(),
+  id: agentProfileIdSchema,
   name: z.string(),
   adapter: z.string(),
   builtIn: z.boolean(),
@@ -404,7 +404,7 @@ export const agentProfilesRouter = router({
   /** The model of the built-in OpenCode profile: one of the providers' listed models (F-088). */
   setDefaultModel: adminProcedure
     .input(z.strictObject({ modelId: modelIdSchema }))
-    .output(z.object({ profileId: z.string(), modelId: modelIdSchema }))
+    .output(z.object({ profileId: agentProfileIdSchema, modelId: modelIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { db, ports } = ctx.deps;
       const organizationId = ctx.scope.organizationId;

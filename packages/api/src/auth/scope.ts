@@ -2,6 +2,7 @@ import type { MemberScope, ProjectRole } from "@ostra/domain";
 import type { Db } from "@ostra/db";
 import { memberIdSchema, organizationIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
+import { z } from "zod";
 
 import { mustChangePasswordOf } from "./create-auth.ts";
 import type { OstraAuth } from "./create-auth.ts";
@@ -14,10 +15,14 @@ import { highestRole } from "./roles.ts";
 // things that make one are the functions here, which prove from the session and the member table
 // that the caller belongs to that organization.
 
+/** The ID of a login session: better-auth's, apart from the `SessionId` of an agent session. */
+export const loginSessionIdSchema = z.string().min(1).brand<"LoginSessionId">();
+export type LoginSessionId = z.infer<typeof loginSessionIdSchema>;
+
 /** Who is signed in, as better-auth resolved their session. */
 export type SessionUser = {
   /** The login session's own ID (not its token, which is never read): what a one-time value binds to. */
-  readonly sessionId: string;
+  readonly sessionId: LoginSessionId;
   readonly userId: UserId;
   readonly name: string;
   readonly username: string | null;
@@ -47,7 +52,7 @@ export const resolveSession = async (auth: OstraAuth, headers: Headers): Promise
   const role: unknown = Reflect.get(user, "role");
   const username: unknown = Reflect.get(user, "username");
   return {
-    sessionId: session.id,
+    sessionId: loginSessionIdSchema.parse(session.id),
     userId: userIdSchema.parse(user.id),
     name: user.name,
     username: typeof username === "string" ? username : null,

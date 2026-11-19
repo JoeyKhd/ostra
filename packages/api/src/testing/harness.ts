@@ -9,7 +9,7 @@ import { hashPassword } from "better-auth/crypto";
 
 import { createAuth } from "../auth/create-auth.ts";
 import type { OstraAuth } from "../auth/create-auth.ts";
-import { loadMemberContext } from "../auth/scope.ts";
+import { loadMemberContext, loginSessionIdSchema } from "../auth/scope.ts";
 import type { SessionUser } from "../auth/scope.ts";
 import { createCatalogSource } from "../catalog/catalog-source.ts";
 import { appRouter } from "../routers/app-router.ts";
@@ -126,7 +126,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const contextOf = async (member: SeededMember, sessionId = `session-of-${member.id}`): Promise<Context> => {
     const account = await test.db.user.findUniqueOrThrow({ where: { id: member.userId } });
     const user: SessionUser = {
-      sessionId,
+      sessionId: loginSessionIdSchema.parse(sessionId),
       userId: member.userId,
       name: account.name,
       username: account.username,

@@ -4,6 +4,7 @@ import { projectIdSchema, userIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { loginSessionIdSchema } from "../auth/scope.ts";
 import { createApiHarness } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
 import { adminProcedure, authedProcedure, createCallerFactory, memberProcedure, projectProcedure, publicProcedure, router } from "./init.ts";
@@ -50,7 +51,7 @@ const withoutOrganization = async () => {
     headers: new Headers(),
     resHeaders: new Headers(),
     user: {
-      sessionId: "stray-session",
+      sessionId: loginSessionIdSchema.parse("stray-session"),
       userId: userIdSchema.parse(account.id),
       name: account.name,
       username: account.username,

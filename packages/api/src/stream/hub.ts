@@ -87,19 +87,19 @@ export type CreateStreamHubInput = {
 };
 
 const eventRowSchema = z.object({
-  taskId: z.string(),
+  taskId: taskIdSchema,
   seq: z.number().int(),
-  sessionId: z.string(),
+  sessionId: sessionIdSchema,
   sessionSeq: z.number().int().nullable(),
   occurredAt: z.coerce.date(),
   payload: z.unknown(),
 });
 
 const liveRowSchema = z.object({
-  taskId: z.string(),
-  segmentId: z.string(),
-  sessionId: z.string(),
-  turnId: z.string(),
+  taskId: taskIdSchema,
+  segmentId: segmentIdSchema,
+  sessionId: sessionIdSchema,
+  turnId: turnIdSchema,
   kind: z.enum(["message", "thought"]),
   text: z.string(),
 });
@@ -171,9 +171,9 @@ export const createStreamHub = (input: CreateStreamHubInput): StreamHub => {
     const task = await db.task.findUnique({ where: { id: taskId }, select: { eventSeq: true } });
     const live = new Map<SegmentId, LiveSegment>();
     for (const row of await readLiveRows([taskId])) {
-      live.set(segmentIdSchema.parse(row.segmentId), {
-        turnId: turnIdSchema.parse(row.turnId),
-        sessionId: sessionIdSchema.parse(row.sessionId),
+      live.set(row.segmentId, {
+        turnId: row.turnId,
+        sessionId: row.sessionId,
         kind: row.kind,
         text: row.text,
       });
@@ -254,14 +254,14 @@ export const createStreamHub = (input: CreateStreamHubInput): StreamHub => {
     }
     const rows = await readLiveRows(dirty.map((group) => group.taskId));
     metrics.liveQueries += 1;
-    const seen = new Map<string, Set<SegmentId>>();
-    const updates = new Map<string, LiveUpdate[]>();
+    const seen = new Map<TaskId, Set<SegmentId>>();
+    const updates = new Map<TaskId, LiveUpdate[]>();
     for (const row of rows) {
-      const group = groups.get(taskIdSchema.parse(row.taskId));
+      const group = groups.get(row.taskId);
       if (group === undefined) {
         continue;
       }
-      const segmentId = segmentIdSchema.parse(row.segmentId);
+      const segmentId = row.segmentId;
       const ids = seen.get(row.taskId) ?? new Set<SegmentId>();
       ids.add(segmentId);
       seen.set(row.taskId, ids);
@@ -271,8 +271,8 @@ export const createStreamHub = (input: CreateStreamHubInput): StreamHub => {
       }
       const reset = cached === undefined || !row.text.startsWith(cached.text);
       const next: LiveSegment = {
-        turnId: turnIdSchema.parse(row.turnId),
-        sessionId: sessionIdSchema.parse(row.sessionId),
+        turnId: row.turnId,
+        sessionId: row.sessionId,
         kind: row.kind,
         text: row.text,
       };

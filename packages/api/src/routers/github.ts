@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { connectGitHubApp } from "@ostra/domain";
-import { connectionIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { loginSessionIdSchema } from "../auth/scope.ts";
 import { loadGitHubConnection } from "../services/github-connection.ts";
 import { adapterErrorToTrpc } from "../trpc/errors.ts";
 import { adminProcedure, router, unwrap } from "../trpc/init.ts";
@@ -44,7 +45,11 @@ const STATE_PREFIX = "ostra.github-manifest:";
 const stateKey = (state: string): string => `${STATE_PREFIX}${createHash("sha256").update(state).digest("hex")}`;
 
 /** What the state is bound to: the admin's session, so another session can't complete the flow. */
-const boundSchema = z.strictObject({ sessionId: z.string(), memberId: z.string(), organizationId: z.string() });
+const boundSchema = z.strictObject({
+  sessionId: loginSessionIdSchema,
+  memberId: memberIdSchema,
+  organizationId: organizationIdSchema,
+});
 
 export const githubRouter = router({
   /** The connection, without a secret in it; `null` until GitHub is connected. */

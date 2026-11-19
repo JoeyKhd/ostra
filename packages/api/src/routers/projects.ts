@@ -1,5 +1,5 @@
 import { createProject, createProjectInputSchema, visibleProjects } from "@ostra/domain";
-import { environmentIdSchema, projectIdSchema, repoIdSchema } from "@ostra/protocol";
+import { agentProfileIdSchema, environmentIdSchema, poolIdSchema, projectIdSchema, repoIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 import { adminProcedure, memberProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
@@ -32,8 +32,8 @@ const projectDetailSchema = projectSummarySchema.extend({
   role: z.enum(["admin", "member"]),
   environmentStatus: z.enum(["draft", "saved"]).nullable(),
   /** The pools its tasks may go to. */
-  pools: z.array(z.object({ poolId: z.string(), name: z.string(), isDefault: z.boolean() })),
-  defaultCodeProfile: z.object({ id: z.string(), name: z.string() }).nullable(),
+  pools: z.array(z.object({ poolId: poolIdSchema, name: z.string(), isDefault: z.boolean() })),
+  defaultCodeProfile: z.object({ id: agentProfileIdSchema, name: z.string() }).nullable(),
 });
 
 const createdSchema = z.object({
