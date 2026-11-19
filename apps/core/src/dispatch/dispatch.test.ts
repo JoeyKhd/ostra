@@ -143,7 +143,25 @@ describe("dispatch", () => {
       const theirs = await seedOnlineRunner(test.db, fixture.b.organization.id, { kind: "personal", memberId: fixture.b.admin.id }, 8);
       const theirTask = await seedQueuedTask(test.db, otherWorld, fixture.b.admin, theirs.runnerId);
       expect(await dispatch(dispatchPayload(theirTask))).toMatchObject({ ok: true });
-      // The first session stops: the third goes.
+      // Nor does a session on another provider of ours: the cap is this provider's own.
+      const secondProvider = await test.db.modelProvider.create({
+        data: {
+          organizationId: world.organizationId,
+          name: "Second endpoint",
+          baseUrl: "https://second.example/v1",
+          apiFormat: "anthropic_messages",
+          authScheme: "x_api_key",
+          tokenSecretRef: "ref",
+          allowOnPersonalRunners: true,
+        },
+      });
+      const secondModel = await test.db.model.create({ data: { organizationId: world.organizationId, providerId: secondProvider.id, endpointModelId: "second-model" } });
+      const secondProfile = await test.db.agentProfile.create({
+        data: { organizationId: world.organizationId, name: "OpenCode on the second endpoint", adapter: "opencode", modelId: secondModel.id },
+      });
+      const onSecondProvider = await seedQueuedTask(test.db, { ...world, profileId: secondProfile.id }, fixture.a.member, runner.runnerId);
+      expect(await dispatch(dispatchPayload(onSecondProvider))).toMatchObject({ ok: true });
+      // The first session stops: the third goes, though the second provider's session runs too.
       await test.db.session.update({ where: { id: first.sessionId }, data: { state: "stopped" } });
       expect(await dispatch(dispatchPayload(third))).toMatchObject({ ok: true, runnerId: runner.runnerId });
       // No cap: nothing waits on the provider.
