@@ -1,8 +1,8 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { notifyChannels } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema, segmentIdSchema, sessionIdSchema, storedEventSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
-import type { OrganizationId, ProjectId, SegmentId, SessionId, StoredEvent, TaskId, TurnId } from "@ostra/protocol";
+import { changeEntitySchema, organizationIdSchema, projectIdSchema, segmentIdSchema, sessionIdSchema, storedEventSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
+import type { ChangeEntity, OrganizationId, ProjectId, SegmentId, SessionId, StoredEvent, TaskId, TurnId } from "@ostra/protocol";
 import pg from "pg";
 import { z } from "zod";
 
@@ -33,7 +33,7 @@ export type ChangeNoticeRow = {
   readonly seq: number;
   readonly organizationId: OrganizationId;
   readonly projectId: ProjectId | null;
-  readonly entity: string;
+  readonly entity: ChangeEntity;
   readonly entityId: string;
 };
 
@@ -319,17 +319,26 @@ export const createStreamHub = (input: CreateStreamHubInput): StreamHub => {
         return;
       }
       changeCursor = Number(last.seq);
-      const notices = rows.map(
-        (row): ChangeNoticeRow => ({
+      const notices: ChangeNoticeRow[] = [];
+      for (const row of rows) {
+        // A kind this version doesn't know (a row from a newer core) is skipped, not delivered as a string.
+        const entity = changeEntitySchema.safeParse(row.entity);
+        if (!entity.success) {
+          logger.warn("stream.change_notice_unknown_entity", { seq: Number(row.seq) });
+          continue;
+        }
+        notices.push({
           seq: Number(row.seq),
           organizationId: organizationIdSchema.parse(row.organizationId),
           projectId: row.projectId === null ? null : projectIdSchema.parse(row.projectId),
-          entity: row.entity,
+          entity: entity.data,
           entityId: row.entityId,
-        }),
-      );
-      for (const subscriber of changeSubscribers) {
-        subscriber.deliverChanges(notices);
+        });
+      }
+      if (notices.length > 0) {
+        for (const subscriber of changeSubscribers) {
+          subscriber.deliverChanges(notices);
+        }
       }
       if (rows.length < NOTICE_READ_LIMIT) {
         return;

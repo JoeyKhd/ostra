@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { silentLogger } from "@ostra/adapter-sdk";
 import { mapMember } from "@ostra/db";
-import { segmentIdSchema, turnIdSchema } from "@ostra/protocol";
+import { changeEntities, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { isTrackedEnvelope } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -273,6 +273,20 @@ describe("authorization (ADR 0026, ADR 0035)", () => {
     expect(ids(adminB)).toEqual(["b-task"]);
     expect(member.seen.every((entry) => entry.id === null)).toBe(true);
     await Promise.all([member.stop(), insider.stop(), adminB.stop()]);
+  });
+
+  it("delivers every kind of change notice typed, and skips a kind it doesn't know", async () => {
+    const { a } = harness.fixture;
+    const viewer = watch(await harness.contextOf(a.member), {});
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const entity of [...changeEntities, "from-a-newer-core"]) {
+      await harness.test.db.changeNotice.create({ data: { organizationId: a.organization.id, projectId: null, entity, entityId: `id-${entity}` } });
+    }
+    const kinds = () => viewer.seen.flatMap((entry) => (entry.message.type === "change" ? [entry.message.entity] : []));
+    await viewer.waitFor(() => kinds().length >= changeEntities.length);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(kinds()).toEqual([...changeEntities]);
+    await viewer.stop();
   });
 
   it("closes the stream when the membership is revoked", async () => {

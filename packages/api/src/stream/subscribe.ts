@@ -2,7 +2,7 @@ import { mapEventToStored } from "@ostra/db";
 import { requireProjectAccess } from "@ostra/domain";
 import type { MemberScope } from "@ostra/domain";
 import { LIVE_TEXT_MAX_CHARS, projectIdSchema } from "@ostra/protocol";
-import type { LiveTextFrame, ProjectId, SegmentId, StoredEvent, TaskId } from "@ostra/protocol";
+import type { ChangeEntity, LiveTextFrame, ProjectId, SegmentId, StoredEvent, TaskId } from "@ostra/protocol";
 import { tracked, TRPCError } from "@trpc/server";
 
 import type { Context } from "../trpc/context.ts";
@@ -39,7 +39,7 @@ export type StreamMessage =
   | { readonly type: "event"; readonly event: StoredEvent }
   | { readonly type: "live"; readonly frame: LiveTextFrame }
   | { readonly type: "live-end"; readonly segmentId: SegmentId }
-  | { readonly type: "change"; readonly entity: string; readonly entityId: string; readonly projectId: ProjectId | null };
+  | { readonly type: "change"; readonly entity: ChangeEntity; readonly entityId: string; readonly projectId: ProjectId | null };
 
 type Item =
   | { readonly kind: "events"; readonly events: readonly StoredEvent[] }

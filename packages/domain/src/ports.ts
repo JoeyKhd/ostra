@@ -3,6 +3,7 @@ import type { Tx } from "@ostra/db";
 import type {
   AgentProfileId,
   ApprovalId,
+  ChangeEntity,
   CommandBody,
   CommandId,
   CommandKind,
@@ -82,8 +83,8 @@ export type EntityId =
 export type ChangeNoticeInput = {
   readonly organizationId: OrganizationId;
   readonly projectId: ProjectId | null;
-  /** The kind of record: `task`, `runner`, `project`, `model-provider`, … */
-  readonly entity: string;
+  /** The kind of record: `task`, `runner`, `project`, `model-provider`, … (the closed `ChangeEntity` union). */
+  readonly entity: ChangeEntity;
   readonly entityId: EntityId;
 };
 
