@@ -1,7 +1,7 @@
 // `pnpm dev` (ticket 29): the whole dev stack in one command. It starts the dev database unless
 // DATABASE_URL is set, generates Prisma's client (a fresh clone has none), runs the migrations, then
-// starts apps/core and apps/web in watch mode with their output prefixed, and prints where they
-// are. Each server starts once its package has a `dev` script; until then `pnpm dev` says so and
+// starts apps/core (`OSTRA_DEV_CORE_REPLICAS` of them, each on the next port) and apps/web in watch
+// mode with their output prefixed, and prints where they are. Each server starts once its package has a `dev` script; until then `pnpm dev` says so and
 // runs the rest.
 //
 // Ctrl-C (or SIGTERM) stops everything and leaves no process: the servers' process trees are ended,
@@ -15,6 +15,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import {
+  coreReplicas,
   devApps,
   hasDevScript,
   isDatabaseUrlLine,
@@ -259,12 +260,18 @@ const main = async (): Promise<void> => {
     return;
   }
 
+  const replicas = coreReplicas(process.env);
+  if (replicas === null) {
+    say("OSTRA_DEV_CORE_REPLICAS is a number from 1 to 8.");
+    await shutdown(1);
+    return;
+  }
   const addresses: string[] = [];
-  for (const app of devApps(repoRoot)) {
+  for (const app of devApps(repoRoot, replicas)) {
     if (await hasDevScript(app.dir)) {
       const piece = runPnpmDev(app.label, app.dir, app.extraEnv(process.env));
       pipeLines(piece);
-      addresses.push(`${app.label === "web" ? "The panel" : "Core     "}  ${app.address(process.env)}`);
+      addresses.push(`${app.label === "web" ? "The panel" : app.label.padEnd(9)}  ${app.address(process.env)}`);
     } else {
       say(`${path.relative(repoRoot, app.dir)} has no server yet (no \`dev\` script): not started.`);
     }

@@ -1,4 +1,5 @@
 import http from "node:http";
+import type { RequestOptions } from "node:http";
 import https from "node:https";
 import net from "node:net";
 import type { Duplex } from "node:stream";
@@ -280,8 +281,8 @@ export const startTlsInspectingProxy = async (input: {
   /** The proxy's own leaf for the names it intercepts, signed by the corporate CA the client trusts. */
   readonly leafCert: string;
   readonly leafKey: string;
-  /** The CA the real server's certificate chains to. */
-  readonly upstreamCa: string;
+  /** The CA the real server's certificate chains to; `null` when the server speaks plain HTTP (a dev core). */
+  readonly upstreamCa: string | null;
   readonly mode: InspectionMode;
   readonly port?: number;
 }): Promise<InspectingProxy> => {
@@ -289,7 +290,9 @@ export const startTlsInspectingProxy = async (input: {
   const state = { mode: input.mode };
   const sockets = new Set<Duplex>();
   const secureContext = tls.createSecureContext({ cert: input.leafCert, key: input.leafKey });
-  const upstreamAgent = new https.Agent({ ca: input.upstreamCa, keepAlive: true });
+  const upstreamCa = input.upstreamCa;
+  const upstreamAgent = upstreamCa === null ? new http.Agent({ keepAlive: true }) : new https.Agent({ ca: upstreamCa, keepAlive: true });
+  const requestUpstream = upstreamCa === null ? http.request : https.request;
 
   // The HTTP-aware side, for the mode that blocks WebSockets: it reads every request in clear.
   const inner = http.createServer();
@@ -301,7 +304,7 @@ export const startTlsInspectingProxy = async (input: {
       response.writeHead(502, { "content-type": "text/html" }).end(BLOCK_PAGE);
       return;
     }
-    const upstream = https.request(
+    const upstream = requestUpstream(
       { host: target.host, port: target.port, servername: host, method: request.method, path: request.url, headers: request.headers, agent: upstreamAgent },
       (answer) => {
         response.writeHead(answer.statusCode ?? 502, answer.headers);
@@ -344,7 +347,7 @@ export const startTlsInspectingProxy = async (input: {
       return;
     }
     // Everything passes, decrypted and encrypted again: the proxy sees every byte.
-    const upstream = tls.connect({ host: target.host, port: target.port, servername: authority.host, ca: input.upstreamCa });
+    const upstream = upstreamCa === null ? net.connect(target.port, target.host) : tls.connect({ host: target.host, port: target.port, servername: authority.host, ca: upstreamCa });
     sockets.add(upstream);
     let first = true;
     let isUpgrade = false;
@@ -421,7 +424,8 @@ export const startNginxDefaults = async (input: {
   readonly upstream: () => Target;
   readonly cert: string;
   readonly key: string;
-  readonly upstreamCa: string;
+  /** `null` when the upstream speaks plain HTTP (a dev core). */
+  readonly upstreamCa: string | null;
   readonly port?: number;
 }): Promise<RunningProxy> => {
   const stats = newStats();
@@ -434,18 +438,17 @@ export const startNginxDefaults = async (input: {
     headers.connection = "close";
     headers["content-length"] = String(body.length);
     stats.inspectedRequests.push(`${request.method ?? ""} ${(request.url ?? "").split("?")[0] ?? ""}${request.headers.upgrade === undefined ? "" : " (upgrade stripped)"}`);
-    const upstream = https.request(
-      { host: target.host, port: target.port, method: request.method, path: request.url, headers, ca: input.upstreamCa, agent: false, servername: "localhost" },
-      (answer) => {
-        const chunks: Buffer[] = [];
-        answer.on("data", (chunk: Buffer) => chunks.push(chunk));
-        answer.on("end", () => {
-          const out: http.OutgoingHttpHeaders = {};
-          for (const [key, value] of Object.entries(answer.headers)) if (!HOP.has(key) && value !== undefined) out[key] = value;
-          reply(answer.statusCode ?? 502, out, Buffer.concat(chunks));
-        });
-      },
-    );
+    const options: RequestOptions = { host: target.host, port: target.port, method: request.method, path: request.url, headers, agent: false };
+    const onAnswer = (answer: http.IncomingMessage): void => {
+      const chunks: Buffer[] = [];
+      answer.on("data", (chunk: Buffer) => chunks.push(chunk));
+      answer.on("end", () => {
+        const out: http.OutgoingHttpHeaders = {};
+        for (const [key, value] of Object.entries(answer.headers)) if (!HOP.has(key) && value !== undefined) out[key] = value;
+        reply(answer.statusCode ?? 502, out, Buffer.concat(chunks));
+      });
+    };
+    const upstream = input.upstreamCa === null ? http.request(options, onAnswer) : https.request({ ...options, ca: input.upstreamCa, servername: "localhost" }, onAnswer);
     upstream.setTimeout(60_000, () => {
       upstream.destroy();
       reply(504, { "content-type": "text/html" }, Buffer.from(NGINX_504));

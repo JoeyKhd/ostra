@@ -28,7 +28,8 @@ import { cpuText, isDnsLabel, isDnsSubdomain, labelKeyProblem, labelValueProblem
 // dependents with it), labels, names, volumes and quotas. A pod is scheduled, pulls its images and
 // runs: simulated by default, or as local processes in the process mode (`process-mode.ts`).
 // Switches hold pods unschedulable with the autoscaler's `TriggeredScaleUp` event, fail an image's
-// pull, and report a version under 1.29. Test and dev only.
+// pull, and report a version under 1.29, here or over `POST /_fake/<switch>` from another process.
+// `/healthz`, `/livez` and `/readyz` answer anyone. Test and dev only.
 
 export type KubeObject = Readonly<Record<string, unknown>>;
 
@@ -208,6 +209,9 @@ const mergePatch = (target: unknown, patch: unknown): unknown => {
   }
   return out;
 };
+
+/** A switch's body, as `POST /_fake/<switch>` takes it. */
+const controlSchema = z.strictObject({ ms: z.number().int().nonnegative().optional(), image: z.string().min(1).optional(), minor: z.number().int().positive().optional() });
 
 const jsonPatchOpSchema = z.looseObject({ op: z.enum(["add", "replace", "remove", "test"]), path: z.string(), value: z.unknown().optional() });
 
@@ -894,15 +898,51 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
     };
   };
 
+  const applyControl = (name: string, control: z.infer<typeof controlSchema>): boolean => {
+    switch (name) {
+      case "hold":
+        if (control.ms === undefined) return false;
+        holdUntil = Date.now() + control.ms;
+        return true;
+      case "fail-pull":
+        if (control.image === undefined) return false;
+        pullFailures.add(control.image);
+        return true;
+      case "clear-pull-failures":
+        pullFailures.clear();
+        return true;
+      case "minor":
+        if (control.minor === undefined) return false;
+        minor = control.minor;
+        return true;
+      default:
+        return false;
+    }
+  };
+
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const url = new URL(request.url ?? "/", "http://kube.invalid");
     const method = request.method ?? "GET";
     const record = (status: number, namespace: string | null): void => {
       requests.push({ method, path: url.pathname, namespace, status });
     };
+    // The API server's health endpoints answer anyone, as a real one's do for its probes.
+    if (method === "GET" && (url.pathname === "/healthz" || url.pathname === "/livez" || url.pathname === "/readyz")) {
+      record(200, null);
+      response.writeHead(200, { "content-type": "text/plain" }).end("ok");
+      return;
+    }
     if (request.headers.authorization !== `Bearer ${token}`) {
       record(401, null);
       fail(response, { code: 401, reason: "Unauthorized", message: "Unauthorized" });
+      return;
+    }
+    // The switches, for a fake in another process (`pnpm dev:fake-kube hold 40s`): the token's holder only.
+    if (method === "POST" && url.pathname.startsWith("/_fake/")) {
+      const control = controlSchema.safeParse(await readBody(request));
+      const switched = control.success ? applyControl(url.pathname.slice("/_fake/".length), control.data) : false;
+      record(switched ? 200 : 400, null);
+      send(response, switched ? 200 : 400, { switched });
       return;
     }
     const target = route(url.pathname);

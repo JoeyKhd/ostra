@@ -6,7 +6,8 @@ import path from "node:path";
 
 /** A server of the dev stack, started with its package's `dev` script when it has one. */
 export type DevApp = {
-  readonly label: "core" | "web";
+  /** `core`, `core2`, `core3`... for each core replica (`OSTRA_DEV_CORE_REPLICAS`), and `web`. */
+  readonly label: string;
   readonly dir: string;
   /** What the terminal shows when it runs. */
   readonly address: (env: Readonly<Record<string, string | undefined>>) => string;
@@ -42,13 +43,29 @@ export const devPublicUrls = (env: Readonly<Record<string, string | undefined>>)
   ...(isSet(env, "OSTRA_CORE_PUBLIC_URL") ? {} : { OSTRA_CORE_PUBLIC_URL: coreAddress(env) }),
 });
 
-export const devApps = (repoRoot: string): readonly DevApp[] => [
-  {
-    label: "core",
-    dir: path.join(repoRoot, "apps", "core"),
-    address: coreAddress,
-    extraEnv: (env) => devPublicUrls(env),
-  },
+/** How many core replicas `pnpm dev` starts: `OSTRA_DEV_CORE_REPLICAS`, 1 to 8, default 1; `null` when it's set to anything else. */
+export const coreReplicas = (env: Readonly<Record<string, string | undefined>>): number | null => {
+  const raw = env["OSTRA_DEV_CORE_REPLICAS"];
+  if (raw === undefined || raw === "") return 1;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 1 && value <= 8 ? value : null;
+};
+
+/**
+ * The stack's servers: `replicas` cores (milestone 5, ticket 36: the demo's and the load test's
+ * several replicas over one database), each on the next port after `OSTRA_CORE_PORT`, and one panel.
+ * Runners are told the first core's address; any replica takes them.
+ */
+export const devApps = (repoRoot: string, replicas = 1): readonly DevApp[] => [
+  ...Array.from({ length: Math.max(1, replicas) }, (_unused, index): DevApp => {
+    const replicaPort = (env: Readonly<Record<string, string | undefined>>): number => port(env, "OSTRA_CORE_PORT", 8787) + index;
+    return {
+      label: index === 0 ? "core" : `core${String(index + 1)}`,
+      dir: path.join(repoRoot, "apps", "core"),
+      address: (env) => `http://localhost:${String(replicaPort(env))}`,
+      extraEnv: (env) => ({ ...devPublicUrls(env), ...(index === 0 ? {} : { OSTRA_CORE_PORT: String(replicaPort(env)) }) }),
+    };
+  }),
   {
     label: "web",
     dir: path.join(repoRoot, "apps", "web"),

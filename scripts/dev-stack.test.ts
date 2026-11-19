@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  coreReplicas,
   devApps,
   hasDevScript,
   isDatabaseUrlLine,
@@ -51,6 +52,21 @@ describe("pnpm dev's pieces", () => {
     expect(web?.extraEnv({ OSTRA_WEB_PORT: "3401" })["PORT"]).toBe("3401");
     expect(web?.extraEnv({})).toEqual({ PORT: "3000", OSTRA_PUBLIC_URL: "http://localhost:3000", OSTRA_CORE_PUBLIC_URL: "http://localhost:8787" });
     expect(core?.extraEnv({ OSTRA_WEB_PORT: "3401" })["PORT"]).toBeUndefined();
+  });
+
+  it("F-013: OSTRA_DEV_CORE_REPLICAS starts that many cores, each on the next port and told it, and one panel", () => {
+    expect(coreReplicas({})).toBe(1);
+    expect(coreReplicas({ OSTRA_DEV_CORE_REPLICAS: "3" })).toBe(3);
+    expect(coreReplicas({ OSTRA_DEV_CORE_REPLICAS: "0" })).toBeNull();
+    expect(coreReplicas({ OSTRA_DEV_CORE_REPLICAS: "two" })).toBeNull();
+    const apps = devApps("/repo", 3);
+    expect(apps.map((app) => app.label)).toEqual(["core", "core2", "core3", "web"]);
+    const env = { OSTRA_CORE_PORT: "9502" };
+    expect(apps.map((app) => app.address(env))).toEqual(["http://localhost:9502", "http://localhost:9503", "http://localhost:9504", "http://localhost:3000"]);
+    expect(apps.map((app) => app.extraEnv(env)["OSTRA_CORE_PORT"])).toEqual([undefined, "9503", "9504", undefined]);
+    // Runners and the panel are told the first core's address: any replica takes them.
+    expect(apps.every((app) => app.extraEnv(env)["OSTRA_CORE_PUBLIC_URL"] === "http://localhost:9502")).toBe(true);
+    expect(devApps("/repo").map((app) => app.label)).toEqual(["core", "web"]);
   });
 
   it("F-001: a stack on other ports tells the panel and core their own public addresses, so sign-in accepts the panel's origin", () => {

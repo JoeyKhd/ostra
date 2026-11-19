@@ -474,6 +474,28 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
+  e2e/m5-the-fleet:
+    dependencies:
+      '@ostra/adapter-executor-kubernetes':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-executor-kubernetes
+      '@ostra/adapter-sdk':
+        specifier: workspace:*
+        version: link:../../packages/adapter-sdk
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@kubernetes/client-node':
+        specifier: 2.0.2
+        version: 2.0.2(bare-buffer@3.7.3)
+      eslint:
+        specifier: 10.15.0
+        version: 10.15.0(jiti@2.7.0)
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
   packages/adapter-sdk:
     dependencies:
       '@agentclientprotocol/sdk':
