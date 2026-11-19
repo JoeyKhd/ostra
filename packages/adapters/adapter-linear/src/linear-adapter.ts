@@ -141,6 +141,7 @@ const toTicket = (issue: LinearIssue): AdapterResult<Ticket> => {
     parentKey: parent?.success === true ? parent.data : null,
     parentExternalId: parentId?.success === true ? parentId.data : null,
     labels: issue.labels?.nodes.map((label) => label.name) ?? [],
+    assignee: issue.assignee === null || issue.assignee === undefined ? null : { id: issue.assignee.id, name: issue.assignee.name },
     updatedAt: updated,
   });
 };

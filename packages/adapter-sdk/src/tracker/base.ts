@@ -72,6 +72,11 @@ export type Ticket = {
   readonly parentExternalId: ExternalTicketId | null;
   /** The label names. */
   readonly labels: readonly string[];
+  /**
+   * Who the ticket is assigned to, for the Inbox's filter and panel. `null`: nobody. Missing: the
+   * adapter doesn't say (an older one), which the cache keeps as no assignee.
+   */
+  readonly assignee?: { readonly id: string; readonly name: string } | null;
   /** In ms since the epoch. */
   readonly updatedAt: number;
 };

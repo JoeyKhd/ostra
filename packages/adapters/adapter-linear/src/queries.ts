@@ -19,7 +19,7 @@ export const MAX_COMMENT_PAGES = 10;
 const STATE_FIELDS = "state { id name type }";
 
 /** A ticket, as `Ticket` needs it. */
-export const ISSUE_FIELDS = `id identifier title description url priority updatedAt ${STATE_FIELDS} team { id } parent { id identifier } labels(first: ${String(LABELS_PER_ISSUE)}) { nodes { name } }`;
+export const ISSUE_FIELDS = `id identifier title description url priority updatedAt ${STATE_FIELDS} team { id } parent { id identifier } assignee { id name } labels(first: ${String(LABELS_PER_ISSUE)}) { nodes { name } }`;
 
 /** Another ticket, as `TicketSummary` needs it. */
 const SUMMARY_FIELDS = `id identifier title url ${STATE_FIELDS}`;
@@ -94,6 +94,7 @@ export const issueSchema = z.looseObject({
   // Read loosely: an answer without the team still parses, and is then on no board.
   team: z.looseObject({ id: z.string() }).nullish(),
   parent: z.looseObject({ id: z.string(), identifier: z.string() }).nullish(),
+  assignee: z.looseObject({ id: z.string(), name: z.string() }).nullish(),
   labels: nodes(z.looseObject({ name: z.string() })).nullish(),
 });
 export type LinearIssue = z.infer<typeof issueSchema>;
