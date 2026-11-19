@@ -1,0 +1,26 @@
+# Generation 1 (kept). References: the docs-guide generation (2048 original), the approved 2048 original of app-targets/m3/phone-approval, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+Two flat, straight-on, pixel-precise phone screenshots side by side in one image, dark mode, of the DOCUMENTATION WEBSITE of "ostra" at phone width. Each screen is exactly 390x844 CSS pixels drawn at 1.5x (585x1266 image pixels), a plain rectangle with square corners and a 1px #2F4A47 outline, no device frame, no bezel, no notch, no status bar, no perspective, no shadow. The two screens stand on a flat plain #1B1D20 canvas, vertically centred, with an equal gap of about 140 image pixels between them and at the left and right edges. Nothing else on the canvas: no captions, no labels, no arrows.
+
+The FIRST attached image is the same docs page at desktop width: copy its colours, fonts, code blocks with the "sh" strip, the teal "run" chip and the copy icon, its callouts with a 2px left rule, and its words EXACTLY. The SECOND attached image is ostra's approved phone screens: copy how a phone screen is drawn, its top bar, its padding (16px) and its scale. Everything on both screens is at the same scale: body text 15px, small text 13px, title 26px.
+
+LEFT SCREEN, the guide page "Install with Docker Compose" at phone width:
+- TOP BAR 52px, #0C1D21, a hairline under it: a menu icon (three lines) at the left, the hinge logo mark and the wordmark "ostra" in Manrope ExtraBold off-white, then on the right a search icon button and a sun/moon icon button.
+- Under it a 40px row, hairline under it: Mist 14px "On this page" with a chevron-down on the right (the page's headings, collapsed).
+- faint 13px breadcrumb "Install  ›  Install with Docker Compose"
+- title Manrope ExtraBold 26px off-white, two lines: "Install with Docker" / "Compose"
+- lede 15px Mist: "From a Linux machine with Docker to the panel's sign-in page, in about ten minutes."
+- "1   Get the compose file" heading 18px semibold, then 15px Mist "Download this release's compose file into an empty folder."
+- a full-width code block (#112629, 1px #1A3034 border, 8px radius): its strip "sh" on the left, the teal outlined "run" chip with a play icon and a copy icon on the right; two mono 13px lines, the second one too long, cut at the block's right edge with a soft fade to show it scrolls sideways: "mkdir ostra && cd ostra" / "curl -fsSLO https://github.com/JoeyKhd/ostra/rel"
+- "2   Start it" heading, then a code block "docker compose up -d" / "docker compose ps" with the same strip.
+- the NOTE callout with a 2px teal left rule and an info icon: "Note" / "The first start creates the admin demo@demo.com with the password demo. The panel asks for a new password at the first sign-in." (cut at the bottom edge of the screen).
+
+RIGHT SCREEN, the same page with the NAVIGATION DRAWER open:
+- The page behind is dimmed by a flat dark overlay at 70%.
+- A drawer from the left, 320px wide and full height, #0C1D21, a 1px #2F4A47 line on its right: at its top a 52px row with the logo mark and "ostra" and an X close icon on the right; then a search field "Search the docs" (#112629, 1px #2F4A47 border, 7px radius, 38px tall); then the navigation, rows 40px, Mist 15px, weight 500: faint 12px label "Start" with "What ostra is", "Before you start", "The 30-minute path"; faint label "Install" with "Install with Docker Compose" (SELECTED: #112629 fill, 6px radius, off-white), "First sign-in", "Setup in the panel", "Linear (optional)", "Kubernetes with Helm", "Upgrading"; then collapsed rows with a chevron-right: "Runners", "Agents and models", "Using ostra", "Security", "Reference", "Contributing".
+- At the drawer's bottom, a hairline, then a GitHub icon with Mist "GitHub", and on the right the outlined mono chip "v1.0.0".
+
+PALETTE, DARK (flat, exact hex): background Abyss #0C1D21; raised surfaces (code, fields, callouts, the selected row) #112629; hairlines #1A3034; control borders #2F4A47; text #F3F0E8; secondary Mist #CFD8D4; faint #8FA6A2; links teal #6FB8AA; danger red #E5675C. No amber anywhere. No gradients, no glow, no drop shadows.
+
+TYPE: Manrope ExtraBold for the title and the wordmark; IBM Plex Sans for text; IBM Plex Mono for commands, paths and "v1.0.0". Icons: thin Lucide line icons, 18px, stroke 1.75. Every word spelled exactly as written.

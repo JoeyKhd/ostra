@@ -1,0 +1,39 @@
+# Generation 1 (kept). References: app-targets/m1/home.png (the approved 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png, files/web/sign-in-illustration.webp (Deep water, B-017, as PNG)
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web page, 1440x960 CSS pixels rendered at 2x, dark mode: the landing page of the DOCUMENTATION WEBSITE of "ostra", a source-available, self-hosted control plane for coding agents. The FIRST attached image is ostra's approved console Home page: copy its fonts, its small dense scale, its hairline rows, its quiet mono numbers and its off-white primary button EXACTLY, but this is the public docs site, so there is NO console sidebar. The FOURTH attached image is the brand illustration "Deep water" (a pale stone hinge shape lit from inside, in dark blue-green water): use it, as given, as the only picture on the page.
+
+1. HEADER, full width, 56px tall, background #0C1D21, a 1px #1A3034 hairline under it. Left at x 32: the hinge logo mark 22px off-white, the wordmark "ostra" in Manrope ExtraBold off-white, a faint "Docs" in Plex Sans 500 after a thin vertical divider, then a small outlined mono chip "v1.0.0". Right side: a search field 280px wide, 34px tall, #112629 with a 1px #2F4A47 border and 7px radius, a search icon, faint placeholder "Search the docs" and a small key chip "⌘K" at its right end; then a GitHub icon with "GitHub" in Mist; then a small sun/moon theme toggle icon button. Nothing else in the header.
+
+2. HERO, content column centred, 1120px wide (x 160 to 1280), starting at y 104:
+- Left part, 600px wide: a small faint mono line "Documentation · v1.0.0"; then a large heading in Manrope ExtraBold about 42px, off-white, two lines: "Self-hosted cloud agents" / "for your team."; then a lede in Plex Sans 17px Mist, three lines: "ostra is the source-available, self-hosted control plane for coding agents. A Linear ticket or a prompt becomes a task, an agent works it on its own branch on your runners, and it opens a pull request on GitHub."; then two buttons 38px tall: a filled off-white primary "Install ostra" with a small arrow-right, and an outline button (1px #2F4A47 border, off-white text) "Configuration reference". Under them, faint 13px: "Your agents, your machines, your tracker, your keys."
+- Right part, about 440x300 px: the attached Deep water illustration, cropped to the glowing hinge stone, its edges fading softly into the #0C1D21 page with no frame or border.
+
+3. "BEFORE YOU START", y about 420, one row with a hairline above it: a semibold 15px off-white title "Before you start" on the left, then three items in a row, each a small faint check-circle icon and 14px Mist text: "A Linux machine with Docker" · "A GitHub organization you administer" · "A model provider's base URL and token". At the right end a teal link "Linear is optional".
+
+4. "THE 30-MINUTE PATH", y about 490: section title "The 30-minute path" semibold 20px off-white and on its right a faint 14px "From docker compose up to your first agent-made pull request." Below it three equal columns, each with a 1px #1A3034 hairline on top, no boxes, no cards:
+  column 1: faint mono "01", semibold off-white "Start ostra", Mist 14px "One compose file brings up the server, Postgres and a pool runner.", then a one-line code block (#112629, 1px #1A3034 border, 6px radius, mono 13px off-white) "docker compose up -d" with a tiny copy icon at its right, then teal "Install with Docker Compose →".
+  column 2: faint mono "02", "Set it up in the panel", Mist "Sign in as demo, choose a password, then add a model provider and the GitHub App, in the checklist's order.", teal "Setup in the panel →".
+  column 3: faint mono "03", "Start a task", Mist "Create a project, type a prompt or pick a Linear ticket, and review the pull request the agent opens.", teal "Your first task →".
+
+5. SECTIONS GRID, y about 700: a title "Sections" semibold 20px off-white. Below it a grid of 4 columns by 2 rows separated only by 1px #1A3034 hairlines (lines between cells, no filled boxes), each cell about 84px tall with: a thin 16px Lucide icon in Mist, a semibold 15px off-white title, and one line of 13px faint text:
+  "Start" (book-open icon) "What ostra is, what you need, the 30-minute path."
+  "Install" (download icon) "Docker Compose, the first sign-in, setup, Helm, upgrading."
+  "Runners" (server icon) "Pools, join tokens, docker, host and kubernetes."
+  "Agents and models" (cpu icon) "Providers, OpenCode, Claude Code, agent profiles."
+  "Using ostra" (list-checks icon) "Tasks, steering, approvals, reopening, automations."
+  "Security" (shield icon) "What the box isolates, the proxies, reporting a flaw."
+  "Reference" (sliders-horizontal icon) "Every setting, the CLI's commands, the ports."
+  "Contributing" (puzzle icon) "The adapter guide, the contract suites, the CLA."
+The page continues below the fold (cut at the bottom edge).
+
+
+THIS IS THE PUBLIC DOCS WEBSITE, NOT THE CONSOLE: no console sidebar, no organization switcher, no "New task" button, no task rows. It shares the console's fonts, logo, density and hairline style (copy those from the attached console screenshots), but its colours are the brand's own deep blue-green dark.
+
+PALETTE, DARK (flat, exact hex): page background Abyss #0C1D21 (a very dark blue-green, almost black, flat, no gradient); header and left navigation the same #0C1D21; raised surfaces (code blocks, the search field, inputs, the selected nav row, callouts) #112629; hairlines #1A3034; control borders #2F4A47; text Shell #F3F0E8 (warm off-white); secondary text Mist #CFD8D4; faint text #8FA6A2; links and inline actions teal #6FB8AA; success green #4FB286; errors and danger red #E5675C; primary button filled #F3F0E8 with #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 is NOT used on this page at all. No gradients, no glow, no purple, no drop shadows, no cards inside cards, no robots, no sparkles, no emoji, no terminal ">_" icon.
+
+TYPE: page titles and the hero heading Manrope ExtraBold; everything else IBM Plex Sans (body 15px for prose, dense rows 14px, secondary 13px, small labels 12px; nav weight 500, section titles 600); IBM Plex Mono for commands, setting names, paths, versions and all code, perfectly monospaced and aligned. Icons: thin Lucide line icons, 15px, stroke 1.75.
+
+LOGO: the attached hinge mark (a rounded square split by one diagonal channel, with a small notch at the top-left), off-white, never redrawn as something else, followed by the lowercase wordmark "ostra" in Manrope ExtraBold off-white.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web page, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no browser frame, no device frame, no perspective, no window shadow. Calm, precise and quiet like the Stripe or Tailwind documentation, but denser and darker. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above.

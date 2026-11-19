@@ -1,0 +1,33 @@
+# Generation 1 (kept). References: the approved 2048 original of app-targets/m4/search-palette, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web page, 1440x960 CSS pixels rendered at 2x, dark mode: the SEARCH DIALOG of the DOCUMENTATION WEBSITE of "ostra", a source-available, self-hosted control plane for coding agents, open over a docs guide page. The FIRST attached image is ostra's approved console search palette: copy its dialog shape, its input row with an "esc" key chip, its grouped result rows with a highlighted match, its selected row with a return-key chip and its footer of keyboard hints EXACTLY, at the same small, dense scale, but in the docs' blue-green dark colours.
+
+BEHIND THE DIALOG (dimmed by a flat #061114 overlay at 70%, so it is dark and quiet): the docs page: HEADER, full width, 56px tall, background #0C1D21, a 1px #1A3034 hairline under it. Left at x 24: the hinge logo mark 22px off-white, the wordmark "ostra" in Manrope ExtraBold off-white, a thin vertical divider, a faint "Docs" in Plex Sans 500, then a small outlined mono chip "v1.0.0". Right side: a search field 280px wide, 34px tall, #112629 with a 1px #2F4A47 border and 7px radius, a search icon, faint placeholder "Search the docs" and a small key chip "⌘K" at its right end; then a GitHub icon with "GitHub" in Mist; then a small sun/moon theme toggle icon button. Below it a 264px left docs navigation ("Start", "Install", "Runners", "Agents and models", "Using ostra", "Security", "Reference", "Contributing") and an article titled "Install with Docker Compose" with a code block, all dimmed.
+
+THE DIALOG: centred horizontally, 680px wide, top at y 112, #0F2226 fill, a 1px #2F4A47 border, 12px radius, no glow.
+- INPUT ROW 56px, hairline under it: a search icon, the typed query "join token" in off-white 17px with a text caret, and on the right a small key chip "esc".
+- RESULTS, grouped by page. Each group starts with a faint 12px page path line with a small file-text icon. Under it the page's own row and its heading rows; a heading row has a small faint "#" icon and is indented 20px. Rows 40px (52px with a snippet line). The matched words "join token" are drawn off-white semibold on a #1F3F44 highlight with 3px radius. No amber anywhere.
+  group "Runners  ›  Pools and join tokens":
+    row (SELECTED, #163035 fill, 8px radius, a small "↵" key chip on the right): file-text icon, off-white 14.5px "Pools and join tokens", faint 13px under it "A pool runner registers once with its pool's join token."
+    heading row: "#  Make a join token", faint snippet "…an admin makes a join token for the pool, then passes it to ostra runner once…"
+    heading row: "#  Revoke a join token"
+  group "Install  ›  Install with Docker Compose":
+    heading row: "#  Required settings", faint snippet "…the compose file's runner reads the bootstrap join token from the server's data folder…"
+  group "Reference  ›  Configuration":
+    heading row with the name in mono: "#  OSTRA_JOIN_TOKEN", faint snippet "A pool runner's join token, used once to register."
+    heading row: "#  OSTRA_JOIN_TOKEN_FILE", faint snippet "A file holding a pool runner's join token."
+- FOOTER 40px, hairline above, faint 12px: key chips "↑" "↓" then "Move", "↵" then "Open", "esc" then "Close"; on the far right faint "6 results · searched in your browser".
+
+
+THIS IS THE PUBLIC DOCS WEBSITE, NOT THE CONSOLE: no console sidebar, no organization switcher, no "New task" button, no task rows. It shares the console's fonts, logo, density and hairline style (copy those from the attached console screenshots), but its colours are the brand's own deep blue-green dark.
+
+PALETTE, DARK (flat, exact hex): page background Abyss #0C1D21 (a very dark blue-green, almost black, flat, no gradient); header and left navigation the same #0C1D21; raised surfaces (code blocks, the search field, inputs, the selected nav row, callouts) #112629; hairlines #1A3034; control borders #2F4A47; text Shell #F3F0E8 (warm off-white); secondary text Mist #CFD8D4; faint text #8FA6A2; links and inline actions teal #6FB8AA; success green #4FB286; errors and danger red #E5675C; primary button filled #F3F0E8 with #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 is NOT used on this page at all. No gradients, no glow, no purple, no drop shadows, no cards inside cards, no robots, no sparkles, no emoji, no terminal ">_" icon.
+
+TYPE: page titles and the hero heading Manrope ExtraBold; everything else IBM Plex Sans (body 15px for prose, dense rows 14px, secondary 13px, small labels 12px; nav weight 500, section titles 600); IBM Plex Mono for commands, setting names, paths, versions and all code, perfectly monospaced and aligned. Icons: thin Lucide line icons, 15px, stroke 1.75.
+
+LOGO: the attached hinge mark (a rounded square split by one diagonal channel, with a small notch at the top-left), off-white, never redrawn as something else, followed by the lowercase wordmark "ostra" in Manrope ExtraBold off-white.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web page, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no browser frame, no device frame, no perspective, no window shadow. Calm, precise and quiet like the Stripe or Tailwind documentation, but denser and darker. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above.
+
+# docs-search-empty.webp: no generation. This picture with the query, results and count erased and the empty state drawn locally (docs-search-empty-compose.py, kept with the 2048 originals): the query "jira", the Deep water illustration feathered into the dialog, "No results for “jira”", "Try a setting's name, a command or a page's title.", "Browse the sections →", and "0 results · searched in your browser".

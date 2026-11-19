@@ -1,0 +1,41 @@
+# Generation 1 (kept). References: the approved 2048 original of app-targets/m4/audit-log, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web page, 1440x960 CSS pixels rendered at 2x, dark mode: the CONFIGURATION REFERENCE page of the DOCUMENTATION WEBSITE of "ostra", a source-available, self-hosted control plane for coding agents. The FIRST attached image is ostra's approved console Audit log page: copy its fonts, its small dense scale, its filter row, its quiet group header bands with counts, its mono table cells and its hairline rows EXACTLY, with #112629 instead of grey for the bands. This is the public docs site, so the left column is the DOCS NAVIGATION, not the console sidebar, and there is no right properties panel.
+
+1. HEADER, full width, 56px tall, background #0C1D21, a 1px #1A3034 hairline under it. Left at x 24: the hinge logo mark 22px off-white, the wordmark "ostra" in Manrope ExtraBold off-white, a thin vertical divider, a faint "Docs" in Plex Sans 500, then a small outlined mono chip "v1.0.0". Right side: a search field 280px wide, 34px tall, #112629 with a 1px #2F4A47 border and 7px radius, a search icon, faint placeholder "Search the docs" and a small key chip "⌘K" at its right end; then a GitHub icon with "GitHub" in Mist; then a small sun/moon theme toggle icon button.
+
+2. LEFT DOCS NAVIGATION, 264px wide, x 0 to 264, background #0C1D21, a 1px #1A3034 line on its right, padding 20px 16px, rows 30px, Plex Sans 14px Mist, weight 500: collapsed section rows with a small chevron-right each: "Start", "Install", "Runners", "Agents and models", "Using ostra", "Security"; then the faint 12px label "Reference" with rows "Configuration" (SELECTED: #112629 fill, 6px radius, off-white text), "CLI commands", "Runner protocol", "Ports"; then a collapsed "Contributing".
+
+3. MAIN COLUMN, x 312 to 1160 (848px wide):
+- faint 13px breadcrumb "Reference  ›  Configuration"
+- title Manrope ExtraBold 32px off-white "Configuration reference"
+- lede 16px Mist: "Every setting ostra reads, its default, and where it's read. A fresh install needs none of them."
+- faint 13px with a small file icon: "Rendered from " + mono "docs/configuration.md" + ", which a test checks against the code."
+- FILTER ROW: a field 340px, 34px, #112629, 1px #2F4A47 border, 7px radius, a filter icon and faint placeholder "Filter by name or words"; then a segmented control of four 30px segments with a 1px #2F4A47 border: "All 59" (selected, #1A3034 fill, off-white), "Server 39", "Runner 13", "Development 7"; on the far right faint mono "59 settings".
+- GROUP 1: a quiet band 36px, #112629 fill: semibold off-white "The server", faint mono count "39", and on the right faint 13px "Read by core and the panel". Table head row, faint 12px: "Setting", "Default", "What it does". Rows 44px with 1px #1A3034 hairlines between, the setting name mono 13.5px off-white in a 300px column with a tiny faint "server" outline chip after it, the default mono 13px Mist in a 190px column, the description Plex Sans 13.5px Mist:
+  "OSTRA_WEB_PORT" | "3000" | "The port the panel listens on."
+  "OSTRA_CORE_PORT" | "8787" | "The port core listens on: runners connect here."
+  "OSTRA_PUBLIC_URL" | "http://localhost:3000" | "The panel's address as browsers reach it."
+  "OSTRA_DATA_DIR" | "/var/lib/ostra" | "Where the server keeps its generated keys. Back it up."
+  "OSTRA_TASK_SPEND_CAP_USD" | "25" | "A task's spend cap in US dollars. At the cap the task needs you."
+  The row "OSTRA_PUBLIC_URL" is HOVERED: a slightly lighter #10272B background, a small teal link icon just left of its name, and a tiny dark tooltip above that icon reading "Link copied".
+- GROUP 2: band "The runner", count "13", right faint "Read by ostra runner · each is also a flag". Rows the same, with the flag under each name in faint mono 12px:
+  "OSTRA_SERVER_URL" (flag "--server") | "required" in faint italic | "The ostra server's core address."
+  "OSTRA_RUNNER_EXECUTOR" (flag "--executor") | "host" | "Where tasks run: host, not isolated, or docker, a box per task."
+  "OSTRA_RUNNER_CAPACITY" (flag "--capacity") | "1" | "How many tasks the runner runs at once."
+  each with a tiny faint "runner" outline chip after the name.
+  The table continues below the fold (cut at the bottom edge).
+
+4. RIGHT RAIL "On this page", 220px, x 1196 to 1416, from y 88: faint 12px label "On this page", then rows 13px: "The server" (CURRENT: off-white with a 2px teal bar on its left), "Code hosts and Git LFS", "The runner", "Development and tests only" (Mist). A hairline, then a GitHub icon and Mist 13px "Edit on GitHub".
+
+
+THIS IS THE PUBLIC DOCS WEBSITE, NOT THE CONSOLE: no console sidebar, no organization switcher, no "New task" button, no task rows. It shares the console's fonts, logo, density and hairline style (copy those from the attached console screenshots), but its colours are the brand's own deep blue-green dark.
+
+PALETTE, DARK (flat, exact hex): page background Abyss #0C1D21 (a very dark blue-green, almost black, flat, no gradient); header and left navigation the same #0C1D21; raised surfaces (code blocks, the search field, inputs, the selected nav row, callouts) #112629; hairlines #1A3034; control borders #2F4A47; text Shell #F3F0E8 (warm off-white); secondary text Mist #CFD8D4; faint text #8FA6A2; links and inline actions teal #6FB8AA; success green #4FB286; errors and danger red #E5675C; primary button filled #F3F0E8 with #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 is NOT used on this page at all. No gradients, no glow, no purple, no drop shadows, no cards inside cards, no robots, no sparkles, no emoji, no terminal ">_" icon.
+
+TYPE: page titles and the hero heading Manrope ExtraBold; everything else IBM Plex Sans (body 15px for prose, dense rows 14px, secondary 13px, small labels 12px; nav weight 500, section titles 600); IBM Plex Mono for commands, setting names, paths, versions and all code, perfectly monospaced and aligned. Icons: thin Lucide line icons, 15px, stroke 1.75.
+
+LOGO: the attached hinge mark (a rounded square split by one diagonal channel, with a small notch at the top-left), off-white, never redrawn as something else, followed by the lowercase wordmark "ostra" in Manrope ExtraBold off-white.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web page, 1440x960 CSS pixels rendered at 2x, dark mode. Not a mockup, no browser frame, no device frame, no perspective, no window shadow. Calm, precise and quiet like the Stripe or Tailwind documentation, but denser and darker. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above.
