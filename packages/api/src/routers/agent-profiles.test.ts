@@ -340,6 +340,21 @@ describe("the editor's helpers (F-026)", () => {
     expect(byRule.get(mcp.ruleId)?.unmatched.map((s) => s.value)).toEqual(["docs/call"]);
   });
 
+  it("F-026: a path rule's coverage names a near miss first: asks for `config/settings.json`, not for `src/config.ts`", async () => {
+    const config = rule({ name: "Config files", tool: "edit", match: { kind: "path-glob", glob: "config/**" } });
+    const [coverage] = await (await member()).agentProfiles.ruleCoverage({ rules: [config] });
+    expect(coverage?.matched.map((s) => s.value)).toEqual(["config/settings.json"]);
+    expect(coverage?.unmatched[0]?.value).toBe("src/config.ts");
+  });
+
+  it("F-021: the start picker's options carry each profile's rule count", async () => {
+    const a = await admin();
+    const careful = await a.agentProfiles.save(base({ name: "Counted", approvalRules: [rule({ name: "One", tool: "edit", match: { kind: "path-glob", glob: "a/**" } }), rule({ name: "Two", tool: "fetch", match: { kind: "any" } })] }));
+    const offered = await a.agentProfiles.forStart({ projectId, kind: "code" });
+    expect(offered.find((profile) => profile.profileId === careful.profileId)).toMatchObject({ ruleCount: 2 });
+    expect(offered.find((profile) => profile.builtIn)).toMatchObject({ ruleCount: 0 });
+  });
+
   it("F-026: the four presets come with valid rules, each marked with its preset", async () => {
     const presets = await (await member()).agentProfiles.presets();
     expect(presets.map((p) => p.preset)).toEqual(["dependency", "migration", "allowlist", "network"]);

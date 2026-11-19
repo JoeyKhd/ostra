@@ -302,6 +302,8 @@ const saveCodes = {
 
 const sampleSubjects: Readonly<Record<ApprovalTool, readonly z.infer<typeof approvalSubjectSchema>[]>> = {
   edit: [
+    { kind: "path", value: "src/config.ts" },
+    { kind: "path", value: "config/settings.json" },
     { kind: "path", value: "package.json" },
     { kind: "path", value: "pnpm-lock.yaml" },
     { kind: "path", value: "db/migrations/0042_add_users.sql" },
@@ -447,6 +449,8 @@ export const agentProfilesRouter = router({
           name: z.string(),
           builtIn: z.boolean(),
           planFirst: z.boolean(),
+          /** How many approval rules it has, for the picker's small facts (ticket 42). */
+          ruleCount: z.number().int(),
           isDefault: z.boolean(),
           agentName: z.string(),
           modelName: z.string().nullable(),
@@ -464,7 +468,7 @@ export const agentProfilesRouter = router({
       const usable = await profilesForMember(db, ctx.scope, { projectId: input.projectId });
       const rows = await db.agentProfile.findMany({
         where: { organizationId: ctx.scope.organizationId, id: { in: usable.map((profile) => profile.profileId) } },
-        select: { id: true, adapter: true, model: { select: { endpointModelId: true, displayName: true } } },
+        select: { id: true, adapter: true, approvalRules: true, model: { select: { endpointModelId: true, displayName: true } } },
       });
       const byId = new Map(rows.map((row) => [row.id, row] as const));
       const offered = usable.map((profile) => {
@@ -474,6 +478,7 @@ export const agentProfilesRouter = router({
           name: profile.name,
           builtIn: profile.builtIn,
           planFirst: profile.planFirst,
+          ruleCount: z.array(z.unknown()).catch([]).parse(row?.approvalRules ?? []).length,
           isDefault: profile.profileId === defaultId,
           agentName: agentDisplayName(row?.adapter ?? ""),
           modelName: row?.model === null || row?.model === undefined ? null : (row.model.displayName ?? row.model.endpointModelId),
