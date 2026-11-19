@@ -210,12 +210,12 @@ describe("the Linear adapter", () => {
     expect(everything).not.toContain("Entity not found");
   });
 
-  it("declares what it has: sub-issues, comment edits and attachments; no agent sessions, graph or transitions", () => {
+  it("declares what it has: sub-issues, webhooks, comment edits and attachments; no agent sessions, graph or transitions", () => {
     expect(adapter.capabilities).toEqual({
       agentSessions: false,
       subIssues: true,
       statusGraph: false,
-      webhooks: false,
+      webhooks: true,
       commentEdit: true,
       attachments: true,
       transitions: false,

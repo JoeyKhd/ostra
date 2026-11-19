@@ -11,6 +11,7 @@ import type {
   MoveResult,
   MoveTarget,
   NewTicket,
+  ParseWebhookInput,
   PullRequestLinkOptions,
   StatusMapping,
   TaskLink,
@@ -30,12 +31,14 @@ import type {
   TrackerCapabilities,
   TrackerStatus,
   TrackerWebhookHint,
+  TrackerWebhookRequest,
   WebhookVerification,
 } from "@ostra/adapter-sdk";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { TicketKey } from "@ostra/protocol";
 import { z } from "zod";
 
+import { linearWebhookHint, verifyLinearWebhook } from "./app/webhooks.ts";
 import { imageName, looksLikeImage, markdownImages } from "./markdown-images.ts";
 import { answers, documents, MAX_COMMENT_PAGES, MAX_TICKET_PAGE } from "./queries.ts";
 import type { DocumentName, LinearComment, LinearIssue, LinearSummary } from "./queries.ts";
@@ -195,8 +198,8 @@ export class LinearAdapter extends TrackerAdapter {
     // A ticket's parent is read, so a sub-issue is told from a ticket.
     subIssues: true,
     statusGraph: false,
-    // Webhooks come with ticket 08 (the app, OAuth and webhooks).
-    webhooks: false,
+    // Signed deliveries, verified and read by `app/webhooks.ts` (ticket 08).
+    webhooks: true,
     commentEdit: true,
     // Linear takes file copies as attachments (ADR 0043), used from milestone 6.
     attachments: true,
@@ -561,14 +564,14 @@ export class LinearAdapter extends TrackerAdapter {
     return success && issue !== null && issue !== undefined ? toTicket(issue) : adapterError("conflict", "Linear did not create the ticket");
   }
 
-  // ---------- webhooks: ticket 08 ----------
+  // ---------- webhooks ----------
 
-  verifyWebhook(): WebhookVerification {
-    return { ok: false, reason: "bad-signature" };
+  verifyWebhook(request: TrackerWebhookRequest): WebhookVerification {
+    return verifyLinearWebhook(request);
   }
 
-  parseWebhook(): AdapterResult<TrackerWebhookHint> {
-    return adapterError("unsupported", "parseWebhook: the Linear adapter builds it in ticket 08");
+  parseWebhook(input: ParseWebhookInput): AdapterResult<TrackerWebhookHint> {
+    return linearWebhookHint(input);
   }
 
   // ---------- internals ----------
