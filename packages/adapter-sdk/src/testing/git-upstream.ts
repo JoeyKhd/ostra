@@ -51,6 +51,8 @@ export type GitUpstream = {
   readonly fileAt: (fullName: string, ref: string, file: string) => Promise<string | null>;
   /** The full commit message of a ref's head. */
   readonly commitMessage: (fullName: string, ref: string) => Promise<string | null>;
+  /** The author and committer of a ref's head, as `Name <email>`, or null. */
+  readonly commitPeople: (fullName: string, ref: string) => Promise<{ readonly author: string; readonly committer: string } | null>;
   readonly close: () => Promise<void>;
 };
 
@@ -434,6 +436,14 @@ export const startGitUpstream = async (root: string, options: GitUpstreamOptions
     commitMessage: async (fullName, ref) => {
       try {
         return await git(["--git-dir", repoDir(fullName), "log", "-1", "--format=%B", ref]);
+      } catch {
+        return null;
+      }
+    },
+    commitPeople: async (fullName, ref) => {
+      try {
+        const [author = "", committer = ""] = (await git(["--git-dir", repoDir(fullName), "log", "-1", "--format=%an <%ae>%n%cn <%ce>", ref])).trim().split("\n");
+        return { author, committer };
       } catch {
         return null;
       }

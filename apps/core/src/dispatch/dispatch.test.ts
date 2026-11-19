@@ -224,7 +224,7 @@ describe("the spec and the credentials", () => {
 
   const specUrl = (epoch: number) => `${harness.url}${runnerPaths.taskSpec(task.taskId)}?leaseEpoch=${String(epoch)}`;
 
-  it("hands the lease holder the spec: bot, co-author, template, LFS hosts, branch, variables and files, no secret", async () => {
+  it("F-078: hands the lease holder the spec: bot, co-author, template, LFS hosts, branch, variables and files, no secret", async () => {
     const token = await accessToken(harness, runner);
     const response = await fetch(specUrl(1), { headers: { authorization: `Bearer ${token.accessToken}` } });
     expect(response.status).toBe(200);

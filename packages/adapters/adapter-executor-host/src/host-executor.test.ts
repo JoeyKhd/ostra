@@ -242,7 +242,7 @@ describe("the host executor", () => {
     await executor.release(box);
   });
 
-  it("puts the trailer on the agent's own commits too", async () => {
+  it("F-078: puts the trailer on the agent's own commits too, and the bot authors them", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });

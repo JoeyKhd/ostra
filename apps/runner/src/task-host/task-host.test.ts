@@ -232,7 +232,10 @@ describe("the task host", () => {
   it("F-090, F-078: runs a dispatch to a PR-ready branch, committing what the agent left with the bot and the trailer, and every event is stored once", async () => {
     const { dataDir, dispatch } = await start();
     // One repo: the agent starts in its checkout (F-025), so a relative path lands in the repo.
-    const { spec } = taskFor("[[fake:write CONTRIBUTING.md]]", "echo setting up\n");
+    const made = taskFor("[[fake:write CONTRIBUTING.md]]", "echo setting up\n");
+    // Two members prompted it: each gets a trailer (F-078).
+    const spec: TaskSpec = { ...made.spec, coAuthors: [...made.spec.coAuthors, { name: "Bea Member", email: "bea@example.com" }] };
+    server.tasks.set(spec.taskId, { spec, credentials: made.credentials });
     dispatch(spec);
     await waitForKind(spec, "session.ended");
     await gateway.waitFor(() => host?.running().length === 0);
@@ -257,7 +260,12 @@ describe("the task host", () => {
     const pushes = events.flatMap((event) => (event.kind === "git.pushed" ? [event.ref] : []));
     expect(pushes).toEqual([`refs/heads/${spec.branchName}`, `refs/ostra/wip/${spec.taskId}`]);
     expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("CONTRIBUTING.md");
-    expect(await upstream.commitMessage("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("Co-authored-by: Admin <admin@example.com>");
+    const message = await upstream.commitMessage("ostra-test/test1", `refs/heads/${spec.branchName}`);
+    expect(message).toContain("Co-authored-by: Admin <admin@example.com>");
+    expect(message).toContain("Co-authored-by: Bea Member <bea@example.com>");
+    // The App's bot authored and committed it.
+    const bot = `${spec.gitIdentity.name} <${spec.gitIdentity.email}>`;
+    expect(await upstream.commitPeople("ostra-test/test1", `refs/heads/${spec.branchName}`)).toEqual({ author: bot, committer: bot });
     expect(gateway.acks.flatMap((ack) => ack.results)).toEqual(expect.arrayContaining([expect.objectContaining({ result: "accepted" })]));
     expect(everyEventOnce()).toBe(true);
     // The workspace is released.

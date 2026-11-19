@@ -57,7 +57,7 @@ const textOf = (result: unknown): string => {
 };
 
 describe("ostra's MCP tools", () => {
-  it("lists the tool, whose description carries the repo's PR template and the title rule", async () => {
+  it("F-030, F-078: lists the tool, whose description carries the repo's PR template and the title rule", async () => {
     const { tools: server } = await start();
     const client = await connect(server);
     const listed = await client.listTools();
@@ -70,7 +70,7 @@ describe("ostra's MCP tools", () => {
     expect(tool?.inputSchema.required).toEqual(["repo", "title", "body"]);
   });
 
-  it("emits pr.text_set for a call naming one of the task's repos", async () => {
+  it("F-030: emits pr.text_set for a call naming one of the task's repos", async () => {
     const { tools: server, events } = await start();
     const client = await connect(server);
     const result = await client.callTool({

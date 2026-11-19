@@ -27,7 +27,7 @@ const orgA = () => harness.fixture.a.organization.id;
 const uuid = (label: string) => `${label}-${crypto.randomUUID()}`;
 
 describe("tasks.create (F-097)", () => {
-  it("starts a code task from a prompt, in one transaction, with no ticket", async () => {
+  it("F-030, F-078: starts a code task from a prompt, in one transaction, with no ticket", async () => {
     const { a } = harness.fixture;
     const prompt = "Add a short CONTRIBUTING.md that explains how to run the tests\nUse the repo's own words.";
     const created = await (await harness.as(a.member)).tasks.create({ projectId, prompt });
