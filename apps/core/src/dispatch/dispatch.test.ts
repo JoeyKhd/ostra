@@ -122,6 +122,38 @@ describe("dispatch", () => {
     expect(await dispatch(dispatchPayload(task))).toMatchObject({ ok: true, runnerId: ours.runnerId });
   });
 
+  it("F-088: a provider's sessions-at-once cap holds a dispatch while it is reached, and lets it go once a session stops", async () => {
+    // Other cases leave leases on this provider: end them, so the count starts at zero.
+    await test.db.lease.updateMany({ where: { organizationId: world.organizationId, state: "active" }, data: { state: "ended" } });
+    const runner = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id }, 8);
+    await test.db.modelProvider.update({ where: { id: world.providerId }, data: { sessionsAtOnce: 2 } });
+    try {
+      const first = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+      const second = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+      const third = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+      expect(await dispatch(dispatchPayload(first))).toMatchObject({ ok: true });
+      expect(await dispatch(dispatchPayload(second))).toMatchObject({ ok: true });
+      // Two sessions run on the provider: the third waits, though the runner has room, with the reason on the task.
+      expect(await dispatch(dispatchPayload(third))).toMatchObject({ ok: false, error: "no-runner" });
+      const waiting = await test.db.task.findUniqueOrThrow({ where: { id: third.taskId } });
+      expect(waiting.dispatchNote).toContain("cap of 2 sessions at once");
+      expect(await test.db.lease.count({ where: { taskId: third.taskId } })).toBe(0);
+      // Another organization's sessions on its own provider don't count against ours.
+      const theirs = await seedOnlineRunner(test.db, fixture.b.organization.id, { kind: "personal", memberId: fixture.b.admin.id }, 8);
+      const theirTask = await seedQueuedTask(test.db, otherWorld, fixture.b.admin, theirs.runnerId);
+      expect(await dispatch(dispatchPayload(theirTask))).toMatchObject({ ok: true });
+      // The first session stops: the third goes.
+      await test.db.session.update({ where: { id: first.sessionId }, data: { state: "stopped" } });
+      expect(await dispatch(dispatchPayload(third))).toMatchObject({ ok: true, runnerId: runner.runnerId });
+      // No cap: nothing waits on the provider.
+      await test.db.modelProvider.update({ where: { id: world.providerId }, data: { sessionsAtOnce: null } });
+      const fourth = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+      expect(await dispatch(dispatchPayload(fourth))).toMatchObject({ ok: true });
+    } finally {
+      await test.db.modelProvider.update({ where: { id: world.providerId }, data: { sessionsAtOnce: null } });
+    }
+  });
+
   it("an offer timeout ends the lease and requeues for the next epoch; the sweep sends dispatches for queued tasks", async () => {
     const ours = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id });
     const task = await seedQueuedTask(test.db, world, fixture.a.member, ours.runnerId);

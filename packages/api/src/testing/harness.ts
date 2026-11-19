@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { CatalogEntry, LogRecord } from "@ostra/adapter-sdk";
+import type { CatalogEntry, LogRecord, ModelProviderAdapter } from "@ostra/adapter-sdk";
 import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
@@ -64,6 +64,8 @@ export type ApiHarness = BareHarness & { readonly fixture: IsolationFixture };
 export type BareHarnessOptions = {
   /** `OSTRA_ALLOW_DEFAULT_PASSWORD`: off by default, as on an install. */
   readonly allowDefaultPassword?: boolean;
+  /** The model provider adapter the routers use. Default: the fake (`fakes.modelProvider`). */
+  readonly modelProvider?: ModelProviderAdapter;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -109,7 +111,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       notices: postgresChangeNotices,
       audit: postgresAuditLog,
       clock: systemClock,
-      adapters: { codeHost, modelProvider, secretStore },
+      adapters: { codeHost, modelProvider: options.modelProvider ?? modelProvider, secretStore },
     },
     logger,
     hashPassword,
@@ -165,7 +167,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   };
 };
 
-export const createApiHarness = async (): Promise<ApiHarness> => {
-  const bare = await createBareHarness();
+export const createApiHarness = async (options: BareHarnessOptions = {}): Promise<ApiHarness> => {
+  const bare = await createBareHarness(options);
   return { ...bare, fixture: await seedIsolationFixture(bare.test.db) };
 };

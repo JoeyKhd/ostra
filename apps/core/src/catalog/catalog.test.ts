@@ -10,7 +10,7 @@ import { silentLogger } from "@ostra/adapter-sdk";
 import { loadBundledCatalog } from "@ostra/adapter-model-endpoint";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { postgresChangeNotices, systemClock } from "@ostra/domain";
+import { parseServerSettings, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { organizationIdSchema, providerIdSchema } from "@ostra/protocol";
@@ -20,7 +20,7 @@ import { z } from "zod";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { PROVIDER_TOKEN, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
-import { CATALOG_FILE, catalogSource, ensureSchedules, LOGO_DIR, providerRefreshHandler, refreshCatalog } from "./catalog.ts";
+import { CATALOG_FILE, catalogRefreshHandler, catalogSource, ensureSchedules, LOGO_DIR, providerRefreshHandler, refreshCatalog } from "./catalog.ts";
 import type { CatalogDeps } from "./catalog.ts";
 
 // Ticket 28's cases, with a fake catalog server that counts what it's asked.
@@ -161,6 +161,57 @@ describe("catalog.refresh", () => {
     // No schedule either.
     await ensureSchedules({ db: test.db, jobs, catalogFetch: false });
     expect(await test.db.$queryRaw<readonly unknown[]>`SELECT 1 FROM pgboss.schedule WHERE name = 'catalog.refresh'`).toEqual([]);
+  });
+});
+
+describe("F-088: the catalog on the server", () => {
+  const scheduleOf = async (name: string) =>
+    z
+      .array(z.object({ key: z.string(), cron: z.string() }))
+      .parse(await test.db.$queryRaw<readonly unknown[]>`SELECT key, cron FROM pgboss.schedule WHERE name = ${name}`);
+  const refreshJob = () => ({ job: "catalog.refresh" as const, jobId: jobIdSchema.parse(randomUUID()), key: "daily", retryCount: 0, payload: {}, logger: silentLogger });
+
+  it("F-088: the server fetches the catalog on a daily schedule, keeps it, and keeps the logos of the providers its models matched", async () => {
+    // The schedule core sets at start: one `catalog.refresh`, every day at one fixed time.
+    await ensureSchedules({ db: test.db, jobs, catalogFetch: true });
+    const [schedule] = await scheduleOf("catalog.refresh");
+    expect(schedule?.key).toBe("daily");
+    expect(schedule?.cron).toMatch(/^\d{1,2} \d{1,2} \* \* \*$/);
+
+    // The scheduled job's handler: it fetches models.dev and keeps the copy, which the routers then read.
+    const handle = catalogRefreshHandler(deps());
+    await handle(refreshJob());
+    expect(requests.map((request) => request.path)).toContain("/api.json");
+    expect((await catalogSource(deps())()).map((entry) => entry.catalogId)).toEqual(["acme/acme-1"]);
+
+    // A model matched to acme: the next run keeps acme's logo where the panel's /model-logos/ route reads.
+    await refreshModels(world.organizationId, world.providerId);
+    await handle(refreshJob());
+    expect(requests.map((request) => request.path)).toContain("/logos/acme.svg");
+    expect(await readFile(path.join(dataDir, LOGO_DIR, "acme.svg"), "utf8")).toBe(LOGO);
+    // And the catalog points every logo at ostra's own server, never the vendor's.
+    expect((await catalogSource(deps())()).map((entry) => entry.logoPath)).toEqual(["/model-logos/acme.svg"]);
+  });
+
+  it("F-088: one setting, OSTRA_CATALOG_FETCH=false, turns the fetch off: no request, no schedule, and the bundled copy is served", async () => {
+    const parsed = parseServerSettings({ OSTRA_CATALOG_FETCH: "false" });
+    if (!parsed.ok) {
+      throw new Error(parsed.errors.join("\n"));
+    }
+    const off = { ...deps(), catalogFetch: parsed.settings.catalogFetch };
+    await ensureSchedules({ db: test.db, jobs, catalogFetch: true });
+    await ensureSchedules({ db: test.db, jobs, catalogFetch: off.catalogFetch });
+    expect(await scheduleOf("catalog.refresh")).toEqual([]);
+    await catalogRefreshHandler(off)(refreshJob());
+    expect(requests).toEqual([]);
+    // The copy that ships with ostra, dated, with the whole catalog in it.
+    const bundled = await loadBundledCatalog();
+    expect(Date.parse(bundled.fetchedAt)).toBeGreaterThan(Date.parse("2026-01-01"));
+    expect(bundled.entries.length).toBeGreaterThan(1000);
+    expect((await catalogSource(off)()).map((entry) => entry.catalogId)).toEqual(bundled.entries.map((entry) => entry.catalogId));
+    // Unset, the fetch is on.
+    const unset = parseServerSettings({});
+    expect(unset.ok && unset.settings.catalogFetch).toBe(true);
   });
 });
 

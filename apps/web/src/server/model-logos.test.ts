@@ -93,7 +93,7 @@ describe("createLogoServer", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("never fetches with the catalog fetch off, but serves a kept logo", async () => {
+  it("F-088: serves a logo kept in its own folder, and never fetches one with the catalog fetch off", async () => {
     await mkdir(path.join(dataDir, "model-logos"), { recursive: true });
     await writeFile(path.join(dataDir, "model-logos", "openai.svg"), svg);
     const fetchImpl = okFetch();

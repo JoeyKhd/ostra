@@ -10,13 +10,13 @@ import net from "node:net";
 import path from "node:path";
 
 import { createFakeGitHub } from "@ostra/adapter-github/testing";
-import { createScenarioBrain, startAnthropicStub } from "@ostra/adapter-sdk/testing";
+import { createScenarioBrain, startAnthropicStub, startOpenAiStub } from "@ostra/adapter-sdk/testing";
 import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "@ostra/db/dev";
 import { createJobs } from "@ostra/jobs";
 import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
-import { e2eCorePort, e2eModelToken, e2ePort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
+import { e2eCorePort, e2eModelToken, e2eOpenAiStubPort, e2ePort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 const webDir = path.resolve(import.meta.dirname, "..");
@@ -91,6 +91,14 @@ const main = async (): Promise<void> => {
     brain: createScenarioBrain({}),
     host: "127.0.0.1",
     port: e2eStubPort,
+  });
+  // And one in the OpenAI-compatible format, so a provider is added in each format the form offers (F-088).
+  const openAiStub = await startOpenAiStub({
+    realKey: e2eModelToken,
+    models: e2eStubModels,
+    brain: createScenarioBrain({}),
+    host: "127.0.0.1",
+    port: e2eOpenAiStubPort,
   });
 
   // A fake GitHub the panel and core talk to through OSTRA_GITHUB_API_URL (ticket 37): one org with
@@ -171,6 +179,7 @@ const main = async (): Promise<void> => {
     core.kill();
     await github.close().catch(() => undefined);
     await stub.close().catch(() => undefined);
+    await openAiStub.close().catch(() => undefined);
     await server.stop().catch(() => undefined);
     await rm(clusterDir, { recursive: true, force: true }).catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
