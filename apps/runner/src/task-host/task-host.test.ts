@@ -1,9 +1,10 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
-import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { LogRecord } from "@ostra/adapter-sdk";
+import { createLogger, GIT_GUARD_ENV_NAMES, silentLogger } from "@ostra/adapter-sdk";
+import type { AdapterResult, AgentLaunch, AgentProcess, BoxRef, LogRecord } from "@ostra/adapter-sdk";
 import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
 import {
@@ -48,6 +49,27 @@ let connection: RunnerConnection | undefined;
 let host: TaskHost | undefined;
 const logs: LogRecord[] = [];
 let counter = 0;
+
+/** Each agent launch the host executor was given, in order. */
+const launches: AgentLaunch[] = [];
+
+/** A host executor that records each agent launch it is given. */
+const hostExecutorSpy = (executor: HostExecutor): HostExecutor => {
+  const startAgent = executor.startAgent.bind(executor);
+  executor.startAgent = (box: BoxRef, launch: AgentLaunch): Promise<AdapterResult<AgentProcess>> => {
+    launches.push(launch);
+    return startAgent(box, launch);
+  };
+  return executor;
+};
+
+/** `git` as the agent would run it, in its launch environment: stdout, or the failure's text. */
+const gitAs = (launch: AgentLaunch, args: readonly string[]): Promise<string> =>
+  new Promise((resolve) => {
+    execFile("git", [...args], { cwd: launch.cwd, env: { ...launch.env, PATH: process.env["PATH"] ?? "" }, windowsHide: true }, (error, stdout, stderr) => {
+      resolve(error === null ? stdout : `${stdout}${stderr}`);
+    });
+  });
 
 const agents: Readonly<Record<string, AgentFactory>> = {
   "fake-acp-agent-rich": (driver) => new FakeAgentAdapter("rich", driver),
@@ -103,7 +125,7 @@ const start = async (): Promise<Setup> => {
         },
       },
     }),
-    executor: new HostExecutor({ dataDir }, { logger, clock: { now: () => Date.now() } }),
+    executor: hostExecutorSpy(new HostExecutor({ dataDir }, { logger, clock: { now: () => Date.now() } })),
     agents: createAgentRegistry(agents),
     logger,
     listenHost: "127.0.0.1",
@@ -266,6 +288,47 @@ describe("the task host", () => {
     expect(kinds(spec)).not.toContain("session.ended");
     expect(await upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toContain("setup-output.txt");
     expect(everyEventOnce()).toBe(true);
+  }, 120_000);
+
+  it("starts the agent with the task's git config as the only one, whatever a repo's variables say", async () => {
+    const { dataDir, dispatch } = await start();
+    launches.length = 0;
+    const { spec } = taskFor("[[fake:silent]]");
+    const [repo] = spec.repos;
+    if (repo === undefined) {
+      throw new Error("the spec has a repo");
+    }
+    // A repo variable cannot move the git guard: not the global config, not the system one.
+    const variables = GIT_GUARD_ENV_NAMES.map((name) => ({ name, value: "hostile", availableDuringSetup: false }));
+    const hostile: TaskSpec = { ...spec, environment: { ...spec.environment, repos: [{ repoId: repo.repoId, variables, files: [], envFile: ".env" }] } };
+    const credentials = server.tasks.get(spec.taskId)?.credentials;
+    if (credentials === undefined) {
+      throw new Error("no credentials");
+    }
+    server.tasks.set(spec.taskId, { spec: hostile, credentials });
+    dispatch(hostile);
+    await waitForKind(hostile, "turn.started");
+    const launch = launches.at(-1);
+    if (launch === undefined) {
+      throw new Error("no agent was started");
+    }
+    const gitConfig = path.join(dataDir, "tasks", (await readdir(path.join(dataDir, "tasks")))[0] ?? "", "git", "config");
+    expect(launch.env["GIT_CONFIG_GLOBAL"]).toBe(gitConfig);
+    expect(launch.env["GIT_CONFIG_NOSYSTEM"]).toBe("1");
+    expect(launch.env["GCM_INTERACTIVE"]).toBe("never");
+    expect(launch.env["GIT_TERMINAL_PROMPT"]).toBe("0");
+    expect(launch.env["GIT_CONFIG_COUNT"]).toBe("1");
+    expect(launch.env["GIT_CONFIG_KEY_0"]).toBe("credential.helper");
+    expect(launch.env["GIT_CONFIG_VALUE_0"]).toBe("");
+    // As the agent runs git: no system config, and no global one but the task's own,
+    // and no credential helper but the empty one.
+    const scopes = await gitAs(launch, ["config", "--list", "--show-scope", "--show-origin"]);
+    const lines = scopes.split(/\r?\n/).filter((line) => line !== "");
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.filter((line) => line.startsWith("system\t"))).toEqual([]);
+    expect(lines.some((line) => /^global\tfile:.*git.+config/.test(line))).toBe(true);
+    expect((await gitAs(launch, ["config", "--get-all", "credential.helper"])).trim()).toBe("");
+    expect(await gitAs(launch, ["config", "--get-regexp", "^url[.].*[.]insteadof$"])).toContain("https://github.com/");
   }, 120_000);
 
   it("refuses to start an agent whose environment would hold a real credential", async () => {

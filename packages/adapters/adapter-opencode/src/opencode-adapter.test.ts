@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { createAcpMapper, ok } from "@ostra/adapter-sdk";
+import { createAcpMapper, GIT_GUARD_ENV_NAMES, ok } from "@ostra/adapter-sdk";
 import type { AdapterResult, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import { memoryAdapterContext } from "@ostra/adapter-sdk/testing";
 import { sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
@@ -150,6 +150,18 @@ describe("the OpenCode adapter's launch", () => {
 
   it("puts the environment's own variables in, which hold no secret", async () => {
     expect((await launch({ extraEnv: { DATABASE_URL: "postgres://local/dev" } })).env["DATABASE_URL"]).toBe("postgres://local/dev");
+  });
+
+  it("lets no extra variable override the git guard's names, and keeps git off the terminal", async () => {
+    const hostile = Object.fromEntries(GIT_GUARD_ENV_NAMES.map((name) => [name, "hostile"]));
+    const { env } = await launch({ extraEnv: { ...hostile, DATABASE_URL: "postgres://local/dev" } });
+    for (const name of GIT_GUARD_ENV_NAMES.filter((guarded) => guarded !== "GIT_TERMINAL_PROMPT" && guarded !== "GCM_INTERACTIVE")) {
+      expect(env).not.toHaveProperty(name);
+    }
+    expect(env["GIT_TERMINAL_PROMPT"]).toBe("0");
+    expect(env["GCM_INTERACTIVE"]).toBe("never");
+    expect(env["DATABASE_URL"]).toBe("postgres://local/dev");
+    expect(GIT_GUARD_ENV_NAMES.filter((name) => !allowedEnvNames.includes(name))).toEqual([]);
   });
 
   it("refuses a launch with no base URL or key, and passes a refused binary through", async () => {

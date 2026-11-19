@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { toApprovalOptions } from "@ostra/adapter-sdk";
+import { GIT_GUARD_ENV_NAMES, gitGuardEnv, toApprovalOptions } from "@ostra/adapter-sdk";
 import type {
   AgentAdapter,
+  AgentLaunch,
   AgentProcess,
   AgentSession,
   BoxRef,
@@ -102,7 +103,10 @@ const agentVariables = (spec: TaskSpec): Record<string, string> => {
   const out: Record<string, string> = {};
   for (const repo of spec.environment.repos) {
     for (const variable of repo.variables) {
-      out[variable.name] = variable.value;
+      // The git guard is the runner's: no repo variable can set it (it is overlaid on the launch too).
+      if (!GIT_GUARD_ENV_NAMES.some((guarded) => guarded === variable.name)) {
+        out[variable.name] = variable.value;
+      }
     }
   }
   // The agent's own commits are the App's bot's too (F-078). These outrank any user.name an agent
@@ -124,7 +128,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let agentProcess: AgentProcess | undefined;
   let turn: TurnId | undefined;
   let boxCreated = false;
-  let dirsCache: { readonly workspaceDir: string; readonly agentDir: string } | undefined;
+  let dirsCache: { readonly workspaceDir: string; readonly agentDir: string; readonly gitConfig: string } | undefined;
   let boxPrepared = false;
   let keyProxy: KeyProxy | undefined;
   let gitProxy: GitProxy | undefined;
@@ -475,13 +479,17 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (!launch.ok) {
       return `the agent couldn't be launched: ${launch.error.message}`;
     }
+    // ADR 0029: git run by the agent outside a checkout reads the task's config, not the machine's
+    // system or global one (on Git for Windows, the system config names the member's credential
+    // manager). This is the runner's own overlay, so it holds for every agent adapter.
+    const guarded: AgentLaunch = { ...launch.value, env: { ...launch.value.env, ...gitGuardEnv(dirs.gitConfig) } };
     // ADR 0030: the agent's process gets the fake key and the proxy URLs, never a real credential.
-    const checked = checkLaunchEnvironment(launch.value.env, held);
+    const checked = checkLaunchEnvironment(guarded.env, held);
     if (!checked.ok) {
       log.error("the agent's environment held a credential: refusing to start it", { variable: checked.variable });
       return `the agent's environment held ${checked.holds} (in ${checked.variable}): refused to start it`;
     }
-    const started = await deps.executor.startAgent(box, launch.value);
+    const started = await deps.executor.startAgent(box, guarded);
     if (!started.ok) {
       return `the agent didn't start: ${started.error.message}`;
     }
@@ -507,7 +515,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return null;
   };
 
-  const workspaceOf = (): { readonly workspaceDir: string; readonly agentDir: string } => {
+  const workspaceOf = (): { readonly workspaceDir: string; readonly agentDir: string; readonly gitConfig: string } => {
     if (dirsCache === undefined) {
       throw new Error("the workspace isn't created");
     }

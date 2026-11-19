@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
 import type { LaunchFile, PrepareLaunchInput } from "@ostra/adapter-sdk";
 
 // What ostra writes for OpenCode, per task (ADR 0032, spec section 11 item 6). Ported from
@@ -139,9 +140,15 @@ export const allowedEnvNames: readonly string[] = [
   "OPENCODE_DISABLE_AUTOUPDATE",
   "OPENCODE_DISABLE_CLAUDE_CODE",
   "OPENCODE_DISABLE_FREE_MODELS",
-  "GIT_TERMINAL_PROMPT",
+  // The git guard (`gitGuardEnv`): the task-run overlays it on the launch, and no one else sets it.
+  ...GIT_GUARD_ENV_NAMES,
   KEY_ENV,
 ];
+
+const isGitGuardName = (name: string): boolean => GIT_GUARD_ENV_NAMES.some((guarded) => guarded === name);
+
+/** Git never asks the agent's terminal for a credential. The rest of the git guard comes from the task run. */
+const GIT_TERMINAL_PROMPT_OFF = { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" } as const;
 
 /** The agent's whole environment, from an allowlist: the runner's own is never inherited. */
 export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record<string, string> => {
@@ -169,11 +176,16 @@ export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record
     OPENCODE_DISABLE_AUTOUPDATE: "1",
     OPENCODE_DISABLE_CLAUDE_CODE: "1",
     OPENCODE_DISABLE_FREE_MODELS: "1",
-    GIT_TERMINAL_PROMPT: "0",
     [KEY_ENV]: input.model.placeholderKey,
   });
   // The environment's own variables, which are not secrets (secrets go to each repo's checkout only).
-  Object.assign(env, input.extraEnv);
+  // They never override the git guard: git reads the task's config and nothing of the machine's.
+  for (const [name, value] of Object.entries(input.extraEnv)) {
+    if (!isGitGuardName(name)) {
+      env[name] = value;
+    }
+  }
+  Object.assign(env, GIT_TERMINAL_PROMPT_OFF);
   return env;
 };
 

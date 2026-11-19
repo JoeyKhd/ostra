@@ -201,7 +201,7 @@ export class HostExecutor extends ExecutorAdapter {
       return adapterError("unavailable", `couldn't make the task's folder (${error instanceof Error ? error.name : "unknown"})`);
     }
     this.plumbing.logger.info("box created", { taskId: input.taskId, boxId: input.boxId, repos: input.spec.repos.length });
-    return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir });
+    return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
   }
 
   async prepare(input: PrepareInput): Promise<AdapterResult<PrepareResult>> {

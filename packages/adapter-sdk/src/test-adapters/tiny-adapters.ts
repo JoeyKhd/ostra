@@ -482,7 +482,7 @@ export class TinyExecutor extends ExecutorAdapter {
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
     const root = await mkdtemp(path.join(tmpdir(), "ostra-tiny-box-"));
-    const created = { workspaceDir: path.join(root, "workspace"), agentDir: path.join(root, "agent") };
+    const created = { workspaceDir: path.join(root, "workspace"), agentDir: path.join(root, "agent"), gitConfig: path.join(root, "git", "config") };
     await mkdir(created.workspaceDir, { recursive: true });
     await mkdir(created.agentDir, { recursive: true });
     this.#boxes.set(String(input.boxId), { state: "creating", root, created, child: undefined });

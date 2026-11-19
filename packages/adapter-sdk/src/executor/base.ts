@@ -36,7 +36,40 @@ export type CreatedBox = {
   readonly workspaceDir: string;
   /** The agent's own folder for its config, data and cache. */
   readonly agentDir: string;
+  /**
+   * The task's own global git config: the credential helper cleared and the code host's origin
+   * rewritten to the git proxy. The agent's launch environment points `GIT_CONFIG_GLOBAL` at it
+   * (see `gitGuardEnv`), so git run by the agent outside a checkout talks to the proxy only.
+   * A path the agent's process can read: in a container, the same path as on the executor.
+   */
+  readonly gitConfig: string;
 };
+
+/** The names `gitGuardEnv` sets: an agent's launch environment takes them from the runner only. */
+export const GIT_GUARD_ENV_NAMES = [
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_NOSYSTEM",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_KEY_0",
+  "GIT_CONFIG_VALUE_0",
+  "GIT_TERMINAL_PROMPT",
+  "GCM_INTERACTIVE",
+] as const;
+
+/**
+ * The git environment every agent process gets (ADR 0029): the task's config as the global one, no
+ * system config (on Git for Windows it sets `credential.helper=manager`, the member's stored
+ * credential), and no credential helper from any source, so git reaches the git proxy and nothing else.
+ */
+export const gitGuardEnv = (gitConfig: string): Readonly<Record<(typeof GIT_GUARD_ENV_NAMES)[number], string>> => ({
+  GIT_CONFIG_GLOBAL: gitConfig,
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "credential.helper",
+  GIT_CONFIG_VALUE_0: "",
+  GIT_TERMINAL_PROMPT: "0",
+  GCM_INTERACTIVE: "never",
+});
 
 export type PrepareInput = {
   readonly box: BoxRef;
