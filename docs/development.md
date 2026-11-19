@@ -43,6 +43,10 @@ Every package is `private: true` for now, including the ones ADR 0045 lists as p
 
 **The license check.** `pnpm check:licenses` reads every workspace package's `package.json`. It fails when a package declares no license, or when an Apache-2.0 package depends on a restricted one, today one under the Sustainable Use License, directly or through another package (ADR 0048, ADR 0045). CI runs it with the other checks, so run it before you push a new dependency between packages.
 
+**The proof check.** `pnpm check:proof` reads `context/features.md` and `context/proof/`. It fails when a `done` row lacks a proof for any sentence of its "done when", or cites a test that doesn't exist, doesn't run or doesn't name the row's ID, and warns about the rows still `building`. `pnpm proof:new F-nnn` writes a row's proof file. CI runs it with the other checks. The rules: `context/proof/README.md`.
+
+**The panel's browser checks.** `pnpm --filter @ostra/web test:e2e` builds the panel and runs its Playwright suite (`apps/web/e2e/`) on a throwaway stack: an embedded Postgres, a fake GitHub, a stub model endpoint, core and a runner on the `host` executor. CI runs it in its own job. It listens on 3100 to 3102; `OSTRA_E2E_PORT` moves all three, so two checkouts can run it at once.
+
 ## Run it
 
 ```

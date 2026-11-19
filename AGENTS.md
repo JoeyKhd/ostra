@@ -10,7 +10,7 @@ Source-available, self-hostable control panel that connects an organization's tr
 |---|---|
 | Asked where things stand, or what comes next | `context/README.md`, then `context/build-order.md` |
 | Working on a task, session, runner or any lifecycle | `context/domain-model.md` |
-| Deciding what to build, or whether it's done | `context/features.md` (the ledger); the spec under `context/specs/` that names its feature ID |
+| Deciding what to build, or whether it's done | `context/features.md` (the ledger); the spec under `context/specs/` that names its feature ID; its proof in `context/proof/` |
 | Naming a domain concept | `context/GLOSSARY.md` |
 | Touching architecture, stack, data model or an adapter's design | `context/decisions/` |
 | Meeting something undecided | `context/open-questions.md`: add it there and settle it with the maintainer |
@@ -24,6 +24,7 @@ Source-available, self-hostable control panel that connects an organization's tr
 A change is done, and ready to commit, when every line that applies holds in that one commit:
 
 - **Checks:** sized to the change (the table under this list), on the packages it touches.
+- **Proof:** every condition of a feature's "done when" has a proof in `context/proof/`: a test that exercises it for real, would fail if it broke (a break-it check shows it), and names the feature's ID, or live evidence kept in the repo. `pnpm check:proof` keeps it so, and fails for a `done` row without it. How to add one: `context/proof/README.md`.
 - **Adapter parity:** a feature that touches trackers, agents or code hosts works through the shared interface for every shipped adapter. The alternative is that the interface declares it an optional capability, and each adapter states whether it has it. A feature that works only for Linear or only for OpenCode, without that declaration, is a bug.
 - **Runner parity:** a task behaves the same on a personal runner and a pool runner, and on every executor (`docker`, `host`, `kubernetes`). A difference is a bug unless an ADR records it (ADR 0029 records the two for the `host` executor).
 - **Self-hosting:** a fresh install with only the required settings still works. A new setting ships with a working default and its line in the configuration reference.
@@ -38,7 +39,8 @@ A change is done, and ready to commit, when every line that applies holds in tha
 |---|---|---|
 | Docs: plan, research, ADRs | Nothing | No |
 | A fix or small change | Typecheck and lint of the packages it touches; a test when the code it covers changed | Only when the code can't settle it |
-| A feature, a new screen, a new adapter | Typecheck, lint and tests of the touched packages, plus a ticket → task → PR run against the test workspaces | Yes |
+| A feature, a new screen, a new adapter | Typecheck, lint and tests of the touched packages, `pnpm check:proof`, plus a ticket → task → PR run against the test workspaces | Yes |
+| A feature's status or "done when", a proof file, or a test a proof cites | `pnpm check:proof` | No |
 | Auth, credentials, the schema, the runner protocol, anything that runs agent output | All checks for the whole repo | As the change needs |
 
 ## Commits

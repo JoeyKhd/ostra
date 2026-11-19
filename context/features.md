@@ -6,7 +6,7 @@ Every feature we've decided on, with a checkable "done when". It is the source o
 - **Status:** `planned` → `building` → `done`, or `dropped`.
 - **Rules:**
   - IDs are permanent: never renumber or reuse one. New features get the next free ID.
-  - Change a status in the same commit as the work. Set `done` only when every condition in "done when" holds.
+  - Change a status in the same commit as the work. Set `done` only when every condition in "done when" holds, and its proof file in `context/proof/` proves each one (`pnpm check:proof`).
   - Specs in `context/specs/` name the feature IDs they cover.
   - A row that waits on an open question names it (`Q-nn` in `open-questions.md`). Its priority isn't final until that question is settled.
   - *(working value)* marks a number we expect to tune; changing it doesn't need a new ID.
