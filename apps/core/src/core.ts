@@ -52,6 +52,7 @@ import { createLiveTextWriter } from "./ingest/live-text.ts";
 import { createEmailChannel, createNotificationChannels, notifyDeliverHandler, notifyFanoutHandler, realEmailFactories } from "./notifications/index.ts";
 import type { NotifyDeps } from "./notifications/index.ts";
 import { accountMailSendHandler } from "./reactions/account-mail.ts";
+import { budgetCheckHandler, budgetNewMonthHandler, budgetReleaseHandler, ensureBudgetNewMonthSchedule } from "./reactions/budgets.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
@@ -450,6 +451,20 @@ export const startCore = async (
     accountMailSendHandler({ db, clock: systemClock, logger, publicUrl: settings.publicUrl, accountSender: emailChannel.accountSender, verificationHours: settings.resetLinkHours }),
     { localConcurrency: 4 },
   );
+  // Milestone 4 (ticket 13): budget notices, and the release of held turns on a raise or a new month.
+  const budgetDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    clock: systemClock,
+    budgetWarnPercent: settings.budgetWarnPercent,
+    emailDelaySeconds: settings.emailDelaySeconds,
+  };
+  await jobs.work("budget.check", budgetCheckHandler(budgetDeps), { localConcurrency: 2 });
+  await jobs.work("budget.release", budgetReleaseHandler(budgetDeps), { localConcurrency: 1 });
+  await jobs.work("budget.new-month", budgetNewMonthHandler(budgetDeps), { localConcurrency: 1 });
+  await ensureBudgetNewMonthSchedule(jobs);
   // Cleanup and retention (ticket 20): a box's release, its idle days, and the daily retention pass.
   const cleanupDeps: CleanupDeps = {
     db,

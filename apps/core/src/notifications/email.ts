@@ -5,7 +5,7 @@ import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, Result, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { emailStillNeeded, momentHeading, momentKindOf, renderNeedsYouEmail } from "@ostra/domain";
+import { budgetNoticeIdOfKey, emailStillNeeded, isBudgetNoticeKind, loadBudgetNoticeView, momentHeading, momentKindOf, renderBudgetNoticeMail, renderNeedsYouEmail, spendUrlOf } from "@ostra/domain";
 import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
 import { approvalSubjectSchema, memberIdSchema, notificationIdSchema, organizationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalSubject } from "@ostra/protocol";
@@ -228,6 +228,57 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     }
   };
 
+  /**
+   * Milestone 4 (F-037, F-115, ticket 13): a budget notice's mail, rendered from the notice when it's
+   * due, to the admin it's for. Skipped once they read it in the panel, or when the notice is gone.
+   */
+  const deliverBudgetNotice = async (
+    row: DeliveryRow,
+    kind: "budget_warning" | "budget_reached",
+    fingerprint: string,
+    config: Exclude<EmailConfig, { readonly provider: "off" }>,
+  ): Promise<ChannelOutcome> => {
+    const stored = row.notification;
+    if (stored.readAt !== null) {
+      return { outcome: "skipped", why: "read" };
+    }
+    const organizationId = organizationIdSchema.parse(row.organizationId);
+    const noticeId = budgetNoticeIdOfKey(row.idempotencyKey);
+    const view = noticeId === null ? null : await loadBudgetNoticeView(deps.db, organizationId, noticeId);
+    if (view === null) {
+      return { outcome: "skipped", why: "closed" };
+    }
+    const address = stored.member.user.email.trim();
+    if (address === "") {
+      return { outcome: "skipped", why: "no-address" };
+    }
+    const memberId = memberIdSchema.parse(stored.memberId);
+    const rendered = renderBudgetNoticeMail(view, deps.publicUrl);
+    const sent = await adapterFor(fingerprint, config).send({
+      organizationId,
+      memberIds: [memberId],
+      title: rendered.subject,
+      body: rendered.subject,
+      url: spendUrlOf(deps.publicUrl, view.projectId),
+      idempotencyKey: row.idempotencyKey,
+      kind,
+      recipients: [{ memberId, email: address, trackerMention: null }],
+      subject: view.budgetName,
+      rendered,
+      notificationId: notificationIdSchema.parse(stored.id),
+      taskId: null,
+      ticket: null,
+    });
+    if (!sent.ok) {
+      return { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+    }
+    const refused = sent.value.refused.find((entry) => entry.memberId === memberId);
+    if (refused !== undefined) {
+      return { outcome: "failed", error: `the mail provider refused the address: ${refused.reason}`.slice(0, 500), retryable: false };
+    }
+    return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
+  };
+
   const deliver = async (row: DeliveryRow): Promise<ChannelOutcome> => {
     const configured = await configOf();
     if ("failed" in configured) {
@@ -238,6 +289,9 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
       return { outcome: "skipped", why: "mail-off" };
     }
     const { notification: stored } = row;
+    if (isBudgetNoticeKind(stored.kind)) {
+      return deliverBudgetNotice(row, stored.kind, configured.fingerprint, configured.config);
+    }
     // Due now: a member who read it in the panel meanwhile, or an item closed meanwhile, needs no mail.
     const kind = momentKindOf(stored.kind);
     if (!emailStillNeeded({ kind, readAt: stored.readAt?.getTime() ?? null, itemState: stored.needsYouItem?.state ?? null })) {

@@ -90,6 +90,7 @@ describe("the job catalogue (ADR 0037)", () => {
         "invitation.expire",
         "budget.check",
         "budget.release",
+        "budget.new-month",
         "insights.compute",
         "search.backfill",
         "pr.link-related",

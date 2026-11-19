@@ -75,6 +75,7 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "invitation.expire": { ...base, retryLimit: 2 },
   "budget.check": { ...base, retryLimit: 5 },
   "budget.release": { ...base, retryLimit: 5 },
+  "budget.new-month": { ...base, retryLimit: 3 },
   "insights.compute": { ...base, retryLimit: 2, expireInSeconds: 600 },
   "search.backfill": { ...base, retryLimit: 3, expireInSeconds: 600 },
   "pr.link-related": { ...base, retryLimit: 8, groupConcurrency: 2 },

@@ -1,9 +1,14 @@
 import type { AdapterError, BoardRef, Logger, MomentNotification, NotificationAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db, Prisma } from "@ostra/db";
 import {
+  budgetNoticeIdOfKey,
+  budgetNoticePanelWords,
   deliveryChangeOf,
   fanOutNotification,
+  isBudgetNoticeKind,
+  loadBudgetNoticeView,
   momentHeading,
+  spendUrlOf,
   momentKindOf,
   recordDelivery,
   trackerDelivery,
@@ -177,7 +182,41 @@ export const baseNotification = async (
   };
 };
 
+/**
+ * Milestone 4 (F-037, ticket 13): a budget notice's panel delivery, its words read from the notice
+ * when it's due. A notice gone with its budget has nothing to say.
+ */
+const budgetPanelOutcome = async (deps: NotifyDeps, row: DeliveryRow, kind: "budget_warning" | "budget_reached"): Promise<ChannelOutcome> => {
+  const organizationId = organizationIdSchema.parse(row.organizationId);
+  const noticeId = budgetNoticeIdOfKey(row.idempotencyKey);
+  const view = noticeId === null ? null : await loadBudgetNoticeView(deps.db, organizationId, noticeId);
+  if (view === null) {
+    return { outcome: "skipped", why: "closed" };
+  }
+  const memberId = memberIdSchema.parse(row.notification.memberId);
+  const text = budgetNoticePanelWords(view);
+  const sent = await deps.channels.panel(organizationId).send({
+    organizationId,
+    memberIds: [memberId],
+    title: text.title,
+    body: text.line,
+    url: spendUrlOf(deps.publicUrl, view.projectId),
+    idempotencyKey: row.idempotencyKey,
+    kind,
+    recipients: [{ memberId, email: null, trackerMention: null }],
+    subject: view.budgetName,
+    rendered: null,
+    notificationId: notificationIdSchema.parse(row.notification.id),
+    taskId: null,
+    ticket: null,
+  });
+  return sent.ok ? { outcome: "sent", providerMessageId: sent.value.providerMessageId } : { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+};
+
 const panelOutcome = async (deps: NotifyDeps, row: DeliveryRow, change: "created" | "answered" | "dismissed"): Promise<ChannelOutcome> => {
+  if (isBudgetNoticeKind(row.notification.kind)) {
+    return budgetPanelOutcome(deps, row, row.notification.kind);
+  }
   const memberId = memberIdSchema.parse(row.notification.memberId);
   const notification = await baseNotification(deps, row, change, [{ memberId, email: null, trackerMention: null }]);
   const sent = await deps.channels.panel(organizationIdSchema.parse(row.organizationId)).send(notification);

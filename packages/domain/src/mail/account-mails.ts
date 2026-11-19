@@ -201,14 +201,14 @@ export const renderBudgetWarningMail = (input: BudgetMailInput): RenderedEmail =
   return layout(
     {
       organizationName: input.organizationName,
-      heading: `${String(input.percent)}% of ${name}'s budget`,
-      lede: `${name} has spent ${input.spent} of its ${input.budget} budget for ${month}. At 100%, new tasks and turns wait until the budget is raised or the month ends.`,
-      button: "Open the budget",
+      heading: `${name} is at ${String(input.percent)}% of its budget`,
+      lede: `${name} has spent ${input.spent} of its ${input.budget} budget for ${month}. At 100%, no new task or turn starts in it until the budget is raised or the month ends.`,
+      button: "Open Spend",
       link: input.link,
-      note: "You get this because you're an admin of this budget. It's sent once a month.",
+      note: `Budgets count every task's tokens at the model's prices, in UTC months. You get this because you're an admin of ${name}.`,
       publicUrl: input.publicUrl,
     },
-    `${name} has used ${String(input.percent)}% of its budget for ${month}`,
+    `${name} is at ${String(input.percent)}% of its budget`,
   );
 };
 
@@ -218,13 +218,14 @@ export const renderBudgetReachedMail = (input: BudgetMailInput): RenderedEmail =
   return layout(
     {
       organizationName: input.organizationName,
-      heading: `${name}'s budget is reached`,
-      lede: `${name} has spent ${input.spent} of its ${input.budget} budget for ${month}. New tasks and new turns wait; turns already running finish. Raise the budget to let them go, in the order they were held.`,
-      button: "Open the budget",
+      heading: `${name} reached its budget`,
+      lede: `${name} has spent ${input.spent} of its ${input.budget} budget for ${month}. New tasks wait and new turns are held, in order; running turns finish.`,
+      // Decided 2026-11-19 (ticket 13): only admins of the budget's scope get it, so they can raise it.
+      button: "Raise the budget",
       link: input.link,
-      note: "You get this because you're an admin of this budget. It's sent once a month.",
+      note: `Raising it lets the held turns go in the order they were held. You get this because you're an admin of ${name}.`,
       publicUrl: input.publicUrl,
     },
-    `${name}'s budget for ${month} is reached`,
+    `${name} reached its budget`,
   );
 };

@@ -66,6 +66,8 @@ export const jobNames = [
   "invitation.expire",
   "budget.check",
   "budget.release",
+  // A new month lets every budget's held turns go (ticket 13): a schedule on the 1st at 00:05 UTC.
+  "budget.new-month",
   "insights.compute",
   "search.backfill",
   "pr.link-related",
@@ -188,6 +190,8 @@ export const jobPayloadSchemas = {
   }),
   /** Release a budget's held turns and waiting tasks in the order they were held (F-037, ticket 13). */
   "budget.release": z.strictObject({ organizationId: organizationIdSchema, budgetId: budgetIdSchema, raisedAt: epochMsSchema }),
+  /** A new month began: a `budget.release` for every budget (F-037, ticket 13). A schedule. */
+  "budget.new-month": z.strictObject({}),
   /** Recompute every organization's last two days of Insights and any changed day (F-108, ticket 14). An idempotent pass: a schedule. */
   "insights.compute": z.strictObject({}),
   /** Write a task's search entries, idempotent per entry (F-080, ticket 11). */
@@ -243,6 +247,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "invitation.expire": () => "invitations:expire",
   "budget.check": (payload) => `budget:${payload.budgetId}:${payload.month}:${payload.threshold}`,
   "budget.release": (payload) => `budget:${payload.budgetId}:release:${String(payload.raisedAt)}`,
+  "budget.new-month": () => "budget:new-month",
   "insights.compute": () => "insights:compute",
   "search.backfill": (payload) => `task:${payload.taskId}:search-backfill`,
   "pr.link-related": (payload) => `task:${payload.taskId}:link-related:${payload.repoId}:${String(payload.prNumber)}`,
@@ -296,6 +301,7 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "invitation.expire": { kind: "schedule" },
   "budget.check": { kind: "event" },
   "budget.release": { kind: "event" },
+  "budget.new-month": { kind: "schedule" },
   "insights.compute": { kind: "schedule" },
   "search.backfill": { kind: "event" },
   "pr.link-related": { kind: "event", throttle: "connection" },

@@ -634,7 +634,9 @@ describe("milestone 4's mails", () => {
     expect(mails.invitation.subject).toBe("Ada invited you to Acme on ostra");
     expect(mails.invitation.text).toContain("26 November 2026, 14:05 UTC");
     expect(mails["budget warning"].text).toContain("$80.00 of its $100.00 budget for November 2026");
-    expect(mails["budget reached"].subject).toBe("platform's budget for November 2026 is reached");
+    expect(mails["budget warning"].subject).toBe("platform is at 80% of its budget");
+    expect(mails["budget reached"].subject).toBe("platform reached its budget");
+    expect(mails["budget reached"].text).toContain("Raise the budget: ");
   });
 
   it("escapes a name in the HTML", () => {
