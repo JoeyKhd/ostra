@@ -54,6 +54,7 @@ import type {
   StopReason,
   TaskCredentials,
   TaskEvent,
+  TaskEventOf,
   TaskSpec,
   TurnId,
 } from "@ostra/protocol";
@@ -791,6 +792,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const turnId = turnIdSchema.parse(randomUUID());
     turn = turnId;
     turnOrdinal += 1;
+    mcp?.turnStarted();
     unsaved = true;
     turnRunning = true;
     planRefusedInTurn = false;
@@ -1380,6 +1382,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       onPrText: (event) => {
         void emit(event);
       },
+      // Minor 3 (ticket 20, F-110): the memory tools, when the spec offers them.
+      ...(taskSpec.memory?.tools === true
+        ? {
+            memory: {
+              link: deps.link.memory,
+              onUsed: (event: TaskEventOf<"memory.used">) => {
+                if (channel?.supports("memory.used") === true) {
+                  void emit(event);
+                }
+              },
+            },
+          }
+        : {}),
     });
     // Ticket 29: the profile's HTTP MCP servers, each with its URL and headers from the credentials.
     const httpServers = (taskSpec.agent.mcpServers ?? []).flatMap((server) => (server.transport === "http" ? [server] : []));
@@ -1588,6 +1603,24 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   };
 
   /** `session.restored`: how the session came back, once the agent runs. Replayed updates were never sent. */
+  /**
+   * Milestone 4 (ticket 20, F-110): the notes the session's block delivered, once a session, as two
+   * `memory.used` events by the spec's ID lists. IDs only. A peer below minor 3 gets none.
+   */
+  const reportMemoryDelivered = async (taskSpec: TaskSpec): Promise<void> => {
+    const memory = taskSpec.memory;
+    if (memory === undefined || memory === null || channel?.supports("memory.used") !== true) {
+      return;
+    }
+    if (memory.alwaysNoteIds.length > 0) {
+      await emit({ kind: "memory.used", noteIds: [...memory.alwaysNoteIds], via: "always" });
+    }
+    if (memory.indexNoteIds.length > 0) {
+      await emit({ kind: "memory.used", noteIds: [...memory.indexNoteIds], via: "index" });
+    }
+    log.info("memory delivered", { always: memory.alwaysNoteIds.length, index: memory.indexNoteIds.length, omitted: memory.omitted, tools: memory.tools });
+  };
+
   const reportRestored = async (): Promise<void> => {
     const state = restored;
     if (state === undefined || session === undefined) {
@@ -1766,6 +1799,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Ticket 29 (F-021): the profile's skills, as written into the agent folder, and its MCP servers.
       skills: launchSkills ?? [],
       mcpServers: launchMcpServers(taskSpec),
+      // Milestone 4 (ticket 20, F-110): the block core rendered, and whether the tools are offered.
+      memory: taskSpec.memory === undefined || taskSpec.memory === null ? null : { block: taskSpec.memory.block, tools: taskSpec.memory.tools },
     });
     if (!launch.ok) {
       return { ok: false, error: `the agent couldn't be launched: ${launch.error.message}` };
@@ -1873,6 +1908,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         end({ kind: "crashed", error: failed });
       } else {
         await reportRestored();
+        await reportMemoryDelivered(taskSpec);
       }
     }
     if (taskSpec !== undefined && acrossTurns) {

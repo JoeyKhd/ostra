@@ -238,8 +238,25 @@ const mcpCall = async (server: { readonly url: string; readonly bearer?: string 
       },
       body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
     });
-    const parsed = z.looseObject({ result: z.unknown() }).safeParse(await answer.json());
-    return parsed.success ? parsed.data.result : undefined;
+    // Streamable HTTP answers as JSON or as an event stream (the sidecar's MCP server, ticket 20):
+    // the reply is the stream's `data:` line that holds a result.
+    const text = await answer.text();
+    const bodies = (answer.headers.get("content-type") ?? "").includes("text/event-stream")
+      ? text.split(/\r?\n/).flatMap((line) => (line.startsWith("data:") ? [line.slice("data:".length).trim()] : []))
+      : [text];
+    for (const body of bodies) {
+      let value: unknown;
+      try {
+        value = JSON.parse(body);
+      } catch {
+        continue;
+      }
+      const parsed = z.looseObject({ result: z.unknown() }).safeParse(value);
+      if (parsed.success) {
+        return parsed.data.result;
+      }
+    }
+    return undefined;
   } catch {
     return undefined;
   }

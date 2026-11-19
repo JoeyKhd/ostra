@@ -1,6 +1,6 @@
 # 20: Runner: the memory block and the memory tools
 
-Status: ready-for-agent
+Status: done
 Builder: runner
 Blocked by: 01, 07
 Features: F-110, F-111
@@ -20,10 +20,12 @@ Spec: `../spec.md`, sections 4 ("The memory tools") and 5.1; ADR 0044 (amended),
 
 ## Done when
 
-- [ ] Tests named `it("F-110: ...")`: the block reaches the fake agent; `memory.used` for the index and a read; the tools are absent when `tools` is false.
-- [ ] Tests named `it("F-111: ...")`: a proposal reaches the fake core with the task token and the agent never sees it; a secret refusal's words reach the agent.
-- [ ] The task token appears in no file of the workspace or the agent's folders, and in no event (searched by value).
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the memory tools to the sidecar`.
+- [x] Tests named `it("F-110: ...")`: the block reaches the fake agent; `memory.used` for the index and a read; the tools are absent when `tools` is false.
+- [x] Tests named `it("F-111: ...")`: a proposal reaches the fake core with the task token and the agent never sees it; a secret refusal's words reach the agent.
+- [x] The task token appears in no file of the workspace or the agent's folders, and in no event (searched by value).
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the memory tools to the sidecar`.
 
 ## Comments
+
+- 2026-11-19: done in `✨ add the memory tools to the sidecar`, rebased onto ticket 15's core endpoints (the runner's `MemoryLink` calls the same paths and methods: `POST search`, `GET notes/:id`, `POST proposals`, with core's refusals as 200 answers or 4xx words). With core's section and endpoints in place, F-110's rows 1 to 3 are `proved`; row 4 waits on the task page (ticket 38), F-111's rows on ticket 16. Checks: typecheck, lint and test of `@ostra/runner` and its dependencies through turbo (21 tasks), `check:proof`, `check:licenses`.

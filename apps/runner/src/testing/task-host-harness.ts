@@ -30,7 +30,8 @@ import type { FakeServer } from "./fake-server.ts";
 
 export const MODEL_TOKEN = "sk-real-model-token-for-the-m2-task-host-test";
 export const GIT_TOKEN = "ghs_realGitTokenForTheM2TaskHostTest0123456789";
-const ACCESS_TOKEN = "ostra-runner-m2-task-host-access-token";
+/** The token the runner's link sends core: on `host` the runner's own, in a box the task's (ticket 20 searches for it). */
+export const ACCESS_TOKEN = "ostra-runner-m2-task-host-access-token";
 const MCP_TOKEN = "ostra-mcp-real-runner-mcp-token-m2-0123456789";
 
 /** The fake agent whose export fails: its command exits 4 (ticket 22, a failed export). */

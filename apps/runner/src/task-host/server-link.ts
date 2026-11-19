@@ -1,4 +1,7 @@
 import {
+  memoryNoteResponseSchema,
+  memoryProposalResponseSchema,
+  memorySearchResponseSchema,
   PROTOCOL_MINOR,
   runnerHeaders,
   runnerPaths,
@@ -7,12 +10,28 @@ import {
   taskSpecResponseSchema,
   taskTokenResponseSchema,
 } from "@ostra/protocol";
-import type { BlobRef, LeaseEpoch, ServiceSecrets, SnapshotCredentials, SnapshotId, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
+import type {
+  BlobRef,
+  LeaseEpoch,
+  MemoryNoteResponse,
+  MemoryProposalRequest,
+  MemoryProposalResponse,
+  MemorySearchRequest,
+  MemorySearchResponse,
+  NoteId,
+  ServiceSecrets,
+  SnapshotCredentials,
+  SnapshotId,
+  TaskCredentials,
+  TaskId,
+  TaskSpec,
+} from "@ostra/protocol";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
 import { createBulkClient } from "../server/bulk.ts";
 import type { BulkResult, DownloadInput, Downloaded, UploadInput } from "../server/bulk.ts";
 import { callJson, describeFailure, joinUrl } from "../server/http.ts";
 import type { TokenSource } from "../connection/peer.ts";
+import type { z } from "zod";
 
 // How the task host talks to the server (ADR 0029, ticket 21): the same code runs a task on every
 // executor, and only this link differs. On `host` it's the runner's own connection plus its HTTP
@@ -26,6 +45,26 @@ export type LinkFailure =
 
 export type LinkResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly failure: LinkFailure };
 
+/**
+ * Milestone 4 (ticket 20, ADR 0044): a memory call's failure. `refused` is core's answer, in its own
+ * words, which the tool hands the agent; `unavailable` is a network failure, a timeout or a server
+ * error. Neither carries a query or a note's text.
+ */
+export type MemoryCallFailure = { readonly kind: "refused"; readonly status: number; readonly message: string } | { readonly kind: "unavailable" };
+
+export type MemoryCallResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly failure: MemoryCallFailure };
+
+/**
+ * Milestone 4 (ticket 20): the sidecar's memory endpoints on core (`/runner/v1/tasks/:taskId/memory/*`),
+ * with the link's own token: the runner's on `host`, the box's task token in a sidecar. The token
+ * stays in the runner's memory; the agent's MCP bearer never reaches core.
+ */
+export type MemoryLink = {
+  readonly search: (taskId: TaskId, request: MemorySearchRequest) => Promise<MemoryCallResult<MemorySearchResponse>>;
+  readonly read: (taskId: TaskId, noteId: NoteId) => Promise<MemoryCallResult<MemoryNoteResponse>>;
+  readonly propose: (taskId: TaskId, request: MemoryProposalRequest) => Promise<MemoryCallResult<MemoryProposalResponse>>;
+};
+
 export type ServerLink = {
   readonly fetchSpec: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<TaskSpec>>;
   /** The task's credentials, after the server checks the lease. Held in memory only. */
@@ -36,6 +75,21 @@ export type ServerLink = {
   readonly uploadBlob: (input: UploadInput) => Promise<BulkResult<BlobRef>>;
   /** Minor 1, the bulk path: a blob of the task down. The caller checks its digest. */
   readonly downloadBlob: (input: DownloadInput) => Promise<BulkResult<Downloaded>>;
+  /** Minor 3 (milestone 4): the memory tools' calls, on behalf of the task. */
+  readonly memory: MemoryLink;
+};
+
+/** How long a memory call may take before the tool says memory is unavailable. */
+const MEMORY_TIMEOUT_MS = 15_000;
+
+const memoryFailureOf = (failure: Parameters<typeof describeFailure>[0]): MemoryCallFailure => {
+  if (failure.kind === "refused" && failure.status >= 400 && failure.status < 500) {
+    const message =
+      failure.error?.message ??
+      (failure.status === 404 ? "There's no approved memory note with that ID." : `Memory refused the call (status ${String(failure.status)}).`);
+    return { kind: "refused", status: failure.status, message: message.slice(0, 500) };
+  }
+  return { kind: "unavailable" };
 };
 
 const failureOf = (failure: Parameters<typeof describeFailure>[0]): LinkFailure =>
@@ -163,10 +217,40 @@ export const runnerServerLink = (input: {
       return result.ok ? { ok: true, value: result.value } : { ok: false, failure: failureOf(result.failure) };
     },
     openSession: (ref) => input.connection.openSession(ref),
+    memory: memoryLink({ serverUrl: input.serverUrl, tokens: input.tokens }),
     uploadBlob: (upload) => bulk.upload(upload),
     downloadBlob: (download) => bulk.download(download),
     statusChanged: () => {
       input.connection.statusChanged();
     },
+  };
+};
+
+/** The memory endpoints with the link's token (minor 3). Never logs: a query and a note's text stay out. */
+export const memoryLink = (input: { readonly serverUrl: string; readonly tokens: TokenSource }): MemoryLink => {
+  const call = async <Schema extends z.ZodType>(
+    url: string,
+    schema: Schema,
+    body?: unknown,
+  ): Promise<MemoryCallResult<z.infer<Schema>>> => {
+    const token = await input.tokens.get();
+    if (!token.ok) {
+      return { ok: false, failure: { kind: "unavailable" } };
+    }
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, url),
+      method: body === undefined ? "GET" : "POST",
+      schema,
+      ...(body === undefined ? {} : { body }),
+      bearer: token.token,
+      headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      timeoutMs: MEMORY_TIMEOUT_MS,
+    });
+    return result.ok ? { ok: true, value: result.value } : { ok: false, failure: memoryFailureOf(result.failure) };
+  };
+  return {
+    search: (taskId, request) => call(runnerPaths.taskMemorySearch(taskId), memorySearchResponseSchema, request),
+    read: (taskId, noteId) => call(runnerPaths.taskMemoryNote(taskId, noteId), memoryNoteResponseSchema),
+    propose: (taskId, request) => call(runnerPaths.taskMemoryProposals(taskId), memoryProposalResponseSchema, request),
   };
 };

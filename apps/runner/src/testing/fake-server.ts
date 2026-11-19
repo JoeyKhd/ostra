@@ -8,8 +8,14 @@ import {
   blobUploadStartRequestSchema,
   encodeRunnerHttpErrorForMinor,
   minorFromHeader,
+  memoryNoteResponseSchema,
+  memoryProposalRequestSchema,
+  memoryProposalResponseSchema,
+  memorySearchRequestSchema,
+  memorySearchResponseSchema,
   minorWindow,
   parseJson,
+  proposalIdSchema,
   PROTOCOL_MAJOR,
   PROTOCOL_MINOR,
   registerRequestSchema,
@@ -23,6 +29,10 @@ import {
 } from "@ostra/protocol";
 import type {
   InfoResponse,
+  MemoryNote,
+  MemoryProposalInput,
+  MemoryProposalRefusal,
+  MemoryProposalResponse,
   RegisterRequest,
   RunnerHttpError,
   RunnerId,
@@ -78,6 +88,24 @@ export type FakeServerOptions = {
   readonly now?: () => number;
 };
 
+/**
+ * Milestone 4 (ticket 20): core's memory endpoints for the sidecar, by the protocol's schemas. A
+ * search matches every word of the query in a note's title or body; a proposal is kept apart from
+ * the notes, so it reaches no agent until approved (here: never).
+ */
+export type FakeMemory = {
+  /** The approved notes a task can reach. */
+  readonly notes: MemoryNote[];
+  /** The proposals core recorded, with the task and the token each came with. */
+  readonly proposals: { readonly taskId: string; readonly bearer: string; readonly input: MemoryProposalInput }[];
+  /** Every memory call, in order: its endpoint and the token it carried. */
+  readonly calls: { readonly endpoint: "search" | "read" | "propose"; readonly taskId: string; readonly bearer: string }[];
+  /** The next proposals' refusal, in order, before any is recorded. */
+  readonly refusals: MemoryProposalRefusal[];
+  /** While true, every memory call fails as a server error: memory is down. */
+  down: boolean;
+};
+
 export type FakeServer = {
   readonly url: string;
   readonly runners: Map<RunnerId, FakeRunner>;
@@ -101,6 +129,8 @@ export type FakeServer = {
   readonly credentialsIssued: Map<string, number>;
   /** The bulk path's sealed blobs, by blob ID. */
   readonly blobs: Map<string, FakeBlob>;
+  /** Milestone 4: the memory endpoints' notes, proposals and calls. */
+  readonly memory: FakeMemory;
   readonly bulkFaults: BulkFaults;
   /** Every bulk-path call, by kind: `start`, `chunk`, `finish`, `download`. */
   readonly bulkCalls: string[];
@@ -161,6 +191,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const uploads = new Map<string, Upload>();
   const bulkFaults: BulkFaults = { dropChunks: 0, refuseUploads: false, failDownloads: new Set(), corruptDownloads: new Set() };
   const bulkCalls: string[] = [];
+  const memory: FakeMemory = { notes: [], proposals: [], calls: [], refusals: [], down: false };
   const seenNonces = new Set<string>();
   let counter = 0;
   let url = "";
@@ -175,6 +206,68 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     deviceClientId: "ostra-runner",
     ...infoOverride,
   });
+
+  // Milestone 4 (ticket 20): the memory endpoints, as `packages/protocol`'s minor 3 says them.
+  const handleMemory = async (request: IncomingMessage, response: ServerResponse, taskId: string, rest: string): Promise<void> => {
+    const bearer = bearerOf(request);
+    if (bearer === undefined || !accessTokens.has(bearer)) {
+      ostraError(response, 401, "unauthorized", "a valid access token is required");
+      return;
+    }
+    if (!tasks.has(taskId)) {
+      ostraError(response, 404, "not-found", "no such task");
+      return;
+    }
+    const endpoint = rest === "search" ? "search" : rest === "proposals" ? "propose" : "read";
+    memory.calls.push({ endpoint, taskId, bearer });
+    if (memory.down) {
+      ostraError(response, 503, "unavailable", "memory is down");
+      return;
+    }
+    if (endpoint === "search" && request.method === "POST") {
+      const parsed = memorySearchRequestSchema.safeParse(await readBody(request));
+      if (!parsed.success) {
+        ostraError(response, 400, "invalid", "a search is a query and a limit");
+        return;
+      }
+      const words = parsed.data.query.toLowerCase().split(/\s+/).filter((word) => word !== "");
+      const results = memory.notes
+        .filter((note) => words.every((word) => `${note.title}\n${note.body}`.toLowerCase().includes(word)))
+        .slice(0, parsed.data.limit)
+        .map((note) => {
+          const line = [note.title, ...note.body.split("\n")].find((candidate) => words.some((word) => candidate.toLowerCase().includes(word))) ?? note.title;
+          return { noteId: note.noteId, title: note.title, line: line.slice(0, runnerLimits.memoryQueryMaxChars), kind: note.kind, scope: note.scope };
+        });
+      send(response, 200, memorySearchResponseSchema.parse({ results }));
+      return;
+    }
+    if (endpoint === "read" && request.method === "GET") {
+      const noteId = decodeURIComponent(rest.slice("notes/".length));
+      const note = memory.notes.find((candidate) => candidate.noteId === noteId);
+      if (note === undefined) {
+        ostraError(response, 404, "not-found", "There's no approved memory note with that ID in this project.");
+        return;
+      }
+      send(response, 200, memoryNoteResponseSchema.parse(note));
+      return;
+    }
+    if (endpoint === "propose" && request.method === "POST") {
+      const parsed = memoryProposalRequestSchema.safeParse(await readBody(request));
+      const refusal = memory.refusals.shift();
+      let answer: MemoryProposalResponse;
+      if (!parsed.success) {
+        answer = { code: "invalid" };
+      } else if (refusal !== undefined) {
+        answer = refusal;
+      } else {
+        memory.proposals.push({ taskId, bearer, input: parsed.data });
+        answer = { proposalId: proposalIdSchema.parse(`proposal-${String(memory.proposals.length)}`) };
+      }
+      send(response, 200, memoryProposalResponseSchema.parse(answer));
+      return;
+    }
+    ostraError(response, 404, "not-found", "no such endpoint");
+  };
 
   // The bulk path (ADR 0043, ticket 12's endpoints, as the protocol's schemas say them).
   const handleBlobs = async (request: IncomingMessage, response: ServerResponse, match: RegExpExecArray): Promise<void> => {
@@ -446,6 +539,11 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       await handleBlobs(request, response, blobMatch);
       return;
     }
+    const memoryMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/memory\/(search|notes\/[^/?]+|proposals)$/.exec(path);
+    if (memoryMatch !== null) {
+      await handleMemory(request, response, decodeURIComponent(memoryMatch[1] ?? ""), memoryMatch[2] ?? "");
+      return;
+    }
     const taskMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/(spec|credentials)(?:\?(.*))?$/.exec(path);
     if (taskMatch !== null) {
       const bearer = bearerOf(request);
@@ -507,6 +605,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     tasks,
     credentialsIssued,
     blobs,
+    memory,
     bulkFaults,
     bulkCalls,
     putBlob: (taskId, bytes, contentType, given) => {

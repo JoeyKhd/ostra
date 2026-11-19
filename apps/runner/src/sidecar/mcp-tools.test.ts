@@ -2,10 +2,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
-import { repoFullNameSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { TaskEventOf } from "@ostra/protocol";
+import { createServer } from "node:http";
+import { proposalIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { MemoryProposalRequest, MemoryProposalResponse, MemorySearchRequest, TaskEventOf } from "@ostra/protocol";
+import { memoryNoteFixture } from "@ostra/protocol/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { PR_BODY_MAX, SET_PR_TEXT_TOOL, startMcpTools } from "./mcp-tools.ts";
+import { memoryLink } from "../task-host/server-link.ts";
+import type { MemoryCallResult, MemoryLink } from "../task-host/server-link.ts";
+import { MEMORY_PROPOSE_TOOL, MEMORY_READ_TOOL, MEMORY_SEARCH_TOOL, MEMORY_UNAVAILABLE, PR_BODY_MAX, SET_PR_TEXT_TOOL, startMcpTools } from "./mcp-tools.ts";
 import type { McpTools } from "./mcp-tools.ts";
 
 // Ticket 20's "done when": a real MCP client lists the tool, calls it, and the event comes out.
@@ -108,5 +112,190 @@ describe("ostra's MCP tools", () => {
     expect(none.status).toBe(401);
     await expect(connect(server, "wrong")).rejects.toThrow();
     expect(JSON.stringify(logs)).not.toContain(server.bearer);
+  });
+});
+
+// Milestone 4 (ticket 20, F-110, F-111): the memory tools, against a stand-in for core's endpoints.
+
+const note = memoryNoteFixture;
+
+type MemoryCalls = { search: MemorySearchRequest[]; read: string[]; propose: MemoryProposalRequest[] };
+
+const memoryLinkStub = (
+  answers: { readonly propose?: MemoryCallResult<MemoryProposalResponse>; readonly down?: boolean } = {},
+): { readonly link: MemoryLink; readonly calls: MemoryCalls } => {
+  const calls: MemoryCalls = { search: [], read: [], propose: [] };
+  const down = { ok: false as const, failure: { kind: "unavailable" as const } };
+  return {
+    calls,
+    link: {
+      search: (_taskId, request) => {
+        calls.search.push(request);
+        return Promise.resolve(
+          answers.down === true
+            ? down
+            : { ok: true, value: { results: [{ noteId: note.noteId, title: note.title, line: "Use `pnpm test` at the repo root", kind: note.kind, scope: note.scope }] } },
+        );
+      },
+      read: (_taskId, noteId) => {
+        calls.read.push(noteId);
+        if (answers.down === true) return Promise.resolve(down);
+        return Promise.resolve(
+          noteId === note.noteId || noteId === "note-other"
+            ? { ok: true, value: { ...note, noteId } }
+            : { ok: false, failure: { kind: "refused", status: 404, message: "There's no approved memory note with that ID." } },
+        );
+      },
+      propose: (_taskId, request) => {
+        calls.propose.push(request);
+        return Promise.resolve(answers.down === true ? down : (answers.propose ?? { ok: true, value: { proposalId: proposalIdSchema.parse("proposal-7") } }));
+      },
+    },
+  };
+};
+
+const startWithMemory = async (
+  link: MemoryLink,
+): Promise<{ readonly tools: McpTools; readonly used: TaskEventOf<"memory.used">[]; readonly logs: LogRecord[] }> => {
+  const used: TaskEventOf<"memory.used">[] = [];
+  const logs: LogRecord[] = [];
+  tools = await startMcpTools({
+    taskId: taskIdSchema.parse("task-mcp"),
+    repos: [{ repoId, fullName: repoFullNameSchema.parse("ostra-test/test1"), prTemplate: null }],
+    taskTitle: "Add a short CONTRIBUTING.md",
+    listenHost: "127.0.0.1",
+    logger: createLogger((record) => logs.push(record)),
+    onPrText: () => undefined,
+    memory: { link, onUsed: (event) => used.push(event) },
+  });
+  return { tools, used, logs };
+};
+
+describe("ostra's memory tools (ticket 20)", () => {
+  it("F-110: a read of a note this turn's search found is memory.used via search, and via read after the turn ends", async () => {
+    const { link, calls } = memoryLinkStub();
+    const { tools: server, used } = await startWithMemory(link);
+    const client = await connect(server);
+    expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([SET_PR_TEXT_TOOL, MEMORY_SEARCH_TOOL, MEMORY_READ_TOOL, MEMORY_PROPOSE_TOOL]);
+    const found = await client.callTool({ name: MEMORY_SEARCH_TOOL, arguments: { query: "pnpm test" } });
+    expect(textOf(found)).toContain(`${note.noteId} (command, project): ${note.title}`);
+    // The agent named no limit: the default, within the protocol's.
+    expect(calls.search).toEqual([{ query: "pnpm test", limit: 5 }]);
+    await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteId: note.noteId } });
+    // A note no search of the turn found is a read.
+    await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteId: "note-other" } });
+    server.turnStarted();
+    const read = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteId: note.noteId } });
+    expect(textOf(read)).toContain(note.body);
+    expect(used).toEqual([
+      { kind: "memory.used", noteIds: [note.noteId], via: "search" },
+      { kind: "memory.used", noteIds: ["note-other"], via: "read" },
+      { kind: "memory.used", noteIds: [note.noteId], via: "read" },
+    ]);
+  });
+
+  it("F-110: input the protocol's schemas refuse never reaches core, and a refusal is the tool's error text", async () => {
+    const { link, calls } = memoryLinkStub();
+    const { tools: server, used } = await startWithMemory(link);
+    const client = await connect(server);
+    const long = await client.callTool({ name: MEMORY_SEARCH_TOOL, arguments: { query: "x".repeat(501) } });
+    expect(long.isError).toBe(true);
+    const many = await client.callTool({ name: MEMORY_SEARCH_TOOL, arguments: { query: "pnpm", limit: 21 } });
+    expect(many.isError).toBe(true);
+    const extra = await client.callTool({ name: MEMORY_SEARCH_TOOL, arguments: { query: "pnpm", scope: "all" } });
+    expect(extra.isError).toBe(true);
+    const twoLines = await client.callTool({ name: MEMORY_PROPOSE_TOOL, arguments: { title: "a\nb", body: "x", kind: "command", scope: "project" } });
+    expect(twoLines.isError).toBe(true);
+    const halfRelation = await client.callTool({
+      name: MEMORY_PROPOSE_TOOL,
+      arguments: { title: "a", body: "x", kind: "command", scope: "project", relation: "refines" },
+    });
+    expect(textOf(halfRelation)).toContain("relatesTo and relation go together");
+    expect(calls).toEqual({ search: [], read: [], propose: [] });
+    const missing = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteId: "note-gone" } });
+    expect(missing.isError).toBe(true);
+    expect(textOf(missing)).toBe("There's no approved memory note with that ID.");
+    expect(used).toEqual([]);
+  });
+
+  it("F-111: a proposal goes to core as the protocol's request, and each refusal's words reach the agent", async () => {
+    const { link, calls } = memoryLinkStub();
+    const { tools: server } = await startWithMemory(link);
+    const client = await connect(server);
+    const proposed = await client.callTool({
+      name: MEMORY_PROPOSE_TOOL,
+      arguments: { title: "Tests run with vitest", body: "`pnpm test` runs vitest.", kind: "command", scope: "project", relatesTo: note.noteId, relation: "refines" },
+    });
+    expect(textOf(proposed)).toContain("Proposed as proposal-7");
+    expect(calls.propose).toEqual([
+      { title: "Tests run with vitest", body: "`pnpm test` runs vitest.", kind: "command", scope: "project", relatesTo: note.noteId, relation: "refines" },
+    ]);
+    const refusals: [MemoryProposalResponse, string][] = [
+      [{ code: "secret-found", found: ["a GitHub token"] }, "it holds a GitHub token"],
+      [{ code: "limit-reached" }, "this task has made the 20 proposals a task may make"],
+      [{ code: "invalid" }, "core couldn't read it as a note"],
+    ];
+    for (const [value, words] of refusals) {
+      for (const open of clients.splice(0)) {
+        await open.close();
+      }
+      await tools?.close();
+      const again = await startWithMemory(memoryLinkStub({ propose: { ok: true, value } }).link);
+      const other = await connect(again.tools);
+      const result = await other.callTool({ name: MEMORY_PROPOSE_TOOL, arguments: { title: "t", body: "b", kind: "term", scope: "organization" } });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain(words);
+    }
+  });
+
+  it("F-110: with core unreachable, every tool says memory is unavailable, and no query or note text is logged", async () => {
+    const { link } = memoryLinkStub({ down: true });
+    const { tools: server, logs, used } = await startWithMemory(link);
+    const client = await connect(server);
+    const calls: [string, Record<string, unknown>][] = [
+      [MEMORY_SEARCH_TOOL, { query: "the secret query" }],
+      [MEMORY_READ_TOOL, { noteId: note.noteId }],
+      [MEMORY_PROPOSE_TOOL, { title: "A private title", body: "A private body", kind: "gotcha", scope: "project" }],
+    ];
+    for (const [name, args] of calls) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toBe(MEMORY_UNAVAILABLE);
+    }
+    expect(used).toEqual([]);
+    const logged = JSON.stringify(logs);
+    expect(logged).toContain("memory call failed");
+    for (const secret of ["the secret query", "A private title", "A private body"]) {
+      expect(logged).not.toContain(secret);
+    }
+  });
+
+  it("F-110: the real link answers unavailable for a server that isn't there, and core's words for a 404", async () => {
+    const tokens = { get: () => Promise.resolve({ ok: true as const, token: "ostra-task-t", expiresAt: Date.now() + 60_000 }), invalidate: () => undefined };
+    const nowhere = memoryLink({ serverUrl: "http://127.0.0.1:9", tokens });
+    expect(await nowhere.search(taskIdSchema.parse("task-mcp"), { query: "pnpm", limit: 5 })).toEqual({ ok: false, failure: { kind: "unavailable" } });
+    const server = createServer((request, response) => {
+      request.resume();
+      const allowed = request.headers.authorization === "Bearer ostra-task-t";
+      response
+        .writeHead(allowed ? 404 : 401, { "content-type": "application/json" })
+        .end(JSON.stringify({ error: { code: "not-found", message: "No such note here." } }));
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      const real = memoryLink({ serverUrl: `http://127.0.0.1:${String(port)}`, tokens });
+      expect(await real.read(taskIdSchema.parse("task-mcp"), note.noteId)).toEqual({ ok: false, failure: { kind: "refused", status: 404, message: "No such note here." } });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+      });
+    }
   });
 });
