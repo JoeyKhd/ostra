@@ -29,12 +29,13 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 - [ ] A ticket in `OST` became a PR on `ostra-test/test1` from the Inbox, linked on the ticket, the ticket moved, and the task reopened a day later on a fresh worktree and another runner with its context, all recorded in `demo.md`.
 - [ ] Every check after the run passes, and ticket 38's suite passes.
 - [x] What waits for Linux is listed in `demo.md` and in the ledger notes.
-- [ ] All the checks for the whole repo pass.
-- [ ] Committed as `✅ add the milestone 2 end-to-end demo`, and the record and ledger as `📝 set milestone 2's ledger statuses`.
+- [x] All the checks for the whole repo pass.
+- [x] Committed as `✅ add the milestone 2 end-to-end demo`, and the record and ledger as `📝 set milestone 2's ledger statuses`.
 
 ## Comments
 
 - 2026-11-19, core (m2-integrate): **the overnight run passes end to end.** `e2e/m2-tickets-in/` (`pnpm e2e:m2`, `✅ add the milestone 2 end-to-end demo`, `8e0b82d`, and the fixes after it) seeds the Linear connection from `LINEAR_API_KEY` with a webhook on a quick tunnel, attaches `OST` in the panel, makes a real ticket, starts it from the Inbox, and follows it to the PR, the idle stop, a reopen on a second runner from the session archive, and the merge, then runs the checks after the run: no duplicates (on Linear, in the writer's outbox, on GitHub), the PR's key, cleanup, no credential anywhere, no CI for a hidden ref, "Create ticket", a reopen that resumes a warm box, a reopen from the rebuild template alone (5 of 5 in the final runs), drift with the webhook gone, and polling mode. It passed **three times in a row from an empty data folder** (runs B, C and D, 22 of 22 checks each); the record, the screenshots and the logs are in `../demo.md`, `../demo/` and `../live/`. The final run's ticket is OST-79 and its PR https://github.com/ostra-test/test1/pull/75 (merged).
   - **Fixed on the way, each with a test:** a runner restarted while a session waited between turns dropped it silently, leaving it idle forever (`ca68b7a`); the first prompt held ostra's own progress comment (`a5608e2`); a failed hidden-ref push now names git's reason (`8b47566`).
-  - **Not done:** the reopen "a day later" with a refreshed token, and step 1's real Authorize, are the maintainer's morning run (ticket 40); ticket 38's suite isn't built, so box 3 waits on it and on the repo checks (ticket 40's public repos or paid plan); box 5 is the whole-repo run below. The ledger rows are `building` with dated notes, not `done`: none has its proof file yet, and several rest on ticket 38.
+  - **Not done:** the reopen "a day later" with a refreshed token, and step 1's real Authorize, are the maintainer's morning run (ticket 40); ticket 38's suite isn't built, so box 3 waits on it and on the repo checks (ticket 40's public repos or paid plan); box 5: the whole repo's checks passed after the record (typecheck and lint, 53 turbo tasks and the root's; tests, 27 turbo tasks, 21 run fresh, and the root's; `check:licenses`). The ledger rows are `building` with dated notes, not `done`: none has its proof file yet, and several rest on ticket 38.
+  - **Commits:** `8e0b82d` (the demo), `312193d` (the record and the ledger).
   - **Dependencies:** none added. `@ostra/e2e-m1` gained an exports map and `setup.ts` (milestone 1's demo steps, shared).
