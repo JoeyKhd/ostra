@@ -31,7 +31,7 @@ import { chromium } from "@playwright/test";
 import type { Browser, Page } from "@playwright/test";
 import { z } from "zod";
 
-import { checkDrift, checkNoCiForHiddenRef, checkOutbox, checkPolling, cleanUpSecondTask, secondTask } from "./extras.ts";
+import { checkDrift, checkNoCiForHiddenRef, checkOutbox, checkPolling, cleanUpSecondTask, openTask, secondTask } from "./extras.ts";
 import { addComment, archiveIssue, createIssue, ensureLabel, linearTool, readIssue, uploadImage } from "./linear.ts";
 import type { CreatedIssue, LinearTool } from "./linear.ts";
 import { removeSeedWebhook, seedLinear } from "./seed-linear.ts";
@@ -217,7 +217,7 @@ const releaseOldWorktree = async (settings: M2Settings, runner: RunningRunner, t
 const REOPEN_MESSAGE = 'Also add this sentence at the end of the file: "Reopened from its session archive." And what did you change in your first turn, and why?';
 
 const reopenTask = async (page: Page, settings: M2Settings, taskId: TaskId): Promise<void> => {
-  await page.goto(`/tasks/${taskId}`);
+  await openTask(page, taskId);
   const composer = page.getByRole("textbox", { name: "Message" }).or(page.locator("textarea")).first();
   await composer.waitFor({ timeout: 30_000 });
   await composer.fill(REOPEN_MESSAGE);
@@ -294,7 +294,7 @@ const main = async (): Promise<void> => {
 
     if (run.pr === null) {
       if (runners.length === 0) runners.push(await connectRunner(page, settings, path.join(settings.stateDir, "demo-runner.log")));
-      await page.goto(`/tasks/${taskId}`);
+      await openTask(page, taskId);
       await page.getByText(ticket.identifier).first().waitFor({ timeout: 30_000 });
       await screenshot(page, settings, "task-ticket");
       const prStarted = Date.now();
@@ -319,7 +319,7 @@ const main = async (): Promise<void> => {
         return sessions.every((one) => !OPEN_SESSION_STATES.has(one.state)) ? true : null;
       }, 5000);
       run.timings["idleStopSeconds"] = seconds(Date.now() - idleStarted);
-      await page.goto(`/tasks/${taskId}`);
+      await openTask(page, taskId);
       await screenshot(page, settings, "idle-stopped");
       const sessions = await sessionsOf(db, taskId);
       const archive = sessions.at(-1)?.archiveBlobId ?? null;
@@ -352,7 +352,7 @@ const main = async (): Promise<void> => {
         return now.data.head.sha === before.data.head.sha ? null : now.data.head.sha;
       }, 10_000);
       run.timings["reopenToCommitSeconds"] = seconds(Date.now() - reopenedAt);
-      await page.goto(`/tasks/${taskId}`);
+      await openTask(page, taskId);
       await screenshot(page, settings, "reopened-commit");
       check("step 8: the reopen's commit updates the same PR", true, `${pr.url} head is now ${moved.slice(0, 7)}`);
       const answer = await waitFor("the reopened agent's answer", 5 * 60_000, async () => {
@@ -385,7 +385,7 @@ const main = async (): Promise<void> => {
       await saveRunState(stateFile, run);
     }
     const done = await waitOnLinear(tool, ticket.id, "the ticket's move to done", 5 * 60_000, (issue) => issue.state.type === "completed");
-    await page.goto(`/tasks/${taskId}`);
+    await openTask(page, taskId);
     await screenshot(page, settings, "merged");
     check("step 9: the ticket moved to done", true, `${done.identifier} is "${done.state.name}"`);
 

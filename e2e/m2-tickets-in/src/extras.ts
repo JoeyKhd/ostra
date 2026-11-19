@@ -27,6 +27,18 @@ export const waitUntil = async <T,>(what: string, timeoutMs: number, read: () =>
   }
 };
 
+/**
+ * The task page with its data loaded: its properties and the sidebar's projects. A screenshot taken
+ * straight after a navigation shows an empty page.
+ */
+export const openTask = async (page: Page, taskId: TaskId, reload = false): Promise<void> => {
+  if (reload) await page.reload();
+  else await page.goto(`/tasks/${taskId}`);
+  await page.getByTestId("task-properties").waitFor({ timeout: 60_000 });
+  await page.locator('nav a[href^="/projects/"], aside a[href^="/projects/"]').first().waitFor({ timeout: 30_000 }).catch(() => undefined);
+  await page.waitForTimeout(1000);
+};
+
 const result = (name: string, ok: boolean, detail: string): CheckResult => {
   say(`${ok ? "PASS" : "FAIL"} ${name}: ${detail}`);
   return { name, ok, detail };
@@ -160,7 +172,7 @@ export const secondTask = async (input: {
     const row = await db.taskRepo.findFirst({ where: { taskId, prNumber: { not: null } }, select: { prNumber: true, headSha: true } });
     return row?.prNumber === undefined || row.prNumber === null ? null : { number: row.prNumber, head: row.headSha };
   }, 3000);
-  await page.goto(`/tasks/${taskId}`);
+  await openTask(page, taskId);
 
   // F-097: "Create ticket" on a prompt task, linked both ways.
   await page.getByRole("button", { name: "Create ticket" }).click({ timeout: 60_000 });
@@ -175,7 +187,7 @@ export const secondTask = async (input: {
       .parse(await input.tool.call("query ($id: String!) { issue(id: $id) { attachments(first: 20) { nodes { url } } } }", { id: ticketKey }));
     return issue.issue.attachments.nodes.some((node) => node.url === taskUrl) ? true : null;
   }).catch(() => false);
-  await page.reload();
+  await openTask(page, taskId, true);
   await page.getByText(ticketKey).first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   await screenshot(page, settings, "create-ticket");
   checks.push(result("Create ticket links a prompt task both ways (F-097)", linked, `${ticketKey} on Linear links the task, and the task names ${ticketKey}`));
@@ -208,7 +220,7 @@ export const secondTask = async (input: {
   await input.moveToOtherRunner();
 
   const before = new Set((await db.session.findMany({ where: { taskId }, select: { id: true } })).map((session) => session.id));
-  await page.goto(`/tasks/${taskId}`);
+  await openTask(page, taskId);
   await page.locator("textarea").first().fill(QUESTIONS);
   await page.locator('[data-action="reopen"]').click();
   const origin = await waitUntil("the reopened session's restore", 10 * 60_000, async () => {
@@ -223,7 +235,7 @@ export const secondTask = async (input: {
     const idle = (await db.session.count({ where: { id: { in: ids }, state: "idle" } })) > 0;
     return answers.length > 0 && (idle || settled) ? answers.join("\n") : null;
   }, 5000);
-  await page.reload();
+  await openTask(page, taskId, true);
   await screenshot(page, settings, "rebuilt");
   const score = scoreAnswers(fresh, port);
   const right = score.filter((item) => item.ok).length;
