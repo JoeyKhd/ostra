@@ -1,6 +1,6 @@
 # 20: Core: cleanup and retention
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 16, 17
 Features: F-079, F-096
@@ -24,7 +24,13 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Tests: a merge releases the box once and deletes the hidden ref; an offline runner gets its `release` later; a box idle for 14 days is released by its delayed job, and one that ran a turn in between isn't; retention off deletes nothing; retention on deletes only finished tasks' content past the period and records it; another organization's rows are untouched.
-- [ ] Committed as `✨ add cleanup and retention`.
+- [x] Tests: a merge releases the box once and deletes the hidden ref; an offline runner gets its `release` later; a box idle for 14 days is released by its delayed job, and one that ran a turn in between isn't; retention off deletes nothing; retention on deletes only finished tasks' content past the period and records it; another organization's rows are untouched.
+- [x] Committed as `✨ add cleanup and retention`.
 
 ## Comments
+- 2026-11-20, core (sessions): done in `9e8c4fa` (`✨ add cleanup and retention`). Core and domain typecheck, lint and test green, check:licenses green. For tickets 16, 31, 37, 38 and 39:
+  - **`releaseBox`** (`packages/domain/src/use-cases/cleanup.ts`): under the task's lock, a ready or idle box stops and is released with its reason at once (so the dispatch never picks it again), its lease ends, and its runner gets one `release` command (a week's `notAfter`, so an offline runner gets it from the outbox when it reconnects; a retry of the job finds the command already there). A runner below minor 1 gets none, and the box's `releasedAt` is set then; otherwise the runner's `done` ack sets it (`applyReleaseResultsInTx` in `apps/core/src/cleanup/cleanup.ts`, from `onCommandResultsInTx`).
+  - **Ticket 16 sends `box.release`** (reason `prs-closed`) when the task's last PR merges or every PR closes: `recordPullRequestState` is still its stub, so the tests here set the task merged as 16 would. The handler releases the box, then deletes the hidden ref (`hiddenRefFor(taskId)`) from each repo through `deleteRef` once the task is merged or stopped with `prs_closed` and none of its boxes is kept (`hiddenRefsToDelete`), and clears `hiddenRefSha` and `hiddenRefBaseSha`. A task that can still be reopened keeps its ref. An `unsupported` code host is logged and skipped; any other failure throws so the job retries.
+  - **`box.release-after-idle`** (sent by ticket 17 when a box goes idle or stops, cancelled when a turn starts in it) releases the box with `idle_expired` only if it's still idle or stopped. The daily retention pass also runs `sweepCleanup`, which enqueues `box.release` for any box idle or stopped past the idle days whose timer was lost.
+  - **`retention.sweep`** (`41 3 * * *` UTC): reads `retentionDaysInEffect` (a saved setting, "keep" included, wins over `OSTRA_RETENTION_DAYS`) and does nothing when it's `null`. Otherwise, for at most 500 tasks a run that are stopped, merged or done, last changed before the cutoff and still holding events or blobs, it deletes the blobs through the blob service (the S3 objects too), the events and the live-text rows, clears the sessions' archive columns, and writes `task.history_removed` on the task (events, blobs, the days). Each run records one `retention.swept` per organization with `{ tasks, events, blobs, retentionDays }`, zero included, for the storage page's "last run". The task row, its task repos, its turns and its audit entries stay.
+  - **On `host`,** the runner removes OpenCode's tool outputs on `release` (ticket 23, `f036a04`). The configuration reference already says cleanup deletes refs, never LFS objects (Q120).
