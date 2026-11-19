@@ -1,6 +1,6 @@
 # Milestone 1's demo: first PR, from a prompt
 
-**Result, 2026-11-19 (01:04 UTC run):** a typed prompt became a real PR on the test repo, opened by the GitHub App, with the admin as co-author: **https://github.com/ostra-test/test1/pull/29**. All 13 checks after the run passed. `pnpm e2e:m1` passed twice in a row, each time from an empty data folder on a stack started fresh (`pnpm dev:reset --yes && pnpm dev`), in 89 s and 82 s, on a new worktree of `origin/main` with a fresh `pnpm install` (the first of the two kept #28; it is closed now). That worktree is not a `git clone`; the `git clone` run of the same day is in ticket 39's comments.
+**Result, 2026-11-19 (01:12 UTC run):** a typed prompt became a real PR on the test repo, opened by the GitHub App, with the admin as co-author: **https://github.com/ostra-test/test1/pull/31**. All 13 checks after the run passed. `pnpm e2e:m1` passed twice in a row from a `git clone` of `origin/main` (`917c8af`) with a fresh `pnpm install`, each time from an empty data folder on a stack started fresh (`pnpm dev:reset --yes && pnpm dev`), in 93 s and 89 s. Before that it passed twice in a row on a new worktree of `origin/main` (#28 and #29). Each run closes the earlier runs' PRs, so only #31 is open.
 
 The first record, 2026-11-18 at 23:38 UTC, opened #19 with a setup token and a hand-made admin. The server seeds the admin now (F-001), so steps 1 and 2 read differently below.
 
@@ -18,41 +18,41 @@ Start both with `OSTRA_ADMIN_EMAIL=<GITHUB_TEST_MEMBER_LOGIN>@users.noreply.gith
 
 ## The steps (spec section 3)
 
-From the 01:04 UTC run on 2026-11-19.
+From the 01:12 UTC run on 2026-11-19, on the clone.
 
 | Step | What happened | Screenshot |
 |---|---|---|
 | 1. Install | `pnpm dev` started the embedded Postgres (UTF-8), generated Prisma's client, applied the three migrations, and started web on :3000 and core on :8787. Core seeded the first admin (`demo`, in the organization `Demo`) with the default password. | |
 | 2. The first admin | Signing in with the default password led straight to "Choose a new password", which the script did. The checklist came up with step 1 ticked. | [01](demo/01-change-password.png), [02](demo/02-checklist.png) |
-| 3. A model provider | The base URL and token from `model.env`. Test connection: "Connected · OpenAI-compatible · found 447 models", matched to the catalog. Then Allow on personal runners, and the dev model as the built-in OpenCode profile's model. | [03](demo/03-provider-tested.png), [04](demo/04-provider-saved.png) |
+| 3. A model provider | The base URL and token from `model.env`. Test connection: "Connected · OpenAI-compatible" with the endpoint's models (about 450), matched to the catalog. Then Allow on personal runners, and the dev model as the built-in OpenCode profile's model. | [03](demo/03-provider-tested.png), [04](demo/04-provider-saved.png) |
 | 4. The GitHub App | "Use an existing App": App ID 5821041 and its PEM from `github.env` (the webhook secret is a throwaway: webhooks are milestone 2). ostra showed the slug `ostra-sandbox-036d7c`, its bot, its permissions and the installation `ostra-test`. | [05](demo/05-github-connected.png) |
 | 5. The project | `ostra-test/test1` from the installation's repos. The environment draft, then Save. | [06](demo/06-project-new.png), [07](demo/07-environment-draft.png), [08](demo/08-environment-saved.png) |
 | 6. The runner | `ostra runner --server http://localhost:8787 --executor host` printed a code; the script approved it at `/device`. The runner showed online: personal, host, not isolated, capacity 1. | [09](demo/09-device-approve.png), [10](demo/10-runner-online.png) |
-| 7. The prompt | "Add a CONTRIBUTING.md with a short section on how to run the tests", Run on: the personal runner. Dispatched at 01:05:17. | [11](demo/11-prompt.png) |
+| 7. The prompt | "Add a CONTRIBUTING.md with a short section on how to run the tests", Run on: the personal runner. Dispatched at 01:13:07. | [11](demo/11-prompt.png) |
 | 8. Watching | Thoughts, tool calls with their paths and commands, the edit, the agent's message, live. A second tab showed the same thread, and a reload mid-turn brought the history back. | [12](demo/12-watching.png), [13](demo/13-second-tab.png), [14](demo/14-after-reload.png) |
-| 9. The PR | The runner committed, pushed the branch and the hidden ref through the git proxy, and ended the session with changes at 01:05:31. Core opened PR #29 at 01:05:36, 18 s after the dispatch. The task moved to "in review" with the PR linked. | [15](demo/15-pull-request.png) |
+| 9. The PR | The runner committed, pushed the branch and the hidden ref through the git proxy, and ended the session with changes at 01:13:27. Core opened PR #31 at 01:13:32, 25 s after the dispatch. The task moved to "in review" with the PR linked. | [15](demo/15-pull-request.png) |
 | 10. On GitHub | Checked through octokit: opened by `ostra-sandbox-036d7c[bot]`; its one commit authored and committed by the bot, with `Co-authored-by: demo`; the title is the prompt; the body, written by the agent through `set_pull_request_text`, links `OSTRA_PUBLIC_URL/tasks/<taskId>`. `test1` has no PR template, so that path wasn't exercised live. | |
 
 ## The checks after the run
 
-All 13 passed in both runs. The script prints each one and writes them to `.ostra-dev/e2e-m1/result.json`. The figures are the 01:04 run's.
+All 13 passed in all four runs. The script prints each one and writes them to `.ostra-dev/e2e-m1/result.json`. The figures are the 01:12 run's.
 
 | Check | Result |
 |---|---|
 | The PR is the bot's (F-078) | PASS. Author `ostra-sandbox-036d7c[bot]`, 1 commit by the bot with `Co-authored-by: demo`, the prompt as title, a link to the task in the body. |
-| Tokens stored whole (F-089) | PASS. 9 model calls; the sessions hold 5,987 input and 1,085 output tokens (59,136 cache reads), equal to the sum of their `usage.recorded` events. Both come from the key proxy, so this shows the counts reached the database whole. |
+| Tokens stored whole (F-089) | PASS. 12 model calls; the sessions hold 6,198 input and 2,412 output tokens (92,416 cache reads), equal to the sum of their `usage.recorded` events. Both come from the key proxy, so this shows the counts reached the database whole. |
 | No empty PR (F-065) | PASS. "In two sentences, explain what this repository is for…" ended without changes, opened no PR, and is in "needs you" with the agent's answer as its summary ([17](demo/17-needs-you.png)). |
 | The git proxy refuses `main` | PASS. From the stopped task's checkout, while it ran: `remote: ostra: only the task's branch and its hidden ref can be pushed`. |
 | The git proxy refuses another repo | PASS. A push to `ostra-test/test2`: `remote: ostra: this task's proxy serves only the task's own repos`. |
 | Nothing refused reached GitHub | PASS. Through octokit, `main` on `test1` is the same commit before and after, and `test2` has no `ostra/e2e-probe` branch. |
 | No credential in the task's folders | PASS. While the stopped task ran: 47 files in its folder (the worktree, OpenCode's home, data, config and temp folders) searched by value for the model token and every line of the App's key, and OpenCode's tool outputs in `%TEMP%`. None held one; none was unreadable. |
 | The agent's environment | PASS. The live OpenCode process, read from its memory: every name is on the adapter's allowlist, or is one OpenCode sets itself with its own value (`OPENCODE_CLIENT=acp`, the loopback `NO_PROXY`). No value holds a secret. |
-| Tokens against the agent's own (ADR 0042) | PASS. While the stopped task waited on its command, the key proxy's count of the 2 model calls OpenCode had closed equals OpenCode's own, read from its database: 4,562 input and 403 output on both sides (OpenCode's output plus its reasoning). |
+| Tokens against the agent's own (ADR 0042) | PASS. While the stopped task waited on its command, the key proxy's count of the 2 model calls OpenCode had closed equals OpenCode's own, read from its database: 4,310 input and 386 output on both sides (OpenCode's output plus its reasoning). |
 | Stop ended the turn (F-025) | PASS. The stopped task's one session is `stopped`, and its branch has no PR. |
 | Stop kept the work (F-025) | PASS. GitHub has the task's branch and `refs/ostra/wip/<taskId>`, and the hidden ref's commit holds `docs/numbers.md` with ten lines ([19](demo/19-before-stop.png), [20](demo/20-stopped.png)). |
 | No credential in the logs | PASS. The event log, the runner's log and the stack's output searched for 26 secret values and the GitHub token pattern: none. |
 | No task folder left | PASS. 0 task folders in the runner's data folder, and no agent process left on the machine. |
-| Clean-up | Every PR the day's runs opened is closed and their branches and hidden refs deleted. Only #29, its branch and its hidden ref remain. |
+| Clean-up | Every PR the day's runs opened is closed and their branches and hidden refs deleted. Only #31, its branch and its hidden ref remain. |
 
 ## What it took
 
@@ -85,7 +85,6 @@ On 2026-11-19, from a fresh checkout, three checks failed and a fourth passed wi
 **Other milestone 1 work not done:**
 - Ticket 40: the manifest flow ("Create a new App") run in a browser. F-006 stays `building` until it is.
 - Ticket 34: the milestone 1 screen targets.
-- `pnpm e2e:m1` passed twice in a row from an empty stack on a fresh worktree of `origin/main`, not on a `git clone`. The `git clone` run of the same day failed the three checks fixed above, and hasn't been run again.
 
 **Gaps found by the demo** (follow-ups, none blocks the demo):
 - **A batch the server can't store is resent forever.** When saving a frame fails, core closes the socket with 1011, and the runner reconnects and resends the same batch, with no limit. Such a batch needs to be refused once, visibly, or held aside.
