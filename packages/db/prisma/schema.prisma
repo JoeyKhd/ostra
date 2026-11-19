@@ -486,6 +486,10 @@ model Runner {
   ackedCommandSeq Int          @default(0)
   lastSeenAt      DateTime?
   revokedAt       DateTime?
+  /// When an admin approved this pool runner, in a pool that requires approval (F-091, Q130).
+  approvedAt      DateTime?
+  /// The member who approved it; kept when the member leaves.
+  approvedByMemberId String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

@@ -41,5 +41,6 @@ export * from "./use-cases/stop-task.ts";
 export * from "./use-cases/server-events.ts";
 export * from "./use-cases/agent-profiles.ts";
 export * from "./use-cases/pools.ts";
+export * from "./use-cases/runner-approval.ts";
 export * from "./use-cases/sync-provider-models.ts";
 export * from "./environment/detect.ts";

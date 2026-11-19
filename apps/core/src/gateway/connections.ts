@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels } from "@ostra/db";
-import { notifyRunnerInTx, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
+import { awaitsApproval, notifyRunnerInTx, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
 import type { RunnerInput, RunnerLifecycle } from "@ostra/domain";
 import {
   closeCodes,
@@ -86,6 +86,9 @@ const rejectUpgrade = (socket: Duplex, status: 401 | 403 | 404 | 500, code: stri
     `HTTP/1.1 ${String(status)} ${reason}\r\ncontent-type: application/json\r\ncontent-length: ${String(Buffer.byteLength(body))}\r\nconnection: close\r\n\r\n${body}`,
   );
 };
+
+/** Thrown to roll back a hello whose runner was rejected or revoked while it waited for the runner's row. */
+const revokedWhileConnecting = new Error("the runner was revoked while it connected");
 
 type HelloOutcome =
   | { readonly ok: true; readonly connectionEpoch: number; readonly minor: number; readonly acks: readonly Ack[] }
@@ -189,8 +192,25 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       // Every other replica closes an older connection of this runner (4409).
       await notifyRunnerInTx(tx, { kind: "connected", runnerId: runner.runnerId, connectionEpoch });
 
-      const before = runnerFromColumns({ state: row.state });
-      const state = before.ok ? moveRunner(moveRunner(before.value, { type: "accept" }), { type: "reconnected" }) : null;
+      // The runner's row, locked after its presence (the order a close and an admin's approve keep),
+      // read again: an approve that committed while this hello waited is seen here.
+      await tx.$queryRaw`SELECT 1 FROM "runner" WHERE "id" = ${runner.runnerId} FOR UPDATE`;
+      const current = await tx.runner.findFirst({
+        where: { id: runner.runnerId, organizationId: runner.organizationId },
+        select: { state: true, revokedAt: true, kind: true, approvedAt: true, pool: { select: { requiresApproval: true } } },
+      });
+      if (current?.revokedAt !== null || current.state === "revoked") {
+        // Rejected or revoked while this hello waited: nothing of this connection is kept.
+        throw revokedWhileConnecting;
+      }
+      const before = runnerFromColumns({ state: current.state });
+      // A pool that requires approval keeps a joined runner `joining` until an admin approves it (Q130).
+      const accept = !awaitsApproval({
+        kind: current.kind,
+        approvedAt: current.approvedAt,
+        poolRequiresApproval: current.pool?.requiresApproval ?? false,
+      });
+      const state = before.ok ? moveRunner(accept ? moveRunner(before.value, { type: "accept" }) : before.value, { type: "reconnected" }) : null;
       await tx.runner.update({
         where: { id: runner.runnerId },
         data: { lastSeenAt: new Date(now()), version: hello.runnerVersion, ...(state === null ? {} : { state: state.state }) },
@@ -219,7 +239,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
             });
       const acks = cursors.map((cursor): Ack => ({ type: "ack", sessionId: sessionIdSchema.parse(cursor.id), upTo: cursor.ingestedSeq }));
       await hooks.onConnectedInTx(tx, runner);
-      if (state !== null && state.state !== row.state) {
+      if (state !== null && state.state !== current.state) {
         await context.ports.notices.emitInTx(tx, {
           organizationId: runner.organizationId,
           projectId: null,
@@ -228,6 +248,11 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         });
       }
       return { connectionEpoch, acks };
+    }).catch((error: unknown) => {
+      if (error === revokedWhileConnecting) {
+        return null;
+      }
+      throw error;
     });
     if (outcome === null) {
       return {
@@ -369,6 +394,8 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       if (closed === 0) {
         return;
       }
+      // Locked after presence, as hello does: an admin's approve that holds it waits for this close.
+      await tx.$queryRaw`SELECT 1 FROM "runner" WHERE "id" = ${runner.runnerId} FOR UPDATE`;
       const row = await tx.runner.findFirst({
         where: { id: runner.runnerId, organizationId: runner.organizationId },
         select: { state: true },

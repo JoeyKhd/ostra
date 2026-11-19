@@ -39,7 +39,10 @@ const info = (context: GatewayContext, response: ServerResponse): void => {
   );
 };
 
-/** A pool runner's join, with the bootstrap join token (milestone 1's only kind). */
+/**
+ * A pool runner's join, with any join token of its pool that isn't revoked or expired: the bootstrap
+ * one core writes at first start, and the ones an admin makes in the panel (F-091, Q130).
+ */
 const registerPoolRunner = async (
   context: GatewayContext,
   request: RegisterRequest,
@@ -48,12 +51,7 @@ const registerPoolRunner = async (
   const now = new Date(context.ports.clock.now());
   return context.db.$transaction(async (tx) => {
     const token = await tx.joinToken.findUnique({ where: { tokenHash: hashJoinToken(joinToken) } });
-    if (
-      token === null ||
-      !token.bootstrap ||
-      token.revokedAt !== null ||
-      (token.expiresAt !== null && token.expiresAt <= now)
-    ) {
+    if (token?.revokedAt !== null || (token.expiresAt !== null && token.expiresAt <= now)) {
       return { status: 401, code: "unauthorized", message: "the join token is not valid" };
     }
     if (request.executor === "host") {
@@ -95,7 +93,7 @@ const registerPoolRunner = async (
       action: "runner.registered",
       entity: "runner",
       entityId: runnerId,
-      data: { kind: "pool", executor: request.executor, capacity: request.capacity, bootstrap: true },
+      data: { kind: "pool", executor: request.executor, capacity: request.capacity, joinTokenId: token.id, bootstrap: token.bootstrap },
     });
     await context.ports.notices.emitInTx(tx, {
       organizationId: organizationId,

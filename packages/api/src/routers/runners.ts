@@ -1,4 +1,4 @@
-import { generateJoinToken, hashJoinToken } from "@ostra/domain";
+import { approveRunner, generateJoinToken, hashJoinToken, rejectRunner } from "@ostra/domain";
 import { joinTokenIdSchema, memberIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -84,6 +84,41 @@ export const runnersRouter = router({
       pool: row.pool === null ? null : { id: poolIdSchema.parse(row.pool.id), name: row.pool.name },
       owner: row.owner === null ? null : { memberId: memberIdSchema.parse(row.owner.id), name: row.owner.user.name },
     }));
+  }),
+
+  /**
+   * An admin approves a runner that joined a pool requiring approval (F-091, Q130): online at once
+   * when it's connected, else at its next connection.
+   */
+  approve: adminProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) =>
+      approveRunner(
+        { tx, notices: ports.notices, audit: ports.audit, clock: ports.clock },
+        { organizationId: ctx.scope.organizationId, runnerId: input.runnerId, memberId: ctx.scope.memberId },
+      ),
+    );
+    if (!result.ok) {
+      throw new TRPCError({ code: result.error === "not-found" ? "NOT_FOUND" : "CONFLICT", message: result.message });
+    }
+    ctx.deps.logger.info("runner.approved", { runnerId: input.runnerId, state: result.state });
+    return { runnerId: input.runnerId, state: result.state };
+  }),
+
+  /** An admin rejects a joining runner: revoked, and disconnected with 4403 when it's connected (F-091, Q130). */
+  reject: adminProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) =>
+      rejectRunner(
+        { tx, notices: ports.notices, audit: ports.audit, clock: ports.clock },
+        { organizationId: ctx.scope.organizationId, runnerId: input.runnerId, memberId: ctx.scope.memberId },
+      ),
+    );
+    if (!result.ok) {
+      throw new TRPCError({ code: result.error === "not-found" ? "NOT_FOUND" : "CONFLICT", message: result.message });
+    }
+    ctx.deps.logger.info("runner.rejected", { runnerId: input.runnerId, connected: result.wasConnected });
+    return { runnerId: input.runnerId, state: result.state };
   }),
 });
 
