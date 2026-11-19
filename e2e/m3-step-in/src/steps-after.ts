@@ -79,7 +79,11 @@ export const cancel = async (d: Demo): Promise<void> => {
   }
   await sam.goto(taskPath(d));
   const box = sam.getByRole("textbox", { name: "Message the agent" });
-  await box.fill("Add a third line to the changelog that says the release name is final, then read every file in the repo once more to check nothing else needs the name.");
+  // The turn must still run when Linear's webhook for the cancel arrives (seconds later): a quick
+  // model can finish a one-line change first, and then there's no running turn to interrupt.
+  await box.fill(
+    'First run `node -e "setTimeout(() => {}, 120000)"` and wait for it to finish (two minutes). Then add a third line to the changelog that says the release name is final, and read every file in the repo once more to check nothing else needs the name.',
+  );
   const reopen = sam.locator('[data-action="reopen"]');
   if ((await reopen.count()) > 0) await reopen.click();
   else await sam.locator('[data-action="send"]').click();
