@@ -218,7 +218,7 @@ describe("the spec and the credentials", () => {
     expect(stale.status).toBe(409);
   });
 
-  it("issues the credentials after the lease check, with a token narrowed to the one repo, and logs none of them", async () => {
+  it("F-090: issues the credentials after the lease check, with a token narrowed to the one repo, and logs none of them", async () => {
     records.length = 0;
     const token = await accessToken(harness, runner);
     const response = await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 }, token.accessToken);
@@ -228,7 +228,9 @@ describe("the spec and the credentials", () => {
     expect(credentials.repos).toHaveLength(1);
     expect(credentials.secrets).toEqual([{ repoId: world.repoId, entries: [{ kind: "variable", name: "API_SECRET", value: ENV_SECRET, availableDuringSetup: false }] }]);
     const minted = codeHost.minted.at(-1);
-    expect(minted).toMatchObject({ repo: "ostra-test/test1", installationId: "777", permissions: { contents: "write", metadata: "read" } });
+    expect(minted).toMatchObject({ repo: "ostra-test/test1", installationId: "777" });
+    // Exactly what a push needs: no other permission rides along.
+    expect(minted?.permissions).toEqual({ contents: "write", metadata: "read" });
     expect(credentials.repos[0]?.gitToken).toBe(minted?.token);
     // No log line holds any of it.
     const logged = JSON.stringify(records);

@@ -10,9 +10,10 @@ import { repoFullNameSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol"
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LFS_HOSTILE_PROBE_REF, startGitUpstream } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream } from "@ostra/adapter-sdk/testing";
-import { startGitProxy } from "./git-proxy.ts";
+import { MAX_DISCARD_BYTES, startGitProxy } from "./git-proxy.ts";
 import type { GitProxy } from "./git-proxy.ts";
 import { LFS_ACTION_REFUSED_MESSAGE } from "./lfs.ts";
+import { encodePkt, FLUSH_PKT } from "./pkt-line.ts";
 import type { ProxyMode } from "./policy.ts";
 
 // Ticket 18's "done when": stock git (and git-lfs) through the proxy, against the upstream stub.
@@ -42,11 +43,12 @@ const runGit = (args: readonly string[], cwd: string, extraEnv: NodeJS.ProcessEn
     });
   });
 
-const startProxy = async (mode: ProxyMode = "read-write"): Promise<GitProxy> => {
+const startProxy = async (mode: ProxyMode = "read-write", maxDiscardBytes?: number): Promise<GitProxy> => {
   const proxy = await startGitProxy({
     taskId,
     branch,
     mode,
+    ...(maxDiscardBytes === undefined ? {} : { maxDiscardBytes }),
     repos: [
       {
         repoId: repoIdSchema.parse("repo-1"),
@@ -126,7 +128,7 @@ afterAll(async () => {
 });
 
 describe("the git proxy with stock git", () => {
-  it("clones, fetches and pushes the task's branch and its hidden ref", async () => {
+  it("F-090: clones, fetches and pushes the task's branch and its hidden ref, with the repo's token added upstream", async () => {
     const proxy = await startProxy();
     const { dir, run } = await clone(proxy.urlFor(repo), "work");
     expect(run.code, run.stderr).toBe(0);
@@ -142,7 +144,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, hiddenRef)).toBe(head);
   }, 60_000);
 
-  it("refuses a push to the default branch in git's words, forwarding nothing", async () => {
+  it("F-090: refuses a push to the default branch in git's words, forwarding nothing", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "to-main");
     await commitFile(dir, "sneaky.txt", "not allowed\n");
@@ -155,7 +157,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, "refs/heads/main")).toBe(mainBefore);
   }, 60_000);
 
-  it("refuses a delete, even of the task's own branch", async () => {
+  it("F-090: refuses a delete, even of the task's own branch", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "delete");
     const before = receivePacks(repo);
@@ -166,7 +168,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, `refs/heads/${branch}`)).not.toBeNull();
   }, 60_000);
 
-  it("refuses a push to another repo in git's words, and no request for it reaches the code host", async () => {
+  it("F-090: refuses a push to another repo in git's words, and no request for it reaches the code host", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "other-repo");
     await commitFile(dir, "elsewhere.txt", "x\n");
@@ -179,7 +181,7 @@ describe("the git proxy with stock git", () => {
     expect(upstream.requests.filter((request) => request.repo === otherRepo)).toEqual([]);
   }, 60_000);
 
-  it("names the code host's refusal by status, and logs the status without the body", async () => {
+  it("F-090: names the code host's refusal by status, and logs the status without the body", async () => {
     const proxy = await startProxy();
     const saved = token;
     token = "ghs_expired_or_unknown_token_value";
@@ -196,8 +198,69 @@ describe("the git proxy with stock git", () => {
   }, 60_000);
 });
 
+describe("a refused push's answer and its cost", () => {
+  const A = "a".repeat(40);
+  const B = "b".repeat(40);
+  const commands = (ref: string, capabilities: string): Buffer =>
+    Buffer.concat([encodePkt(`${A} ${B} ${ref}\0${capabilities}\n`), FLUSH_PKT, Buffer.from("PACK")]);
+  const receivePack = (proxy: GitProxy, body: Buffer): Promise<Response> =>
+    fetch(`${proxy.urlFor(repo)}/git-receive-pack`, { method: "POST", headers: { "content-type": "application/x-git-receive-pack-request" }, body });
+
+  it("F-090: answers a plain 403 with the reason only when the client asked for no report, and sends nothing upstream", async () => {
+    const proxy = await startProxy();
+    const before = receivePacks(repo);
+    const plain = await receivePack(proxy, commands("refs/heads/main", "agent=git/2.53"));
+    expect(plain.status).toBe(403);
+    expect(await plain.text()).toContain("ostra: only the task's branch and its hidden ref can be pushed");
+    // The same push with report-status gets git's own report, the ref refused with its reason.
+    const reported = await receivePack(proxy, commands("refs/heads/main", "report-status agent=git/2.53"));
+    expect(reported.status).toBe(200);
+    expect(await reported.text()).toContain("ng refs/heads/main ostra: only the task's branch and its hidden ref can be pushed");
+    expect(receivePacks(repo)).toBe(before);
+  });
+
+  it("F-090: reads at most its cap of a refused push, then closes the connection; the cap is 1 GiB", async () => {
+    expect(MAX_DISCARD_BYTES).toBe(1024 * 1024 * 1024);
+    const cap = 256 * 1024;
+    const proxy = await startProxy("read-write", cap);
+    const before = receivePacks(repo);
+    // Under the cap: the refusal is read to its end and answered.
+    const small = await receivePack(proxy, Buffer.concat([commands("refs/heads/main", "report-status"), randomBytes(cap / 2)]));
+    expect(small.status).toBe(200);
+    expect(await small.text()).toContain("ng refs/heads/main");
+    // Past the cap: the proxy stops reading and cuts the connection, with no answer.
+    const url = new URL(`${proxy.urlFor(repo)}/git-receive-pack`);
+    const outcome = await new Promise<string>((resolve) => {
+      const request = http.request(url, { method: "POST", headers: { "content-type": "application/x-git-receive-pack-request" } }, (response) => {
+        response.resume();
+        resolve(`answered ${String(response.statusCode)}`);
+      });
+      request.on("error", (error) => {
+        resolve(`cut: ${error.message}`);
+      });
+      request.write(commands("refs/heads/main", "report-status"));
+      let sent = 0;
+      const chunk = randomBytes(64 * 1024);
+      const pump = (): void => {
+        while (sent < cap * 64) {
+          sent += chunk.length;
+          if (!request.write(chunk)) {
+            request.once("drain", pump);
+            return;
+          }
+        }
+        request.end();
+      };
+      pump();
+    });
+    expect(outcome).toMatch(/^cut: /);
+    expect(receivePacks(repo)).toBe(before);
+    expect(logs.some((record) => record.message === "a refused push passed the cap on what the proxy reads: connection closed")).toBe(true);
+  }, 60_000);
+});
+
 describe("LFS through the proxy", () => {
-  it("uploads and downloads with git-lfs, and the signed URL never reaches the client", async () => {
+  it("F-090: uploads and downloads with git-lfs, and the signed URL and its header never reach the client", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "lfs");
     expect((await runGit(["lfs", "install", "--local"], dir)).code).toBe(0);
@@ -226,7 +289,7 @@ describe("LFS through the proxy", () => {
     expect(oid).toMatch(/^[0-9a-f]{64}$/);
   }, 120_000);
 
-  it("refuses an object whose action points at a host it doesn't allow, with an error and no actions", async () => {
+  it("F-090: refuses an object whose action points at a host it doesn't allow, with an error and no actions", async () => {
     const proxy = await startProxy();
     const response = await fetch(`${proxy.urlFor(repo)}/info/lfs/objects/batch`, {
       method: "POST",
@@ -255,7 +318,7 @@ describe("read-only mode", () => {
   const post = (url: string, body: unknown): Promise<Response> =>
     fetch(url, { method: "POST", headers: { "content-type": "application/vnd.git-lfs+json" }, body: JSON.stringify(body) });
 
-  it("clones, and refuses the push advertisement, LFS uploads, lock checks and non-GET actions", async () => {
+  it("F-090: read-only clones, and refuses the push advertisement, LFS uploads, lock checks and non-GET actions", async () => {
     const proxy = await startProxy("read-only");
     const { dir, run } = await clone(proxy.urlFor(repo), "read-only");
     expect(run.code, run.stderr).toBe(0);
@@ -304,7 +367,7 @@ describe("read-only mode", () => {
 });
 
 describe("the User-Agent", () => {
-  it("is required by the upstream, and the proxy always sends one", async () => {
+  it("F-090: is required by the upstream, and the proxy always sends one", async () => {
     const proxy = await startProxy();
     const bare = (url: string): Promise<number> =>
       new Promise((resolve) => {
@@ -323,7 +386,7 @@ describe("the User-Agent", () => {
 });
 
 describe("the token stays out", () => {
-  it("is in no git output, log line or answer", () => {
+  it("F-090: is in no git output, log line or answer", () => {
     const everything = [...outputs, JSON.stringify(logs)].join("\n");
     expect(outputs.length).toBeGreaterThan(10);
     expect(everything).not.toContain(token);

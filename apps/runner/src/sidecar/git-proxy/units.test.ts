@@ -1,5 +1,6 @@
 import { taskIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
+import { describeUpstreamRefusal } from "./git-proxy.ts";
 import { isAllowedLfsActionHref } from "./lfs.ts";
 import { emptyReceivePackAdvertisement, encodePkt, encodeRefusal, FLUSH_PKT, parseReceivePackHead, readPkt } from "./pkt-line.ts";
 import type { RefUpdateCommand } from "./pkt-line.ts";
@@ -142,5 +143,21 @@ describe("LFS action hosts", () => {
   it("allows a configured host, and only it", () => {
     expect(allowed("https://lfs.ghes.example.com/x", ["lfs.ghes.example.com"])).toBe(true);
     expect(allowed("https://github-cloud.githubusercontent.com/x", ["lfs.ghes.example.com"])).toBe(false);
+  });
+});
+
+describe("refusal words", () => {
+  it("F-090: words an upstream refusal by its status and by who refused", () => {
+    expect(describeUpstreamRefusal(401, "code-host")).toBe("ostra: the code host refused the task's credential (status 401)");
+    expect(describeUpstreamRefusal(403, "code-host")).toBe("ostra: the code host refused the task's credential (status 403)");
+    expect(describeUpstreamRefusal(403, "lfs-host")).toBe("ostra: the LFS storage host refused the transfer (status 403)");
+    expect(describeUpstreamRefusal(404, "code-host")).toBe("ostra: the code host has no such repo, or the App can't see it (status 404)");
+    expect(describeUpstreamRefusal(404, "lfs-host")).toBe("ostra: the LFS storage host has no such object (status 404)");
+    expect(describeUpstreamRefusal(302, "lfs-host")).toBe(
+      "ostra: the LFS storage host answered with a redirect or a proxy challenge (status 302), which the proxy doesn't follow",
+    );
+    expect(describeUpstreamRefusal(407, "code-host")).toContain("the code host answered with a redirect or a proxy challenge (status 407)");
+    expect(describeUpstreamRefusal(500, "code-host")).toBe("ostra: the code host answered 500");
+    expect(describeUpstreamRefusal(503, "lfs-host")).toBe("ostra: the LFS storage host answered 503");
   });
 });

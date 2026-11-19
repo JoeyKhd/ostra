@@ -62,6 +62,8 @@ export type GitProxyOptions = {
   readonly advertiseHost?: string;
   readonly port?: number;
   readonly now?: () => number;
+  /** The most of a refused push's body read before the connection is cut. Default `MAX_DISCARD_BYTES`; tests lower it. */
+  readonly maxDiscardBytes?: number;
 };
 
 type Endpoint = "info-refs" | "upload-pack" | "receive-pack" | "lfs-batch" | "lfs-locks" | "lfs-action";
@@ -212,6 +214,7 @@ export const describeUpstreamRefusal = (status: number, source: UpstreamSource):
 
 export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy> => {
   const now = options.now ?? Date.now;
+  const maxDiscardBytes = options.maxDiscardBytes ?? MAX_DISCARD_BYTES;
   const log = options.logger.child({ taskId: options.taskId, component: "git-proxy" });
   const policy: TaskGitPolicy = { taskId: options.taskId, branch: options.branch, mode: options.mode };
   const secret = randomBytes(24).toString("base64url");
@@ -322,7 +325,8 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       if (Buffer.isBuffer(value)) {
         discarded += value.length;
       }
-      if (discarded > MAX_DISCARD_BYTES) {
+      if (discarded > maxDiscardBytes) {
+        log.warn("a refused push passed the cap on what the proxy reads: connection closed", { maxDiscardBytes });
         request.destroy();
         return;
       }

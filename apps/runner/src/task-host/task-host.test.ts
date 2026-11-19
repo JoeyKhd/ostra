@@ -203,8 +203,32 @@ const waitForKind = (spec: TaskSpec, kind: TaskEvent["kind"], timeoutMs = 60_000
 
 const everyEventOnce = (): boolean => [...gateway.received.values()].every((count) => count === 1);
 
+/** A refine or review task: its agent's git fetches through the proxy, and every push is refused (ADR 0028). */
+const fetchOnly = async (kind: "refine" | "review"): Promise<void> => {
+  const { dispatch } = await start();
+  launches.length = 0;
+  const { spec, credentials } = taskFor("[[fake:silent]]");
+  const readOnly: TaskSpec = { ...spec, kind };
+  server.tasks.set(spec.taskId, { spec: readOnly, credentials });
+  dispatch(readOnly);
+  await waitForKind(readOnly, "turn.started");
+  const launch = launches.at(-1);
+  if (launch === undefined) {
+    throw new Error("no agent was started");
+  }
+  expect(await gitAs(launch, ["fetch", "origin"])).not.toMatch(/fatal|error/i);
+  await writeFile(path.join(launch.cwd, "read-only.txt"), "x\n");
+  await gitAs(launch, ["add", "read-only.txt"]);
+  await gitAs(launch, ["commit", "--quiet", "-m", `a ${kind} task may not push`]);
+  const before = upstream.requests.filter((request) => request.endpoint === "git-receive-pack").length;
+  const pushed = await gitAs(launch, ["push", "origin", `HEAD:refs/heads/${readOnly.branchName}`]);
+  expect(pushed).toMatch(/403|can fetch but not push/);
+  expect(await upstream.refSha("ostra-test/test1", `refs/heads/${readOnly.branchName}`)).toBeNull();
+  expect(upstream.requests.filter((request) => request.endpoint === "git-receive-pack").length).toBe(before);
+};
+
 describe("the task host", () => {
-  it("runs a dispatch to a PR-ready branch, and every event is stored once", async () => {
+  it("F-090, F-078: runs a dispatch to a PR-ready branch, committing what the agent left with the bot and the trailer, and every event is stored once", async () => {
     const { dataDir, dispatch } = await start();
     // One repo: the agent starts in its checkout (F-025), so a relative path lands in the repo.
     const { spec } = taskFor("[[fake:write CONTRIBUTING.md]]", "echo setting up\n");
@@ -343,6 +367,52 @@ describe("the task host", () => {
     expect(await gitAs(launch, ["config", "--get-regexp", "^url[.].*[.]insteadof$"])).toContain("https://github.com/");
   }, 120_000);
 
+  it("F-090: the agent's own git clones, fetches and pushes through the proxy, which adds the repo's token; its push to main is refused", async () => {
+    const { dispatch } = await start();
+    launches.length = 0;
+    const { spec } = taskFor("[[fake:silent]]");
+    dispatch(spec);
+    await waitForKind(spec, "turn.started");
+    const launch = launches.at(-1);
+    if (launch === undefined) {
+      throw new Error("no agent was started");
+    }
+    // The checkout's remote is the proxy, on loopback behind its secret path, with no credential in it.
+    const origin = (await gitAs(launch, ["remote", "get-url", "origin"])).trim();
+    expect(origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/ostra-test\/test1\.git$/);
+    expect(origin).not.toContain(GIT_TOKEN);
+    const fetched = await gitAs(launch, ["fetch", "origin"]);
+    expect(fetched).not.toMatch(/fatal|error/i);
+    const before = upstream.requests.length;
+    // A fresh clone by GitHub's URL, as an agent would type it.
+    const cloneDir = path.join(root, `agent-clone-${String(counter)}`);
+    expect(await gitAs(launch, ["clone", "--quiet", "https://github.com/ostra-test/test1.git", cloneDir])).not.toMatch(/fatal/i);
+    expect(await readFile(path.join(cloneDir, "README.md"), "utf8")).toBe("# test1\n");
+    await writeFile(path.join(launch.cwd, "by-the-agent.txt"), "committed by the agent\n");
+    await gitAs(launch, ["add", "by-the-agent.txt"]);
+    await gitAs(launch, ["commit", "--quiet", "-m", "the agent's own commit"]);
+    const head = (await gitAs(launch, ["rev-parse", "HEAD"])).trim();
+    const pushed = await gitAs(launch, ["push", "origin", `HEAD:refs/heads/${spec.branchName}`]);
+    expect(pushed).not.toMatch(/rejected|fatal/);
+    expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBe(head);
+    // Every request the agent's git made reached the upstream with the task's token, added by the proxy.
+    const made = upstream.requests.slice(before).filter((request) => request.repo === "ostra-test/test1");
+    expect(made.length).toBeGreaterThan(0);
+    expect(made.every((request) => request.authorized)).toBe(true);
+    const mainBefore = await upstream.refSha("ostra-test/test1", "refs/heads/main");
+    const toMain = await gitAs(launch, ["push", "origin", "HEAD:main"]);
+    expect(toMain).toContain("ostra: only the task's branch and its hidden ref can be pushed");
+    expect(await upstream.refSha("ostra-test/test1", "refs/heads/main")).toBe(mainBefore);
+  }, 120_000);
+
+  it("F-090: a refine task's proxy lets the agent's git fetch but not push", async () => {
+    await fetchOnly("refine");
+  }, 120_000);
+
+  it("F-090: a review task's proxy lets the agent's git fetch but not push", async () => {
+    await fetchOnly("review");
+  }, 120_000);
+
   it("refuses to start an agent whose environment would hold a real credential", async () => {
     const { dispatch } = await start();
     const { spec } = taskFor("[[fake:say]]");
@@ -408,9 +478,10 @@ describe("the task host", () => {
     }
   }, 120_000);
 
-  it("keeps every real credential out of the task root, the event stream and the logs", async () => {
+  it("F-090: keeps every real credential out of the agent's environment, the task root, the event stream and the logs", async () => {
     const { dataDir, dispatch } = await start();
     const { spec } = taskFor("[[fake:silent]]");
+    launches.length = 0;
     dispatch(spec);
     await waitForKind(spec, "turn.started");
     // While the agent runs: every file the runner wrote, the task root included.
@@ -427,6 +498,12 @@ describe("the task host", () => {
     };
     await walk(dataDir);
     expect(files.some((file) => file.includes(`${path.sep}tasks${path.sep}`))).toBe(true);
+    // The agent's own process: no real credential in any variable it was launched with.
+    const launchEnv = JSON.stringify(launches.at(-1)?.env ?? null);
+    expect(launchEnv).not.toBe("null");
+    for (const secret of [MODEL_TOKEN, GIT_TOKEN, MCP_TOKEN, ACCESS_TOKEN]) {
+      expect(launchEnv.includes(secret), `${secret.slice(0, 6)}… in the agent's environment`).toBe(false);
+    }
     for (const file of files) {
       const content = await readFile(file, "utf8").catch(() => "");
       for (const secret of [MODEL_TOKEN, GIT_TOKEN, MCP_TOKEN]) {
