@@ -163,6 +163,10 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
     supervise: worker,
     schedule: worker,
     superviseIntervalSeconds: options.superviseIntervalSeconds ?? 30,
+    // pg-boss frees dead-heartbeat and expired jobs in its monitor pass, which runs at most every
+    // `monitorIntervalSeconds` (default 60), whatever the supervise interval. Kept equal, so a
+    // killed replica's job is freed within the supervise interval as documented (ticket 21).
+    monitorIntervalSeconds: options.superviseIntervalSeconds ?? 30,
   });
   boss.on("error", (error: Error) => {
     logger.error("jobs.error", { name: error.name });

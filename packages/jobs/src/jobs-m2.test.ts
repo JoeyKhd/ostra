@@ -199,3 +199,35 @@ describe("the panel's producer (Q157)", () => {
     }
   }, 60_000);
 });
+
+// Ticket 21 (F-043): a replica killed with `kill -9` holds its jobs `active` with a heartbeat no one
+// refreshes. pg-boss frees them in its monitor pass, which ran at most every 60 seconds whatever
+// the supervise interval, so a killed replica's job waited a minute, not the supervise interval
+// `CreateJobsOptions` documents. The monitor now follows the supervise interval.
+describe("a job held by a replica that died", () => {
+  it("is freed and run again within the supervise interval, not pg-boss's minute", async () => {
+    const jobs = createJobs({ databaseUrl: test.url, role: "worker", pollingIntervalSeconds: 0.5, superviseIntervalSeconds: 1 });
+    await jobs.start();
+    running.push(jobs);
+    const ran: string[] = [];
+    await jobs.work("ticket.sync", (context) => {
+      ran.push(context.payload.ticketWriteId);
+      return Promise.resolve();
+    });
+    // Past the worker's first monitor pass, so only a later one can free the job.
+    await sleep(3_000);
+    const payload = { organizationId, ticketWriteId: ticketWriteIdSchema.parse(`tw-${randomUUID()}`) };
+    const sent = await test.db.$transaction((tx) => jobs.sendInTx(tx, "ticket.sync", payload, { startAfterMs: 60 * 60_000 }));
+    if (sent.kind !== "enqueued") {
+      throw new Error("not enqueued");
+    }
+    // The dead replica's claim: active, its heartbeat last refreshed a minute ago.
+    await test.db.$executeRawUnsafe(
+      `UPDATE pgboss.job SET state = 'active', start_after = now(), started_on = now() - interval '1 minute', heartbeat_on = now() - interval '1 minute' WHERE id = $1::uuid`,
+      sent.jobId,
+    );
+    const freedBy = Date.now() + 20_000;
+    await waitFor(() => ran.includes(payload.ticketWriteId), 25_000);
+    expect(Date.now()).toBeLessThan(freedBy);
+  }, 60_000);
+});
