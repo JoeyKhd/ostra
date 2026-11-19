@@ -218,9 +218,13 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
   };
   const roleOf = (container: z.infer<typeof listedSchema>[number]): string | undefined => container.Labels?.["ostra.role"];
 
-  const ensureEgressNetwork = async (name: string): Promise<EngineResult<void>> => {
+  const networkExists = async (name: string): Promise<boolean> => {
     const existing = await engine.call("GET", `/networks?filters=${encodeURIComponent(JSON.stringify({ name: [name] }))}`, networksSchema);
-    if (existing.ok && existing.value.some((network) => network.Name === name)) {
+    return existing.ok && existing.value.some((network) => network.Name === name);
+  };
+
+  const ensureEgressNetwork = async (name: string): Promise<EngineResult<void>> => {
+    if (await networkExists(name)) {
       return { ok: true, value: undefined };
     }
     const created = await engine.call("POST", "/networks/create", createdSchema, {
@@ -258,6 +262,11 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
         await removeBox(input.boxId);
         return { ok: false, error };
       };
+      // A box is made once and serves one task (F-017): a box ID in use is refused, and the box
+      // that holds it is left as it is. The clean-up after a failed create would remove it.
+      if ((await containersOf(input.boxId)).length > 0 || (await networkExists(resources.network.Name))) {
+        return { ok: false, error: { status: 409, message: "the box exists already" } };
+      }
       const egress = await ensureEgressNetwork(resources.egressNetwork);
       if (!egress.ok) {
         return fail(egress.error);

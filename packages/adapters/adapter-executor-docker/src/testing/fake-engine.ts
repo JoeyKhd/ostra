@@ -143,6 +143,12 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
         return;
       }
       const body = await readJson(request);
+      // As the Engine does: a container's name is unique.
+      const wanted = url.searchParams.get("name");
+      if (wanted !== null && [...containers.values()].some((container) => container.name === wanted)) {
+        send(response, 409, { message: `Conflict. The container name "/${wanted}" is already in use` });
+        return;
+      }
       const id = randomBytes(16).toString("hex");
       const hostConfig: unknown = body["HostConfig"];
       const mode: unknown = Reflect.get(Object(hostConfig), "NetworkMode");
