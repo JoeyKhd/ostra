@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Tx } from "@ostra/db";
-import { clientMessageIdSchema, leaseEpochSchema, projectIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
+import { agentProfileIdSchema, clientMessageIdSchema, leaseEpochSchema, projectIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -12,6 +12,7 @@ import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import { checkProfileUse } from "./agent-profile-setup.ts";
 import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
 import { appendServerEvent } from "./server-events.ts";
 
@@ -28,6 +29,8 @@ export const createPromptTaskInputSchema = z.strictObject({
   title: z.string().trim().min(1).max(512).optional(),
   /** The member's own personal runner, or unset to pick from the project's pools. */
   runnerId: runnerIdSchema.optional(),
+  /** The profile to start with, one the member may use (F-021); unset takes the project's default. */
+  agentProfileId: agentProfileIdSchema.optional(),
 });
 export type CreatePromptTaskInput = z.infer<typeof createPromptTaskInputSchema>;
 
@@ -124,11 +127,18 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
     return access.code === "not-found" ? refuse("not-found", "No such project") : refuse("forbidden", "You may not start a task in this project");
   }
 
+  if (input.agentProfileId !== undefined) {
+    const use = await checkProfileUse(tx, scope, input.agentProfileId);
+    if (!use.ok) {
+      return refuse(use.error, use.message);
+    }
+  }
+  const profileId = input.agentProfileId ?? project.defaultCodeProfileId;
   const profile =
-    project.defaultCodeProfileId === null
+    profileId === null
       ? null
       : await tx.agentProfile.findFirst({
-          where: { id: project.defaultCodeProfileId, organizationId },
+          where: { id: profileId, organizationId },
           include: { model: { include: { provider: { select: { allowOnPersonalRunners: true } } } } },
         });
   const noModel = "The project's default code profile has no model yet: an admin picks one under Models";
@@ -183,6 +193,8 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
       driverMemberId: scope.memberId,
       creatorMemberId: scope.memberId,
       runnerId: input.runnerId ?? null,
+      // The profile it started with: a later edit or archive of the default doesn't change it (F-021).
+      agentProfileId: profile.id,
       ...taskToColumns(lifecycle),
     },
     select: { id: true },

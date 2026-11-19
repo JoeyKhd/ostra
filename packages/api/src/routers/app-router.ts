@@ -11,7 +11,8 @@ import { projectsRouter } from "./projects.ts";
 import { poolsRouter, runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
-import { agentProfilesRouter, providersRouter } from "./providers.ts";
+import { agentProfilesRouter } from "./agent-profiles.ts";
+import { providersRouter } from "./providers.ts";
 import { setupRouter } from "./setup.ts";
 
 /** Every router of the panel's API. `AppRouter` is the type the web app imports, and nothing else. */

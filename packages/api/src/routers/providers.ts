@@ -1,19 +1,18 @@
 import { syncProviderModels, addModelProvider } from "@ostra/domain";
 import {
   addModelProviderInputSchema,
-  agentProfileIdSchema,
   apiFormatSchema,
   authSchemeSchema,
   httpUrlSchema,
   modelIdSchema,
   providerIdSchema,
 } from "@ostra/protocol";
-import { apiFormatFromDb, mapModel, mapModelProvider } from "@ostra/db";
+import { mapModel, mapModelProvider } from "@ostra/db";
 import type { CatalogEntry, ModelEndpoint } from "@ostra/adapter-sdk";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
+import { adminProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-088, F-014 (allow on personal runners), ticket 31: model providers. Admin only, organization
 // scoped, with an audit entry for each change. No procedure returns a token or its secret
@@ -353,86 +352,6 @@ export const providersRouter = router({
         });
         await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: providerIdSchema.parse(model.providerId) });
         return { id: input.modelId };
-      });
-    }),
-});
-
-const agentProfileViewSchema = z.object({
-  id: agentProfileIdSchema,
-  name: z.string(),
-  adapter: z.string(),
-  builtIn: z.boolean(),
-  model: z
-    .object({
-      id: modelIdSchema,
-      endpointModelId: z.string(),
-      displayName: z.string().nullable(),
-      providerId: providerIdSchema,
-      providerName: z.string(),
-      apiFormat: apiFormatSchema,
-    })
-    .nullable(),
-});
-
-export const agentProfilesRouter = router({
-  /** The organization's agent profiles with their models: any member may see what a task would run. */
-  list: memberProcedure.output(z.array(agentProfileViewSchema)).query(async ({ ctx }) => {
-    const rows = await ctx.deps.db.agentProfile.findMany({
-      where: { organizationId: ctx.scope.organizationId },
-      orderBy: [{ builtIn: "desc" }, { name: "asc" }],
-      include: { model: { include: { provider: { select: { id: true, name: true, apiFormat: true } } } } },
-    });
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      adapter: row.adapter,
-      builtIn: row.builtIn,
-      model:
-        row.model === null
-          ? null
-          : {
-              id: modelIdSchema.parse(row.model.id),
-              endpointModelId: row.model.endpointModelId,
-              displayName: row.model.displayName,
-              providerId: providerIdSchema.parse(row.model.provider.id),
-              providerName: row.model.provider.name,
-              apiFormat: apiFormatFromDb[row.model.provider.apiFormat],
-            },
-    }));
-  }),
-
-  /** The model of the built-in OpenCode profile: one of the providers' listed models (F-088). */
-  setDefaultModel: adminProcedure
-    .input(z.strictObject({ modelId: modelIdSchema }))
-    .output(z.object({ profileId: agentProfileIdSchema, modelId: modelIdSchema }))
-    .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
-      const organizationId = ctx.scope.organizationId;
-      return db.$transaction(async (tx) => {
-        const model = await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { id: true, listed: true, providerId: true } });
-        if (model === null) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "No such model" });
-        }
-        if (!model.listed) {
-          throw new TRPCError({ code: "CONFLICT", message: "The endpoint no longer lists that model" });
-        }
-        const profile = await tx.agentProfile.findFirst({ where: { organizationId, builtIn: true, adapter: "opencode" }, select: { id: true } });
-        if (profile === null) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "This organization has no built-in OpenCode profile" });
-        }
-        const profileId = agentProfileIdSchema.parse(profile.id);
-        await tx.agentProfile.update({ where: { id: profile.id }, data: { modelId: model.id } });
-        await ports.audit.recordInTx(tx, {
-          organizationId,
-          projectId: null,
-          actor: { kind: "member", id: ctx.scope.memberId },
-          action: "agent-profile.model-set",
-          entity: "agent-profile",
-          entityId: profileId,
-          data: { modelId: model.id, providerId: model.providerId },
-        });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "agent-profile", entityId: profileId });
-        return { profileId, modelId: input.modelId };
       });
     }),
 });

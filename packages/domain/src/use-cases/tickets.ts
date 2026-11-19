@@ -24,6 +24,7 @@ import { ingestTicketHintBody } from "../tickets/ticket-cache.ts";
 import { ticketWriteKey } from "../tickets/contracts.ts";
 import type { TicketWritePayload, TicketWriteStep } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
+import { checkProfileUse } from "./agent-profile-setup.ts";
 import { claimBranchNameInTx } from "./create-prompt-task.ts";
 import type { ConnectionTracker } from "./linear-connection.ts";
 import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
@@ -198,6 +199,12 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     return { ok: false, error: "ticket-has-task", message: `This ticket already has an active task, ${taskId}.`, taskId };
   }
 
+  if (input.agentProfileId !== undefined) {
+    const use = await checkProfileUse(tx, scope, input.agentProfileId);
+    if (!use.ok) {
+      return refuseStart(use.error, use.message);
+    }
+  }
   const profileId = input.agentProfileId ?? project.defaultCodeProfileId;
   const profile =
     profileId === null
@@ -251,6 +258,8 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
       driverMemberId: scope.memberId,
       creatorMemberId: scope.memberId,
       runnerId: input.runnerId ?? null,
+      // The profile it started with: a later edit or archive of the default doesn't change it (F-021).
+      agentProfileId: profile.id,
       ...taskToColumns(newTask("code", false)),
     },
     select: { id: true },

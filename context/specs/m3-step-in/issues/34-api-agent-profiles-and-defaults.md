@@ -1,6 +1,6 @@
 # 34: API: agent profiles and project defaults
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 07
 Features: F-021, F-026 (the rules), F-063 (the switch)
@@ -17,9 +17,9 @@ Spec: `../spec.md`, sections 2 (F-021) and 11 (items 2, 6, 7); ADR 0049
 
 ## Done when
 
-- [ ] Tests: an admin creates, edits and archives; a member can't; a listed profile is invisible and refused for an unlisted member; header secrets are stored as refs and never returned; a default must be open to the project; a task started with a profile records it; another organization's profiles are invisible.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api` and `domain`.
-- [ ] Committed as `✨ add the agent profiles API`.
+- [x] Tests: an admin creates, edits and archives; a member can't; a listed profile is invisible and refused for an unlisted member; header secrets are stored as refs and never returned; a default must be open to the project; a task started with a profile records it; another organization's profiles are invisible.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api` and `domain`.
+- [x] Committed as `✨ add the agent profiles API`.
 
 ## Decided 2026-11-19
 
@@ -31,3 +31,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **`.get` adds** `usedBy` (a count of tasks with `agentProfileId` set to it), and who created and archived it, from its audit entries. A skill's description is read from its `SKILL.md` on the client. `.ruleCoverage` returns matched and unmatched samples per rule, and the panel shows the first of each.
 
 ## Comments
+
+- 2026-11-19: done in COMMIT. `agentProfiles` moved to `routers/agent-profiles.ts` (`list` is a superset of the old shape; `setDefaultModel` unchanged). The domain bodies are in `packages/domain/src/use-cases/agent-profile-setup.ts`; `createPromptTask` and `startTicketTask` take the chosen profile, check it with `checkProfileUse` and record `Task.agentProfileId`. A skill file is a `blobId` of an upload that already exists: the bytes go to core's blob service from the web app (ticket 42 adds the upload route); `.save` checks each blob is the organization's and at most 1 MiB. Proof rows: F-021 (2 proved, 2 partial), F-026 and F-063 (1 partial each).

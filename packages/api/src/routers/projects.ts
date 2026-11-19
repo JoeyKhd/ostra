@@ -6,13 +6,14 @@ import {
   createProjectInputSchema,
   parseTicketTemplate,
   renderTicketPrompt,
+  setProjectDefaultProfile,
   TICKET_TEMPLATE_MAX_CHARS,
   ticketTemplateFor,
   ticketTemplateVocabulary,
   visibleProjects,
 } from "@ostra/domain";
 import type { RepoChecked, TicketPromptContext } from "@ostra/domain";
-import { environmentIdSchema, poolIdSchema, projectIdSchema, repoIdSchema, ticketIdSchema, ticketKeySchema } from "@ostra/protocol";
+import { agentProfileIdSchema, environmentIdSchema, poolIdSchema, projectIdSchema, repoIdSchema, taskKindSchema, ticketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -80,6 +81,8 @@ const projectDetailSchema = projectSummarySchema.extend({
   pools: z.array(z.object({ poolId: poolIdSchema, name: z.string(), isDefault: z.boolean() })),
   /** The profile a prompt task uses (F-097): its agent and model, shown before the task starts. */
   defaultCodeProfile: agentProfileViewSchema.nullable(),
+  /** The default profile for each task kind (F-021, ticket 34); `code` is `defaultCodeProfile`. */
+  defaultProfiles: z.object({ refine: agentProfileViewSchema.nullable(), code: agentProfileViewSchema.nullable(), review: agentProfileViewSchema.nullable() }),
 });
 
 const createdSchema = z.object({
@@ -205,7 +208,24 @@ export const projectsRouter = router({
         environmentStatus: project.environment === null ? null : project.environment.status,
         pools: project.pools.map((link) => ({ poolId: link.pool.id, name: link.pool.name, isDefault: link.pool.isDefault })),
         defaultCodeProfile: profile,
+        defaultProfiles: {
+          refine: await loadAgentProfileView(db, organizationId, project.defaultRefineProfileId),
+          code: profile,
+          review: await loadAgentProfileView(db, organizationId, project.defaultReviewProfileId),
+        },
       };
+    }),
+
+  /**
+   * The project's default profile for a task kind (F-021, ticket 34). A project admin; the profile
+   * must be open to every member of the project, so nobody is handed a default they can't use.
+   */
+  setDefaultProfile: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, kind: taskKindSchema, profileId: agentProfileIdSchema }))
+    .output(z.object({ profileId: agentProfileIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await setProjectDefaultProfile({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, { projectId: input.projectId, kind: input.kind, profileId: input.profileId });
+      const checked = unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "not-open-to-every-member": "BAD_REQUEST", archived: "CONFLICT" });
+      return { profileId: checked.profileId };
     }),
 
   /** "Check again": a project admin reads the default branch's rules now, whatever the cache holds. */
