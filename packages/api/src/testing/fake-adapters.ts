@@ -150,7 +150,11 @@ export type FakeApp = {
 /** A code host with a few Apps, their installations, repos and files. */
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: true, reviews: false, installableByOtherAccounts: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: true, reviews: false, installableByOtherAccounts: true };
+  /** Milestone 4 (F-136): the installations `removeInstallation` uninstalled, by App and installation. */
+  readonly removedInstallations: { readonly appId: string; readonly installationId: string }[] = [];
+  /** When set, `removeInstallation` fails as the host would. */
+  removeInstallationFails = false;
   /** By App ID. */
   readonly apps = new Map<string, FakeApp>();
   /** File contents by `owner/name`, then path. */
@@ -218,6 +222,23 @@ export class FakeCodeHost extends CodeHostAdapter {
     }
     const repos = found.repos.get(installationId);
     return Promise.resolve(repos === undefined ? adapterError("not-found", "no such installation") : ok(repos));
+  }
+
+  /** Uninstalls the App from an account: the installation leaves the App's list. */
+  override removeInstallation(credentials: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<void>> {
+    const found = this.app(credentials);
+    if (found === undefined) {
+      return Promise.resolve(adapterError("unauthorized", "the App's credentials were refused"));
+    }
+    if (this.removeInstallationFails) {
+      return Promise.resolve(adapterError("unavailable", "GitHub did not remove the installation (HTTP 502)"));
+    }
+    if (!found.installations.some((installation) => installation.installationId === installationId)) {
+      return Promise.resolve(adapterError("not-found", "no such installation"));
+    }
+    this.removedInstallations.push({ appId: credentials.appId, installationId });
+    this.apps.set(credentials.appId, { ...found, installations: found.installations.filter((installation) => installation.installationId !== installationId) });
+    return Promise.resolve(ok(undefined));
   }
 
   override userAuthorizeUrl(client: CodeHostOAuthClient, state: string, redirectUri: string): AdapterResult<string> {

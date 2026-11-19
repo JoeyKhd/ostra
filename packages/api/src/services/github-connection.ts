@@ -7,20 +7,36 @@ import { TRPCError } from "@trpc/server";
 import type { ApiDeps } from "../trpc/context.ts";
 import type { MemberScope } from "@ostra/domain";
 
-// The organization's GitHub App as a router uses it: the connection row, and the App's private key
-// read from the secret store for the one call that needs it. The key lives in a local variable for
-// that call and goes nowhere else: no router returns it and no log carries it.
+// A GitHub App as a router uses it: the connection row, and the App's private key read from the
+// secret store for the one call that needs it. The key lives in a local variable for that call and
+// goes nowhere else: no router returns it and no log carries it.
+//
+// Milestone 4 (F-136, ADR 0065, ticket 51): an organization may connect several Apps, so a caller
+// names the one it means by its connection ID. `null` is the organization's own App: the first one
+// it connected (a client's App connected beside it comes later), which milestone 1 to 3's
+// procedures, made when there was one, still mean.
 
 export type GitHubConnection = {
   readonly connectionId: ConnectionId;
   readonly slug: string | null;
+  readonly ownerLogin: string | null;
+  readonly ownerAccountId: string | null;
   readonly credentials: CodeHostAppCredentials;
 };
 
-export const loadGitHubConnection = async (deps: ApiDeps, scope: MemberScope): Promise<GitHubConnection> => {
-  const row = await deps.db.connection.findFirst({ where: { organizationId: scope.organizationId, kind: "github" } });
+/** The organization's GitHub connections, its own App first. */
+export const githubConnectionsOf = (deps: Pick<ApiDeps, "db">, scope: MemberScope) =>
+  deps.db.connection.findMany({ where: { organizationId: scope.organizationId, kind: "github" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+
+export const loadGitHubConnection = async (deps: ApiDeps, scope: MemberScope, connectionId: ConnectionId | null): Promise<GitHubConnection> => {
+  const row =
+    connectionId === null
+      ? ((await githubConnectionsOf(deps, scope))[0] ?? null)
+      : await deps.db.connection.findFirst({ where: { id: connectionId, organizationId: scope.organizationId, kind: "github" } });
   if (row === null) {
-    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect GitHub first" });
+    throw connectionId === null
+      ? new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect GitHub first" })
+      : new TRPCError({ code: "NOT_FOUND", message: "No such GitHub App in this organization" });
   }
   const ref = secretRefSchema.safeParse(row.privateKeySecretRef);
   if (!ref.success) {
@@ -33,6 +49,8 @@ export const loadGitHubConnection = async (deps: ApiDeps, scope: MemberScope): P
   return {
     connectionId: connectionIdSchema.parse(row.id),
     slug: row.slug,
+    ownerLogin: row.ownerLogin,
+    ownerAccountId: row.ownerAccountId,
     credentials: { appId: row.appId, privateKey: key.value },
   };
 };

@@ -1,16 +1,21 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
-import { appOwnerInTx, connectGitHubApp, detectRepoEnvironment, linkOwnInstallationInTx, seenInstallationOf } from "@ostra/domain";
+import { appOwnerInTx, connectExistingApp, connectGitHubApp, detectRepoEnvironment, linkOwnInstallationInTx, missingAppPermissions, seenInstallationOf } from "@ostra/domain";
+import { secretRefSchema } from "@ostra/adapter-sdk";
 import { connectionIdSchema, memberIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import type { MemberScope } from "@ostra/domain";
+
 import { loginSessionIdSchema } from "../auth/scope.ts";
-import { loadGitHubConnection } from "../services/github-connection.ts";
+import type { ApiDeps } from "../trpc/context.ts";
+import { githubConnectionsOf, loadGitHubConnection } from "../services/github-connection.ts";
 import { adapterErrorToTrpc } from "../trpc/errors.ts";
 import { adminProcedure, router, unwrap } from "../trpc/init.ts";
 import { detectionViewSchema } from "./environments.ts";
+import { githubOrganizationProcedures, requireLinkedInstallation, webhookUrlOf } from "./github-organizations.ts";
 
 // F-006, ticket 31: the organization's GitHub App. Admin only, organization scoped. The App's
 // private key, webhook secret and client secret go to the secret store at once and no procedure
@@ -33,6 +38,16 @@ const connectedSchema = z.object({
   permissions: z.record(z.string(), z.string()),
 });
 
+/**
+ * Milestone 4 (F-136, ticket 51): `connectExisting` also answers the connection's own webhook
+ * address, and the webhook secret ostra generated when the admin gave none, shown this once.
+ */
+const connectedExistingSchema = connectedSchema.extend({
+  webhookUrl: z.string(),
+  /** Set in the App's webhook settings with `webhookUrl`; `null` when the admin gave their own. */
+  webhookSecret: z.string().nullable(),
+});
+
 const connectErrors = {
   forbidden: "FORBIDDEN",
   "app-refused": "BAD_REQUEST",
@@ -53,11 +68,79 @@ const boundSchema = z.strictObject({
   organizationId: organizationIdSchema,
 });
 
+/** What the manifest flow takes: the account to create the App on, and whether it's public (F-136). */
+const manifestInputSchema = z.strictObject({
+  ownerLogin: z.string().min(1).max(100).nullable().default(null),
+  /** Whether accounts other than the owner may install it. Off by default: a host may not let it go back. */
+  public: z.boolean().default(false),
+});
+
+/** The manifest flow's first step: the manifest, and a `state` bound to the admin's session. */
+const startManifestFor = async (
+  ctx: { readonly deps: ApiDeps; readonly scope: MemberScope; readonly user: { readonly sessionId: z.infer<typeof boundSchema>["sessionId"] } },
+  input: z.infer<typeof manifestInputSchema>,
+): Promise<z.infer<typeof manifestOutputSchema>> => {
+    const { db, settings, ports } = ctx.deps;
+    const organization = await db.organization.findUniqueOrThrow({
+      where: { id: ctx.scope.organizationId },
+      select: { slug: true },
+    });
+    const prepared = ports.adapters.codeHost.appManifest({
+      name: `ostra-${organization.slug}`.slice(0, 34).replace(/-+$/, ""),
+      homepageUrl: settings.publicUrl,
+      webhookUrl: `${settings.corePublicUrl}/webhooks/github`,
+      redirectUrl: `${settings.publicUrl}/api/github/manifest/callback`,
+      ownerLogin: input.ownerLogin,
+      // F-136 (ticket 51): a public App other accounts may install; private unless the admin says.
+      public: input.public,
+    });
+    const webhookEnabled = "hook_attributes" in prepared.manifest;
+
+    const state = randomBytes(32).toString("base64url");
+    const bound: z.infer<typeof boundSchema> = {
+      sessionId: ctx.user.sessionId,
+      memberId: ctx.scope.memberId,
+      organizationId: ctx.scope.organizationId,
+    };
+    // Better-auth's `verification` table is the store for short-lived keyed values: the state is
+    // kept by its hash, bound to the session, and used once.
+    await db.verification.create({
+      data: {
+        id: randomBytes(16).toString("hex"),
+        identifier: stateKey(state),
+        value: JSON.stringify(bound),
+        expiresAt: new Date(ports.clock.now() + MANIFEST_STATE_TTL_MS),
+      },
+    });
+    return {
+      createUrl: prepared.createUrl,
+      manifest: { ...prepared.manifest },
+      state,
+      webhookEnabled,
+      note: webhookEnabled
+        ? null
+        : "The server's address is not public, so the App is created without a webhook and receives no events. Set OSTRA_CORE_PUBLIC_URL to a public address to turn them on.",
+    };
+};
+
+const manifestOutputSchema = z.object({
+  /** Where the panel posts the manifest (a form field named `manifest`). */
+  createUrl: z.string(),
+  manifest: z.record(z.string(), z.unknown()),
+  /** Sent along as the form's `state` query parameter and returned on GitHub's redirect. */
+  state: z.string(),
+  webhookEnabled: z.boolean(),
+  note: z.string().nullable(),
+});
+
 export const githubRouter = router({
+  // F-136 (ticket 51): every App, its installations, and an admin's link, unlink and remove.
+  ...githubOrganizationProcedures,
+
   /** The connection, without a secret in it; `null` until GitHub is connected. */
   connection: adminProcedure.output(connectionViewSchema.nullable()).query(async ({ ctx }) => {
-    const row = await ctx.deps.db.connection.findFirst({ where: { organizationId: ctx.scope.organizationId, kind: "github" } });
-    if (row === null) {
+    const [row] = await githubConnectionsOf(ctx.deps, ctx.scope);
+    if (row === undefined) {
       return null;
     }
     const permissions = z.record(z.string(), z.string()).safeParse(row.permissions);
@@ -97,24 +180,103 @@ export const githubRouter = router({
    * `checks: write` and `actions: read` (naming the missing ones if not), stores the key and the
    * secret through the secret store, and keeps the slug and the bot identity.
    */
+  /**
+   * "Use an existing App": reads the App with the credentials given, checks its permissions include
+   * `checks: write` and `actions: read` (naming the missing ones if not), stores the key and the
+   * secret through the secret store, and keeps the slug and the bot identity.
+   *
+   * Milestone 4 (F-136, ticket 51): it works beside another App, a client's own, with its owner
+   * read from GitHub. It answers the connection's own webhook address; without a webhook secret
+   * from the admin, ostra generates one and answers it this once, for the App's settings.
+   */
   connectExisting: adminProcedure
     .input(
       z.strictObject({
         appId: z.string().regex(/^\d+$/, "a numeric App ID"),
         privateKey: z.string().min(1).max(16_384),
-        webhookSecret: z.string().min(1).max(512),
+        webhookSecret: z.string().min(1).max(512).optional(),
       }),
     )
-    .output(connectedSchema)
+    .output(connectedExistingSchema)
     .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
-      const result = await db.$transaction(
-        (tx) => connectGitHubApp({ tx, scope: ctx.scope, ...ports }, { via: "existing", ...input }),
-        { timeout: 30_000, maxWait: 10_000 },
-      );
-      const connected = unwrap(result, connectErrors);
-      return { connectionId: connected.connectionId, slug: connected.slug, permissions: connected.permissions };
+      const { db, ports, settings } = ctx.deps;
+      const generated = input.webhookSecret === undefined ? randomBytes(32).toString("hex") : null;
+      const webhookSecret = input.webhookSecret ?? generated ?? "";
+      const present = await githubConnectionsOf(ctx.deps, ctx.scope);
+      if (present.length === 0) {
+        const result = await db.$transaction(
+          (tx) => connectGitHubApp({ tx, scope: ctx.scope, ...ports }, { via: "existing", appId: input.appId, privateKey: input.privateKey, webhookSecret }),
+          { timeout: 30_000, maxWait: 10_000 },
+        );
+        const connected = unwrap(result, connectErrors);
+        return { connectionId: connected.connectionId, slug: connected.slug, permissions: connected.permissions, webhookUrl: webhookUrlOf(settings.corePublicUrl, connected.connectionId), webhookSecret: generated };
+      }
+      if (present.some((row) => row.appId === input.appId)) {
+        throw new TRPCError({ code: "CONFLICT", message: "That App is connected already" });
+      }
+      // Beside the organization's own App: a client's App, read with its own credentials.
+      const host = ports.adapters.codeHost;
+      const credentials = { appId: input.appId, privateKey: input.privateKey };
+      const app = await host.readApp(credentials);
+      if (!app.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `GitHub did not accept the App's credentials: ${app.error.message}` });
+      }
+      const missing = missingAppPermissions(app.value.permissions);
+      if (missing.length > 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `The App lacks permissions ostra needs: ${missing.join(", ")}` });
+      }
+      if (app.value.owner === undefined) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "GitHub didn't say which account owns the App" });
+      }
+      const bot = await host.getBotIdentity(credentials);
+      if (!bot.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `GitHub did not give the App's bot identity: ${bot.error.message}` });
+      }
+      const organizationId = ctx.scope.organizationId;
+      const stored: string[] = [];
+      const keep = async (purpose: string, value: string): Promise<string> => {
+        const put = await ports.adapters.secretStore.put({ organizationId, purpose }, value);
+        if (!put.ok) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The secret store did not keep the App's secret" });
+        }
+        stored.push(put.value);
+        return put.value;
+      };
+      const forget = async (): Promise<void> => {
+        for (const ref of stored) {
+          const parsed = secretRefSchema.safeParse(ref);
+          if (parsed.success) {
+            await ports.adapters.secretStore.delete(organizationId, parsed.data);
+          }
+        }
+      };
+      try {
+        const privateKeySecretRef = await keep("github-app.private-key", input.privateKey);
+        const webhookSecretSecretRef = await keep("github-app.webhook-secret", webhookSecret);
+        const result = await connectExistingApp({ db, audit: ports.audit, clock: ports.clock }, ctx.scope, {
+          appId: input.appId,
+          slug: app.value.slug,
+          ownerLogin: app.value.owner.login,
+          ownerAccountId: app.value.owner.accountId,
+          botName: bot.value.name,
+          botEmail: bot.value.email,
+          privateKeySecretRef,
+          webhookSecretSecretRef,
+        });
+        const connected = unwrap(result, { forbidden: "FORBIDDEN", "already-connected": "CONFLICT" });
+        await db.connection.updateMany({ where: { id: connected.connectionId, organizationId }, data: { permissions: app.value.permissions } });
+        return { connectionId: connected.connectionId, slug: app.value.slug, permissions: { ...app.value.permissions }, webhookUrl: webhookUrlOf(settings.corePublicUrl, connected.connectionId), webhookSecret: generated };
+      } catch (error) {
+        await forget();
+        throw error;
+      }
     }),
+
+  /** "Create a new App", the manifest flow's first step under its own name (F-136): `public` says who may install it. */
+  createApp: adminProcedure
+    .input(manifestInputSchema)
+    .output(manifestOutputSchema)
+    .mutation(async ({ ctx, input }) => startManifestFor(ctx, input)),
 
   /**
    * "Create a new App" (the manifest flow): the manifest to post to GitHub, and a `state` bound to
@@ -122,59 +284,9 @@ export const githubRouter = router({
    * GitHub refuses a private one, and the App is then made without events (`webhookEnabled`).
    */
   startManifest: adminProcedure
-    .input(z.strictObject({ ownerLogin: z.string().min(1).max(100).nullable().default(null) }))
-    .output(
-      z.object({
-        /** Where the panel posts the manifest (a form field named `manifest`). */
-        createUrl: z.string(),
-        manifest: z.record(z.string(), z.unknown()),
-        /** Sent along as the form's `state` query parameter and returned on GitHub's redirect. */
-        state: z.string(),
-        webhookEnabled: z.boolean(),
-        note: z.string().nullable(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { db, settings, ports } = ctx.deps;
-      const organization = await db.organization.findUniqueOrThrow({
-        where: { id: ctx.scope.organizationId },
-        select: { slug: true },
-      });
-      const prepared = ports.adapters.codeHost.appManifest({
-        name: `ostra-${organization.slug}`.slice(0, 34).replace(/-+$/, ""),
-        homepageUrl: settings.publicUrl,
-        webhookUrl: `${settings.corePublicUrl}/webhooks/github`,
-        redirectUrl: `${settings.publicUrl}/api/github/manifest/callback`,
-        ownerLogin: input.ownerLogin,
-      });
-      const webhookEnabled = "hook_attributes" in prepared.manifest;
-
-      const state = randomBytes(32).toString("base64url");
-      const bound: z.infer<typeof boundSchema> = {
-        sessionId: ctx.user.sessionId,
-        memberId: ctx.scope.memberId,
-        organizationId: ctx.scope.organizationId,
-      };
-      // Better-auth's `verification` table is the store for short-lived keyed values: the state is
-      // kept by its hash, bound to the session, and used once.
-      await db.verification.create({
-        data: {
-          id: randomBytes(16).toString("hex"),
-          identifier: stateKey(state),
-          value: JSON.stringify(bound),
-          expiresAt: new Date(ports.clock.now() + MANIFEST_STATE_TTL_MS),
-        },
-      });
-      return {
-        createUrl: prepared.createUrl,
-        manifest: { ...prepared.manifest },
-        state,
-        webhookEnabled,
-        note: webhookEnabled
-          ? null
-          : "The server's address is not public, so the App is created without a webhook and receives no events. Set OSTRA_CORE_PUBLIC_URL to a public address to turn them on.",
-      };
-    }),
+    .input(manifestInputSchema)
+    .output(manifestOutputSchema)
+    .mutation(async ({ ctx, input }) => startManifestFor(ctx, input)),
 
   /**
    * The manifest flow's return: the code GitHub redirected back with, and the `state` it carried.
@@ -218,6 +330,7 @@ export const githubRouter = router({
 
   /** The installations of the App: `ostra-test` for the test App. */
   installations: adminProcedure
+    .input(z.strictObject({ connectionId: connectionIdSchema.optional() }).optional())
     .output(
       z.array(
         z.object({
@@ -228,8 +341,8 @@ export const githubRouter = router({
         }),
       ),
     )
-    .query(async ({ ctx }) => {
-      const github = await loadGitHubConnection(ctx.deps, ctx.scope);
+    .query(async ({ ctx, input }) => {
+      const github = await loadGitHubConnection(ctx.deps, ctx.scope, input?.connectionId ?? null);
       const listed = await ctx.deps.ports.adapters.codeHost.listInstallations(github.credentials);
       if (!listed.ok) {
         throw adapterErrorToTrpc(listed.error, "GitHub did not list the App's installations");
@@ -253,7 +366,7 @@ export const githubRouter = router({
 
   /** The repos an installation grants the App. */
   repos: adminProcedure
-    .input(z.strictObject({ installationId: z.string().min(1).max(64) }))
+    .input(z.strictObject({ installationId: z.string().min(1).max(64), connectionId: connectionIdSchema.optional() }))
     .output(
       z.array(
         z.object({
@@ -265,7 +378,9 @@ export const githubRouter = router({
       ),
     )
     .query(async ({ ctx, input }) => {
-      const github = await loadGitHubConnection(ctx.deps, ctx.scope);
+      const github = await loadGitHubConnection(ctx.deps, ctx.scope, input.connectionId ?? null);
+      // F-136 (ticket 51): repos come only from a linked installation.
+      await requireLinkedInstallation(ctx, github, input.installationId);
       const listed = await ctx.deps.ports.adapters.codeHost.listRepos(github.credentials, input.installationId);
       if (!listed.ok) {
         throw adapterErrorToTrpc(listed.error, "GitHub did not list the installation's repos");
@@ -284,10 +399,11 @@ export const githubRouter = router({
    * stored. No agent, no model.
    */
   detect: adminProcedure
-    .input(z.strictObject({ installationId: z.string().min(1).max(64), fullName: repoFullNameSchema, ref: z.string().min(1).max(255) }))
+    .input(z.strictObject({ installationId: z.string().min(1).max(64), fullName: repoFullNameSchema, ref: z.string().min(1).max(255), connectionId: connectionIdSchema.optional() }))
     .output(detectionViewSchema)
     .query(async ({ ctx, input }) => {
-      const github = await loadGitHubConnection(ctx.deps, ctx.scope);
+      const github = await loadGitHubConnection(ctx.deps, ctx.scope, input.connectionId ?? null);
+      await requireLinkedInstallation(ctx, github, input.installationId);
       return detectRepoEnvironment(
         ctx.deps.ports.adapters.codeHost,
         { app: github.credentials, installationId: input.installationId, repo: input.fullName },

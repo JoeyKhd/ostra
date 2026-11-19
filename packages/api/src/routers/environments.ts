@@ -1,7 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { Db, EnvironmentEntry as EntryRow } from "@ostra/db";
 import { detectionWithoutFiles, detectRepoEnvironment, installationStateSelect, installationUsable, saveEnvironment, saveEnvironmentInputSchema } from "@ostra/domain";
-import { environmentIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, environmentIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -105,7 +105,17 @@ export const environmentsRouter = router({
   detect: projectProcedure("admin", projectInput)
     .output(z.array(z.object({ repoId: repoIdSchema, fullName: z.string(), detection: detectionViewSchema })))
     .mutation(async ({ ctx, input }) => {
-      const github = await loadGitHubConnection(ctx.deps, ctx.scope);
+      // F-136 (ticket 51): each repo through its own App, which may be a client's.
+      const apps = new Map<string, Awaited<ReturnType<typeof loadGitHubConnection>>>();
+      const appOf = async (connectionId: string) => {
+        const known = apps.get(connectionId);
+        if (known !== undefined) {
+          return known;
+        }
+        const loaded = await loadGitHubConnection(ctx.deps, ctx.scope, connectionIdSchema.parse(connectionId));
+        apps.set(connectionId, loaded);
+        return loaded;
+      };
       const repos = await ctx.deps.db.repo.findMany({
         where: { projectId: input.projectId, organizationId: ctx.scope.organizationId },
         include: { ...installationStateSelect },
@@ -119,6 +129,7 @@ export const environmentsRouter = router({
           out.push({ repoId: repoIdSchema.parse(repo.id), fullName, detection: detectionWithoutFiles("its GitHub installation isn't linked to ostra") });
           continue;
         }
+        const github = await appOf(repo.connectionId);
         const detection = await detectRepoEnvironment(
           ctx.deps.ports.adapters.codeHost,
           { app: github.credentials, installationId: repo.installationId, repo: fullName },
