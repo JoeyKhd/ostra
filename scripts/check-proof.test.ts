@@ -33,6 +33,18 @@ describe("conditionsOf", () => {
     ).toBe("The **link's ID is the secret**.  It works once.");
   });
 
+  it("doesn't take a * inside a code span for the start of a note", () => {
+    expect(
+      conditionsOf(
+        "It pushes to `refs/ostra/wip/*` only. It took 1 second *(working figure)*. *Added 2026-11-18: pushes to `refs/*` and `a*b`.* It runs `pnpm dev`. *Changed 2026-11-19.*",
+      ),
+    ).toEqual([
+      "It pushes to `refs/ostra/wip/*` only.",
+      "It took 1 second *(working figure)*.",
+      "It runs `pnpm dev`.",
+    ]);
+  });
+
   it("ends a sentence at . ? or ! before a space, outside code spans and parentheses", () => {
     expect(
       splitSentences(

@@ -73,12 +73,48 @@ const datePattern = /\d{4}-\d{2}-\d{2}/;
 
 /**
  * Removes the dated notes, the italic spans such as `*Changed 2026-11-18: ...*`, and keeps the
- * italics that are part of a sentence, such as `*(working value)*`. Bold (`**`) is left alone.
+ * italics that are part of a sentence, such as `*(working value)*`. Bold (`**`) is left alone,
+ * and so is a `*` inside a code span, such as `refs/ostra/wip/*`.
  */
-export const stripNotes = (doneWhen: string): string =>
-  doneWhen.replaceAll(/(?<!\*)\*(?!\*)([^*]|\*\*)+?(?<!\*)\*(?!\*)/g, (span) =>
-    datePattern.test(span) ? "" : span,
-  );
+export const stripNotes = (doneWhen: string): string => {
+  /** The index of the `*` that closes an italic span opened just before `from`, or -1. */
+  const closing = (from: number): number => {
+    let inCode = false;
+    for (let index = from; index < doneWhen.length; index += 1) {
+      const char = doneWhen.charAt(index);
+      if (char === "`") inCode = !inCode;
+      else if (!inCode && char === "*") {
+        if (doneWhen.charAt(index + 1) !== "*") return index;
+        index += 1;
+      }
+    }
+    return -1;
+  };
+  let result = "";
+  let inCode = false;
+  for (let index = 0; index < doneWhen.length; index += 1) {
+    const char = doneWhen.charAt(index);
+    if (char === "`") inCode = !inCode;
+    if (inCode || char !== "*") {
+      result += char;
+      continue;
+    }
+    if (doneWhen.charAt(index + 1) === "*") {
+      result += "**";
+      index += 1;
+      continue;
+    }
+    const end = closing(index + 1);
+    if (end === -1) {
+      result += char;
+      continue;
+    }
+    const span = doneWhen.slice(index, end + 1);
+    if (!datePattern.test(span)) result += span;
+    index = end;
+  }
+  return result;
+};
 
 /**
  * Splits a "done when" into its sentences. A sentence ends at `.`, `?` or `!`, and any closing
