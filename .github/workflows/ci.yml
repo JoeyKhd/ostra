@@ -1,9 +1,13 @@
 name: CI
 
+# The maintainer, 2026-11-19: no run on every push to main. CI runs on pull requests, once a night
+# on main, and by hand (gh workflow run CI, or the Actions tab). Agents prove their work locally
+# before they push (AGENTS.md); don't add a push trigger back.
 on:
-  push:
-    branches: [main]
   pull_request: {}
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 4 * * *"
 
 permissions:
   contents: read
