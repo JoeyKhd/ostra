@@ -1,6 +1,6 @@
 # 19: Core: runaway timers, the stall sweep and spend
 
-Status: in-progress
+Status: done
 Builder: core
 Blocked by: 01, 06, 17
 Features: F-068
@@ -19,7 +19,7 @@ ADR 0037 puts the maximum duration and the stall on the server; the key proxy en
 
 ## Done when
 
-- [ ] Tests with a fake clock: the maximum duration fires once and never after the session ended; a cancelled job leaves nothing behind; the sweep stops a silent session within one minute of the limit and leaves a waiting one alone; usage is priced on all four kinds and summed across sessions; a model with no price counts tokens; each limit gives the right needs-you reason; a reopen at the cap is refused with its reason. *(All but the last are in `apps/core/src/limits/limits.test.ts`; the reopen's refusal lands with ticket 18's `reopenTask`.)*
+- [x] Tests with a fake clock: the maximum duration fires once and never after the session ended; a cancelled job leaves nothing behind; the sweep stops a silent session within one minute of the limit and leaves a waiting one alone; usage is priced on all four kinds and summed across sessions; a model with no price counts tokens; each limit gives the right needs-you reason; a reopen at the cap is refused with its reason. *(The last is in `apps/core/src/dispatch/reopen.test.ts`, with ticket 18's `reopenTask`; the rest in `apps/core/src/limits/limits.test.ts`.)*
 - [x] Committed as `✨ add runaway timers and spend`.
 
 ## Comments
@@ -30,3 +30,4 @@ ADR 0037 puts the maximum duration and the stall on the server; the key proxy en
   - **Spend:** each `usage.recorded` is priced in ingest's transaction with the model's four prices (`modelTokenPrices`, `priceTokens` in `spend.ts`, rounded up to whole micro-USD) and added to the session's and the task's `spentMicroUsd`, clamped to the column. A model without both an input and an output price is counted in tokens only.
   - **The spec's `limits`** (`specLimits` in `apps/core/src/dispatch/task-spec.ts`, from `TaskEndpointDeps.specSettings`): `idleMinutes` from `OSTRA_BOX_IDLE_MINUTES` and `spendCap`, in micro-USD with the prices and the task's `spentMicroUsd` across sessions, or `{ capTokens, spentTokens }` with the task's tokens summed over its sessions. `spendCapReached` says when a reopen must be refused.
   - **Not here:** the progress comment's edit on a limit is ticket 15's writer.
+- 2026-11-20, core (sessions): the reopen at the cap is refused (`spend-cap-reached`) since `56f4bf3` (ticket 18), so the ticket is done.
