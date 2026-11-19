@@ -47,6 +47,10 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
       return [plain(t("home.reason.waitingForReviewer"))];
     case "environment_proposal":
       return [plain(t("home.reason.environmentProposal"))];
+    case "restore_conflict":
+      return [plain(t("home.reason.restoreConflict"))];
+    case "unstorable_event":
+      return [plain(t("home.reason.unstorableEvent"))];
     default:
       return detail satisfies never;
   }
@@ -72,6 +76,8 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
     case "round_cap":
     case "waiting_for_reviewer":
     case "environment_proposal":
+    case "restore_conflict":
+    case "unstorable_event":
       return "home.action.openTask";
     default:
       return reason satisfies never;

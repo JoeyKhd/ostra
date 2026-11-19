@@ -129,7 +129,9 @@
       "ticketClosed": "The ticket was closed",
       "roundCap": "Review rounds used up",
       "waitingForReviewer": "Waiting for a reviewer",
-      "environmentProposal": "Environment change proposed"
+      "environmentProposal": "Environment change proposed",
+      "restoreConflict": "Restore conflict",
+      "unstorableEvent": "An event couldn't be stored"
     },
     "action": {
       "approve": "Approve",
@@ -767,7 +769,9 @@
       "draftReady": "A draft is ready",
       "roundCap": "Reached its round cap",
       "waitingForReviewer": "Waiting for a reviewer",
-      "environmentProposal": "A change to the environment to review"
+      "environmentProposal": "A change to the environment to review",
+      "restoreConflict": "Its saved work conflicts with the branch",
+      "unstorableEvent": "An event couldn't be stored"
     },
     "stopReason": {
       "requested": "asked to stop",

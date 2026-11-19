@@ -1,6 +1,6 @@
 # 05: DB: the milestone 2 migration
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none
 Features: every F-ID of the spec's section 2 (their rows)
@@ -33,9 +33,20 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] The migration applies to an empty database and to a database holding milestone 1's demo data, and milestone 1's tests still pass on it.
-- [ ] Tests: the partial index refuses a second active code task for one ticket, and allows one after the first is stopped; each new model's mapper parses a row; another organization's rows stay invisible through the composite keys.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the milestone 2 schema`.
+- [x] The migration applies to an empty database and to a database holding milestone 1's demo data, and milestone 1's tests still pass on it.
+- [x] Tests: the partial index refuses a second active code task for one ticket, and allows one after the first is stopped; each new model's mapper parses a row; another organization's rows stay invisible through the composite keys.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the milestone 2 schema`.
 
 ## Comments
+- 2026-11-19, core (contracts): done in `✨ add the milestone 2 schema`, migration `20261119210000_milestone_2` (and `CommandKind.release` already in ticket 02's `20261119200000_command_release`). What builders should know:
+  - **Partial unique indexes are declared in `schema.prisma`** (`where: raw(...)`, as milestone 1's are), so Prisma never drops them: `task_one_active_code_task_per_ticket` and `connection_one_linear_per_organization` (one Linear connection that isn't `revoked` per organization). The other checks are raw SQL at the end of the migration, marked `ostra:`.
+  - **`Connection.appId` stays required.** A pending Linear row holds `pending` until the admin pastes the client ID, and the development seed holds `api-key` (ticket 06 names both). `Connection.state` defaults to `active` and `webhookMode` to `webhooks`, so milestone 1's GitHub rows stay valid; `failedReason` was added beside `state`.
+  - **Blobs:** one `Blob` table for every store (`store` `postgres` or `s3`, `key` the store's key), with `BlobUpload` (with `storeUploadId` and `storeParts` for S3's multipart, ticket 11) and `BlobChunk` (`bytea`, 1 MiB at most). A chunk belongs to its upload or to its blob, never both (a check): finishing moves it.
+  - **`TicketWrite`** has `boardId` (required, so `create` knows its board), `payload` (JSON, never logged), and `ticketId` required except for `create` (a check). `Task` gains `ticketId` and `boardId`, and a ticket always has its board (a check).
+  - **`IdempotencyRecord` and `RateBudget`** are keyed per organization (`@@unique([organizationId, key])`), so ticket 15's stores are built per organization.
+  - **More enums than the spec named:** `TicketStatusCategory`, `IdempotencyState`, `SessionLimit` and `BoxReleaseReason` (mapped to the protocol's hyphens in `src/enums.ts`), and `WebhookDeliveryStatus.ignored` for the own echo.
+  - **New branded IDs:** `TicketId`, `ExternalTicketId` (the tracker's stable ID), `TicketWriteId`, `OAuthStateId`. New mappers for every new model, plus `mapBoard`; `mapTask`, `mapSession`, `mapBox` and `mapConnection` map their new columns.
+  - **A milestone 1 bug fixed on the way:** the mappers' `optional()` typed a nullable ID by the schema's input, so every nullable ID came out as a bare `string`. It's typed by the output now, and they keep their brands.
+  - The panel got copy for the two new needs-you reasons (`restore_conflict`, `unstorable_event`) in the Home and task-row words, since their switches are exhaustive.
+  - Tests in `src/schema-m2.test.ts`, including an upgrade: milestone 1's migrations, a miniature of its demo's rows, then milestone 2's migrations over them.

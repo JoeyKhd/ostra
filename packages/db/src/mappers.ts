@@ -1,16 +1,20 @@
 import {
   agentProfileIdSchema,
   approvalIdSchema,
+  blobIdSchema,
+  boardIdSchema,
   boxIdSchema,
   commandIdSchema,
   commandSchema,
   connectionIdSchema,
   environmentIdSchema,
+  externalTicketIdSchema,
   joinTokenIdSchema,
   leaseIdSchema,
   memberIdSchema,
   modelIdSchema,
   needsYouItemIdSchema,
+  oauthStateIdSchema,
   organizationIdSchema,
   poolIdSchema,
   projectIdSchema,
@@ -21,30 +25,48 @@ import {
   storedEventSchema,
   taskIdSchema,
   taskRepoIdSchema,
+  ticketIdSchema,
+  ticketKeySchema,
+  ticketWriteIdSchema,
   turnIdSchema,
+  uploadIdSchema,
   userIdSchema,
 } from "@ostra/protocol";
 import type { Command as ProtocolCommand, StoredEvent } from "@ostra/protocol";
 import type { z } from "zod";
 
-import { apiFormatFromDb, authSchemeFromDb, commandKindFromDb } from "./enums.ts";
+import {
+  apiFormatFromDb,
+  authSchemeFromDb,
+  boxReleaseReasonFromDb,
+  commandKindFromDb,
+  sessionLimitFromDb,
+} from "./enums.ts";
 import type {
   AgentProfile,
   Approval,
+  Blob,
+  BlobChunk,
+  BlobUpload,
+  Board,
   Box,
   Command,
   Connection,
   Environment,
   EnvironmentEntry,
   Event,
+  IdempotencyRecord,
   JoinToken,
   Lease,
   Member,
   Model,
   ModelProvider,
   NeedsYouItem,
+  OAuthState,
   Organization,
+  OrganizationSetting,
   Project,
+  RateBudget,
   Repo,
   Runner,
   RunnerPool,
@@ -52,6 +74,8 @@ import type {
   Task,
   TaskCoAuthor,
   TaskRepo,
+  Ticket,
+  TicketWrite,
   Turn,
 } from "./generated/prisma/client.ts";
 
@@ -62,7 +86,8 @@ import type {
 // A mapper throws if a column holds a value its schema refuses. That's a bug or a corrupt row,
 // never an expected failure.
 
-const optional = <T>(schema: z.ZodType<T>, value: string | null): T | null =>
+// Typed by the schema's output, so a nullable ID keeps its brand.
+const optional = <Schema extends z.ZodType>(schema: Schema, value: string | null): z.output<Schema> | null =>
   value === null ? null : schema.parse(value);
 
 export const mapOrganization = (row: Organization) => ({ ...row, id: organizationIdSchema.parse(row.id) });
@@ -78,6 +103,7 @@ export const mapConnection = (row: Connection) => ({
   ...row,
   id: connectionIdSchema.parse(row.id),
   organizationId: organizationIdSchema.parse(row.organizationId),
+  createdByMemberId: optional(memberIdSchema, row.createdByMemberId),
 });
 
 export const mapModelProvider = (row: ModelProvider) => ({
@@ -166,6 +192,9 @@ export const mapTask = (row: Task) => ({
   creatorMemberId: optional(memberIdSchema, row.creatorMemberId),
   runnerId: optional(runnerIdSchema, row.runnerId),
   reviewOfTaskId: optional(taskIdSchema, row.reviewOfTaskId),
+  ticketKey: optional(ticketKeySchema, row.ticketKey),
+  ticketId: optional(ticketIdSchema, row.ticketId),
+  boardId: optional(boardIdSchema, row.boardId),
 });
 
 export const mapTaskRepo = (row: TaskRepo) => ({
@@ -192,6 +221,7 @@ export const mapBox = (row: Box) => ({
   projectId: projectIdSchema.parse(row.projectId),
   taskId: taskIdSchema.parse(row.taskId),
   runnerId: optional(runnerIdSchema, row.runnerId),
+  releaseReason: row.releaseReason === null ? null : boxReleaseReasonFromDb[row.releaseReason],
 });
 
 export const mapLease = (row: Lease) => ({
@@ -212,6 +242,8 @@ export const mapSession = (row: Session) => ({
   taskId: taskIdSchema.parse(row.taskId),
   agentProfileId: optional(agentProfileIdSchema, row.agentProfileId),
   boxId: optional(boxIdSchema, row.boxId),
+  archiveBlobId: optional(blobIdSchema, row.archiveBlobId),
+  limitReached: row.limitReached === null ? null : sessionLimitFromDb[row.limitReached],
 });
 
 export const mapTurn = (row: Turn) => ({
@@ -241,6 +273,86 @@ export const mapNeedsYouItem = (row: NeedsYouItem) => ({
   taskId: taskIdSchema.parse(row.taskId),
   approvalId: optional(approvalIdSchema, row.approvalId),
   resolvedByMemberId: optional(memberIdSchema, row.resolvedByMemberId),
+});
+
+// ---- milestone 2 ----
+
+export const mapBoard = (row: Board) => ({
+  ...row,
+  id: boardIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  connectionId: connectionIdSchema.parse(row.connectionId),
+});
+
+export const mapTicket = (row: Ticket) => ({
+  ...row,
+  id: ticketIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  boardId: boardIdSchema.parse(row.boardId),
+  connectionId: connectionIdSchema.parse(row.connectionId),
+  externalId: externalTicketIdSchema.parse(row.externalId),
+  key: ticketKeySchema.parse(row.key),
+  parentExternalId: optional(externalTicketIdSchema, row.parentExternalId),
+});
+
+export const mapTicketWrite = (row: TicketWrite) => ({
+  ...row,
+  id: ticketWriteIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  boardId: boardIdSchema.parse(row.boardId),
+  ticketId: optional(ticketIdSchema, row.ticketId),
+});
+
+export const mapIdempotencyRecord = (row: IdempotencyRecord) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+});
+
+export const mapRateBudget = (row: RateBudget) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+});
+
+export const mapBlob = (row: Blob) => ({
+  ...row,
+  id: blobIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  taskId: optional(taskIdSchema, row.taskId),
+});
+
+export const mapBlobUpload = (row: BlobUpload) => ({
+  ...row,
+  id: uploadIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  taskId: optional(taskIdSchema, row.taskId),
+  blobId: optional(blobIdSchema, row.blobId),
+});
+
+export const mapBlobChunk = (row: BlobChunk) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  uploadId: optional(uploadIdSchema, row.uploadId),
+  blobId: optional(blobIdSchema, row.blobId),
+});
+
+export const mapOAuthState = (row: OAuthState) => ({
+  ...row,
+  id: oauthStateIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  connectionId: connectionIdSchema.parse(row.connectionId),
+  memberId: memberIdSchema.parse(row.memberId),
+});
+
+export const mapOrganizationSetting = (row: OrganizationSetting) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  linearSkippedByMemberId: optional(memberIdSchema, row.linearSkippedByMemberId),
 });
 
 /** An event row as the panel reads it: both numbers, and the payload parsed by the read schema. */

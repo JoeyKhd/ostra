@@ -54,4 +54,14 @@ export type {
   Approval,
   NeedsYouItem,
   WebhookDelivery,
+  // Milestone 2.
+  OrganizationSetting,
+  Ticket,
+  TicketWrite,
+  IdempotencyRecord,
+  RateBudget,
+  Blob,
+  BlobUpload,
+  BlobChunk,
+  OAuthState,
 } from "./generated/prisma/client.ts";

@@ -186,6 +186,9 @@ export const homeRouter = router({
         case "round_cap":
         case "waiting_for_reviewer":
         case "environment_proposal":
+        // Milestone 2: needs-you items rather than task states, listed for completeness (ticket 06).
+        case "restore_conflict":
+        case "unstorable_event":
           return { reason };
         default:
           return reason satisfies never;

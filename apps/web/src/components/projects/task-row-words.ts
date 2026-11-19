@@ -68,6 +68,10 @@ export const needsYouReasonText = (reason: NeedsYouReason): string => {
       return t("tasks.needsYouReason.waitingForReviewer");
     case "environment_proposal":
       return t("tasks.needsYouReason.environmentProposal");
+    case "restore_conflict":
+      return t("tasks.needsYouReason.restoreConflict");
+    case "unstorable_event":
+      return t("tasks.needsYouReason.unstorableEvent");
     default:
       return reason satisfies never;
   }

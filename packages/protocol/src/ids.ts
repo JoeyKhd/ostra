@@ -176,6 +176,25 @@ export type WebhookDeliveryId = z.infer<typeof webhookDeliveryIdSchema>;
 export const uploadIdSchema = idBase.brand<"UploadId">();
 export type UploadId = z.infer<typeof uploadIdSchema>;
 
+/** The ID of a ticket's cached copy on one board (milestone 2). The tracker's own ID is `ExternalTicketId`. */
+export const ticketIdSchema = idBase.brand<"TicketId">();
+export type TicketId = z.infer<typeof ticketIdSchema>;
+
+/**
+ * A tracker's stable ID of a ticket (milestone 2): Linear's issue ID, Jira's issue ID. Unlike the
+ * key, it never changes when the ticket moves team or project.
+ */
+export const externalTicketIdSchema = idBase.brand<"ExternalTicketId">();
+export type ExternalTicketId = z.infer<typeof externalTicketIdSchema>;
+
+/** The ID of one write in the tracker writer's outbox (milestone 2). */
+export const ticketWriteIdSchema = idBase.brand<"TicketWriteId">();
+export type TicketWriteId = z.infer<typeof ticketWriteIdSchema>;
+
+/** The ID of a pending OAuth authorization: its `state` and PKCE verifier (milestone 2). */
+export const oauthStateIdSchema = idBase.brand<"OAuthStateId">();
+export type OAuthStateId = z.infer<typeof oauthStateIdSchema>;
+
 /** The ID of a stored blob, as a blob store gave it (the part of its key after the store's name). */
 export const blobIdSchema = idBase.brand<"BlobId">();
 export type BlobId = z.infer<typeof blobIdSchema>;

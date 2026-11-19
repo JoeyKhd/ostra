@@ -35,28 +35,28 @@ datasource db {
 // ===========================================================================
 
 model User {
-  id              String        @id
-  name            String
-  email           String
-  emailVerified   Boolean       @default(false)
-  image           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                 String        @id
+  name               String
+  email              String
+  emailVerified      Boolean       @default(false)
+  image              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
   // ostra: required, not optional. Every account has a unique username (Q54, F-002).
-  username        String
-  displayUsername String?
-  role            String?
-  banned          Boolean?      @default(false)
-  banReason       String?
-  banExpires      DateTime?
+  username           String
+  displayUsername    String?
+  role               String?
+  banned             Boolean?      @default(false)
+  banReason          String?
+  banExpires         DateTime?
   /// ostra: the account still has the default password it was seeded with (F-001): its first
   /// sign-in must choose a new one, unless OSTRA_ALLOW_DEFAULT_PASSWORD is on. A better-auth
   /// additional field (`input: false`), so no sign-up or profile update can set it.
-  mustChangePassword Boolean    @default(false)
-  sessions        AuthSession[]
-  accounts        Account[]
-  members         Member[]
-  invitations     Invitation[]
+  mustChangePassword Boolean       @default(false)
+  sessions           AuthSession[]
+  accounts           Account[]
+  members            Member[]
+  invitations        Invitation[]
 
   @@unique([email])
   @@unique([username])
@@ -126,20 +126,30 @@ model Organization {
   invitations Invitation[]
 
   // ostra: every ostra-owned row carries its organization (ADR 0026).
-  auditEntries      AuditEntry[]
-  changeNotices     ChangeNotice[]
-  connections       Connection[]
-  modelProviders    ModelProvider[]
-  models            Model[]
-  runnerPools       RunnerPool[]
-  joinTokens        JoinToken[]
-  runners           Runner[]
-  runnerPresences   RunnerPresence[]
-  agentProfiles     AgentProfile[]
-  secrets           Secret[]
-  projects          Project[]
-  commands          Command[]
-  webhookDeliveries WebhookDelivery[]
+  auditEntries       AuditEntry[]
+  changeNotices      ChangeNotice[]
+  connections        Connection[]
+  modelProviders     ModelProvider[]
+  models             Model[]
+  runnerPools        RunnerPool[]
+  joinTokens         JoinToken[]
+  runners            Runner[]
+  runnerPresences    RunnerPresence[]
+  agentProfiles      AgentProfile[]
+  secrets            Secret[]
+  projects           Project[]
+  commands           Command[]
+  webhookDeliveries  WebhookDelivery[]
+  // Milestone 2.
+  tickets            Ticket[]
+  ticketWrites       TicketWrite[]
+  idempotencyRecords IdempotencyRecord[]
+  rateBudgets        RateBudget[]
+  blobs              Blob[]
+  blobUploads        BlobUpload[]
+  blobChunks         BlobChunk[]
+  oauthStates        OAuthState[]
+  setting            OrganizationSetting?
 
   @@unique([slug])
   @@map("organization")
@@ -215,9 +225,28 @@ model InstanceSetting {
   openSignupOrganizations Boolean   @default(false)
   /// Set when the first admin exists: the server never seeds another (F-001).
   firstAdminCreatedAt     DateTime?
+  /// Milestone 2 (F-079): how many days histories, archives and blobs are kept after their task
+  /// ends, or `null` to keep them while the task exists. Read only when `retentionSetAt` is set.
+  retentionDays           Int?
+  /// When an admin last saved retention. `null`: none has, so `OSTRA_RETENTION_DAYS` applies;
+  /// set: the saved `retentionDays` wins, and `null` there means "keep" (spec section 11, item 11).
+  retentionSetAt          DateTime?
   updatedAt               DateTime  @updatedAt
 
   @@map("instance_setting")
+}
+
+/// One organization's own settings (milestone 2): one row per organization, made when first written.
+model OrganizationSetting {
+  organizationId          String       @id
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Home's checklist: the Linear step was skipped for now (ticket 27), and by whom.
+  linearSkippedAt         DateTime?
+  linearSkippedByMemberId String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  @@map("organization_setting")
 }
 
 /// Who did what, when (F-073). Written in the transaction of the change it records.
@@ -286,12 +315,46 @@ model Connection {
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
+  // ---- milestone 2: the Linear app (F-005). Every column is nullable or has a default. ----
+  /// GitHub rows are `active`. A Linear row starts `pending`, before the manifest link, so its
+  /// webhook URL can name it. Its `appId` is `pending` until the admin pastes the client ID, and
+  /// `api-key` on the development seed (the domain's `linearAppIdPlaceholders`).
+  state                 ConnectionState       @default(active)
+  /// `failed`: words and IDs only, never a token or a vendor's body.
+  failedReason          String?
+  /// How events arrive: `polling` when the install has no public address (F-042).
+  webhookMode           WebhookMode           @default(webhooks)
+  /// How the Linear token was got. `api_key` is the development seed only; no panel action
+  /// writes it. `null` on GitHub rows.
+  credentialKind        ConnectionCredential?
+  /// Linear's organization: its ID, its URL key and its name, as of the last read.
+  externalWorkspaceId   String?
+  externalWorkspaceKey  String?
+  externalWorkspaceName String?
+  /// The app's own user on the workspace, for the own-echo filter. `null` with an API key.
+  appUserId             String?
+  appUserName           String?
+  /// Secret store references, never the values.
+  accessTokenSecretRef  String?
+  refreshTokenSecretRef String?
+  accessTokenExpiresAt  DateTime?
+  /// When the connection last became `active`.
+  activatedAt           DateTime?
+  /// The last webhook or poll that brought an event, for the panel's "last event" line.
+  lastEventAt           DateTime?
+  /// The admin who started a pending connection. No foreign key: the row outlives the member.
+  createdByMemberId     String?
+
   repos             Repo[]
   boards            Board[]
   webhookDeliveries WebhookDelivery[]
+  tickets           Ticket[]
+  oauthStates       OAuthState[]
 
   @@unique([organizationId, kind, appId])
   @@unique([id, organizationId])
+  /// One Linear connection per organization that isn't revoked (spec section 11, item 2).
+  @@unique([organizationId], where: raw("kind = 'linear' AND state <> 'revoked'"), map: "connection_one_linear_per_organization")
   @@map("connection")
 }
 
@@ -511,6 +574,8 @@ model Project {
   defaultReviewProfileId String?
   /// The default box size's name (Q43): `small`, `medium` or `large`.
   defaultBoxSize         String?
+  /// Milestone 2 (F-064): the ticket prompt's template, or `null` for the built-in one.
+  ticketTemplate         String?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
@@ -537,6 +602,10 @@ model Project {
   needsYouItems NeedsYouItem[]
   auditEntries  AuditEntry[]
   changeNotices ChangeNotice[]
+  tickets       Ticket[]
+  ticketWrites  TicketWrite[]
+  blobs         Blob[]
+  blobUploads   BlobUpload[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -576,25 +645,31 @@ model ProjectPool {
 
 /// A code host repo linked to a project through the organization's App (Q29).
 model Repo {
-  id             String     @id @default(uuid(7))
-  organizationId String
-  projectId      String
-  project        Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
-  connectionId   String
-  connection     Connection @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  id                   String     @id @default(uuid(7))
+  organizationId       String
+  projectId            String
+  project              Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  connectionId         String
+  connection           Connection @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Restrict)
   /// The App installation that grants access to the repo.
-  installationId String
+  installationId       String
   /// The code host's own ID of the repo, which survives a rename.
-  hostRepoId     String
+  hostRepoId           String
   /// `owner/name`, as of the last check.
-  fullName       String
-  defaultBranch  String
+  fullName             String
+  defaultBranch        String
   /// The repo's folder in a task's workspace (F-016).
-  checkoutDir    String
+  checkoutDir          String
   /// Where its variables and secrets are written in its checkout (spec section 11, item 7).
-  envFile        String     @default(".env")
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  envFile              String     @default(".env")
+  /// Milestone 2: whether the code host says the repo is private, as of the last check.
+  private              Boolean?
+  /// The default branch's rules (F-055, F-060), parsed by the domain's `repoBranchRulesSchema`.
+  branchRules          Json?
+  /// When they were read: "Check again" reads them anew after 10 minutes (ticket 31).
+  branchRulesCheckedAt DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
   entries   EnvironmentEntry[]
   taskRepos TaskRepo[]
@@ -607,21 +682,120 @@ model Repo {
 
 /// A tracker team or project, with its status mapping (Q67, F-007). Milestone 2.
 model Board {
-  id             String     @id @default(uuid(7))
-  organizationId String
-  projectId      String
-  project        Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
-  connectionId   String
-  connection     Connection @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  id                  String     @id @default(uuid(7))
+  organizationId      String
+  projectId           String
+  project             Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  connectionId        String
+  connection          Connection @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Restrict)
   /// The tracker's ID of the team or project.
-  externalId     String
-  name           String
-  statusMap      Json
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  externalId          String
+  name                String
+  /// Parsed by the domain's `boardMappingSchema`.
+  statusMap           Json
+  /// Milestone 2: the team's key as of the last read, such as `OST`.
+  key                 String?
+  /// Polling (F-042, F-044): the tracker's `updatedAt` of the last ticket a committed page held.
+  /// The next poll asks from it, minus the overlap.
+  pollCursor          DateTime?
+  lastPolledAt        DateTime?
+  /// Whether the tracker's own GitHub integration is installed (F-031); `null` until checked.
+  integrationDetected Boolean?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  tickets      Ticket[]
+  ticketWrites TicketWrite[]
+  tasks        Task[]
 
   @@unique([projectId, externalId])
+  @@unique([id, projectId])
   @@map("board")
+}
+
+/// A ticket's cached copy, per board (milestone 2, F-010). Upserted by the board and the
+/// tracker's stable ID, never by the key, which changes when a ticket moves team. Its text is
+/// untrusted: data in the prompt, never logged, never in a shell.
+model Ticket {
+  id               String                @id @default(uuid(7))
+  organizationId   String
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId        String
+  project          Project               @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  boardId          String
+  board            Board                 @relation(fields: [boardId, projectId], references: [id, projectId], onDelete: Cascade)
+  connectionId     String
+  connection       Connection            @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  /// The tracker's stable ID of the ticket.
+  externalId       String
+  /// The key as of the last read, such as `OST-12`.
+  key              String
+  title            String
+  /// Markdown. Never logged.
+  description      String?
+  /// The tracker's status, as of the last read.
+  statusId         String?
+  statusName       String?
+  statusCategory   TicketStatusCategory?
+  /// Linear's scale: 0 none, 1 urgent, 2 high, 3 medium, 4 low. Another tracker maps onto it.
+  priority         Int?
+  /// The label names, as a JSON array of strings.
+  labels           Json                  @default("[]")
+  parentExternalId String?
+  url              String
+  /// Open on the tracker: not done, cancelled or archived.
+  open             Boolean               @default(true)
+  /// The tracker's `updatedAt` for the copy held here.
+  trackerUpdatedAt DateTime
+  /// Set when the ticket left the board or was deleted. The row stays for its tasks.
+  removedAt        DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  tasks        Task[]
+  ticketWrites TicketWrite[]
+
+  @@unique([boardId, externalId])
+  @@unique([id, projectId])
+  @@index([projectId, open, trackerUpdatedAt])
+  @@map("ticket")
+}
+
+/// The tracker writer's outbox (milestone 2, F-031, F-046): one write to apply through the
+/// tracker adapter, written in the transaction of the state change that caused it, and applied by
+/// `ticket.sync` with its idempotency key.
+model TicketWrite {
+  id             String           @id @default(uuid(7))
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  boardId        String
+  board          Board            @relation(fields: [boardId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// `null` for `create` until the ticket exists.
+  ticketId       String?
+  ticket         Ticket?          @relation(fields: [ticketId, projectId], references: [id, projectId], onDelete: NoAction)
+  kind           TicketWriteKind
+  /// What to write, parsed by the domain's `ticketWritePayloadSchema`. It can hold a comment's
+  /// text: never logged.
+  payload        Json
+  /// Fixed by the task and the step (ADR 0037), so a replay finds this row instead of a second one.
+  idempotencyKey String           @unique
+  state          TicketWriteState @default(pending)
+  attempts       Int              @default(0)
+  /// What the tracker made: the comment's, the attachment's or the ticket's ID.
+  externalId     String?
+  /// Why the last attempt failed: words and IDs, never content.
+  error          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  doneAt         DateTime?
+
+  @@index([taskId])
+  @@index([state, createdAt])
+  @@map("ticket_write")
 }
 
 /// The project's one environment: the recipe for every box (ADR 0038, F-050).
@@ -764,42 +938,52 @@ model Automation {
 /// ostra's long-lived unit of work in one project (ADR 0006, ADR 0027, ADR 0028). Its state
 /// columns map to the domain's union per kind (packages/domain, `lifecycles/mapping.ts`).
 model Task {
-  id              String          @id @default(uuid(7))
-  organizationId  String
-  projectId       String
-  project         Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
-  kind            TaskKind
-  source          TaskSource
-  title           String
+  id                String          @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  kind              TaskKind
+  source            TaskSource
+  title             String
   /// The member's prompt (a prompt task). Never logged.
-  prompt          String?
+  prompt            String?
   /// The ticket's key (a ticket task, milestone 2).
-  ticketKey       String?
+  ticketKey         String?
   /// The same branch name in every repo of the task.
-  branchName      String
-  state           TaskState       @default(queued)
+  branchName        String
+  state             TaskState       @default(queued)
   /// Set only in `in_review` (checked in the migration).
-  subState        TaskSubState?
+  subState          TaskSubState?
   /// Set only in `needs_you` (checked in the migration).
-  needsYouReason  NeedsYouReason?
+  needsYouReason    NeedsYouReason?
   /// Set only in `stopped` (checked in the migration).
-  stoppedReason   TaskStopReason?
+  stoppedReason     TaskStopReason?
   /// The member who drives the task, or `null` (one driver at a time, F-024).
-  driverMemberId  String?
-  creatorMemberId String?
+  driverMemberId    String?
+  creatorMemberId   String?
   /// The runner the member chose (a personal runner), or `null` to pick from the project's pools.
-  runnerId        String?
-  runner          Runner?         @relation(fields: [runnerId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  runnerId          String?
+  runner            Runner?         @relation(fields: [runnerId, organizationId], references: [id, organizationId], onDelete: NoAction)
   /// The code task a review task reviews (Q71).
-  reviewOfTaskId  String?
+  reviewOfTaskId    String?
   /// The counter events are numbered from, taken under this row's lock (ADR 0035).
-  eventSeq        Int             @default(0)
+  eventSeq          Int             @default(0)
   /// Raised by every dispatch; writes from an older epoch are refused (ADR 0034, F-045).
-  leaseEpoch      Int             @default(0)
+  leaseEpoch        Int             @default(0)
   /// Why a queued task is still waiting for a runner, for the panel: words and IDs, never content (ticket 26).
-  dispatchNote    String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  dispatchNote      String?
+  // ---- milestone 2 ----
+  /// A ticket task's ticket and board (F-010), or a prompt task's after "Create ticket" (F-097).
+  ticketId          String?
+  ticket            Ticket?         @relation(fields: [ticketId, projectId], references: [id, projectId], onDelete: NoAction)
+  boardId           String?
+  board             Board?          @relation(fields: [boardId, projectId], references: [id, projectId], onDelete: NoAction)
+  /// ostra's one progress comment on the ticket, edited in place (F-031).
+  progressCommentId String?
+  /// Spent so far across the task's sessions, in micro-USD (F-068).
+  spentMicroUsd     Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   repos         TaskRepo[]
   coAuthors     TaskCoAuthor[]
@@ -811,8 +995,13 @@ model Task {
   commands      Command[]
   approvals     Approval[]
   needsYouItems NeedsYouItem[]
+  ticketWrites  TicketWrite[]
+  blobs         Blob[]
+  blobUploads   BlobUpload[]
 
   @@unique([id, projectId])
+  /// One active code task per ticket per project (spec section 11, item 12).
+  @@unique([projectId, ticketId], where: raw("kind = 'code' AND \"ticketId\" IS NOT NULL AND state NOT IN ('stopped', 'merged', 'done')"), map: "task_one_active_code_task_per_ticket")
   @@index([projectId, state])
   @@index([organizationId, state])
   @@map("task")
@@ -820,26 +1009,33 @@ model Task {
 
 /// The task's branch and PR in one repo (Q29, F-030).
 model TaskRepo {
-  id             String        @id @default(uuid(7))
-  organizationId String
-  projectId      String
-  project        Project       @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
-  taskId         String
-  task           Task          @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
-  repoId         String
-  repo           Repo          @relation(fields: [repoId, projectId], references: [id, projectId], onDelete: Cascade)
-  branchName     String
-  baseBranch     String
-  state          TaskRepoState @default(no_branch)
-  headSha        String?
+  id               String        @id @default(uuid(7))
+  organizationId   String
+  projectId        String
+  project          Project       @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId           String
+  task             Task          @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  repoId           String
+  repo             Repo          @relation(fields: [repoId, projectId], references: [id, projectId], onDelete: Cascade)
+  branchName       String
+  baseBranch       String
+  state            TaskRepoState @default(no_branch)
+  headSha          String?
   /// Whether the branch is ahead of its base after the session's final push.
-  ahead          Boolean?
-  prTitle        String?
-  prBody         String?
-  prNumber       Int?
-  prUrl          String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  ahead            Boolean?
+  prTitle          String?
+  prBody           String?
+  prNumber         Int?
+  prUrl            String?
+  /// Milestone 2 (ADR 0039): the commit `refs/ostra/wip/<taskId>` points at, and the branch head it
+  /// was saved on.
+  hiddenRefSha     String?
+  hiddenRefBaseSha String?
+  /// When the PR merged, or closed unmerged (F-079).
+  mergedAt         DateTime?
+  closedAt         DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@unique([taskId, repoId])
   @@map("task_repo")
@@ -864,21 +1060,25 @@ model TaskCoAuthor {
 
 /// The task's own computer, or on `host` its worktree, which follows the same states (ADR 0029).
 model Box {
-  id             String       @id @default(uuid(7))
+  id             String            @id @default(uuid(7))
   organizationId String
   projectId      String
-  project        Project      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  project        Project           @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   taskId         String
-  task           Task         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  task           Task              @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
   runnerId       String?
-  runner         Runner?      @relation(fields: [runnerId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  runner         Runner?           @relation(fields: [runnerId, organizationId], references: [id, organizationId], onDelete: NoAction)
   executor       ExecutorKind
-  state          BoxState     @default(creating)
+  state          BoxState          @default(creating)
   failedReason   String?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime          @default(now())
   readyAt        DateTime?
+  /// Milestone 2 (F-096): since when the box has had no turn.
+  idleSince      DateTime?
+  stoppedAt      DateTime?
   releasedAt     DateTime?
-  updatedAt      DateTime     @updatedAt
+  releaseReason  BoxReleaseReason?
+  updatedAt      DateTime          @updatedAt
 
   leases   Lease[]
   sessions Session[]
@@ -916,31 +1116,39 @@ model Lease {
 
 /// One conversation with one agent profile in one box (ADR 0006). At most one active per task.
 model Session {
-  id               String          @id @default(uuid(7))
-  organizationId   String
-  projectId        String
-  project          Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
-  taskId           String
-  task             Task            @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
-  agentProfileId   String?
-  boxId            String?
-  box              Box?            @relation(fields: [boxId, taskId], references: [id, taskId], onDelete: NoAction)
-  origin           SessionOrigin
-  state            SessionState    @default(starting)
+  id                 String          @id @default(uuid(7))
+  organizationId     String
+  projectId          String
+  project            Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId             String
+  task               Task            @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  agentProfileId     String?
+  boxId              String?
+  box                Box?            @relation(fields: [boxId, taskId], references: [id, taskId], onDelete: NoAction)
+  origin             SessionOrigin
+  state              SessionState    @default(starting)
   /// Set when the session ended (checked in the migration).
-  outcome          SessionOutcome?
+  outcome            SessionOutcome?
   /// The agent's own session ID, for resuming it.
-  agentSessionId   String?
+  agentSessionId     String?
   /// The highest contiguous session number saved: the ingest cursor (ADR 0034).
-  ingestedSeq      Int             @default(0)
+  ingestedSeq        Int             @default(0)
   /// The key proxy's counts for the session (F-089), summed from `usage.recorded`.
-  inputTokens      Int             @default(0)
-  outputTokens     Int             @default(0)
-  cacheReadTokens  Int             @default(0)
-  cacheWriteTokens Int             @default(0)
-  startedAt        DateTime        @default(now())
-  endedAt          DateTime?
-  updatedAt        DateTime        @updatedAt
+  inputTokens        Int             @default(0)
+  outputTokens       Int             @default(0)
+  cacheReadTokens    Int             @default(0)
+  cacheWriteTokens   Int             @default(0)
+  /// Milestone 2 (ADR 0039): the last session archive uploaded, and the turn it followed. No
+  /// foreign key: retention may delete the blob, and the next reopen then uses the template.
+  archiveBlobId      String?
+  archiveTurnOrdinal Int?
+  /// Spent in this session, in micro-USD (F-068).
+  spentMicroUsd      Int             @default(0)
+  /// The runaway limit that stopped it, if one did.
+  limitReached       SessionLimit?
+  startedAt          DateTime        @default(now())
+  endedAt            DateTime?
+  updatedAt          DateTime        @updatedAt
 
   turns     Turn[]
   events    Event[]
@@ -1095,9 +1303,160 @@ model WebhookDelivery {
   status         WebhookDeliveryStatus @default(received)
   receivedAt     DateTime              @default(now())
   processedAt    DateTime?
+  // ---- milestone 2 (F-043, F-046) ----
+  /// The verified body, for `webhook.process` to act on from the queue. Never logged.
+  payload        Json?
+  /// SHA-256 of the signature header: Linear's claim key beside the delivery ID.
+  signatureHash  String?
+  /// From the sender's timestamp to the insert, in ms; over 10 s logs a warning.
+  transitMs      Int?
+  /// Why processing failed: words and IDs, never content.
+  error          String?
+  /// The ticket's key, once `webhook.process` has read it, for the "last event" line.
+  ticketKey      String?
 
   @@unique([connectionId, deliveryId])
+  /// Postgres treats nulls as distinct, so this holds only where the hash is set.
+  @@unique([connectionId, signatureHash])
   @@map("webhook_delivery")
+}
+
+/// A recorded idempotent call (ADR 0011, F-046): the plumbing's `IdempotencyStore`, keyed per
+/// organization. Its result is JSON of IDs and results, never content.
+model IdempotencyRecord {
+  id             String           @id @default(uuid(7))
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// ADR 0037's form: parts joined by `:`.
+  key            String
+  state          IdempotencyState
+  result         Json?
+  claimedAt      DateTime
+  doneAt         DateTime?
+
+  @@unique([organizationId, key])
+  @@map("idempotency_record")
+}
+
+/// What a vendor last said about one credential's rate limit (Q20): the plumbing's
+/// `RateBudgetStore`. The key names a credential, never holds it.
+model RateBudget {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  remaining      Int
+  limit          Int?
+  resetAt        DateTime
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("rate_budget")
+}
+
+/// A stored blob (ADR 0043, F-114), in any store. A `postgres` blob's bytes are its chunks, in
+/// their own table, never beside the event log. The owning task, when there is one, is set.
+model Blob {
+  id             String        @id @default(uuid(7))
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String?
+  task           Task?         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  store          BlobStoreKind
+  /// The store's key for it (`StoredBlob.key`): safe to store and log.
+  key            String
+  /// What it's for, such as `session-archive` or `ticket-file`: words, never content.
+  purpose        String
+  contentType    String
+  size           Int
+  /// SHA-256 of the bytes, lower-case hex.
+  sha256         String
+  createdAt      DateTime      @default(now())
+
+  chunks BlobChunk[]
+
+  @@unique([store, key])
+  @@unique([id, organizationId])
+  @@index([taskId])
+  @@index([organizationId, createdAt])
+  @@map("blob")
+}
+
+/// A chunked upload in flight (ADR 0043). A drop leaves it here, and the next start for the same
+/// task, purpose and digest resumes it.
+model BlobUpload {
+  id             String        @id @default(uuid(7))
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String?
+  task           Task?         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  store          BlobStoreKind
+  purpose        String
+  contentType    String
+  expectedSha256 String
+  size           Int
+  receivedBytes  Int           @default(0)
+  /// An S3-compatible store's own upload ID and the parts it has (ticket 11).
+  storeUploadId  String?
+  storeParts     Json?
+  /// Set once finished: its blob, so finishing twice answers the same.
+  blobId         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  chunks BlobChunk[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, purpose, expectedSha256])
+  @@map("blob_upload")
+}
+
+/// One chunk of a `postgres` blob's bytes, at most 1 MiB (ADR 0043). It belongs to its upload
+/// while that's in flight, and to its blob after: finishing moves it (sets `blobId`, clears
+/// `uploadId`; the migration checks exactly one is set), so dropping the upload keeps the bytes.
+model BlobChunk {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadId       String?
+  upload         BlobUpload?  @relation(fields: [uploadId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  blobId         String?
+  blob           Blob?        @relation(fields: [blobId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// From 0, in order.
+  ordinal        Int
+  /// Where the chunk starts in the blob.
+  offset         Int
+  bytes          Bytes
+
+  @@unique([uploadId, ordinal])
+  @@unique([blobId, ordinal])
+  @@map("blob_chunk")
+}
+
+/// Linear's OAuth `state` and PKCE verifier (F-005), bound to the admin's session, for 10 minutes.
+model OAuthState {
+  id                    String       @id @default(uuid(7))
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectionId          String
+  connection            Connection   @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// SHA-256 of the `state` value, so a read of this table can't replay a callback.
+  stateHash             String       @unique
+  /// The PKCE verifier, in the secret store.
+  codeVerifierSecretRef String
+  memberId              String
+  /// The panel session (better-auth's) that started it; the callback must come back on it.
+  authSessionId         String
+  expiresAt             DateTime
+  usedAt                DateTime?
+  createdAt             DateTime     @default(now())
+
+  @@index([connectionId])
+  @@map("oauth_state")
 }
 
 // ===========================================================================
@@ -1224,6 +1583,10 @@ enum NeedsYouReason {
   round_cap
   waiting_for_reviewer
   environment_proposal
+  /// Milestone 2: the saved work couldn't be merged with the branch's new commits (ADR 0039, Q150).
+  restore_conflict
+  /// Milestone 2: the server couldn't store an event, and refused it once (F-043).
+  unstorable_event
 }
 
 enum TaskStopReason {
@@ -1333,4 +1696,73 @@ enum WebhookDeliveryStatus {
   received
   processed
   failed
+  /// Milestone 2: recorded and not acted on, such as the connection's own echo.
+  ignored
+}
+
+// ---- milestone 2 ----
+
+enum ConnectionState {
+  pending
+  active
+  failed
+  revoked
+}
+
+enum WebhookMode {
+  webhooks
+  polling
+}
+
+enum ConnectionCredential {
+  app_oauth
+  app_client_credentials
+  api_key
+}
+
+enum TicketStatusCategory {
+  open
+  started
+  done
+  cancelled
+}
+
+enum TicketWriteKind {
+  move
+  comment
+  comment_update
+  link_pr
+  link_task
+  create
+}
+
+enum TicketWriteState {
+  pending
+  done
+  failed
+}
+
+enum IdempotencyState {
+  pending
+  done
+}
+
+enum BlobStoreKind {
+  postgres
+  s3
+}
+
+/// The runaway limits (F-068). `@ostra/protocol` writes them with a hyphen.
+enum SessionLimit {
+  max_duration
+  stall
+  spend_cap
+}
+
+/// Why a box was released (F-079). `@ostra/protocol` writes them with a hyphen.
+enum BoxReleaseReason {
+  prs_closed
+  idle_expired
+  task_deleted
+  requested
 }
