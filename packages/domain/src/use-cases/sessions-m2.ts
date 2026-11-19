@@ -13,6 +13,7 @@ import { limitReason } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { createNeedsYouItemInTx } from "./needs-you-items.ts";
 import { lastAgentMessageInTx } from "./record-session-end.ts";
 import { appendCoreEvent } from "./server-events.ts";
 
@@ -241,15 +242,13 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   if (!moved) {
     return { ok: true, outcome: "unchanged" };
   }
-  await tx.needsYouItem.create({
-    data: {
-      organizationId,
-      projectId,
-      taskId: task.id,
-      reason: "no_changes",
-      audience: "driver",
-      summary: await lastAgentMessageInTx(tx, task.id, input.sessionId),
-    },
+  await createNeedsYouItemInTx(deps, tx, {
+    organizationId,
+    projectId,
+    taskId: task.id,
+    reason: "no_changes",
+    audience: "driver",
+    summary: await lastAgentMessageInTx(tx, task.id, input.sessionId),
   });
   return { ok: true, outcome: "needs-you" };
 };
@@ -356,15 +355,13 @@ export const recordLimitReached: RecordLimitReached = async (deps, input) => {
   // The task needs its driver: stalled (the stall, the maximum duration) or the spend cap.
   const moved = await moveTaskInTx(moveDeps, task, { type: "limit_reached", limit: input.limit });
   if (moved) {
-    await tx.needsYouItem.create({
-      data: {
-        organizationId,
-        projectId,
-        taskId: task.id,
-        reason: limitReason(input.limit),
-        audience: "driver",
-        summary: limitSummary(input.limit, input.observed),
-      },
+    await createNeedsYouItemInTx(deps, tx, {
+      organizationId,
+      projectId,
+      taskId: task.id,
+      reason: limitReason(input.limit),
+      audience: "driver",
+      summary: limitSummary(input.limit, input.observed),
     });
   }
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });

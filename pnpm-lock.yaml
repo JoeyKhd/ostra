@@ -53,6 +53,12 @@ importers:
       '@ostra/adapter-model-endpoint':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-model-endpoint
+      '@ostra/adapter-notify-panel':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-notify-panel
+      '@ostra/adapter-notify-tracker':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-notify-tracker
       '@ostra/adapter-opencode':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-opencode

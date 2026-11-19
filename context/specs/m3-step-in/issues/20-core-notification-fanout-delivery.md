@@ -1,6 +1,6 @@
 # 20: Core: notification fan-out and delivery
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 07, 11
 Features: F-036
@@ -18,8 +18,8 @@ Spec: `../spec.md`, section 4 ("A notification"); ADR 0050
 
 ## Done when
 
-- [ ] Tests: one item reaches every audience member once per channel, and a replayed job sends nothing twice; a member without access gets nothing; turning a channel off for a kind stops it for that member only; the coalescing edits within the window and posts after it; a failing tracker leaves the panel and email delivered; every `NeedsYouItem` writer enqueues; another organization's members never get a notification.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
-- [ ] Committed as `✨ add notification fan-out and delivery`.
+- [x] Tests: one item reaches every audience member once per channel, and a replayed job sends nothing twice; a member without access gets nothing; turning a channel off for a kind stops it for that member only; the coalescing edits within the window and posts after it; a failing tracker leaves the panel and email delivered; every `NeedsYouItem` writer enqueues; another organization's members never get a notification.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
+- [x] Committed as `✨ add notification fan-out and delivery`.
 
 ## Comments

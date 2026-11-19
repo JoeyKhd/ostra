@@ -17,6 +17,7 @@ import type { Ingest } from "../ingest/ingest.ts";
 import { createLiveTextWriter } from "../ingest/live-text.ts";
 import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { acceptedTask, jobContext } from "../testing/turns.ts";
 import type { DrivenTask } from "../testing/turns.ts";
 import { seedOnlineRunner, seedWorld } from "../testing/world.ts";
@@ -110,7 +111,10 @@ describe("the maximum duration (F-068)", () => {
     // Core recorded the limit as its own event: no session number.
     const event = await test.db.event.findFirstOrThrow({ where: { taskId: task.taskId, kind: "session.limit_reached" } });
     expect(event).toMatchObject({ sessionSeq: null, payload: { kind: "session.limit_reached", limit: "max-duration", observed: 120 } });
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "stalled" } })).toMatchObject({ audience: "driver", state: "open" });
+    const stalledItem = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "stalled" } });
+    expect(stalledItem).toMatchObject({ audience: "driver", state: "open" });
+    // F-036: the item's creation enqueued its fan-out, once, however often the job ran.
+    expect(await fanoutChangesOf(test.db, stalledItem.id)).toEqual(["created"]);
     // Its timer was cancelled with it; running the job again does nothing more.
     expect((await jobs.find("session.max-duration", sessionRef(task))).every((job) => job.state === "cancelled")).toBe(true);
     await handler(jobContext("session.max-duration", sessionRef(task), logger));
@@ -284,7 +288,9 @@ describe("spend (F-068, Q163)", () => {
     await task.send({ kind: "session.limit_reached", limit: "spend-cap", observed: 25_000_000 });
     expect(await outcomeOf(task)).toEqual({ task: "needs_you", reason: "spend_cap", session: "stopped", limit: "spend_cap" });
     expect(await stopCommands(task)).toEqual([expect.objectContaining({ reason: "spend-cap" })]);
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "spend_cap" } })).toMatchObject({ audience: "driver" });
+    const capItem = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "spend_cap" } });
+    expect(capItem).toMatchObject({ audience: "driver" });
+    expect(await fanoutChangesOf(test.db, capItem.id)).toEqual(["created"]);
     // The runner sent the event: core adds none of its own.
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "session.limit_reached", sessionSeq: null } })).toBe(0);
   });

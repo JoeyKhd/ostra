@@ -16,6 +16,7 @@ import { createIngest } from "../ingest/ingest.ts";
 import type { Ingest } from "../ingest/ingest.ts";
 import { createLiveTextWriter } from "../ingest/live-text.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { acceptedTask } from "../testing/turns.ts";
 import { dispatchPayload, seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
@@ -208,6 +209,8 @@ describe("services and where a task may run (F-094)", () => {
     expect(task).toMatchObject({ state: "needs_you", needsYouReason: "setup_failed" });
     const item = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: driven.taskId, state: "open" } });
     expect(item).toMatchObject({ reason: "setup_failed", audience: "driver", summary: "The db service didn't start: health check timed out" });
+    // F-036: raised with its fan-out.
+    expect(await fanoutChangesOf(test.db, item.id)).toEqual(["created"]);
     // Both are stored on the box's session, where the environment page reads a service's health.
     const kinds = (await test.db.event.findMany({ where: { sessionId: driven.sessionId }, orderBy: { seq: "asc" } })).map((event) => event.kind);
     expect(kinds).toEqual(expect.arrayContaining(["service.healthy", "service.failed"]));

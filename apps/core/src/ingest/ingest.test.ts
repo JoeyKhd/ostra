@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import type { RunnerRef } from "../gateway/context.ts";
 import { connect, registerPersonal, startGateway } from "../testing/harness.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { runnerEvent, seedLeasedTask, seedRunner } from "../testing/seed.ts";
 import type { LeasedTask } from "../testing/seed.ts";
 import { cancelGraceInTx, endGraceInTx, startGraceInTx } from "./grace.ts";
@@ -291,7 +292,10 @@ describe("ingest", () => {
     await ingest(ours, frame(runnerEvent(task, 1, { kind: "session.crashed", error: "the agent exited with code 1" })));
     const after = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
     expect(after).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
-    expect(await test.db.needsYouItem.findFirst({ where: { taskId: task.taskId } })).toMatchObject({ reason: "crashed", audience: "driver", state: "open" });
+    const crashItem = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId } });
+    expect(crashItem).toMatchObject({ reason: "crashed", audience: "driver", state: "open" });
+    // F-036: the item's creation enqueued its fan-out, in the transaction that wrote it.
+    expect(await fanoutChangesOf(test.db, crashItem.id)).toEqual(["created"]);
     expect(await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).toMatchObject({ state: "failed", failedReason: "the session crashed" });
     expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "crashed" });
     // The runner's slot is free (F-047): the lease ended with the session.

@@ -151,7 +151,7 @@ export default defineConfig(
   },
   // The fake adapters the API's tests run against are adapters, so they are classes too (ADR 0025).
   {
-    files: ["packages/api/src/testing/**/*.ts", "apps/core/src/testing/fake-adapters.ts"],
+    files: ["packages/api/src/testing/**/*.ts", "apps/core/src/testing/fake-adapters.ts", "apps/core/src/testing/notify.ts"],
     rules: { "no-restricted-syntax": ["error", ...serverSyntax] },
   },
 

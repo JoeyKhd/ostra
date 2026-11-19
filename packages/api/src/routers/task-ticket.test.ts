@@ -293,6 +293,20 @@ describe("F-032, F-033: reopening", () => {
     expect(JSON.stringify(messages.map((message) => message.payload))).toContain(reopenCarryOnText);
   });
 
+  run("F-036: a reopen answers the items of what the task needed, each with its fan-out, and leaves the ones that don't hold it", async () => {
+    const task = await ticketTask("ENG-58", "needs_you");
+    await harness.test.db.task.update({ where: { id: task.taskId }, data: { needsYouReason: "crashed" } });
+    await harness.test.db.session.updateMany({ where: { taskId: task.taskId }, data: { state: "crashed" } });
+    const crashed = await harness.test.db.needsYouItem.create({ data: { organizationId, projectId, taskId: task.taskId, reason: "crashed", audience: "driver", state: "open" } });
+    const files = await harness.test.db.needsYouItem.create({ data: { organizationId, projectId, taskId: task.taskId, reason: "files_outside_repos", audience: "driver", state: "open" } });
+    await (await member()).tasks.reopen({ taskId: task.taskId, clientMessageId: messageId() });
+    expect((await harness.test.db.needsYouItem.findUniqueOrThrow({ where: { id: crashed.id } })).state).toBe("answered");
+    expect((await harness.test.db.needsYouItem.findUniqueOrThrow({ where: { id: files.id } })).state).toBe("open");
+    const fanouts = harness.fakes.jobs.jobs.filter((job) => job.job === "notify.fanout").map((job) => job.key);
+    expect(fanouts).toContain(`item:${crashed.id}:fanout:answered`);
+    expect(fanouts).not.toContain(`item:${files.id}:fanout:answered`);
+  });
+
   run("refuses a merged task, a running task and a ticket another task holds, with their reasons", async () => {
     const merged = await ticketTask("ENG-53", "in_review");
     await harness.test.db.task.update({ where: { id: merged.taskId }, data: { state: "merged", subState: null } });
@@ -320,6 +334,8 @@ describe("F-032, F-033: reopening", () => {
     await expect((await harness.as(harness.fixture.a.insider)).tasks.dismissNeedsYou({ taskId: task.taskId, itemId: needsYouItemIdSchema.parse(item.id) })).rejects.toBeDefined();
     await (await member()).tasks.dismissNeedsYou({ taskId: task.taskId, itemId: needsYouItemIdSchema.parse(item.id) });
     expect((await harness.test.db.needsYouItem.findUniqueOrThrow({ where: { id: item.id } })).state).toBe("dismissed");
+    // F-036: the dismissal enqueued its fan-out.
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "notify.fanout" && job.key === `item:${item.id}:fanout:dismissed`)).toHaveLength(1);
     const question = await harness.test.db.needsYouItem.create({ data: { organizationId, projectId, taskId: task.taskId, reason: "question", audience: "driver", state: "open" } });
     await expect((await member()).tasks.dismissNeedsYou({ taskId: task.taskId, itemId: needsYouItemIdSchema.parse(question.id) })).rejects.toBeDefined();
   });

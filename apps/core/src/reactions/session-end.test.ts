@@ -33,6 +33,7 @@ import { createIngest } from "../ingest/ingest.ts";
 import type { Ingest } from "../ingest/ingest.ts";
 import { createLiveTextWriter } from "../ingest/live-text.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { dispatchPayload, seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { QueuedTask, World } from "../testing/world.ts";
 import { applyStopResultsInTx, CODE_HOST_FAILED, openPullRequestsHandler, sessionEndedHandler } from "./session-end.ts";
@@ -317,11 +318,13 @@ describe("a session that ends without changes", () => {
     );
     await reactToEnd(task);
     expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "no_changes" });
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({
+    const noChangesItem = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId } });
+    expect(noChangesItem).toMatchObject({
       reason: "no_changes",
       audience: "driver",
       summary: "The tests run with pnpm test; nothing needed changing.",
     });
+    expect(await fanoutChangesOf(test.db, noChangesItem.id)).toEqual(["created"]);
     await openPrs(task);
     expect(codeHost.pulls.length).toBe(before);
     expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "ended", outcome: "without_changes" });
@@ -527,6 +530,8 @@ describe("files left outside every repo (ticket 44)", () => {
     expect(closed).toHaveLength(1);
     expect(closed[0]?.state).toBe("answered");
     expect(closed[0]?.resolvedAt).not.toBeNull();
+    // F-036: raised, then closed by ostra itself: both owe a fan-out, and the update in between owes none.
+    expect(await fanoutChangesOf(test.db, closed[0]?.id ?? "")).toEqual(["created", "answered"]);
     // The event log keeps the names, for the thread.
     const stored = await test.db.event.findMany({ where: { taskId: task.taskId, kind: "workspace.files_outside_repos" }, orderBy: { seq: "asc" } });
     expect(stored.map((row) => row.payload)).toEqual([

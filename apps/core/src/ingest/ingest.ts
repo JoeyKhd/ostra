@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { ingestEvents } from "@ostra/domain";
+import { createNeedsYouItemInTx, ingestEvents } from "@ostra/domain";
 import type { ChangeNotices, Clock, CommandOutbox, JobQueue, SessionIngestOutcome, SessionTimers } from "@ostra/domain";
 import { lockTask } from "@ostra/jobs";
 import {
@@ -149,7 +149,7 @@ export const salvageEventsFrame = (text: string, minor: number): { readonly fram
  */
 const raiseUnstorableInTx = async (
   tx: Tx,
-  notices: ChangeNotices,
+  { notices, jobs }: { readonly notices: ChangeNotices; readonly jobs: JobQueue },
   events: readonly RunnerEvent[],
   outcomes: readonly SessionIngestOutcome[],
   refused: RefusedEvents,
@@ -168,15 +168,13 @@ const raiseUnstorableInTx = async (
     }
     const open = await tx.needsYouItem.findFirst({ where: { taskId: session.taskId, reason: "unstorable_event", state: "open" }, select: { id: true } });
     if (open === null) {
-      await tx.needsYouItem.create({
-        data: {
-          organizationId: session.organizationId,
-          projectId: session.projectId,
-          taskId: session.taskId,
-          reason: "unstorable_event",
-          audience: "driver",
-          summary: `The server couldn't store event ${String(item.sessionSeq)} of the session, so it refused it once and kept the rest.`,
-        },
+      await createNeedsYouItemInTx({ jobs }, tx, {
+        organizationId: session.organizationId,
+        projectId: session.projectId,
+        taskId: session.taskId,
+        reason: "unstorable_event",
+        audience: "driver",
+        summary: `The server couldn't store event ${String(item.sessionSeq)} of the session, so it refused it once and kept the rest.`,
       });
     }
     await notices.emitInTx(tx, {
@@ -225,7 +223,7 @@ export const createIngest = (options: {
         { runnerId: runner.runnerId, events: [...events] },
       );
       if (refused.size > 0) {
-        await raiseUnstorableInTx(tx, options.notices, events, result.outcomes, refused);
+        await raiseUnstorableInTx(tx, options, events, result.outcomes, refused);
       }
       return result;
     }, transactionOptions);
@@ -266,7 +264,7 @@ export const createIngest = (options: {
         headSeq: taskSeqSchema.parse(Math.max(1, task.eventSeq)),
         duplicates: 0,
       };
-      await raiseUnstorableInTx(tx, options.notices, [item], [moved], new Set([refusedKey(item.sessionId, item.sessionSeq)]));
+      await raiseUnstorableInTx(tx, options, [item], [moved], new Set([refusedKey(item.sessionId, item.sessionSeq)]));
       return moved;
     }, transactionOptions);
 

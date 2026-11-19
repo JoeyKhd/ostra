@@ -2,6 +2,7 @@ import type { NotificationKind, RenderedEmail } from "@ostra/adapter-sdk";
 import type { ApprovalSubject } from "@ostra/protocol";
 
 import type { AudienceReason } from "./choices.ts";
+import { momentHeading } from "./moments.ts";
 
 // The needs-you mails (ADR 0050, F-115; the build spec `context/brand/app-targets/m3/email-needs-you.md`):
 // one pure renderer for every moment, giving a subject, an HTML body (inline styles, a table layout,
@@ -92,7 +93,7 @@ const words = (detail: MomentDetail): Words => {
     case "approval": {
       const verb = approvalVerb(detail.subject);
       return {
-        heading: "An approval is waiting",
+        heading: momentHeading.approval,
         lede: lede("The agent on ", ` asks before it ${verb.lede}.`),
         line: { verb: verb.verb, subject: detail.subject.kind === "url" ? hostOf(detail.subject.value) : detail.subject.value },
         button: "Open the approval",
@@ -101,7 +102,7 @@ const words = (detail: MomentDetail): Words => {
     }
     case "question":
       return {
-        heading: "A question for you",
+        heading: momentHeading.question,
         lede: lede("The agent on ", " has a question, and waits for your answer."),
         line: { verb: `Asked at ${detail.askedAt}`, subject: "waits until answered" },
         button: "Answer the question",
@@ -109,7 +110,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "plan":
       return {
-        heading: "A plan to approve",
+        heading: momentHeading.plan,
         lede: lede("The agent on ", " proposed a plan, and waits for it before it changes anything."),
         line: { verb: "Plan first", subject: `${String(detail.steps)} step${detail.steps === 1 ? "" : "s"}` },
         button: "Review the plan",
@@ -117,7 +118,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "pr_ready":
       return {
-        heading: "A pull request is ready",
+        heading: momentHeading.pr_ready,
         lede: lede("The agent finished ", " and opened its pull request for review."),
         line: { verb: "Ready", subject: `${String(detail.pullRequests)} pull request${detail.pullRequests === 1 ? "" : "s"}` },
         button: "Open the task",
@@ -125,7 +126,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "no_changes":
       return {
-        heading: "The agent changed nothing",
+        heading: momentHeading.no_changes,
         lede: lede("The agent on ", " ended without changes."),
         line: { verb: "No changes", subject: "nothing to open a pull request for" },
         button: "Open the task",
@@ -133,7 +134,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "stalled":
       return {
-        heading: "A task stalled",
+        heading: momentHeading.stalled,
         lede: lede("The agent on ", " stopped making progress, so ostra stopped it."),
         line: { verb: "Stalled", subject: `no progress for ${String(detail.minutes)} minutes` },
         button: "Open the task",
@@ -141,7 +142,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "spend_cap":
       return {
-        heading: "A task reached its spend cap",
+        heading: momentHeading.spend_cap,
         lede: lede("The agent on ", " used the task's whole budget, so ostra stopped it."),
         line: { verb: "Spent", subject: detail.spent },
         button: "Open the task",
@@ -149,7 +150,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "crashed":
       return {
-        heading: "A task crashed",
+        heading: momentHeading.crashed,
         lede: lede("The agent on ", " stopped unexpectedly."),
         line: { verb: "Crashed", subject: "its work so far was saved" },
         button: "Open the task",
@@ -157,7 +158,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "setup_failed":
       return {
-        heading: "A task's setup failed",
+        heading: momentHeading.setup_failed,
         lede: lede("The setup for ", " failed before the agent started."),
         line: { verb: "Setup", subject: "the environment's script failed" },
         button: "Open the task",
@@ -165,7 +166,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "ticket_closed":
       return {
-        heading: "The ticket closed while the agent worked",
+        heading: momentHeading.ticket_closed,
         lede: lede("The ticket of ", " was closed, so ostra paused the agent."),
         line: { verb: "Ticket", subject: cut(detail.status, 60) },
         button: "Open the task",
@@ -173,7 +174,7 @@ const words = (detail: MomentDetail): Words => {
       };
     case "test":
       return {
-        heading: "Mail works",
+        heading: momentHeading.test,
         lede: lede("This is a test from ostra at ", ". Nothing needs you."),
         line: null,
         button: "Open ostra",

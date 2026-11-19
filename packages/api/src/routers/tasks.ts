@@ -12,6 +12,7 @@ import {
   retryTicketWrites,
   retryTicketWritesInputSchema,
   startTicketTask,
+  resolveNeedsYouItemsInTx,
   startTicketTaskInputSchema,
   waitingFor,
   stopTask,
@@ -754,10 +755,7 @@ export const approvalsRouter = router({
           at: now,
           event: { kind: "approval.answered", approvalId: approvalIdSchema.parse(approval.id), optionId: optionIdSchema.parse(option.optionId), decision: input.decision, memberId: ctx.scope.memberId },
         });
-        await tx.needsYouItem.updateMany({
-          where: { approvalId: approval.id, state: "open" },
-          data: { state: "answered", resolvedAt: new Date(now), resolvedByMemberId: ctx.scope.memberId },
-        });
+        await resolveNeedsYouItemsInTx(ports, tx, { approvalId: approval.id }, { state: "answered", at: new Date(now), byMemberId: ctx.scope.memberId });
         // A deny ends the agent's turn, and the runner cancels the session's other pending requests
         // and reports each as `approval.closed`: that kind is the runner's to write, so the other
         // approvals close when its events are saved (ADR 0036, ticket 25), not here.

@@ -46,6 +46,8 @@ import { createIngest } from "./ingest/ingest.ts";
 import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler } from "./limits/limits.ts";
 import type { LimitDeps } from "./limits/limits.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
+import { createNotificationChannels, mailOffChannel, notifyDeliverHandler, notifyFanoutHandler } from "./notifications/index.ts";
+import type { NotifyDeps } from "./notifications/index.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
@@ -323,6 +325,26 @@ export const startCore = async (
   // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
   // written where no queue was at hand (a task's move), every 2 s.
   await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
+  // Notifications (ticket 20): a needs-you moment fans out to its audience, and each channel delivers on its own.
+  const notifyDeps: NotifyDeps = {
+    db,
+    jobs,
+    notices,
+    outbox: postgresCommandOutbox,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    adapters,
+    logger,
+    trackers,
+    channels: createNotificationChannels(db, { logger, clock: adapterClock }),
+    email: mailOffChannel,
+    publicUrl: settings.publicUrl,
+    emailDelaySeconds: settings.emailDelaySeconds,
+    trackerCoalesceMinutes: settings.trackerNotifyCoalesceMinutes,
+    stallMinutes: settings.sessionStallMinutes,
+  };
+  await jobs.work("notify.fanout", notifyFanoutHandler(notifyDeps), { localConcurrency: 4 });
+  await jobs.work("notify.deliver", notifyDeliverHandler(notifyDeps), { localConcurrency: 4 });
   // Cleanup and retention (ticket 20): a box's release, its idle days, and the daily retention pass.
   const cleanupDeps: CleanupDeps = {
     db,

@@ -117,6 +117,12 @@ export const deliveryKey = (input: {
   readonly channel: NotificationChannel;
 }): string => `notify:${input.itemId}:${input.change}:${input.memberId}:${input.channel}`;
 
+/** The change a delivery's key names, or `null` for a key this code didn't make. */
+export const deliveryChangeOf = (key: string): "created" | "answered" | "dismissed" | null => {
+  const change = key.split(":")[2];
+  return change === "created" || change === "answered" || change === "dismissed" ? change : null;
+};
+
 // ---------- the ticket's comment ----------
 
 /** The tracker's coalescing window, in minutes (`OSTRA_TRACKER_NOTIFY_COALESCE_MINUTES`, ADR 0050). */

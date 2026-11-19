@@ -31,6 +31,7 @@ import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { openPullRequestsHandler } from "../reactions/session-end.ts";
 import type { ReactionDeps } from "../reactions/session-end.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { acceptedTask, drive, jobContext, sha } from "../testing/turns.ts";
 import type { DrivenTask } from "../testing/turns.ts";
 import { seedOnlineRunner, seedWorld } from "../testing/world.ts";
@@ -339,7 +340,10 @@ describe("the three steps (ADR 0039)", () => {
     const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
     const restored = drive(ingest, { taskId: task.taskId, sessionId, organizationId: task.organizationId }, second, leaseEpoch);
     await restored.send({ kind: "session.restored", origin: "restored", replayedUpdates: 0, hiddenRef: "conflict" }, { kind: "turn.started", turnId });
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "restore_conflict" } })).toMatchObject({ state: "open", audience: "driver" });
+    const conflict = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "restore_conflict" } });
+    expect(conflict).toMatchObject({ state: "open", audience: "driver" });
+    // F-036: raised with its fan-out.
+    expect(await fanoutChangesOf(test.db, conflict.id)).toEqual(["created"]);
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("running");
     await setOnline(first, true);
   });

@@ -11,6 +11,7 @@ import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { createNeedsYouItemInTx } from "./needs-you-items.ts";
 import { endSessionTimersInTx, startBoxIdleTimerInTx } from "./sessions-m2.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 
@@ -162,15 +163,13 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
   // F-065: no changes, no PR. The driver hears it, with what the agent said.
   const moved = await moveTaskInTx(moveDeps, task, { type: "session_ended", withChanges: false, rounds: M1_ROUNDS });
   if (moved) {
-    await tx.needsYouItem.create({
-      data: {
-        organizationId,
-        projectId,
-        taskId: task.id,
-        reason: "no_changes",
-        audience: "driver",
-        summary: await lastAgentMessageInTx(tx, task.id, input.sessionId),
-      },
+    await createNeedsYouItemInTx(deps, tx, {
+      organizationId,
+      projectId,
+      taskId: task.id,
+      reason: "no_changes",
+      audience: "driver",
+      summary: await lastAgentMessageInTx(tx, task.id, input.sessionId),
     });
   }
   return { ok: true, outcome: "without-changes" };

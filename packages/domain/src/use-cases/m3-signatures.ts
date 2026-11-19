@@ -183,12 +183,18 @@ export type FanOutNotification = (
   input: { readonly itemId: NeedsYouItemId; readonly change: "created" | "answered" | "dismissed" },
 ) => Promise<UseCaseResult<{ readonly notifications: number; readonly deliveries: number }, "not-found">>;
 
+/**
+ * Why a delivery was skipped: the member read it first, the item was no longer open, the channel is
+ * off for them, mail is off for the install, they have no address, the task has no ticket, or there was nothing to edit.
+ */
+export type DeliverySkipReason = "read" | "closed" | "channel-off" | "mail-off" | "no-address" | "no-ticket" | "nothing-to-edit";
+
 /** A delivery's outcome, from `notify.deliver`. `error` holds words and IDs, never a body. */
 export type RecordDelivery = (
   deps: M3Deps,
   input:
     | { readonly deliveryId: NotificationDeliveryId; readonly outcome: "sent"; readonly providerMessageId: string | null }
-    | { readonly deliveryId: NotificationDeliveryId; readonly outcome: "skipped"; readonly why: "read" | "closed" | "channel-off" }
+    | { readonly deliveryId: NotificationDeliveryId; readonly outcome: "skipped"; readonly why: DeliverySkipReason }
     | { readonly deliveryId: NotificationDeliveryId; readonly outcome: "failed"; readonly error: string; readonly retryAfterMs: number | null },
 ) => Promise<UseCaseResult<{ readonly deliveryId: NotificationDeliveryId }, "not-found">>;
 

@@ -23,6 +23,7 @@ import type { Ports } from "../ports.ts";
 import { reopenCarryOnText } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 import { appendServerEvent } from "./server-events.ts";
 import { endSessionTimersInTx } from "./sessions-m2.ts";
 import { resolveReopenProfileInTx } from "./task-profile.ts";
@@ -273,10 +274,12 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId } });
   await moveTaskInTx(moveDeps, task, { type: "reopen" });
   // The reopen answers what the task needed: a limit, a crash, no changes.
-  await tx.needsYouItem.updateMany({
-    where: { taskId: task.id, state: "open", reason: { notIn: ["restore_conflict", "files_outside_repos"] } },
-    data: { state: "answered", resolvedAt: new Date(now), resolvedByMemberId: scope.memberId },
-  });
+  await resolveNeedsYouItemsInTx(
+    deps,
+    tx,
+    { taskId: task.id, reasonNotIn: ["restore_conflict", "files_outside_repos"] },
+    { state: "answered", at: new Date(now), byMemberId: scope.memberId },
+  );
   await deps.jobs.enqueueInTx(tx, "task.dispatch", {
     organizationId: organization,
     taskId: task.id,
@@ -333,10 +336,7 @@ export const dismissNeedsYou: DismissNeedsYou = async (deps, input) => {
   if (item.state !== "open" || !DISMISSABLE.has(item.reason)) {
     return { ok: false, error: "not-open", message: "The item isn't open, or it holds the task" };
   }
-  await tx.needsYouItem.update({
-    where: { id: item.id },
-    data: { state: "dismissed", resolvedAt: new Date(deps.clock.now()), resolvedByMemberId: scope.memberId },
-  });
+  await resolveNeedsYouItemsInTx(deps, tx, { id: item.id }, { state: "dismissed", at: new Date(deps.clock.now()), byMemberId: scope.memberId });
   await deps.notices.emitInTx(tx, {
     organizationId: organizationIdSchema.parse(organizationId),
     projectId: projectIdSchema.parse(item.projectId),

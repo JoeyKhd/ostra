@@ -17,6 +17,7 @@ import type { Ingest } from "../ingest/ingest.ts";
 import { createLiveTextWriter } from "../ingest/live-text.ts";
 import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { connect, registerPersonal, startGateway } from "../testing/harness.ts";
 import { runnerEvent, seedLeasedTask } from "../testing/seed.ts";
 import { acceptedTask, jobContext, sha } from "../testing/turns.ts";
@@ -175,7 +176,10 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     await turn(task, 1, false);
     expect(await state(task)).toMatchObject({ state: "needs_you", needsYouReason: "no_changes" });
     expect(await openPrJobs(task, 1)).toHaveLength(0);
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "no_changes" } })).toMatchObject({ summary: "turn 1 done" });
+    const noChanges = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "no_changes" } });
+    expect(noChanges).toMatchObject({ summary: "turn 1 done" });
+    // F-036: raised with its fan-out.
+    expect(await fanoutChangesOf(test.db, noChanges.id)).toEqual(["created"]);
     expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({
       state: "idle",
       archiveBlobId: "blob-archive-1",
@@ -291,6 +295,8 @@ describe("an event core can't store (F-043)", () => {
     expect(JSON.stringify(records)).not.toContain("nope");
     const item = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "unstorable_event" } });
     expect(item).toMatchObject({ state: "open", audience: "driver" });
+    // F-036: raised with its fan-out, which an item with no moment of its own turns into nothing.
+    expect(await fanoutChangesOf(test.db, item.id)).toEqual(["created"]);
     // The same frame again is a duplicate: nothing new, no second item.
     expect(await ingest(runner, salvaged.frame, salvaged.refused)).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 3 }]);
     expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId, reason: "unstorable_event" } })).toBe(1);

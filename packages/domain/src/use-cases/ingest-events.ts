@@ -10,6 +10,7 @@ import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import { holdProviderInTx } from "./hold-provider.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx, setNeedsYouSummaryInTx } from "./needs-you-items.ts";
 import { releaseLeaseInTx } from "./record-session-end.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
@@ -99,7 +100,7 @@ const filesSummary = (paths: readonly string[], more: number): string => `${path
  * ostra never moves, commits or deletes the files: a reply lets the agent move them.
  */
 export const applyFilesOutsideReposInTx = async (
-  deps: Pick<IngestEventsDeps, "tx" | "notices" | "clock">,
+  deps: Pick<IngestEventsDeps, "tx" | "notices" | "clock" | "jobs">,
   task: LockedTask,
   paths: readonly string[],
   more: number,
@@ -110,20 +111,18 @@ export const applyFilesOutsideReposInTx = async (
     if (open === null) {
       return;
     }
-    await tx.needsYouItem.update({ where: { id: open.id }, data: { state: "answered", resolvedAt: new Date(deps.clock.now()) } });
+    await resolveNeedsYouItemsInTx(deps, tx, { id: open.id }, { state: "answered", at: new Date(deps.clock.now()), byMemberId: null });
   } else if (open === null) {
-    await tx.needsYouItem.create({
-      data: {
-        organizationId: task.organizationId,
-        projectId: task.projectId,
-        taskId: task.id,
-        reason: "files_outside_repos",
-        audience: task.driverMemberId === null ? "project_members" : "driver",
-        summary: filesSummary(paths, more),
-      },
+    await createNeedsYouItemInTx(deps, tx, {
+      organizationId: task.organizationId,
+      projectId: task.projectId,
+      taskId: task.id,
+      reason: "files_outside_repos",
+      audience: task.driverMemberId === null ? "project_members" : "driver",
+      summary: filesSummary(paths, more),
     });
   } else {
-    await tx.needsYouItem.update({ where: { id: open.id }, data: { summary: filesSummary(paths, more) } });
+    await setNeedsYouSummaryInTx(tx, open.id, filesSummary(paths, more));
   }
   await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
 };
@@ -314,14 +313,12 @@ const applyEffects = async (
         const moved = await moveTaskInTx(moveDeps, taskRow, { type: "crashed" });
         await reloadTask();
         if (moved) {
-          await tx.needsYouItem.create({
-            data: {
-              organizationId: task.organizationId,
-              projectId: task.projectId,
-              taskId: task.id,
-              reason: "crashed",
-              audience: "driver",
-            },
+          await createNeedsYouItemInTx(deps, tx, {
+            organizationId: task.organizationId,
+            projectId: task.projectId,
+            taskId: task.id,
+            reason: "crashed",
+            audience: "driver",
           });
         }
         if (current.boxId !== null) {
@@ -348,15 +345,13 @@ const applyEffects = async (
         const moved = await moveTaskInTx(moveDeps, taskRow, { type: "setup_failed" });
         await reloadTask();
         if (moved) {
-          await tx.needsYouItem.create({
-            data: {
-              organizationId: task.organizationId,
-              projectId: task.projectId,
-              taskId: task.id,
-              reason: "setup_failed",
-              audience: "driver",
-              summary: `The ${event.name} service didn't start: ${event.reason}`.slice(0, 2_000),
-            },
+          await createNeedsYouItemInTx(deps, tx, {
+            organizationId: task.organizationId,
+            projectId: task.projectId,
+            taskId: task.id,
+            reason: "setup_failed",
+            audience: "driver",
+            summary: `The ${event.name} service didn't start: ${event.reason}`.slice(0, 2_000),
           });
         }
         if (current.boxId !== null) {
@@ -413,15 +408,13 @@ const applyEffects = async (
         if (event.hiddenRef === "conflict") {
           const open = await tx.needsYouItem.findFirst({ where: { taskId: task.id, reason: "restore_conflict", state: "open" }, select: { id: true } });
           if (open === null) {
-            await tx.needsYouItem.create({
-              data: {
-                organizationId: task.organizationId,
-                projectId: task.projectId,
-                taskId: task.id,
-                reason: "restore_conflict",
-                audience: task.driverMemberId === null ? "project_members" : "driver",
-                summary: "The last turn's unfinished work conflicted with commits pushed to the branch since, so it wasn't restored. The agent carries on from the branch's head.",
-              },
+            await createNeedsYouItemInTx(deps, tx, {
+              organizationId: task.organizationId,
+              projectId: task.projectId,
+              taskId: task.id,
+              reason: "restore_conflict",
+              audience: task.driverMemberId === null ? "project_members" : "driver",
+              summary: "The last turn's unfinished work conflicted with commits pushed to the branch since, so it wasn't restored. The agent carries on from the branch's head.",
             });
             await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
           }

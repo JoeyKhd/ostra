@@ -525,7 +525,10 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     expect(harness.fakes.outbox.commands).toMatchObject([{ runnerId, kind: "approval-answer", body: { approvalId: first, decision: "allow_once", sessionId: task.sessionId } }]);
     expect(await harness.test.db.auditEntry.count({ where: { action: "approval.answered", entityId: first } })).toBe(1);
     expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("running");
-    expect((await harness.test.db.needsYouItem.findFirstOrThrow({ where: { approvalId: first } })).state).toBe("answered");
+    const answeredItem = await harness.test.db.needsYouItem.findFirstOrThrow({ where: { approvalId: first } });
+    expect(answeredItem.state).toBe("answered");
+    // F-036: the answer enqueued its fan-out, in the transaction that wrote it.
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "notify.fanout" && job.key === `item:${answeredItem.id}:fanout:answered`)).toHaveLength(1);
   });
 
   it("gives the first answer the win: a second member, or the same twice, gets a conflict", async () => {
