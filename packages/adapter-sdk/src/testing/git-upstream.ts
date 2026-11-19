@@ -109,7 +109,33 @@ const git = async (args: readonly string[], cwd?: string): Promise<string> => {
 export type GitUpstreamOptions = {
   /** Take requests with no token: for an executor's tests, which run without the git proxy. Default true. */
   readonly requireToken?: boolean;
+  /**
+   * Refuse a push whose new commits change `.github/workflows/`, with GitHub's words, as GitHub does
+   * for an App without the `workflows` permission (ADR 0040, Q122). Default false.
+   */
+  readonly refuseWorkflowChanges?: boolean;
 };
+
+/** GitHub's reason for refusing a workflow change from an App without the `workflows` permission. */
+export const WORKFLOWS_REFUSAL_REASON = "refusing to allow a GitHub App to create or update workflow `.github/workflows/ci.yml` without `workflows` permission";
+
+/** The pre-receive hook that stands in for that refusal: run by git-http-backend, in sh. */
+const workflowsHook = (): string =>
+  [
+    "#!/bin/sh",
+    "zero=0000000000000000000000000000000000000000",
+    "while read old new ref; do",
+    '  [ "$new" = "$zero" ] && continue',
+    '  for commit in $(git rev-list "$new" --not --all); do',
+    '    if git diff-tree -r --no-commit-id --name-only --root "$commit" | grep -q "^.github/workflows/"; then',
+    `      echo '${WORKFLOWS_REFUSAL_REASON}' >&2`,
+    "      exit 1",
+    "    fi",
+    "  done",
+    "done",
+    "exit 0",
+    "",
+  ].join("\n");
 
 export const startGitUpstream = async (root: string, options: GitUpstreamOptions = {}): Promise<GitUpstream> => {
   const requireToken = options.requireToken ?? true;
@@ -391,6 +417,9 @@ export const startGitUpstream = async (root: string, options: GitUpstreamOptions
       await git(["-c", "user.name=Seed", "-c", "user.email=seed@example.test", "commit", "--quiet", "-m", "first commit"], seed);
       await git(["push", "--quiet", dir, "main:main"], seed);
       await rm(seed, { recursive: true, force: true });
+      if (options.refuseWorkflowChanges === true) {
+        await writeFile(path.join(dir, "hooks", "pre-receive"), workflowsHook(), { mode: 0o755 });
+      }
     },
     refSha,
     treeFiles: async (fullName, ref) =>

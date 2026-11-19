@@ -113,3 +113,23 @@ export const ostraLines = (text: string): string =>
     .slice(0, 5)
     .map((line) => line.replace(/^remote:\s*/, "").trim())
     .join("; ");
+
+/** What a task says when GitHub refuses a push that changes a workflow file (ADR 0040, Q122). */
+export const WORKFLOWS_PERMISSION_REASON =
+  "ostra: GitHub refused the push because it changes a file in .github/workflows/, and ostra's GitHub App doesn't have the workflows permission. Leave workflow files out of the change, or change them by hand";
+
+const WORKFLOWS_REFUSAL = /refusing to allow a GitHub App to create or update workflow/i;
+const REMOTE_REJECTED = /\[remote rejected\][^(\n]*\(([^)\n]{1,200})\)/;
+
+/**
+ * Why the code host itself refused a push, when the git proxy didn't: a workflow change in words
+ * a member can act on, or git's own `[remote rejected]` reason, cut short. `null` when git's output
+ * names none.
+ */
+export const codeHostRefusal = (text: string): string | null => {
+  if (WORKFLOWS_REFUSAL.test(text)) {
+    return WORKFLOWS_PERMISSION_REASON;
+  }
+  const reason = REMOTE_REJECTED.exec(text)?.[1];
+  return reason === undefined ? null : `the code host refused the push (${reason.trim()})`;
+};

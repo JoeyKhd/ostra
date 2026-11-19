@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { processTreeContainment } from "./containment.ts";
 import { HostExecutor } from "./host-executor.ts";
 import { localProcesses } from "./task-processes.ts";
+import { codeHostRefusal, WORKFLOWS_PERMISSION_REASON } from "./process.ts";
 
 // Ticket 19's "done when", against the git proxy's upstream stub (here without the proxy: the
 // executor's job is the checkout, the environment, the commits and the processes).
@@ -499,5 +500,22 @@ describe("a workspace per task (F-016)", () => {
     expect(await executor.create({ ...box, spec, proxies })).toMatchObject({ ok: false, error: { code: "conflict" } });
     await executor.release(box);
     expect(await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined })).toMatchObject({ ok: false, error: { code: "conflict" } });
+  });
+});
+
+describe("a push the code host refuses", () => {
+  it("F-006: names GitHub's refusal of a workflow change in words a member can act on, and keeps another refusal's reason", () => {
+    // `git push --porcelain` as GitHub answers an App without the `workflows` permission.
+    const workflows = [
+      "To https://github.com/ostra-test/test1.git",
+      "!\t+HEAD:refs/heads/ostra/abcd1234-add-ci\t[remote rejected] (refusing to allow a GitHub App to create or update workflow `.github/workflows/ci.yml` without `workflows` permission)",
+      "Done",
+    ].join("\n");
+    expect(codeHostRefusal(workflows)).toBe(WORKFLOWS_PERMISSION_REASON);
+    expect(WORKFLOWS_PERMISSION_REASON).toContain(".github/workflows/");
+    expect(codeHostRefusal("!\t+HEAD:refs/heads/x\t[remote rejected] (protected branch hook declined)")).toBe(
+      "the code host refused the push (protected branch hook declined)",
+    );
+    expect(codeHostRefusal("fatal: unable to access the proxy")).toBeNull();
   });
 });

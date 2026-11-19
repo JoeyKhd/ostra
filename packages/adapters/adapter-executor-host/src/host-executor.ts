@@ -26,7 +26,7 @@ import { localProcesses } from "./task-processes.ts";
 import type { TaskProcesses } from "./task-processes.ts";
 import type { Containment, ContainmentUnit } from "./containment.ts";
 import { excludeFromGit, insideCheckout, renderEnvFile, writeCheckoutFile } from "./env-file.ts";
-import { baseEnv, ostraLines, runProgram } from "./process.ts";
+import { baseEnv, codeHostRefusal, ostraLines, runProgram } from "./process.ts";
 import { localShellProbe, missingShellReason, resolveSetupShell } from "./setup-shell.ts";
 import type { SetupShell, ShellProbe } from "./setup-shell.ts";
 import type { RunResult } from "./process.ts";
@@ -402,8 +402,14 @@ export class HostExecutor extends ExecutorAdapter {
   }
 
   #reason(result: RunResult): string {
-    const own = ostraLines(`${result.stdout}\n${result.stderr}`);
-    return own.length > 0 ? `: ${own}` : ` (exit ${String(result.code)})`;
+    const text = `${result.stdout}\n${result.stderr}`;
+    const own = ostraLines(text);
+    if (own.length > 0) {
+      return `: ${own}`;
+    }
+    // Not the proxy's refusal: the code host's own, such as GitHub's on a workflow file (Q122).
+    const host = codeHostRefusal(text);
+    return host === null ? ` (exit ${String(result.code)})` : `: ${host}`;
   }
 
   /**

@@ -77,7 +77,8 @@ const agents: Readonly<Record<string, AgentFactory>> = {
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "ostra-task-host-"));
-  upstream = await startGitUpstream(path.join(root, "upstream"));
+  // It refuses a workflow change as GitHub does for an App without `workflows` (F-006).
+  upstream = await startGitUpstream(path.join(root, "upstream"), { refuseWorkflowChanges: true });
   await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n" });
   upstream.tokens.set(GIT_TOKEN, Date.now() + 3_600_000);
   models = await startAnthropicStub({ realKey: MODEL_TOKEN, models: ["stub-model"], brain: () => ({ text: "ok" }) });
@@ -283,6 +284,20 @@ describe("the task host", () => {
     const ended = eventsOf(spec).find((item) => item.event.kind === "session.ended")?.event;
     expect(ended).toMatchObject({ outcome: "without-changes" });
     expect(kinds(spec)).not.toContain("git.pushed");
+    expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBeNull();
+  }, 120_000);
+
+  it("F-006: a change to .github/workflows/ fails on the code host, and the task says why", async () => {
+    const { dispatch } = await start();
+    const { spec } = taskFor("[[fake:write .github/workflows/ci.yml]]");
+    dispatch(spec);
+    await waitForKind(spec, "session.crashed");
+    const crashed = eventsOf(spec).find((item) => item.event.kind === "session.crashed")?.event;
+    const error = crashed?.kind === "session.crashed" ? crashed.error : "";
+    expect(error).toContain("pushing the task's work failed");
+    expect(error).toContain("GitHub refused the push because it changes a file in .github/workflows/");
+    expect(error).toContain("doesn't have the workflows permission");
+    expect(kinds(spec)).not.toContain("session.ended");
     expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBeNull();
   }, 120_000);
 
