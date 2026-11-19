@@ -3,7 +3,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpIcon,
-  ChevronDownIcon,
   CircleAlertIcon,
   FolderGit2Icon,
   GitBranchIcon,
@@ -21,7 +20,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Popover, Tooltip } from "radix-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ComponentProps, ReactNode, SubmitEvent } from "react";
+import type { ReactNode, SubmitEvent } from "react";
 
 import { branchSlugFor, titleFromPrompt } from "@ostra/domain/branch-name";
 import { runnerIdSchema } from "@ostra/protocol";
@@ -33,7 +32,6 @@ import { projectColour } from "@/components/shell/project-colour";
 import { ComposerRepoNotes, repoBlockId } from "@/components/projects/repo-check-line";
 import { unsupportedRepos } from "@/components/projects/repo-checks-words";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
@@ -44,6 +42,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { POOLS, RunOnPicker, Trigger, useRunOn } from "./run-on";
 import { doingText, taskStateText } from "./task-words";
 
 type ProjectSummary = RouterOutputs["projects"]["list"][number];
@@ -51,7 +50,6 @@ type ProjectDetail = RouterOutputs["projects"]["get"];
 type Runner = RouterOutputs["runners"]["mine"][number];
 type TaskSummary = RouterOutputs["tasks"]["list"][number]["tasks"][number];
 
-const POOLS = "pools";
 
 // ---------- small parts ----------
 
@@ -61,19 +59,6 @@ const ProjectDot = ({ projectId }: { readonly projectId: string }) => (
 );
 
 /** A ghost trigger in the composer's footer: 28px, no border, `--raise` on hover, a faint chevron. */
-const Trigger = ({ className, children, chevron = true, ...props }: ComponentProps<"button"> & { readonly chevron?: boolean }) => (
-  <button
-    type="button"
-    className={cn(
-      "inline-flex h-[30px] min-w-0 items-center gap-[7px] rounded-md px-2 text-ui font-medium text-text enabled:hover:bg-raise disabled:cursor-default data-[state=open]:bg-raise [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
-      className,
-    )}
-    {...props}
-  >
-    {children}
-    {chevron ? <ChevronDownIcon aria-hidden className="!size-3 !text-faint" /> : null}
-  </button>
-);
 
 /** `⌘ ↵` on macOS and `Ctrl ↵` elsewhere; ⌘ until the browser says which (no hydration mismatch). */
 const useSubmitHint = (): string => {
@@ -187,48 +172,6 @@ const ProfileTrigger = ({ profile }: { readonly profile: ProjectDetail["defaultC
   </Tooltip.Provider>
 );
 
-const RunOnPicker = ({ runners, runner, onPick, disabled }: {
-  readonly runners: readonly Runner[] | undefined;
-  readonly runner: Runner | null;
-  readonly onPick: (value: string) => void;
-  readonly disabled: boolean;
-}) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Trigger aria-label={t("newTask.runOnPick")} disabled={disabled || runners === undefined} data-testid="run-on">
-        {runners === undefined ? <Skeleton className="w-[110px]" /> : runner === null ? (
-          <>
-            <ServerIcon aria-hidden />
-            <span className="truncate">{t("newTask.pools")}</span>
-          </>
-        ) : (
-          <>
-            <LaptopIcon aria-hidden />
-            <span className="truncate">{runner.name}</span>
-            <span className="font-normal text-muted">· {t("newTask.yoursShort")}</span>
-          </>
-        )}
-      </Trigger>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" className="min-w-[260px]">
-      {(runners ?? []).map((item) => (
-        <DropdownMenuItem key={item.id} onSelect={() => { onPick(item.id); }} data-runner={item.name}>
-          <LaptopIcon aria-hidden />
-          <span className="font-mono text-ui">{item.name}</span>
-          <span className="text-muted">· {t("newTask.yoursShort")}</span>
-          <span className="ml-auto pl-3 text-sm">
-            {item.state === "online" ? <Status tone="green" className="text-muted">{t("newTask.online")}</Status> : <span className="text-faint">{runnerStateText(item.state)}</span>}
-          </span>
-        </DropdownMenuItem>
-      ))}
-      {(runners ?? []).length === 0 ? null : <DropdownMenuSeparator />}
-      <DropdownMenuItem onSelect={() => { onPick(POOLS); }} data-runner={POOLS}>
-        <ServerIcon aria-hidden />
-        {t("newTask.pools")}
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
 
 // ---------- below the composer ----------
 
@@ -439,7 +382,6 @@ export const NewTaskView = () => {
   const runners = useQuery(trpc.runners.mine.queryOptions());
   const [picked, setPicked] = useState<ProjectId | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [runOn, setRunOn] = useState<string | null>(null);
   const hint = useSubmitHint();
   const [now] = useState(() => Date.now());
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -450,10 +392,7 @@ export const NewTaskView = () => {
   const tasks = useQuery(trpc.tasks.list.queryOptions(projectId === undefined ? skipToken : { projectId }));
   const recent = useMemo(() => (tasks.data ?? []).flatMap((group) => group.tasks), [tasks.data]);
 
-  // Default: the first online personal runner, else the project's pools.
-  const firstOnline = runners.data?.find((runner) => runner.state === "online")?.id;
-  const chosen = runOn ?? firstOnline ?? POOLS;
-  const runner = chosen === POOLS ? null : (runners.data?.find((item) => item.id === chosen) ?? null);
+  const { chosen, runner, setRunOn } = useRunOn(runners.data);
   const agentName = detail.data?.defaultCodeProfile?.agentName ?? t("task.agent");
   const slug = prompt.trim() === "" ? null : branchSlugFor(titleFromPrompt(prompt.trim()));
 

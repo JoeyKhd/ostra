@@ -29,8 +29,16 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Component tests: rows, filters in the URL, the existing task, start, the empty state ("no boards yet" and "nothing open").
+- [x] Component tests: rows, filters in the URL, the existing task, start, the empty state ("no boards yet" and "nothing open").
 - [ ] A Playwright run against the fake Linear server: a ticket created in the fake shows without a reload and starts a task.
-- [ ] Committed as `✨ add the Inbox`.
+- [x] Committed as `✨ add the Inbox`.
 
 ## Comments
+
+- 2026-11-19, web: built and committed (`✨ add the Inbox`) to `inbox`, against ticket 29's `inbox.list`, `inbox.get`, `inbox.filters` and `tasks.startFromTicket`, and checked side by side at 1440×956 on the dev board for ostra-test's `OST` team, with cached tickets seeded into the dev database (core's polling, ticket 14, isn't on main yet).
+  - `components/inbox/`: `inbox-view.tsx` (rows on one grid, the Board and Task columns only when they hold something; `?ticket=` selection; the four filters and the text filter in the URL; the lede with the cache's age, `polling every 60 s`, and the red stale line; the panel with the untrusted description, Start task or the active task, an earlier task named; the three empty states with `inbox-empty-illustration.webp`, now in `public/`), `inbox-words.ts`, `ticket-icons.tsx` (priority bars and status marks, drawn once, `--muted`), `safe-markdown.tsx` (paragraphs, lists, code, bold and http(s) links only, built as React elements, images counted not shown). Tested.
+  - **Run on is shared:** `components/tasks/run-on.tsx` (`useRunOn`, `RunOnPicker`, `POOLS`, the composer `Trigger`) is pulled out of `new-task-view.tsx`, which now imports it.
+  - Pages are fetched with the plain tRPC client inside `useInfiniteQuery`, because tRPC's infinite options add a `direction` that `inbox.list`'s strict input refuses.
+  - The project's navigation gains `Inbox` (with `projects.list`'s `inboxCount`) between Tasks and Environment.
+  - **Not built yet:** "Live" is a 10 s refetch of the first page and the selected ticket, not a change-notice subscription (the stream has no project-scoped notices for the panel yet); below `xl` the panel stacks under the list rather than opening as a right `Sheet`, and at phone width there's no bottom `Sheet` (`phone-inbox`); `↑`/`↓` don't move the selection; the Kind select shows `Code` only and the profile is read-only. **The Playwright run against the fake Linear server** has ticket 33's blocker (no setting points the panel at another Linear) and also needs core's ingest (ticket 14).
+

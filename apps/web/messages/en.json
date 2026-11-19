@@ -58,7 +58,9 @@
     "storage": "Storage",
     "repos": "Repos",
     "settings": "Settings",
-    "boards": "Boards"
+    "boards": "Boards",
+    "inbox": "Inbox",
+    "inboxCount": "Open tickets: {n}"
   },
   "signIn": {
     "title": "Sign in",
@@ -1297,6 +1299,91 @@
       "completed": "Completed",
       "canceled": "Canceled",
       "other": "Other"
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "ledeOne": "Open tickets from {board} on Linear",
+    "ledeMany": "Open tickets from {n} boards on Linear",
+    "ledeNoBoards": "Open tickets from this project's boards, ready to become tasks.",
+    "updated": "updated {age}",
+    "polling": "polling every {seconds} s",
+    "stale": "Linear isn't answering. These are the tickets as of {age}.",
+    "filter": {
+      "text": "Filter by title or key",
+      "status": "Status",
+      "label": "Label",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "open": "Open",
+      "started": "Started",
+      "done": "Done",
+      "unassigned": "Unassigned",
+      "none": "None yet",
+      "total": {
+        "one": "{n} ticket",
+        "other": "{n} tickets"
+      },
+      "noMatch": "No ticket matches these filters.",
+      "clear": "Clear filters"
+    },
+    "priority": {
+      "0": "No priority",
+      "1": "Urgent",
+      "2": "High",
+      "3": "Medium",
+      "4": "Low"
+    },
+    "empty": {
+      "noConnection": "Linear isn't connected",
+      "noConnectionBody": "An admin connects Linear once for the organization. Then a project attaches its teams as boards.",
+      "connect": "Connect Linear",
+      "noBoards": "No boards yet",
+      "noBoardsBody": "Attach a Linear team to this project, and its open tickets show here.",
+      "attach": "Attach a board",
+      "nothingOpen": "Nothing open on {board}",
+      "nothingOpenMany": "Nothing open on this project's boards",
+      "nothingOpenBody": "New tickets show here as they arrive."
+    },
+    "panel": {
+      "openInLinear": "Open in Linear",
+      "status": "Status",
+      "priority": "Priority",
+      "labels": "Labels",
+      "assignee": "Assignee",
+      "unassigned": "Unassigned",
+      "board": "Board",
+      "updated": "Updated",
+      "noDescription": "No description.",
+      "images": {
+        "one": "{n} image",
+        "other": "{n} images"
+      },
+      "showMore": "Show more",
+      "showLess": "Show less",
+      "start": "Start a task",
+      "kind": "Kind",
+      "code": "Code",
+      "profile": "Agent profile",
+      "profileReadOnly": "The project's default profile for this kind.",
+      "noProfile": "No default profile",
+      "runOn": "Run on",
+      "context": "The agent gets the title, the description and the labels{extra}.",
+      "contextImages": {
+        "one": ", {n} image",
+        "other": ", {n} images"
+      },
+      "contextParent": " and the parent ticket",
+      "startTask": "Start task",
+      "starting": "Starting…",
+      "earlier": "An earlier task, {id}, is {state}.",
+      "task": "Task",
+      "taskState": "State",
+      "taskId": "Task",
+      "driver": "Driver",
+      "openTask": "Open task",
+      "unsupported": "{repo} requires signed commits, which ostra doesn't support yet.",
+      "unprotected": "{repo}'s default branch isn't protected."
     }
   }
 }
