@@ -1,5 +1,6 @@
 import { notifyChannels, NOTIFY_PAYLOAD_MAX_BYTES } from "@ostra/db";
 
+import { recordAudit } from "./audit/record-audit.ts";
 import type { AuditLog, ChangeNotices, Clock } from "./ports.ts";
 
 // The Postgres side of two ports (ticket 30): who did what, and the change notices the panel's live
@@ -10,20 +11,8 @@ export const systemClock: Clock = { now: () => Date.now() };
 
 /** The audit log (F-073): IDs and settings only, never content or secrets. */
 export const postgresAuditLog: AuditLog = {
-  recordInTx: async (tx, entry) => {
-    await tx.auditEntry.create({
-      data: {
-        organizationId: entry.organizationId,
-        projectId: entry.projectId,
-        actorKind: entry.actor.kind,
-        actorId: entry.actor.id,
-        action: entry.action,
-        entity: entry.entity,
-        entityId: entry.entityId,
-        ...(entry.data === undefined ? {} : { data: entry.data }),
-      },
-    });
-  },
+  // Through the one port (ticket 10), which fills the actor's name.
+  recordInTx: (tx, entry) => recordAudit(tx, entry),
 };
 
 /**

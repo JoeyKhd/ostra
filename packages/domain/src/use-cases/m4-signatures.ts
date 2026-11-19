@@ -25,6 +25,7 @@ import type {
 } from "@ostra/protocol";
 
 import type { AccountScope, MemberScope, OrganizationRole, ProjectRole } from "../access.ts";
+import type { AuditAction } from "../audit/actions.ts";
 import type { GateResult } from "../budget/gate.ts";
 import type { InsightPeriod } from "../insights/figures.ts";
 import type { RememberThisSource } from "../memory/remember-this.ts";
@@ -120,12 +121,12 @@ export type CreateResetLink = (
 // ---------- the audit log (F-073, ADR 0054; tickets 10, 25) ----------
 
 /** The one port every action writes through, in the action's own transaction. */
-export type RecordAudit = (tx: Tx, entry: AuditInput & { readonly actorName: string | null }) => Promise<void>;
+export type RecordAudit = (tx: Tx, entry: AuditInput & { readonly actorName?: string | null }) => Promise<void>;
 
 export type AuditFilter = {
   readonly projectId: ProjectId | null;
   readonly actorId: string | null;
-  readonly action: string | null;
+  readonly action: AuditAction | null;
   readonly from: number | null;
   readonly to: number | null;
 };

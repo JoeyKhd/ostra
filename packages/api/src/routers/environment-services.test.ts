@@ -187,8 +187,7 @@ describe("services, checks and the snapshot through the API", () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
     await harness.test.db.snapshot.deleteMany({ where: { projectId } });
-    // Only the Rebuild below names who asked: the earlier cases' entries go.
-    await harness.test.db.auditEntry.deleteMany({ where: { projectId } });
+    // The audit log is append-only (F-073): the Rebuild below is the newest request, so it names who asked.
     const builder = await onlineRunner({ executor: "docker", name: "build-01" });
     expect(await member.environments.snapshot.get({ projectId })).toMatchObject({
       kind: "image",

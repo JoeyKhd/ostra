@@ -25,6 +25,7 @@ import type {
   TaskRepoId,
 } from "@ostra/protocol";
 
+import type { AuditAction } from "./audit/actions.ts";
 import type { JobName, JobPayload } from "./jobs.ts";
 
 // The ports the use cases take (ticket 08). Each is written once on the server side (`packages/jobs`
@@ -112,7 +113,8 @@ export type AuditInput = {
   readonly organizationId: OrganizationId;
   readonly projectId: ProjectId | null;
   readonly actor: { readonly kind: "member" | "runner" | "system"; readonly id: string | null };
-  readonly action: string;
+  /** One of the closed list's actions (`audit/actions.ts`, ticket 10). */
+  readonly action: AuditAction;
   readonly entity: string | null;
   readonly entityId: EntityId | null;
   readonly data?: Readonly<Record<string, string | number | boolean | null>>;

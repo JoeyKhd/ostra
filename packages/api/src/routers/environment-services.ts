@@ -1,7 +1,7 @@
 import type { SecretRef } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { runnerStartsServices, serviceVariablesFromDb, serviceVariablesSchema, snapshotFailureFromDb } from "@ostra/domain";
-import type { MemberScope, Ports, ServiceVariable } from "@ostra/domain";
+import type { AuditAction, MemberScope, Ports, ServiceVariable } from "@ostra/domain";
 import {
   checkIdSchema,
   envNameSchema,
@@ -372,7 +372,7 @@ const checksOf = async (db: Db | Tx, organizationId: OrganizationId, projectId: 
   }));
 };
 
-const checkWritten = async (ports: Ports, tx: Tx, scope: MemberScope, projectId: ProjectId, environmentId: EnvironmentId, action: string, data: Readonly<Record<string, string | number>>) => {
+const checkWritten = async (ports: Ports, tx: Tx, scope: MemberScope, projectId: ProjectId, environmentId: EnvironmentId, action: AuditAction, data: Readonly<Record<string, string | number>>) => {
   await ports.audit.recordInTx(tx, {
     organizationId: scope.organizationId,
     projectId,

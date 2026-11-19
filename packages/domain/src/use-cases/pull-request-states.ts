@@ -7,6 +7,7 @@ import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts
 import type { TaskInput } from "../lifecycles/task.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { TaskRepoInput, TaskRepoLifecycle } from "../lifecycles/task-repo.ts";
+import type { AuditAction } from "../audit/actions.ts";
 import type { Ports } from "../ports.ts";
 import { writeTicketStepsInTx } from "../tickets/ticket-writes.ts";
 import type { TicketSyncTrigger } from "../tickets/ticket-writes.ts";
@@ -115,7 +116,7 @@ const triggerFor = (repo: TaskRepoLifecycle, repoId: RepoId, changedAt: number):
   }
 };
 
-const auditActionFor = (repo: TaskRepoLifecycle): string =>
+const auditActionFor = (repo: TaskRepoLifecycle): AuditAction =>
   repo.state === "merged" ? "pr.merged" : repo.state === "closed_unmerged" ? "pr.closed" : "pr.reopened";
 
 export const recordPullRequestState: RecordPullRequestState = async (deps, input) => {
