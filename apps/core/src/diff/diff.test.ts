@@ -200,11 +200,13 @@ describe("diff comments", () => {
     const [message] = messages;
     expect(message?.memberId).toBe(driver.memberId);
     // Each comment with its place and quoted lines, inside marked blocks.
-    expect(message?.text).toContain("ostra-test/test1, README.md, line 2:");
+    expect(message?.text).toContain("1. Line 2 of the file in this block:");
     const blocks = readMarkedBlocks(message?.text ?? "");
     expect(blocks.map((block) => [block.label, block.text])).toEqual([
+      ["diff-location", "ostra-test/test1 README.md"],
       ["diff-lines", " # test1\n+new alpha"],
       ["diff-comment", "Use the project's word here."],
+      ["diff-location", "ostra-test/test1 README.md"],
       ["diff-lines", " \n ## Usage\n Run it."],
       ["diff-comment", "Mention `pnpm test`."],
     ]);

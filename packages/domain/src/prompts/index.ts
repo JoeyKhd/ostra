@@ -45,9 +45,11 @@ export type DiffCommentForPrompt = {
 export const diffCommentsPrompt = (comments: readonly DiffCommentForPrompt[]): string => {
   const count = Math.min(comments.length, runnerLimits.diffCommentsPerSendMax);
   const parts = comments.slice(0, count).map((comment, index) => {
-    const where = `${String(index + 1)}. ${comment.repo}, ${comment.path}, line ${String(comment.line)}${comment.side === "old" ? " (the base's side)" : ""}:`;
+    // The repo and the path are untrusted (git allows any text in a file name): data, in a block.
+    const where = `${String(index + 1)}. Line ${String(comment.line)}${comment.side === "old" ? " (the base's side)" : ""} of the file in this block:`;
     return [
       where,
+      markedBlock("diff-location", `${comment.repo} ${comment.path}`),
       ...(comment.quoted === "" ? [] : [markedBlock("diff-lines", comment.quoted)]),
       markedBlock("diff-comment", comment.body.slice(0, runnerLimits.diffCommentMaxChars)),
     ].join("\n");
@@ -90,11 +92,13 @@ export type PrCommentForPrompt = {
 
 /** An `@ostra` comment, as the member message it becomes. */
 export const prCommentPrompt = (comment: PrCommentForPrompt): string => {
+  // The path comes from GitHub's review comment and is untrusted: data, in a block.
   const where =
-    comment.path === null ? "on the pull request" : `on ${comment.path}${comment.line === null ? "" : `, line ${String(comment.line)}`}`;
+    comment.path === null ? "on the pull request" : `on the file in the first block${comment.line === null ? "" : `, line ${String(comment.line)}`}`;
   return [
     `${comment.login} asked you something ${where} (${comment.url}). Do what it asks, then say what you changed.`,
     DATA_LINE,
+    ...(comment.path === null ? [] : [markedBlock("pr-comment-location", comment.path)]),
     markedBlock("pr-comment", comment.text),
   ].join("\n\n");
 };

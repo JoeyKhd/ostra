@@ -242,7 +242,8 @@ describe("@ostra on the PR (F-053)", () => {
     expect(reactionsOn(made.commentId)).toBe(1);
     expect(codeHost.reactionCalls.at(-1)?.comment).toEqual({ kind: "review", commentId: made.commentId });
     const [message] = await messagesOf(task.taskId);
-    expect(message?.text).toContain("on src/app.ts, line 42");
+    expect(message?.text).toContain("on the file in the first block, line 42");
+    expect(readMarkedBlocks(message?.text ?? "")[0]).toMatchObject({ label: "pr-comment-location", text: "src/app.ts" });
     const [received] = await test.db.event.findMany({ where: { taskId: task.taskId, kind: "pr.comment_received" } });
     expect(received?.payload).toMatchObject({ path: "src/app.ts", line: 42 });
   });

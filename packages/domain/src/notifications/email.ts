@@ -42,6 +42,9 @@ export type NeedsYouEmailInput = {
 /** The longest the one line may be, before it's cut with `…` (ADR 0050). */
 export const ONE_LINE_MAX_CHARS = 200;
 
+/** The longest the mail's subject may be, before it's cut with `…` (the m3 email build spec). */
+export const SUBJECT_MAX_CHARS = 120;
+
 type Words = {
   readonly heading: string;
   readonly lede: (title: string) => { readonly before: string; readonly after: string };
@@ -174,7 +177,7 @@ export const renderNeedsYouEmail = (input: NeedsYouEmailInput): RenderedEmail =>
   const project = input.projectName === null ? "" : oneLine(input.projectName);
   const link = input.task?.url ?? publicUrl;
   const subjectTail = input.task === null ? installHost : key === null ? title : `${key} ${title}`;
-  const subject = cut(`${w.heading} · ${subjectTail}`, 200);
+  const subject = cut(`${w.heading} · ${subjectTail}`, SUBJECT_MAX_CHARS);
   const context = [project, key].filter((part): part is string => part !== null && part !== "").join(" · ");
   const lineText = w.line === null ? null : { verb: w.line.verb, subject: cut(w.line.subject, ONE_LINE_MAX_CHARS) };
   const preheader = cut([context, lineText === null ? null : `${lineText.verb} ${lineText.subject}`].filter((part) => part !== null && part !== "").join(" · "), 200);
