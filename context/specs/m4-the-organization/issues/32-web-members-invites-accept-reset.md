@@ -1,6 +1,6 @@
 # 32: Web: members, invitations, accepting and resets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: 22, 23, 31
 Features: F-002, F-003
@@ -18,9 +18,9 @@ Spec: `../spec.md`, sections 3 (steps 1, 14) and 12; targets `members`, `member-
 
 ## Done when
 
-- [ ] Playwright, named `it("F-002: ...")`: an admin invites, the invitee signs up through the link in a second context, and appears in the list; a revoked link shows its state; a reset by link changes the password and signs the other context out.
-- [ ] Each screen checked by eye against its target at 1440 px and at phone width, dark and light; differences fixed or listed under `## Comments`.
-- [ ] Committed as `✨ add members and invitations to the panel`.
+- [x] Playwright, named `it("F-002: ...")`: an admin invites, the invitee signs up through the link in a second context, and appears in the list; a revoked link shows its state; a reset by link changes the password and signs the other context out.
+- [x] Each screen checked by eye against its target at 1440 px and at phone width, dark and light; differences fixed or listed under `## Comments`.
+- [x] Committed as `✨ add members and invitations to the panel`.
 
 ## Decided 2026-11-19
 
@@ -33,3 +33,7 @@ Settled by the target's recommendation, on the maintainer's delegation (ticket 4
 - **"Sent" names the address it was given** (`reset-password.md`, open point 2), to catch a typo; it reveals nothing the visitor didn't type.
 
 ## Comments
+
+- 2026-11-20, builder: built to the targets on tickets 22 and 23's procedures. Members (`/organization/members`, `components/members/`), the invite sheet with the link shown once, `/invite/[invitation-id]` (sign-up with the address locked when email is set up, "Sign in to accept", "Check your inbox", and the expired, revoked and used pages), `/reset` and `/reset/new`, and "Forgot your password?" on the sign-in page only with email set up. Members sits under Organization for every member. Proved in `apps/web/e2e/10-members.spec.ts` on the e2e stack (no email, so the admin copies the link and the instance admin makes the reset link); break-its in `context/proof/F-002.md`.
+- 2026-11-20, builder: three API additions rode in `✨ add the panel's reads for accounts and access`: `email.on` (public, for the pages before sign-in), `accounts.resetPreview` (public, rate-limited: valid with the address, used, expired or unknown), and the instance admin's link now opening `/reset/new?token=` like a mailed one, not better-auth's redirect. A fix rode too: the reset link's sink is one `AsyncLocalStorage` per process (`globalThis.ostraResetLinkSinks`), since Next loads `account-hooks.ts` once per route bundle and the panel's "Create reset link" got no link without it.
+- 2026-11-20, builder, by-eye check at 1440 px and Pixel 7 width (the finals are `m4-<screen>-final.png` and `m4-<screen>-phone-final.png` in the builder's scratchpad `ui-check` folder). The panel has no light theme yet (`apps/web/src/app/globals.css` leaves it for later), so each screen was checked dark only. Differences left: the member panel has no `Invited by` and no `On their behalf` counts, and the removal dialog lists what removal ends without counts, since `members.list` returns neither; a removed member's row reads `removed {date}` without who removed them; a member with no restricted grant shows `Open projects` in the Projects column. The accept page's email-on states (locked address, "Check your inbox") are drawn but the e2e stack has no mail, so ticket 22's API tests prove them.

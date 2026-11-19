@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
@@ -9,8 +10,9 @@ import { getServerApi } from "@/server/api";
 export const metadata = { title: t("signIn.title") };
 
 const SignInPage = async () => {
-  const { signedIn } = await getServerApi();
+  const { caller, signedIn } = await getServerApi();
   if (signedIn) redirect("/");
+  const email = await caller.email.on();
   return (
     <AuthFrame>
       <h1 className="page-title text-text">{t("signIn.title")}</h1>
@@ -18,6 +20,10 @@ const SignInPage = async () => {
       <Suspense>
         <SignInForm />
       </Suspense>
+      {/* reset-password.md: a link with email set up; without it, who makes reset links. */}
+      <p className="mt-[16px] text-[12px] leading-[18px] text-faint">
+        {email.on ? <Link href="/reset" className="font-medium text-teal hover:underline">{t("signIn.forgot")}</Link> : t("signIn.forgotOff")}
+      </p>
     </AuthFrame>
   );
 };

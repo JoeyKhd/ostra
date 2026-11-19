@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon } from "lucide-react";
 import { DropdownMenu as Menu } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -38,4 +39,22 @@ export const DropdownMenuLabel = ({ className, ...props }: ComponentProps<typeof
 
 export const DropdownMenuSeparator = ({ className, ...props }: ComponentProps<typeof Menu.Separator>) => (
   <Menu.Separator className={cn("-mx-1 my-1 h-px bg-line", className)} {...props} />
+);
+
+export const DropdownMenuRadioGroup = Menu.RadioGroup;
+
+/** A choice of one (members.md, the row menu's role): its label, and a check at the right on the current one. */
+export const DropdownMenuRadioItem = ({ className, children, ...props }: ComponentProps<typeof Menu.RadioItem>) => (
+  <Menu.RadioItem
+    className={cn(
+      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+      className,
+    )}
+    {...props}
+  >
+    {children}
+    <Menu.ItemIndicator className="ml-auto flex">
+      <CheckIcon aria-hidden className="text-text" />
+    </Menu.ItemIndicator>
+  </Menu.RadioItem>
 );
