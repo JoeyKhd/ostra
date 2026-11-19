@@ -12,8 +12,11 @@ import {
   notificationIdSchema,
   organizationIdSchema,
   projectIdSchema,
+  poolIdSchema,
   providerIdSchema,
+  registryIdSchema,
   repoIdSchema,
+  runnerIdSchema,
   sessionIdSchema,
   taskIdSchema,
   taskRepoIdSchema,
@@ -74,6 +77,10 @@ export const jobNames = [
   "review.evaluate",
   // Keys per project (ticket 45).
   "providers.release-boxes",
+  // ---- milestone 5 (spec section 5.4) ----
+  "queue.admit",
+  "runner.join-notice",
+  "registry.check",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -207,6 +214,17 @@ export const jobPayloadSchemas = {
   }),
   /** Release a project's idle boxes that hold a key its list no longer allows (F-135, ticket 48). */
   "providers.release-boxes": z.strictObject({ organizationId: organizationIdSchema, projectId: projectIdSchema, changedAt: epochMsSchema }),
+
+  // ---- milestone 5 ----
+  /**
+   * Admit what fits from a pool's queue (F-067, ticket 13): enqueued by every change that can free
+   * or need room, plus a sweep every `OSTRA_QUEUE_SWEEP_SECONDS`, one per pool at a time.
+   */
+  "queue.admit": z.strictObject({ organizationId: organizationIdSchema, poolId: poolIdSchema }),
+  /** Tell the organization's admins a runner joined, and whether it waits for approval (F-091, ticket 12). */
+  "runner.join-notice": z.strictObject({ organizationId: organizationIdSchema, runnerId: runnerIdSchema }),
+  /** Check the organization's registry with its settings at `version` (F-120, ticket 17): nothing is pushed. */
+  "registry.check": z.strictObject({ organizationId: organizationIdSchema, registryId: registryIdSchema, version: epochMsSchema }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -253,6 +271,9 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "pr.link-related": (payload) => `task:${payload.taskId}:link-related:${payload.repoId}:${String(payload.prNumber)}`,
   "review.evaluate": (payload) => `pr:${payload.taskRepoId}:${String(payload.prNumber)}:review:${payload.headSha}`,
   "providers.release-boxes": (payload) => `project:${payload.projectId}:release-boxes:${String(payload.changedAt)}`,
+  "queue.admit": (payload) => `pool:${payload.poolId}:admit`,
+  "runner.join-notice": (payload) => `runner:${payload.runnerId}:join-notice`,
+  "registry.check": (payload) => `organization:${payload.organizationId}:registry-check:${String(payload.version)}`,
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -308,6 +329,11 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   // Reviews, a push and a link a moment apart evaluate once (`reviewEvaluateSingletonSeconds`).
   "review.evaluate": { kind: "event", throttle: "connection" },
   "providers.release-boxes": { kind: "event" },
+  // Sent by every change that can free or need room, one per pool a second
+  // (`queueAdmitSingletonSeconds`); the sweep sends it on a schedule as well.
+  "queue.admit": { kind: "event" },
+  "runner.join-notice": { kind: "event" },
+  "registry.check": { kind: "event" },
 };
 
 /** `review.evaluate`'s singleton window (spec section 5.4): one evaluation per PR and head in 10 s. */
@@ -315,6 +341,9 @@ export const reviewEvaluateSingletonSeconds = 10;
 
 /** `snapshot.schedule`'s singleton window (spec section 5.4): one build per project and reason a minute. */
 export const snapshotScheduleSingletonSeconds = 60;
+
+/** `queue.admit`'s singleton window (spec section 5.4): one admission per pool a second. */
+export const queueAdmitSingletonSeconds = 1;
 
 const typedSchemas: { readonly [N in JobName]: z.ZodType<JobPayload<N>> } = jobPayloadSchemas;
 

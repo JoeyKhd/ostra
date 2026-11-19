@@ -16,6 +16,12 @@ export type RunnerLifecycle =
 export type RunnerInput =
   /** Its identity is accepted (an admin approved it, where the pool requires that). */
   | { readonly type: "accept" }
+  /**
+   * Milestone 5 (F-091): an admin approves a joining runner. `connected`: it holds a connection
+   * now, so it's online at once; otherwise it stays `joining`, approved, until its next `hello`
+   * accepts it.
+   */
+  | { readonly type: "approve"; readonly connected: boolean }
   /** It's rejected while joining. */
   | { readonly type: "reject" }
   | { readonly type: "disconnected" }
@@ -32,6 +38,8 @@ export const transitionRunner = (runner: RunnerLifecycle, input: RunnerInput): T
   switch (input.type) {
     case "accept":
       return from === "joining" ? moveTo({ state: "online" }) : refuse(input, from);
+    case "approve":
+      return from === "joining" ? moveTo({ state: input.connected ? "online" : "joining" }) : refuse(input, from);
     case "reject":
       return from === "joining" ? moveTo({ state: "revoked" }) : refuse(input, from);
     case "disconnected":

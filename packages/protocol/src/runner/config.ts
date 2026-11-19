@@ -23,6 +23,23 @@ export const runnerConfigKeys = [
   "boxBaseImage",
   "boxRunnerImage",
   "boxServerUrl",
+  // Milestone 5 (spec section 5.4).
+  "slots",
+  "reserveCpuMillis",
+  "reserveMemoryMiB",
+  "wsRetryMinutes",
+  "pin",
+  "npmRegistry",
+  "hostPoolAgentUser",
+  "k8sNamespace",
+  "k8sBuildNamespace",
+  "k8sNodeWaitMinutes",
+  "k8sRuntimeClass",
+  "egressAllow",
+  "sidecarCpuMillis",
+  "sidecarMemoryMiB",
+  "serviceCpuMillis",
+  "serviceMemoryMiB",
 ] as const;
 
 export type RunnerConfigKey = (typeof runnerConfigKeys)[number];
@@ -44,8 +61,9 @@ export const runnerConfigFields = {
   transport: {
     flag: "transport",
     env: "OSTRA_RUNNER_TRANSPORT",
-    default: "websocket",
-    description: "How the runner talks to the server. Milestone 1 has websocket only; auto and http come in milestone 5.",
+    default: "auto",
+    description:
+      "How the runner talks to the server: auto (a WebSocket, falling back to HTTP by itself when a proxy blocks it), websocket or http. Until the HTTP fallback is built (milestone 5, ticket 18), every value uses the WebSocket.",
   },
   executor: {
     flag: "executor",
@@ -107,6 +125,102 @@ export const runnerConfigFields = {
     default: "the --server address",
     description: "Core's address as a docker box's sidecar reaches it, when that differs from --server.",
   },
+  slots: {
+    flag: "slots",
+    env: "OSTRA_RUNNER_SLOTS",
+    default: "docker: the host's CPUs / 2; kubernetes: 20; host (pool): 2",
+    description: "How many boxes a pool runner holds at once (ADR 0059). A personal runner's is its member's setting (2 by default).",
+  },
+  reserveCpuMillis: {
+    flag: "reserve-cpu-millis",
+    env: "OSTRA_RUNNER_RESERVE_CPU_MILLIS",
+    default: "1000",
+    description: "The CPU, in millicores, a docker runner keeps for the host and itself: it offers the engine's CPU less this.",
+  },
+  reserveMemoryMiB: {
+    flag: "reserve-memory-mib",
+    env: "OSTRA_RUNNER_RESERVE_MEMORY_MIB",
+    default: "2048",
+    description: "The memory, in MiB, a docker runner keeps for the host and itself: it offers the engine's memory less this.",
+  },
+  wsRetryMinutes: {
+    flag: "ws-retry-minutes",
+    env: "OSTRA_RUNNER_WS_RETRY_MINUTES",
+    default: "10",
+    description: "After falling back to HTTP, how often the runner tries the WebSocket again.",
+  },
+  pin: {
+    flag: "pin",
+    env: "OSTRA_RUNNER_PIN",
+    default: "true",
+    description: "Whether a runner installed from npm installs its server's version at start (ADR 0034). false keeps the installed one, inside the version window.",
+  },
+  npmRegistry: {
+    flag: "npm-registry",
+    env: "OSTRA_RUNNER_NPM_REGISTRY",
+    default: "https://registry.npmjs.org",
+    description: "The npm registry the pin installs the ostra CLI from, such as a company mirror.",
+  },
+  hostPoolAgentUser: {
+    flag: "host-pool-agent-user",
+    env: "OSTRA_HOST_POOL_AGENT_USER",
+    default: "(none: a host pool runner refuses to start without it)",
+    description: "The OS user a host pool runner runs the agent as, separate from the runner's own (Linux and macOS).",
+  },
+  k8sNamespace: {
+    flag: "k8s-namespace",
+    env: "OSTRA_K8S_NAMESPACE",
+    default: "the service account's namespace",
+    description: "The namespace a kubernetes runner makes its boxes' pods in.",
+  },
+  k8sBuildNamespace: {
+    flag: "k8s-build-namespace",
+    env: "OSTRA_K8S_BUILD_NAMESPACE",
+    default: "<namespace>-builds",
+    description: "The namespace a kubernetes runner builds snapshots in, with BuildKit.",
+  },
+  k8sNodeWaitMinutes: {
+    flag: "k8s-node-wait-minutes",
+    env: "OSTRA_K8S_NODE_WAIT_MINUTES",
+    default: "15",
+    description: "How long a kubernetes box waits for a node before it fails and its task is queued again.",
+  },
+  k8sRuntimeClass: {
+    flag: "k8s-runtime-class",
+    env: "OSTRA_K8S_RUNTIME_CLASS",
+    default: "(none)",
+    description: "The RuntimeClass a kubernetes box's pod runs with, such as gvisor.",
+  },
+  egressAllow: {
+    flag: "egress-allow",
+    env: "OSTRA_EGRESS_ALLOW",
+    default: "the server's address only",
+    description: "Comma-separated addresses a docker or kubernetes box may reach in private ranges, besides the server's (F-116).",
+  },
+  sidecarCpuMillis: {
+    flag: "sidecar-cpu-millis",
+    env: "OSTRA_SIDECAR_CPU_MILLIS",
+    default: "1000",
+    description: "The CPU limit, in millicores, of a box's sidecar, counted in the box's footprint.",
+  },
+  sidecarMemoryMiB: {
+    flag: "sidecar-memory-mib",
+    env: "OSTRA_SIDECAR_MEMORY_MIB",
+    default: "256",
+    description: "The memory limit, in MiB, of a box's sidecar, counted in the box's footprint.",
+  },
+  serviceCpuMillis: {
+    flag: "service-cpu-millis",
+    env: "OSTRA_SERVICE_CPU_MILLIS",
+    default: "1000",
+    description: "The CPU limit, in millicores, of a service that names none, counted in the box's footprint.",
+  },
+  serviceMemoryMiB: {
+    flag: "service-memory-mib",
+    env: "OSTRA_SERVICE_MEMORY_MIB",
+    default: "1024",
+    description: "The memory limit, in MiB, of a service that names none, counted in the box's footprint.",
+  },
 } as const satisfies Record<
   RunnerConfigKey,
   { readonly flag: string; readonly env: string; readonly default: string; readonly description: string }
@@ -114,11 +228,22 @@ export const runnerConfigFields = {
 
 const describe = (key: RunnerConfigKey): string => runnerConfigFields[key].description;
 
+/** A whole number from a flag or a variable. */
+const whole = (min: number, max: number) => z.coerce.number().pipe(z.number().int().min(min).max(max));
+
+/** A boolean from a flag or a variable. */
+const booleanSetting = z
+  .enum(["true", "false", "1", "0", "on", "off", "yes", "no"])
+  .transform((value) => value === "true" || value === "1" || value === "on" || value === "yes");
+
+/** A Kubernetes object name (RFC 1123 label). */
+const kubernetesName = z.string().min(1).max(63).regex(/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, "a Kubernetes name");
+
 export const runnerConfigSchema = z.strictObject({
   serverUrl: httpUrlSchema.describe(describe("serverUrl")),
   /** Unset: the runner uses `<home>/.ostra/runner`. */
   dataDir: z.string().min(1).optional().describe(describe("dataDir")),
-  transport: z.enum(["websocket"]).default("websocket").describe(describe("transport")),
+  transport: z.enum(["auto", "websocket", "http"]).default("auto").describe(describe("transport")),
   executor: z.enum(["host", "docker"]).default("host").describe(describe("executor")),
   capacity: z.coerce.number().pipe(z.number().int().positive().max(1024)).default(1).describe(describe("capacity")),
   labels: z.array(runnerLabelSchema).max(64).default([]).describe(describe("labels")),
@@ -130,6 +255,23 @@ export const runnerConfigSchema = z.strictObject({
   boxBaseImage: z.string().min(1).max(512).optional().describe(describe("boxBaseImage")),
   boxRunnerImage: z.string().min(1).max(512).optional().describe(describe("boxRunnerImage")),
   boxServerUrl: httpUrlSchema.optional().describe(describe("boxServerUrl")),
+  // Milestone 5. Unset `slots`: the executor's default (ADR 0059).
+  slots: whole(1, 1024).optional().describe(describe("slots")),
+  reserveCpuMillis: whole(0, 1_000_000).default(1000).describe(describe("reserveCpuMillis")),
+  reserveMemoryMiB: whole(0, 16_777_216).default(2048).describe(describe("reserveMemoryMiB")),
+  wsRetryMinutes: whole(1, 1440).default(10).describe(describe("wsRetryMinutes")),
+  pin: booleanSetting.default(true).describe(describe("pin")),
+  npmRegistry: httpUrlSchema.default("https://registry.npmjs.org").describe(describe("npmRegistry")),
+  hostPoolAgentUser: z.string().min(1).max(64).regex(/^[a-z_][a-z0-9_-]*$/i, "a user name").optional().describe(describe("hostPoolAgentUser")),
+  k8sNamespace: kubernetesName.optional().describe(describe("k8sNamespace")),
+  k8sBuildNamespace: kubernetesName.optional().describe(describe("k8sBuildNamespace")),
+  k8sNodeWaitMinutes: whole(1, 1440).default(15).describe(describe("k8sNodeWaitMinutes")),
+  k8sRuntimeClass: kubernetesName.optional().describe(describe("k8sRuntimeClass")),
+  egressAllow: z.array(z.string().min(1).max(253).regex(/^[^\s,]+$/, "an address")).max(64).default([]).describe(describe("egressAllow")),
+  sidecarCpuMillis: whole(1, 1_000_000).default(1000).describe(describe("sidecarCpuMillis")),
+  sidecarMemoryMiB: whole(1, 16_777_216).default(256).describe(describe("sidecarMemoryMiB")),
+  serviceCpuMillis: whole(1, 1_000_000).default(1000).describe(describe("serviceCpuMillis")),
+  serviceMemoryMiB: whole(1, 16_777_216).default(1024).describe(describe("serviceMemoryMiB")),
 });
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
 
@@ -174,7 +316,7 @@ export const parseRunnerConfig = (input: RunnerConfigInput): RunnerConfigResult 
       continue;
     }
     raw[key] =
-      key === "labels"
+      key === "labels" || key === "egressAllow"
         ? value
             .split(",")
             .map((label) => label.trim())

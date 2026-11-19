@@ -12,6 +12,7 @@ export * from "./lifecycles/snapshot.ts";
 export * from "./lifecycles/lease.ts";
 export * from "./lifecycles/mapping.ts";
 export * from "./lifecycles/m4.ts";
+export * from "./lifecycles/join-token.ts";
 
 export * from "./ports.ts";
 export * from "./jobs.ts";
@@ -19,6 +20,7 @@ export * from "./access.ts";
 export * from "./accounts.ts";
 export * from "./branch-name.ts";
 export * from "./dispatch-wait.ts";
+export * from "./fleet/index.ts";
 export * from "./settings.ts";
 export * from "./postgres-ports.ts";
 export * from "./postgres-outbox.ts";
@@ -88,6 +90,7 @@ export * from "./notifications/index.ts";
 export * from "./prompts/index.ts";
 export * from "./use-cases/m3-signatures.ts";
 export * from "./use-cases/m4-signatures.ts";
+export * from "./use-cases/m5-signatures.ts";
 
 // Milestone 4.
 export * from "./budget/gate.ts";

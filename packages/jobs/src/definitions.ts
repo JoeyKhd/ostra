@@ -81,6 +81,10 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "pr.link-related": { ...base, retryLimit: 8, groupConcurrency: 2 },
   "review.evaluate": { ...base, retryLimit: 8, groupConcurrency: 2 },
   "providers.release-boxes": { ...base, retryLimit: 5 },
+  // Milestone 5 (its ticket 05's names; tickets 12, 13 and 17 build them).
+  "queue.admit": { ...base, retryLimit: 3, expireInSeconds: 120 },
+  "runner.join-notice": { ...base, retryLimit: 8 },
+  "registry.check": { ...base, retryLimit: 3, expireInSeconds: 120 },
 };
 
 /**

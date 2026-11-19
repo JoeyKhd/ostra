@@ -250,3 +250,36 @@ describe("the column mapping", () => {
     expect(isActive(code({ state: "queued" }))).toBe(false);
   });
 });
+
+describe("cancelling a queued task (milestone 5)", () => {
+  const states: readonly CodeTaskState[] = [
+    { state: "awaiting_approval" },
+    { state: "queued" },
+    { state: "preparing" },
+    { state: "running" },
+    { state: "needs_you", reason: "question" },
+    { state: "stopped", reason: "requested" },
+    { state: "in_review", subState: "waiting_for_reviewer" },
+    { state: "merged" },
+  ];
+
+  it.each(states.map((status) => [status.state, status] as const))("F-067: a code task %s cancels only from queued", (_state, status) => {
+    const moved = go(code(status), { type: "cancel" });
+    if (status.state === "queued") {
+      expect(moved).toEqual({ ok: true, task: code({ state: "stopped", reason: "cancelled" }) });
+    } else {
+      expect(moved.ok).toBe(false);
+    }
+  });
+
+  it("F-067: a refine or review task cancels from queued, and not once done or running", () => {
+    expect(go(refine({ state: "queued" }), { type: "cancel" })).toEqual({ ok: true, task: refine({ state: "stopped", reason: "cancelled" }) });
+    expect(go(review({ state: "queued" }), { type: "cancel" })).toEqual({ ok: true, task: review({ state: "stopped", reason: "cancelled" }) });
+    expect(go(refine({ state: "done" }), { type: "cancel" }).ok).toBe(false);
+    expect(go(review({ state: "running" }), { type: "cancel" }).ok).toBe(false);
+  });
+
+  it("F-067: a cancelled task reopens like any stopped task", () => {
+    expect(go(code({ state: "stopped", reason: "cancelled" }), { type: "reopen" })).toEqual({ ok: true, task: code({ state: "queued" }) });
+  });
+});

@@ -89,6 +89,11 @@ export const settingNames = [
   "OSTRA_MEMORY_PROPOSALS_PER_TASK",
   "OSTRA_PROJECT_MAX_REPOS",
   "OSTRA_SEARCH_ENTRY_MAX_KIB",
+  // Milestone 5 (spec section 5.4).
+  "OSTRA_JOIN_TOKEN_DAYS",
+  "OSTRA_PERSONAL_RUNNER_CAPACITY",
+  "OSTRA_QUEUE_SWEEP_SECONDS",
+  "OSTRA_DEV_HOST_POOL_SAME_USER",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -354,6 +359,22 @@ export const settingFields = {
     default: "8",
     description: "The most text, in KiB, search keeps of one message, tool input or PR (F-080). Longer text is cut.",
   },
+  OSTRA_JOIN_TOKEN_DAYS: {
+    default: "30",
+    description: "A new join token's lifetime in days, for a pool that names none (F-091). 0: tokens never expire.",
+  },
+  OSTRA_PERSONAL_RUNNER_CAPACITY: {
+    default: "2",
+    description: "How many tasks a personal runner runs at once, unless its member sets another number on the runner (F-014, F-067).",
+  },
+  OSTRA_QUEUE_SWEEP_SECONDS: {
+    default: "5",
+    description: "How often each pool's queue is swept for tasks that now fit, besides the admission every change of room starts (F-067).",
+  },
+  OSTRA_DEV_HOST_POOL_SAME_USER: {
+    default: "false",
+    description: "Development and tests only: lets a host pool runner run the agent as its own OS user, labelled \"not isolated, same user (development only)\". Refused as true unless NODE_ENV is development or test.",
+  },
 } as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
 /**
@@ -497,6 +518,11 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_MEMORY_PROPOSALS_PER_TASK: whole(0, 200).default(20).describe(describe("OSTRA_MEMORY_PROPOSALS_PER_TASK")),
   OSTRA_PROJECT_MAX_REPOS: whole(1, 10).default(10).describe(describe("OSTRA_PROJECT_MAX_REPOS")),
   OSTRA_SEARCH_ENTRY_MAX_KIB: whole(1, 8).default(8).describe(describe("OSTRA_SEARCH_ENTRY_MAX_KIB")),
+  // Milestone 5.
+  OSTRA_JOIN_TOKEN_DAYS: whole(0, 3650).default(30).describe(describe("OSTRA_JOIN_TOKEN_DAYS")),
+  OSTRA_PERSONAL_RUNNER_CAPACITY: whole(1, 64).default(2).describe(describe("OSTRA_PERSONAL_RUNNER_CAPACITY")),
+  OSTRA_QUEUE_SWEEP_SECONDS: whole(1, 3600).default(5).describe(describe("OSTRA_QUEUE_SWEEP_SECONDS")),
+  OSTRA_DEV_HOST_POOL_SAME_USER: flag.default(false).describe(describe("OSTRA_DEV_HOST_POOL_SAME_USER")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -591,6 +617,14 @@ export type ServerSettings = {
   readonly projectMaxRepos: number;
   /** OSTRA_SEARCH_ENTRY_MAX_KIB, in bytes. */
   readonly searchEntryMaxBytes: number;
+  /** OSTRA_JOIN_TOKEN_DAYS; 0: no expiry. */
+  readonly joinTokenDays: number;
+  /** OSTRA_PERSONAL_RUNNER_CAPACITY. */
+  readonly personalRunnerCapacity: number;
+  /** OSTRA_QUEUE_SWEEP_SECONDS. */
+  readonly queueSweepSeconds: number;
+  /** OSTRA_DEV_HOST_POOL_SAME_USER: only ever true in development and tests. */
+  readonly devHostPoolSameUser: boolean;
 };
 
 /**
@@ -685,6 +719,12 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
   if (production && value.DATABASE_URL === undefined) {
     return { ok: false, errors: ["DATABASE_URL is required in production"] };
   }
+  if (production && value.OSTRA_DEV_HOST_POOL_SAME_USER) {
+    return {
+      ok: false,
+      errors: ["OSTRA_DEV_HOST_POOL_SAME_USER is for development and tests only: a host pool runs the agent as its own OS user (OSTRA_HOST_POOL_AGENT_USER)"],
+    };
+  }
   const maxBytes = value.OSTRA_BLOB_MAX_MIB * 1024 * 1024;
   let blobStore: BlobStoreSettings = { kind: "postgres", maxBytes };
   if (value.OSTRA_BLOB_STORE === "s3") {
@@ -773,6 +813,10 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       memoryProposalsPerTask: value.OSTRA_MEMORY_PROPOSALS_PER_TASK,
       projectMaxRepos: value.OSTRA_PROJECT_MAX_REPOS,
       searchEntryMaxBytes: value.OSTRA_SEARCH_ENTRY_MAX_KIB * 1024,
+      joinTokenDays: value.OSTRA_JOIN_TOKEN_DAYS,
+      personalRunnerCapacity: value.OSTRA_PERSONAL_RUNNER_CAPACITY,
+      queueSweepSeconds: value.OSTRA_QUEUE_SWEEP_SECONDS,
+      devHostPoolSameUser: value.OSTRA_DEV_HOST_POOL_SAME_USER,
     },
   };
 };

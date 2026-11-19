@@ -60,6 +60,8 @@ export type TaskInput =
   | { readonly type: "approve" }
   /** A member rejects it. */
   | { readonly type: "reject" }
+  /** Milestone 5 (F-067): an admin, or the task's member, cancels it from its pool's queue. */
+  | { readonly type: "cancel" }
   /** A runner accepted the dispatch: the box is being made. */
   | { readonly type: "runner_accepted" }
   /** The box is ready and the session started. */
@@ -159,6 +161,8 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
       return from === "awaiting_approval" ? moveTo({ state: "queued" }) : refuse(input, from);
     case "reject":
       return from === "awaiting_approval" ? moveTo({ state: "stopped", reason: "rejected" }) : refuse(input, from);
+    case "cancel":
+      return from === "queued" ? moveTo({ state: "stopped", reason: "cancelled" }) : refuse(input, from);
     case "runner_accepted":
       return from === "queued" ? moveTo({ state: "preparing" }) : refuse(input, from);
     case "box_ready":
@@ -319,6 +323,7 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
       return refuse(input, from);
     case "approve":
     case "reject":
+    case "cancel":
     case "runner_accepted":
     case "box_ready":
     case "setup_failed":
@@ -360,6 +365,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
       return refuse(input, from);
     case "approve":
     case "reject":
+    case "cancel":
     case "runner_accepted":
     case "box_ready":
     case "setup_failed":
@@ -403,6 +409,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
       return refuse(input, from);
     case "approve":
     case "reject":
+    case "cancel":
     case "runner_accepted":
     case "box_ready":
     case "setup_failed":

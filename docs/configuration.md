@@ -75,6 +75,10 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_MEMORY_PROPOSALS_PER_TASK` | `20` | The most memory notes one task's agent may propose (F-111). |
 | `OSTRA_PROJECT_MAX_REPOS` | `10` | The most repos one project holds (F-098). Every task checks them all out side by side. |
 | `OSTRA_SEARCH_ENTRY_MAX_KIB` | `8` | The most text, in KiB, search keeps of one message, tool input or PR (F-080). Longer text is cut. |
+| `OSTRA_JOIN_TOKEN_DAYS` | `30` | A new join token's lifetime in days, for a pool that names none (F-091). `0`: tokens never expire. |
+| `OSTRA_PERSONAL_RUNNER_CAPACITY` | `2` | How many tasks a personal runner runs at once, unless its member sets another number on the runner (F-014, F-067). |
+| `OSTRA_QUEUE_SWEEP_SECONDS` | `5` | How often each pool's queue is swept for tasks that now fit, besides the admission every change of room starts (F-067). |
+| `OSTRA_DEV_HOST_POOL_SAME_USER` | `false` | Development and tests only: lets a `host` pool runner run the agent as its own OS user, labelled "not isolated, same user (development only)". The server refuses to start with it `true` unless `NODE_ENV` is `development` or `test`. |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 
@@ -109,7 +113,7 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 |---|---|---|---|
 | `OSTRA_SERVER_URL` | `--server` | (required) | The ostra server's core address, such as `http://localhost:8787`. |
 | `OSTRA_RUNNER_DATA_DIR` | `--data-dir` | `~/.ostra/runner` | The runner's folder: its key pair, its spool and the task workspaces (`tasks/<task>/workspace/<repo>`). On Windows the runner turns on git's `core.longpaths` for every clone and checkout it makes, so a repo with deep paths works under a long folder; git still refuses a `.git` folder path of about 250 characters, so keep this folder short. |
-| `OSTRA_RUNNER_TRANSPORT` | `--transport` | `websocket` | How the runner talks to the server. Milestone 1 has `websocket` only; `auto` and `http` come in milestone 5. |
+| `OSTRA_RUNNER_TRANSPORT` | `--transport` | `auto` | How the runner talks to the server: `auto` (a WebSocket, falling back to HTTP by itself when a proxy blocks it), `websocket` or `http`. Until the HTTP fallback is built (milestone 5, ticket 18), every value uses the WebSocket. |
 | `OSTRA_RUNNER_EXECUTOR` | `--executor` | `host` | Where tasks run: `host` (a worktree on this machine, not isolated) or `docker` (a box per task). |
 | `OSTRA_RUNNER_CAPACITY` | `--capacity` | `1` | How many tasks the runner runs at once. |
 | `OSTRA_RUNNER_LABELS` | `--labels` | (none) | Comma-separated labels that tasks can ask for, such as `gpu,macos`. |
@@ -120,6 +124,22 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 | `OSTRA_BOX_BASE_IMAGE` | `--box-base-image` | `ostra/base:<the runner's version>` | The `docker` executor's base image, for an environment that names none. |
 | `OSTRA_BOX_RUNNER_IMAGE` | `--box-runner-image` | `ostra/runner:<the runner's version>` | The image each `docker` box's sidecar runs: the `ostra` CLI. |
 | `OSTRA_BOX_SERVER_URL` | `--box-server-url` | the `--server` address | Core's address as a `docker` box's sidecar reaches it, when that differs from `--server`. |
+| `OSTRA_RUNNER_SLOTS` | `--slots` | `docker`: the host's CPUs ÷ 2; `kubernetes`: `20`; `host` (pool): `2` | How many boxes a pool runner holds at once (ADR 0059). A personal runner's is its member's setting (`OSTRA_PERSONAL_RUNNER_CAPACITY`, 2 by default). |
+| `OSTRA_RUNNER_RESERVE_CPU_MILLIS` | `--reserve-cpu-millis` | `1000` | The CPU, in millicores, a `docker` runner keeps for the host and itself: it offers the engine's CPU less this. |
+| `OSTRA_RUNNER_RESERVE_MEMORY_MIB` | `--reserve-memory-mib` | `2048` | The memory, in MiB, a `docker` runner keeps for the host and itself: it offers the engine's memory less this. |
+| `OSTRA_RUNNER_WS_RETRY_MINUTES` | `--ws-retry-minutes` | `10` | After falling back to HTTP, how often the runner tries the WebSocket again. |
+| `OSTRA_RUNNER_PIN` | `--pin` | `true` | Whether a runner installed from npm installs its server's version at start (ADR 0034). `false` keeps the installed one, inside the version window. |
+| `OSTRA_RUNNER_NPM_REGISTRY` | `--npm-registry` | `https://registry.npmjs.org` | The npm registry the pin installs the `ostra` CLI from, such as a company mirror. |
+| `OSTRA_HOST_POOL_AGENT_USER` | `--host-pool-agent-user` | (none: a `host` pool runner refuses to start without it) | The OS user a `host` pool runner runs the agent as, separate from the runner's own (Linux and macOS). |
+| `OSTRA_K8S_NAMESPACE` | `--k8s-namespace` | the service account's namespace | The namespace a `kubernetes` runner makes its boxes' pods in. |
+| `OSTRA_K8S_BUILD_NAMESPACE` | `--k8s-build-namespace` | `<namespace>-builds` | The namespace a `kubernetes` runner builds snapshots in, with BuildKit. |
+| `OSTRA_K8S_NODE_WAIT_MINUTES` | `--k8s-node-wait-minutes` | `15` | How long a `kubernetes` box waits for a node before it fails and its task is queued again. |
+| `OSTRA_K8S_RUNTIME_CLASS` | `--k8s-runtime-class` | (none) | The RuntimeClass a `kubernetes` box's pod runs with, such as `gvisor`. |
+| `OSTRA_EGRESS_ALLOW` | `--egress-allow` | the server's address only | Comma-separated addresses a `docker` or `kubernetes` box may reach in private ranges, besides the server's (F-116). |
+| `OSTRA_SIDECAR_CPU_MILLIS` | `--sidecar-cpu-millis` | `1000` | The CPU limit, in millicores, of a box's sidecar, counted in the box's footprint. |
+| `OSTRA_SIDECAR_MEMORY_MIB` | `--sidecar-memory-mib` | `256` | The memory limit, in MiB, of a box's sidecar, counted in the box's footprint. |
+| `OSTRA_SERVICE_CPU_MILLIS` | `--service-cpu-millis` | `1000` | The CPU limit, in millicores, of a service that names none, counted in the box's footprint. |
+| `OSTRA_SERVICE_MEMORY_MIB` | `--service-memory-mib` | `1024` | The memory limit, in MiB, of a service that names none, counted in the box's footprint. |
 
 The `docker` executor finds the Docker Engine as Docker's own tools do: `DOCKER_HOST` (`unix://`, `npipe://` or `tcp://host:port`), or the platform's default socket. The socket is root on the host, so pool runners belong on dedicated hosts (Q97).
 

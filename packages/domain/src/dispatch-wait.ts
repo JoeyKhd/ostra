@@ -1,5 +1,5 @@
 import { Prisma } from "@ostra/db";
-import { executorKindSchema, runnerIdSchema } from "@ostra/protocol";
+import { boxSizeNameSchema, executorKindSchema, poolIdSchema, runnerIdSchema, runnerLabelSchema } from "@ostra/protocol";
 import type { RunnerId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -59,6 +59,21 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
    * organization admin unlinked or removed, so ostra mints no token for it. `repo` is its full name.
    */
   z.strictObject({ code: z.literal("installation-not-linked"), repo: z.string().min(1).max(256) }),
+  // ---- milestone 5 (F-067, F-069, F-095, F-120, ADR 0059): `chooseRunner`'s nearest miss ----
+  /** The pool's runners need a registry for snapshots (`kubernetes`), and the organization has none set. */
+  z.strictObject({ code: z.literal("needs-registry"), poolId: poolIdSchema }),
+  /** The environment has services, and no runner of the project's pools starts them (`host` never does). */
+  z.strictObject({ code: z.literal("needs-services") }),
+  /** No runner of the project's pools carries every label the task's profile asks for. */
+  z.strictObject({ code: z.literal("no-runner-with-labels"), labels: z.array(runnerLabelSchema).max(64) }),
+  /** The project's box size is larger than any runner of its pools offers. */
+  z.strictObject({ code: z.literal("size-too-large"), size: boxSizeNameSchema }),
+  /** The project has `cap` boxes on the pool, its share. */
+  z.strictObject({ code: z.literal("project-share-reached"), poolId: poolIdSchema, cap: z.number().int().nonnegative() }),
+  /** The pool has as many boxes as its own cap allows. */
+  z.strictObject({ code: z.literal("pool-full"), poolId: poolIdSchema }),
+  /** A runner fits, and none has room now: the task waits its turn, at `place` in the pool's queue. */
+  z.strictObject({ code: z.literal("queued"), poolId: poolIdSchema, place: z.number().int().positive() }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -111,6 +126,20 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
       return "This model has no price, so the budget can't count it";
     case "installation-not-linked":
       return `The GitHub installation that holds ${wait.repo} isn't linked to ostra: an organization admin links it on the GitHub page.`;
+    case "needs-registry":
+      return "The pool's runners need a registry for snapshots: an admin sets one under Organization, Registry.";
+    case "needs-services":
+      return "The environment has services, and no runner of the project's pools can start them.";
+    case "no-runner-with-labels":
+      return `No runner of the project's pools has every label the profile asks for (${wait.labels.join(", ")}).`;
+    case "size-too-large":
+      return `The ${wait.size} box size is larger than any runner of the project's pools offers.`;
+    case "project-share-reached":
+      return `The project is at its share of the pool: ${String(wait.cap)} boxes.`;
+    case "pool-full":
+      return "The pool is at its cap of boxes.";
+    case "queued":
+      return `Waiting its turn: number ${String(wait.place)} in the pool's queue.`;
     default:
       return wait satisfies never;
   }

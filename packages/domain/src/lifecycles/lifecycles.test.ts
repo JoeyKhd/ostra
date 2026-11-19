@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { transitionApproval } from "./approval.ts";
 import type { ApprovalInput, ApprovalLifecycle } from "./approval.ts";
 import { transitionBox } from "./box.ts";
+import { joinTokenExpiry, joinTokenFromColumns, transitionJoinToken } from "./join-token.ts";
+import type { JoinTokenInput, JoinTokenLifecycle } from "./join-token.ts";
 import type { BoxInput, BoxLifecycle } from "./box.ts";
 import { acceptsWrite, nextEpoch, transitionLease } from "./lease.ts";
 import type { LeaseLifecycle } from "./lease.ts";
@@ -125,6 +127,16 @@ describe("box (and the host worktree)", () => {
       [b({ state: "preparing" }), { type: "fail", reason: "setup" }, b({ state: "failed", reason: "setup" })],
       [b({ state: "ready" }), { type: "fail", reason: "host lost" }, b({ state: "failed", reason: "host lost" })],
       [b({ state: "idle" }), { type: "fail", reason: "host lost" }, b({ state: "failed", reason: "host lost" })],
+      // Milestone 5 (F-093): a pod waits for a node or its image while creating, with no state of its own.
+      [b({ state: "creating" }), { type: "waiting", reason: "node", since: 1000 }, b({ state: "creating", waiting: { reason: "node", since: 1000 } })],
+      [
+        b({ state: "creating", waiting: { reason: "node", since: 1000 } }),
+        { type: "waiting", reason: "image-pull", since: 2000 },
+        b({ state: "creating", waiting: { reason: "image-pull", since: 2000 } }),
+      ],
+      [b({ state: "creating", waiting: { reason: "node", since: 1000 } }), { type: "scheduled" }, b({ state: "creating", waiting: null })],
+      [b({ state: "creating", waiting: { reason: "node", since: 1000 } }), { type: "created" }, b({ state: "preparing" })],
+      [b({ state: "creating", waiting: { reason: "node", since: 1000 } }), { type: "fail", reason: "no node" }, b({ state: "failed", reason: "no node" })],
     ],
     [
       [b({ state: "creating" }), { type: "prepared" }],
@@ -136,6 +148,12 @@ describe("box (and the host worktree)", () => {
       [b({ state: "released", reason: "prs_closed" }), { type: "turn_started" }],
       [b({ state: "released", reason: "prs_closed" }), { type: "release", reason: "requested" }],
       [b({ state: "failed", reason: "x" }), { type: "release", reason: "requested" }],
+      [b({ state: "preparing" }), { type: "waiting", reason: "node", since: 1 }],
+      [b({ state: "ready" }), { type: "waiting", reason: "image-pull", since: 1 }],
+      [b({ state: "idle" }), { type: "scheduled" }],
+      [b({ state: "stopped" }), { type: "scheduled" }],
+      [b({ state: "released", reason: "prs_closed" }), { type: "waiting", reason: "node", since: 1 }],
+      [b({ state: "failed", reason: "x" }), { type: "scheduled" }],
     ],
   );
 
@@ -158,6 +176,8 @@ describe("runner", () => {
   const states = ["joining", "online", "offline", "draining", "revoked"] as const;
   const inputs = [
     ["accept", { type: "accept" }],
+    ["approve-connected", { type: "approve", connected: true }],
+    ["approve-not-connected", { type: "approve", connected: false }],
     ["reject", { type: "reject" }],
     ["disconnected", { type: "disconnected" }],
     ["reconnected", { type: "reconnected" }],
@@ -175,6 +195,8 @@ describe("runner", () => {
   const table: Record<State, Record<InputName, State | null>> = {
     joining: {
       accept: "online",
+      "approve-connected": "online",
+      "approve-not-connected": "joining",
       reject: "revoked",
       disconnected: null,
       reconnected: null,
@@ -185,6 +207,8 @@ describe("runner", () => {
     },
     online: {
       accept: null,
+      "approve-connected": null,
+      "approve-not-connected": null,
       reject: null,
       disconnected: "offline",
       reconnected: null,
@@ -195,6 +219,8 @@ describe("runner", () => {
     },
     offline: {
       accept: null,
+      "approve-connected": null,
+      "approve-not-connected": null,
       reject: null,
       disconnected: null,
       reconnected: "online",
@@ -205,6 +231,8 @@ describe("runner", () => {
     },
     draining: {
       accept: null,
+      "approve-connected": null,
+      "approve-not-connected": null,
       reject: null,
       disconnected: "draining",
       reconnected: "draining",
@@ -215,6 +243,8 @@ describe("runner", () => {
     },
     revoked: {
       accept: null,
+      "approve-connected": null,
+      "approve-not-connected": null,
       reject: null,
       disconnected: null,
       reconnected: null,
@@ -244,6 +274,51 @@ describe("runner", () => {
 
   it.each(["joining", "online", "offline", "draining", "revoked"] as const)("round-trips %s", (state) => {
     expect(runnerFromColumns(runnerToColumns(r(state)))).toEqual({ ok: true, value: r(state) });
+  });
+});
+
+describe("join token (milestone 5)", () => {
+  const states = ["active", "expired", "revoked"] as const;
+  const inputs = [
+    ["use", { type: "use" }],
+    ["expire", { type: "expire" }],
+    ["revoke", { type: "revoke" }],
+  ] as const satisfies readonly (readonly [string, JoinTokenInput])[];
+  type State = JoinTokenLifecycle["state"];
+  type InputName = (typeof inputs)[number][0];
+  /** Every input from every state, and where it goes, or `null` where it's refused. */
+  const table: Record<State, Record<InputName, State | null>> = {
+    active: { use: "active", expire: "expired", revoke: "revoked" },
+    expired: { use: null, expire: null, revoke: "revoked" },
+    revoked: { use: null, expire: null, revoke: null },
+  };
+
+  it.each(states.flatMap((state) => inputs.map(([name, input]) => [state, name, table[state][name], input] as const)))(
+    "F-091: from %s, %s goes to %s (null: refused)",
+    (state, _name, expected, input) => {
+      const moved = transitionJoinToken({ state }, input);
+      if (expected === null) {
+        expect(moved).toMatchObject({ ok: false });
+      } else {
+        expect(moved).toEqual({ ok: true, state: { state: expected } });
+      }
+    },
+  );
+
+  it("F-091: reads expiry from the clock, and a revoke wins", () => {
+    const now = Date.UTC(2026, 10, 19, 12);
+    expect(joinTokenFromColumns({ expiresAt: null, revokedAt: null }, now)).toEqual({ state: "active" });
+    expect(joinTokenFromColumns({ expiresAt: new Date(now + 1), revokedAt: null }, now)).toEqual({ state: "active" });
+    expect(joinTokenFromColumns({ expiresAt: new Date(now), revokedAt: null }, now)).toEqual({ state: "expired" });
+    expect(joinTokenFromColumns({ expiresAt: new Date(now - 1), revokedAt: new Date(now - 2) }, now)).toEqual({ state: "revoked" });
+  });
+
+  it("F-091: a new token lives its pool's days, else the setting's, and 0 never expires", () => {
+    const now = Date.UTC(2026, 10, 19);
+    expect(joinTokenExpiry(now, null, 30)).toEqual(new Date(Date.UTC(2026, 11, 19)));
+    expect(joinTokenExpiry(now, 7, 30)).toEqual(new Date(Date.UTC(2026, 10, 26)));
+    expect(joinTokenExpiry(now, 0, 30)).toBeNull();
+    expect(joinTokenExpiry(now, null, 0)).toBeNull();
   });
 });
 

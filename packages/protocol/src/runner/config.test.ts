@@ -12,11 +12,22 @@ describe("the runner's config", () => {
       ok: true,
       config: {
         serverUrl: "http://localhost:8787",
-        transport: "websocket",
+        transport: "auto",
         executor: "host",
         capacity: 1,
         labels: [],
         shell: "bash",
+        reserveCpuMillis: 1000,
+        reserveMemoryMiB: 2048,
+        wsRetryMinutes: 10,
+        pin: true,
+        npmRegistry: "https://registry.npmjs.org",
+        k8sNodeWaitMinutes: 15,
+        egressAllow: [],
+        sidecarCpuMillis: 1000,
+        sidecarMemoryMiB: 256,
+        serviceCpuMillis: 1000,
+        serviceMemoryMiB: 1024,
       },
     });
   });
@@ -62,7 +73,7 @@ describe("the runner's config", () => {
       expect(Object.keys(runnerConfigFields)).toContain(key);
     }
     for (const field of Object.values(runnerConfigFields)) {
-      expect(field.env).toMatch(/^OSTRA_[A-Z_]+$/);
+      expect(field.env).toMatch(/^OSTRA_[A-Z0-9_]+$/);
       expect(field.description.length).toBeGreaterThan(10);
     }
     expect(runnerEnvNames).toContain("OSTRA_RUNNER_SHELL");

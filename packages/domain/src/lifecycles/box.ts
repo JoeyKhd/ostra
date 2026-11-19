@@ -1,4 +1,5 @@
 import type { DbEnum } from "@ostra/db";
+import type { BoxWaitingReason } from "@ostra/protocol";
 
 import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
@@ -10,8 +11,15 @@ import type { Transition } from "./transition.ts";
 /** Why a box was released (F-079). `@ostra/protocol`'s `release` command writes them with a hyphen. */
 export type BoxReleaseReason = DbEnum.BoxReleaseReason;
 
+/** A wait while `creating` (F-093): why, and since when (epoch ms). */
+export type BoxWaiting = { readonly reason: BoxWaitingReason; readonly since: number };
+
 export type BoxLifecycle =
-  | { readonly state: "creating" }
+  /**
+   * Milestone 5 (F-093): a `kubernetes` box may wait for a node or its image while `creating`,
+   * with no state of its own. `waiting` is absent or `null` when it doesn't.
+   */
+  | { readonly state: "creating"; readonly waiting?: BoxWaiting | null }
   | { readonly state: "preparing" }
   | { readonly state: "ready" }
   | { readonly state: "idle" }
@@ -23,6 +31,10 @@ export type BoxLifecycle =
 export type BoxInput =
   /** The containers (or the worktree root) exist. */
   | { readonly type: "created" }
+  /** Milestone 5 (F-093): the runner's `box.waiting`: no node yet, or the image is being pulled. */
+  | { readonly type: "waiting"; readonly reason: BoxWaitingReason; readonly since: number }
+  /** Milestone 5 (F-093): the runner's `box.scheduled`: the wait is over, still `creating`. */
+  | { readonly type: "scheduled" }
   | { readonly type: "prepared" }
   /** A turn ends (ready → idle) or starts (idle or a kept stopped box → ready). */
   | { readonly type: "turn_ended" }
@@ -39,6 +51,10 @@ export const transitionBox = (box: BoxLifecycle, input: BoxInput): Transition<Bo
   switch (input.type) {
     case "created":
       return from === "creating" ? moveTo({ state: "preparing" }) : refuse(input, from);
+    case "waiting":
+      return from === "creating" ? moveTo({ state: "creating", waiting: { reason: input.reason, since: input.since } }) : refuse(input, from);
+    case "scheduled":
+      return from === "creating" ? moveTo({ state: "creating", waiting: null }) : refuse(input, from);
     case "prepared":
       return from === "preparing" ? moveTo({ state: "ready" }) : refuse(input, from);
     case "turn_ended":
