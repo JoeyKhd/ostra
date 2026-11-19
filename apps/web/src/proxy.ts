@@ -38,7 +38,7 @@ export const config = {
   // Pages only: not the API, Next's static files or the fonts and images in public/.
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|fonts|brand|model-logos|favicon.ico).*)",
+      source: "/((?!api|_next/static|_next/image|fonts|brand|model-logos|sign-in-illustration|favicon.ico).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

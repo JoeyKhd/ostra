@@ -48,13 +48,15 @@
   },
   "signIn": {
     "title": "Sign in",
-    "lede": "Sign in with your username or email.",
+    "lede": "Use your username or email, and your password.",
     "identifier": "Username or email",
     "password": "Password",
     "submit": "Sign in",
     "busy": "Signing in…",
     "failed": "That username or email and password don't match.",
-    "tooMany": "Too many sign-in attempts. Wait a minute and try again."
+    "tooMany": "Too many sign-in attempts. Wait a minute and try again.",
+    "tagline": "Self-hosted cloud agents for your team.",
+    "version": "ostra v{version}"
   },
   "changePassword": {
     "title": "Choose a new password",

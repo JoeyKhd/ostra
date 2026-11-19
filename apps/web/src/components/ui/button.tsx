@@ -22,6 +22,8 @@ export const buttonVariants = cva(
         default: "h-7 px-[11px] text-[12.5px]",
         sm: "h-6 rounded-sm px-[9px] text-sm",
         lg: "h-8 px-3.5 text-body",
+        // The auth pages' one full-width button (sign-in.md): 36px.
+        xl: "h-[36px] px-[14px] text-body",
         icon: "size-7 p-0",
       },
     },

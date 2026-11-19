@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { AuthCard } from "@/components/auth/auth-card";
+import { AuthFrame } from "@/components/auth/auth-frame";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import { t } from "@/lib/messages";
 import { getServerApi } from "@/server/api";
@@ -12,11 +12,13 @@ const SignInPage = async () => {
   const { signedIn } = await getServerApi();
   if (signedIn) redirect("/");
   return (
-    <AuthCard title={t("signIn.title")} lede={t("signIn.lede")}>
+    <AuthFrame>
+      <h1 className="page-title text-text">{t("signIn.title")}</h1>
+      <p className="mt-[3px] text-lede text-muted">{t("signIn.lede")}</p>
       <Suspense>
         <SignInForm />
       </Suspense>
-    </AuthCard>
+    </AuthFrame>
   );
 };
 
