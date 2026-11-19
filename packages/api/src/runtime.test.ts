@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createLogger } from "@ostra/adapter-sdk";
+import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase } from "@ostra/db/testing";
 import type { TestDatabase } from "@ostra/db/testing";
@@ -61,6 +62,7 @@ const start = async (install: { readonly test: TestDatabase; readonly dataDir: s
       logger: createLogger(() => undefined),
     }),
     blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
+    makeLinearTracker: () => new JiraFakeAdapter({ site: createJiraSite() }),
     logger: createLogger((record) => {
       logs.push(record);
     }),

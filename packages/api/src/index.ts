@@ -13,3 +13,5 @@ export { createApiRuntime } from "./runtime.ts";
 export type { ApiRuntime, ApiRuntimeInput } from "./runtime.ts";
 export { createModelsDevCatalogSource, MODELS_DEV_URL } from "./catalog/models-dev.ts";
 export type { ModelsDevCatalogInput } from "./catalog/models-dev.ts";
+export type { BlobStoreView } from "./services/blob-store-view.ts";
+export type { LinearTrackerAuth, TrackerDirectory, TrackerLookup } from "./services/trackers.ts";

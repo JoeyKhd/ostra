@@ -822,6 +822,9 @@ model Board {
   lastPolledAt        DateTime?
   /// Whether the tracker's own GitHub integration is installed (F-031); `null` until checked.
   integrationDetected Boolean?
+  /// Set when a project admin detaches the board: it stops polling and starts no new task, but its
+  /// tickets stay cached and its tasks keep their links. Attaching the team again clears it.
+  detachedAt          DateTime?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 

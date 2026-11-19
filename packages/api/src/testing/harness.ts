@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { CatalogEntry, LogRecord, ModelProviderAdapter } from "@ostra/adapter-sdk";
+import type { CatalogEntry, LogRecord, ModelProviderAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
+import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
@@ -13,6 +14,7 @@ import { loadMemberContext, loginSessionIdSchema } from "../auth/scope.ts";
 import type { SessionUser } from "../auth/scope.ts";
 import { createCatalogSource } from "../catalog/catalog-source.ts";
 import { appRouter } from "../routers/app-router.ts";
+import { createTrackerDirectory } from "../services/trackers.ts";
 import { createStreamHub } from "../stream/hub.ts";
 import type { StreamHub } from "../stream/hub.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
@@ -42,6 +44,13 @@ export type BareHarness = {
     readonly codeHost: FakeCodeHost;
     readonly jobs: MemoryJobQueue;
     readonly outbox: MemoryOutbox;
+    /**
+     * The tracker adapter every Linear connection gets (tickets 27 to 29). A test points it at the
+     * adapter it wants to run against: the Jira fake, or Linear's adapter on the fake Linear server.
+     */
+    readonly tracker: { adapter: TrackerAdapter };
+    /** The tokens the tracker directory built an adapter with, to search an output for them. */
+    readonly trackerTokens: string[];
   };
   /** Every line the API logged, to check that nothing sensitive reached one. */
   readonly logs: readonly LogRecord[];
@@ -90,6 +99,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const codeHost = new FakeCodeHost();
   const jobs = memoryJobQueue();
   const outbox = memoryOutbox();
+  const tracker: { adapter: TrackerAdapter } = { adapter: new JiraFakeAdapter({ site: createJiraSite() }) };
+  const trackerTokens: string[] = [];
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
   const catalogEntries: CatalogEntry[] = [];
 
@@ -110,6 +121,14 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       reconcileMinutes: 5,
     },
     blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
+    trackers: createTrackerDirectory({
+      db: test.db,
+      secretStore,
+      makeLinear: (auth) => {
+        trackerTokens.push(auth.token);
+        return tracker.adapter;
+      },
+    }),
     ports: {
       jobs,
       outbox,
@@ -158,7 +177,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     deps,
     auth,
     hub,
-    fakes: { secretStore, modelProvider, codeHost, jobs, outbox },
+    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens },
     logs,
     catalogEntries,
     callerFor: (context) => callerFactory(context),

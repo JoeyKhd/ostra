@@ -4,7 +4,7 @@ import type { DbOrTx } from "@ostra/db";
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { TRPC_ERROR_CODE_KEY } from "@trpc/server";
 import { projectIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
+import type { BoardId, OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import type { z } from "zod";
 
 import type { Context } from "./context.ts";
@@ -160,6 +160,35 @@ export const taskProcedure = <S extends z.ZodType<{ readonly taskId: TaskId }>>(
       throw error;
     }
     return next({ ctx: { ...ctx, project: access, task: { taskId: taskIdSchema.parse(row.id), projectId: access.projectId } } });
+  });
+
+/** What a board procedure's handler gets: the board, inside a project the member may use. */
+export type BoardAccess = { readonly boardId: BoardId; readonly projectId: ProjectId };
+
+/**
+ * A procedure on one board: the input schema must hold `boardId`. The board is read inside the
+ * member's organization only, then its project is checked like `projectProcedure` does. Another
+ * organization's board, and one in a restricted project the member isn't on, are `NOT_FOUND`.
+ */
+export const boardProcedure = <S extends z.ZodType<{ readonly boardId: BoardId }>>(need: ProjectNeed, schema: S) =>
+  memberProcedure.input(schema).use(async ({ ctx, input, next }) => {
+    const row = await ctx.deps.db.board.findFirst({
+      where: { id: input.boardId, organizationId: ctx.scope.organizationId },
+      select: { id: true, projectId: true },
+    });
+    if (row === null) {
+      throw denied("not-found", "board");
+    }
+    let access: ProjectAccess;
+    try {
+      access = await loadProjectAccess(ctx.deps.db, ctx.scope, projectIdSchema.parse(row.projectId), need);
+    } catch (error) {
+      if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+        throw denied("not-found", "board");
+      }
+      throw error;
+    }
+    return next({ ctx: { ...ctx, project: access, board: { boardId: input.boardId, projectId: access.projectId } } });
   });
 
 type Failure<E extends string> = { readonly ok: false; readonly error: E; readonly message: string };

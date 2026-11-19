@@ -7,6 +7,7 @@ import { loadMemberContext, resolveSession } from "../auth/scope.ts";
 import type { MemberContext, SessionUser } from "../auth/scope.ts";
 import type { CatalogSource } from "../catalog/catalog-source.ts";
 import type { BlobStoreView } from "../services/blob-store-view.ts";
+import type { TrackerDirectory } from "../services/trackers.ts";
 import type { StreamHub } from "../stream/hub.ts";
 
 /** The settings the routers read: a subset of the server's, so a test names only what it needs. */
@@ -39,6 +40,8 @@ export type ApiDeps = {
   readonly catalog: CatalogSource;
   /** The blob store's name and health, for the storage page (F-114, ticket 31). */
   readonly blobStore: BlobStoreView;
+  /** The organization's tracker connection as an adapter (tickets 27 to 29). */
+  readonly trackers: TrackerDirectory;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */

@@ -1,4 +1,4 @@
-import type { Logger } from "@ostra/adapter-sdk";
+import type { Logger, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import type { CommandOutbox, JobQueue, ServerAdapters, ServerSettings } from "@ostra/domain";
@@ -10,6 +10,8 @@ import { ensureFirstAdmin } from "./auth/first-admin.ts";
 import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
+import { createTrackerDirectory } from "./services/trackers.ts";
+import type { LinearTrackerAuth } from "./services/trackers.ts";
 import { createStreamHub } from "./stream/hub.ts";
 import type { ApiDeps, Context } from "./trpc/context.ts";
 import { createContext } from "./trpc/context.ts";
@@ -30,6 +32,8 @@ export type ApiRuntimeInput = {
   readonly catalog: CatalogSource;
   /** The blob store's name and health, for the storage page (ticket 31). */
   readonly blobStore: BlobStoreView;
+  /** Builds a Linear adapter from a stored credential (tickets 27 to 29). */
+  readonly makeLinearTracker: (auth: LinearTrackerAuth) => TrackerAdapter;
   readonly logger: Logger;
 };
 
@@ -78,6 +82,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     hashPassword,
     catalog: input.catalog,
     blobStore: input.blobStore,
+    trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),
     stream: hub,
   };
 

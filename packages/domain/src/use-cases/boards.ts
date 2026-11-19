@@ -1,13 +1,14 @@
+import type { AdapterError } from "@ostra/adapter-sdk";
 import type { Tx } from "@ostra/db";
 import { boardIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { BoardId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
-import { boardMappingSchema } from "../tickets/board-mapping.ts";
+import { boardMappingSchema, draftBoardMapping, parseBoardMapping, unknownMappedStatuses } from "../tickets/board-mapping.ts";
 import type { BoardMapping } from "../tickets/board-mapping.ts";
-import { notYet } from "./common.ts";
 import type { UseCaseResult } from "./common.ts";
 import type { ConnectionTracker } from "./linear-connection.ts";
 
@@ -15,7 +16,8 @@ import type { ConnectionTracker } from "./linear-connection.ts";
 // status mapping (spec section 3, step 2). Attaching reads the team's statuses and the GitHub
 // integration check through the tracker adapter, drafts the mapping (`draftBoardMapping`) and
 // saves the board; the admin can change any of the four targets, `doneBy` and the magic word.
-// Bodies: ticket 28. The tracker calls happen before the transaction; the board is written in it.
+// Written by ticket 28. The tracker is asked inside the caller's transaction, so the board and
+// the answer it was drafted from commit together.
 
 export const attachBoardInputSchema = z.strictObject({
   projectId: projectIdSchema,
@@ -44,7 +46,77 @@ export type AttachBoardDeps = Pick<Ports, "notices" | "audit" | "clock"> & {
 
 export type AttachBoard = (deps: AttachBoardDeps, input: AttachBoardInput) => Promise<AttachBoardResult>;
 
-export const attachBoard: AttachBoard = () => notYet("28");
+const refuseAttach = (error: Exclude<AttachBoardResult, { readonly ok: true }>["error"], message: string): AttachBoardResult => ({ ok: false, error, message });
+
+/** An adapter's failure as words for a person: the adapter's own message never holds content. */
+const trackerWords = (error: AdapterError): string => `The tracker did not answer (${error.code}): ${error.message}`;
+
+export const attachBoard: AttachBoard = async (deps, input) => {
+  const { tx, scope, tracker } = deps;
+  const organizationId = scope.organizationId;
+  const project = await tx.project.findFirst({ where: { id: input.projectId, organizationId }, select: { id: true, access: true } });
+  if (project === null) {
+    return refuseAttach("not-found", "No such project");
+  }
+  const access = requireProjectAccess(scope, { id: projectIdSchema.parse(project.id), organizationId, access: project.access }, "admin");
+  if (!access.ok) {
+    return access.code === "not-found" ? refuseAttach("not-found", "No such project") : refuseAttach("forbidden", "Only the project's admins attach a board");
+  }
+  const connection = await tx.connection.findFirst({ where: { id: tracker.connectionId, organizationId, kind: "linear" } });
+  if (connection?.state !== "active") {
+    return refuseAttach("no-connection", "This organization isn't connected to a tracker yet");
+  }
+  const existing = await tx.board.findFirst({ where: { projectId: project.id, organizationId, externalId: input.teamExternalId } });
+  if (existing !== null && existing.detachedAt === null) {
+    return refuseAttach("already-attached", "That team is already a board of this project");
+  }
+
+  const boards = await tracker.tracker.listBoards();
+  if (!boards.ok) {
+    return refuseAttach("tracker-failed", trackerWords(boards.error));
+  }
+  const team = boards.value.find((candidate) => candidate.externalId === input.teamExternalId);
+  if (team === undefined) {
+    return refuseAttach("not-found", "The connection can't see that team");
+  }
+  const statuses = await tracker.tracker.listStatuses({ externalId: team.externalId });
+  if (!statuses.ok) {
+    return refuseAttach("tracker-failed", trackerWords(statuses.error));
+  }
+  // A tracker that can't say whether its GitHub integration is installed reads as not installed:
+  // ostra then moves the ticket to done itself, which an installed integration does no harm to
+  // (the move is a no-op when the ticket is already there).
+  const integration = await tracker.tracker.detectCodeHostIntegration({ externalId: team.externalId });
+  const installed = integration.ok && integration.value.installed;
+
+  const draft = draftBoardMapping(statuses.value, { installed });
+  if (!draft.ok) {
+    return refuseAttach(draft.reason, draft.reason === "no-started-status" ? "The team has no started status to move tickets to" : "The team has no done status to move tickets to");
+  }
+  // Attaching a team again keeps the mapping it had, when every status in it still exists.
+  const kept = existing === null ? null : parseBoardMapping(existing.statusMap);
+  const mapping = kept !== null && unknownMappedStatuses(kept, statuses.value).length === 0 ? kept : draft.mapping;
+
+  const data = { name: team.name, key: team.key, statusMap: mapping, integrationDetected: integration.ok ? installed : null, detachedAt: null };
+  const board =
+    existing === null
+      ? await tx.board.create({ data: { organizationId, projectId: project.id, connectionId: connection.id, externalId: team.externalId, ...data }, select: { id: true } })
+      : await tx.board.update({ where: { id: existing.id }, data: { ...data, connectionId: connection.id, pollCursor: null }, select: { id: true } });
+  const boardId = boardIdSchema.parse(board.id);
+  const projectId = projectIdSchema.parse(project.id);
+
+  await deps.audit.recordInTx(tx, {
+    organizationId,
+    projectId,
+    actor: { kind: "member", id: scope.memberId },
+    action: "board.attached",
+    entity: "project",
+    entityId: projectId,
+    data: { boardId, key: team.key, doneBy: mapping.doneBy, integrationInstalled: installed },
+  });
+  await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
+  return { ok: true, boardId, mapping, integrationInstalled: installed };
+};
 
 export const saveBoardMappingInputSchema = z.strictObject({
   boardId: boardIdSchema,
@@ -59,4 +131,81 @@ export type SaveBoardMappingResult = UseCaseResult<
 
 export type SaveBoardMapping = (deps: AttachBoardDeps, input: SaveBoardMappingInput) => Promise<SaveBoardMappingResult>;
 
-export const saveBoardMapping: SaveBoardMapping = () => notYet("28");
+const refuseSave = (error: Exclude<SaveBoardMappingResult, { readonly ok: true }>["error"], message: string): SaveBoardMappingResult => ({ ok: false, error, message });
+
+export const saveBoardMapping: SaveBoardMapping = async (deps, input) => {
+  const { tx, scope, tracker } = deps;
+  const organizationId = scope.organizationId;
+  const board = await tx.board.findFirst({ where: { id: input.boardId, organizationId }, include: { project: { select: { id: true, access: true } } } });
+  if (board === null) {
+    return refuseSave("not-found", "No such board");
+  }
+  const access = requireProjectAccess(scope, { id: projectIdSchema.parse(board.project.id), organizationId, access: board.project.access }, "admin");
+  if (!access.ok) {
+    return access.code === "not-found" ? refuseSave("not-found", "No such board") : refuseSave("forbidden", "Only the project's admins change a board's mapping");
+  }
+  const statuses = await tracker.tracker.listStatuses({ externalId: board.externalId });
+  if (!statuses.ok) {
+    return refuseSave("tracker-failed", trackerWords(statuses.error));
+  }
+  const gone = unknownMappedStatuses(input.mapping, statuses.value);
+  if (gone.length > 0) {
+    return refuseSave("unknown-status", "A mapped status is gone from the tracker. Pick another.");
+  }
+  await tx.board.update({ where: { id: board.id }, data: { statusMap: input.mapping } });
+  const projectId = projectIdSchema.parse(board.project.id);
+  await deps.audit.recordInTx(tx, {
+    organizationId,
+    projectId,
+    actor: { kind: "member", id: scope.memberId },
+    action: "board.mapping-saved",
+    entity: "project",
+    entityId: projectId,
+    data: { boardId: input.boardId, doneBy: input.mapping.doneBy, magicWord: input.mapping.magicWord, openStatuses: input.mapping.open.length },
+  });
+  await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
+  return { ok: true, mapping: input.mapping };
+};
+
+// ---------- detach ----------
+
+export const detachBoardInputSchema = z.strictObject({ boardId: boardIdSchema });
+export type DetachBoardInput = z.infer<typeof detachBoardInputSchema>;
+
+export type DetachBoardResult = UseCaseResult<{ readonly boardId: BoardId }, "not-found" | "forbidden" | "already-detached">;
+
+export type DetachBoardDeps = Pick<Ports, "notices" | "audit" | "clock"> & { readonly tx: Tx; readonly scope: MemberScope };
+
+/**
+ * Marks the board detached. It stops polling (core drops the schedule of a detached board) and
+ * starts no new task; its cached tickets stay, and its tasks keep their links.
+ */
+export const detachBoard = async (deps: DetachBoardDeps, input: DetachBoardInput): Promise<DetachBoardResult> => {
+  const { tx, scope } = deps;
+  const organizationId = scope.organizationId;
+  const refuse = (error: Exclude<DetachBoardResult, { readonly ok: true }>["error"], message: string): DetachBoardResult => ({ ok: false, error, message });
+  const board = await tx.board.findFirst({ where: { id: input.boardId, organizationId }, include: { project: { select: { id: true, access: true } } } });
+  if (board === null) {
+    return refuse("not-found", "No such board");
+  }
+  const access = requireProjectAccess(scope, { id: projectIdSchema.parse(board.project.id), organizationId, access: board.project.access }, "admin");
+  if (!access.ok) {
+    return access.code === "not-found" ? refuse("not-found", "No such board") : refuse("forbidden", "Only the project's admins detach a board");
+  }
+  if (board.detachedAt !== null) {
+    return refuse("already-detached", "That board is already detached");
+  }
+  await tx.board.update({ where: { id: board.id }, data: { detachedAt: new Date(deps.clock.now()) } });
+  const projectId = projectIdSchema.parse(board.project.id);
+  await deps.audit.recordInTx(tx, {
+    organizationId,
+    projectId,
+    actor: { kind: "member", id: scope.memberId },
+    action: "board.detached",
+    entity: "project",
+    entityId: projectId,
+    data: { boardId: input.boardId },
+  });
+  await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
+  return { ok: true, boardId: input.boardId };
+};

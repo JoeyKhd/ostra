@@ -4,6 +4,7 @@ import path from "node:path";
 import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, LogRecord, SecretRowStore } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
+import { LinearAdapter } from "@ostra/adapter-linear";
 import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
 import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import { createApiRuntime, createCatalogSource } from "@ostra/api";
@@ -152,6 +153,7 @@ const build = async (): Promise<ApiRuntime> => {
       clock: systemClock,
       logger,
     }),
+    makeLinearTracker: (auth) => new LinearAdapter({ auth }, context),
     blobStore: {
       name: settings.blobStore.kind,
       // The built-in store lives in the database: it is as healthy as a query. An S3-compatible

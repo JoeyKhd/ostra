@@ -18,6 +18,7 @@
     "@assistant-ui/react": "0.15.36",
     "@assistant-ui/react-markdown": "0.14.26",
     "@ostra/adapter-github": "workspace:*",
+    "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/adapter-secret-store-builtin": "workspace:*",

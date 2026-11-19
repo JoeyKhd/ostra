@@ -205,9 +205,15 @@ export const seedLinearConnection = async (
   harness: ApiHarness,
   over: { readonly organizationId?: OrganizationId; readonly state?: "pending" | "active" | "failed" | "revoked" } = {},
 ): Promise<ConnectionId> => {
+  const organizationId = over.organizationId ?? harness.fixture.a.organization.id;
+  const token = await harness.fakes.secretStore.put({ organizationId, purpose: "linear-access-token" }, `lin_oauth_${randomBytes(12).toString("hex")}`);
+  if (!token.ok) {
+    throw new Error("the fake secret store refused a token");
+  }
   const row = await harness.test.db.connection.create({
     data: {
-      organizationId: over.organizationId ?? harness.fixture.a.organization.id,
+      organizationId,
+      accessTokenSecretRef: token.value,
       kind: "linear",
       appId: "linear-client-id",
       state: over.state ?? "active",
