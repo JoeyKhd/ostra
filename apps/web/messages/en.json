@@ -421,7 +421,7 @@
       "droppedOne": "1 profile is set to {level}. Its tasks will run at {runAt}.",
       "droppedMany": "{n} profiles are set to {level}. Their tasks will run at {runAt}.",
       "confirmSaveTitle": "Save {model}'s levels?",
-      "priceNote": "Its catalog prices reasoning at {price} per million, apart from output. ostra v1 prices it as output.",
+      "priceNote": "Its catalog prices reasoning apart from output. ostra v1 prices it as output.",
       "empty": "No model yet. Add a provider, and the models its key lists show here.",
       "reasonsNoLevels": "Reasons, with no levels"
     }

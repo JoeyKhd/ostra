@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { modelIdSchema } from "@ostra/protocol";
 import type { AgentProfileId, ApprovalRulePreset } from "@ostra/protocol";
 
 import { PageFrame } from "@/components/shell/page-frame";
@@ -21,6 +22,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { EditorSection } from "./editor-section";
+import { EffortField, effortChoiceOf } from "./effort-field";
 import { draftFromDetail, draftProblem, isDirty, newDraft, nextKey, saveInputOf } from "./editor-draft";
 import type { ProfileDraft, SkillDraft } from "./editor-draft";
 import { McpSection } from "./mcp-section";
@@ -130,6 +132,10 @@ const AgentAndModel = ({ draft, readOnly, detail, onChange }: {
       .map((model): ModelOption => ({ id: model.id, name: model.displayName ?? model.endpointModelId, mono: model.displayName === null, custom: model.custom, logoPath: model.logoPath })),
   }));
   const anyModel = groups.some((group) => group.models.length > 0);
+  // F-137: the levels the agent offers on the chosen model, rebuilt as either changes.
+  const effort = useQuery(
+    trpc.agentProfiles.effortLevels.queryOptions(draft.modelId === null ? skipToken : { adapter: draft.adapter, modelId: modelIdSchema.parse(draft.modelId) }),
+  );
   const label = "mb-1.5 block text-sm font-medium text-muted";
 
   return (
@@ -187,6 +193,21 @@ const AgentAndModel = ({ draft, readOnly, detail, onChange }: {
           )}
         </div>
       </div>
+      {draft.modelId === null ? null : (
+        <EffortField
+          choice={effortChoiceOf(
+            effort.data,
+            {
+              model: groups.flatMap((group) => group.models).find((model) => model.id === draft.modelId)?.name ?? (detail?.model === null || detail?.model === undefined ? "" : modelName(detail.model)),
+              agent: agents.data?.find((agent) => agent.adapter === draft.adapter)?.name ?? detail?.agentName ?? draft.adapter,
+            },
+            readOnly ? null : `/organization/models?model=${draft.modelId}`,
+          )}
+          value={draft.effort}
+          readOnly={readOnly}
+          onChange={(level) => { onChange({ ...draft, effort: level }); }}
+        />
+      )}
     </EditorSection>
   );
 };
@@ -349,7 +370,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
     setOpenKey(rule.key);
   };
   const submit = (): void => {
-    save.mutate(saveInputOf(current, profileId, newId));
+    save.mutate(saveInputOf(current, profileId, newId, saved?.effort ?? "default"));
   };
   const newSkill = (): SkillDraft => ({ key: nextKey("skill"), name: "", body: "", files: [] });
   const title = current.name.trim() === "" ? (profileId === null ? t("agentProfiles.editor.newTitle") : (data?.name ?? "")) : current.name;

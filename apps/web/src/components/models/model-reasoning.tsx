@@ -11,7 +11,6 @@ import { PropGroup } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { formatPrice } from "@/lib/format";
 import { t } from "@/lib/messages";
 
 // A model's reasoning on the Models page (F-137, F-088; model-reasoning.md): whether it reasons,
@@ -27,13 +26,12 @@ export type ModelReasoning = {
   readonly source: "catalog" | "admin" | null;
   /** The catalog's own controls, kept beside an override; `null` for a custom model. */
   readonly catalog: ReasoningControls | null;
-  /** The catalog lists a reasoning price apart from output (models.dev's `cost.reasoning`). */
-  readonly reasoningPricePerMTok: number | null;
+  /** The catalog lists a reasoning price apart from output (models.dev's `cost.reasoning`; ticket 58). */
+  readonly reasoningPriceDiffers: boolean;
 };
 
 /** The catalog lists a reasoning price different from the output price. */
-export const priceDiffers = (reasoning: ModelReasoning, outputPricePerMTok: number | null): boolean =>
-  reasoning.reasoningPricePerMTok !== null && reasoning.reasoningPricePerMTok !== outputPricePerMTok;
+export const priceDiffers = (reasoning: ModelReasoning): boolean => reasoning.reasoningPriceDiffers;
 
 /** The levels a model's controls list, on models.dev's scale, plus `on` for a toggle with none. */
 export const levelsOfControls = (controls: ReasoningControls | null): readonly EffortLevel[] => {
@@ -153,11 +151,10 @@ const LevelsForm = ({ form, onChange }: { readonly form: ReasoningForm; readonly
 );
 
 /** The panel's `Reasoning` group: the read view, `Edit` and `Use the catalog's` for an admin, and the form. */
-export const ReasoningGroup = ({ modelName, custom, reasoning, outputPricePerMTok, canEdit, profileLevels, pending, error, onSave, onUseCatalog, initiallyEditing = false, initiallyConfirming = false }: {
+export const ReasoningGroup = ({ modelName, custom, reasoning, canEdit, profileLevels, pending, error, onSave, onUseCatalog, initiallyEditing = false, initiallyConfirming = false }: {
   readonly modelName: string;
   readonly custom: boolean;
   readonly reasoning: ModelReasoning;
-  readonly outputPricePerMTok: number | null;
   readonly canEdit: boolean;
   /** The levels saved on the profiles that use this model: what a save that drops a level warns about. */
   readonly profileLevels: readonly EffortLevel[];
@@ -189,10 +186,10 @@ export const ReasoningGroup = ({ modelName, custom, reasoning, outputPricePerMTo
   return (
     <PropGroup title={t("models.reasoning.reasoning")}>
       <div data-testid="model-reasoning" data-source={reasoning.source ?? "unset"}>
-        {priceDiffers(reasoning, outputPricePerMTok) && reasoning.reasoningPricePerMTok !== null ? (
+        {priceDiffers(reasoning) ? (
           <p className="mb-2 flex items-start gap-1.5 text-[12.5px] text-muted" data-testid="reasoning-price-note">
             <InfoIcon aria-hidden className="mt-0.5 size-[14px] shrink-0" />
-            {t("models.reasoning.priceNote", { price: formatPrice(reasoning.reasoningPricePerMTok) })}
+            {t("models.reasoning.priceNote")}
           </p>
         ) : null}
         {editing && canEdit ? (

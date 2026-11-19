@@ -25,7 +25,6 @@ export type ModelTableRow = {
   /** The keys (providers) that list it. */
   readonly listedBy: readonly string[];
   readonly contextWindow: number | null;
-  readonly outputPricePerMTok: number | null;
   readonly reasoning: ModelReasoning;
 };
 
@@ -43,6 +42,35 @@ const Logo = ({ row }: { readonly row: ModelTableRow }) => {
   return <img src={row.logoPath} alt="" className="size-4 shrink-0 opacity-75 invert" />;
 };
 
+/** A row's `Reasoning` cell: the levels, the price mark, and where they come from. */
+export const ReasoningCell = ({ reasoning, onUseCatalog }: {
+  readonly reasoning: ModelReasoning;
+  /** `null` for a viewer who can't change reasoning: no `Use the catalog's`. */
+  readonly onUseCatalog: (() => void) | null;
+}) => {
+  const line = reasoningLine(reasoning.controls);
+  return (
+    <td className="py-2" data-testid="model-reasoning-cell">
+      <span className={cn("text-[13.5px]", line.muted ? "text-muted" : "text-text")}>{line.text}</span>
+      {priceDiffers(reasoning) ? <PriceMark /> : null}
+      <span className="block text-xs text-faint">
+        {sourceLine(reasoning)}
+        {reasoning.source === "admin" && onUseCatalog !== null ? (
+          <>
+            {" · "}
+            <button type="button" className="text-teal" onClick={(event) => { event.stopPropagation(); onUseCatalog(); }} data-action="row-use-catalog">
+              {t("models.reasoning.useCatalog")}
+            </button>
+          </>
+        ) : null}
+      </span>
+    </td>
+  );
+};
+
+/** The footnote under a table with a marked row. */
+export const PriceFootnote = () => <p className="mt-3 text-[12.5px] text-faint" data-testid="reasoning-price-footnote">{t("models.reasoning.priceFootnote")}</p>;
+
 export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog }: {
   readonly rows: readonly ModelTableRow[] | null;
   readonly selectedId: string | null;
@@ -54,7 +82,7 @@ export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog 
   if (loading || rows === null) return <SkeletonRows height="h-14" />;
   if (rows.length === 0) return <p className="border-t border-line py-3 text-muted" data-testid="models-empty">{t("models.reasoning.empty")}</p>;
   const sorted = sortModelRows(rows);
-  const marked = sorted.some((row) => priceDiffers(row.reasoning, row.outputPricePerMTok));
+  const marked = sorted.some((row) => priceDiffers(row.reasoning));
   return (
     <div data-testid="models-table">
       <table className="w-full border-collapse text-body">
@@ -69,7 +97,6 @@ export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog 
         <tbody>
           {sorted.map((row) => {
             const on = row.id === selectedId;
-            const line = reasoningLine(row.reasoning.controls);
             return (
               <tr
                 key={row.id}
@@ -96,27 +123,13 @@ export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog 
                 </td>
                 <td className="pr-3 font-mono text-ui text-muted max-md:hidden">{listedByText(row.listedBy)}</td>
                 <td className="pr-3 font-mono text-ui max-md:hidden">{row.contextWindow === null ? "—" : formatCount(row.contextWindow)}</td>
-                <td className="py-2" data-testid="model-reasoning-cell">
-                  <span className={cn("text-[13.5px]", line.muted ? "text-muted" : "text-text")}>{line.text}</span>
-                  {priceDiffers(row.reasoning, row.outputPricePerMTok) ? <PriceMark /> : null}
-                  <span className="block text-xs text-faint">
-                    {sourceLine(row.reasoning)}
-                    {row.reasoning.source === "admin" && onUseCatalog !== null ? (
-                      <>
-                        {" · "}
-                        <button type="button" className="text-teal" onClick={(event) => { event.stopPropagation(); onUseCatalog(row.id); }} data-action="row-use-catalog">
-                          {t("models.reasoning.useCatalog")}
-                        </button>
-                      </>
-                    ) : null}
-                  </span>
-                </td>
+                <ReasoningCell reasoning={row.reasoning} onUseCatalog={onUseCatalog === null ? null : () => { onUseCatalog(row.id); }} />
               </tr>
             );
           })}
         </tbody>
       </table>
-      {marked ? <p className="mt-3 text-[12.5px] text-faint" data-testid="reasoning-price-footnote">{t("models.reasoning.priceFootnote")}</p> : null}
+      {marked ? <PriceFootnote /> : null}
     </div>
   );
 };

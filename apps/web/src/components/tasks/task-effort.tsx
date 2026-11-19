@@ -77,11 +77,11 @@ export const TaskEffortRow = ({ effort, viewer, onChange, onTakeOver, pending, e
           if (level !== undefined && level !== view.level) onChange(level);
         }}>
           <SelectTrigger className="h-7 w-[200px] max-w-full bg-surface text-ui" aria-label={t("tasks.effort.label")} data-testid="task-effort-trigger" data-level={view.level}>
-            <SelectValue />
+            <SelectValue>{effortLabel(view.level)}</SelectValue>
           </SelectTrigger>
           <SelectContent className="w-[280px]">
             {view.levels.map((level) => (
-              <SelectItem key={level} value={level} textValue={effortLabel(level)}>
+              <SelectItem key={level} value={level} textValue={effortLabel(level)} className="h-auto min-h-[30px] py-1.5">
                 <span className="flex min-w-0 flex-col">
                   <span>{effortLabel(level)}</span>
                   <span className="text-[12.5px] text-muted">{effortHint(level, view.levels)}</span>

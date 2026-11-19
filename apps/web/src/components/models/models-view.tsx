@@ -2,6 +2,7 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CpuIcon, PlusIcon, ServerIcon } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
@@ -16,7 +17,9 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { AddProviderForm } from "./add-provider-form";
-import { ModelEditor } from "./model-editor";
+import { ModelEditor, modelReasoningOf } from "./model-editor";
+import { priceDiffers } from "./model-reasoning";
+import { PriceFootnote, ReasoningCell } from "./models-table";
 import { ProviderSettings } from "./provider-settings";
 
 type Provider = RouterOutputs["providers"]["list"][number];
@@ -47,6 +50,10 @@ export const ModelsView = () => {
     queries: (providers.data ?? []).map((provider) => trpc.providers.models.queryOptions({ providerId: provider.id })),
   });
   const [selection, setSelection] = useState<Selection | null>(null);
+  // F-137: `?model=` opens that model (the profile editor's `Set it in Models`); a row's `Use the catalog's` opens its confirmation.
+  const params = useSearchParams();
+  const [confirmCatalog, setConfirmCatalog] = useState<string | null>(null);
+  const admin = me.data?.organization?.role === "admin";
 
   const builtIn = profiles.data?.find((profile) => profile.builtIn && profile.adapter === "opencode");
   const defaultModelId = builtIn?.model?.id ?? null;
@@ -88,7 +95,10 @@ export const ModelsView = () => {
   );
 
   const noProviders = providers.data?.length === 0;
-  const effective: Selection | null = selection ?? (noProviders ? { kind: "add" } : null);
+  const linked = params.get("model");
+  const linkedRow = linked === null ? undefined : rows.find((row) => row.model.id === linked);
+  const effective: Selection | null =
+    selection ?? (noProviders ? { kind: "add" } : linkedRow === undefined ? null : { kind: "model", providerId: linkedRow.provider.id, modelId: linkedRow.model.id });
   const selectedProvider =
     effective?.kind === "provider" ? providers.data?.find((p) => p.id === effective.providerId) : undefined;
   const selectedRow =
@@ -101,12 +111,15 @@ export const ModelsView = () => {
       <ProviderSettings key={selectedProvider.id} provider={selectedProvider} />
     ) : selectedRow !== undefined ? (
       <ModelEditor
-        key={selectedRow.model.id}
+        key={`${selectedRow.model.id}:${confirmCatalog === selectedRow.model.id ? "confirm" : ""}`}
         model={selectedRow.model}
         providerId={selectedRow.provider.id}
         isDefault={selectedRow.model.id === defaultModelId}
         settingDefault={setDefault.isPending}
         onUseAsDefault={() => { setDefault.mutate({ modelId: selectedRow.model.id }); }}
+        canEditReasoning={admin}
+        profileLevels={(profiles.data ?? []).filter((profile) => profile.model?.id === selectedRow.model.id).map((profile) => profile.effort)}
+        confirmCatalog={confirmCatalog === selectedRow.model.id}
       />
     ) : (
       <p className="text-sm text-muted">{t("models.selectHint")}</p>
@@ -164,7 +177,7 @@ export const ModelsView = () => {
         <Section title={t("models.enabled")} count={rows.length}>
           {setDefault.error === null ? null : <p role="alert" className="mb-2 text-sm text-red">{errorText(setDefault.error)}</p>}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-body">
+            <table className="w-full min-w-[720px] border-collapse text-body">
               <thead>
                 <tr className="h-[30px] border-b border-line text-left text-[12.5px] font-medium text-faint">
                   <th className="pr-3 font-medium">{t("models.model")}</th>
@@ -172,6 +185,7 @@ export const ModelsView = () => {
                   <th className="pr-3 text-right font-medium">{t("models.context")}</th>
                   <th className="pr-3 text-right font-medium">{t("models.inputPrice")}</th>
                   <th className="pr-3 text-right font-medium">{t("models.outputPrice")}</th>
+                  <th className="pl-3 font-medium">{t("models.reasoning.reasoning")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -205,12 +219,17 @@ export const ModelsView = () => {
                       <td className="pr-3 text-right font-mono text-ui">{formatTokens(model.contextWindow)}</td>
                       <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.inputPricePerMTok)}</td>
                       <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.outputPricePerMTok)}</td>
+                      <ReasoningCell
+                        reasoning={modelReasoningOf(model)}
+                        onUseCatalog={admin ? () => { setConfirmCatalog(model.id); setSelection({ kind: "model", providerId: provider.id, modelId: model.id }); } : null}
+                      />
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          {rows.some((row) => priceDiffers(modelReasoningOf(row.model))) ? <PriceFootnote /> : null}
         </Section>
       )}
     </PageFrame>

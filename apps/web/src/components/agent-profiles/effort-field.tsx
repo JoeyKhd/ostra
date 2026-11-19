@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
+import type { RouterOutputs } from "@/lib/trpc";
 
 // The profile's Effort (F-137; agent-profile-effort.md): a field inside `Agent and model`, under
 // the model. It offers exactly the levels the profile's agent can send for its model, `Default`
@@ -26,6 +27,24 @@ export type EffortChoice =
   | { readonly kind: "unset-custom"; readonly modelName: string; readonly modelsHref: string | null }
   /** The agent can't set an effort at all (`reasoningEffort: "none"`). */
   | { readonly kind: "agent-none"; readonly agentName: string };
+
+/** `agentProfiles.effortLevels`: the levels the profile's agent offers on a model (ticket 61). */
+export type EffortOptions = RouterOutputs["agentProfiles"]["effortLevels"];
+
+/**
+ * The choice for the router's options: an agent that takes no level, a custom model nobody set
+ * (with the link to Models for an admin), or the model's levels. `undefined` while they load.
+ */
+export const effortChoiceOf = (
+  options: EffortOptions | undefined,
+  names: { readonly model: string; readonly agent: string },
+  modelsHref: string | null,
+): EffortChoice => {
+  if (options === undefined) return { kind: "loading" };
+  if (!options.agentTakesEffort) return { kind: "agent-none", agentName: names.agent };
+  if (options.customModel && options.reasoningSource === null) return { kind: "unset-custom", modelName: names.model, modelsHref };
+  return { kind: "levels", modelName: names.model, levels: options.levels.map((view) => view.level) };
+};
 
 /** What the field shows for `value`: the list, or the quiet line that replaces it. */
 export type EffortFieldView =

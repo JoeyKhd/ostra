@@ -1,5 +1,5 @@
 import { blobIdSchema, modelIdSchema } from "@ostra/protocol";
-import type { AgentProfileId, MemberId } from "@ostra/protocol";
+import type { AgentProfileId, EffortLevel, MemberId } from "@ostra/protocol";
 
 import type { MessageKey } from "@/lib/messages";
 import type { RouterInputs } from "@/lib/trpc";
@@ -37,6 +37,8 @@ export type ProfileDraft = {
   readonly name: string;
   readonly adapter: string;
   readonly modelId: string | null;
+  /** F-137: how much its model reasons; a new task copies it. */
+  readonly effort: EffortLevel;
   readonly instructions: string;
   readonly planFirst: boolean;
   readonly access: "everyone" | "listed";
@@ -163,6 +165,7 @@ export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
   name: detail.name,
   adapter: detail.adapter,
   modelId: detail.model?.id ?? null,
+  effort: detail.effort,
   instructions: detail.instructions ?? "",
   planFirst: detail.planFirst,
   access: detail.access.kind,
@@ -201,6 +204,7 @@ export const newDraft = (adapter: string, modelId: string | null): ProfileDraft 
   name: "",
   adapter,
   modelId,
+  effort: "default",
   instructions: "",
   planFirst: false,
   access: "everyone",
@@ -212,9 +216,14 @@ export const newDraft = (adapter: string, modelId: string | null): ProfileDraft 
 
 type SaveInput = RouterInputs["agentProfiles"]["save"];
 
-/** The router's input for the draft. A header with no new value keeps the stored one (`null`). */
-export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | null, newId: () => string): SaveInput => ({
+/**
+ * The router's input for the draft. A header with no new value keeps the stored one (`null`). The
+ * level is sent only when it differs from `savedEffort`, so a stored level the model lacks is kept,
+ * not refused (F-137, agent-profile-effort.md: "Saving without choosing keeps the stored level").
+ */
+export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | null, newId: () => string, savedEffort: EffortLevel = "default"): SaveInput => ({
   ...(profileId === null ? {} : { profileId }),
+  ...(draft.effort === savedEffort ? {} : { effort: draft.effort }),
   name: draft.name.trim(),
   adapter: draft.adapter,
   modelId: draft.modelId === null ? null : modelIdSchema.parse(draft.modelId),

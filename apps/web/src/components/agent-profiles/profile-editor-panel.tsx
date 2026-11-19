@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 
 import type { MemberId } from "@ostra/protocol";
 
+import { effortLabel, offersChoice } from "@/components/effort/effort-words";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -141,6 +142,11 @@ export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members
                 <span className="text-faint">{t("agentProfiles.props.noTasks")}</span>
               ) : (
                 <span data-testid="used-by">{plural(detail.usedBy, "agentProfiles.props.tasksOne", "agentProfiles.props.tasksMany")}</span>
+              ))}
+            </Row>
+            <Row label={t("agentProfiles.editor.effort.label")}>
+              {value(detail === null ? null : (
+                <span data-testid="panel-effort">{effortLabel(offersChoice(detail.effortOptions.levels.map((view) => view.level)) ? detail.effort : "default")}</span>
               ))}
             </Row>
           </>

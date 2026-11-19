@@ -6,8 +6,8 @@ import type { EffortLevel } from "@ostra/protocol";
 
 import { t } from "@/lib/messages";
 
-import { EffortField, effortFieldView, panelEffort } from "./effort-field";
-import type { EffortChoice } from "./effort-field";
+import { EffortField, effortChoiceOf, effortFieldView, panelEffort } from "./effort-field";
+import type { EffortChoice, EffortOptions } from "./effort-field";
 
 /** The markup with apostrophes as typed, so a message reads as it is in `en.json`. */
 const renderToStaticMarkup = (node: ReactElement): string => renderMarkup(node).replaceAll("&#x27;", "'");
@@ -83,5 +83,30 @@ describe("the profile's effort", () => {
     const html = render({ kind: "loading" }, "default");
     expect(html).toContain("aria-busy");
     expect(html.match(/h-\[26px\]/g)).toHaveLength(4);
+  });
+});
+
+describe("the choice from agentProfiles.effortLevels", () => {
+  const options = (over: Partial<EffortOptions>): EffortOptions => ({
+    levels: (["default", "low", "high", "max"] as const).map((level) => ({ level, labelKey: `effort.levels.${level}` })),
+    runsAt: "default",
+    adjusted: false,
+    reasoningSource: "catalog",
+    customModel: false,
+    agentTakesEffort: true,
+    ...over,
+  });
+  const names = { model: "DeepSeek V4 Pro", agent: "OpenCode" };
+
+  it("F-137: the router's levels become the list; an agent with none, and a custom model nobody set, become their lines", () => {
+    expect(effortChoiceOf(undefined, names, null)).toEqual({ kind: "loading" });
+    expect(effortChoiceOf(options({}), names, null)).toEqual({ kind: "levels", modelName: "DeepSeek V4 Pro", levels: ["default", "low", "high", "max"] });
+    expect(effortChoiceOf(options({ agentTakesEffort: false }), names, null)).toEqual({ kind: "agent-none", agentName: "OpenCode" });
+    expect(effortChoiceOf(options({ customModel: true, reasoningSource: null, levels: [{ level: "default", labelKey: "effort.levels.default" }] }), names, "/organization/models?model=m")).toEqual({
+      kind: "unset-custom",
+      modelName: "DeepSeek V4 Pro",
+      modelsHref: "/organization/models?model=m",
+    });
+    expect(effortChoiceOf(options({ customModel: true, reasoningSource: "admin" }), names, null).kind).toBe("levels");
   });
 });

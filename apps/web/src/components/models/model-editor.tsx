@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { SubmitEvent } from "react";
 
+import type { EffortLevel } from "@ostra/protocol";
+
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -13,6 +15,9 @@ import { formatPrice, formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+
+import { ReasoningGroup } from "./model-reasoning";
+import type { ModelReasoning } from "./model-reasoning";
 
 type Model = RouterOutputs["providers"]["models"][number];
 
@@ -29,8 +34,22 @@ const text = (value: number | null): string => (value === null ? "" : String(val
  * A model's properties. A catalog model shows the catalog's values; a custom model (one the
  * catalog doesn't know) has its name, limits and prices edited here (F-088).
  */
-export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, settingDefault }: {
+/** The API's reasoning as the page reads it: a custom model nobody set has no controls (F-137). */
+export const modelReasoningOf = (model: Pick<Model, "reasoning">): ModelReasoning => ({
+  controls: model.reasoning.source === null ? null : model.reasoning.controls,
+  source: model.reasoning.source,
+  catalog: model.reasoning.catalog,
+  reasoningPriceDiffers: model.reasoning.reasoningPriceDiffers,
+});
+
+export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, settingDefault, canEditReasoning, profileLevels, confirmCatalog }: {
   readonly model: Model;
+  /** F-137: an organization admin sets the model's reasoning. */
+  readonly canEditReasoning: boolean;
+  /** The levels saved on the profiles that use this model. */
+  readonly profileLevels: readonly EffortLevel[];
+  /** Opened from a row's `Use the catalog's`. */
+  readonly confirmCatalog: boolean;
   readonly providerId: string;
   readonly isDefault: boolean;
   readonly onUseAsDefault: () => void;
@@ -46,6 +65,12 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
     outputPrice: text(model.outputPricePerMTok),
   });
   const save = useMutation(
+    trpc.providers.updateModel.mutationOptions({
+      onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.providers.models.queryKey({ providerId }) }),
+    }),
+  );
+
+  const reasoning = useMutation(
     trpc.providers.updateModel.mutationOptions({
       onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.providers.models.queryKey({ providerId }) }),
     }),
@@ -115,6 +140,18 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
           <PropRow label={t("models.outputPrice")}><span className="font-mono">{formatPrice(model.outputPricePerMTok)}</span></PropRow>
         </PropGroup>
       )}
+      <ReasoningGroup
+        modelName={model.displayName ?? model.endpointModelId}
+        custom={model.custom}
+        reasoning={modelReasoningOf(model)}
+        canEdit={canEditReasoning}
+        profileLevels={profileLevels}
+        pending={reasoning.isPending}
+        error={reasoning.error === null ? null : errorText(reasoning.error)}
+        onSave={(controls) => { reasoning.mutate({ modelId: model.id, reasoning: controls }); }}
+        onUseCatalog={() => { reasoning.mutate({ modelId: model.id, reasoning: null }); }}
+        initiallyConfirming={confirmCatalog}
+      />
     </div>
   );
 };

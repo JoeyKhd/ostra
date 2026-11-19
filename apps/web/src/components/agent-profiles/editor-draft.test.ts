@@ -146,3 +146,12 @@ describe("a file picked for a skill", () => {
     expect(saveInputOf(filled({ skills: [skill] }), null, newId).skills).toEqual([{ name: "changelog", body: "# x", files: [{ path: "examples/one.md", blobId: blob }] }]);
   });
 });
+
+describe("the profile's effort in the save", () => {
+  it("F-137: a chosen level is saved; an unchanged stored level is left out, so the model lacking it keeps it", () => {
+    expect(saveInputOf(filled({ effort: "high" }), null, newId).effort).toBe("high");
+    expect(saveInputOf(filled(), null, newId)).not.toHaveProperty("effort");
+    expect(saveInputOf(filled({ effort: "xhigh" }), null, newId, "xhigh")).not.toHaveProperty("effort");
+    expect(saveInputOf(filled({ effort: "max" }), null, newId, "xhigh").effort).toBe("max");
+  });
+});

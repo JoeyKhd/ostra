@@ -32,7 +32,8 @@ import { ApprovalCard, PlanBlock, QuestionCard, TicketClosedBlock, WatcherBar, a
 import { ChangesTab } from "./task-changes/changes-tab";
 import { ChecksTab, checksMarkerOf } from "./task-checks/checks-tab";
 import { ChecksTabMarker } from "./task-checks/task-checks";
-import { ReasoningRow } from "./task-effort";
+import { ReasoningRow, TaskEffortRow } from "./task-effort";
+import type { TaskEffort } from "./task-effort";
 import { TakeItLocal } from "./take-it-local";
 import type { LocalLoad } from "./take-it-local";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
@@ -99,8 +100,10 @@ const CopyLink = () => {
  * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
  * are the only markers. Spend (F-084) and the Changes group (F-027) come later.
  */
-const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket }: {
+const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort }: {
   readonly task: Task;
+  /** F-137: the Effort row, built by the view (it holds the change's mutation). */
+  readonly effort: ReactNode;
   readonly tokens: { readonly inputTokens: number; readonly outputTokens: number; readonly estimated: boolean };
   /** F-137: the reasoning tokens inside `out`, from the turns' usage. */
   readonly reasoningTokens: number;
@@ -147,6 +150,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
             )}
           </>
         )}
+        {effort}
         <PropRow label={t("taskPage.runner")}>
           {task.runner === null ? <span className="text-faint">{t("taskPage.noRunner")}</span> : <Mono>{task.runner.name}</Mono>}
         </PropRow>
@@ -270,6 +274,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     }),
   );
   const takeOver = useMutation(trpc.tasks.takeOver.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) }));
+  const setEffort = useMutation(trpc.tasks.setEffort.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) }));
   const settle = { onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) };
   const reopen = useMutation(trpc.tasks.reopen.mutationOptions(settle));
   const retrySync = useMutation(trpc.tasks.retrySync.mutationOptions(settle));
@@ -333,6 +338,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const prs = data.repos.flatMap((repo) => (repo.pr === null ? [] : [{ ...repo.pr, href: safeHref(repo.pr.url) }]));
   const summary = data.needsYou.find((item) => item.summary !== null)?.summary ?? null;
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
+  // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
+  const effort: TaskEffort = { level: view.effort ?? data.effort.level, levels: data.effort.levels.map((one) => one.level), runningTurn: view.runningEffort };
   const stateText = stopping && !stopped ? t("taskPage.stopping") : taskStateLine(data.state, data.reason);
   const activity = idleHeader(data.box, now) ?? headerActivity(view.activity);
   const mode = composerMode(composerInputOf(data));
@@ -400,6 +407,16 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           takingOver={takeOver.isPending}
           onTakeOver={() => { takeOver.mutate({ taskId }); }}
           ticket={ticketGroups}
+          effort={
+            <TaskEffortRow
+              effort={effort}
+              viewer={{ driver: data.capabilities.setEffort, canTakeOver: data.capabilities.takeOver, finished }}
+              pending={setEffort.isPending}
+              error={setEffort.error === null ? null : errorText(setEffort.error)}
+              onChange={(level) => { setEffort.mutate({ taskId, level }); }}
+              onTakeOver={takeOverNow}
+            />
+          }
         />
       }
     >
