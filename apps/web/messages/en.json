@@ -846,6 +846,8 @@
     "tokens": "Tokens",
     "in": "in",
     "out": "out",
+    "estimated": "estimated",
+    "estimatedHelp": "An endpoint reported no usage for a call, so the key proxy estimated its tokens.",
     "context": "Context",
     "code": "Code",
     "repo": "Repo",

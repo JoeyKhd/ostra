@@ -80,3 +80,20 @@ test("the default view of a 5,000-event task renders, and the time is recorded",
   // ADR 0036's bar (1.5 s) is measured on a mid laptop; this machine's figure is noted, not claimed.
   expect(ms).toBeLessThan(15_000);
 });
+
+test("F-089: the task page shows the key proxy's count, and says so when a call's count is an estimate", async ({ page }) => {
+  await signIn(page);
+  // Every call reported its usage: a plain count.
+  const exact = await seedTask("usage");
+  await page.goto(`/tasks/${exact}`);
+  const properties = page.getByTestId("task-properties");
+  await expect(properties.getByTestId("task-tokens")).toHaveText("2k in · 450 out");
+  await expect(properties.getByTestId("task-tokens-estimated")).toHaveCount(0);
+  // One call's endpoint reported none: the same count, marked as an estimate.
+  const estimated = await seedTask("estimated-usage");
+  await page.goto(`/tasks/${estimated}`);
+  await expect(properties.getByTestId("task-tokens")).toHaveText("2k in · 450 out");
+  await expect(properties.getByTestId("task-tokens-estimated")).toHaveText("estimated");
+  await expect(properties.getByTestId("task-tokens-estimated")).toHaveAttribute("title", /estimated its tokens/);
+  await expectNoHorizontalScroll(page);
+});

@@ -8,6 +8,7 @@
 // - `rest`: appends the rest of the recorded session to a `mid-turn` task (`taskId` given).
 // - `without-changes`: a finished session with no changes, in "needs you" with the agent's summary.
 // - `long`: 5,000 events, for the render budget.
+// - `usage`, `estimated-usage`: a turn with two counted model calls; in the second, one is an estimate (F-089).
 
 import { randomUUID } from "node:crypto";
 
@@ -19,7 +20,7 @@ import { z } from "zod";
 
 const argsSchema = z.strictObject({
   databaseUrl: z.string(),
-  scenario: z.enum(["mid-turn", "rest", "without-changes", "long"]),
+  scenario: z.enum(["mid-turn", "rest", "without-changes", "long", "usage", "estimated-usage"]),
   taskId: taskIdSchema.optional(),
 });
 
@@ -158,6 +159,35 @@ const main = async (): Promise<void> => {
     case "long": {
       const taskId = await createTask("A long task", "running");
       await appendEvents(taskId, longSession(5_000).filter((event) => event.kind !== "user.message"));
+      process.stdout.write(`${JSON.stringify({ taskId })}\n`);
+      break;
+    }
+    case "usage":
+    case "estimated-usage": {
+      // F-089: one turn with two model calls, counted by the key proxy. In `estimated-usage` the
+      // endpoint reported no usage for the second, which the key proxy estimated.
+      const taskId = await createTask("Count the tokens of two calls", "running");
+      const turnId = randomUUID();
+      const call = (inputTokens: number, outputTokens: number, estimated: boolean) => ({
+        kind: "usage.recorded",
+        providerId: randomUUID(),
+        modelId: randomUUID(),
+        inputTokens,
+        outputTokens,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        estimated,
+      });
+      await appendEvents(
+        taskId,
+        [
+          { kind: "turn.started", turnId },
+          call(1200, 300, false),
+          call(800, 150, args.scenario === "estimated-usage"),
+          { kind: "agent.message", turnId, segmentId: "seg-counted", text: "Two calls, counted." },
+          { kind: "turn.ended", turnId, stopReason: "end_turn" },
+        ].map((event) => taskEventSchema.parse(event)),
+      );
       process.stdout.write(`${JSON.stringify({ taskId })}\n`);
       break;
     }

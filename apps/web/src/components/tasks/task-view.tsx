@@ -135,6 +135,12 @@ const Properties = ({ task, tokens, context, now, onTakeOver, takingOver }: {
           <Mono>
             <span data-testid="task-tokens">{formatTokens(input)} {t("taskPage.in")} · {formatTokens(output)} {t("taskPage.out")}</span>
           </Mono>
+          {/* F-089: a call whose endpoint reported no usage was estimated by the key proxy, and the count says so. */}
+          {tokens.estimated ? (
+            <span data-testid="task-tokens-estimated" className="truncate text-faint" title={t("taskPage.estimatedHelp")}>
+              {t("taskPage.estimated")}
+            </span>
+          ) : null}
         </PropRow>
         {context === null ? null : (
           <PropRow label={t("taskPage.context")}>
