@@ -27,7 +27,7 @@ They were made image first with the `ui-taste` skill on Higgsfield `gpt_image_2_
 | Approve a runner | `/device` | `device` |
 | Models | `/organization/models` | `models` |
 | GitHub | `/organization/github` | `github`, `github-not-connected` |
-| Choose a new password | first sign-in with the default password | coming: it replaces the old setup target |
+| Choose a new password | `/change-password`, forced at the first sign-in with the default password | `change-password`, `home-banner` (the default-password banner) |
 
 The old "Create the first admin" setup target is gone. On 2026-11-19 the maintainer decided that a fresh install creates its first admin from settings, `demo@demo.com` / `demo` by default. The setup checklist now lives on Home (`home.md`, "First run").
 
