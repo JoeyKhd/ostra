@@ -3,15 +3,19 @@ import { defineConfig, devices } from "@playwright/test";
 import { e2eBaseUrl } from "./e2e/settings.ts";
 
 // The panel's browser checks (ADR 0007): a throwaway stack (`e2e/stack.ts`) and Chromium at
-// desktop and phone width. Run with `pnpm --filter @ostra/web test:e2e` after `next build`.
+// desktop and phone width. Run with `pnpm --filter @ostra/web test:e2e`, which builds the panel first.
+// On CI it also writes the HTML report, and a screenshot of each failure, for the job's artifacts.
+const ci = process.env["CI"] === "true";
+
 export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.spec.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
-  reporter: [["list"]],
-  use: { baseURL: e2eBaseUrl, trace: "retain-on-failure" },
+  forbidOnly: ci,
+  reporter: ci ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  use: { baseURL: e2eBaseUrl, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "phone", use: { ...devices["Pixel 7"] }, dependencies: ["desktop"] },

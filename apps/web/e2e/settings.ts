@@ -1,6 +1,20 @@
 // Fixed values for the end-to-end stack, which work only against the throwaway database `stack.ts`
 // starts.
-export const e2ePort = 3100;
+
+/**
+ * The stack's three ports are OSTRA_E2E_PORT (3100 by default) and the two after it, so two
+ * checkouts on one machine can each run the suite.
+ */
+const basePort = ((): number => {
+  const raw = process.env["OSTRA_E2E_PORT"] ?? "3100";
+  const port = Number.parseInt(raw, 10);
+  if (!/^\d+$/.test(raw) || port < 1024 || port > 65_533) {
+    throw new Error(`OSTRA_E2E_PORT must be a port from 1024 to 65533, not "${raw}"`);
+  }
+  return port;
+})();
+
+export const e2ePort = basePort;
 export const e2eBaseUrl = `http://localhost:${String(e2ePort)}`;
 
 /**
@@ -17,10 +31,10 @@ export const e2eAdmin = {
 } as const;
 
 /** The stub model endpoint (Anthropic's format) and the token it accepts: a test value. */
-export const e2eStubPort = 3101;
+export const e2eStubPort = basePort + 1;
 export const e2eStubBaseUrl = `http://127.0.0.1:${String(e2eStubPort)}/v1`;
 /** Core, which the runner connects to, and the fake GitHub's repo (the fake serves one org, `fake-org`). */
-export const e2eCorePort = 3102;
+export const e2eCorePort = basePort + 2;
 export const e2eCoreUrl = `http://127.0.0.1:${String(e2eCorePort)}`;
 export const e2eRepo = { owner: "fake-org", name: "test1" } as const;
 export const e2eRunnerName = "e2e-runner";
