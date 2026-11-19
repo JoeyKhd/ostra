@@ -32,6 +32,23 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_ORGANIZATION_NAME` | `Demo` | The first organization's name. Read only when the first admin is created. |
 | `OSTRA_ALLOW_DEFAULT_PASSWORD` | `false` | `true` lets the seeded admin keep the default password, for a demo: no forced change at sign-in, but a warning across the panel until it changes. Never on an install others can reach. |
 | `OSTRA_DEV_PG_PORT` | `54329` | The embedded dev database's port (development only). |
+| `OSTRA_BOX_IDLE_MINUTES` | `15` | After this many minutes with no turn, a box stops its agent and its session ends (F-096). Its work was already pushed, with the hidden ref and the session archive, after its last turn; the next message reopens the task. |
+| `OSTRA_SESSION_MAX_MINUTES` | `120` | A session's longest life. Past it, core stops the session and the task needs you (runaway protection, F-068). |
+| `OSTRA_SESSION_STALL_MINUTES` | `10` | This long with no agent event, and core stops the session as stalled (F-068). |
+| `OSTRA_TASK_SPEND_CAP_USD` | `25` | A task's spend cap in US dollars, counted on the four token kinds at the model's prices (F-068). At the cap the runner's key proxy stops the session and the task needs you. At most `2000`. |
+| `OSTRA_TASK_TOKEN_CAP` | `10000000` | A task's cap in tokens, used instead of the dollar cap when the model has no known price; the panel says so. |
+| `OSTRA_TRACKER_POLL_SECONDS` | `60` | How often a board is polled when its tracker can't reach ostra's webhooks: an install with no public address (F-042). |
+| `OSTRA_RECONCILE_MINUTES` | `5` | How often core checks the open PRs' states on GitHub, in case a webhook was missed (F-044). |
+| `OSTRA_WEBHOOK_INSERT_DEADLINE_MS` | `2000` | How long saving a webhook may take before core answers `503`, so the sender retries rather than losing it. |
+| `OSTRA_BOX_RELEASE_IDLE_DAYS` | `14` | A stopped box is released after this many idle days, and its task's hidden ref deleted (F-079). |
+| `OSTRA_RETENTION_DAYS` | unset: keep while the task exists | Delete a finished task's histories, archives and blobs this many days after it ends (F-079). It applies only until an admin saves a retention in the panel, which wins, "keep" included. |
+| `OSTRA_BLOB_STORE` | `postgres` | Where blobs are kept (session archives, ticket images): `postgres`, in the database's own tables, or `s3`, any S3-compatible store (F-114). |
+| `OSTRA_BLOB_MAX_MIB` | `64` | The largest blob in MiB, and so the largest session archive; over it, the next reopen uses the rebuild template. At most `64`. |
+| `OSTRA_S3_ENDPOINT` | unset: AWS S3 | The S3-compatible store's endpoint, such as a MinIO or R2 URL. Read only with `OSTRA_BLOB_STORE=s3`. |
+| `OSTRA_S3_BUCKET` | unset; required with `OSTRA_BLOB_STORE=s3` | The bucket blobs are kept in. |
+| `OSTRA_S3_REGION` | unset | The store's region. Read only with `OSTRA_BLOB_STORE=s3`. |
+| `OSTRA_S3_ACCESS_KEY_ID` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's ID. |
+| `OSTRA_S3_SECRET_ACCESS_KEY` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's secret. Never logged. |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 
@@ -88,5 +105,6 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 | `OSTRA_DEV_GITHUB_ORG` | (none) | The test GitHub org, from `~/.config/ostra-dev/github-test.env`. |
 | `OSTRA_DEV_GITHUB_REPOS` | (none) | Its test repos, comma-separated. |
 | `OSTRA_DEV_PUBLIC_URL` | (none) | A public address that reaches core's port, from `~/.config/ostra-dev/tunnel.env`, for webhook tests. |
+| `OSTRA_DEV_BLOCK_WEBHOOKS` | (none) | `linear`, `github` or both, comma-separated: core refuses those webhook routes, so a test sees the polling and the reconcile catch up (milestone 2's demo and failure suite). |
 
 Variables named `OSTRA_SPIKE_*` belong to the spikes in `spikes/`. The server neither reads nor refuses them, so the dev env files can be loaded before `pnpm dev`.

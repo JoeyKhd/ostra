@@ -10,3 +10,9 @@ export type UseCaseResult<T, E extends string> =
 export const notImplemented = (ticket: string): never => {
   throw new Error(`not implemented: ticket ${ticket}`);
 };
+
+/**
+ * What a milestone 2 use case answers until the ticket that writes its body lands: a rejected
+ * promise naming that ticket. The signature is the contract; callers can be written against it.
+ */
+export const notYet = (ticket: string): Promise<never> => Promise.reject(new Error(`not implemented yet: ticket ${ticket}`));

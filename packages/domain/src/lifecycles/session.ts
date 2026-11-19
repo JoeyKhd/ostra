@@ -5,7 +5,8 @@ import type { Transition } from "./transition.ts";
 
 // A session's lifecycle (domain-model.md, "A session's lifecycle"): one conversation with one
 // agent profile in one box. Only one session per task is starting, running, waiting or idle.
-// In milestone 1 a session is one turn: starting → running → idle → ended.
+// In milestone 1 a session was one turn. From milestone 2 (protocol minor 1) it spans many: it's
+// idle between turns while the box stays warm, and ends when the box stops (the idle timer, F-096).
 
 /** How a session began (Q53, ADR 0039). */
 export type SessionOrigin = DbEnum.SessionOrigin;
@@ -34,6 +35,8 @@ export type SessionInput =
   | { readonly type: "turn_ended" }
   | { readonly type: "box_stopped"; readonly withChanges: boolean }
   | { readonly type: "stop" }
+  /** A runaway limit stopped it (F-068); the limit is kept on the session's row. */
+  | { readonly type: "limit_reached" }
   | { readonly type: "crash" };
 
 const activeStates: ReadonlySet<SessionStateName> = new Set(["starting", "running", "waiting", "idle"]);
@@ -57,6 +60,7 @@ export const transitionSession = (session: SessionState, input: SessionInput): T
     case "box_stopped":
       return from === "idle" ? moveTo({ state: "ended", withChanges: input.withChanges }) : refuse(input, from);
     case "stop":
+    case "limit_reached":
       return activeStates.has(from) ? moveTo({ state: "stopped" }) : refuse(input, from);
     case "crash":
       return activeStates.has(from) ? moveTo({ state: "crashed" }) : refuse(input, from);

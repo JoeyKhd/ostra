@@ -144,16 +144,40 @@ export const sessionFromColumns = (row: SessionColumns): Decoded<SessionState> =
 
 // ---------- box ----------
 
-export type BoxColumns = Pick<Box, "state" | "failedReason">;
+export type BoxColumns = Pick<Box, "state" | "failedReason" | "releaseReason">;
 
-export const boxToColumns = (box: BoxLifecycle): BoxColumns =>
-  box.state === "failed" ? { state: "failed", failedReason: box.reason } : { state: box.state, failedReason: null };
+export const boxToColumns = (box: BoxLifecycle): BoxColumns => {
+  switch (box.state) {
+    case "failed":
+      return { state: "failed", failedReason: box.reason, releaseReason: null };
+    case "released":
+      return { state: "released", failedReason: null, releaseReason: box.reason };
+    case "creating":
+    case "preparing":
+    case "ready":
+    case "idle":
+    case "stopped":
+      return { state: box.state, failedReason: null, releaseReason: null };
+    default:
+      return box satisfies never;
+  }
+};
 
 export const boxFromColumns = (row: BoxColumns): Decoded<BoxLifecycle> => {
-  if (row.state === "failed") {
-    return decoded({ state: "failed", reason: row.failedReason ?? "unknown" });
+  switch (row.state) {
+    case "failed":
+      return decoded({ state: "failed", reason: row.failedReason ?? "unknown" });
+    case "released":
+      return decoded({ state: "released", reason: row.releaseReason });
+    case "creating":
+    case "preparing":
+    case "ready":
+    case "idle":
+    case "stopped":
+      return row.releaseReason === null ? decoded({ state: row.state }) : broken(`a ${row.state} box has a release reason`);
+    default:
+      return row.state satisfies never;
   }
-  return decoded({ state: row.state });
 };
 
 // ---------- runner, needs-you item, snapshot ----------

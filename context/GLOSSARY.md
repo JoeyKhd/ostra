@@ -54,6 +54,14 @@ _Avoid_: workflow, state map
 A project's list of the open tickets on its boards, from ostra's cached copy, where a member turns a ticket into a task.
 _Avoid_: backlog, queue (the queue holds tasks waiting for a runner), triage
 
+**Ticket template**:
+The text a ticket task's first prompt is rendered from: the ticket's title, description, comments, labels, images, parent and linked tickets, and the agent profile's instructions, each piece of the ticket's own text in a marked block. A project has the built-in one until an admin edits it. It holds placeholders and sections, and no code.
+_Avoid_: prompt template (the rebuild template is another thing), context
+
+**Ticket write**:
+One change ostra makes on a ticket (a status move, the progress comment or its edit, a PR or task link, a new ticket), saved in the same transaction as the task change that caused it and applied later with a key fixed by the task and the step, so a replay never makes a second one.
+_Avoid_: sync job, update
+
 **Automation**:
 A project's rule that starts tasks by itself: an intake rule, which acts on matching tickets, or a schedule, which acts at set times.
 _Avoid_: workflow, trigger
@@ -199,8 +207,12 @@ _Avoid_: transcript, history (the task's history is ostra's own record), backup
 The fixed text a task's third way of reopening starts a new session from, when the session archive can't be restored or another agent takes the task over: the ticket, the PR's text, every member message, every agent message, an interrupted turn's text in a section of its own, and the branch's log. ostra assembles it as a string and calls no model. It holds no tool output.
 _Avoid_: summary (nothing summarizes it), recap
 
+**Restore conflict**:
+What happens when a task's saved unfinished work can't be merged with commits pushed to its branch since: nothing is restored, the agent carries on from the branch's head, and the task's driver gets a needs-you item about it. The task doesn't stop for it.
+_Avoid_: merge failure, failed restore
+
 **Command**:
-A numbered instruction from the server to a runner or a sidecar: dispatch, steer, interrupt, stop, an approval's answer.
+A numbered instruction from the server to a runner or a sidecar: dispatch, steer, interrupt, stop, an approval's answer, and (from protocol minor 1) release a box.
 _Avoid_: message, job
 
 ### The environment

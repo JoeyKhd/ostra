@@ -1,3 +1,5 @@
+import type { DbEnum } from "@ostra/db";
+
 import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
 
@@ -5,13 +7,17 @@ import type { Transition } from "./transition.ts";
 // through the same states, so a task behaves the same on every executor. A box is never reused:
 // `released` and `failed` are final.
 
+/** Why a box was released (F-079). `@ostra/protocol`'s `release` command writes them with a hyphen. */
+export type BoxReleaseReason = DbEnum.BoxReleaseReason;
+
 export type BoxLifecycle =
   | { readonly state: "creating" }
   | { readonly state: "preparing" }
   | { readonly state: "ready" }
   | { readonly state: "idle" }
   | { readonly state: "stopped" }
-  | { readonly state: "released" }
+  /** `reason` is `null` for a box released before milestone 2 recorded one. */
+  | { readonly state: "released"; readonly reason: BoxReleaseReason | null }
   | { readonly state: "failed"; readonly reason: string };
 
 export type BoxInput =
@@ -23,8 +29,8 @@ export type BoxInput =
   | { readonly type: "turn_started" }
   /** The idle timer ran out, or the task was stopped. */
   | { readonly type: "stop" }
-  /** The executor removed it. */
-  | { readonly type: "release" }
+  /** The executor removed it, for this reason. */
+  | { readonly type: "release"; readonly reason: BoxReleaseReason }
   /** Creating or preparing failed, or the box was lost with its host. */
   | { readonly type: "fail"; readonly reason: string };
 
@@ -43,7 +49,7 @@ export const transitionBox = (box: BoxLifecycle, input: BoxInput): Transition<Bo
     case "stop":
       return from === "ready" || from === "idle" ? moveTo({ state: "stopped" }) : refuse(input, from);
     case "release":
-      return from === "stopped" ? moveTo({ state: "released" }) : refuse(input, from);
+      return from === "stopped" ? moveTo({ state: "released", reason: input.reason }) : refuse(input, from);
     case "fail":
       return from === "creating" || from === "preparing" || from === "ready" || from === "idle"
         ? moveTo({ state: "failed", reason: input.reason })

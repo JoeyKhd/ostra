@@ -42,6 +42,24 @@ export const settingNames = [
   "OSTRA_ORGANIZATION_NAME",
   "OSTRA_ALLOW_DEFAULT_PASSWORD",
   "OSTRA_DEV_PG_PORT",
+  // ---- milestone 2 (spec section 5.4) ----
+  "OSTRA_BOX_IDLE_MINUTES",
+  "OSTRA_SESSION_MAX_MINUTES",
+  "OSTRA_SESSION_STALL_MINUTES",
+  "OSTRA_TASK_SPEND_CAP_USD",
+  "OSTRA_TASK_TOKEN_CAP",
+  "OSTRA_TRACKER_POLL_SECONDS",
+  "OSTRA_RECONCILE_MINUTES",
+  "OSTRA_WEBHOOK_INSERT_DEADLINE_MS",
+  "OSTRA_BOX_RELEASE_IDLE_DAYS",
+  "OSTRA_RETENTION_DAYS",
+  "OSTRA_BLOB_STORE",
+  "OSTRA_BLOB_MAX_MIB",
+  "OSTRA_S3_ENDPOINT",
+  "OSTRA_S3_BUCKET",
+  "OSTRA_S3_REGION",
+  "OSTRA_S3_ACCESS_KEY_ID",
+  "OSTRA_S3_SECRET_ACCESS_KEY",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -134,6 +152,74 @@ export const settingFields = {
     default: String(DEV_PG_PORT_DEFAULT),
     description: `The embedded dev database's port (${DEV_ONLY}).`,
   },
+  OSTRA_BOX_IDLE_MINUTES: {
+    default: "15",
+    description: "After this many minutes with no turn, a box stops its agent and its session ends (F-096). The next message reopens the task.",
+  },
+  OSTRA_SESSION_MAX_MINUTES: {
+    default: "120",
+    description: "A session's longest life: past it, core stops the session and the task needs you (runaway protection, F-068).",
+  },
+  OSTRA_SESSION_STALL_MINUTES: {
+    default: "10",
+    description: "This long with no agent event, and core stops the session as stalled (F-068).",
+  },
+  OSTRA_TASK_SPEND_CAP_USD: {
+    default: "25",
+    description: "A task's spend cap in US dollars, on the four token kinds at the model's prices (F-068). At the cap the session stops and the task needs you. At most 2000.",
+  },
+  OSTRA_TASK_TOKEN_CAP: {
+    default: "10000000",
+    description: "A task's cap in tokens, used instead of the dollar cap when the model has no known price.",
+  },
+  OSTRA_TRACKER_POLL_SECONDS: {
+    default: "60",
+    description: "How often a board is polled when its tracker can't reach ostra's webhooks (F-042).",
+  },
+  OSTRA_RECONCILE_MINUTES: {
+    default: "5",
+    description: "How often core checks the open PRs' states on GitHub, in case a webhook was missed (F-044).",
+  },
+  OSTRA_WEBHOOK_INSERT_DEADLINE_MS: {
+    default: "2000",
+    description: "How long saving a webhook may take before core answers 503, so the sender retries (spec section 4).",
+  },
+  OSTRA_BOX_RELEASE_IDLE_DAYS: {
+    default: "14",
+    description: "A stopped box is released after this many idle days, and its task's hidden ref deleted (F-079).",
+  },
+  OSTRA_RETENTION_DAYS: {
+    default: "unset: keep while the task exists",
+    description: "Delete a finished task's histories, archives and blobs this many days after it ends (F-079). A retention an admin saves in the panel wins over it.",
+  },
+  OSTRA_BLOB_STORE: {
+    default: "postgres",
+    description: "Where blobs (session archives, ticket images) are kept: postgres, in the database's own tables, or s3, any S3-compatible store (F-114).",
+  },
+  OSTRA_BLOB_MAX_MIB: {
+    default: "64",
+    description: "The largest blob, in MiB, and so the largest session archive; over it, the next reopen uses the rebuild template. At most 64.",
+  },
+  OSTRA_S3_ENDPOINT: {
+    default: "unset: AWS S3",
+    description: "The S3-compatible store's endpoint, such as a MinIO or R2 URL. Read only with OSTRA_BLOB_STORE=s3.",
+  },
+  OSTRA_S3_BUCKET: {
+    default: "unset; required with OSTRA_BLOB_STORE=s3",
+    description: "The bucket blobs are kept in. Read only with OSTRA_BLOB_STORE=s3.",
+  },
+  OSTRA_S3_REGION: {
+    default: "unset",
+    description: "The store's region. Read only with OSTRA_BLOB_STORE=s3.",
+  },
+  OSTRA_S3_ACCESS_KEY_ID: {
+    default: "unset; required with OSTRA_BLOB_STORE=s3",
+    description: "The access key's ID. Read only with OSTRA_BLOB_STORE=s3.",
+  },
+  OSTRA_S3_SECRET_ACCESS_KEY: {
+    default: "unset; required with OSTRA_BLOB_STORE=s3",
+    description: "The access key's secret. Never logged. Read only with OSTRA_BLOB_STORE=s3.",
+  },
 } as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
 /** Variables ostra's development setup reads, which the settings don't refuse (docs/development.md). */
@@ -144,6 +230,7 @@ export const devOnlyEnvNames = [
   "OSTRA_DEV_GITHUB_ORG",
   "OSTRA_DEV_GITHUB_REPOS",
   "OSTRA_DEV_PUBLIC_URL",
+  "OSTRA_DEV_BLOCK_WEBHOOKS",
 ] as const;
 
 /** Spikes' own variables (`spikes/`), which share the dev env files: never read, never refused. */
@@ -160,6 +247,7 @@ const decodeKey32 = (text: string): Buffer =>
   /^[0-9a-fA-F]{64}$/.test(text) ? Buffer.from(text, "hex") : Buffer.from(text.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 
 const port = z.coerce.number().pipe(z.number().int().min(1).max(65_535));
+const whole = (min: number, max: number) => z.coerce.number().pipe(z.number().int().min(min).max(max));
 const url = z.url({ protocol: /^https?$/ });
 
 const rawSettingsSchema = z.strictObject({
@@ -199,6 +287,27 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_ORGANIZATION_NAME: organizationNameSchema.default(defaultFirstAdmin.organizationName).describe(describe("OSTRA_ORGANIZATION_NAME")),
   OSTRA_ALLOW_DEFAULT_PASSWORD: flag.default(false).describe(describe("OSTRA_ALLOW_DEFAULT_PASSWORD")),
   OSTRA_DEV_PG_PORT: port.default(DEV_PG_PORT_DEFAULT).describe(describe("OSTRA_DEV_PG_PORT")),
+  OSTRA_BOX_IDLE_MINUTES: whole(1, 7 * 24 * 60).default(15).describe(describe("OSTRA_BOX_IDLE_MINUTES")),
+  OSTRA_SESSION_MAX_MINUTES: whole(1, 7 * 24 * 60).default(120).describe(describe("OSTRA_SESSION_MAX_MINUTES")),
+  OSTRA_SESSION_STALL_MINUTES: whole(1, 24 * 60).default(10).describe(describe("OSTRA_SESSION_STALL_MINUTES")),
+  OSTRA_TASK_SPEND_CAP_USD: z.coerce
+    .number()
+    .pipe(z.number().positive().max(2000))
+    .default(25)
+    .describe(describe("OSTRA_TASK_SPEND_CAP_USD")),
+  OSTRA_TASK_TOKEN_CAP: whole(1, 2_000_000_000).default(10_000_000).describe(describe("OSTRA_TASK_TOKEN_CAP")),
+  OSTRA_TRACKER_POLL_SECONDS: whole(10, 3600).default(60).describe(describe("OSTRA_TRACKER_POLL_SECONDS")),
+  OSTRA_RECONCILE_MINUTES: whole(1, 24 * 60).default(5).describe(describe("OSTRA_RECONCILE_MINUTES")),
+  OSTRA_WEBHOOK_INSERT_DEADLINE_MS: whole(100, 4500).default(2000).describe(describe("OSTRA_WEBHOOK_INSERT_DEADLINE_MS")),
+  OSTRA_BOX_RELEASE_IDLE_DAYS: whole(1, 365).default(14).describe(describe("OSTRA_BOX_RELEASE_IDLE_DAYS")),
+  OSTRA_RETENTION_DAYS: whole(1, 36_500).optional().describe(describe("OSTRA_RETENTION_DAYS")),
+  OSTRA_BLOB_STORE: z.enum(["postgres", "s3"]).default("postgres").describe(describe("OSTRA_BLOB_STORE")),
+  OSTRA_BLOB_MAX_MIB: whole(1, 64).default(64).describe(describe("OSTRA_BLOB_MAX_MIB")),
+  OSTRA_S3_ENDPOINT: url.optional().describe(describe("OSTRA_S3_ENDPOINT")),
+  OSTRA_S3_BUCKET: z.string().min(3).max(255).optional().describe(describe("OSTRA_S3_BUCKET")),
+  OSTRA_S3_REGION: z.string().min(1).max(64).optional().describe(describe("OSTRA_S3_REGION")),
+  OSTRA_S3_ACCESS_KEY_ID: z.string().min(1).max(256).optional().describe(describe("OSTRA_S3_ACCESS_KEY_ID")),
+  OSTRA_S3_SECRET_ACCESS_KEY: z.string().min(1).max(512).optional().describe(describe("OSTRA_S3_SECRET_ACCESS_KEY")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -230,7 +339,44 @@ export type ServerSettings = {
   readonly firstAdmin: FirstAdminSettings;
   /** The seeded admin may keep the default password: no forced change (the warning stays). */
   readonly allowDefaultPassword: boolean;
+  // ---- milestone 2 ----
+  /** OSTRA_BOX_IDLE_MINUTES. */
+  readonly boxIdleMinutes: number;
+  /** OSTRA_SESSION_MAX_MINUTES. */
+  readonly sessionMaxMinutes: number;
+  /** OSTRA_SESSION_STALL_MINUTES. */
+  readonly sessionStallMinutes: number;
+  /** OSTRA_TASK_SPEND_CAP_USD, in micro-USD. */
+  readonly taskSpendCapMicroUsd: number;
+  /** OSTRA_TASK_TOKEN_CAP. */
+  readonly taskTokenCap: number;
+  /** OSTRA_TRACKER_POLL_SECONDS. */
+  readonly trackerPollSeconds: number;
+  /** OSTRA_RECONCILE_MINUTES. */
+  readonly reconcileMinutes: number;
+  /** OSTRA_WEBHOOK_INSERT_DEADLINE_MS. */
+  readonly webhookInsertDeadlineMs: number;
+  /** OSTRA_BOX_RELEASE_IDLE_DAYS. */
+  readonly boxReleaseIdleDays: number;
+  /** OSTRA_RETENTION_DAYS, or `null` (keep). A retention saved in the panel wins: `retentionDaysInEffect`. */
+  readonly retentionDays: number | null;
+  readonly blobStore: BlobStoreSettings;
 };
+
+/** OSTRA_BLOB_STORE and its settings. The S3 one holds a secret: never logged. */
+export type BlobStoreSettings =
+  | { readonly kind: "postgres"; readonly maxBytes: number }
+  | {
+      readonly kind: "s3";
+      readonly maxBytes: number;
+      /** `null`: AWS S3's own endpoint. */
+      readonly endpoint: string | null;
+      readonly bucket: string;
+      readonly region: string | null;
+      readonly accessKeyId: string;
+      /** Never logged. */
+      readonly secretAccessKey: string;
+    };
 
 export type FirstAdminSettings = {
   readonly email: string;
@@ -276,6 +422,30 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
   if (production && value.DATABASE_URL === undefined) {
     return { ok: false, errors: ["DATABASE_URL is required in production"] };
   }
+  const maxBytes = value.OSTRA_BLOB_MAX_MIB * 1024 * 1024;
+  let blobStore: BlobStoreSettings = { kind: "postgres", maxBytes };
+  if (value.OSTRA_BLOB_STORE === "s3") {
+    const bucket = value.OSTRA_S3_BUCKET;
+    const accessKeyId = value.OSTRA_S3_ACCESS_KEY_ID;
+    const secretAccessKey = value.OSTRA_S3_SECRET_ACCESS_KEY;
+    if (bucket === undefined || accessKeyId === undefined || secretAccessKey === undefined) {
+      const missing = [
+        bucket === undefined ? "OSTRA_S3_BUCKET" : null,
+        accessKeyId === undefined ? "OSTRA_S3_ACCESS_KEY_ID" : null,
+        secretAccessKey === undefined ? "OSTRA_S3_SECRET_ACCESS_KEY" : null,
+      ].flatMap((name) => (name === null ? [] : [`${name} is required with OSTRA_BLOB_STORE=s3`]));
+      return { ok: false, errors: missing };
+    }
+    blobStore = {
+      kind: "s3",
+      maxBytes,
+      endpoint: value.OSTRA_S3_ENDPOINT ?? null,
+      bucket,
+      region: value.OSTRA_S3_REGION ?? null,
+      accessKeyId,
+      secretAccessKey,
+    };
+  }
   return {
     ok: true,
     settings: {
@@ -302,6 +472,17 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
         organizationName: value.OSTRA_ORGANIZATION_NAME,
       },
       allowDefaultPassword: value.OSTRA_ALLOW_DEFAULT_PASSWORD,
+      boxIdleMinutes: value.OSTRA_BOX_IDLE_MINUTES,
+      sessionMaxMinutes: value.OSTRA_SESSION_MAX_MINUTES,
+      sessionStallMinutes: value.OSTRA_SESSION_STALL_MINUTES,
+      taskSpendCapMicroUsd: Math.round(value.OSTRA_TASK_SPEND_CAP_USD * 1_000_000),
+      taskTokenCap: value.OSTRA_TASK_TOKEN_CAP,
+      trackerPollSeconds: value.OSTRA_TRACKER_POLL_SECONDS,
+      reconcileMinutes: value.OSTRA_RECONCILE_MINUTES,
+      webhookInsertDeadlineMs: value.OSTRA_WEBHOOK_INSERT_DEADLINE_MS,
+      boxReleaseIdleDays: value.OSTRA_BOX_RELEASE_IDLE_DAYS,
+      retentionDays: value.OSTRA_RETENTION_DAYS ?? null,
+      blobStore,
     },
   };
 };

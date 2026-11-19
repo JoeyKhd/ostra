@@ -1,5 +1,5 @@
 import type { DbEnum } from "@ostra/db";
-import type { TaskKind } from "@ostra/protocol";
+import type { SessionLimit, TaskKind } from "@ostra/protocol";
 
 import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
@@ -72,11 +72,23 @@ export type TaskInput =
   /** A member answered, approved, steered or reopened. `boxWarm`: the box is still there, so the task runs at once. */
   | { readonly type: "member_acted"; readonly boxWarm: boolean }
   | { readonly type: "stop"; readonly reason: TaskStopReason }
-  /** Reopen a stopped, merged or done task. */
+  /**
+   * Reopen a task (F-032): from stopped, merged or done, and in milestone 2 also from in review and
+   * needs you, as the domain model's diagrams say. A use case may refuse more (`reopenTask` refuses
+   * a merged task until F-066's fresh branch, milestone 3).
+   */
   | { readonly type: "reopen" }
+  /** A runaway limit stopped the session (F-068): the maximum duration, the stall or the spend cap. */
+  | { readonly type: "limit_reached"; readonly limit: SessionLimit }
   // ---- code ----
   /** The session ended; `withChanges` when any repo's branch is ahead (F-030, F-065). */
   | { readonly type: "session_ended"; readonly withChanges: boolean; readonly rounds: ReviewRounds }
+  /**
+   * Protocol minor 1: a turn ended and its work left the box (`session.saved`). `withChanges`: a
+   * branch is ahead; `prOpen`: the task already has an open PR. Either goes to review (the first
+   * PR, or the same PRs updated); neither raises needs you (F-065). The session stays idle.
+   */
+  | { readonly type: "work_saved"; readonly withChanges: boolean; readonly prOpen: boolean; readonly rounds: ReviewRounds }
   | { readonly type: "ci_passed"; readonly rounds: ReviewRounds }
   | { readonly type: "ci_failed"; readonly capReached: boolean }
   /** The agent pushed a fix. */
@@ -93,6 +105,19 @@ export type TaskInput =
   | { readonly type: "findings_posted" };
 
 type Common = CommonTaskState;
+
+/** The needs-you reason a runaway limit raises: the maximum duration reads as a stall (spec section 5.4). */
+export const limitReason = (limit: SessionLimit): Extract<NeedsYouReason, "stalled" | "spend_cap"> => {
+  switch (limit) {
+    case "max-duration":
+    case "stall":
+      return "stalled";
+    case "spend-cap":
+      return "spend_cap";
+    default:
+      return limit satisfies never;
+  }
+};
 
 /** The transitions every kind shares. `undefined`: the input isn't a shared one. */
 const commonTransition = (status: Common, input: TaskInput): Transition<Common> | undefined => {
@@ -119,8 +144,11 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
     case "stop":
       return from === "stopped" ? refuse(input, from) : moveTo({ state: "stopped", reason: input.reason });
     case "reopen":
-      return from === "stopped" ? moveTo({ state: "queued" }) : refuse(input, from);
+      return from === "stopped" || from === "needs_you" ? moveTo({ state: "queued" }) : refuse(input, from);
+    case "limit_reached":
+      return from === "running" ? moveTo({ state: "needs_you", reason: limitReason(input.limit) }) : refuse(input, from);
     case "session_ended":
+    case "work_saved":
     case "ci_passed":
     case "ci_failed":
     case "pushed":
@@ -156,6 +184,11 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
         return refuse(input, from);
       }
       return moveTo(input.withChanges ? firstReviewState(input.rounds) : { state: "needs_you", reason: "no_changes" });
+    case "work_saved":
+      if (status.state !== "running") {
+        return refuse(input, from);
+      }
+      return moveTo(input.withChanges || input.prOpen ? firstReviewState(input.rounds) : { state: "needs_you", reason: "no_changes" });
     case "ci_passed":
       if (status.state !== "in_review" || status.subState !== "ci_running") {
         return refuse(input, from);
@@ -198,6 +231,11 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
         return moveTo({ state: "needs_you", reason: input.reason });
       }
       break;
+    case "limit_reached":
+      if (status.state === "in_review" && (status.subState === "fixing_ci" || status.subState === "fixing_findings")) {
+        return moveTo({ state: "needs_you", reason: limitReason(input.limit) });
+      }
+      break;
     case "member_acted":
       // Reopen, @ostra or Update branch on a task in review.
       if (status.state === "in_review") {
@@ -205,7 +243,7 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
       }
       break;
     case "reopen":
-      if (status.state === "merged") {
+      if (status.state === "merged" || status.state === "in_review") {
         return moveTo({ state: "queued" });
       }
       break;
@@ -242,6 +280,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "stop":
       return from === "done" ? moveTo({ state: "stopped", reason: input.reason }) : isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     case "session_ended":
+    case "work_saved":
     case "ci_passed":
     case "ci_failed":
     case "pushed":
@@ -259,6 +298,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "crashed":
     case "needs_you":
     case "member_acted":
+    case "limit_reached":
       return isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     default:
       return input satisfies never;
@@ -275,6 +315,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "stop":
       return from === "done" ? moveTo({ state: "stopped", reason: input.reason }) : isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     case "session_ended":
+    case "work_saved":
     case "ci_passed":
     case "ci_failed":
     case "pushed":
@@ -293,6 +334,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "crashed":
     case "needs_you":
     case "member_acted":
+    case "limit_reached":
       return isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     default:
       return input satisfies never;

@@ -119,7 +119,8 @@ describe("box (and the host worktree)", () => {
       [b({ state: "idle" }), { type: "turn_started" }, b({ state: "ready" })],
       [b({ state: "idle" }), { type: "stop" }, b({ state: "stopped" })],
       [b({ state: "stopped" }), { type: "turn_started" }, b({ state: "ready" })],
-      [b({ state: "stopped" }), { type: "release" }, b({ state: "released" })],
+      [b({ state: "stopped" }), { type: "release", reason: "prs_closed" }, b({ state: "released", reason: "prs_closed" })],
+      [b({ state: "stopped" }), { type: "release", reason: "idle_expired" }, b({ state: "released", reason: "idle_expired" })],
       [b({ state: "creating" }), { type: "fail", reason: "no image" }, b({ state: "failed", reason: "no image" })],
       [b({ state: "preparing" }), { type: "fail", reason: "setup" }, b({ state: "failed", reason: "setup" })],
       [b({ state: "ready" }), { type: "fail", reason: "host lost" }, b({ state: "failed", reason: "host lost" })],
@@ -128,11 +129,13 @@ describe("box (and the host worktree)", () => {
     [
       [b({ state: "creating" }), { type: "prepared" }],
       [b({ state: "preparing" }), { type: "turn_started" }],
-      [b({ state: "ready" }), { type: "release" }],
+      [b({ state: "ready" }), { type: "release", reason: "requested" }],
+      [b({ state: "idle" }), { type: "release", reason: "requested" }],
       [b({ state: "idle" }), { type: "created" }],
       [b({ state: "stopped" }), { type: "fail", reason: "x" }],
-      [b({ state: "released" }), { type: "turn_started" }],
-      [b({ state: "failed", reason: "x" }), { type: "release" }],
+      [b({ state: "released", reason: "prs_closed" }), { type: "turn_started" }],
+      [b({ state: "released", reason: "prs_closed" }), { type: "release", reason: "requested" }],
+      [b({ state: "failed", reason: "x" }), { type: "release", reason: "requested" }],
     ],
   );
 
@@ -142,7 +145,8 @@ describe("box (and the host worktree)", () => {
     { state: "ready" },
     { state: "idle" },
     { state: "stopped" },
-    { state: "released" },
+    { state: "released", reason: "task_deleted" },
+    { state: "released", reason: null },
     { state: "failed", reason: "setup failed" },
   ] satisfies BoxLifecycle[])("round-trips %j through its columns", (state) => {
     expect(boxFromColumns(boxToColumns(state))).toEqual({ ok: true, value: state });

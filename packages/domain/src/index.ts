@@ -22,6 +22,12 @@ export * from "./settings.ts";
 export * from "./postgres-ports.ts";
 export * from "./postgres-outbox.ts";
 
+// Milestone 2.
+export * from "./tickets/board-mapping.ts";
+export * from "./tickets/ticket-template.ts";
+export * from "./tickets/rebuild-template.ts";
+export * from "./tickets/contracts.ts";
+
 export * from "./use-cases/common.ts";
 export * from "./use-cases/moves.ts";
 export * from "./use-cases/accept-offer.ts";
@@ -46,4 +52,11 @@ export * from "./use-cases/agent-profiles.ts";
 export * from "./use-cases/pools.ts";
 export * from "./use-cases/runner-approval.ts";
 export * from "./use-cases/sync-provider-models.ts";
+export * from "./use-cases/linear-connection.ts";
+export * from "./use-cases/boards.ts";
+export * from "./use-cases/tickets.ts";
+export * from "./use-cases/reopen.ts";
+export * from "./use-cases/sessions-m2.ts";
+export * from "./use-cases/pull-request-states.ts";
+export * from "./use-cases/cleanup.ts";
 export * from "./environment/detect.ts";

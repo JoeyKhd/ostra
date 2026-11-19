@@ -41,6 +41,19 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "task.open-pull-requests": { ...base, retryLimit: 8, expireInSeconds: 600 },
   "provider.refresh-models": { ...base, retryLimit: 3 },
   "catalog.refresh": { ...base, retryLimit: 3, expireInSeconds: 600 },
+  // Milestone 2 (ticket 06's names; ticket 01 adds the schedule and group options).
+  "webhook.process": { ...base, retryLimit: 8 },
+  "tracker.poll-board": { ...base, retryLimit: 2, expireInSeconds: 120 },
+  "github.reconcile-prs": { ...base, retryLimit: 2, expireInSeconds: 240 },
+  "linear.refresh-token": { ...base, retryLimit: 8 },
+  "ticket.fetch-context": { ...base, retryLimit: 5, expireInSeconds: 600 },
+  "ticket.sync": { ...base, retryLimit: 10, retryDelayMax: 900 },
+  "session.max-duration": { ...base, retryLimit: 3 },
+  "session.stall-sweep": { ...base, retryLimit: 1, expireInSeconds: 50 },
+  "box.release": { ...base, retryLimit: 8 },
+  "box.release-after-idle": { ...base, retryLimit: 3 },
+  "retention.sweep": { ...base, retryLimit: 2, expireInSeconds: 1800 },
+  "blob.gc": { ...base, retryLimit: 2, expireInSeconds: 1800 },
 };
 
 /** The pg-boss queue a job runs on: its own name. */

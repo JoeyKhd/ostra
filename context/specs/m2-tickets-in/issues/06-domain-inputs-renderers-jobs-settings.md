@@ -1,6 +1,6 @@
 # 06: Domain: inputs, mapping, renderers, use cases, jobs and settings
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts)
 Blocked by: 02, 05
 Features: F-007, F-031, F-064, F-032, F-033, F-068, F-079, F-096 (their rules)
@@ -34,8 +34,16 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Tests: every new input from every state; the PR rule for every mix of open, merged and closed task repos, with the same answer in every order of events; the mapping drafted from Linear's and the Jira fake's statuses; the renderer escapes nothing it shouldn't and refuses unknown placeholders; ticket text can't close its marked block; the rebuild template holds every fact spike 2's questions need except the tool output, and stays under its cap.
-- [ ] `jobPayloadSchemas` holds exactly `jobNames`, as the compiler checks.
-- [ ] Committed as `✨ add the milestone 2 domain contracts`.
+- [x] Tests: every new input from every state; the PR rule for every mix of open, merged and closed task repos, with the same answer in every order of events; the mapping drafted from Linear's and the Jira fake's statuses; the renderer escapes nothing it shouldn't and refuses unknown placeholders; ticket text can't close its marked block; the rebuild template holds every fact spike 2's questions need except the tool output, and stays under its cap.
+- [x] `jobPayloadSchemas` holds exactly `jobNames`, as the compiler checks.
+- [x] Committed as `✨ add the milestone 2 domain contracts`.
 
 ## Comments
+- 2026-11-19, core (contracts): done in `✨ add the milestone 2 domain contracts`. For tickets 08 and 13 to 31:
+  - **Lifecycles:** the task's `work_saved { withChanges, prOpen, rounds }` (from running: either one goes to review, neither to needs you `no_changes`) and `limit_reached { limit }` (`stalled` for the maximum duration and the stall, `spend_cap`; `limitReason` maps them); `reopen` also from `in_review` and `needs_you`. No restore-conflict input. The session's `limit_reached` stops it (the limit goes on `Session.limitReached`). The box's `release` takes a reason, and `released` keeps it (`null` for a box released before milestone 2); `boxToColumns` writes `releaseReason`.
+  - **`src/tickets/`:** `boardMappingSchema` (strict; `open`, `started`, `inReview`, `done`, `doneBy`, `magicWord` defaulting to `Closes`), `draftBoardMapping(statuses, integration)`, `statusMappingOf` (the adapter's `StatusMapping`), `parseBoardMapping` (milestone 1's `{}` reads as `null`) and `unknownMappedStatuses`. The ticket prompt: `parseTicketTemplate` (the validator, with line numbers), `renderTicketPrompt`, `builtInTicketTemplate`, `ticketTemplateFor(saved)` (a saved template that no longer parses falls back to the built-in one), `ticketTemplateVocabulary` for the editor's help, and `markTicketInline`/`markTicketBlock`. The language has placeholders and three sections: `{{#x}}` (each item, or once with an object), `{{?x}}` (once when not empty) and `{{^x}}` (once when empty); a list inside a list is refused. `buildRebuildPrompt` answers `{ prompt, cutMessages }`, with every member and agent message oldest first, the interrupted turn's section, each branch's log, the unfinished work's outcome (`restored`, `none`, `conflict`), no tool output, and the 100,000-character cap.
+  - **Small contracts** (`src/tickets/contracts.ts`): `repoBranchRulesSchema` with `repoIsUnsupported` and `repoNeedsProtectionWarning`, `BRANCH_RULES_CACHE_MS`, `reopenCarryOnText`, `retentionDaysInEffect` and `retentionInEffect` (which also says the source: saved, env or default, for ticket 31's storage page), `linearAppIdPlaceholders`, `ticketBranchNameFor`, `ticketPullRequestTitle`, `ticketMagicLine`, `ticketWritePayloadSchema` (what `TicketWrite.payload` holds) and `ticketWriteKey` (`ticket-write:<taskId>:<step>`).
+  - **Use cases** (signatures, each answering a rejected promise that names its ticket until that ticket writes it): `startLinearConnection`, `connectLinear`, `authorizeLinear` and `skipSetupStep` (`use-cases/linear-connection.ts`; one more than the spec listed, since the connection has three steps), `attachBoard`, `saveBoardMapping`, `ingestTicketHint`, `startTicketTask`, `createTicketForTask`, `reopenTask`, `dismissNeedsYou`, `recordWorkSaved`, `recordLimitReached`, `recordPullRequestState`, `releaseBox`, `sweepCleanup`, `sweepRetention`. `chooseReopenStep` is written: the same box when its runner is online at minor 1 or above, else the archive when the same agent can import it, else the template, with the reason.
+  - **Jobs:** the twelve names of spec section 5.4, with payloads (IDs only) and keys, such as `ticket:<TicketWriteId>:sync`, `board:<BoardId>:poll`, `session:<SessionId>:max-duration` and `webhook:<connectionId>:<deliveryId>`. `jobSending` says how each is sent (`event`, `schedule`, `timer`) and which are throttled per connection, for ticket 01. `packages/jobs` has a queue setting for each.
+  - **Settings:** the seventeen of spec section 5.4 (`OSTRA_TASK_SPEND_CAP_USD` at most 2000, as `spentMicroUsd` is an `Int`; `OSTRA_BLOB_MAX_MIB` at most 64, the protocol's cap; S3's three required ones refused when missing with `OSTRA_BLOB_STORE=s3`), each in `docs/configuration.md`, plus the dev-only `OSTRA_DEV_BLOCK_WEBHOOKS`.
+  - The glossary gains "Ticket template", "Ticket write" and "Restore conflict", and `release` in "Command".
