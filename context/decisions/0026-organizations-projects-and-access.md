@@ -1,6 +1,6 @@
 # Organizations, projects and access
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0010. Settles Q28, Q30, Q35 and Q102. **Amended 2026-11-18 after spike 9** (`research/spike-auth-foundation.md`): the first account creates the first organization, open sign-up is two settings, `owner` is refused, and the composite-key rule for every project record.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0010. Settles Q28, Q30, Q35 and Q102. **Amended 2026-11-18 after spike 9** (`research/spike-auth-foundation.md`): the first account creates the first organization, open sign-up is two settings, `owner` is refused, and the composite-key rule for every project record. **Amended again 2026-11-19** (the maintainer): the server seeds the first admin itself, `demo@demo.com` / `demo` unless the environment says otherwise, with a forced password change as its safety guard. This supersedes Q117's setup token (below, "The first admin").
 
 ostra's data has two levels under the install: **Organization → Project**. Both exist from the first migration.
 
@@ -8,10 +8,20 @@ ostra's data has two levels under the install: **Organization → Project**. Bot
   - A self-hosted install starts with one. The first account is the instance admin and the admin of that first organization, and can create more. **ostra creates that first organization together with the first account.** Spike 9 made the instance admin and left the creation of the organization to them, which Q102 doesn't say.
   - A member can belong to several organizations and switches between them in the sidebar.
   - **Open sign-up is two settings, both off by default:** open account sign-up (anyone may create an account) and open organization sign-up (an account may create organizations). A hosted install turns both on. Each has its line in the configuration reference (spike 9, gotcha 11). It exists for the hosted version (ADR 0001).
-  - A fresh install belongs to whoever reaches it first, so the first account needs a setup token (F-001, Q117).
+  - **The server seeds the first account** when it starts with none (F-001, amended 2026-11-19): the instance admin and the admin of the first organization, from `OSTRA_ADMIN_EMAIL`, `OSTRA_ADMIN_USERNAME`, `OSTRA_ADMIN_PASSWORD` and `OSTRA_ORGANIZATION_NAME`, by default `demo@demo.com`, `demo`, `demo` and `Demo`. A fresh install is signed into, never claimed, so the setup token of Q117 is gone.
 - **An organization** holds its members, its connections (its own GitHub App and Linear app), model providers, runner pools, agent profiles, budgets, memory notes and audit log (Q28).
 - **A project** is a product the organization works on. It holds repos, boards, one environment, automations, memory notes, budgets and tasks. It picks a default agent profile per task kind and lists the runner pools it may use (F-086).
 - **Every row carries its organization.** Records inside a project also carry the project. No query crosses organizations.
+
+## The first admin
+
+*Amended 2026-11-19.* The maintainer: "default setup user is demo@demo.com with password demo, unless specified otherwise in one of the environment variables."
+
+- **Seeded at start.** The panel's runtime seeds the first admin when the server starts with no account (`seedFirstAdmin`, `packages/domain`): the account, its credential, the first organization with its default pool and built-in agent profile, and the admin membership, in one transaction. Several replicas starting at once take a Postgres advisory lock, so one admin is created and the others find it. An install that has an account is never seeded again, whatever the settings say later. The log records it by ID only.
+- **The safety guard.** The default password is public, so an account seeded with it (`OSTRA_ADMIN_PASSWORD` unset) is flagged `mustChangePassword`. Its first sign-in leads to "Choose a new password", with the normal password policy (12 characters or more). Until it changes, every member procedure of the API and every better-auth route except signing in, signing out, reading the session and changing the password refuse it (`PASSWORD_CHANGE_REQUIRED`), so the default password can't invite anyone, approve a runner or change a setting, from the panel or past it. A changed password clears the flag.
+- **Only the seed bypasses the length rule.** better-auth's minimum length would refuse `demo`, so the seed hashes it with better-auth's own `hashPassword` and stores it directly. Sign-in checks no length. Every other path (sign-up, a password change, a reset) keeps the policy, and an operator's own `OSTRA_ADMIN_PASSWORD` must meet it too.
+- **For a demo**, `OSTRA_ALLOW_DEFAULT_PASSWORD=true` turns the forced change off. The panel then shows a warning banner on every page until the password changes. The configuration reference says never to set it on an install others can reach.
+- **What it supersedes.** Q117 required a setup token, printed in the server's log at first start, to create the first account on a "Create the first admin" page, because a fresh install belonged to whoever reached it first. With the account seeded at start there is nothing to claim: the token, its setting `OSTRA_SETUP_TOKEN` and the page are gone, and `/setup` sends a visitor to sign in (the first-run checklist is on Home). The window Q117 closed is now the default password's, which the forced change closes instead.
 
 ## Access
 
@@ -49,3 +59,4 @@ SSO, SCIM, custom roles and groups come after v1 (F-004).
 - Ledger: F-002 becomes "Accounts", F-003 has roles at two levels, F-049 becomes "Several organizations", and F-086 (projects) and F-087 (project access and roles) are new v1 rows.
 - Glossary: Organization and Project are terms. Team leaves the glossary. Admin and Member exist at both levels.
 - Revisit if an organization needs a read-only role before SSO arrives.
+- A fresh install has a known account until its first sign-in. The forced password change, and the refusal of everything else until then, are what make that safe. An operator who exposes an install before signing in should set `OSTRA_ADMIN_PASSWORD` (2026-11-19).
