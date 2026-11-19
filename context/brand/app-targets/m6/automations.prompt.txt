@@ -1,0 +1,51 @@
+# Generation 1. References: app-targets/m1/runners (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Automations" page of one project in ostra, a self-hosted control panel for coding agents: the intake rules and schedules that start tasks by themselves. It must look like the same product as the first attached screenshot (the "Runners" page): the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense type, the same borderless hairline table with a selected row, the same right properties panel. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; raised surfaces (chips, secondary buttons) #131416; selected row and selected nav row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; teal #6FB8AA for switches that are on and for text links; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar and on ONE tiny 6px dot in the paused row named below, nowhere else. No green, no red. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations, no avatars except the one at the bottom of the sidebar.
+
+FONTS: page title in Manrope Bold. UI text IBM Plex Sans (section titles semibold). IBM Plex Mono for ticket keys like CALC-181, pool labels like tier:fast, cron and times. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 234px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and a small up-down chevron. A search box "Search" with "⌘K" and a small square "+" button beside it. Nav rows with icons: "Home"; "Needs you" (hand icon) with a small amber pill "2". Small faint label "Projects": "calculator" with a tiny teal 8px square, semibold, and under it five indented rows with icons: "Tasks" with faint count "8", "Inbox" with faint count "9", "Boards", "Environment", "Automations" (zap icon; this row is SELECTED, background #1A1B1E, white text). Then "billing-platform" with a tiny violet-grey square, and "+ New project". Small faint label "Organization": rows "Runners", "Models", "GitHub", "Linear", "Agent profiles". At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "calculator  >  Automations" ("Automations" white medium, "calculator" muted). Right: a secondary button (#131416 fill, #2A2C30 border) with a small clock icon "New schedule", then 8px right of it the one primary button, filled off-white, with a small plus: "New rule".
+
+3) MAIN PAGE COLUMN, padding 32px top, 36px left, left-aligned:
+- Page title "Automations"
+- A muted lede, one line: "Rules and schedules that start tasks in calculator. A rule starts each matching ticket once; a schedule starts work at set times."
+- 26px lower, a section title "Automations" semibold with a faint count "5" beside it, and at the right end of that line a small muted dropdown "All kinds" with a chevron.
+- A borderless table, column headers in faint small text: (no header over the switch), "Name", "Starts when", "Profile", "Pool labels", "Last start", "Next". Rows 46px tall with 1px #1F2023 hairlines between them. The first cell of every row is a small pill switch (28x16): teal and on, or dark grey #2A2C30 and off. The Name cell is the name in white on top and, under it, a small faint word: "Rule" or "Schedule" with a tiny icon (filter icon for rule, clock icon for schedule).
+  Row 1 SELECTED (background #1A1B1E across the row): switch ON | "Triage bugs" / faint "Rule" | secondary grey "label bug, status Todo, unassigned" | "Code · Careful" | a small mono chip "tier:fast" | mono "CALC-181" then faint "12m ago" | faint "on a match"
+  Row 2: switch ON | "Update dependencies" / faint "Schedule" | secondary grey "Every Monday at 09:00, Amsterdam time" | "Code · Default" | faint "—" | faint "Mon 16 Nov, 09:00" | white "Mon 23 Nov, 09:00"
+  Row 3: switch ON | "Refine feature requests" / faint "Rule" | secondary grey "label feature, status Triage" | "Refine · Refine" | faint "—" | mono "CALC-178" then faint "2h ago" | faint "on a match"
+  Row 4: switch OFF | "Docs fixes" / faint "Rule" | secondary grey "label docs, any status" | "Code · Fast" | a small mono chip "tier:fast" | mono "CALC-177" then faint "40m ago" | a tiny amber dot then secondary grey "Paused: 20 starts in an hour"
+  Row 5: switch OFF | "Weekly bug sweep" / faint "Schedule" | secondary grey "Every Monday at 09:00, Amsterdam time · checks its filter" | "Code · Careful" | faint "—" | faint "Mon 16 Nov, 09:00" | secondary grey "Paused by Alex Kim"
+- 18px under the table, one faint line with a small shield icon: "A rule never starts more than 20 tasks an hour. Saving a rule starts nothing: its dry run lists the tickets that already match."
+
+4) RIGHT PROPERTIES PANEL, 320px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no box. Key/value rows 30px, key muted in a 96px column, value white:
+- small faint label "Triage bugs", and at its right a teal switch that is on
+  Kind  |  "Rule · on a match"
+  Labels  |  "any of" then a small chip "bug"
+  Status  |  "Todo"
+  Assignee  |  "Unassigned"
+  Board  |  "Calculator"
+- hairline
+- small faint label "Starts"
+  Kind  |  "Code task"
+  Profile  |  "Careful"
+  Pool labels  |  small mono chip "tier:fast"
+  Approval  |  "Not needed"
+  Limit  |  "3 of 20 this hour"
+- hairline
+- small faint label "History"
+  Started  |  "14 tasks"
+  Skipped  |  "2"
+  a teal text link with a small arrow-right icon: "Open history"
+- hairline
+- two secondary buttons side by side, 30px: "Edit rule" (pencil icon) and "Dry run" (play icon)
+- faint 12.5px under them: "Created 12 Nov by Alex Kim"
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word spelled exactly as written.

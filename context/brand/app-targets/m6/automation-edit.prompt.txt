@@ -1,0 +1,42 @@
+# Generation 1. References: app-targets/m3/agent-profile (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the editor of one automation in ostra, a self-hosted control panel for coding agents: a project admin edits a schedule that checks a ticket filter every Monday, and beside the form a live dry run lists the tickets that match right now. It must look like the same product as the first attached screenshot (the "Careful" agent profile editor): the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense type, the same form sections with semibold titles and faint explanations on the same line, the same inputs and dropdowns, the same right column. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs, chips and raised surfaces #131416; selected nav row and the selected segment #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; teal #6FB8AA for switches that are on, checkmarks and text links; primary buttons filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar. No green, no red. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations, no avatars except the one at the bottom of the sidebar.
+
+FONTS: page title in Manrope Bold. UI text IBM Plex Sans (section titles semibold). IBM Plex Mono for the cron expression, ticket keys like CALC-181, pool labels like tier:fast and dates in the occurrences list. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 234px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and a small up-down chevron. A search box "Search" with "⌘K" and a small square "+" button. Nav rows with icons: "Home"; "Needs you" with a small amber pill "2". Small faint label "Projects": "calculator" with a tiny teal square, semibold, and under it indented rows: "Tasks" faint "8", "Inbox" faint "9", "Boards", "Environment", "Automations" (zap icon; this row is SELECTED, background #1A1B1E, white text). Then "billing-platform" with a tiny violet-grey square, "+ New project". Small faint label "Organization": "Runners", "Models", "GitHub", "Linear", "Agent profiles". At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "calculator  >  Automations  >  Weekly bug sweep" (the last white medium, the others muted). Right: the one primary button, filled off-white: "Save schedule".
+
+3) MAIN FORM COLUMN, about 760px wide, padding 32px top, 36px left:
+- small faint mono line "Automation · saved 2h ago"
+- Page title "Weekly bug sweep"
+- a muted lede: "Saving starts nothing. Tickets that already match are in the dry run, to start by hand."
+- Section title "Name and trigger". A row: a "Name" label over an input "Weekly bug sweep"; beside it a "Starts" label over a two-segment control: "On a match" (plain) | "On a schedule" (selected segment, #1A1B1E fill, white text, small clock icon).
+- Section title "Schedule" with a faint note on the same line "at least an hour apart". Under it a row of five small preset chips, 26px tall, #131416 fill, #2A2C30 border: "Every hour", "Every day", "Weekdays", "Every Monday" (this one selected: white text and a 1px #F2F3F4 border), "Custom". Below them a row: a "Cron" label over a mono input "0 9 * * 1" about 200px wide; a "Time zone" label over a dropdown "Europe/Amsterdam" with a chevron. Under the row, white text with a small calendar icon: "Every Monday at 09:00, Amsterdam time". Then faint small label "Next" and three mono faint lines side by side: "Mon 23 Nov, 09:00", "Mon 30 Nov, 09:00", "Mon 7 Dec, 09:00".
+  Under that, a row with a teal checked checkbox: "Skip while the last one is open" and a faint note "an occurrence waits until the previous task is merged, done or stopped".
+- Section title "Filter" with a faint note "the tickets it checks each time". Three condition rows, 34px, each: a dropdown field, an operator dropdown, a value area, and a small x at the end:
+  "Labels" | "any of" | a chip "bug" and a faint "+ label"
+  "Status" | "is" | a chip "Todo"
+  "Assignee" | "is" | a chip "Unassigned"
+  then a muted "+ Condition" row with a plus icon, and faint "Board: Calculator" on the right of that row.
+- Section title "Each task". A row of three fields: "Kind" dropdown "Code"; "Agent profile" dropdown "Careful"; "Pool labels" field holding a mono chip "tier:fast" with its tiny x. Under it a row with a small switch that is off and the label "Wait for a member's approval", faint "off: a rule's tasks start on their own".
+
+4) RIGHT COLUMN, 380px wide, separated by a 1px #1F2023 vertical line, padding 20px 18px, no box:
+- small faint label "Dry run" and at its right a faint mono "updated 1s ago"
+- white text "4 tickets match now"
+- a faint line "What starting each would do. Nothing has started."
+- a list of four rows, 52px each, hairlines between: mono key on the left, the title in white, and under the title a small secondary line:
+  "CALC-181"  "Clear button forgets the memory"  /  "Starts a code task"
+  "CALC-180"  "Scientific mode"  /  "Starts 3 tasks, one per sub-issue"
+  "CALC-176"  "Rounding in percent mode"  /  "Queued: build-fleet is full"
+  "CALC-169"  "Division by zero shows NaN"  /  faint "Skipped: it has a task, a17be093"
+- under the list, a full-width primary button filled off-white with a small play icon: "Start all 5"
+- faint 12.5px under it: "5 tasks from 3 tickets. One is skipped. Each starts as if started by hand, through the queue and the budget."
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word spelled exactly as written.
