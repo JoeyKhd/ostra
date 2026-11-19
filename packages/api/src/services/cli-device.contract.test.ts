@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { cliDeviceResponseSchema, cliDeviceTokenErrorSchema, cliDeviceTokenResponseSchema, cliPaths } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -67,5 +69,25 @@ describe("a device sign-in for the CLI (RFC 8628)", () => {
     const polled = await post(cliPaths.deviceToken, { deviceCode: grant.deviceCode });
     expect(cliDeviceTokenErrorSchema.parse(await polled.json()).error.code).toBe("access-denied");
     expect(await harness.test.db.cliSession.count()).toBe(before);
+  });
+
+  it("F-103: the code approved while signed into a second organization makes a session of that organization", async () => {
+    const ada = await harness.test.db.user.findFirstOrThrow({ where: { username: "ada" } });
+    const second = await harness.test.db.organization.create({ data: { id: randomUUID(), name: "Second Co", slug: `second-${randomUUID().slice(0, 8)}`, createdAt: new Date() } });
+    const secondMember = await harness.test.db.member.create({ data: { id: randomUUID(), organizationId: second.id, userId: ada.id, role: "member", createdAt: new Date() } });
+    const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
+    const browser = cookieHeaderFrom(headers);
+    // The login session starts in the oldest organization; the approver then switches to the second one.
+    await harness.auth.api.setActiveOrganization({ body: { organizationId: second.id }, headers: browser });
+
+    const grant = cliDeviceResponseSchema.parse(await (await post(cliPaths.device, { name: "ada-second", version: "0.3.0" })).json());
+    await harness.auth.api.deviceVerify({ query: { user_code: grant.userCode }, headers: browser });
+    await harness.auth.api.deviceApprove({ body: { userCode: grant.userCode }, headers: browser });
+    expect((await harness.test.db.deviceCode.findFirstOrThrow({ where: { deviceCode: grant.deviceCode } })).organizationId).toBe(second.id);
+    await harness.test.db.deviceCode.updateMany({ where: { deviceCode: grant.deviceCode }, data: { lastPolledAt: new Date(Date.now() - 60_000) } });
+    const session = cliDeviceTokenResponseSchema.parse(await (await post(cliPaths.deviceToken, { deviceCode: grant.deviceCode })).json());
+    expect(await harness.test.db.cliSession.findUniqueOrThrow({ where: { id: session.sessionId } })).toMatchObject({ memberId: secondMember.id, organizationId: second.id });
+    const entry = await harness.test.db.auditEntry.findFirstOrThrow({ where: { action: "cli-session.started", entityId: secondMember.id } });
+    expect(entry.organizationId).toBe(second.id);
   });
 });

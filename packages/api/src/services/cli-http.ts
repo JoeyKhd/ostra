@@ -154,7 +154,12 @@ const pollDevice = async (deps: ApiDeps, request: Request): Promise<Response> =>
     return deviceFail("expired-token", "That sign-in was used already. Run `ostra login` again");
   }
   const user = await db.user.findUnique({ where: { id: grant.userId }, select: { id: true, name: true } });
-  const member = await db.member.findFirst({ where: { userId: grant.userId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  // The member of the organization the approver was signed into; a grant approved before that was recorded falls back to the oldest membership.
+  const member = await db.member.findFirst({
+    where: grant.organizationId === null ? { userId: grant.userId } : { userId: grant.userId, organizationId: grant.organizationId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
   if (user === null || member === null) {
     return deviceFail("access-denied", "This account belongs to no organization");
   }
@@ -190,22 +195,22 @@ const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string)
   if (ref === null) {
     return notFound();
   }
-  // The session's organizations are the ones its account is a member of; within each, the member's own projects.
-  const members = await db.member.findMany({ where: { userId: caller.userId } });
-  const contexts = await Promise.all(members.map((member) => memberContextOf(db, caller.userId, member)));
+  // A session belongs to one member of one organization (ADR 0051): it reads the tasks of the projects that member can open, never another organization's the same account is in.
+  const member = await db.member.findFirst({ where: { id: caller.memberId, organizationId: caller.organizationId, userId: caller.userId } });
+  if (member === null) {
+    return notFound();
+  }
+  const context = await memberContextOf(db, caller.userId, member);
   const candidates = await db.task.findMany({
     where:
       ref.kind === "task"
-        ? { id: ref.id, organizationId: { in: members.map((member) => member.organizationId) } }
-        : { ticket: { key: { equals: ref.key, mode: "insensitive" } }, organizationId: { in: members.map((member) => member.organizationId) } },
+        ? { id: ref.id, organizationId: caller.organizationId }
+        : { ticket: { key: { equals: ref.key, mode: "insensitive" } }, organizationId: caller.organizationId },
     orderBy: { createdAt: "desc" },
     take: 20,
     select: { id: true, organizationId: true, projectId: true, ticket: { select: { key: true } }, project: { select: { access: true } } },
   });
-  const found = candidates.find((task) => {
-    const context = contexts.find((candidate) => candidate.scope.organizationId === task.organizationId);
-    return context !== undefined && requireProjectAccess(context.scope, { id: projectIdSchema.parse(task.projectId), organizationId: context.scope.organizationId, access: task.project.access }, "read").ok;
-  });
+  const found = candidates.find((task) => requireProjectAccess(context.scope, { id: projectIdSchema.parse(task.projectId), organizationId: context.scope.organizationId, access: task.project.access }, "read").ok);
   if (found === undefined) {
     return notFound();
   }

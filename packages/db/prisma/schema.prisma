@@ -254,6 +254,9 @@ model DeviceCode {
   purpose         DeviceCodePurpose @default(runner)
   /// ostra, milestone 3: the machine's name the CLI sent, for the device page and the CLI session.
   machineName     String?
+  /// ostra, milestone 3 (F-103): the organization the approving login session was in, so a CLI session
+  /// binds to that organization's member and not to the account's oldest membership. Null until approved.
+  organizationId  String?
 
   @@unique([deviceCode], map: "deviceCode_deviceCode_uidx")
   @@unique([userCode], map: "deviceCode_userCode_uidx")

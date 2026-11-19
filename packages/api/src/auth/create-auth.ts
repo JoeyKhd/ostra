@@ -66,6 +66,14 @@ const PATHS_BEFORE_PASSWORD_CHANGE: ReadonlySet<string> = new Set([
 ]);
 
 const changedPasswordSchema = z.looseObject({ user: z.looseObject({ id: z.string().min(1) }) });
+/** The body of `/device/approve`; better-auth compares the code with the dashes and case ignored. */
+const approvedDeviceSchema = z.looseObject({ userCode: z.string().min(1).transform((code) => code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()) });
+
+/** The login session behind an approval: who it is and the organization it is signed into. */
+const approverSchema = z.looseObject({
+  user: z.looseObject({ id: z.string().min(1) }),
+  session: z.looseObject({ activeOrganizationId: z.string().min(1).nullish() }),
+});
 
 /** Whether better-auth's user (or session user) still has to change its default password. */
 export const mustChangePasswordOf = (user: object): boolean => Reflect.get(user, "mustChangePassword") === true;
@@ -97,7 +105,7 @@ export const createAuth = (input: CreateAuthInput) => {
   const settings = input.settings ?? defaultAuthSettings;
   const { db } = input;
   // The before hook reads the caller's session through the finished instance, set just below.
-  const finished: { sessionOf?: (headers: Headers) => Promise<{ readonly user: object } | null> } = {};
+  const finished: { sessionOf?: (headers: Headers) => Promise<{ readonly user: object; readonly session: object } | null> } = {};
 
   const auth = betterAuth({
     baseURL: input.baseUrl,
@@ -190,6 +198,27 @@ export const createAuth = (input: CreateAuthInput) => {
         }
       }),
       after: createAuthMiddleware(async (ctx) => {
+        // F-103: a device code approved for the CLI remembers the organization the approver was signed
+        // into, so the CLI session binds to that organization's member (and its audit entry lands there).
+        if (ctx.path === "/device/approve" && !isAPIError(ctx.context.returned)) {
+          const approved = approvedDeviceSchema.safeParse(ctx.body);
+          const { sessionOf } = finished;
+          if (approved.success && ctx.headers !== undefined && sessionOf !== undefined) {
+            const found = approverSchema.safeParse(await sessionOf(ctx.headers));
+            const active = found.success ? found.data.session.activeOrganizationId : null;
+            if (found.success && typeof active === "string") {
+              const { user } = found.data;
+              const member = await db.member.findFirst({ where: { userId: user.id, organizationId: active }, select: { id: true } });
+              if (member !== null) {
+                await db.deviceCode.updateMany({
+                  where: { userCode: approved.data.userCode, userId: user.id, purpose: "cli", organizationId: null },
+                  data: { organizationId: active },
+                });
+              }
+            }
+          }
+          return;
+        }
         // A changed password ends the default one: the flag goes, and with it the forced step and
         // the panel's warning (F-001).
         if (ctx.path !== "/change-password" || isAPIError(ctx.context.returned)) {

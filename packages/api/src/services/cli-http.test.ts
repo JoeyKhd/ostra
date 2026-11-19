@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { startCliSession } from "@ostra/domain";
 import {
@@ -197,6 +197,56 @@ describe("the branches of a task", () => {
     for (const ref of ["not a ref", "../../etc/passwd", "OST-", ""]) {
       expect((await call(cliPaths.taskBranches(ref === "" ? "%20" : ref), { token: insider.token })).status, ref).toBe(404);
     }
+  });
+});
+
+describe("a session belongs to one organization", () => {
+  /** The same account that is organization A's plain member, also a member of organization B. */
+  const memberOfB = async () => {
+    const { userId } = harness.fixture.a.member;
+    const orgB = harness.fixture.b.organization.id;
+    const existing = await harness.test.db.member.findFirst({ where: { userId, organizationId: orgB }, select: { id: true, userId: true } });
+    return existing ?? harness.test.db.member.create({ data: { id: randomUUID(), organizationId: orgB, userId, role: "member", createdAt: new Date() }, select: { id: true, userId: true } });
+  };
+
+  it("F-103: a session made in organization A can't check out a task in organization B, even when the same user is a member of B", async () => {
+    const aMember = harness.fixture.a.member;
+    const bProject = harness.fixture.b.project.id;
+    const orgB = harness.fixture.b.organization.id;
+    // The same account is also a member of organization B, which has an open project and a task in it.
+    const inB = await memberOfB();
+    const bTask = await seedTask(harness, { organizationId: orgB, projectId: bProject, title: "B's task", driverMemberId: inB.id });
+    await harness.test.db.task.update({ where: { id: bTask.taskId }, data: { ticketKey: "BEE-7" } });
+
+    const sessionA = await sessionFor(aMember);
+    expect(sessionA.sessionId).toBeDefined();
+    for (const ref of [bTask.taskId, `${origin}/tasks/${bTask.taskId}`]) {
+      const response = await call(cliPaths.taskBranches(ref), { token: sessionA.token });
+      expect(response.status, ref).toBe(404);
+      expect(cliHttpErrorSchema.parse(await response.json()).error.code).toBe("not-found");
+    }
+    // The session made in B finds B's task (it has no repo, so the lookup passes and the protocol then refuses an empty list: a 502, never a 404) and not A's.
+    const sessionB = await sessionFor(inB);
+    const own = await call(cliPaths.taskBranches(bTask.taskId), { token: sessionB.token });
+    expect(own.status).toBe(502);
+    expect((await call(cliPaths.taskBranches(promptTask.taskId), { token: sessionB.token })).status).toBe(404);
+    // And A's own task is still open to the session made in A.
+    expect((await call(cliPaths.taskBranches(promptTask.taskId), { token: sessionA.token })).status).toBe(200);
+  });
+
+  it("F-103: a grant approved in an organization makes a session of that organization's member, and its audit entry lands there", async () => {
+    const aMember = harness.fixture.a.member;
+    const orgB = harness.fixture.b.organization.id;
+    const inB = await memberOfB();
+    const started = await call(cliPaths.device, { method: "POST", body: { name: "two-orgs", version: "0.3.0" } });
+    const grant = cliDeviceResponseSchema.parse(await started.json());
+    await harness.test.db.deviceCode.updateMany({ where: { deviceCode: grant.deviceCode }, data: { status: "approved", userId: aMember.userId, organizationId: orgB, lastPolledAt: new Date(Date.now() - 60_000) } });
+    const granted = await call(cliPaths.deviceToken, { method: "POST", body: { deviceCode: grant.deviceCode } });
+    const body = cliDeviceTokenResponseSchema.parse(await granted.json());
+    const stored = await harness.test.db.cliSession.findUniqueOrThrow({ where: { id: body.sessionId } });
+    expect(stored).toMatchObject({ memberId: inB.id, organizationId: orgB });
+    const entry = await harness.test.db.auditEntry.findFirstOrThrow({ where: { action: "cli-session.started", entityId: inB.id } });
+    expect(entry.organizationId).toBe(orgB);
   });
 });
 

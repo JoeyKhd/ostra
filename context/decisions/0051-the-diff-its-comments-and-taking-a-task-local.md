@@ -19,7 +19,7 @@
 ## Taking a task local
 
 - **`ostra login` makes a CLI session,** a credential of its own (Q177, ADR 0029): a device-code grant the member approves on the device page, a random token shown to the CLI once and stored hashed, valid 30 days *(working value)*, listed in the member's Account with its machine's name and last use, and revocable. It isn't a runner's key and can't become one, and a runner never shares its key with it.
-- **A CLI session reads one thing:** a task's branches, base branches and clone URLs, for tasks in projects the member can open. Every other API refuses it.
+- **A CLI session reads one thing:** a task's branches, base branches and clone URLs, for tasks in projects the member can open. Every other API refuses it. A session belongs to the one member (and so the one organization) the approver was signed into when they approved the code; it never reads another organization's tasks, even where the same account is a member.
 - **`ostra checkout` uses the member's own git access.** ostra hands out no token: the member already clones the repo with their own credentials, and a GitHub token from ostra would be a second way into the repo for the CLI to keep safe. It finds the member's clones by their remote, clones the ones that are missing, refuses a clone with uncommitted changes, and checks the branch out tracking the remote.
 - **A reopen starts from the branch as it is,** hand-made commits included (F-103): milestone 2's restore merges the branch's new commits onto the saved work (ADR 0039).
 
