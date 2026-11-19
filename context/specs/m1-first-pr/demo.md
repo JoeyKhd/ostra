@@ -1,6 +1,8 @@
 # Milestone 1's demo: first PR, from a prompt
 
-**Result, 2026-11-18 (23:38 UTC run):** a typed prompt became a real PR on the test repo, opened by the GitHub App, with the admin as co-author: **https://github.com/ostra-test/test1/pull/19**. Every check after the run passed. The run is scripted (`e2e/m1-first-pr/`, `pnpm e2e:m1`) and passed five times in a row from an empty data folder, the last two at 1 min 36 s and 1 min 43 s each, after `pnpm dev` was up.
+**Result, 2026-11-19 (01:04 UTC run):** a typed prompt became a real PR on the test repo, opened by the GitHub App, with the admin as co-author: **https://github.com/ostra-test/test1/pull/29**. All 13 checks after the run passed. `pnpm e2e:m1` passed twice in a row, each time from an empty data folder on a stack started fresh (`pnpm dev:reset --yes && pnpm dev`), in 89 s and 82 s, on a new worktree of `origin/main` with a fresh `pnpm install` (the first of the two kept #28; it is closed now). That worktree is not a `git clone`; the `git clone` run of the same day is in ticket 39's comments.
+
+The first record, 2026-11-18 at 23:38 UTC, opened #19 with a setup token and a hand-made admin. The server seeds the admin now (F-001), so steps 1 and 2 read differently below.
 
 **On this machine:** Windows 11, Node 24.14, no Docker. So the demo runs on the **host executor**: a personal runner on the same machine, the task in a worktree, the key proxy and git proxy in the runner's process on loopback (spec section 1). The `docker` executor is written and unit-tested, but has never run (below).
 
@@ -12,35 +14,45 @@ set -a; . ~/.config/ostra-dev/model.env; . ~/.config/ostra-dev/github.env; . ~/.
 pnpm e2e:m1                               # in another
 ```
 
-The script drives the panel in Chromium (Playwright), starts `ostra runner` from source, waits for the PR, runs the checks, then closes every demo PR but its own and deletes their branches and hidden refs (`test1` only). It types secrets into the panel's forms and prints none. Screenshots go to [`demo/`](demo/); the dev endpoint's address, the setup token, the admin's email and this machine's folders are masked in them. Details: `docs/development.md`, "Milestone 1's demo".
+Start both with `OSTRA_ADMIN_EMAIL=<GITHUB_TEST_MEMBER_LOGIN>@users.noreply.github.com`, so the PR's `Co-authored-by` links to the test member, and give the demo `OSTRA_E2E_STACK_LOG`, the stack's output file, so the credential search covers it. The script drives the panel in Chromium (Playwright), starts `ostra runner` from source, waits for the PR, runs the checks, then closes every demo PR but its own and deletes their branches and hidden refs (`test1` only). It types secrets into the panel's forms and prints none. Screenshots go to [`demo/`](demo/); the dev endpoint's address, the admin's email and this machine's folders are masked in them. Details: `docs/development.md`, "Milestone 1's demo".
 
 ## The steps (spec section 3)
 
+From the 01:04 UTC run on 2026-11-19.
+
 | Step | What happened | Screenshot |
 |---|---|---|
-| 1. Install | `pnpm dev` started the embedded Postgres (UTF-8), applied the migrations, and started web on :3000 and core on :8787. It printed the setup token in a box. | |
-| 2. The first admin | `/` sent the browser to `/setup`. The setup token from `.ostra-dev/server/setup-token`, the org `ostra-test`, user `admin`. The checklist came up with step 1 ticked. | [01](demo/01-first-admin.png), [02](demo/02-checklist.png) |
-| 3. A model provider | The base URL and token from `model.env`. Test connection: "Connected · OpenAI-compatible" with the endpoint's models (about 450), matched to the catalog. Then Allow on personal runners, and the dev model as the built-in OpenCode profile's model. | [03](demo/03-provider-tested.png), [04](demo/04-provider-saved.png) |
-| 4. The GitHub App | "Use an existing App": App ID 5821041 and its PEM from `github.env` (the webhook secret is a throwaway: webhooks are milestone 2). ostra showed the slug `ostra-sandbox-036d7c`, its bot, its permissions (`checks: write`, `actions: read` among them) and the installation `ostra-test`. | [05](demo/05-github-connected.png) |
+| 1. Install | `pnpm dev` started the embedded Postgres (UTF-8), generated Prisma's client, applied the three migrations, and started web on :3000 and core on :8787. Core seeded the first admin (`demo`, in the organization `Demo`) with the default password. | |
+| 2. The first admin | Signing in with the default password led straight to "Choose a new password", which the script did. The checklist came up with step 1 ticked. | [01](demo/01-change-password.png), [02](demo/02-checklist.png) |
+| 3. A model provider | The base URL and token from `model.env`. Test connection: "Connected · OpenAI-compatible · found 447 models", matched to the catalog. Then Allow on personal runners, and the dev model as the built-in OpenCode profile's model. | [03](demo/03-provider-tested.png), [04](demo/04-provider-saved.png) |
+| 4. The GitHub App | "Use an existing App": App ID 5821041 and its PEM from `github.env` (the webhook secret is a throwaway: webhooks are milestone 2). ostra showed the slug `ostra-sandbox-036d7c`, its bot, its permissions and the installation `ostra-test`. | [05](demo/05-github-connected.png) |
 | 5. The project | `ostra-test/test1` from the installation's repos. The environment draft, then Save. | [06](demo/06-project-new.png), [07](demo/07-environment-draft.png), [08](demo/08-environment-saved.png) |
 | 6. The runner | `ostra runner --server http://localhost:8787 --executor host` printed a code; the script approved it at `/device`. The runner showed online: personal, host, not isolated, capacity 1. | [09](demo/09-device-approve.png), [10](demo/10-runner-online.png) |
-| 7. The prompt | "Add a CONTRIBUTING.md with a short section on how to run the tests", Run on: the personal runner. Queued at 23:39:26, the turn started at 23:39:33. | [11](demo/11-prompt.png) |
-| 8. Watching | Thoughts, `read` and `execute` calls with their paths and commands, the edit, the agent's message, live. A second tab showed the same thread, and a reload mid-turn brought the history back. | [12](demo/12-watching.png), [13](demo/13-second-tab.png), [14](demo/14-after-reload.png) |
-| 9. The PR | The runner committed, pushed the branch and the hidden ref through the git proxy, and ended the session with changes. Core opened PR #19 at 23:39:52, 26 s after the prompt. The task moved to "in review" with the PR linked. | [15](demo/15-pull-request.png) |
-| 10. On GitHub | Opened by `ostra-sandbox-036d7c[bot]`. Its one commit is authored and committed by the bot, with `Co-authored-by: admin`. The title is the prompt. The body was written by the agent through `set_pull_request_text`, and links the task. `test1` has no PR template, so that path wasn't exercised live. | |
+| 7. The prompt | "Add a CONTRIBUTING.md with a short section on how to run the tests", Run on: the personal runner. Dispatched at 01:05:17. | [11](demo/11-prompt.png) |
+| 8. Watching | Thoughts, tool calls with their paths and commands, the edit, the agent's message, live. A second tab showed the same thread, and a reload mid-turn brought the history back. | [12](demo/12-watching.png), [13](demo/13-second-tab.png), [14](demo/14-after-reload.png) |
+| 9. The PR | The runner committed, pushed the branch and the hidden ref through the git proxy, and ended the session with changes at 01:05:31. Core opened PR #29 at 01:05:36, 18 s after the dispatch. The task moved to "in review" with the PR linked. | [15](demo/15-pull-request.png) |
+| 10. On GitHub | Checked through octokit: opened by `ostra-sandbox-036d7c[bot]`; its one commit authored and committed by the bot, with `Co-authored-by: demo`; the title is the prompt; the body, written by the agent through `set_pull_request_text`, links `OSTRA_PUBLIC_URL/tasks/<taskId>`. `test1` has no PR template, so that path wasn't exercised live. | |
 
 ## The checks after the run
 
-All from the 23:38 run; the script prints each one, and writes them to `.ostra-dev/e2e-m1/result.json`.
+All 13 passed in both runs. The script prints each one and writes them to `.ostra-dev/e2e-m1/result.json`. The figures are the 01:04 run's.
 
 | Check | Result |
 |---|---|
-| No credential reached the agent | PASS. The model token and the App's key were searched for by value, and GitHub tokens by pattern, in every event payload, the runner's log and the whole stack's output: none. No task folder was left behind. |
-| The git proxy holds | PASS. From the stopped task's checkout, while it ran: a new commit pushed to `main` got `remote: ostra: only the task's branch and its hidden ref can be pushed`; a push to `ostra-test/test2` got `remote: ostra: this task's proxy serves only the task's own repos`. `main` on `test1` is unchanged. |
+| The PR is the bot's (F-078) | PASS. Author `ostra-sandbox-036d7c[bot]`, 1 commit by the bot with `Co-authored-by: demo`, the prompt as title, a link to the task in the body. |
+| Tokens stored whole (F-089) | PASS. 9 model calls; the sessions hold 5,987 input and 1,085 output tokens (59,136 cache reads), equal to the sum of their `usage.recorded` events. Both come from the key proxy, so this shows the counts reached the database whole. |
 | No empty PR (F-065) | PASS. "In two sentences, explain what this repository is for…" ended without changes, opened no PR, and is in "needs you" with the agent's answer as its summary ([17](demo/17-needs-you.png)). |
-| Stop (F-025) | PASS. A task told to write `docs/numbers.md` and then run a ten-minute command was stopped mid-turn: "Stopped", and GitHub had its branch and `refs/ostra/wip/<taskId>`. No agent process was left on the machine ([19](demo/19-before-stop.png), [20](demo/20-stopped.png)). |
-| Tokens counted (F-089) | PASS. 11 model calls through the key proxy; the session holds 19,722 input and 2,009 output tokens (86,656 cache reads), equal to the sum of its `usage.recorded` events, which the proxy reads from the endpoint's own usage fields. |
-| Clean-up | Every PR the earlier runs opened (#11 to #18) is closed and their branches and hidden refs deleted. Only #19, its branch and its hidden ref remain. |
+| The git proxy refuses `main` | PASS. From the stopped task's checkout, while it ran: `remote: ostra: only the task's branch and its hidden ref can be pushed`. |
+| The git proxy refuses another repo | PASS. A push to `ostra-test/test2`: `remote: ostra: this task's proxy serves only the task's own repos`. |
+| Nothing refused reached GitHub | PASS. Through octokit, `main` on `test1` is the same commit before and after, and `test2` has no `ostra/e2e-probe` branch. |
+| No credential in the task's folders | PASS. While the stopped task ran: 47 files in its folder (the worktree, OpenCode's home, data, config and temp folders) searched by value for the model token and every line of the App's key, and OpenCode's tool outputs in `%TEMP%`. None held one; none was unreadable. |
+| The agent's environment | PASS. The live OpenCode process, read from its memory: every name is on the adapter's allowlist, or is one OpenCode sets itself with its own value (`OPENCODE_CLIENT=acp`, the loopback `NO_PROXY`). No value holds a secret. |
+| Tokens against the agent's own (ADR 0042) | PASS. While the stopped task waited on its command, the key proxy's count of the 2 model calls OpenCode had closed equals OpenCode's own, read from its database: 4,562 input and 403 output on both sides (OpenCode's output plus its reasoning). |
+| Stop ended the turn (F-025) | PASS. The stopped task's one session is `stopped`, and its branch has no PR. |
+| Stop kept the work (F-025) | PASS. GitHub has the task's branch and `refs/ostra/wip/<taskId>`, and the hidden ref's commit holds `docs/numbers.md` with ten lines ([19](demo/19-before-stop.png), [20](demo/20-stopped.png)). |
+| No credential in the logs | PASS. The event log, the runner's log and the stack's output searched for 26 secret values and the GitHub token pattern: none. |
+| No task folder left | PASS. 0 task folders in the runner's data folder, and no agent process left on the machine. |
+| Clean-up | Every PR the day's runs opened is closed and their branches and hidden refs deleted. Only #29, its branch and its hidden ref remain. |
 
 ## What it took
 
@@ -54,6 +66,13 @@ The first runs failed. Each fix is its own commit on `main`:
 - **Branch names collided.** The spec named them from the task ID's first 8 characters, which in a UUIDv7 are a timestamp: all three demo tasks got `ostra/01a1f0dd-…`, so the same prompt twice within about a minute would share a branch. They use the last 8 hex digits now; spec section 11, item 10 is updated (`87c0eef`).
 - **core refused the dev env files** (`OSTRA_DEV_GITHUB_*`, `OSTRA_DEV_PUBLIC_URL`, `OSTRA_SPIKE_*`), so `pnpm dev` wouldn't start with them loaded (`63cbebe`).
 
+On 2026-11-19, from a fresh checkout, three checks failed and a fourth passed without proving anything. Each was the check's error, not the product's, and each is fixed in `🐛 fix the demo's stop and live agent checks`:
+
+- **The stop didn't stop anything.** OpenCode 2.3.2 moved the ten-minute command to the background on its own and ended the turn, and the task opened a PR. The Stop then landed on a task in review, and the ref check passed on refs pushed at a normal end. The prompt now asks for the command in the foreground, and a new check requires the session to end `stopped`, with no PR.
+- **The environment check named `NO_PROXY` and `OPENCODE_CLIENT`.** OpenCode sets both in its own process at startup (its `acp` command, its entry point); ostra doesn't pass them. The OpenCode adapter now lists them with their values (`selfSetEnv`), and the check accepts such a name only with exactly that value.
+- **The token comparison was off** (proxy 4,348 in and 484 out, OpenCode 4,175 and 97, in one run). OpenCode records a model call's usage when its step ends, after the step's tool calls return, so the call that started the waiting command isn't counted yet. And it keeps reasoning tokens apart from its output, while the endpoint bills them as output. The check now compares the calls OpenCode has closed, with OpenCode's output plus its reasoning: equal, to the token.
+- **One file was unreadable:** OpenCode's PTY service holds `xdg/state/opencode/pty/<id>/service.lock` exclusively while a shell runs. The file is empty. The scan now counts an empty file as read without opening it, and names any unreadable file by its path.
+
 ## What's still missing
 
 **Waits for a Linux machine with Docker** (the ledger rows stay `building`, F-017 `planned`):
@@ -66,13 +85,15 @@ The first runs failed. Each fix is its own commit on `main`:
 **Other milestone 1 work not done:**
 - Ticket 40: the manifest flow ("Create a new App") run in a browser. F-006 stays `building` until it is.
 - Ticket 34: the milestone 1 screen targets.
-- `pnpm e2e:m1` from a fresh clone (2026-11-19) got through every step to a PR (#21) but failed 3 of its 12 checks, twice: no credential in the task's folders (1 file unreadable), the agent's environment allowlist (`NO_PROXY`, `OPENCODE_CLIENT` outside it) and token counts within 2% of OpenCode's own. Until they pass from a fresh clone, ticket 39's first and third boxes stay open. See ticket 39's comments.
+- `pnpm e2e:m1` passed twice in a row from an empty stack on a fresh worktree of `origin/main`, not on a `git clone`. The `git clone` run of the same day failed the three checks fixed above, and hasn't been run again.
 
 **Gaps found by the demo** (follow-ups, none blocks the demo):
 - **A batch the server can't store is resent forever.** When saving a frame fails, core closes the socket with 1011, and the runner reconnects and resends the same batch, with no limit. Such a batch needs to be refused once, visibly, or held aside.
 - **The agent works from the workspace root, not the repo.** With one repo, an agent told "create docs/numbers.md" once wrote it at the root, outside `test1/`. The task ended without changes and the file was lost without a word. Starting the agent in the repo when there is only one, or telling it where the repos are, would prevent it. The demo's prompt names the repo.
 - **OpenCode writes tool outputs to the machine's temp folder** (`%TEMP%\opencode\tool-outputs\<taskId>\…`), not the task's, although the launch sets `TEMP` and `TMP` to the task's folder. On `host` these files outlive the task.
-- **No protocol event for a provider's rate limit:** the key proxy detects it, but core can't hold dispatches on it yet (F-089).
 - **The sidecar in a box uses the runner's own access token,** not one scoped to its task (protocol work, with core).
-- **The panel:** `tasks.get` doesn't return the model or whether the agent can be steered; Stop still shows on a task in review; "Needs you" and "My tasks" aren't in the sidebar.
+- **The panel:** `tasks.get` doesn't return the model or whether the agent can be steered; Stop still shows on a task in review, and pressing it moves the task to "stopped" with its PR still open; "Needs you" and "My tasks" aren't in the sidebar.
+- **A checkout in a deep folder can't run the tests on Windows.** The embedded Postgres reads files under `node_modules/.pnpm/@embedded-postgres+windows-x64@…/native/share/extension/`, which pass Windows' 260-character path limit once the checkout's own path is longer than about 75 characters. initdb then fails, and every database test with it. A short path works.
+- **OpenCode may move a long command to the background** without being asked, which ends the turn while the command runs on. On `host` it is killed with the agent at the session's end. ostra has no say in it yet: no permission rule or tool setting covers it.
+- **A tool's output can carry the runner's local folders** to the panel: OpenCode's "moved to the background" message holds the absolute path of its output file. Tool inputs are made relative (`49db388`); outputs aren't.
 - **Join tokens made in the panel** aren't accepted by core's register yet (F-091, milestone 5).
