@@ -53,6 +53,15 @@ export type LaunchMcpServer =
       readonly readOnly: boolean;
     };
 
+/**
+ * Milestone 4 (ADR 0044, F-110): the task's memory, as the spec carries it. `block` is the text core
+ * rendered (the "always" notes, the index and the standing instruction), which the adapter writes
+ * with the profile's instructions where the agent reads them, in the task's config folder and
+ * never in a repo. `tools` says whether the agent gets ostra's three memory tools, which only an
+ * adapter that declares `memory: "mcp"` offers. The block's text is never logged.
+ */
+export type LaunchMemory = { readonly block: string; readonly tools: boolean };
+
 /** A file the agent needs before it starts, such as its per-task config. */
 export type LaunchFile = {
   /** Absolute, inside the task's agent folder or workspace. */
@@ -118,6 +127,28 @@ export type PrepareLaunchInput = {
    * own skills from them, so the profile's sit beside the repo's (F-021). Absent: none named.
    */
   readonly repoDirs?: readonly string[];
+
+  // ---- milestone 4 (ADR 0044) ----
+  /** The task's memory. Absent or `null`: the task has none, or its spec came without it. */
+  readonly memory?: LaunchMemory | null;
+};
+
+/**
+ * Milestone 4: the instructions an agent starts with, in one text: the profile's, then, for a task
+ * with several repos (F-098), the list of them side by side under the workspace's root, where the
+ * agent works, then the memory block (F-110). `null` when there's none of them. An adapter writes it
+ * where its agent reads instructions, in the task's config folder: never in a repo.
+ */
+export const composeLaunchInstructions = (input: PrepareLaunchInput): string | null => {
+  const repos = input.repoDirs ?? [];
+  const parts = [
+    input.instructions ?? "",
+    repos.length > 1
+      ? `This task's workspace holds ${String(repos.length)} repos side by side, each in its own folder under the workspace's root, where you work: ${repos.join(", ")}.`
+      : "",
+    input.memory?.block ?? "",
+  ].filter((part) => part.trim() !== "");
+  return parts.length === 0 ? null : parts.join("\n\n");
 };
 
 // ---------- the driver seam (ticket 09) ----------
@@ -318,6 +349,15 @@ export type MappedUpdate =
    */
   | { readonly handled: false; readonly update?: AcpUpdate };
 
+/**
+ * The agent kind's base class. **Native memory is off** (ADR 0044, Q91): an adapter turns its agent's
+ * own memory feature off at launch, so nothing an agent keeps for itself outlives the task, skips a
+ * member's approval or differs from runner to runner (on `host`, an agent's memory folder would
+ * carry from task to task on one machine). Project memory reaches the agent only as the launch's
+ * `memory` block and, with `memory: "mcp"`, ostra's memory tools. Each adapter's class says what it
+ * turns off, or that its agent has none: the Claude Code adapter sets
+ * `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, and the contract case for the rule comes with it.
+ */
 export abstract class AgentAdapter {
   readonly kind = "agent" as const;
   abstract readonly name: string;

@@ -37,6 +37,7 @@ const capabilities = (planMode: AgentCapabilities["planMode"]): AgentCapabilitie
   skills: false,
   mcp: { http: false, stdio: false },
   projectConfigOverride: false,
+  memory: "index-only",
 });
 
 const unusedDriver: DriverPort = {

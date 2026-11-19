@@ -40,4 +40,12 @@ export type AgentCapabilities = {
    * runner hides the files `repoConfigPaths` names from the agent for the task (ADR 0049, Q171).
    */
   readonly projectConfigOverride: boolean;
+
+  // ---- milestone 4 (ADR 0044, F-110) ----
+  /**
+   * How the agent takes project memory: it reaches ostra's MCP server and gets `memory_search`,
+   * `memory_read` and `memory_propose` beside the block (`mcp`), or it can't, and gets the block
+   * alone, the index and the "always" notes (`index-only`).
+   */
+  readonly memory: "mcp" | "index-only";
 };

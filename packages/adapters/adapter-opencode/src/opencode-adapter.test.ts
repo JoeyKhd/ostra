@@ -238,6 +238,8 @@ describe("the OpenCode adapter's capabilities", () => {
       skills: true,
       mcp: { http: true, stdio: true },
       projectConfigOverride: true,
+      // Milestone 4 (ticket 02).
+      memory: "mcp",
     });
     expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });

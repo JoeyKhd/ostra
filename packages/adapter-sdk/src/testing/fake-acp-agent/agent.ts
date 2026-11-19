@@ -75,6 +75,8 @@ export const fakeAgentConfigSchema = z.looseObject({
   skills: z.array(z.looseObject({ name: z.string(), dir: z.string() })).optional(),
   instructions: z.string().nullish(),
   mcpServers: z.array(z.looseObject({ name: z.string(), transport: z.enum(["http", "stdio"]), readOnly: z.boolean() })).optional(),
+  /** Milestone 4: ostra's own MCP server, for the memory tools; absent for an agent without them. */
+  ostraMcp: z.looseObject({ url: z.string(), bearer: z.string().optional() }).optional(),
 });
 export type FakeAgentConfig = z.infer<typeof fakeAgentConfigSchema>;
 
@@ -150,6 +152,19 @@ export const fakeScripts = [
   "mcp",
   /** Says each marked block of the prompt: what the runner's prompts reach it as. */
   "read-blocks",
+  // Milestone 4 (ticket 02).
+  /** Says the instructions its config gave it, as `instructions: <text>`. */
+  "instructions",
+  /** Lists the tools ostra's MCP server offers, as `memory tools: a, b`, or `none` without one. */
+  "memory-tools",
+  /** Calls `memory_search` with the query given, and says what came back. */
+  "memory-search",
+  /** Calls `memory_read` with the note ID given, and says what came back. */
+  "memory-read",
+  /** Calls `memory_propose` with the title given, and says what came back. */
+  "memory-propose",
+  /** ADR 0035's canary: a shell call (`cat`) that reads the absolute path given, with its full input. */
+  "shell-read",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -210,6 +225,25 @@ const waitForAbort = async (signal: AbortSignal): Promise<void> =>
       resolve();
     }, { once: true });
   });
+
+/** One JSON-RPC call to an MCP server over HTTP, as a client of the streamable HTTP transport does. */
+const mcpCall = async (server: { readonly url: string; readonly bearer?: string | undefined }, method: string, params: unknown): Promise<unknown> => {
+  try {
+    const answer = await fetch(server.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        ...(server.bearer === undefined ? {} : { authorization: `Bearer ${server.bearer}` }),
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
+    });
+    const parsed = z.looseObject({ result: z.unknown() }).safeParse(await answer.json());
+    return parsed.success ? parsed.data.result : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
   const capabilities = fakeAgentCapabilities[options.profile];
@@ -855,6 +889,69 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         await mkdir(path.dirname(target), { recursive: true });
         await rename(source, target);
         await say(`Moved ${from} to ${to}.`);
+        return "end_turn";
+      }
+
+      // ---- milestone 4 (ticket 02): memory, and ADR 0035's canary ----
+      case "instructions": {
+        const config = await readConfig();
+        await say(`instructions: ${config.instructions ?? "(none)"}`);
+        return "end_turn";
+      }
+
+      case "memory-tools": {
+        const config = await readConfig();
+        if (config.ostraMcp === undefined) {
+          await say("memory tools: none");
+          return "end_turn";
+        }
+        await mcpCall(config.ostraMcp, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake-acp-agent", version: "0.0.0" } });
+        const listed = z.looseObject({ tools: z.array(z.looseObject({ name: z.string() })) }).safeParse(await mcpCall(config.ostraMcp, "tools/list", {}));
+        await say(`memory tools: ${listed.success ? listed.data.tools.map((tool) => tool.name).join(", ") : "none"}`);
+        return "end_turn";
+      }
+
+      case "memory-search":
+      case "memory-read":
+      case "memory-propose": {
+        const config = await readConfig();
+        const tool = script.replace("-", "_");
+        if (config.ostraMcp === undefined) {
+          await say(`${tool}: no such tool`);
+          return "end_turn";
+        }
+        const toolArgs: Record<string, unknown> =
+          script === "memory-search"
+            ? { query: args, limit: 5 }
+            : script === "memory-read"
+              ? { noteId: args }
+              : { title: args, body: "Proposed by the fake agent.", kind: "convention", scope: "project", relatesTo: null, relation: null };
+        const toolCallId = `t-${script}`;
+        await update({ sessionUpdate: "tool_call", toolCallId, title: `ostra/${tool}`, kind: "other", status: "in_progress", rawInput: { mcpServer: "ostra", tool, arguments: toolArgs } });
+        const result = z
+          .looseObject({ content: z.array(z.looseObject({ type: z.string(), text: z.string().optional() })) })
+          .safeParse(await mcpCall(config.ostraMcp, "tools/call", { name: tool, arguments: toolArgs }));
+        const text = result.success ? result.data.content.map((part) => part.text ?? "").join("") : "the tool call failed";
+        await update({ sessionUpdate: "tool_call_update", toolCallId, status: result.success ? "completed" : "failed", content: [{ type: "content", content: { type: "text", text } }] });
+        await say(`${tool}: ${text}`);
+        return "end_turn";
+      }
+
+      case "shell-read": {
+        // ADR 0035's canary: a shell call that reads the path given, reported with its full input.
+        const target = args;
+        const toolCallId = "t-shell-read";
+        await update({ sessionUpdate: "tool_call", toolCallId, title: `cat ${target}`, kind: "execute", status: "in_progress", rawInput: { command: `cat ${target}`, cwd: session.cwd } });
+        let content: string;
+        try {
+          content = await readFile(target, "utf8");
+        } catch {
+          await update({ sessionUpdate: "tool_call_update", toolCallId, status: "failed", content: [{ type: "content", content: { type: "text", text: "no such file" } }] });
+          await say("Couldn't read it.");
+          return "end_turn";
+        }
+        await update({ sessionUpdate: "tool_call_update", toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: content } }] });
+        await say(`Read ${String(content.length)} characters.`);
         return "end_turn";
       }
 

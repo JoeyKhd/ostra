@@ -1,0 +1,297 @@
+import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+
+import {
+  memoryNoteResponseSchema,
+  memoryProposalRequestSchema,
+  memoryProposalResponseSchema,
+  memorySearchRequestSchema,
+  memorySearchResponseSchema,
+  noteIdSchema,
+  proposalIdSchema,
+  runnerLimits,
+  runnerPaths,
+} from "@ostra/protocol";
+import type { MemoryNote, MemoryProposalInput, MemoryProposalResponse, MemorySearchResponse, TaskId } from "@ostra/protocol";
+import { z } from "zod";
+
+// Milestone 4 (ticket 02, F-110, F-111): a fake core for the sidecar's memory endpoints, answering
+// by the protocol's schemas (minor 3), and in front of it a stand-in for the sidecar's MCP server
+// (ticket 20 builds the real one), so an agent's `memory_search`, `memory_read` and
+// `memory_propose` round-trip the way they will: the agent calls an MCP tool, and the MCP server
+// calls core's runner HTTP with the task's token.
+//
+// - `POST runnerPaths.taskMemorySearch(taskId)`: a search over the fixture's notes, by every word of
+//   the query in a note's title or body, case-insensitive; the result carries the matching line.
+// - `GET runnerPaths.taskMemoryNote(taskId, noteId)`: one note, or 404.
+// - `POST runnerPaths.taskMemoryProposals(taskId)`: a proposal counted, with its ID, until the task's
+//   cap (`limit-reached`); one that doesn't parse is `invalid`.
+// - `POST /mcp`: JSON-RPC 2.0, `initialize`, `tools/list` and `tools/call`, with the MCP bearer.
+//
+// Every request without the right bearer is 401. Nothing here logs: a note's text, a query and a
+// proposal's text are never logged.
+
+export type FakeMemoryCoreOptions = {
+  readonly taskId: TaskId;
+  /** The task's token core's endpoints take, as the sidecar sends it. */
+  readonly taskToken: string;
+  /** The MCP server's bearer, as the agent's config carries it. */
+  readonly mcpBearer: string;
+  /** The approved notes the task can reach. */
+  readonly notes: readonly MemoryNote[];
+  /** The proposals a task may make. Default: the protocol's `memoryProposalsPerTask`. */
+  readonly proposalLimit?: number;
+};
+
+export type FakeMemoryCore = {
+  /** Core's address: the runner HTTP's base. */
+  readonly url: string;
+  /** The MCP server's address, for `PrepareLaunchInput.mcp.url`. */
+  readonly mcpUrl: string;
+  readonly mcpBearer: string;
+  /** How many requests each endpoint answered, refused ones included. */
+  readonly calls: { search: number; read: number; propose: number };
+  /** The MCP tools called, in order. */
+  readonly toolCalls: string[];
+  /** The proposals recorded, in order. */
+  readonly proposals: MemoryProposalInput[];
+  readonly close: () => Promise<void>;
+};
+
+/** Two approved notes, for a fixture: a command and a convention, with code identifiers in them. */
+export const memoryNoteFixtures: readonly MemoryNote[] = [
+  { noteId: noteIdSchema.parse("note-pnpm"), title: "Use pnpm, never npm", body: "Run pnpm install at the root; npm install breaks the lockfile.", kind: "command", scope: "organization", version: 1 },
+  { noteId: noteIdSchema.parse("note-branches"), title: "Branch names start with ostra/", body: "Every task branch is ostra/<ticket>, so the reconcile finds it.", kind: "convention", scope: "project", version: 2 },
+];
+
+/** The three tools, as `tools/list` offers them. */
+export const memoryToolNames = ["memory_search", "memory_read", "memory_propose"] as const;
+
+const MCP_PATH = "/mcp";
+
+const memoryTools = [
+  {
+    name: "memory_search",
+    description: "Search the project's memory notes. Returns each match's ID, title and the line that matched.",
+    inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] },
+  },
+  {
+    name: "memory_read",
+    description: "Read one memory note in full, by its ID.",
+    inputSchema: { type: "object", properties: { noteId: { type: "string" } }, required: ["noteId"] },
+  },
+  {
+    name: "memory_propose",
+    description: "Propose a note for a member to approve. It reaches no agent until approved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        body: { type: "string" },
+        kind: { type: "string" },
+        scope: { type: "string" },
+        relatesTo: { type: ["string", "null"] },
+        relation: { type: ["string", "null"] },
+      },
+      required: ["title", "body", "kind", "scope"],
+    },
+  },
+] as const;
+
+const jsonRpcSchema = z.looseObject({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number()]).optional(),
+  method: z.string(),
+  params: z.unknown().optional(),
+});
+const toolCallParamsSchema = z.looseObject({ name: z.string(), arguments: z.record(z.string(), z.unknown()).optional() });
+
+const readBody = async (request: IncomingMessage): Promise<string> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+};
+
+const parseJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+};
+
+const send = (response: ServerResponse, status: number, body: unknown): void => {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify(body));
+};
+
+/** The search's answer: every note with all the query's words, by its first line that has one. */
+const search = (notes: readonly MemoryNote[], query: string, limit: number): MemorySearchResponse => {
+  const words = query.toLowerCase().split(/\s+/).filter((word) => word !== "");
+  const results = notes
+    .filter((note) => words.every((word) => `${note.title}\n${note.body}`.toLowerCase().includes(word)))
+    .slice(0, limit)
+    .map((note) => {
+      const line = [note.title, ...note.body.split("\n")].find((candidate) => words.some((word) => candidate.toLowerCase().includes(word))) ?? note.title;
+      return { noteId: note.noteId, title: note.title, line: line.slice(0, runnerLimits.memoryQueryMaxChars), kind: note.kind, scope: note.scope };
+    });
+  return memorySearchResponseSchema.parse({ results });
+};
+
+export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promise<FakeMemoryCore> => {
+  const limit = options.proposalLimit ?? runnerLimits.memoryProposalsPerTask;
+  const calls = { search: 0, read: 0, propose: 0 };
+  const toolCalls: string[] = [];
+  const proposals: MemoryProposalInput[] = [];
+  let base = "";
+
+  const searchPath = runnerPaths.taskMemorySearch(options.taskId);
+  const proposalsPath = runnerPaths.taskMemoryProposals(options.taskId);
+  const notePrefix = runnerPaths.taskMemoryNote(options.taskId, "");
+
+  /** Core's runner HTTP, as the sidecar calls it. */
+  const core = async (request: IncomingMessage, response: ServerResponse, path: string): Promise<void> => {
+    if (request.headers.authorization !== `Bearer ${options.taskToken}`) {
+      send(response, 401, { error: "the task's token was refused" });
+      return;
+    }
+    if (request.method === "POST" && path === searchPath) {
+      calls.search += 1;
+      const parsed = memorySearchRequestSchema.safeParse(parseJson(await readBody(request)));
+      if (!parsed.success) {
+        send(response, 400, { error: "a search is a query and a limit" });
+        return;
+      }
+      send(response, 200, search(options.notes, parsed.data.query, parsed.data.limit));
+      return;
+    }
+    if (request.method === "GET" && path.startsWith(notePrefix)) {
+      calls.read += 1;
+      const noteId = decodeURIComponent(path.slice(notePrefix.length));
+      const note = options.notes.find((candidate) => candidate.noteId === noteId);
+      if (note === undefined) {
+        send(response, 404, { error: "no such note" });
+        return;
+      }
+      send(response, 200, memoryNoteResponseSchema.parse(note));
+      return;
+    }
+    if (request.method === "POST" && path === proposalsPath) {
+      calls.propose += 1;
+      const parsed = memoryProposalRequestSchema.safeParse(parseJson(await readBody(request)));
+      let answer: MemoryProposalResponse;
+      if (!parsed.success) {
+        answer = { code: "invalid" };
+      } else if (proposals.length >= limit) {
+        answer = { code: "limit-reached" };
+      } else {
+        proposals.push(parsed.data);
+        answer = { proposalId: proposalIdSchema.parse(`proposal-${String(proposals.length)}`) };
+      }
+      send(response, 200, memoryProposalResponseSchema.parse(answer));
+      return;
+    }
+    send(response, 404, { error: "no such endpoint" });
+  };
+
+  /** The sidecar's side of one tool call: core's endpoint, with the task's token. */
+  const callTool = async (name: string, args: Readonly<Record<string, unknown>>): Promise<unknown> => {
+    const headers = { authorization: `Bearer ${options.taskToken}`, "content-type": "application/json" };
+    switch (name) {
+      case "memory_search": {
+        const body = { query: args["query"], limit: args["limit"] ?? 5 };
+        const answer = await fetch(`${base}${searchPath}`, { method: "POST", headers, body: JSON.stringify(body) });
+        return answer.ok ? memorySearchResponseSchema.parse(await answer.json()) : { error: `the search was refused (${String(answer.status)})` };
+      }
+      case "memory_read": {
+        const noteId = typeof args["noteId"] === "string" ? args["noteId"] : "";
+        const answer = await fetch(`${base}${runnerPaths.taskMemoryNote(options.taskId, noteId)}`, { headers });
+        return answer.ok ? memoryNoteResponseSchema.parse(await answer.json()) : { error: "no such note" };
+      }
+      case "memory_propose": {
+        const body = { relatesTo: null, relation: null, ...args };
+        const answer = await fetch(`${base}${proposalsPath}`, { method: "POST", headers, body: JSON.stringify(body) });
+        return answer.ok ? memoryProposalResponseSchema.parse(await answer.json()) : { error: `the proposal was refused (${String(answer.status)})` };
+      }
+      default:
+        return undefined;
+    }
+  };
+
+  /** The MCP stand-in: JSON-RPC over one POST, answered as JSON. */
+  const mcp = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (request.headers.authorization !== `Bearer ${options.mcpBearer}`) {
+      send(response, 401, { error: "the MCP bearer was refused" });
+      return;
+    }
+    const message = jsonRpcSchema.safeParse(parseJson(await readBody(request)));
+    if (!message.success) {
+      send(response, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "not a JSON-RPC message" } });
+      return;
+    }
+    const { id, method, params } = message.data;
+    if (id === undefined) {
+      // A notification, such as `notifications/initialized`.
+      response.writeHead(202).end();
+      return;
+    }
+    const reply = (result: unknown): void => {
+      send(response, 200, { jsonrpc: "2.0", id, result });
+    };
+    switch (method) {
+      case "initialize":
+        reply({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "ostra", version: "0.0.0" } });
+        return;
+      case "tools/list":
+        reply({ tools: memoryTools });
+        return;
+      case "tools/call": {
+        const call = toolCallParamsSchema.safeParse(params);
+        const result = call.success ? await callTool(call.data.name, call.data.arguments ?? {}) : undefined;
+        if (!call.success || result === undefined) {
+          send(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "no such tool" } });
+          return;
+        }
+        toolCalls.push(call.data.name);
+        reply({ content: [{ type: "text", text: JSON.stringify(result) }], isError: false });
+        return;
+      }
+      default:
+        send(response, 200, { jsonrpc: "2.0", id, error: { code: -32601, message: "no such method" } });
+    }
+  };
+
+  const server = createServer((request, response) => {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    const handled = path === MCP_PATH ? mcp(request, response) : core(request, response, path);
+    handled.catch(() => {
+      if (!response.headersSent) send(response, 500, { error: "the fake core failed" });
+    });
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address() satisfies AddressInfo | string | null;
+  if (address === null || typeof address === "string") {
+    throw new Error("the fake memory core has no port");
+  }
+  base = `http://127.0.0.1:${String(address.port)}`;
+  return {
+    url: base,
+    mcpUrl: `${base}${MCP_PATH}`,
+    mcpBearer: options.mcpBearer,
+    calls,
+    toolCalls,
+    proposals,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
+};

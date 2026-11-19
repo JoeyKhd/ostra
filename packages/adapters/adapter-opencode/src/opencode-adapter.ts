@@ -101,6 +101,10 @@ export class OpenCodeAdapter extends AgentAdapter {
     skills: true,
     mcp: { http: true, stdio: true },
     projectConfigOverride: true,
+    // Milestone 4 (ADR 0044): OpenCode reaches ostra's MCP server, so it takes the memory tools;
+    // ticket 07 writes the block and the tools into its config. Native memory: OpenCode has none
+    // of its own, so there is nothing to turn off.
+    memory: "mcp",
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */

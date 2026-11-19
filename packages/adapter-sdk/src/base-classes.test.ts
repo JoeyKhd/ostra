@@ -139,6 +139,7 @@ describe("a missing operation", () => {
         skills: false,
         mcp: { http: false, stdio: false },
         projectConfigOverride: false,
+        memory: "index-only" as const,
       };
       health(): Promise<HealthReport> {
         return ok();

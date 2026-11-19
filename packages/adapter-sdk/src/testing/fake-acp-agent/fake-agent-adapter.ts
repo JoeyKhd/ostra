@@ -5,7 +5,7 @@ import { mcpSubjectValue } from "@ostra/protocol";
 import type { ApprovalRequestSubject } from "@ostra/protocol";
 
 import { createAcpDriver } from "../../agent/acp/driver.ts";
-import { AgentAdapter } from "../../agent/base.ts";
+import { AgentAdapter, composeLaunchInstructions } from "../../agent/base.ts";
 import type {
   AgentCommand,
   AgentLaunch,
@@ -28,10 +28,18 @@ const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 /** The variables an agent needs to run at all, and no more (ADR 0030): none is a secret. */
 const PASSTHROUGH = process.platform === "win32" ? ["PATH", "Path", "SystemRoot"] : ["PATH", "LANG"];
 
+/** Milestone 4 (ticket 02): how a fake takes memory. `index-only` is the third fake: no ostra MCP server. */
+export type FakeAgentMemory = "mcp" | "index-only";
+
 /**
  * The scripted fake ACP agent, run through ostra's driver like any agent (ADR 0032). It declares
  * what OpenCode lacks, native plan updates and reject-and-continue, with steering (`rich`), or none
  * of them (`plain`), so both composer paths stay tested.
+ *
+ * Milestone 4: both take ostra's memory tools over MCP (`memory: "mcp"`); a third fake,
+ * `new FakeAgentAdapter("plain", driver, context, "index-only")`, lists no ostra MCP server in its
+ * config whatever the spec offers, and gets the memory block alone (the profile's own MCP servers still reach it). **Native memory:** the fake agent has none, so there's
+ * nothing to turn off (ADR 0044): it keeps only its sessions, in the task's agent folder.
  */
 export class FakeAgentAdapter extends AgentAdapter {
   readonly name: string;
@@ -39,16 +47,17 @@ export class FakeAgentAdapter extends AgentAdapter {
   override readonly repoConfigPaths: readonly string[] = [FAKE_AGENT_REPO_CONFIG];
   readonly #profile: FakeAgentProfile;
 
-  constructor(profile: FakeAgentProfile, driver: DriverPort = createAcpDriver(), context?: AdapterContext) {
+  constructor(profile: FakeAgentProfile, driver: DriverPort = createAcpDriver(), context?: AdapterContext, memory: FakeAgentMemory = "mcp") {
     super(driver, context);
     this.#profile = profile;
-    this.name = `fake-acp-agent-${profile}`;
+    this.name = memory === "mcp" ? `fake-acp-agent-${profile}` : `fake-acp-agent-${profile}-index-only`;
     const declared = fakeAgentCapabilities[profile];
     this.capabilities = {
       ...declared,
       elicitationForm: true,
       modelBaseUrlAndPlaceholderKey: true,
       sessionArchive: true,
+      memory,
     };
   }
 
@@ -70,16 +79,19 @@ export class FakeAgentAdapter extends AgentAdapter {
   #config(input: PrepareLaunchInput): FakeAgentConfig {
     const skills = input.skills ?? [];
     const skillLines = this.capabilities.skills ? [] : skills.map((skill) => `Skill ${skill.name}: read ${path.join(skill.dir, "SKILL.md")}`);
-    const instructions = [input.instructions ?? "", ...skillLines].filter((line) => line !== "").join("\n");
+    // Milestone 4: the profile's instructions, the repos side by side and the memory block, in this config file.
+    const instructions = [composeLaunchInstructions(input) ?? "", ...skillLines].filter((line) => line !== "").join("\n");
     const mcpServers = (input.mcpServers ?? []).filter((server) =>
       server.transport === "http" ? this.capabilities.mcp.http : this.capabilities.mcp.stdio,
     );
+    const memoryTools = this.capabilities.memory === "mcp" && input.memory?.tools === true;
     return {
       mode: input.mode ?? "build",
       approvalRules: input.approvalRules ?? [],
       ...(this.capabilities.skills ? { skills: skills.map((skill) => ({ name: skill.name, dir: skill.dir })) } : {}),
       instructions: instructions === "" ? null : instructions,
       mcpServers: mcpServers.map((server) => ({ name: server.name, transport: server.transport, readOnly: server.readOnly })),
+      ...(memoryTools ? { ostraMcp: { url: input.mcp.url, ...(input.mcp.bearer === undefined ? {} : { bearer: input.mcp.bearer }) } } : {}),
     };
   }
 

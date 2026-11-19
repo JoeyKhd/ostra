@@ -1,6 +1,6 @@
 # 02: Adapter SDK: memory for agents
 
-Status: ready-for-agent
+Status: done
 Builder: adapters (contracts, first)
 Blocked by: 01
 Features: F-110, F-111, F-098, F-073 (the canary control)
@@ -21,10 +21,11 @@ Spec: `../spec.md`, section 5.2; ADR 0044 (amended), ADR 0035
 
 ## Done when
 
-- [ ] The suite passes against both fakes, and against OpenCode once ticket 07 is in.
-- [ ] The base class's doc comment states the native-memory rule, and both fakes state that they have none.
-- [ ] Tests named for their rows, e.g. `it("F-110: an agent without MCP gets the index and no tools", ...)`, with break-it checks, and rows added to `context/proof/F-110.md` and `F-073.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add memory to the agent interface`.
+- [x] The suite passes against both fakes, and against OpenCode once ticket 07 is in.
+- [x] The base class's doc comment states the native-memory rule, and both fakes state that they have none.
+- [x] Tests named for their rows, e.g. `it("F-110: an agent without MCP gets the index and no tools", ...)`, with break-it checks, and rows added to `context/proof/F-110.md` and `F-073.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add memory to the agent interface`.
 
 ## Comments
+- 2026-11-19, adapters (contracts): done in `✨ add memory to the agent interface` (COMMIT), on ticket 01's protocol minor 3. **Contract:** `AgentCapabilities.memory: "mcp" | "index-only"`, declared by every adapter (OpenCode `mcp`, the tiny agent `index-only`); `PrepareLaunchInput.memory?: { block, tools } | null` (`LaunchMemory`, optional so a caller without memory compiles); `composeLaunchInstructions(input)`, the one text an adapter writes in the task's config folder: the profile's instructions, the repos side by side when there are several (F-098), then the block. The base class's doc comment states the native-memory rule; the fakes and OpenCode say they have none. **Fakes:** the scripted fake agent's config gains `ostraMcp`, and its scripts `instructions`, `memory-tools`, `memory-search`, `memory-read`, `memory-propose` (real JSON-RPC calls to the MCP server its config names) and `shell-read` (the canary); `new FakeAgentAdapter("plain", undefined, undefined, "index-only")` is the third fake, which never lists ostra's MCP server (the profile's own MCP servers still reach it). `startFakeMemoryCore` (`@ostra/adapter-sdk/testing`) answers `runnerPaths.taskMemorySearch`, `taskMemoryNote` and `taskMemoryProposals` by the protocol's schemas (a search over `memoryNoteFixtures`, a proposal counter with the cap), with the task's token, and a stand-in for the sidecar's MCP server on `/mcp` (`initialize`, `tools/list`, `tools/call`) that calls those endpoints as the sidecar will (ticket 20). **Suite** (`agent-memory-cases.ts`, called from `defineAgentContractSuite`, each case skipped without its probe): the block reaches the agent with the profile's instructions, every launch file outside the repos and `git status` clean in each; with `mcp`, the three tools offered and each call round-tripping through the fake core; with `index-only`, the block and no tool; two repos side by side with the agent at the root and its instructions naming both; and ADR 0035's canary, which milestone 1's suite lacked. They pass on the rich, plain and index-only fakes; OpenCode's fixture has no memory probe until ticket 07. Proof: `context/proof/F-110.md` (three rows `partial`, the native-memory row `missing` until the Claude Code adapter) and `F-073.md` (the event log row `partial`). Break-it checks: dropped the block from `composeLaunchInstructions`; gave the index-only fake the MCP server; stopped counting searches at the fake core; replaced a tool call's input with `{}` in `map.ts`. Each failed its cases.

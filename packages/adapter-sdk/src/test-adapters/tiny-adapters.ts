@@ -1071,6 +1071,8 @@ export class TinyAgent extends AgentAdapter {
     skills: false,
     mcp: { http: false, stdio: false },
     projectConfigOverride: false,
+    // Milestone 4: no MCP, so the memory block alone.
+    memory: "index-only",
   };
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });

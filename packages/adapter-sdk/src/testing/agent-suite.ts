@@ -13,6 +13,8 @@ import type {
   PrepareLaunchInput,
   QuestionAnswer,
 } from "../agent/base.ts";
+import { defineAgentMemoryCases } from "./agent-memory-cases.ts";
+import type { AgentCanaryProbe, AgentMemoryProbes } from "./agent-memory-cases.ts";
 import { defineAgentProfileCases } from "./agent-profile-cases.ts";
 import type { AgentProfileProbes } from "./agent-profile-cases.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
@@ -108,6 +110,10 @@ export type AgentFixture = {
    * mode, skills, MCP servers, a repo's config. Absent: those cases are skipped.
    */
   readonly profile?: AgentProfileProbes;
+  /** Milestone 4 (ADR 0044, F-110, F-098): the memory cases and the repos side by side. Absent: skipped. */
+  readonly memory?: AgentMemoryProbes;
+  /** Milestone 4 (ADR 0035, F-073): the canary control. Absent: skipped. */
+  readonly canary?: AgentCanaryProbe;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -140,6 +146,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       skills: "boolean",
       mcp: "object",
       projectConfigOverride: "boolean",
+      memory: "string",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -541,6 +548,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
 
     // Milestone 3: approval rules, task rules, plan first, skills, MCP servers (ADR 0049).
     defineAgentProfileCases(subject);
+
+    // Milestone 4: memory, the repos side by side, and the canary (ADR 0044, ADR 0035).
+    defineAgentMemoryCases(subject);
   });
 };
 

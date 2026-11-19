@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
@@ -9,29 +11,49 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import type { AgentSession } from "../../agent/base.ts";
 
+import { sampleMemoryBlock } from "../agent-memory-cases.ts";
 import { defineAgentContractSuite } from "../agent-suite.ts";
 import type { PrepareLaunchInput } from "../../agent/base.ts";
 import type { AgentFixture } from "../agent-suite.ts";
+import { memoryNoteFixtures, startFakeMemoryCore } from "../fake-memory-core.ts";
+import type { FakeMemoryCore } from "../fake-memory-core.ts";
 import { runAgentCommand, spawnAgentProcess } from "../spawn-agent.ts";
 import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, fakeMarker } from "./agent.ts";
 import type { FakeAgentProfile } from "./agent.ts";
 import { FakeAgentAdapter } from "./fake-agent-adapter.ts";
+import type { FakeAgentMemory } from "./fake-agent-adapter.ts";
 
 // The agent contract suite, against the scripted fake ACP agent in both profiles, as a real child
 // process through ostra's ACP driver (ticket 10).
 
 const roots: string[] = [];
+const cores: FakeMemoryCore[] = [];
 afterAll(async () => {
+  await Promise.all(cores.map((core) => core.close()));
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const fixtureFor = async (): Promise<AgentFixture> => {
+/** Milestone 4: the two repos every fixture's workspace holds side by side, each a git repo. */
+const REPOS = ["test1", "test2"] as const;
+const run = promisify(execFile);
+
+const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture> => {
   const root = await mkdtemp(path.join(tmpdir(), "ostra-fake-agent-"));
   roots.push(root);
   const workspaceDir = path.join(root, "workspace");
   const agentDir = path.join(root, "agent");
   await mkdir(workspaceDir, { recursive: true });
   await mkdir(path.join(agentDir, "tmp"), { recursive: true });
+  for (const repo of REPOS) {
+    await mkdir(path.join(workspaceDir, repo), { recursive: true });
+    await run("git", ["init", "-q"], { cwd: path.join(workspaceDir, repo) });
+  }
+  // Milestone 4: the fake core and its MCP stand-in, for an agent that takes the memory tools.
+  const core =
+    memory === "mcp"
+      ? await startFakeMemoryCore({ taskId: fixtureIds.task, taskToken: "ostra-task-fake-token", mcpBearer: "fake-mcp-bearer", notes: memoryNoteFixtures })
+      : undefined;
+  if (core !== undefined) cores.push(core);
   const base: PrepareLaunchInput = {
     taskId: fixtureIds.task,
     sessionId: fixtureIds.session,
@@ -43,7 +65,7 @@ const fixtureFor = async (): Promise<AgentFixture> => {
       baseUrl: "http://127.0.0.1:9/key-proxy/v1",
       placeholderKey: "ostra-fake-key-for-this-task",
     },
-    mcp: { url: "http://127.0.0.1:9/mcp" },
+    mcp: core === undefined ? { url: "http://127.0.0.1:9/mcp" } : { url: core.mcpUrl, bearer: core.mcpBearer },
     instructions: null,
     extraEnv: { NODE_ENV: "test" },
   };
@@ -116,6 +138,16 @@ const fixtureFor = async (): Promise<AgentFixture> => {
       echoesMarkedBlocks: true,
       asksOneAtATime: false,
     },
+    memory: {
+      instructions: fakeMarker("instructions"),
+      tools: fakeMarker("memory-tools"),
+      search: (query) => fakeMarker("memory-search", query),
+      read: (noteId) => fakeMarker("memory-read", noteId),
+      propose: (title) => fakeMarker("memory-propose", title),
+      ...(core === undefined ? {} : { core: () => core }),
+      repos: REPOS,
+    },
+    canary: { prompt: (absolutePath) => fakeMarker("shell-read", absolutePath) },
   };
 };
 
@@ -126,6 +158,12 @@ for (const profile of ["rich", "plain"] as const satisfies readonly FakeAgentPro
   });
 }
 
+// Milestone 4 (ticket 02): the third fake, which can't reach an MCP server and takes the memory block alone.
+defineAgentContractSuite({
+  name: "the scripted fake ACP agent, plain profile, index-only memory",
+  create: async () => ({ adapter: new FakeAgentAdapter("plain", undefined, undefined, "index-only"), fixture: await fixtureFor("index-only") }),
+});
+
 // F-019: the fakes stand for what OpenCode lacks. `rich` declares native plan updates and
 // reject-and-continue, and both happen; `plain` declares neither, and can't be steered.
 
@@ -133,11 +171,12 @@ const turnOf = (n: number) => turnIdSchema.parse(`fake-f019-turn-${String(n)}`);
 
 const runFake = async (
   profile: FakeAgentProfile,
-  body: (adapter: FakeAgentAdapter, session: AgentSession, events: TaskEvent[]) => Promise<void>,
+  body: (adapter: FakeAgentAdapter, session: AgentSession, events: TaskEvent[], fixture: AgentFixture) => Promise<void>,
+  milestone4: { readonly memory?: FakeAgentMemory; readonly launch?: Partial<PrepareLaunchInput> } = {},
 ): Promise<void> => {
-  const fixture = await fixtureFor();
-  const adapter = new FakeAgentAdapter(profile);
-  const launch = await adapter.prepareLaunch(fixture.launchInput);
+  const fixture = await fixtureFor(milestone4.memory);
+  const adapter = new FakeAgentAdapter(profile, undefined, undefined, milestone4.memory);
+  const launch = await adapter.prepareLaunch({ ...fixture.launchInput, ...milestone4.launch });
   if (!launch.ok) throw new Error(launch.error.message);
   const started = await spawnAgentProcess(launch.value);
   const events: TaskEvent[] = [];
@@ -158,7 +197,7 @@ const runFake = async (
   });
   try {
     if (!session.ok) throw new Error(session.error.message);
-    await body(adapter, session.value, events);
+    await body(adapter, session.value, events, fixture);
     await adapter.close(session.value);
   } finally {
     await started.stop();
@@ -187,6 +226,105 @@ describe("the fake ACP agents, for the capabilities OpenCode lacks (F-019)", () 
       // The deny ended the turn; the next prompt goes on (the re-prompt ADR 0032 describes).
       expect(await adapter.prompt(session, turnOf(3), fakeMarker("say"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       expect(await adapter.steer(session, "use tabs")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    });
+  }, 60_000);
+});
+
+// Milestone 4 (ticket 02, F-110, F-073): the memory block, the memory tools and the canary, on the
+// fakes. The contract suite's cases run the same checks on every agent; these name the rows.
+
+const said = (events: readonly TaskEvent[], from: number): string =>
+  events.slice(from).flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
+
+describe("the fake ACP agents and project memory (F-110)", () => {
+  it("F-110: the memory block goes with the profile's instructions into the task's config folder, and no repo changes", async () => {
+    const memory = { block: sampleMemoryBlock(true), tools: true };
+    await runFake(
+      "rich",
+      async (adapter, session, events, fixture) => {
+        const launched = await adapter.prepareLaunch({ ...fixture.launchInput, instructions: "Keep the README short.", memory });
+        if (!launched.ok) throw new Error(launched.error.message);
+        expect(launched.value.files.map((file) => path.dirname(file.path))).toEqual([fixture.launchInput.agentDir]);
+        const before = events.length;
+        await adapter.prompt(session, turnOf(1), fakeMarker("instructions"));
+        const text = said(events, before);
+        expect(text).toContain("Keep the README short.");
+        expect(text).toContain(memory.block);
+        for (const repo of REPOS) {
+          expect((await run("git", ["status", "--porcelain"], { cwd: path.join(fixture.launchInput.workspaceDir, repo) })).stdout).toBe("");
+        }
+      },
+      { launch: { instructions: "Keep the README short.", memory } },
+    );
+  }, 60_000);
+
+  it("F-110: an agent with MCP calls memory_search, memory_read and memory_propose, each through the fake core", async () => {
+    const memory = { block: sampleMemoryBlock(true), tools: true };
+    await runFake(
+      "plain",
+      async (adapter, session, events, fixture) => {
+        const core = fixture.memory?.core?.();
+        const [searched, read] = memoryNoteFixtures;
+        if (core === undefined || searched === undefined || read === undefined) throw new Error("the fixture has a fake core and two notes");
+        const texts: string[] = [];
+        for (const [index, prompt] of [
+          fakeMarker("memory-tools"),
+          fakeMarker("memory-search", "pnpm install"),
+          fakeMarker("memory-read", read.noteId),
+          fakeMarker("memory-propose", "Run the linter before a commit"),
+        ].entries()) {
+          const before = events.length;
+          await adapter.prompt(session, turnOf(index + 1), prompt);
+          texts.push(said(events, before));
+        }
+        expect(texts[0]).toBe("memory tools: memory_search, memory_read, memory_propose");
+        expect(texts[1]).toContain(searched.title);
+        expect(texts[2]).toContain(read.body);
+        expect(texts[3]).toContain("proposal-1");
+        expect(core.calls).toEqual({ search: 1, read: 1, propose: 1 });
+        expect(core.toolCalls).toEqual(["memory_search", "memory_read", "memory_propose"]);
+        expect(core.proposals.map((proposal) => proposal.title)).toEqual(["Run the linter before a commit"]);
+      },
+      { launch: { memory } },
+    );
+  }, 60_000);
+
+  it("F-110: an agent without MCP gets the index and no tools", async () => {
+    const memory = { block: sampleMemoryBlock(false), tools: true };
+    await runFake(
+      "plain",
+      async (adapter, session, events) => {
+        expect(adapter.capabilities).toMatchObject({ memory: "index-only" });
+        let before = events.length;
+        await adapter.prompt(session, turnOf(1), fakeMarker("instructions"));
+        expect(said(events, before)).toContain(memory.block);
+        before = events.length;
+        await adapter.prompt(session, turnOf(2), fakeMarker("memory-tools"));
+        expect(said(events, before)).toBe("memory tools: none");
+        before = events.length;
+        await adapter.prompt(session, turnOf(3), fakeMarker("memory-search", "pnpm"));
+        expect(said(events, before)).toBe("memory_search: no such tool");
+      },
+      // Even a spec that offers the tools gives an index-only agent none.
+      { memory: "index-only", launch: { memory } },
+    );
+  }, 60_000);
+});
+
+describe("the fake ACP agents and ADR 0035's canary (F-073)", () => {
+  it("F-073: a shell call that reads a file outside the workspace is in the event log, with its full input and output", async () => {
+    const outside = await mkdtemp(path.join(tmpdir(), "ostra-canary-"));
+    roots.push(outside);
+    const file = path.join(outside, "canary.txt");
+    await writeFile(file, "canary-value-1234\n");
+    await runFake("rich", async (adapter, session, events, fixture) => {
+      expect(path.relative(fixture.launchInput.workspaceDir, file).startsWith("..")).toBe(true);
+      await adapter.prompt(session, turnOf(1), fakeMarker("shell-read", file));
+      const call = events.find((event) => event.kind === "tool.called" && event.toolKind === "execute");
+      // The command in full; its folder as the event log keeps it, relative to the workspace.
+      expect(call).toMatchObject({ kind: "tool.called", input: { command: `cat ${file}`, cwd: "." } });
+      const done = events.find((event) => event.kind === "tool.completed" && call?.kind === "tool.called" && event.toolCallId === call.toolCallId);
+      expect(JSON.stringify(done)).toContain("canary-value-1234");
     });
   }, 60_000);
 });
