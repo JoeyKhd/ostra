@@ -1,6 +1,6 @@
 # 12: Milestone 7 screen targets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: none
 Features: F-018, F-058, F-081, F-082, F-076 (their screens)
@@ -25,8 +25,10 @@ Notes for some targets:
 
 ## Done when
 
-- [ ] The twelve targets exist in `context/brand/app-targets/m7/`, three files each, with the README.
-- [ ] They're approved, recorded under `## Comments` with the date. Until then, tickets 13 to 19 and 21 build their data and tests, not their UI.
+- [x] The twelve targets exist in `context/brand/app-targets/m7/`, three files each, with the README.
+- [x] They're approved, recorded under `## Comments` with the date. Until then, tickets 13 to 19 and 21 build their data and tests, not their UI.
 - [ ] Committed as `🎨 add milestone 7 screen targets`.
 
 ## Comments
+
+- 2026-11-19, lead: the targets are in `context/brand/app-targets/m7/` (thirteen screens in seventeen pictures, made in commits 8bb573d, b2cee88 and 02a0f02). The lead reviewed each picture by eye and approved them for the build on the maintainer's delegation, pending the maintainer's own review. The open points in the build specs (the light page colour, `--amber-text`, the light chart colour, the 3px approval rule in light, the docs site's border colour and its "not isolated" callout) were settled as each spec recommends; the folder's README records them.
