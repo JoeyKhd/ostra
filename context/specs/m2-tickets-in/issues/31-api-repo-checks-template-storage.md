@@ -1,6 +1,6 @@
 # 31: API: repo checks, the ticket template, storage and retention
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 06, 09
 Features: F-055, F-060, F-064, F-114, F-079
@@ -27,7 +27,13 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Tests against the fake code host: each combination of the two checks shows as it should; a signed-commit repo refuses task creation and a prompt task alike; "unknown" never refuses; the template is validated, saved and previewed; the storage figures count only the organization's blobs; only instance admins change retention.
-- [ ] Committed as `✨ add repo checks, template and storage`.
+- [x] Tests against the fake code host: each combination of the two checks shows as it should; a signed-commit repo refuses task creation and a prompt task alike; "unknown" never refuses; the template is validated, saved and previewed; the storage figures count only the organization's blobs; only instance admins change retention.
+- [x] Committed as `✨ add repo checks, template and storage`.
 
 ## Comments
+- 2026-11-19, api: done (`✨ add repo checks, template and storage`, `6733044`). For tickets 29, 30 and 37:
+  - **Repo checks** are `checkProjectRepos` in `@ostra/domain` (`use-cases/repo-checks.ts`): it keeps `private`, `branchRules` and `branchRulesCheckedAt` on the `Repo` row, reuses them for 10 minutes unless `force`, and gives `unknown` with a reason for a host that can't say (cached) or doesn't answer (not cached). It runs as a repo is added (`projects.create`), at `projects.get`, on `projects.checkRepos` and, forced, before `tasks.create`. The use case itself only reads the stored rules (`unsupportedRepos`), so `createPromptTask` gained the error `repo-unsupported` (additive), and ticket 29's `startTicketTask` should call `checkProjectRepos` with `force: true` before its transaction and refuse the same way.
+  - **`projects.get`'s repos** are `{ repoId, fullName, defaultBranch, private, checkedAt, defaultBranchProtected, signedCommitsRequired }`, each check `{ result: true | false | "unknown", reason? }`.
+  - **Template:** `projects.getTicketTemplate` (saved text, `builtIn`, the built-in text, the vocabulary, the cap), `projects.saveTicketTemplate` (a template that fails the validator comes back as `{ saved: false, problems }`, not an error; `null` or blank resets), `projects.previewTicketTemplate` (a mutation, since the text can be long; renders on a cached ticket with comments, relations and images empty).
+  - **Storage:** `organization.storage` and `instance.saveRetention` are for instance admins (`instanceAdminProcedure`, new in `trpc/init.ts`). `ApiDeps` gained `blobStore` (a name and a `health()`), and `ApiSettings` `retentionDays`, `blobStore`, `trackerPollSeconds` and `reconcileMinutes`; `createApiRuntime` takes `blobStore`, which the panel's composition root builds (a database ping for the built-in store, until an S3 adapter is wired in). The last sweep is read from the newest `retention.swept` audit entry, whose `data` ticket 20 decides.
+  - Test helpers for the next tickets: `seedLinearConnection`, `seedBoard`, `seedTicket` in `@ostra/api/testing`, and `FakeCodeHost.branchRules`.
