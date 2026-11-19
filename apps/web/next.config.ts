@@ -5,6 +5,9 @@ import type { NextConfig } from "next/types";
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Next's dev-only badge sits bottom left by default, over the sidebar's account row. Bottom right
+  // keeps it clear of the shell; it never ships in a production build.
+  devIndicators: { position: "bottom-right" },
   // `pnpm typecheck` (tsc on tsconfig.json) is the type gate. Next's own check would see the
   // workspace's server code under Next's global types, which make NODE_ENV a required variable of
   // every child-process environment, so it runs on its own config and doesn't block the build.
