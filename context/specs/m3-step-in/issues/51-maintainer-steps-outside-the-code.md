@@ -42,3 +42,4 @@ Each step needs an account, a click or a yes that an agent doesn't have.
   - **Linear, for ticket 10's live case: ready.** `ostra-test` has one human user, the personal key's own (an admin), with an email, and two app users. So the maintainer's own address can be found and mentioned. Checked by count; no address was printed or kept.
   - **Still open from milestone 2:** `test1` and `test2` are still private, and their rulesets still answer 403 (milestone 2's ticket 40, step 3). Milestone 3 doesn't need them public.
   - **Left for the maintainer:** steps 1, 2, 4, 6, 7, 9 and 10, step 3 once ticket 47 is in, step 5's and step 8's own review, and step 11 if wanted.
+- 2026-11-19, lead: the record above, the `## Decided 2026-11-19` sections of 24 tickets, spec sections 5.1, 5.3, 5.4, 8 and 11 (items 21 to 25), Q186 to Q190 and `docs/development.md`'s secret names are in 289b56f (`📝 prepare the milestone 3 build`).
