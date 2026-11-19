@@ -208,6 +208,29 @@ describe("the fake SMTP server", () => {
     }
   });
 
+  it("F-115: speaks TLS from the first byte when told to (SMTPS), and never offers STARTTLS there", async () => {
+    const server = await smtp({ implicitTls: true, auth: { user: "ostra", pass: "secret" } });
+    const socket = connectTls({ host: server.host, port: server.port, ca: server.cert });
+    const lines: string[] = [];
+    socket.on("data", (chunk: Buffer) => lines.push(chunk.toString("utf8")));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.once("secureConnect", () => {
+          resolve();
+        });
+        socket.once("error", reject);
+      });
+      socket.write("EHLO client\r\n");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const heard = lines.join("");
+      expect(heard).toMatch(/^220 /);
+      expect(heard).toContain("AUTH PLAIN LOGIN");
+      expect(heard).not.toContain("STARTTLS");
+    } finally {
+      socket.destroy();
+    }
+  });
+
   it("F-115: signs in with AUTH LOGIN, and refuses a wrong password and a missing sign-in", async () => {
     const server = await smtp({ starttls: "none", auth: { user: "ostra", pass: "secret" } });
     const session = await open(server);

@@ -3,7 +3,7 @@ import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { Server, Socket } from "node:net";
-import { TLSSocket } from "node:tls";
+import { createServer as createTlsServer, TLSSocket } from "node:tls";
 
 import { z } from "zod";
 
@@ -265,6 +265,8 @@ export type FakeSmtpOptions = {
   readonly starttls?: "offered" | "refused" | "none";
   /** The one user and password `AUTH` takes; `null` takes no `AUTH`. */
   readonly auth?: { readonly user: string; readonly pass: string } | null;
+  /** The server speaks TLS from the first byte, as on port 465 (SMTPS). Then STARTTLS is never offered. */
+  readonly implicitTls?: boolean;
   /** Refuse `MAIL` and `RCPT` until the session is on TLS. */
   readonly requireTls?: boolean;
   /** Recipients answered with this reply line, such as `450 4.2.1 Mailbox busy` or `550 5.1.1 No such user`. */
@@ -308,7 +310,7 @@ export const startFakeSmtpServer = async (options: FakeSmtpOptions = {}): Promis
     raw.on("close", () => sockets.delete(raw));
     let socket: Socket = raw;
     let buffer = "";
-    let secure = false;
+    let secure = options.implicitTls === true;
     let user: string | null = null;
     let from: string | null = null;
     let to: string[] = [];
@@ -495,7 +497,8 @@ export const startFakeSmtpServer = async (options: FakeSmtpOptions = {}): Promis
     reply("220 localhost ESMTP ostra-fake-smtp");
   };
 
-  const server: Server = createNetServer(serve);
+  const server: Server =
+    options.implicitTls === true ? createTlsServer({ key: tlsMaterial.key, cert: tlsMaterial.cert }, serve) : createNetServer(serve);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = portOf(server);
   return {
