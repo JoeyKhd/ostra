@@ -21,10 +21,37 @@ export type DemoGitHub = {
   readonly botLogin: string;
 };
 
+/** How far this machine's clock may be from GitHub's before the demo blames the clock. */
+export const MAX_CLOCK_SKEW_MS = 5 * 60_000;
+
+const refusalSchema = z.looseObject({ status: z.literal(401), response: z.looseObject({ headers: z.looseObject({ date: z.string() }) }) });
+
+/**
+ * An App signs in with a JWT that expires 10 minutes after this machine's clock says it was made. A
+ * clock more than about 9 minutes behind GitHub's gets "Bad credentials" on every App call, which
+ * octokit's own skew correction doesn't recognise. Judged from the refusal's `Date` header: the
+ * cause, named, when the clocks are further apart than `MAX_CLOCK_SKEW_MS`, otherwise `null`.
+ */
+export const clockSkewRefusal = (error: unknown, nowMs: number): string | null => {
+  const refusal = refusalSchema.safeParse(error);
+  if (!refusal.success) return null;
+  const skewMs = Date.parse(refusal.data.response.headers.date) - nowMs;
+  if (Number.isNaN(skewMs) || Math.abs(skewMs) <= MAX_CLOCK_SKEW_MS) return null;
+  const minutes = String(Math.round(Math.abs(skewMs) / 60_000));
+  return (
+    `GitHub refused the App's JWT: this machine's clock is ${minutes} minutes ${skewMs > 0 ? "behind" : "ahead of"} GitHub's (its Date header). ` +
+    "An App's JWT lives 10 minutes, so ostra's GitHub App can't sign in either until the clock is right (on Windows, start the Windows Time service and resync)"
+  );
+};
+
 export const demoGitHub = async (settings: DemoSettings): Promise<DemoGitHub> => {
   const privateKey = await readFile(settings.githubPrivateKeyPath, "utf8");
   const asApp = new Octokit({ authStrategy: createAppAuth, auth: { appId: settings.githubAppId, privateKey } });
-  const app = appSchema.parse((await asApp.rest.apps.getAuthenticated()).data);
+  const authenticated = await asApp.rest.apps.getAuthenticated().catch((error: unknown): never => {
+    const skew = clockSkewRefusal(error, Date.now());
+    throw skew === null ? error : new Error(skew);
+  });
+  const app = appSchema.parse(authenticated.data);
   const installations = installationsSchema.parse((await asApp.rest.apps.listInstallations()).data);
   const installation = installations.find((item) => item.account?.login === settings.githubOrg);
   if (installation === undefined) throw new Error(`the App isn't installed on ${settings.githubOrg}`);
