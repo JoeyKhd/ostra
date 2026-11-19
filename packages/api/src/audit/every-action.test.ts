@@ -4,7 +4,7 @@ import type { Db, Tx } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { postgresAuditLog, recordAudit, sweepRetention, SYSTEM_ACTOR_NAME } from "@ostra/domain";
 import type { AuditAction } from "@ostra/domain";
-import { approvalIdSchema, memberIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, repoFullNameSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, memberIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, repoFullNameSchema, runnerIdSchema, taskIdSchema, userIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -240,7 +240,7 @@ const cases: readonly Case[] = [
     setup: async () => ({ profileId: (await (await harness.as(admin())).agentProfiles.save(profileInput(unique("Profile")))).profileId }),
     act: (caller, made) => caller.agentProfiles.archive({ profileId: need(made, "profileId") }),
   },
-  // ---- milestone 4: members, invitations, and project access (tickets 22, 23) ----
+  // ---- milestone 4: members, invitations, project access and the instance admin (tickets 22, 23, 43) ----
   { action: "invitation.created", actor: admin, setup: () => Promise.resolve({ email: `${unique("invitee")}@example.com` }), act: (caller, made) => caller.members.invite({ email: need(made, "email"), role: "member", projectGrants: [] }) },
   {
     action: "invitation.revoked",
@@ -270,6 +270,28 @@ const cases: readonly Case[] = [
       return { memberId };
     },
     act: (caller, made) => caller.projects.removeMember({ projectId: harness.fixture.a.restrictedProject.id, memberId: memberIdSchema.parse(need(made, "memberId")) }),
+  },
+  {
+    action: "instance.admin-granted",
+    actor: admin,
+    setup: async () => {
+      await harness.test.db.user.update({ where: { id: harness.fixture.a.admin.userId }, data: { role: "admin" } });
+      const memberId = await newMember();
+      return { userId: (await harness.test.db.member.findUniqueOrThrow({ where: { id: memberId } })).userId };
+    },
+    act: (caller, made) => caller.instance.grantAdmin({ userId: userIdSchema.parse(need(made, "userId")) }),
+  },
+  {
+    action: "instance.admin-revoked",
+    actor: admin,
+    setup: async () => {
+      await harness.test.db.user.update({ where: { id: harness.fixture.a.admin.userId }, data: { role: "admin" } });
+      const memberId = await newMember();
+      const { userId } = await harness.test.db.member.findUniqueOrThrow({ where: { id: memberId } });
+      await harness.test.db.user.update({ where: { id: userId }, data: { role: "admin" } });
+      return { userId };
+    },
+    act: (caller, made) => caller.instance.revokeAdmin({ userId: userIdSchema.parse(need(made, "userId")) }),
   },
 ];
 

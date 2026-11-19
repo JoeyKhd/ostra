@@ -14,7 +14,7 @@ import type { ApiHarness, AppCaller } from "../testing/index.ts";
 
 // F-003, F-087 and F-002's removal (ADR 0053, ADR 0026, ticket 23): members, roles and project access,
 // through the panel's procedures on a real database. The matrix below is every new procedure of
-// milestone 4's organization tickets (22, 23 and 25), called as each role, each expecting its
+// milestone 4's organization tickets (22, 23, 25 and 43), called as each role, each expecting its
 // answer; another organization's records are `NOT_FOUND`, never `FORBIDDEN`.
 
 let harness: ApiHarness;
@@ -111,6 +111,9 @@ describe("the access matrix (ADR 0026, ADR 0053)", () => {
       ["audit.list (the whole log)", (c) => c.audit.list({}), ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "-"]],
       ["audit.list (a project's)", (c) => c.audit.list({ projectId: restricted }), ["ok", "NOT_FOUND", "FORBIDDEN", "ok", "NOT_FOUND"]],
       ["tasks.eventLog", (c) => c.tasks.eventLog({ taskId: restrictedTask.taskId }), ["ok", "NOT_FOUND", "ok", "ok", "NOT_FOUND"]],
+      ["instance.accounts.search", (c) => c.instance.accounts.search({ query: "" }), ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"]],
+      ["instance.grantAdmin", (c) => c.instance.grantAdmin({ userId: a.admin.userId }), ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"]],
+      ["instance.revokeAdmin", (c) => c.instance.revokeAdmin({ userId: a.member.userId }), ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"]],
       ["accounts.createResetLink", (c) => c.accounts.createResetLink({ userId: a.member.userId }), ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"]],
     ];
     const roles: readonly Who[] = ["admin", "member", "insider", "projectAdmin", "otherOrganization"];

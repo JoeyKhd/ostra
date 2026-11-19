@@ -1,10 +1,134 @@
+import { grantInstanceAdmin } from "@ostra/domain";
+import { userIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
-import { instanceAdminProcedure, router } from "../trpc/init.ts";
+import { instanceAdminProcedure, router, unwrap } from "../trpc/init.ts";
 
 // The install's own settings (ticket 31): instance admins only, apart from organization admins.
 
+/** How many accounts a page of the Accounts page holds. */
+const ACCOUNTS_PAGE = 50;
+
+/** Where a page of accounts starts: the last account of the page before, by name then ID. */
+const accountsCursorSchema = z.strictObject({ name: z.string().max(256), id: userIdSchema });
+
+/**
+ * An account as the instance admin's Accounts page shows it (`instance-settings.md`): who it is, its
+ * organizations by name, and the instance admin role. Nothing of any organization's content.
+ */
+const accountViewSchema = z.strictObject({
+  userId: userIdSchema,
+  name: z.string(),
+  username: z.string(),
+  email: z.string(),
+  emailVerified: z.boolean(),
+  /** The organizations it's an active member of, by name. */
+  organizations: z.array(z.string()),
+  /** Epoch ms. */
+  createdAt: z.number().int(),
+  /** Its newest sign-in, epoch ms, or `null` when it has none. */
+  lastSignInAt: z.number().int().nullable(),
+  instanceAdmin: z.boolean(),
+  /** When it was made an instance admin, epoch ms (its creation, for the first admin). */
+  instanceAdminSince: z.number().int().nullable(),
+});
+
+/** What `grantInstanceAdmin` answers, as the panel reads it. */
+const grantCodes = { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "last-instance-admin": "CONFLICT" } as const;
+
 export const instanceRouter = router({
+  /**
+   * The install's accounts (instance admin only, F-003, ticket 43): by a prefix of the username, the
+   * address or the name, case-insensitive, sorted by name, 50 at a time.
+   */
+  accounts: router({
+    search: instanceAdminProcedure
+      .input(z.strictObject({ query: z.string().trim().max(254).default(""), cursor: accountsCursorSchema.optional() }))
+      .output(z.object({ accounts: z.array(accountViewSchema), next: accountsCursorSchema.nullable() }))
+      .query(async ({ ctx, input }) => {
+        const { db } = ctx.deps;
+        const prefix = input.query;
+        const matching =
+          prefix === ""
+            ? {}
+            : {
+                OR: [
+                  { username: { startsWith: prefix, mode: "insensitive" as const } },
+                  { email: { startsWith: prefix, mode: "insensitive" as const } },
+                  { name: { startsWith: prefix, mode: "insensitive" as const } },
+                ],
+              };
+        const after =
+          input.cursor === undefined ? {} : { OR: [{ name: { gt: input.cursor.name } }, { name: input.cursor.name, id: { gt: input.cursor.id } }] };
+        const rows = await db.user.findMany({
+          where: { AND: [matching, after] },
+          orderBy: [{ name: "asc" }, { id: "asc" }],
+          take: ACCOUNTS_PAGE + 1,
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            email: true,
+            emailVerified: true,
+            createdAt: true,
+            role: true,
+            members: { where: { state: "active" }, orderBy: { createdAt: "asc" }, select: { organization: { select: { name: true } } } },
+          },
+        });
+        const page = rows.slice(0, ACCOUNTS_PAGE);
+        const ids = page.map((row) => row.id);
+        const [signIns, grants] = await Promise.all([
+          db.authSession.groupBy({ by: ["userId"], where: { userId: { in: ids } }, _max: { createdAt: true } }),
+          db.auditEntry.groupBy({ by: ["entityId"], where: { action: "instance.admin-granted", entity: "user", entityId: { in: ids } }, _max: { createdAt: true } }),
+        ]);
+        const lastSignIn = new Map(signIns.map((row) => [row.userId, row._max.createdAt] as const));
+        const grantedAt = new Map(grants.map((row) => [row.entityId, row._max.createdAt] as const));
+        const last = page.at(-1);
+        return {
+          accounts: page.map((row) => {
+            const instanceAdmin = row.role === "admin";
+            return {
+              userId: userIdSchema.parse(row.id),
+              name: row.name,
+              username: row.username,
+              email: row.email,
+              emailVerified: row.emailVerified,
+              organizations: row.members.map((member) => member.organization.name),
+              createdAt: row.createdAt.getTime(),
+              lastSignInAt: lastSignIn.get(row.id)?.getTime() ?? null,
+              instanceAdmin,
+              instanceAdminSince: instanceAdmin ? (grantedAt.get(row.id) ?? row.createdAt).getTime() : null,
+            };
+          }),
+          next: rows.length > ACCOUNTS_PAGE && last !== undefined ? { name: last.name, id: userIdSchema.parse(last.id) } : null,
+        };
+      }),
+  }),
+
+  /** Makes an account an instance admin (instance admin only). Audited. */
+  grantAdmin: instanceAdminProcedure
+    .input(z.strictObject({ userId: userIdSchema }))
+    .output(z.object({ instanceAdmin: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = unwrap(
+        await grantInstanceAdmin({ db: ctx.deps.db, ...ctx.deps.ports }, { userId: ctx.user.userId, instanceAdmin: ctx.user.instanceAdmin }, { userId: input.userId, grant: true }),
+        grantCodes,
+      );
+      return { instanceAdmin: result.instanceAdmin };
+    }),
+
+  /** Takes the instance admin role back (instance admin only). The last one can't give it up. Audited. */
+  revokeAdmin: instanceAdminProcedure
+    .input(z.strictObject({ userId: userIdSchema }))
+    .output(z.object({ instanceAdmin: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = unwrap(
+        await grantInstanceAdmin({ db: ctx.deps.db, ...ctx.deps.ports }, { userId: ctx.user.userId, instanceAdmin: ctx.user.instanceAdmin }, { userId: input.userId, grant: false }),
+        grantCodes,
+      );
+      return { instanceAdmin: result.instanceAdmin };
+    }),
+
   /**
    * Sets how long finished tasks' histories, archives and blobs are kept (F-079): a number of days,
    * or `null` to keep them while the task exists. What is saved here wins over `OSTRA_RETENTION_DAYS`,

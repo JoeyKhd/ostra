@@ -1,12 +1,12 @@
 import type { Tx } from "@ostra/db";
-import { memberIdSchema, projectIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { MemberId, OrganizationId, ProjectId } from "@ostra/protocol";
+import { memberIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema, userIdSchema } from "@ostra/protocol";
+import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
 import { z } from "zod";
 
-import { requireOrganizationAdmin, requireProjectAccess } from "../access.ts";
-import type { MemberScope, OrganizationRole } from "../access.ts";
+import { requireInstanceAdmin, requireOrganizationAdmin, requireProjectAccess } from "../access.ts";
+import type { AccountScope, MemberScope, OrganizationRole } from "../access.ts";
 import type { M4Deps } from "./m4-signatures.ts";
-import type { RemoveMember, SetProjectAccess, SetProjectMember } from "./m4-signatures.ts";
+import type { GrantInstanceAdmin, RemoveMember, SetProjectAccess, SetProjectMember } from "./m4-signatures.ts";
 import type { UseCaseResult } from "./common.ts";
 import { revokeRunner } from "./revoke-runner.ts";
 import { appendServerEvent } from "./server-events.ts";
@@ -316,3 +316,64 @@ export const setProjectMember = async (
 };
 
 setProjectMember satisfies SetProjectMember;
+
+// ---------- the instance admin role (F-003, ticket 43) ----------
+
+/** The value `user.role` holds for an account that isn't the instance admin (better-auth's admin plugin). */
+const PLAIN_ACCOUNT_ROLE = "user";
+
+/**
+ * Makes an account an instance admin, or takes the role back (instance admin only). The install's
+ * instance admins are counted under a row lock, so the last one can't give the role up even when two
+ * revokes run at once (ADR 0053, Q194). The entry goes to each organization the actor or the account
+ * is an active member of.
+ */
+export const grantInstanceAdmin = async (
+  deps: MembersDeps,
+  account: AccountScope,
+  input: { readonly userId: UserId; readonly grant: boolean },
+): ReturnType<GrantInstanceAdmin> => {
+  if (!requireInstanceAdmin(account).ok) {
+    return fail("forbidden", "Only an instance admin may do this");
+  }
+  return deps.db.$transaction(async (tx) => {
+    const rows: unknown = await tx.$queryRaw`SELECT "id" FROM "user" WHERE "role" = 'admin' ORDER BY "id" FOR UPDATE`;
+    const admins = new Set(lockedIdsSchema.parse(rows).map((row) => row.id));
+    // The actor is read again under the lock: an admin whose role went a moment ago grants nothing.
+    if (!admins.has(account.userId)) {
+      return fail("forbidden", "Only an instance admin may do this");
+    }
+    const target = await tx.user.findUnique({ where: { id: input.userId }, select: { id: true } });
+    if (target === null) {
+      return fail("not-found", "No such account");
+    }
+    const isAdmin = admins.has(target.id);
+    if (isAdmin === input.grant) {
+      return { ok: true as const, instanceAdmin: isAdmin };
+    }
+    if (!input.grant && admins.size <= 1) {
+      return fail("last-instance-admin", "An install needs at least one instance admin");
+    }
+    await tx.user.update({ where: { id: target.id }, data: { role: input.grant ? "admin" : PLAIN_ACCOUNT_ROLE } });
+    const memberships = await tx.member.findMany({
+      where: { userId: { in: [account.userId, target.id] }, state: "active" },
+      select: { id: true, userId: true, organizationId: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const organizations = [...new Set(memberships.map((row) => row.organizationId))];
+    for (const organizationId of organizations) {
+      const actor = memberships.find((row) => row.organizationId === organizationId && row.userId === account.userId);
+      await deps.audit.recordInTx(tx, {
+        organizationId: organizationIdSchema.parse(organizationId),
+        projectId: null,
+        actor: actor === undefined ? { kind: "system", id: null } : { kind: "member", id: actor.id },
+        action: input.grant ? "instance.admin-granted" : "instance.admin-revoked",
+        entity: "user",
+        entityId: userIdSchema.parse(target.id),
+      });
+    }
+    return { ok: true as const, instanceAdmin: input.grant };
+  });
+};
+
+grantInstanceAdmin satisfies GrantInstanceAdmin;
