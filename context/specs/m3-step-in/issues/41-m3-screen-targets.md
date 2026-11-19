@@ -1,6 +1,6 @@
 # 41: Milestone 3 screen targets
 
-Status: resolved
+Status: ready-for-human
 Builder: web
 Blocked by: none
 Features: F-021, F-024, F-026, F-063, F-062, F-036, F-115, F-027, F-072, F-028, F-103, F-070, F-054, F-051, F-094, F-119, F-075 (their screens)
@@ -20,9 +20,9 @@ The screens that only grow (section 12's second list) get no new picture: their 
 
 ## Done when
 
-- [ ] The fifteen targets exist in `context/brand/app-targets/m3/`, three files each, with the README.
-- [ ] They're approved, recorded under `## Comments` with the date. Until then, tickets 42 to 48 build their data and tests, not their UI.
-- [ ] Committed as `🎨 add milestone 3 screen targets`.
+- [x] The fifteen targets exist in `context/brand/app-targets/m3/`, three files each, with the README.
+- [x] They're approved, recorded under `## Comments` with the date. Until then, tickets 42 to 48 build their data and tests, not their UI. (Approved for the build by the lead on the maintainer's delegation, 2026-11-19; the maintainer's own review is ticket 51, step 5, which is why the status stays `ready-for-human`.)
+- [x] Committed (as `📝 add milestone 3 targets: <screens>` per pair of screens, then `db66cab` `📝 approve the milestone 3 targets for the build`, not the single `🎨` commit first named).
 
 ## Comments
 

@@ -55,7 +55,7 @@ It reuses milestone 1's helpers (provider, App, project, runner) and milestone 2
 | The race | Proved by `packages/api/src/routers/steering.test.ts` (50 runs each for send and interrupt). The live two-member race of step 4 was not scripted. |
 | A failing check | Proved by ticket 23's live test (`apps/core/evidence/m3-pr-live.txt`) and the core tests. |
 | No duplicates | **Passed.** Two of ostra's comments on OST-75 (the progress comment and the needs-you comment, edited in place); five mails for five moments (the test, OST-75's plan and approval, two other tasks' plans); one PR per repo and branch: #71 and, after the merge, #77. |
-| Mail off | Proved by ticket 45's notification page reading `email.status` (the smoke step shows "Mail is off on this install" before SMTP was set). |
+| Mail off | Proved by the core test "F-115: with mail off, every email delivery is skipped in words and the panel's are sent" (`apps/core/src/notifications/email.test.ts`, ticket 21) and the smoke screenshot `demo/smoke-email-settings.png` (the Email settings page before SMTP was set, Mail: Off). The notification page's own Playwright case belongs to ticket 45, which is still open. |
 | Notification choices | Not run live. |
 | Clean-up | PR #77 and OST-75 are left as step 12 leaves them; the fixtures stop with their process. |
 
@@ -69,7 +69,7 @@ It reuses milestone 1's helpers (provider, App, project, runner) and milestone 2
 
 ## What surprised, and what's missing
 
-- **Another session's clean-up closed PR #71 and deleted Linear's webhook mid-run.** Milestone 2's demo clean-up closed every `ostra/ost-*` PR on `test1` and deleted every dev-seed webhook (since fixed in `8e4ea94` to touch only its own). The PR was reopened by that session, but this stack had already read it as closed (`closed_unmerged`) and nothing reads a reopened PR back as open: the script set the row back by hand (logged here) and re-seeded the webhook. A PR reopened on GitHub should be read back by the PR reconcile; it isn't yet.
+- **Another session's clean-up closed PR #71 and deleted Linear's webhook mid-run.** Milestone 2's demo clean-up closed every `ostra/ost-*` PR on `test1` and deleted every dev-seed webhook (since fixed in `5613b0a` to touch only its own). The PR was reopened by that session, but this stack had already read it as closed (`closed_unmerged`) and nothing reads a reopened PR back as open: the script set the row back by hand (logged here) and re-seeded the webhook. A PR reopened on GitHub should be read back by the PR reconcile; it isn't yet.
 - **Plan mode hides an MCP server that isn't marked read-only**, so the plan said it couldn't find `release-names`; the build turn used it. Expected by ADR 0049, but the plan reads oddly: marking the server read-only would let plan mode call it.
 - **The ticket stays Done when a merged task reopens**, so a cancel after that is "a close after the merge" and does nothing. Step 12 moved OST-75 back to In Progress first, as a person would.
 - **Home's spend** (`$0.02` for November) disagrees with the task's (`$0.24`): Home prices at the catalog, the task at the key proxy.

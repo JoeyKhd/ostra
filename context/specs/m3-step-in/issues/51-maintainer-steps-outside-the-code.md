@@ -11,7 +11,7 @@ Spec: `../spec.md`, sections 3, 11 and 12
 
 Each step needs an account, a click or a yes that an agent doesn't have.
 
-1. **A Resend key for development** in `~/.config/ostra-dev/email.env` (`RESEND_API_KEY`, and `EMAIL_FROM`: an address on a domain verified in Resend, or Resend's onboarding sender, which only mails the account's own address), plus `EMAIL_TO`, the maintainer's own address for the manual run. `docs/development.md` gets the names, never the values.
+1. **A Resend key for development** in `~/.config/ostra-dev/email.env` (`RESEND_API_KEY`, and `EMAIL_FROM`: an address on a domain verified in Resend, or Resend's onboarding sender, which only mails the account's own address), plus `EMAIL_TO`, the maintainer's own address for the manual run. `docs/development.md` gets the names, never the values. With the key, run the two live cases that tickets 12 and 13 moved here: the Resend adapter's (one mail to Resend's test recipient, its delivery read back) and the SMTP adapter's through Resend's relay (`smtp.resend.com`, port 465); then F-115 can leave `building`.
 2. **The link's callback on the test App:** add `<web>/api/github/link/callback` (the dev tunnel's address) to the test App's callback URLs in GitHub's App settings. New Apps get it from the manifest (ticket 09).
 3. **Link the maintainer's GitHub account** to the demo admin once, through Account, "Link GitHub", once ticket 47 is in, so the demo's `@ostra` comment comes from a linked member.
 4. **The second sandbox GitHub user** of `GITHUB_TEST_REVIEWER_TOKEN` (already asked for in `build-order.md`), as the unlinked commenter.

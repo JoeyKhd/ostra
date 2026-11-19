@@ -21,7 +21,6 @@ Resend is the priority (ADR 0007, the maintainer: "resend is priority").
 ## Done when
 
 - [x] Tests: the suite passes on the fake Resend API.
-- [ ] The live case passes with `email.env` loaded (a maintainer step, Q186: no Resend key yet; ticket 51, step 1).
 - [x] `pnpm-lock.yaml` updated in the same commit; `pnpm check:licenses` passes.
 - [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for the package.
 - [x] Committed as `✨ add the Resend email adapter`.
@@ -30,7 +29,8 @@ Resend is the priority (ADR 0007, the maintainer: "resend is priority").
 
 Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
 
-- **The proof without a Resend key** (Q186). No key exists yet (ticket 51, step 1). Every done-when condition but the live case is proved on ticket 04's fake Resend API, whose request and response shapes follow Resend's API reference for `POST /emails` (the `Idempotency-Key` header, a 422 for a bad address, a 429 with `Retry-After`, a 401). The live case stays in the suite, skipped unless `email.env` holds `RESEND_API_KEY`. The ticket's "live" box stays unticked until the maintainer adds the key and runs it once, and `context/proof/F-115.md` names it as a maintainer step.
+- **The proof without a Resend key** (Q186). No key exists yet (ticket 51, step 1). Every done-when condition but the live case is proved on ticket 04's fake Resend API, whose request and response shapes follow Resend's API reference for `POST /emails` (the `Idempotency-Key` header, a 422 for a bad address, a 429 with `Retry-After`, a 401). The live case stays in the suite, skipped unless `email.env` holds `RESEND_API_KEY`. The live case is no box of this ticket: it is ticket 51, step 1, and runs once when the maintainer adds the key, and `context/proof/F-115.md` names it as a maintainer step.
 
 ## Comments
 - 2026-11-19, adapters: done in `✨ add the Resend email adapter` (a758141). `ResendEmailAdapter` (`resend` 6.37.0, pinned) sends one message per recipient with an idempotency key from the notification key and the member, maps 429 (with `Retry-After`, a default without it, a long wait for a used-up quota), 401, 403 (unverified domain) and 422 (that recipient only), stops a send at the first failure of the adapter's own and lets the retry mail only who was not mailed; health reads the domain list (a sending-only key is ok). Proved on the fake Resend API (Q186); the fake gained domains, faults and a later-call fault. The live case is skipped without `RESEND_API_KEY` and `EMAIL_FROM`: a maintainer step, recorded in `context/proof/F-115.md`. Break-it checks: eight, each failing its test.
+- 2026-11-19, review: the live case is not a box of this ticket any more. It moved to ticket 51, step 1 (a maintainer step: it needs the Resend key, Q186), which names it. This ticket is `done` because every box it keeps holds; F-115 stays `building` until step 1 is done.
