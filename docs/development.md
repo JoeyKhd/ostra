@@ -105,7 +105,7 @@ set -a; . ~/.config/ostra-dev/model.env; . ~/.config/ostra-dev/github.env; . ~/.
 pnpm e2e:m2
 ```
 
-Its runners' folders are in the system temp folder (`ostra-e2e-m2/runner` and `runner-2`), its state, logs and result in `.ostra-dev/e2e-m2/`, and its screenshots in `context/specs/m2-tickets-in/demo/`. A step that already happened is skipped. `pnpm --filter @ostra/e2e-m2 clean-up` closes the PRs whose branch names a ticket of the team (`ostra/ost-<n>-…`) and deletes their branches and hidden refs, archives the tickets labelled `ostra-demo`, and deletes the seed's webhooks; `--keep-pr <n>` and `--keep-ticket <KEY>` keep the final run's. It touches nothing else on the repo.
+Its runners' folders are in the system temp folder (`ostra-e2e-m2/runner` and `runner-2`), its state, logs and result in `.ostra-dev/e2e-m2/`, and its screenshots in `context/specs/m2-tickets-in/demo/`. A step that already happened is skipped. `pnpm --filter @ostra/e2e-m2 clean-up` closes this stack's PRs (those whose body links a task on its panel, `OSTRA_PUBLIC_URL`) and deletes their branches and hidden refs, archives the tickets labelled `ostra-demo`, and deletes the seed's webhooks; `--keep-pr <n>` and `--keep-ticket <KEY>` keep the final run's. Other stacks' PRs on the same test repo are never touched.
 
 ## Database
 
