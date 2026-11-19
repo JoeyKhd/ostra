@@ -146,8 +146,8 @@ const build = async (): Promise<ApiRuntime> => {
     settings,
     db,
     adapters: {
-      codeHost: new GitHubAdapter({ userAgent: "ostra-panel" }, context),
-      modelProvider: new ModelEndpointAdapter({}, context),
+      codeHost: new GitHubAdapter({ userAgent: "ostra-panel", apiUrl: settings.githubApiUrl }, context),
+      modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
       secretStore: new BuiltinSecretStore({ rows: prismaSecretRows(db), key: key.value }, context),
     },
     jobs: queue,

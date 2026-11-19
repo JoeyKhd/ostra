@@ -19,6 +19,7 @@ export const settingNames = [
   "OSTRA_CORE_PORT",
   "OSTRA_PUBLIC_URL",
   "OSTRA_CORE_PUBLIC_URL",
+  "OSTRA_GITHUB_API_URL",
   "OSTRA_DATA_DIR",
   "OSTRA_SECRETS_KEY",
   "OSTRA_CATALOG_FETCH",
@@ -51,6 +52,10 @@ export const settingFields = {
   OSTRA_CORE_PUBLIC_URL: {
     default: "http://localhost:8787",
     description: "Core's address as runners and webhooks reach it.",
+  },
+  OSTRA_GITHUB_API_URL: {
+    default: "https://api.github.com",
+    description: "The GitHub REST API the panel and core talk to: a GitHub Enterprise Server's, or a fake GitHub in tests.",
   },
   OSTRA_DATA_DIR: {
     default: ".ostra-dev/server (development), /var/lib/ostra (production)",
@@ -120,6 +125,7 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_CORE_PORT: port.default(8787).describe(describe("OSTRA_CORE_PORT")),
   OSTRA_PUBLIC_URL: url.default("http://localhost:3000").describe(describe("OSTRA_PUBLIC_URL")),
   OSTRA_CORE_PUBLIC_URL: url.default("http://localhost:8787").describe(describe("OSTRA_CORE_PUBLIC_URL")),
+  OSTRA_GITHUB_API_URL: url.default("https://api.github.com").describe(describe("OSTRA_GITHUB_API_URL")),
   OSTRA_DATA_DIR: z.string().min(1).optional().describe(describe("OSTRA_DATA_DIR")),
   OSTRA_SECRETS_KEY: z
     .string()
@@ -144,6 +150,8 @@ export type ServerSettings = {
   readonly corePort: number;
   readonly publicUrl: string;
   readonly corePublicUrl: string;
+  /** OSTRA_GITHUB_API_URL: the GitHub REST API, without a trailing slash. */
+  readonly githubApiUrl: string;
   readonly dataDir: string;
   /** `null`: generate one on first start and keep it in `dataDir`. */
   readonly secretsKey: string | null;
@@ -203,6 +211,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       corePort: value.OSTRA_CORE_PORT,
       publicUrl: value.OSTRA_PUBLIC_URL,
       corePublicUrl: value.OSTRA_CORE_PUBLIC_URL,
+      githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),
       secretsKey: value.OSTRA_SECRETS_KEY ?? null,
       catalogFetch: value.OSTRA_CATALOG_FETCH,

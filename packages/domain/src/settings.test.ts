@@ -25,6 +25,7 @@ describe("the server's settings", () => {
       corePort: 8787,
       publicUrl: "http://localhost:3000",
       corePublicUrl: "http://localhost:8787",
+      githubApiUrl: "https://api.github.com",
       secretsKey: null,
       catalogFetch: true,
       modelEndpointAllowPrivate: false,
@@ -41,6 +42,13 @@ describe("the server's settings", () => {
     expect(on.ok && on.settings.modelEndpointAllowPrivate).toBe(true);
     const off = parseServerSettings({});
     expect(off.ok && off.settings.modelEndpointAllowPrivate).toBe(false);
+  });
+
+  it("points GitHub at OSTRA_GITHUB_API_URL, without a trailing slash, and refuses a URL that isn't http(s)", () => {
+    const custom = parseServerSettings({ OSTRA_GITHUB_API_URL: "https://ghe.example.com/api/v3/" });
+    expect(custom.ok && custom.settings.githubApiUrl).toBe("https://ghe.example.com/api/v3");
+    const refused = parseServerSettings({ OSTRA_GITHUB_API_URL: "ftp://ghe.example.com" });
+    expect(refused.ok).toBe(false);
   });
 
   it("refuses an unknown OSTRA_ variable, listing the known ones", () => {

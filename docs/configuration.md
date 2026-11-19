@@ -16,6 +16,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_CORE_PORT` | `8787` | The port core (`apps/core`) listens on: runners connect here. |
 | `OSTRA_PUBLIC_URL` | `http://localhost:3000` | The panel's address as browsers reach it. Runners are sent here to approve a device code. |
 | `OSTRA_CORE_PUBLIC_URL` | `http://localhost:8787` | Core's address as runners and webhooks reach it. |
+| `OSTRA_GITHUB_API_URL` | `https://api.github.com` | The GitHub REST API the panel and core talk to. Set it to a GitHub Enterprise Server's API (`https://<host>/api/v3`), or to a fake GitHub in tests. |
 | `OSTRA_DATA_DIR` | `.ostra-dev/server` (development), `/var/lib/ostra` (production) | Where the server keeps its generated keys. Back it up: it holds the secrets key when `OSTRA_SECRETS_KEY` is unset. |
 | `OSTRA_SECRETS_KEY` | generated on first start, kept in `OSTRA_DATA_DIR` | The key the built-in secret store encrypts with (32 bytes, base64). **Back it up**: without it, stored secrets can't be read. |
 | `OSTRA_CATALOG_FETCH` | `true` | Fetch the models.dev catalog daily. `false`: use the copy bundled with ostra only. |

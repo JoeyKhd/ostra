@@ -49,14 +49,23 @@ export const signIn = async (page: Page, identifier: string = e2eAdmin.username)
 };
 
 // The stack file the e2e stack writes, and the line seed-task.ts prints: both are read through a schema.
-const stackSchema = z.object({ databaseUrl: z.string() });
+const stackSchema = z.object({
+  databaseUrl: z.string(),
+  /** The fake GitHub's App: the credentials the setup spec types into "Use an existing App". */
+  github: z.object({ appId: z.string(), privateKey: z.string(), webhookSecret: z.string(), slug: z.string() }),
+});
 const seededSchema = z.object({ taskId: taskIdSchema });
+
+/** What the e2e stack wrote about itself (`stack.ts`). */
+export const readStack = async (): Promise<z.infer<typeof stackSchema>> => {
+  const stack = stackSchema.safeParse(JSON.parse(await readFile(path.join(import.meta.dirname, ".stack.json"), "utf8")));
+  if (!stack.success) throw new Error("the e2e stack isn't running");
+  return stack.data;
+};
 
 /** Seeds a task with a replayed log in the e2e database (`seed-task.ts`) and returns its ID. */
 export const seedTask = async (scenario: "mid-turn" | "rest" | "without-changes" | "long", taskId?: TaskId): Promise<TaskId> => {
-  const stack = stackSchema.safeParse(JSON.parse(await readFile(path.join(import.meta.dirname, ".stack.json"), "utf8")));
-  if (!stack.success) throw new Error("the e2e stack isn't running");
-  const databaseUrl = stack.data.databaseUrl;
+  const { databaseUrl } = await readStack();
   const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-task.ts"), JSON.stringify({ databaseUrl, scenario, ...(taskId === undefined ? {} : { taskId }) })], {
     cwd: path.resolve(import.meta.dirname, ".."),
   });

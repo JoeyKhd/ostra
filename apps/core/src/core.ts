@@ -52,7 +52,7 @@ export const createServerAdapters = async (db: Db, settings: ServerSettings, log
     throw new Error("OSTRA_SECRETS_KEY is not a 32-byte key (64 hex characters or base64)");
   }
   return {
-    codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}` }, context),
+    codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}`, apiUrl: settings.githubApiUrl }, context),
     modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
     secretStore: new BuiltinSecretStore({ rows: postgresSecretRows(db), key: key.value }, context),
   };

@@ -9,16 +9,18 @@ import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
+import { createFakeGitHub } from "@ostra/adapter-github/testing";
 import { createScenarioBrain, startAnthropicStub } from "@ostra/adapter-sdk/testing";
 import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "@ostra/db/dev";
 import { createJobs } from "@ostra/jobs";
 import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
-import { e2eModelToken, e2ePort, e2eStubModels, e2eStubPort, e2eSetupToken } from "./settings.ts";
+import { e2eCorePort, e2eModelToken, e2ePort, e2eRepo, e2eStubModels, e2eStubPort, e2eSetupToken } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 const webDir = path.resolve(import.meta.dirname, "..");
+const repoRoot = path.resolve(webDir, "..", "..");
 
 const freePort = (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -91,10 +93,37 @@ const main = async (): Promise<void> => {
     port: e2eStubPort,
   });
 
-  // The specs that seed a task read the database's address from here (gitignored).
-  await writeFile(path.join(webDir, "e2e", ".stack.json"), JSON.stringify({ databaseUrl }));
+  // A fake GitHub the panel and core talk to through OSTRA_GITHUB_API_URL (ticket 37): one org with
+  // one repo, and an App whose key and webhook secret the setup spec types into the panel.
+  const github = await createFakeGitHub({
+    repos: [
+      {
+        id: 4_001,
+        owner: e2eRepo.owner,
+        name: e2eRepo.name,
+        defaultBranch: "main",
+        branches: ["main"],
+        files: {
+          "package.json": JSON.stringify({ name: "test1", scripts: { test: "vitest run" }, packageManager: "pnpm@11.0.0" }),
+          "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+          ".nvmrc": "24\n",
+          "README.md": "# test1\n",
+        },
+      },
+    ],
+  });
+
+  // The specs read the database's address, the data folder and the fake GitHub's App from here (gitignored).
+  await writeFile(
+    path.join(webDir, "e2e", ".stack.json"),
+    JSON.stringify({
+      databaseUrl,
+      github: { appId: github.appId, privateKey: github.privateKey, webhookSecret: github.webhookSecret, slug: github.appSlug },
+    }),
+  );
 
   const panelUrl = `http://localhost:${String(e2ePort)}`;
+  const coreUrl = `http://127.0.0.1:${String(e2eCorePort)}`;
   const nextBin = path.join(webDir, "node_modules", "next", "dist", "bin", "next");
   const panel = spawn(process.execPath, [nextBin, "start", "--port", String(e2ePort)], {
     cwd: webDir,
@@ -107,7 +136,30 @@ const main = async (): Promise<void> => {
       OSTRA_DATA_DIR: dataDir,
       OSTRA_PUBLIC_URL: panelUrl,
       OSTRA_SETUP_TOKEN: e2eSetupToken,
+      OSTRA_CORE_PUBLIC_URL: coreUrl,
       OSTRA_CATALOG_FETCH: "false",
+      OSTRA_GITHUB_API_URL: github.apiUrl,
+      // The stub model endpoint above listens on loopback, which the server refuses unless told.
+      OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
+    },
+  });
+
+  // Core, for the runner the setup spec starts: the same database and data folder, the same fake GitHub.
+  const core = spawn(process.execPath, [path.join(repoRoot, "apps", "core", "src", "main.ts")], {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: {
+      PATH: process.env["PATH"] ?? "",
+      SYSTEMROOT: process.env["SYSTEMROOT"] ?? "",
+      NODE_ENV: "production",
+      DATABASE_URL: databaseUrl,
+      OSTRA_DATA_DIR: dataDir,
+      OSTRA_PUBLIC_URL: panelUrl,
+      OSTRA_CORE_PUBLIC_URL: coreUrl,
+      OSTRA_CORE_PORT: String(e2eCorePort),
+      OSTRA_CATALOG_FETCH: "false",
+      OSTRA_GITHUB_API_URL: github.apiUrl,
+      OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
     },
   });
 
@@ -116,6 +168,8 @@ const main = async (): Promise<void> => {
     if (stopping) return;
     stopping = true;
     panel.kill();
+    core.kill();
+    await github.close().catch(() => undefined);
     await stub.close().catch(() => undefined);
     await server.stop().catch(() => undefined);
     await rm(clusterDir, { recursive: true, force: true }).catch(() => undefined);
@@ -123,6 +177,7 @@ const main = async (): Promise<void> => {
     process.exit(code);
   };
   panel.once("exit", (code) => void stop(code ?? 1));
+  core.once("exit", (code) => void stop(code ?? 1));
   process.on("SIGTERM", () => void stop(0));
   process.on("SIGINT", () => void stop(0));
 };
