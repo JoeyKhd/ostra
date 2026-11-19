@@ -1,6 +1,6 @@
 # 11: Core: search entries and their backfill
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 06
 Features: F-080
@@ -16,9 +16,11 @@ Spec: `../spec.md`, section 4 ("Search"); ADR 0054
 
 ## Done when
 
-- [ ] Tests named `it("F-080: ...")` find a task by ticket, by repo, by member, by state and by a word in a message, a command and a path, each with a near miss that must not match; a hidden project's task and another organization's are never returned, ranked or counted; the backfill run twice writes each entry once.
-- [ ] Break-it: the visible-projects filter dropped fails the access test; recorded in `context/proof/F-080.md`.
-- [ ] A query with 10,000 tasks' entries answers within 300 ms on the dev database, measured and recorded in `## Comments` *(working value)*.
-- [ ] Committed as `✨ add search entries at ingest`.
+- [x] Tests named `it("F-080: ...")` find a task by ticket, by repo, by member, by state and by a word in a message, a command and a path, each with a near miss that must not match; a hidden project's task and another organization's are never returned, ranked or counted; the backfill run twice writes each entry once.
+- [x] Break-it: the visible-projects filter dropped fails the access test; recorded in `context/proof/F-080.md`.
+- [x] A query with 10,000 tasks' entries answers within 300 ms on the dev database, measured and recorded in `## Comments` *(working value)*.
+- [x] Committed as `✨ add search entries at ingest`.
 
 ## Comments
+
+- 2026-11-19: `packages/domain/src/search/entries.ts` (the entries, their 8 KiB cut, a tool call's input as text, the backfill) and `query.ts` (`searchTasks`, one statement, bound parameters only). The writers: `ingestEvents` after its `createMany`, `appendServerEvent` (every member message, whichever writer), `createPromptTask` and `startTaskFromTicket` (title, prompt, ticket key and title), the PR opener (its title, on its repo), and the ticket cache (a new title updates its tasks' entries). Postgres reads a path as one token, so a tool call's entry gets a last line with each path's segments and dotted parts as words ("schema.prisma" and "prisma" both find `packages/db/prisma/schema.prisma`), and the prefix word may hold `.` and `-`. `searchTasks` takes two optional filters beside the signature's, a project and a period, and returns each task's rank and up to three snippets as parts (text, never HTML), with the entry's kind and its event's sequence. `search.backfill` runs per task in batches of 500; core's boot enqueues it for each task with no entry yet, so it runs once per task; its progress is its log line (IDs and counts). The setting `OSTRA_SEARCH_ENTRY_MAX_KIB` keeps its default: the column holds 8 KiB, and the writers cut at that. **Measured:** 10,000 tasks in one project with 60,000 entries, on the embedded Postgres the dev stack runs: a common word (2,000 matching tasks) 63 ms median, a prefix 54 ms, two words 59 ms, a rare word 5 ms, filters only 6 ms (six runs each, limit 20). The first version, which made every matching task's snippets before the limit, took 270 ms; the query now picks the top tasks first. Commit: see the next line.

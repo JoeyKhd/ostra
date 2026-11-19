@@ -4,6 +4,7 @@ import { externalTicketIdSchema, organizationIdSchema, projectIdSchema, ticketId
 import type { BoardId, ExternalTicketId, TicketId, TicketKey } from "@ostra/protocol";
 
 import type { IngestTicketHint, IngestTicketHintResult } from "../use-cases/tickets.ts";
+import { updateTicketSearchEntries } from "../search/entries.ts";
 import { isOpenCategory } from "./contracts.ts";
 
 // The ticket cache (F-010, F-042, F-044, ticket 14): ostra's copy of each ticket per board, keyed by
@@ -80,6 +81,8 @@ export const upsertTicketCacheInTx = async (
       continue;
     }
     await tx.ticket.update({ where: { id: existing.id }, data: columns });
+    // Search (ticket 11): the ticket's tasks find it by its new key and title.
+    await updateTicketSearchEntries(tx, { organizationId: organizationIdSchema.parse(board.organizationId), ticketId: existing.id, key: columns.key, title: columns.title });
     changed += 1;
     if (!isOpenCategory(ticket.status.category) && (existing.statusCategory === null || isOpenCategory(existing.statusCategory))) {
       closed.push(ticketIdSchema.parse(existing.id));

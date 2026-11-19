@@ -3,6 +3,7 @@ import { notifyChannels } from "@ostra/db";
 import type { OrganizationId, ProjectId, SessionId, TaskEvent, TaskEventKind, TaskId, TaskSeq } from "@ostra/protocol";
 import { serverOnlyKinds, taskEventSchema, taskSeqSchema } from "@ostra/protocol";
 
+import { writeEventSearchEntries } from "../search/entries.ts";
 import { storableEvent } from "./storable-event.ts";
 
 // The server's own events (ADR 0035, ADR 0036): a member's message, an answer, a take-over, a PR.
@@ -71,6 +72,8 @@ const append = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> =
       occurredAt: new Date(input.at),
     },
   });
+  // Search (ticket 11): a member's message is found by its words, in the event's own transaction.
+  await writeEventSearchEntries(tx, { organizationId: input.organizationId, projectId: input.projectId, taskId: input.taskId }, [{ seq, event }]);
   const payload = JSON.stringify({ taskId: input.taskId, seq });
   await tx.$executeRaw`SELECT pg_notify(${notifyChannels.taskEvents}, ${payload})`;
   return seq;

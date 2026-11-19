@@ -17,6 +17,7 @@ import { z } from "zod";
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { branchSlugFor } from "../branch-name.ts";
+import { writeTaskSearchEntries } from "../search/entries.ts";
 import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
@@ -257,6 +258,17 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     select: { id: true },
   });
   const taskId = taskIdSchema.parse(created.id);
+  // Search (ticket 11): the ticket's key and title, and the task's title. The prompt is the rendered
+  // ticket, written later by `ticket.fetch-context` as the first message, which search finds as one.
+  await writeTaskSearchEntries(tx, {
+    organizationId,
+    projectId: projectIdSchema.parse(project.id),
+    taskId,
+    title,
+    prompt: null,
+    ticket: { key: ticket.key, title: ticket.title },
+    creatorMemberId: scope.memberId,
+  });
   const branchName = await claimBranchNameInTx(tx, { id: taskId, title }, ticketBranchWith(ticket.key));
   await tx.taskRepo.createMany({
     data: repos.map((repo) => ({ organizationId, projectId: project.id, taskId, repoId: repo.id, branchName, baseBranch: repo.defaultBranch })),

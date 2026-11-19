@@ -103,6 +103,8 @@ export * from "./mail/account-mails.ts";
 export * from "./mail/account-mail-links.ts";
 export * from "./audit/actions.ts";
 export * from "./audit/record-audit.ts";
+export * from "./search/entries.ts";
+export * from "./search/query.ts";
 export * from "./providers/model-name.ts";
 export * from "./providers/resolve.ts";
 export * from "./providers/provider-lists.ts";

@@ -21,6 +21,7 @@ import { moveTaskInTx } from "./moves.ts";
 import { lastAgentMessageInTx } from "./record-session-end.ts";
 import { latestCheckRunsInTx, prChecksFor } from "./checks.ts";
 import { repoAccessFor } from "./repo-access.ts";
+import { writePullRequestSearchEntry } from "../search/entries.ts";
 import { appendServerEvent } from "./server-events.ts";
 
 // F-030, F-078, ADR 0040: the `task.open-pull-requests` job. One PR per changed repo, opened by the
@@ -209,7 +210,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
         },
         update: {},
       });
-      await appendServerEvent(tx, {
+      const openedSeq = await appendServerEvent(tx, {
         organizationId,
         projectId,
         taskId: task.id,
@@ -217,6 +218,8 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
         event: { kind: "pr.opened", repoId, url: pr.url, number: pr.number },
         at: deps.clock.now(),
       });
+      // Search (ticket 11): the PR is found by its title, on its repo.
+      await writePullRequestSearchEntry(tx, { organizationId, projectId, taskId: task.id, repoId, eventSeq: openedSeq, title: pr.title });
       // A ticket task's ticket links the PR, moves to in review at the first one, and its
       // progress comment is edited (F-031); each write is keyed, so a rerun writes nothing new.
       await writeTicketStepsInTx({ tx }, { taskId: task.id, trigger: { kind: "pr-opened", repoId, url: pr.url } });

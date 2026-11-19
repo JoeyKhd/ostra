@@ -13,6 +13,7 @@ import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
+import { writeTaskSearchEntries } from "../search/entries.ts";
 import { appendServerEvent } from "./server-events.ts";
 import { resolveStartProfileInTx } from "./task-profile.ts";
 
@@ -187,6 +188,8 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
     select: { id: true },
   });
   const taskId = taskIdSchema.parse(created.id);
+  // Search (ticket 11): the task is found by its title and prompt from the moment it exists.
+  await writeTaskSearchEntries(tx, { organizationId, projectId: projectIdSchema.parse(project.id), taskId, title, prompt: input.prompt, ticket: null, creatorMemberId: scope.memberId });
   const branchName = await claimBranchNameInTx(tx, { id: taskId, title }, deps.branchNameFor);
   await tx.taskRepo.createMany({
     data: repos.map((repo) => ({

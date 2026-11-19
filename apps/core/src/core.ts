@@ -54,6 +54,7 @@ import type { NotifyDeps } from "./notifications/index.ts";
 import { accountMailSendHandler } from "./reactions/account-mail.ts";
 import { budgetCheckHandler, budgetNewMonthHandler, budgetReleaseHandler, ensureBudgetNewMonthSchedule } from "./reactions/budgets.ts";
 import { ensureInsightsSchedule, insightsComputeHandler } from "./reactions/insights.ts";
+import { enqueueSearchBackfill, searchBackfillHandler } from "./search/backfill.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
@@ -491,6 +492,11 @@ export const startCore = async (
   await jobs.work("retention.sweep", retentionSweepHandler(cleanupDeps), { localConcurrency: 1 });
   // A ticket task's context, images and first prompt, then its dispatch (ticket 18).
   await jobs.work("ticket.fetch-context", fetchContextHandler({ db, jobs, notices, clock: systemClock, trackers, blobs, logger }), { localConcurrency: 4 });
+  // Search (ticket 11): the entries of tasks from before milestone 4, once per task.
+  await jobs.work("search.backfill", searchBackfillHandler({ db }), { localConcurrency: 2 });
+  await enqueueSearchBackfill({ db, jobs, logger }).catch((error: unknown) => {
+    logger.warn("search.backfill-enqueue-failed", { error: error instanceof Error ? error.name : "unknown" });
+  });
   const drain = setInterval(() => {
     drainTicketWrites({ db, jobs, clock: systemClock }).catch((error: unknown) => {
       logger.warn("ticket.drain-failed", { error: error instanceof Error ? error.name : "unknown" });

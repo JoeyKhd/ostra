@@ -15,6 +15,7 @@ import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx, setNeedsYouSummaryInTx } from "./needs-you-items.ts";
 import { releaseLeaseInTx } from "./record-session-end.ts";
 import { unansweredMessagesInTx } from "./reopen.ts";
+import { writeEventSearchEntries } from "../search/entries.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
@@ -665,6 +666,12 @@ const ingestSession = async (
         occurredAt: new Date(item.at),
       })),
     });
+    // Search (ticket 11): each message and tool call is found by its words, in this same transaction.
+    await writeEventSearchEntries(
+      tx,
+      { organizationId: organizationIdSchema.parse(task.organizationId), projectId: projectIdSchema.parse(task.projectId), taskId: taskIdSchema.parse(task.id) },
+      stored.map(({ item, seq }) => ({ seq, event: item.event })),
+    );
     await tx.session.update({ where: { id: sessionId }, data: { ingestedSeq: cursor } });
     await applyEffects(deps, runnerId, task, session, stored);
     // One wake-up per task per batch, which commits with it: IDs and the newest seq, never content.
