@@ -3,6 +3,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { repoFullNameSchema } from "@ostra/protocol";
 import type { OrganizationId, RepoId } from "@ostra/protocol";
+import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // How core reaches one repo through its organization's App (ADR 0030): the App's key from the
 // secret store, the repo's installation. Milestone 3's compares, drafts and reactions share it.
@@ -19,10 +20,14 @@ export const repoAccessFor = async (
 ): Promise<RepoAccessResult> => {
   const repo = await db.repo.findFirst({
     where: { id: repoId, organizationId },
-    select: { fullName: true, installationId: true, connection: { select: { appId: true, privateKeySecretRef: true } } },
+    select: { fullName: true, installationId: true, connection: { select: { appId: true, privateKeySecretRef: true } }, ...installationStateSelect },
   });
   if (repo === null) {
     return { ok: false, reason: "no such repo" };
+  }
+  // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+  if (!installationUsable(repo.installation)) {
+    return { ok: false, reason: INSTALLATION_NOT_LINKED };
   }
   const ref = secretRefSchema.safeParse(repo.connection.privateKeySecretRef);
   const fullName = repoFullNameSchema.safeParse(repo.fullName);

@@ -13,6 +13,7 @@ import type { Ports } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import type { UseCaseResult } from "./common.ts";
 import { ensureDefaultPool } from "./pools.ts";
+import { appOwnerInTx, installationUsable, linkInstallationInTx, linkOwnInstallationInTx, seenInstallationOf } from "../code-host/installations.ts";
 
 // F-086: an admin creates a project with one repo linked through the organization's App, and its one
 // environment as a draft (F-112 fills it from the repo's files). Its default code agent profile is
@@ -75,6 +76,12 @@ export const detectRepoEnvironment = async (codeHost: CodeHostAdapter, access: R
   return detectEnvironment({ tree, files: new Map(read.value.files.map((file) => [file.path, file.content] as const)) });
 };
 
+/** A draft with nothing read from the repo, and why (F-112): what detection says when it can't read it. */
+export const detectionWithoutFiles = (finding: string): DetectedEnvironment => ({
+  ...detectEnvironment({ tree: null, files: new Map() }),
+  reasons: [{ file: "(the repo)", finding }],
+});
+
 /** The folder a repo is checked out in, inside a task's workspace: its name, kept to safe characters. */
 const checkoutDirOf = (fullName: RepoFullName): string => {
   const name = fullName.split("/")[1] ?? "repo";
@@ -106,6 +113,32 @@ export const createProject: CreateProject = async (deps, input) => {
     throw new Error(`the GitHub App's private key could not be read: ${key.error.code}`);
   }
   const app: CodeHostAppCredentials = { appId: connection.appId, privateKey: key.value };
+  // Milestone 4 (F-136, ADR 0065): a repo comes only through a linked installation, checked before
+  // anything is minted for it. One ostra hasn't seen yet is linked here when it's on the App owner's
+  // own account; one on another account waits for an admin on the GitHub page. When the host
+  // doesn't say who owns the App, the admin's choice links it, as before milestone 4.
+  const installationId = input.repo.installationId;
+  const known = await tx.codeHostInstallation.findUnique({
+    where: { connectionId_installationId: { connectionId: connection.id, installationId } },
+    select: { state: true, removedAt: true },
+  });
+  if (known !== null && !installationUsable(known)) {
+    return refuse("repo-not-installed", "That GitHub installation isn't linked to ostra: an organization admin links it on the GitHub page");
+  }
+  if (known === null) {
+    const listed = await deps.adapters.codeHost.listInstallations(app);
+    const seen = listed.ok ? listed.value.find((installation) => installation.installationId === installationId) : undefined;
+    if (seen === undefined) {
+      return refuse("repo-not-installed", "The App has no such installation");
+    }
+    const owner = await appOwnerInTx(tx, deps.adapters.codeHost, app, connection);
+    const connectionId = connectionIdSchema.parse(connection.id);
+    if (owner.accountId === null && owner.login === null) {
+      await linkInstallationInTx(deps, tx, { organizationId, connectionId, installation: seenInstallationOf(seen), memberId: scope.memberId });
+    } else if (!(await linkOwnInstallationInTx(deps, tx, { organizationId, connectionId, owner, installation: seenInstallationOf(seen) }))) {
+      return refuse("repo-not-installed", "That GitHub installation isn't linked to ostra: an organization admin links it on the GitHub page");
+    }
+  }
   const repos = await deps.adapters.codeHost.listRepos(app, input.repo.installationId);
   if (!repos.ok) {
     return refuse("repo-not-installed", `GitHub did not list the installation's repos: ${repos.error.message}`);
@@ -137,14 +170,6 @@ export const createProject: CreateProject = async (deps, input) => {
     select: { id: true },
   });
   const projectId = projectIdSchema.parse(project.id);
-  // Milestone 4 (F-136, ADR 0065): the repo's installation row, which `Repo`'s key needs. As
-  // before milestone 4, the installation the repo was listed through is used as it is; ticket 49
-  // replaces this with the rule that only a linked installation offers repos.
-  await tx.codeHostInstallation.upsert({
-    where: { connectionId_installationId: { connectionId: connection.id, installationId: input.repo.installationId } },
-    create: { organizationId, connectionId: connection.id, installationId: input.repo.installationId, accountLogin: hostRepo.fullName.split("/")[0] ?? "" },
-    update: {},
-  });
   const repo = await tx.repo.create({
     data: {
       organizationId,

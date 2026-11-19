@@ -2,7 +2,7 @@ import { hiddenRefFor, secretRefSchema } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import { boxReleaseReasonToDb } from "@ostra/db";
 import type { Db, Tx } from "@ostra/db";
-import { hiddenRefsToDelete, recordBoxReleasedInTx, releaseBox, releaseProviderBoxes, retentionDaysInEffect, sweepCleanup, sweepRetention } from "@ostra/domain";
+import { hiddenRefsToDelete, installationStateSelect, installationUsable, recordBoxReleasedInTx, releaseBox, releaseProviderBoxes, retentionDaysInEffect, sweepCleanup, sweepRetention } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobQueue, ServerAdapters } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { organizationIdSchema, releaseBodySchema, repoFullNameSchema } from "@ostra/protocol";
@@ -46,9 +46,15 @@ export const deleteHiddenRefs = async (deps: CleanupDeps, organizationId: Organi
   const repos = await hiddenRefsToDelete(deps.db, organizationId, taskId);
   let deleted = 0;
   for (const { taskRepoId, repoId } of repos) {
-    const repo = await deps.db.repo.findFirst({ where: { id: repoId, organizationId }, include: { connection: true } });
+    const repo = await deps.db.repo.findFirst({ where: { id: repoId, organizationId }, include: { connection: true, ...installationStateSelect } });
     const keyRef = repo?.connection.privateKeySecretRef ?? null;
     if (repo === null || keyRef === null) {
+      continue;
+    }
+    // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+    // The ref stays on the host, as for a host that can't delete one; a link again deletes it.
+    if (!installationUsable(repo.installation)) {
+      deps.logger.warn("cleanup.installation-not-linked", { taskId, repoId });
       continue;
     }
     const key = await deps.adapters.secretStore.get(organizationId, secretRefSchema.parse(keyRef));

@@ -7,6 +7,7 @@ import type { ConnectionId, OrganizationId, ProjectId, RepoId } from "@ostra/pro
 import type { Ports } from "../ports.ts";
 import { BRANCH_RULES_CACHE_MS, repoBranchRulesSchema } from "../tickets/contracts.ts";
 import type { BranchRuleCheck, RepoBranchRules } from "../tickets/contracts.ts";
+import { installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // F-055, F-060, ticket 31: the two checks on a repo's default branch. They are read through the
 // code host adapter when a repo is added, at a project page load (reused for 10 minutes), when a
@@ -81,7 +82,7 @@ const credentialsOf = async (
 export const checkProjectRepos = async (deps: CheckRepoRulesDeps, input: CheckRepoRulesInput): Promise<readonly RepoChecked[]> => {
   const { organizationId, projectId } = input;
   const now = deps.clock.now();
-  const rows = await deps.db.repo.findMany({ where: { organizationId, projectId }, orderBy: { createdAt: "asc" } });
+  const rows = await deps.db.repo.findMany({ where: { organizationId, projectId }, include: { ...installationStateSelect }, orderBy: { createdAt: "asc" } });
   const checked: RepoChecked[] = [];
   // One `listRepos` per installation answers `private` for all of its repos.
   const listed = new Map<string, ReadonlyMap<string, boolean>>();
@@ -101,6 +102,18 @@ export const checkProjectRepos = async (deps: CheckRepoRulesDeps, input: CheckRe
       continue;
     }
 
+    // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+    if (!installationUsable(row.installation)) {
+      checked.push({
+        repoId,
+        fullName: row.fullName,
+        defaultBranch: row.defaultBranch,
+        private: row.private,
+        checkedAt: row.branchRulesCheckedAt?.getTime() ?? null,
+        rules: unknownRules("The repo's GitHub installation isn't linked, so the branch could not be checked."),
+      });
+      continue;
+    }
     const app = await credentialsOf(deps, organizationId, connectionIdSchema.parse(row.connectionId));
     if (app === null) {
       checked.push({

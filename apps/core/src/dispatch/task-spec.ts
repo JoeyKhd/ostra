@@ -2,7 +2,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, effortLevelFromDb, mapModel } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { buildMemoryBlock, githubNoReplyAddress, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import { buildMemoryBlock, githubNoReplyAddress, INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
 import type { AgentEffortLevels, MemoryLimits, SpendCapSettings } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
@@ -136,7 +136,7 @@ export const buildTaskSpec = async (
 
   const taskRepos = await db.taskRepo.findMany({
     where: { taskId: task.id },
-    include: { repo: { include: { connection: true } } },
+    include: { repo: { include: { connection: true, ...installationStateSelect } } },
     // F-098: the project's order, then the order the task got them.
     orderBy: [{ repo: { position: "asc" } }, { createdAt: "asc" }],
   });
@@ -147,10 +147,17 @@ export const buildTaskSpec = async (
       : await db.environmentEntry.findMany({ where: { environmentId: environment.id, kind: { in: ["variable", "file"] } }, orderBy: { createdAt: "asc" } });
 
   let gitIdentity: GitPerson | null = null;
+  // Milestone 4 (F-136, ADR 0065): each repo's commits are its own App's bot's, read once per App.
+  const bots = new Map<string, GitPerson>();
+  const readsRepoBots = (input.minor ?? PROTOCOL_MINOR) >= 3;
   // Plain data until `taskSpecSchema` parses the whole spec below, which checks every field.
   const repos: Record<string, unknown>[] = [];
   for (const { repo, branchName: repoBranch } of taskRepos) {
-    const app =await appCredentials(deps.secretStore, organizationId, repo.connection);
+    // Milestone 4 (F-136): nothing is minted through an installation that isn't linked.
+    if (!installationUsable(repo.installation)) {
+      return { ok: false, error: "code-host-failed", message: INSTALLATION_NOT_LINKED };
+    }
+    const app = await appCredentials(deps.secretStore, organizationId, repo.connection);
     if (app === null) {
       return { ok: false, error: "code-host-failed", message: "the repo's App credentials couldn't be read" };
     }
@@ -162,19 +169,25 @@ export const buildTaskSpec = async (
       return { ok: false, error: "code-host-failed", message: "the code host doesn't list the repo for this installation" };
     }
     const template = deps.codeHost.capabilities.prTemplates ? await deps.codeHost.getPullRequestTemplate(access, repo.defaultBranch) : null;
-    if (gitIdentity === null) {
+    let repoBot = bots.get(repo.connectionId);
+    if (repoBot === undefined) {
       const stored = gitPersonSchema.safeParse({ name: repo.connection.botName, email: repo.connection.botEmail });
       if (stored.success) {
-        gitIdentity = stored.data;
+        repoBot = stored.data;
       } else {
         const bot = await deps.codeHost.getBotIdentity(app);
         if (!bot.ok) {
           return { ok: false, error: "code-host-failed", message: "the App's bot identity couldn't be read" };
         }
-        gitIdentity = bot.value;
+        repoBot = bot.value;
       }
+      bots.set(repo.connectionId, repoBot);
     }
+    // The top-level identity stays the first repo's, which a minor-2 runner reads for every repo.
+    gitIdentity ??= repoBot;
     repos.push({
+      // A minor-3 runner reads each repo's own; the dispatch sends a task with two bots only to one.
+      ...(readsRepoBots ? { gitIdentity: repoBot } : {}),
       repoId: repo.id,
       fullName: repo.fullName,
       cloneUrl: hostRepo.cloneUrl,

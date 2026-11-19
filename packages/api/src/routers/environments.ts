@@ -1,6 +1,6 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { Db, EnvironmentEntry as EntryRow } from "@ostra/db";
-import { detectRepoEnvironment, saveEnvironment, saveEnvironmentInputSchema } from "@ostra/domain";
+import { detectionWithoutFiles, detectRepoEnvironment, installationStateSelect, installationUsable, saveEnvironment, saveEnvironmentInputSchema } from "@ostra/domain";
 import { environmentIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -106,10 +106,19 @@ export const environmentsRouter = router({
     .output(z.array(z.object({ repoId: repoIdSchema, fullName: z.string(), detection: detectionViewSchema })))
     .mutation(async ({ ctx, input }) => {
       const github = await loadGitHubConnection(ctx.deps, ctx.scope);
-      const repos = await ctx.deps.db.repo.findMany({ where: { projectId: input.projectId, organizationId: ctx.scope.organizationId }, orderBy: { createdAt: "asc" } });
+      const repos = await ctx.deps.db.repo.findMany({
+        where: { projectId: input.projectId, organizationId: ctx.scope.organizationId },
+        include: { ...installationStateSelect },
+        orderBy: { createdAt: "asc" },
+      });
       const out = [];
       for (const repo of repos) {
         const fullName = repoFullNameSchema.parse(repo.fullName);
+        // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+        if (!installationUsable(repo.installation)) {
+          out.push({ repoId: repoIdSchema.parse(repo.id), fullName, detection: detectionWithoutFiles("its GitHub installation isn't linked to ostra") });
+          continue;
+        }
         const detection = await detectRepoEnvironment(
           ctx.deps.ports.adapters.codeHost,
           { app: github.credentials, installationId: repo.installationId, repo: fullName },

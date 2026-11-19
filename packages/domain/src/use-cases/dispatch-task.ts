@@ -17,6 +17,7 @@ import { chooseReopenStep } from "./reopen.ts";
 import { PROFILE_FEATURES_MINOR, profileNeedsMinor2 } from "./task-profile.ts";
 import { modelNameText } from "../providers/model-name.ts";
 import type { ModelName } from "../providers/model-name.ts";
+import { installationStateSelect, installationUsable } from "../code-host/installations.ts";
 import { clearNoProviderInTx, raiseNoProviderInTx, resolveProfileModelInTx, sessionRowStateInTx } from "../providers/session-model.ts";
 import type { ReopenStep } from "./reopen.ts";
 
@@ -59,6 +60,9 @@ export type DispatchTaskDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "cloc
    */
   readonly effortLevels?: AgentEffortLevels;
 };
+
+/** The runner minor that reads each repo's own bot (F-136): a task across two Apps needs it. */
+export const SEVERAL_APPS_MINOR = 3;
 
 /** How a dispatch starts its session: fresh (the task's first), or by one of ADR 0039's steps. */
 export type DispatchPlan = { readonly step: "new" } | (ReopenStep & { readonly keptRunnerId?: RunnerId });
@@ -316,12 +320,25 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     }
   }
 
+  // Milestone 4 (F-136, ADR 0065): every repo's installation linked, or the task waits with the
+  // reason; nothing is minted for it. Repos of two Apps have two bots, which only minor 3 reads.
+  const taskRepos = await tx.taskRepo.findMany({
+    where: { taskId: task.id },
+    orderBy: [{ repo: { position: "asc" } }, { createdAt: "asc" }],
+    select: { repo: { select: { fullName: true, connectionId: true, ...installationStateSelect } } },
+  });
+  const unlinked = taskRepos.find(({ repo }) => !installationUsable(repo.installation));
+  if (unlinked !== undefined) {
+    return noRunner({ code: "installation-not-linked", repo: unlinked.repo.fullName });
+  }
+  const severalApps = new Set(taskRepos.map(({ repo }) => repo.connectionId)).size > 1;
   // Milestone 3 (F-094, ticket 27): an environment with services runs only where they can start.
   const needsServices = (await tx.service.count({ where: { projectId: task.projectId, organizationId: task.organizationId } })) > 0;
   // Milestone 3 (F-021, ticket 16): a profile with rules, plan first, skills or MCP servers goes only
   // to a runner at minor 2 or later. When only older runners could take it, the task says so.
-  const profileMinor =
-    profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills })
+  const profileMinor = severalApps
+    ? SEVERAL_APPS_MINOR
+    : profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills })
       ? PROFILE_FEATURES_MINOR
       : 0;
   // Milestone 4 (F-137, ADR 0066): a task that runs at a level other than `default` goes only to a

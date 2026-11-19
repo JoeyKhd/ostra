@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
-import { connectGitHubApp, detectRepoEnvironment } from "@ostra/domain";
+import { appOwnerInTx, connectGitHubApp, detectRepoEnvironment, linkOwnInstallationInTx, seenInstallationOf } from "@ostra/domain";
 import { connectionIdSchema, memberIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -234,6 +234,15 @@ export const githubRouter = router({
       if (!listed.ok) {
         throw adapterErrorToTrpc(listed.error, "GitHub did not list the App's installations");
       }
+      // Milestone 4 (F-136, ADR 0065): the App owner's own installation is linked when a listing shows it.
+      const { ports } = ctx.deps;
+      await ctx.deps.db.$transaction(async (tx) => {
+        const connection = await tx.connection.findFirstOrThrow({ where: { id: github.connectionId, organizationId: ctx.scope.organizationId } });
+        const owner = await appOwnerInTx(tx, ports.adapters.codeHost, github.credentials, connection);
+        for (const installation of listed.value) {
+          await linkOwnInstallationInTx(ports, tx, { organizationId: ctx.scope.organizationId, connectionId: github.connectionId, owner, installation: seenInstallationOf(installation) });
+        }
+      });
       return listed.value.map((installation) => ({
         installationId: installation.installationId,
         accountLogin: installation.accountLogin,

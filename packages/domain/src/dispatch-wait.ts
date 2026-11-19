@@ -54,6 +54,11 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
   z.strictObject({ code: z.literal("budget-reached"), scope: z.enum(["organization", "project"]) }),
   /** Milestone 4 (F-037, ADR 0055): a budget applies and the task's model has no price, so it can't be counted. */
   z.strictObject({ code: z.literal("model-unpriced") }),
+  /**
+   * Milestone 4 (F-136, ADR 0065): a repo of the task is reached through a GitHub installation an
+   * organization admin unlinked or removed, so ostra mints no token for it. `repo` is its full name.
+   */
+  z.strictObject({ code: z.literal("installation-not-linked"), repo: z.string().min(1).max(256) }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -104,6 +109,8 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
       return `The ${wait.scope === "project" ? "project's" : "organization's"} budget for this month is reached: the task waits until it's raised or the month ends.`;
     case "model-unpriced":
       return "This model has no price, so the budget can't count it";
+    case "installation-not-linked":
+      return `The GitHub installation that holds ${wait.repo} isn't linked to ostra: an organization admin links it on the GitHub page.`;
     default:
       return wait satisfies never;
   }

@@ -39,6 +39,7 @@ import { transitionSnapshot } from "../lifecycles/snapshot.ts";
 import type { SnapshotInput } from "../lifecycles/snapshot.ts";
 import type { AuditLog, ChangeNotices, Clock, CommandOutbox, ServerAdapters } from "../ports.ts";
 import type { RecordSnapshotResult, ScheduleSnapshot } from "./m3-signatures.ts";
+import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // Snapshots (F-051, ADR 0038 as amended; milestone 3's ticket 26). A project's snapshot is built by
 // a `docker` runner of its pools, which keeps the image itself (there's no registry until F-120):
@@ -181,7 +182,7 @@ export const readSnapshotBuildInputs = async (
     return "not-found";
   }
   const organizationId = organizationIdSchema.parse(project.organizationId);
-  const repos = await db.repo.findMany({ where: { projectId, organizationId }, include: { connection: true }, orderBy: { createdAt: "asc" } });
+  const repos = await db.repo.findMany({ where: { projectId, organizationId }, include: { connection: true, ...installationStateSelect }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
     return "no-repos";
   }
@@ -189,6 +190,10 @@ export const readSnapshotBuildInputs = async (
   const built: Record<string, unknown>[] = [];
   const heads: (string | null)[] = [];
   for (const repo of repos) {
+    // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+    if (!installationUsable(repo.installation)) {
+      throw new Error(INSTALLATION_NOT_LINKED);
+    }
     const app = await appCredentials(deps.adapters.secretStore, organizationId, repo.connection);
     if (app === null) {
       throw new Error("the repo's App credentials couldn't be read");
@@ -516,7 +521,11 @@ export const issueSnapshotCredentials = async (
   }
   const organizationId = organizationIdSchema.parse(row.organizationId);
   const failed = (message: string) => ({ ok: false, error: "token-mint-failed", message }) as const;
-  const repos = await tx.repo.findMany({ where: { projectId: row.projectId, organizationId }, include: { connection: true }, orderBy: { createdAt: "asc" } });
+  const repos = await tx.repo.findMany({ where: { projectId: row.projectId, organizationId }, include: { connection: true, ...installationStateSelect }, orderBy: { createdAt: "asc" } });
+  // Milestone 4 (F-136, ADR 0065): no token through an installation that isn't linked, for any repo.
+  if (repos.some((repo) => !installationUsable(repo.installation))) {
+    return failed(INSTALLATION_NOT_LINKED);
+  }
   const tokens: { repoId: RepoId; gitToken: string; expiresAt: number }[] = [];
   for (const repo of repos) {
     const app = await appCredentials(deps.adapters.secretStore, organizationId, repo.connection);

@@ -15,6 +15,7 @@ import { organizationIdSchema, poolIdSchema, projectIdSchema, repoFullNameSchema
 import type { ConnectionId, OrganizationId, ProjectId, RunnerEventFrame } from "@ostra/protocol";
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
+import { installationStateSelect, installationUsable } from "@ostra/domain";
 
 // Core's side of snapshots (F-051, ADR 0038 as amended; milestone 3's ticket 26):
 //
@@ -134,7 +135,7 @@ export const snapshotsOnPush = async (
   const { event } = input;
   const repos = await deps.db.repo.findMany({
     where: { organizationId: input.organizationId, connectionId: input.connectionId, hostRepoId: event.hostRepoId },
-    select: { projectId: true, fullName: true, installationId: true, defaultBranch: true, connection: { select: { appId: true, privateKeySecretRef: true } } },
+    select: { projectId: true, fullName: true, installationId: true, defaultBranch: true, connection: { select: { appId: true, privateKeySecretRef: true } }, ...installationStateSelect },
   });
   if (repos.length === 0) {
     return "unknown-repo";
@@ -146,6 +147,10 @@ export const snapshotsOnPush = async (
   }
   let paths = event.changedPaths;
   if (paths === null) {
+    // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+    if (!installationUsable(first.installation)) {
+      return "unreadable";
+    }
     const ref = secretRefSchema.safeParse(first.connection.privateKeySecretRef);
     const key = ref.success ? await deps.secretStore.get(input.organizationId, ref.data) : null;
     if (key?.ok !== true) {

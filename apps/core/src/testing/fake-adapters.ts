@@ -124,14 +124,21 @@ export class FakeCodeHost extends CodeHostAdapter {
     return Promise.resolve(adapterError("unsupported", "the fake has no manifest flow"));
   }
 
+  /** Milestone 4 (F-136): the account that owns every App here, when set; `readApp` names it. */
+  owner: { readonly login: string; readonly accountId: string } | undefined;
+  /** Milestone 4 (F-136): what `listInstallations` lists. */
+  readonly installations: Installation[] = [];
+
   readApp(app: CodeHostAppCredentials): Promise<AdapterResult<AppInfo>> {
     return Promise.resolve(
-      this.known(app) ? ok({ appId: app.appId, slug: "ostra-test", name: "ostra-test", permissions: {}, events: [] }) : adapterError("unauthorized", "refused"),
+      this.known(app)
+        ? ok({ appId: app.appId, slug: "ostra-test", name: "ostra-test", permissions: {}, events: [], ...(this.owner === undefined ? {} : { owner: this.owner }) })
+        : adapterError("unauthorized", "refused"),
     );
   }
 
-  listInstallations(): Promise<AdapterResult<readonly Installation[]>> {
-    return Promise.resolve(ok([]));
+  listInstallations(app: CodeHostAppCredentials): Promise<AdapterResult<readonly Installation[]>> {
+    return Promise.resolve(this.known(app) ? ok([...this.installations]) : adapterError("unauthorized", "refused"));
   }
 
   listRepos(app: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<readonly HostRepo[]>> {
@@ -455,6 +462,18 @@ export class FakeCodeHost extends CodeHostAdapter {
       path.reduce<unknown>((at, key) => (typeof at === "object" && at !== null ? Reflect.get(at, key) : undefined), json.value);
     if (event === "issue_comment" || event === "pull_request_review_comment" || event === "push") {
       return this.#parseM3(event, read);
+    }
+    if (event === "installation") {
+      // Milestone 4 (F-136): GitHub's shape, read as the GitHub adapter reads it.
+      const action = read("action");
+      const id = read("installation", "id");
+      const accountId = read("installation", "account", "id");
+      const login = read("installation", "account", "login");
+      const type = read("installation", "account", "type");
+      if (typeof action !== "string" || typeof id !== "number" || typeof accountId !== "number" || typeof login !== "string") {
+        return adapterError("invalid-response", "not an installation event");
+      }
+      return ok({ kind: "installation", action, installationId: String(id), account: { accountId: String(accountId), login, kind: type === "User" ? "user" : "organization" } });
     }
     if (event === "pull_request_review") {
       return this.#parseReview(read);

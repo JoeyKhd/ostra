@@ -1,7 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostWebhookEvent, Logger, PullRequestDetails, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { enqueueReviewEvaluationsInTx, reconcileBehind, recordPullRequestState, recordPush } from "@ostra/domain";
+import { appOwnerInTx, enqueueReviewEvaluationsInTx, installationGoneInTx, linkOwnInstallationInTx, reconcileBehind, recordPullRequestState, recordPush } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, RecordPullRequestStateResult } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { connectionIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
@@ -47,6 +47,39 @@ const record = (
 ): Promise<RecordPullRequestStateResult> =>
   deps.db.$transaction((tx) => recordPullRequestState({ tx, jobs: deps.jobs, notices: deps.notices, clock: deps.clock, audit: deps.audit }, input), { timeout: 20_000 });
 
+/** An `installation` event (F-136): `created` links the owner's own, `deleted` removes a linked one. */
+const installationEvent = async (
+  deps: PullRequestStateDeps,
+  context: WebhookDeliveryContext,
+  event: Extract<CodeHostWebhookEvent, { readonly kind: "installation" }>,
+): Promise<WebhookOutcome> => {
+  const target = { organizationId: context.organizationId, connectionId: context.connectionId, installationId: event.installationId };
+  if (event.action === "deleted") {
+    const removed = await deps.db.$transaction((tx) => installationGoneInTx(deps, tx, target));
+    context.logger.info("installation.deleted", { installationId: event.installationId, removed });
+    return removed ? { outcome: "processed" } : { outcome: "ignored", reason: "not a linked installation" };
+  }
+  if (event.action !== "created") {
+    return { outcome: "ignored", reason: `installation ${event.action.slice(0, 32)}` };
+  }
+  const connection = await deps.db.connection.findFirst({ where: { id: context.connectionId, organizationId: context.organizationId, kind: "github" } });
+  const ref = secretRefSchema.safeParse(connection?.privateKeySecretRef);
+  const key = ref.success ? await deps.secretStore.get(context.organizationId, ref.data) : null;
+  if (connection === null || key?.ok !== true) {
+    return { outcome: "failed", reason: "the connection's App key couldn't be read" };
+  }
+  const linked = await deps.db.$transaction(async (tx) => {
+    const owner = await appOwnerInTx(tx, deps.codeHost, { appId: connection.appId, privateKey: key.value }, connection);
+    return linkOwnInstallationInTx(deps, tx, {
+      ...target,
+      owner,
+      installation: { installationId: event.installationId, accountId: event.account.accountId, accountLogin: event.account.login, accountKind: event.account.kind },
+    });
+  });
+  context.logger.info("installation.created", { installationId: event.installationId, linked });
+  return linked ? { outcome: "processed" } : { outcome: "ignored", reason: "another account's installation waits for an admin" };
+};
+
 /** `webhook.process`'s handler for a GitHub connection: a `pull_request` event's state. */
 export const githubWebhookHandler =
   (deps: PullRequestStateDeps): WebhookHandler =>
@@ -87,9 +120,13 @@ export const githubWebhookHandler =
       context.logger.info("pr.review", { number: event.number, action: event.action.slice(0, 32), reviewer: event.review.login.slice(0, 64), enqueued });
       return enqueued === 0 ? { outcome: "ignored", reason: "not a task's open PR" } : { outcome: "processed" };
     }
-    if (event.kind === "installation" || event.kind === "installation_repositories") {
-      // Milestone 4 (F-136): installations on other accounts are linked by ticket 49.
-      return { outcome: "ignored", reason: "installations aren't read here yet" };
+    if (event.kind === "installation") {
+      // Milestone 4 (F-136, ADR 0065): the App owner's own installation is linked when seen; any
+      // other waits for an admin. An uninstall marks a linked one removed.
+      return installationEvent(deps, context, event);
+    }
+    if (event.kind === "installation_repositories") {
+      return { outcome: "ignored", reason: "an installation's repos are read when a project adds one" };
     }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.event.slice(0, 64)})` };
@@ -153,7 +190,8 @@ export const reconcilePullRequests = async (
     return { read: 0, changed: 0, stoppedEarly: "the App's key couldn't be read" };
   }
   const open = await deps.db.taskRepo.findMany({
-    where: { organizationId: input.organizationId, state: "pr_open", prNumber: { not: null }, repo: { connectionId: input.connectionId } },
+    // Milestone 4 (F-136, ADR 0065): only repos of linked installations; nothing is minted for another.
+    where: { organizationId: input.organizationId, state: "pr_open", prNumber: { not: null }, repo: { connectionId: input.connectionId, installation: { state: "linked", removedAt: null } } },
     orderBy: { updatedAt: "asc" },
     take: MAX_PRS_PER_PASS,
     select: { id: true, prNumber: true, repo: { select: { fullName: true, installationId: true, hostRepoId: true } } },

@@ -25,6 +25,7 @@ import { latestCheckRunsInTx, prChecksFor } from "./checks.ts";
 import { repoAccessFor } from "./repo-access.ts";
 import { writePullRequestSearchEntry } from "../search/entries.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // F-030, F-078, ADR 0040: the `task.open-pull-requests` job. One PR per changed repo, opened by the
 // App: the title from the prompt, the body from the agent's `pr.text_set` (following the repo's PR
@@ -122,7 +123,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   const ticketText = await ticketTextOf(db, task);
   const taskRepos = await db.taskRepo.findMany({
     where: { taskId: task.id, ahead: true },
-    include: { repo: { include: { connection: true } } },
+    include: { repo: { include: { connection: true, ...installationStateSelect } } },
     orderBy: { createdAt: "asc" },
   });
   const opened: OpenedPullRequest[] = [];
@@ -141,6 +142,10 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       continue;
     }
     const { repo } = taskRepo;
+    // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+    if (!installationUsable(repo.installation)) {
+      return { ok: false, error: "code-host-failed", message: INSTALLATION_NOT_LINKED };
+    }
     if (repo.connection.privateKeySecretRef === null) {
       return { ok: false, error: "code-host-failed", message: "the repo's App has no private key" };
     }

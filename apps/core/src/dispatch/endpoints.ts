@@ -272,6 +272,7 @@ export const handleTaskEndpoint =
           return true;
         case "provider-not-allowed-on-personal-runners":
         case "provider-not-allowed":
+        case "installation-not-linked":
           sendError(response, 403, "unauthorized", result.message);
           return true;
         case "token-mint-failed":

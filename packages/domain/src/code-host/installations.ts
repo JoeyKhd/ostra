@@ -1,3 +1,4 @@
+import type { CodeHostAdapter, CodeHostAppCredentials, Installation } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { connectionIdSchema } from "@ostra/protocol";
 import type { ConnectionId, MemberId, OrganizationId, TaskSpec } from "@ostra/protocol";
@@ -250,4 +251,188 @@ export const requiredRunnerMinor = (spec: TaskSpec): number => {
     return 3;
   }
   return taskSpecNeedsMinor2(spec) ? 2 : 0;
+};
+
+// ---- ticket 49: the rule at every mint, and the installations ostra sees ----
+
+/** The words a refusal carries when a repo's installation isn't linked, or was removed (F-136). */
+export const INSTALLATION_NOT_LINKED = "the repo's GitHub installation isn't linked to ostra";
+
+/** The `select` a repo query adds so its caller can ask `installationUsable` before any mint (F-136). */
+export const installationStateSelect = { installation: { select: { state: true, removedAt: true } } } as const;
+
+/** Whether an installation of a connection may be used now: its row, linked and not removed (F-136). */
+export const installationUsableInTx = async (
+  db: Db | Tx,
+  input: { readonly organizationId: string; readonly connectionId: string; readonly installationId: string },
+): Promise<boolean> => {
+  const row = await db.codeHostInstallation.findFirst({
+    where: { organizationId: input.organizationId, connectionId: input.connectionId, installationId: input.installationId },
+    select: { state: true, removedAt: true },
+  });
+  return installationUsable(row);
+};
+
+/** The App's owner as a connection knows it; both `null` when ostra hasn't read it yet. */
+export type KnownAppOwner = { readonly accountId: string | null; readonly login: string | null };
+
+/** Whether an installation is on the App owner's own account: by the account's ID, else by its login. */
+export const isOwnInstallation = (owner: KnownAppOwner, installation: { readonly accountId: string | null; readonly accountLogin: string }): boolean => {
+  if (owner.accountId !== null && installation.accountId !== null) {
+    return owner.accountId === installation.accountId;
+  }
+  return owner.login !== null && owner.login.toLowerCase() === installation.accountLogin.toLowerCase();
+};
+
+/**
+ * An installation ostra just saw, in the caller's transaction (a listing, an `installation`
+ * event, a project's repo): linked at once, by the system, when it's on the App owner's own
+ * account and isn't linked yet. A removed one stays removed until an admin links it again.
+ * Returns whether it's linked now.
+ */
+export const linkOwnInstallationInTx = async (
+  deps: Pick<Ports, "audit" | "clock">,
+  tx: Tx,
+  input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId; readonly owner: KnownAppOwner; readonly installation: SeenInstallationRow },
+): Promise<boolean> => {
+  const existing = await tx.codeHostInstallation.findUnique({
+    where: { connectionId_installationId: { connectionId: input.connectionId, installationId: input.installation.installationId } },
+    select: { state: true, removedAt: true, accountId: true },
+  });
+  if (existing !== null) {
+    if (existing.accountId === null && input.installation.accountId !== null) {
+      // A row the upgrade made learns its account.
+      await tx.codeHostInstallation.update({
+        where: { connectionId_installationId: { connectionId: input.connectionId, installationId: input.installation.installationId } },
+        data: { accountId: input.installation.accountId, accountLogin: input.installation.accountLogin, accountKind: input.installation.accountKind },
+      });
+    }
+    return installationUsable(existing);
+  }
+  if (!isOwnInstallation(input.owner, input.installation)) {
+    return false;
+  }
+  await tx.codeHostInstallation.create({
+    data: {
+      organizationId: input.organizationId,
+      connectionId: input.connectionId,
+      installationId: input.installation.installationId,
+      accountId: input.installation.accountId,
+      accountLogin: input.installation.accountLogin,
+      accountKind: input.installation.accountKind,
+      state: "linked",
+      linkedByMemberId: null,
+      linkedAt: new Date(deps.clock.now()),
+    },
+  });
+  await deps.audit.recordInTx(tx, {
+    organizationId: input.organizationId,
+    projectId: null,
+    actor: { kind: "system", id: null },
+    action: installationAuditActions.linked,
+    entity: "connection",
+    entityId: input.connectionId,
+    data: { installationId: input.installation.installationId, account: input.installation.accountLogin, own: true },
+  });
+  return true;
+};
+
+/** An installation as a listing or an event names it; the account's ID may be unknown. */
+export type SeenInstallationRow = {
+  readonly installationId: string;
+  readonly accountId: string | null;
+  readonly accountLogin: string;
+  readonly accountKind: "organization" | "user" | null;
+};
+
+/**
+ * The App was uninstalled from an account (the host's `installation` `deleted` event): a linked
+ * row is marked removed, by the system, with its audit entry. Nothing is minted for it after.
+ */
+export const installationGoneInTx = async (
+  deps: Pick<Ports, "audit" | "clock">,
+  tx: Tx,
+  input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId; readonly installationId: string },
+): Promise<boolean> => {
+  const at = deps.clock.now();
+  const changed = await tx.codeHostInstallation.updateMany({
+    where: { organizationId: input.organizationId, connectionId: input.connectionId, installationId: input.installationId, state: "linked" },
+    data: { state: "removed", removedAt: new Date(at), removedByMemberId: null },
+  });
+  if (changed.count === 0) {
+    return false;
+  }
+  await deps.audit.recordInTx(tx, {
+    organizationId: input.organizationId,
+    projectId: null,
+    actor: { kind: "system", id: null },
+    action: installationAuditActions.removed,
+    entity: "connection",
+    entityId: input.connectionId,
+    data: { installationId: input.installationId, uninstalled: true },
+  });
+  return true;
+};
+
+/**
+ * The App's owner as ostra knows it (F-136): the connection's columns, else read once with the
+ * App's own credentials (`readApp`, no installation token) and kept on the connection. Both
+ * `null` when the host doesn't say.
+ */
+export const appOwnerInTx = async (
+  tx: Tx,
+  codeHost: Pick<CodeHostAdapter, "readApp">,
+  app: CodeHostAppCredentials,
+  connection: { readonly id: string; readonly organizationId: string; readonly ownerAccountId: string | null; readonly ownerLogin: string | null },
+): Promise<KnownAppOwner> => {
+  if (connection.ownerAccountId !== null || connection.ownerLogin !== null) {
+    return { accountId: connection.ownerAccountId, login: connection.ownerLogin };
+  }
+  const read = await codeHost.readApp(app);
+  const owner = read.ok ? read.value.owner : undefined;
+  if (owner === undefined) {
+    return { accountId: null, login: null };
+  }
+  await tx.connection.updateMany({ where: { id: connection.id, organizationId: connection.organizationId }, data: { ownerAccountId: owner.accountId, ownerLogin: owner.login } });
+  return { accountId: owner.accountId, login: owner.login };
+};
+
+/** An installation as the code host lists it, in the shape the linking rule reads. */
+export const seenInstallationOf = (installation: Installation): SeenInstallationRow => ({
+  installationId: installation.installationId,
+  accountId: installation.accountId ?? null,
+  accountLogin: installation.accountLogin,
+  accountKind: installation.accountKind,
+});
+
+/** An organization admin's link, in the caller's transaction, with its audit entry by the member. */
+export const linkInstallationInTx = async (
+  deps: Pick<Ports, "audit" | "clock">,
+  tx: Tx,
+  input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId; readonly installation: SeenInstallationRow; readonly memberId: MemberId },
+): Promise<void> => {
+  const data = {
+    accountId: input.installation.accountId,
+    accountLogin: input.installation.accountLogin,
+    accountKind: input.installation.accountKind,
+    state: "linked" as const,
+    linkedByMemberId: input.memberId,
+    linkedAt: new Date(deps.clock.now()),
+    removedAt: null,
+    removedByMemberId: null,
+  };
+  await tx.codeHostInstallation.upsert({
+    where: { connectionId_installationId: { connectionId: input.connectionId, installationId: input.installation.installationId } },
+    create: { organizationId: input.organizationId, connectionId: input.connectionId, installationId: input.installation.installationId, ...data },
+    update: data,
+  });
+  await deps.audit.recordInTx(tx, {
+    organizationId: input.organizationId,
+    projectId: null,
+    actor: { kind: "member", id: input.memberId },
+    action: installationAuditActions.linked,
+    entity: "connection",
+    entityId: input.connectionId,
+    data: { installationId: input.installation.installationId, account: input.installation.accountLogin, own: false },
+  });
 };

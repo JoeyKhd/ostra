@@ -10,6 +10,7 @@ import type { Ports } from "../ports.ts";
 import { providerAuditActions } from "../providers/provider-lists.ts";
 import { sessionRowAllowedInTx } from "../providers/session-model.ts";
 import { storedMcpServersSchema } from "./task-profile.ts";
+import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // ADR 0030, ADR 0034: `POST /runner/v1/tasks/:taskId/credentials`. Only for the runner that holds the
 // task's active lease, at its current epoch, before the grace ends: then the model endpoint and its
@@ -29,7 +30,9 @@ export type IssueTaskCredentialsResult =
   | { readonly ok: false; readonly error: "stale-lease"; readonly message: string; readonly currentEpoch: LeaseEpoch }
   | { readonly ok: false; readonly error: "provider-not-allowed-on-personal-runners" | "token-mint-failed"; readonly message: string }
   /** Milestone 4 (F-135): the session's provider is no longer on its project's list; an audit entry records the refusal. */
-  | { readonly ok: false; readonly error: "provider-not-allowed"; readonly message: string };
+  | { readonly ok: false; readonly error: "provider-not-allowed"; readonly message: string }
+  /** Milestone 4 (F-136): a repo's GitHub installation was unlinked or removed; nothing was minted. */
+  | { readonly ok: false; readonly error: "installation-not-linked"; readonly message: string };
 
 export type IssueTaskCredentialsDeps = Pick<Ports, "audit" | "clock" | "adapters"> & {
   readonly tx: Tx;
@@ -109,7 +112,15 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     return failed("the provider's token couldn't be read from the secret store");
   }
 
-  const taskRepos = await tx.taskRepo.findMany({ where: { taskId: task.id }, include: { repo: { include: { connection: true } } }, orderBy: { createdAt: "asc" } });
+  const taskRepos = await tx.taskRepo.findMany({
+    where: { taskId: task.id },
+    include: { repo: { include: { connection: true, ...installationStateSelect } } },
+    orderBy: { createdAt: "asc" },
+  });
+  // Milestone 4 (F-136, ADR 0065): no token through an installation that isn't linked, for any repo.
+  if (taskRepos.some(({ repo }) => !installationUsable(repo.installation))) {
+    return { ok: false, error: "installation-not-linked", message: INSTALLATION_NOT_LINKED };
+  }
   const repos: { repoId: ReturnType<typeof repoIdSchema.parse>; gitToken: string; expiresAt: number }[] = [];
   for (const taskRepo of taskRepos) {
     const { repo } = taskRepo;

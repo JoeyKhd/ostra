@@ -4,7 +4,7 @@ import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { JiraSite } from "@ostra/adapter-sdk/testing";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { systemClock } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
@@ -43,6 +43,7 @@ let githubA: ConnectionId;
 const servers: CoreServer[] = [];
 
 const APP_ID = "4242001";
+const LINKED_INSTALLATION = 5150;
 
 const keep = async (organizationId: OrganizationId, value: string): Promise<string> => {
   const ref = await secretStore.put({ organizationId, purpose: "linear.webhook-secret" }, value);
@@ -92,6 +93,8 @@ beforeAll(async () => {
     data: { organizationId: orgA, kind: "github", appId: APP_ID, webhookSecretSecretRef: await keep(orgA, codeHost.webhookSecret) },
   });
   githubA = connectionIdSchema.parse(github.id);
+  // Milestone 4 (F-136): GitHub's deliveries are stored only from a linked installation.
+  await seedInstallation(test.db, { organizationId: orgA, connectionId: githubA, installationId: String(LINKED_INSTALLATION) });
   base = await startInbox();
 });
 
@@ -258,7 +261,7 @@ describe("the webhook inbox", () => {
   });
 
   it("takes GitHub's deliveries on the connection's address and on milestone 1's App-wide one", async () => {
-    const body = JSON.stringify({ action: "opened", zen: "hello" });
+    const body = JSON.stringify({ action: "opened", zen: "hello", installation: { id: LINKED_INSTALLATION } });
     const headers = codeHost.sign(body, "pull_request");
     expect(await post(`/webhooks/github/${githubA}`, { rawBody: body, headers })).toEqual({ status: 200, body: { status: "accepted" } });
     const [row] = await rowsOf(githubA, headers["x-github-delivery"] ?? "");
@@ -279,7 +282,7 @@ describe("the webhook inbox", () => {
     const delivery = issueDelivery();
     expect((await post(`/webhooks/linear/${linearA}`, delivery, blocked)).status).toBe(503);
     expect(await rowsOf(linearA, deliveryIdOf(delivery))).toHaveLength(0);
-    const body = JSON.stringify({ action: "closed" });
+    const body = JSON.stringify({ action: "closed", installation: { id: LINKED_INSTALLATION } });
     expect((await post(`/webhooks/github/${githubA}`, { rawBody: body, headers: codeHost.sign(body, "pull_request") }, blocked)).status).toBe(200);
   });
 
@@ -339,7 +342,7 @@ describe("webhook.process", () => {
     const run = webhookProcessHandler(handlers.deps);
     const delivery = issueDelivery();
     await post(`/webhooks/linear/${linearA}`, delivery);
-    const body = JSON.stringify({ action: "synchronize" });
+    const body = JSON.stringify({ action: "synchronize", installation: { id: LINKED_INSTALLATION } });
     const github = { rawBody: body, headers: codeHost.sign(body, "pull_request") };
     await post(`/webhooks/github/${githubA}`, github);
     const stored = await test.db.webhookDelivery.findMany({ where: { connectionId: { in: [linearA, githubA] }, event: { not: "blocker" } } });

@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, Logger, SecretStoreAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db, Prisma } from "@ostra/db";
+import { installationUsableInTx } from "@ostra/domain";
 import type { Clock } from "@ostra/domain";
 import type { Jobs } from "@ostra/jobs";
 import { connectionIdSchema, organizationIdSchema, parseJson, webhookDeliveryIdSchema } from "@ostra/protocol";
@@ -83,6 +84,21 @@ type Verified = {
   readonly signatureHash: string | null;
   readonly sentAt: number | null;
   readonly payload: Prisma.InputJsonValue;
+  /** Milestone 4 (F-136): the GitHub installation the delivery is from; `null` for one that names none, and for Linear. */
+  readonly installationId: string | null;
+};
+
+/** GitHub's App events about an installation itself, stored whatever its state: they link or remove it. */
+const INSTALLATION_EVENTS: ReadonlySet<string> = new Set(["installation"]);
+
+/** The installation a GitHub delivery names (`installation.id`), as a string; `null` when none. */
+const installationIdOf = (body: unknown): string | null => {
+  const installation: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "installation") : undefined;
+  const id: unknown = typeof installation === "object" && installation !== null ? Reflect.get(installation, "id") : undefined;
+  if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
+    return String(id);
+  }
+  return typeof id === "string" && /^\d{1,20}$/.test(id) ? id : null;
 };
 
 const headerMap = (request: IncomingMessage): Readonly<Record<string, string | undefined>> => {
@@ -216,7 +232,7 @@ export const createWebhookInbox = (deps: WebhookInboxDeps) => {
         }
         return {
           ok: true,
-          verified: { deliveryId: result.deliveryId, event: linearEventOf(result.body), signatureHash: result.signatureHash, sentAt: result.sentAt, payload },
+          verified: { deliveryId: result.deliveryId, event: linearEventOf(result.body), signatureHash: result.signatureHash, sentAt: result.sentAt, payload, installationId: null },
         };
       }
       case "github": {
@@ -232,7 +248,7 @@ export const createWebhookInbox = (deps: WebhookInboxDeps) => {
         }
         const event = (headers["x-github-event"] ?? "unknown").slice(0, 128);
         // GitHub sends no timestamp: its transit isn't known.
-        return { ok: true, verified: { deliveryId: deliveryId.data, event, signatureHash: null, sentAt: null, payload } };
+        return { ok: true, verified: { deliveryId: deliveryId.data, event, signatureHash: null, sentAt: null, payload, installationId: json.ok ? installationIdOf(json.value) : null } };
       }
       default:
         return kind satisfies never;
@@ -351,6 +367,19 @@ export const createWebhookInbox = (deps: WebhookInboxDeps) => {
       return true;
     }
     const { verified } = verification;
+    // Milestone 4 (F-136, ADR 0065): a GitHub delivery is stored only from an installation linked to
+    // this connection. Any other gets a 202, so GitHub doesn't retry it, and changes nothing. An
+    // `installation` event is the exception: it's how ostra learns of one, or of its removal.
+    if (kind === "github" && !INSTALLATION_EVENTS.has(verified.event)) {
+      const linked =
+        verified.installationId !== null &&
+        (await installationUsableInTx(deps.db, { organizationId: connection.organizationId, connectionId: connection.id, installationId: verified.installationId }));
+      if (!linked) {
+        connectionLogger.info("webhook.installation-not-linked", { deliveryId: verified.deliveryId, installationId: verified.installationId, event: verified.event });
+        sendJson(response, 202, { status: "not-linked" });
+        return true;
+      }
+    }
     const transitMs = verified.sentAt === null ? null : receivedAt - verified.sentAt;
     if (transitMs !== null && Math.abs(transitMs) > WEBHOOK_SKEW_WARN_MS) {
       connectionLogger.warn("webhook.clock-skew", { deliveryId: verified.deliveryId, transitMs });

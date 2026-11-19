@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { requireProjectAccess, resolveCliSession, startCliSession } from "@ostra/domain";
+import { installationStateSelect, installationUsable, requireProjectAccess, resolveCliSession, startCliSession } from "@ostra/domain";
 import type { CliSessionCaller } from "@ostra/domain";
 import {
   CLI_PATH_PREFIX,
@@ -217,12 +217,16 @@ const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string)
   const rows = await db.taskRepo.findMany({
     where: { taskId: found.id, organizationId: found.organizationId },
     orderBy: { createdAt: "asc" },
-    select: { branchName: true, baseBranch: true, headSha: true, repo: { select: { fullName: true, hostRepoId: true, installationId: true, connection: { select: { appId: true, privateKeySecretRef: true } } } } },
+    select: { branchName: true, baseBranch: true, headSha: true, repo: { select: { fullName: true, hostRepoId: true, installationId: true, connection: { select: { appId: true, privateKeySecretRef: true } }, ...installationStateSelect } } },
   });
   // The clone URL is the code host's own, from its listing; one listing per installation.
   const listings = new Map<string, Awaited<ReturnType<typeof ports.adapters.codeHost.listRepos>>>();
   const repos: unknown[] = [];
   for (const row of rows) {
+    // Milestone 4 (F-136, ADR 0065): nothing is minted through an installation that isn't linked.
+    if (!installationUsable(row.repo.installation)) {
+      return fail(409, "bad-request", "One of the task's repos is reached through a GitHub installation that isn't linked to ostra. Ask an organization admin to link it");
+    }
     const ref = secretRefSchema.safeParse(row.repo.connection.privateKeySecretRef);
     const key = ref.success ? await ports.adapters.secretStore.get(organizationIdSchema.parse(found.organizationId), ref.data) : null;
     if (key?.ok !== true) {
