@@ -49,9 +49,10 @@ describe("the host cache through the task host (F-051)", () => {
     const [warm] = h.ofKind(second.spec, "environment.setup_finished");
     expect(cold).toMatchObject({ exitCode: 0, dependencyCache: "cold" });
     expect(warm).toMatchObject({ exitCode: 0, dependencyCache: "warm" });
+    // Each with its setup's duration: the cold one slept a second while it "installed"; the warm
+    // one found the cache and didn't (no comparison of the two: a loaded machine can slow either).
+    expect(cold?.durationMs).toBeGreaterThanOrEqual(1_000);
     expect(warm?.durationMs).toBeGreaterThanOrEqual(0);
-    // The cold setup slept while it "installed"; the warm one found the cache and didn't.
-    expect(warm?.durationMs ?? Infinity).toBeLessThan(cold?.durationMs ?? 0);
     const said = h.ofKind(second.spec, "environment.setup_output").map((event) => event.text).join("");
     expect(said).toContain("warm");
 
