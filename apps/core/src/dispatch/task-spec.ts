@@ -2,9 +2,9 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { githubNoReplyAddress, modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
-import type { SpendCapSettings } from "@ostra/domain";
-import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
+import { buildMemoryBlock, githubNoReplyAddress, modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import type { MemoryLimits, SpendCapSettings } from "@ostra/domain";
+import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
 import type { BlobService } from "../blobs/blob-service.ts";
 import { agentInstructions } from "./agent-instructions.ts";
@@ -47,6 +47,13 @@ export type SpecDeps = {
   readonly settings?: TaskSpecSettings;
   /** Milestone 3: copies a profile's skills into the blob store, as blobs of the task. Without it a profile with skills is refused. */
   readonly blobs?: Pick<BlobService, "put" | "read">;
+  /**
+   * Milestone 4 (F-110): how each agent adapter takes memory, by its name. An agent that declares
+   * `mcp` gets the memory tools on a minor-3 runner; any other gets the block only.
+   */
+  readonly agentMemory?: (adapter: string) => "mcp" | "index-only" | undefined;
+  /** Milestone 4: the index's limits (`OSTRA_MEMORY_*`); the protocol's working values without it. */
+  readonly memoryLimits?: MemoryLimits;
 };
 
 /**
@@ -84,7 +91,13 @@ const appCredentials = async (
 
 export const buildTaskSpec = async (
   deps: SpecDeps,
-  input: { readonly taskId: TaskId; readonly runnerId: RunnerId; readonly leaseEpoch: LeaseEpoch },
+  input: {
+    readonly taskId: TaskId;
+    readonly runnerId: RunnerId;
+    readonly leaseEpoch: LeaseEpoch;
+    /** The minor the runner reads the spec at; the current one without it. Below 3, memory is folded into the instructions. */
+    readonly minor?: number;
+  },
 ): Promise<SpecResult> => {
   const { db } = deps;
   const held = await db.lease.findFirst({ where: { taskId: input.taskId, runnerId: input.runnerId }, orderBy: { epoch: "desc" } });
@@ -114,7 +127,8 @@ export const buildTaskSpec = async (
   const taskRepos = await db.taskRepo.findMany({
     where: { taskId: task.id },
     include: { repo: { include: { connection: true } } },
-    orderBy: { createdAt: "asc" },
+    // F-098: the project's order, then the order the task got them.
+    orderBy: [{ repo: { position: "asc" } }, { createdAt: "asc" }],
   });
   const environment = await db.environment.findUnique({ where: { projectId: task.projectId } });
   const entries =
@@ -197,6 +211,13 @@ export const buildTaskSpec = async (
   const checks = await specChecks(db, task, taskRepos.map(({ repo }) => repo.id));
   // Milestone 3 (ticket 26): the snapshot this runner holds, or the host's dependency cache.
   const snapshot = await specSnapshot(db, task, lease);
+  // Milestone 4 (ticket 15, F-110): the project's and the organization's approved notes. A minor-3
+  // runner gets the section, with the tools for an MCP agent; a minor-2 one gets the block, rendered
+  // without the tools, at the end of its instructions.
+  const minor = input.minor ?? PROTOCOL_MINOR;
+  const tools = minor >= 3 && deps.agentMemory?.(profile.adapter) === "mcp";
+  const memory = await buildMemoryBlock(db, { organizationId, projectId: projectIdSchema.parse(task.projectId), tools }, deps.memoryLimits);
+  const folded = minor < 3 ? (memory?.block ?? null) : null;
   const spec = taskSpecSchema.parse({
     taskId: task.id,
     sessionId: session.id,
@@ -220,13 +241,16 @@ export const buildTaskSpec = async (
       apiFormat: apiFormatFromDb[model.provider.apiFormat],
       instructions: agentInstructions(
         profile.instructions,
-        taskRepos.map(({ repo }) => ({ fullName: repo.fullName, checkoutDir: repo.checkoutDir })),
+        taskRepos.map(({ repo }) => ({ fullName: repoFullNameSchema.parse(repo.fullName), checkoutDir: repo.checkoutDir, defaultBranch: repo.defaultBranch })),
+        task.branchName,
+        folded,
       ),
       skills: parts.skills,
       mcpServers: parts.mcpServers,
       approvalRules: parts.approvalRules,
       taskRules: parts.taskRules,
       planFirst: parts.planFirst,
+      closingTurn: profile.closingTurn,
     },
     firstTurnMode: parts.firstTurnMode,
     environment: {
@@ -249,6 +273,7 @@ export const buildTaskSpec = async (
     ...(checks.length === 0 ? {} : { checks }),
     ...(services.length === 0 ? {} : { services }),
     ...(snapshot === undefined ? {} : { snapshot }),
+    ...(minor >= 3 ? { memory } : {}),
   });
   return { ok: true, spec };
 };

@@ -18,6 +18,7 @@ import { unansweredMessagesInTx } from "./reopen.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
+import { recordMemoryUse } from "../memory/store.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
 import { recordSpendInTx } from "./budgets.ts";
 import { modelTokenPrices, priceTokens } from "./spend.ts";
@@ -304,6 +305,10 @@ const applyEffects = async (
         }
         break;
       }
+      case "memory.used":
+        // F-110 (ticket 15): every row is kept; only a read or a search moves a note's last use (Q91).
+        await recordMemoryUse(tx, { organizationId, taskId: task.id, sessionId: sessionRef.sessionId, noteIds: event.noteIds, via: event.via, at: item.at });
+        break;
       case "provider.rate_limited": {
         // F-088, F-089: the key proxy saw a rate limit, so new dispatches wait on that provider. A
         // runner can only hold the provider its own session's model runs on, never another one.
@@ -554,7 +559,6 @@ const applyEffects = async (
       case "diff.comments_sent":
       case "ticket.closed":
       case "pr.comment_received":
-      case "memory.used":
       case "memory.proposed":
       case "turn.held":
       case "turn.released":

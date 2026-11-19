@@ -35,6 +35,7 @@ import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshH
 import { applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
 import type { DispatcherDeps } from "./dispatch/dispatcher.ts";
 import { handleTaskEndpoint } from "./dispatch/endpoints.ts";
+import { handleMemoryEndpoint } from "./memory/endpoints.ts";
 import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
@@ -172,6 +173,8 @@ export const startCore = async (
   };
   // A reopen restores an archive only for an agent whose adapter can import one (ADR 0039, ticket 18).
   const archiveAgents = new Map([["opencode", new OpenCodeAdapter().capabilities.sessionArchive]]);
+  // How each agent takes project memory (F-110, ticket 15): the tools, or the block only.
+  const memoryAgents = new Map([["opencode", new OpenCodeAdapter().capabilities.memory]]);
   const dispatcherDeps: DispatcherDeps = {
     db,
     jobs,
@@ -289,6 +292,22 @@ export const startCore = async (
       spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
     },
     blobs,
+    // Milestone 4 (ticket 15): how each agent takes memory, and the index's limits.
+    memory: {
+      agentMemory: (adapter) => memoryAgents.get(adapter),
+      memoryLimits: { indexMaxNotes: settings.memoryIndexMaxNotes, indexMaxBytes: settings.memoryIndexMaxBytes, alwaysMaxBytes: settings.memoryAlwaysMaxBytes },
+    },
+  });
+  // The memory tools' endpoints (ticket 15): the sidecar's `memory_*` calls, by the task's token.
+  const memoryEndpoints = handleMemoryEndpoint({
+    db,
+    tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
+    secretStore: adapters.secretStore,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    logger,
+    proposalsPerTask: settings.memoryProposalsPerTask,
   });
   const snapshotEndpoints = handleSnapshotEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
   const blobEndpoints = handleBlobEndpoint({
@@ -452,7 +471,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, snapshotEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, snapshotEndpoints, blobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

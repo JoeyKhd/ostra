@@ -27,7 +27,7 @@ import type { TaskTokenClaims, TaskTokens } from "../gateway/task-token.ts";
 import { readJsonBody, sendError, sendJson } from "../http.ts";
 import type { BlobService } from "../blobs/blob-service.ts";
 import { buildTaskSpec } from "./task-spec.ts";
-import type { TaskSpecSettings } from "./task-spec.ts";
+import type { SpecDeps, TaskSpecSettings } from "./task-spec.ts";
 
 // The task endpoints beside the runner's WebSocket (ADR 0034, ticket 26): the spec and the
 // credentials, each for the runner holding the task's current lease, authenticated by its access
@@ -68,6 +68,8 @@ export type TaskEndpointDeps = {
   readonly specSettings?: TaskSpecSettings;
   /** Milestone 3: copies a profile's skills into the blob store for the spec (ticket 16). */
   readonly blobs?: Pick<BlobService, "put" | "read">;
+  /** Milestone 4 (F-110): how each agent adapter takes memory, and the index's limits. */
+  readonly memory?: Pick<SpecDeps, "agentMemory" | "memoryLimits">;
 };
 
 export const handleTaskEndpoint =
@@ -173,20 +175,21 @@ export const handleTaskEndpoint =
         sendError(response, 409, "stale-lease", "the task token is for another epoch", { currentEpoch: caller.claims.leaseEpoch });
         return true;
       }
+      // A minor-0 runner sends no minor header, and gets minor 0's shape (protocol minor 1).
+      const header = request.headers[runnerHeaders.minor];
+      const minor = minorFromHeader(typeof header === "string" ? header : undefined);
       const result = await buildTaskSpec(
         {
+          ...(deps.memory ?? {}),
           db: deps.db,
           codeHost: deps.adapters.codeHost,
           secretStore: deps.adapters.secretStore,
           ...(deps.specSettings === undefined ? {} : { settings: deps.specSettings }),
           ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }),
         },
-        { taskId: taskId.data, runnerId: caller.runnerId, leaseEpoch: query.data.leaseEpoch },
+        { taskId: taskId.data, runnerId: caller.runnerId, leaseEpoch: query.data.leaseEpoch, minor },
       );
       if (result.ok) {
-        // A minor-0 runner sends no minor header, and gets minor 0's shape (protocol minor 1).
-        const header = request.headers[runnerHeaders.minor];
-        const minor = minorFromHeader(typeof header === "string" ? header : undefined);
         logger.info("task.spec-sent", { leaseEpoch: query.data.leaseEpoch, minor });
         sendJson(response, 200, encodeTaskSpecForMinor(result.spec, minor));
         return true;

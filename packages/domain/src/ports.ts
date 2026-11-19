@@ -13,12 +13,16 @@ import type {
   JoinTokenId,
   MemberId,
   ModelId,
+  NoteId,
   OrganizationId,
   PoolId,
   ProjectId,
+  ProposalId,
   ProviderId,
+  RepoId,
   RunnerId,
   TaskId,
+  TaskRepoId,
 } from "@ostra/protocol";
 
 import type { JobName, JobPayload } from "./jobs.ts";
@@ -83,7 +87,12 @@ export type EntityId =
   | ProjectId
   | ProviderId
   | RunnerId
-  | TaskId;
+  | TaskId
+  // Milestone 4 (tickets 15 to 18): memory, a project's repos and a task's repo.
+  | NoteId
+  | ProposalId
+  | RepoId
+  | TaskRepoId;
 
 /** A change to tell the panel's live views about: IDs only (ADR 0035). */
 export type ChangeNoticeInput = {

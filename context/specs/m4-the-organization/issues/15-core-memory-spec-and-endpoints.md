@@ -1,6 +1,6 @@
 # 15: Core: memory in the task spec, and the memory endpoints
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 01, 06
 Features: F-110, F-111
@@ -21,10 +21,12 @@ Spec: `../spec.md`, sections 4 ("Memory at a session's start", "The memory tools
 
 ## Done when
 
-- [ ] Tests named `it("F-110: ...")`: the section's order and cut; a minor-2 runner's folded instructions; an archived note is in neither the index nor a search; a `memory.used` with `via: "index"` or `"always"` stores its row and leaves `lastUsedAt` and `useCount` alone, while `read` and `search` move them; another project's and another organization's notes are never returned by search or read; a token for another task is refused.
-- [ ] Tests named `it("F-111: ...")`: a proposal is stored as `proposed` and reaches no later spec until approved; a secret or a model-control token is refused and nothing is stored; the 21st proposal of a task is refused.
-- [ ] Break-it checks recorded in `context/proof/F-110.md` and `F-111.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add memory to the task spec and the sidecar`.
+- [x] Tests named `it("F-110: ...")`: the section's order and cut; a minor-2 runner's folded instructions; an archived note is in neither the index nor a search; a `memory.used` with `via: "index"` or `"always"` stores its row and leaves `lastUsedAt` and `useCount` alone, while `read` and `search` move them; another project's and another organization's notes are never returned by search or read; a token for another task is refused.
+- [x] Tests named `it("F-111: ...")`: a proposal is stored as `proposed` and reaches no later spec until approved; a secret or a model-control token is refused and nothing is stored; the 21st proposal of a task is refused.
+- [x] Break-it checks recorded in `context/proof/F-110.md` and `F-111.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add memory to the task spec and the sidecar`.
 
 ## Comments
+
+- 2026-11-19: built and proved; committed as `✨ add memory to the task spec and the sidecar` (its hash is in the next ticket's commit, and in `git log`). `buildTaskSpec` takes the runner's minor and an agent's memory mode: a minor-3 runner gets `memory` (tools only for an `mcp` agent) and `agent.closingTurn`; a minor-2 runner gets the block, rendered without the tools, at the end of `agent.instructions`. The repos list is now the domain's `renderReposForAgent` (folders, base branches, the branch), in the project's `position` order. The three endpoints are `apps/core/src/memory/endpoints.ts`; `searchNotes`, `readNote`, `recordMemoryUse`, `proposeNote` and `buildMemoryBlock` are `packages/domain/src/memory/store.ts`, and the ingest stores `memory.used`. A refused proposal answers 200 with its refusal body, as the fake core of ticket 02 does. Twelve break-its, each caught (`context/proof/F-110.md`, `F-111.md`). The organization's secret values the scan reads are its environments' secrets and its providers' tokens.
