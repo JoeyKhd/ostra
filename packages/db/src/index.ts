@@ -26,6 +26,8 @@ export type {
   MemoryProposal,
   MemoryUse,
   ReviewCheck,
+  ProviderListEntry,
+  ModelChoice,
   User,
   AuthSession,
   Account,

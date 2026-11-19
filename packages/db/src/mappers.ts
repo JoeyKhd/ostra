@@ -87,6 +87,8 @@ import type {
   MemoryNoteVersion,
   MemoryProposal,
   MemoryUse,
+  ModelChoice,
+  ProviderListEntry,
   ResetLinkGrant,
   ReviewCheck,
   SearchEntry,
@@ -301,6 +303,8 @@ export const mapSession = (row: Session) => ({
   boxId: optional(boxIdSchema, row.boxId),
   archiveBlobId: optional(blobIdSchema, row.archiveBlobId),
   limitReached: row.limitReached === null ? null : sessionLimitFromDb[row.limitReached],
+  providerId: optional(providerIdSchema, row.providerId),
+  modelId: optional(modelIdSchema, row.modelId),
 });
 
 export const mapTurn = (row: Turn) => ({
@@ -683,4 +687,22 @@ export const mapReviewCheck = (row: ReviewCheck) => ({
   projectId: projectIdSchema.parse(row.projectId),
   taskRepoId: taskRepoIdSchema.parse(row.taskRepoId),
   approverMemberId: optional(memberIdSchema, row.approverMemberId),
+});
+
+// ---------- milestone 4, keys per project (ticket 45) ----------
+
+export const mapProviderListEntry = (row: ProviderListEntry) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  providerId: providerIdSchema.parse(row.providerId),
+  addedByMemberId: optional(memberIdSchema, row.addedByMemberId),
+});
+
+export const mapModelChoice = (row: ModelChoice) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: optional(projectIdSchema, row.projectId),
+  modelId: modelIdSchema.parse(row.modelId),
+  chosenByMemberId: optional(memberIdSchema, row.chosenByMemberId),
 });

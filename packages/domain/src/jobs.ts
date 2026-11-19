@@ -70,6 +70,8 @@ export const jobNames = [
   "search.backfill",
   "pr.link-related",
   "review.evaluate",
+  // Keys per project (ticket 45).
+  "providers.release-boxes",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -199,6 +201,8 @@ export const jobPayloadSchemas = {
     prNumber: z.number().int().positive(),
     headSha: gitShaSchema,
   }),
+  /** Release a project's idle boxes that hold a key its list no longer allows (F-135, ticket 48). */
+  "providers.release-boxes": z.strictObject({ organizationId: organizationIdSchema, projectId: projectIdSchema, changedAt: epochMsSchema }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -243,6 +247,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "search.backfill": (payload) => `task:${payload.taskId}:search-backfill`,
   "pr.link-related": (payload) => `task:${payload.taskId}:link-related:${payload.repoId}:${String(payload.prNumber)}`,
   "review.evaluate": (payload) => `pr:${payload.taskRepoId}:${String(payload.prNumber)}:review:${payload.headSha}`,
+  "providers.release-boxes": (payload) => `project:${payload.projectId}:release-boxes:${String(payload.changedAt)}`,
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -296,6 +301,7 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "pr.link-related": { kind: "event", throttle: "connection" },
   // Reviews, a push and a link a moment apart evaluate once (`reviewEvaluateSingletonSeconds`).
   "review.evaluate": { kind: "event", throttle: "connection" },
+  "providers.release-boxes": { kind: "event" },
 };
 
 /** `review.evaluate`'s singleton window (spec section 5.4): one evaluation per PR and head in 10 s. */

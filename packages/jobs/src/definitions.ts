@@ -79,6 +79,7 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "search.backfill": { ...base, retryLimit: 3, expireInSeconds: 600 },
   "pr.link-related": { ...base, retryLimit: 8, groupConcurrency: 2 },
   "review.evaluate": { ...base, retryLimit: 8, groupConcurrency: 2 },
+  "providers.release-boxes": { ...base, retryLimit: 5 },
 };
 
 /**

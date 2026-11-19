@@ -40,6 +40,7 @@ export const bareDetail = (reason: Reason): NeedsYouDetail => {
     case "crashed":
     case "environment_proposal":
     case "files_outside_repos":
+    case "no_provider_for_model":
     case "no_changes":
     case "restore_conflict":
     case "round_cap":

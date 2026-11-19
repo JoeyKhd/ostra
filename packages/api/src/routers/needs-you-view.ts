@@ -297,6 +297,7 @@ export const loadNeedsYouViews = async (
         case "restore_conflict":
         case "unstorable_event":
         case "files_outside_repos":
+        case "no_provider_for_model":
           return { reason: item.reason };
         default:
           return item.reason satisfies never;

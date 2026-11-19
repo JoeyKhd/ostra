@@ -74,6 +74,8 @@ export const needsYouReasonText = (reason: NeedsYouReason): string => {
       return t("tasks.needsYouReason.unstorableEvent");
     case "files_outside_repos":
       return t("tasks.needsYouReason.filesOutsideRepos");
+    case "no_provider_for_model":
+      return t("tasks.needsYouReason.noProviderForModel");
     default:
       return reason satisfies never;
   }

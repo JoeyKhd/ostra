@@ -144,7 +144,8 @@
       "environmentProposal": "Environment change proposed",
       "restoreConflict": "Restore conflict",
       "unstorableEvent": "An event couldn't be stored",
-      "filesOutsideRepos": "Files left outside the repositories"
+      "filesOutsideRepos": "Files left outside the repositories",
+      "noProviderForModel": "No provider serves its model in this project"
     },
     "action": {
       "approve": "Approve",
@@ -1041,7 +1042,8 @@
       "environmentProposal": "A change to the environment to review",
       "restoreConflict": "Its saved work conflicts with the branch",
       "unstorableEvent": "An event couldn't be stored",
-      "filesOutsideRepos": "Files left outside the repositories"
+      "filesOutsideRepos": "Files left outside the repositories",
+      "noProviderForModel": "No provider serves its model in this project"
     },
     "stopReason": {
       "requested": "asked to stop",

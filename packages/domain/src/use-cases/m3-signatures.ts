@@ -34,6 +34,7 @@ import type {
 } from "@ostra/protocol";
 
 import type { MemberScope } from "../access.ts";
+import type { ModelName } from "../providers/model-name.ts";
 import type { NotificationChannel, NotificationChoice, NotificationKind } from "../notifications/choices.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -81,6 +82,12 @@ export type SaveAgentProfileInput = {
   readonly name: string;
   readonly adapter: string;
   readonly modelId: string | null;
+  /**
+   * Milestone 4 (F-135, ADR 0065): the model by name, pinning no provider. Given, it wins over
+   * `modelId`, which is then written as the default list's row for the name (`null` when none
+   * serves it), so a rollback works. Absent, the name is taken from `modelId`'s row.
+   */
+  readonly modelName?: ModelName | null;
   readonly instructions: string | null;
   readonly approvalRules: readonly ApprovalRule[];
   readonly planFirst: boolean;

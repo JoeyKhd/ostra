@@ -43,6 +43,13 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
    * can do (rules, plan first, skills, MCP servers), and only older runners could take it.
    */
   z.strictObject({ code: z.literal("needs-protocol"), minor: z.number().int().positive() }),
+  /**
+   * Milestone 4 (F-135, ADR 0065): no provider on the project's list serves the profile's model, or
+   * the chosen one stopped listing it. `modelName` is the catalog ID or the endpoint's model ID.
+   */
+  z.strictObject({ code: z.literal("no-provider-for-model"), modelName: z.string().min(1).max(256) }),
+  /** Milestone 4 (F-135): the session's provider is no longer on its project's list. */
+  z.strictObject({ code: z.literal("provider-not-allowed") }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -85,6 +92,10 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
         : `Needs a runner that can start services (the docker executor); only ${[...new Set(wait.online.map((runner) => runner.executor))].join(" and ")} runners are online.`;
     case "needs-protocol":
       return `The task's agent profile needs a runner at protocol ${String(wait.minor)} or later: update the runner.`;
+    case "no-provider-for-model":
+      return `No provider on this project's list serves ${wait.modelName}: an organization admin adds one under Models.`;
+    case "provider-not-allowed":
+      return "The session's model provider is no longer allowed in this project.";
     default:
       return wait satisfies never;
   }

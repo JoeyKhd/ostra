@@ -37,6 +37,8 @@ export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason): Notific
     case "restore_conflict":
     case "unstorable_event":
     case "files_outside_repos":
+    // Milestone 4 (F-135): shown to the organization's admins in needs-you, with no mail of its own.
+    case "no_provider_for_model":
       return null;
     default:
       return reason satisfies never;

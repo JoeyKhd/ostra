@@ -166,6 +166,9 @@ model Organization {
   insightRun         InsightRun?
   memoryNotes        MemoryNote[]
   memoryProposals    MemoryProposal[]
+  // Milestone 4, keys per project (ADR 0065).
+  providerListEntries ProviderListEntry[]
+  modelChoices        ModelChoice[]
 
   @@unique([slug])
   @@map("organization")
@@ -478,6 +481,9 @@ model ModelProvider {
   updatedAt              DateTime     @updatedAt
 
   models Model[]
+  // ---- milestone 4 (F-135, ADR 0065) ----
+  listEntries ProviderListEntry[]
+  sessions    Session[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -516,6 +522,8 @@ model Model {
   agentProfiles AgentProfile[]
   // ---- milestone 4 ----
   spendDailies  SpendDaily[]
+  modelChoices  ModelChoice[]
+  sessions      Session[]
 
   @@unique([providerId, endpointModelId])
   @@unique([id, organizationId])
@@ -660,6 +668,12 @@ model AgentProfile {
   // ---- milestone 4 (F-111, ADR 0044) ----
   /// After the task's last turn, one more asks the agent what the next task should know.
   closingTurn    Boolean       @default(false)
+  // ---- milestone 4, keys per project (F-135, F-021, ADR 0065) ----
+  /// The model by name: its models.dev catalog ID, or a custom model's endpoint ID. At most one is
+  /// set (checked in the migration). `modelId` is still written, as the default list's row for the
+  /// name, so a rollback works; nothing new reads it, and a later release drops it.
+  modelCatalogId  String?
+  modelCustomName String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -790,6 +804,10 @@ model Project {
   memoryProposals   MemoryProposal[]
   memoryUses        MemoryUse[]
   reviewChecks      ReviewCheck[]
+  /// Milestone 4 (F-135): `false` follows the organization's default provider list; `true` has its own.
+  ownProviders        Boolean             @default(false)
+  providerListEntries ProviderListEntry[]
+  modelChoices        ModelChoice[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -1425,6 +1443,12 @@ model Session {
   spentMicroUsd      Int             @default(0)
   /// The runaway limit that stopped it, if one did.
   limitReached       SessionLimit?
+  /// Milestone 4 (F-135, ADR 0065): the provider and model row its start resolved; the task spec and
+  /// the credentials name only these. Back-filled from the session's profile's model.
+  providerId         String?
+  provider           ModelProvider?  @relation(fields: [providerId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  modelId            String?
+  model              Model?          @relation(fields: [modelId, organizationId], references: [id, organizationId], onDelete: NoAction)
   startedAt          DateTime        @default(now())
   endedAt            DateTime?
   updatedAt          DateTime        @updatedAt
@@ -2136,6 +2160,8 @@ enum NeedsYouReason {
   unstorable_event
   /// Q133, milestone 2's ticket 44: the agent left files in the workspace root, outside every repo.
   files_outside_repos
+  /// Milestone 4 (F-135): no provider on the project's list serves the profile's model.
+  no_provider_for_model
 }
 
 enum TaskStopReason {
@@ -2239,6 +2265,8 @@ enum NeedsYouAudience {
   driver
   reviewer
   project_members
+  /// Milestone 4 (F-135): only the organization's admins can fix it.
+  organization_admins
 }
 
 enum NeedsYouState {
@@ -2883,4 +2911,64 @@ enum MemoryUseVia {
 enum ReviewCheckStatus {
   pending
   passed
+}
+
+// ===========================================================================
+// Milestone 4, keys per project (ticket 45, spec section 5.5, ADR 0065). Additive only.
+// ===========================================================================
+
+/// A provider on a list (F-135): the organization's default list (`projectId` null), which every
+/// project follows until it has its own, or a project's own list.
+model ProviderListEntry {
+  id              String        @id @default(uuid(7))
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// `null` for the organization's default list.
+  projectId       String?
+  project         Project?      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  providerId      String
+  provider        ModelProvider @relation(fields: [providerId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// No foreign key: the admin who added it, kept by ID; `null` for the upgrade's and the first provider's.
+  addedByMemberId String?
+  createdAt       DateTime      @default(now())
+
+  @@unique([organizationId, projectId, providerId])
+  /// The default list's rows: Postgres treats nulls as distinct in the unique above.
+  @@unique([organizationId, providerId], where: raw("\"projectId\" IS NULL"), map: "provider_list_entry_one_per_default_list")
+  @@index([providerId])
+  @@map("provider_list_entry")
+}
+
+/// Which provider serves a model name on a list (F-135): the default list's (`projectId` null) or a
+/// project's own. Only an organization admin's save, the keep rule or the upgrade writes one.
+model ModelChoice {
+  id               String            @id @default(uuid(7))
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId        String?
+  project          Project?          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The model by name: `catalog:<catalogId>` or `custom:<endpointModelId>` (the domain's `modelNameKey`), the key the unique index uses.
+  modelKey         String
+  modelCatalogId   String?
+  modelCustomName  String?
+  /// The chosen `Model` row; the domain checks its provider is on the same list.
+  modelId          String
+  model            Model             @relation(fields: [modelId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// No foreign key: the admin who chose it; `null` when ostra kept the current one.
+  chosenByMemberId String?
+  reason           ModelChoiceReason
+  /// The upgrade found profiles naming this model on different providers: an admin confirms it.
+  needsConfirm     Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([organizationId, projectId, modelKey])
+  @@unique([organizationId, modelKey], where: raw("\"projectId\" IS NULL"), map: "model_choice_one_per_default_list")
+  @@map("model_choice")
+}
+
+enum ModelChoiceReason {
+  admin
+  kept
+  upgrade
 }

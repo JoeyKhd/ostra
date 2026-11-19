@@ -103,6 +103,7 @@ const everyReason = {
   restore_conflict: nothing,
   unstorable_event: nothing,
   files_outside_repos: nothing,
+  no_provider_for_model: nothing,
 } satisfies Record<DbEnum.NeedsYouReason, (task: SeededTask) => Promise<void>>;
 
 const isReason = (value: string): value is DbEnum.NeedsYouReason => value in everyReason;
@@ -163,9 +164,9 @@ describe("the member's needs-you list", () => {
 
   it("F-062: Home shows the first five, with the total of all", async () => {
     const home = await (await harness.as(harness.fixture.a.admin)).home.overview();
-    expect(home.needsYou.total).toBe(16);
+    expect(home.needsYou.total).toBe(17);
     expect(home.needsYou.rows).toHaveLength(5);
-    expect(home.needsYou.rows.map((row) => row.reason)).toEqual(["files_outside_repos", "unstorable_event", "restore_conflict", "environment_proposal", "waiting_for_reviewer"]);
+    expect(home.needsYou.rows.map((row) => row.reason)).toEqual(["no_provider_for_model", "files_outside_repos", "unstorable_event", "restore_conflict", "environment_proposal"]);
   });
 
   it("F-062: a task with two open items shows both", async () => {

@@ -6,6 +6,9 @@ import type { DbOrTx } from "@ostra/db";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
+import { modelNameColumns, modelNameOfModel } from "../providers/model-name.ts";
+import { loadProviderList } from "../providers/provider-lists.ts";
+import { resolveProjectModel } from "../providers/resolve.ts";
 import { BUILT_IN_PROFILE_ADAPTER, ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import type { UseCaseResult } from "./common.ts";
 import type { ArchiveAgentProfile, ProfilesForMember, SaveAgentProfile, SetProjectDefaultProfile } from "./m3-signatures.ts";
@@ -186,14 +189,24 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
     if (clash !== null) {
       return refuseSave("name-taken", "Another profile already has that name");
     }
-    if (input.modelId !== null) {
-      const model = await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { listed: true } });
+    // The model by name (F-135): the name is what the profile means; `modelId` is still written,
+    // as the default list's row for it, so the previous release reads the same profile.
+    let modelId = input.modelId;
+    let nameColumns: { readonly modelCatalogId: string | null; readonly modelCustomName: string | null } = { modelCatalogId: null, modelCustomName: null };
+    if (input.modelName !== undefined && input.modelName !== null) {
+      nameColumns = modelNameColumns(input.modelName);
+      const defaults = await loadProviderList(tx, organizationId, null);
+      const resolved = defaults === null ? null : resolveProjectModel(defaults.list, defaults.choices, defaults.models, input.modelName);
+      modelId = resolved?.ok === true ? resolved.modelId : null;
+    } else if (input.modelId !== null) {
+      const model = await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { listed: true, catalogId: true, endpointModelId: true } });
       if (model === null) {
         return refuseSave("invalid-input", "No such model");
       }
       if (!model.listed) {
         return refuseSave("invalid-input", "The endpoint no longer lists that model");
       }
+      nameColumns = modelNameColumns(modelNameOfModel(model));
     }
     if (input.access.kind === "listed") {
       const found = await tx.member.count({ where: { organizationId, id: { in: [...input.access.members] } } });
@@ -215,7 +228,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
     const data = {
       name,
       adapter: input.adapter,
-      modelId: input.modelId,
+      modelId,
       instructions: input.instructions === null || input.instructions.trim() === "" ? null : input.instructions,
       approvalRules: rules.data,
       planFirst: input.planFirst,
@@ -224,8 +237,8 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
     };
     const saved =
       existing === null
-        ? await tx.agentProfile.create({ data: { organizationId, ...data }, select: { id: true } })
-        : await tx.agentProfile.update({ where: { id: existing.id }, data, select: { id: true } });
+        ? await tx.agentProfile.create({ data: { organizationId, ...data, ...nameColumns }, select: { id: true } })
+        : await tx.agentProfile.update({ where: { id: existing.id }, data: { ...data, ...nameColumns }, select: { id: true } });
     const profileId = agentProfileIdSchema.parse(saved.id);
 
     // Who may use it, and its skills: each replaced as a set (small, bounded lists).

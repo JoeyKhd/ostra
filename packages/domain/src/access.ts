@@ -160,3 +160,13 @@ export const canReadAudit = (scope: MemberScope, organizationId: OrganizationId,
   }
   return project !== null && requireProjectAccess(scope, project, "admin").ok;
 };
+
+// ---------- keys per project (F-135, ADR 0065) ----------
+
+/** The default provider list, a project's mode and its own list are an organization admin's (Q270). */
+export const canEditProviderLists = (scope: MemberScope, organizationId: OrganizationId): boolean =>
+  requireOrganizationAdmin(scope, organizationId).ok;
+
+/** Anyone who can open the project sees its providers by name and the model each serves, never a token. */
+export const canSeeProjectProviders = (scope: MemberScope, project: ProjectAccessInfo): boolean =>
+  requireProjectAccess(scope, project, "read").ok;

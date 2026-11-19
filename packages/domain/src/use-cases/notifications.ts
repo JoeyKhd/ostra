@@ -88,13 +88,18 @@ export const fanOutNotification = async (deps: M3Deps, input: FanOutInput): Prom
     if (kind === null) {
       return nothing;
     }
+    // The organization admins' items (F-135) notify nobody here: needs-you shows them.
+    const audience = item.audience;
+    if (audience === "organization_admins") {
+      return nothing;
+    }
     const organizationId = organizationIdSchema.parse(item.organizationId);
     const projectId = projectIdSchema.parse(item.projectId);
     const task = await tx.task.findUniqueOrThrow({ where: { id: item.taskId }, select: { driverMemberId: true, ticketId: true, boardId: true } });
     const project = await tx.project.findUniqueOrThrow({ where: { id: item.projectId }, select: { access: true } });
     const projectMembers = await projectMemberIdsInTx(tx, item.organizationId, item.projectId, project.access);
     const recipients = resolveAudience({
-      audience: item.audience,
+      audience,
       kind,
       driverMemberId: task.driverMemberId === null ? null : memberIdSchema.parse(task.driverMemberId),
       projectMembers,

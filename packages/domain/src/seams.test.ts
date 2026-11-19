@@ -94,6 +94,7 @@ describe("the job catalogue (ADR 0037)", () => {
         "search.backfill",
         "pr.link-related",
         "review.evaluate",
+        "providers.release-boxes",
       ].sort(),
     );
   });
