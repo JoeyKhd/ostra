@@ -19,5 +19,5 @@ export type { BoxService } from "./boxes.ts";
 export { awaitServicesFile, SERVICES_FILE, servicesFileSchema, servicesFileText, SIDECAR_SERVICES_FILE, writeServicesFile } from "./services-file.ts";
 export { createDockerSnapshots, dockerCliBuilder, splitImageRef } from "./snapshot/snapshots.ts";
 export type { DockerSnapshots, DockerSnapshotsOptions, SnapshotBuilder, SnapshotGit } from "./snapshot/snapshots.ts";
-export { planSnapshotBuild, snapshotTag } from "./snapshot/dockerfile.ts";
+export { planSnapshotBuild, SETUP_FAILED_MARKER, snapshotTag } from "./snapshot/dockerfile.ts";
 export { scanImageArchive } from "./snapshot/image-scan.ts";

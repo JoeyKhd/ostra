@@ -1,6 +1,6 @@
 # 08: Kubernetes executor: services, BuildKit snapshots, the egress policy, waiting for a node
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 07
 Features: F-093, F-120, F-116, F-094 (its `kubernetes` half), F-051 (its `kubernetes` half)
@@ -16,9 +16,11 @@ Spec: `../spec.md`, sections 4 and 11, items 9 and 10; ADR 0060, ADR 0038
 
 ## Done when
 
-- [ ] Tests against the fake API, named for `F-093`, `F-120` and `F-116`: a box with two services has them as native sidecars in order; the build pod's shape, its namespace and its egress policy; a scan hit pushes nothing; the waiting reasons and their timeout; `health()` refuses a namespace without the baseline policy.
-- [ ] Break-it: removing the scale-up check makes an unschedulable pod wait forever and fails its test; recorded in `context/proof/F-093.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add kubernetes services, builds and waits`.
+- [x] Tests against the fake API, named for `F-093`, `F-120` and `F-116`: a box with two services has them as native sidecars in order; the build pod's shape, its namespace and its egress policy; a scan hit pushes nothing; the waiting reasons and their timeout; `health()` refuses a namespace without the baseline policy.
+- [x] Break-it: removing the scale-up check makes an unschedulable pod wait forever and fails its test; recorded in `context/proof/F-093.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add kubernetes services, builds and waits`.
 
 ## Comments
+
+- 2026-11-19: built in `✨ add kubernetes services, builds and waits` (this commit). Services are native sidecars after the sidecar, with `hostAliases` for their names, and the pool runner's `prepare` reports their health. `buildSnapshot` runs a pod in the build namespace: a context step, rootless BuildKit exporting an OCI tarball (no push, no registry credential), the scan, then a push step that alone mounts the push credential, so a scan hit ends the pod before any push; the push is this package's own distribution-API client (`oci.ts`, Basic or bearer). `health()` refuses a namespace without the egress baseline (a policy selecting the boxes and carving out the private ranges and the metadata address), and a build refuses a build namespace without its policy; `baselineEgressPolicy` and `buildEgressPolicy` are the typed values ticket 23's chart renders. Tested against the fake API, its process mode (the build pod runs this package's steps, a stand-in BuildKit and ticket 06's fake registry), and the port's in-memory double with a clock the test moves for the waits. Choices and what's left: (1) the steps run as `ostra internal build-step <step>` in the runner image; `build-main.ts` is the entry, and ticket 21 or 22 routes the CLI to `runBuildStep`. (2) BuildKit's three unjustified settings are the executor's `buildkitSwitches`, all off; making them runner settings waits for a live run that needs one (ticket 35). (3) `Unschedulable` without a scale-up fails as `no-room` after a 30 s grace, not on the first look, because a real autoscaler posts `TriggeredScaleUp` seconds after the scheduler's `FailedScheduling`. (4) A pull failure (`ErrImagePull`, `ImagePullBackOff`) fails the box as `image-pull`, a service's included, since a native sidecar that never starts holds the agent back. (5) A service's secret variables aren't in `create`'s input, so a pod's services get their plain variables only until ticket 20 passes them; and a box's in-pod sidecar learns the services' health from the runner (ticket 20), since on `kubernetes` the pool runner can't write the `docker` services file. Whole-repo typecheck and lint passed, and the package's tests.

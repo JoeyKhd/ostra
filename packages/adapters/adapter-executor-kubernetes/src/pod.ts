@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
-import type { V1Container, V1EnvVar, V1Pod, V1Secret, V1Volume } from "@kubernetes/client-node";
+import type { V1Container, V1EnvVar, V1Pod, V1Probe, V1Secret, V1Volume } from "@kubernetes/client-node";
 import type { BoxImage, BoxRef, BoxSize } from "@ostra/adapter-sdk";
-import type { TaskSpec } from "@ostra/protocol";
+import type { TaskSpec, TaskSpecService } from "@ostra/protocol";
 
 import { cpuQuantity, memoryQuantity } from "./quantity.ts";
 
@@ -13,6 +13,12 @@ import { cpuQuantity, memoryQuantity } from "./quantity.ts";
 //                                           starts before the agent and stops after it. Its own fixed
 //                                           limits. The task token's secret is its only secret volume,
 //                                           a file at /run/ostra/token (ADR 0034), never a variable.
+//   svc-<name> (init, restartPolicy: Always)  ticket 08: each of the environment's services, after the
+//                                           sidecar and in the environment's order, with its image,
+//                                           variables and port, its health check as a readiness probe,
+//                                           and its own limits (`OSTRA_SERVICE_*`). The pod's `hostAliases`
+//                                           map each service's name to loopback, so an environment
+//                                           written for `docker` reaches `postgres:5432` unchanged.
 //   agent (the pod's container)              the environment's base image, or the registry snapshot by
 //                                           digest; the box's init as root, which starts every process
 //                                           as the agent's user. The box size as its requests and
@@ -65,6 +71,8 @@ export type PodSettings = {
   readonly runtimeClassName: string | null;
   /** The sidecar's limits (`OSTRA_SIDECAR_CPU_MILLIS`, `OSTRA_SIDECAR_MEMORY_MIB`). */
   readonly sidecarLimits: BoxSize;
+  /** A service's limits (`OSTRA_SERVICE_CPU_MILLIS`, `OSTRA_SERVICE_MEMORY_MIB`): a service names none. */
+  readonly serviceLimits: BoxSize;
   /** Where the sidecar's bridge listens on the pod's loopback. */
   readonly bridgePort: number;
   /** The box's init in the base image. */
@@ -142,6 +150,39 @@ export const resourcesOf = (size: BoxSize): NonNullable<V1Container["resources"]
 };
 
 const nonceVar = (secret: string, name: string): V1EnvVar => ({ name, valueFrom: { secretKeyRef: { name: secret, key: NONCE_KEY } } });
+
+/** A service's container name: `svc-` and its name, which the spec keeps a DNS label. */
+export const serviceContainerName = (name: string): string => `svc-${dnsPart(name, 55)}`;
+
+/** A service's readiness: its health check run in its container, or its port reached on loopback, or none. */
+const serviceProbe = (service: TaskSpecService): V1Probe | null => {
+  const timing = { periodSeconds: 2, timeoutSeconds: 5, failureThreshold: 60 };
+  if (service.healthCheck !== null) {
+    // The environment's command line, written by an admin, as Docker's `CMD-SHELL` runs it: an argument, never built from task text.
+    return { exec: { command: ["sh", "-c", service.healthCheck] }, ...timing };
+  }
+  return service.port === null ? null : { tcpSocket: { host: "127.0.0.1", port: service.port }, ...timing };
+};
+
+/** A service as a native sidecar (ticket 08, F-094). */
+export const serviceContainer = (service: TaskSpecService, limits: BoxSize): V1Container => {
+  const probe = serviceProbe(service);
+  return {
+    name: serviceContainerName(service.name),
+    image: service.image,
+    // The image's own command and user: a database's entrypoint drops to its own user.
+    restartPolicy: "Always",
+    env: service.variables.map((variable) => ({ name: variable.name, value: variable.value })),
+    ...(service.port === null ? {} : { ports: [{ containerPort: service.port, protocol: "TCP" }] }),
+    securityContext: {
+      allowPrivilegeEscalation: false,
+      // What a database's entrypoint needs to take its data folder and drop to its user (spike 3).
+      capabilities: { drop: ["ALL"], add: ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"] },
+    },
+    resources: resourcesOf(limits),
+    ...(probe === null ? {} : { readinessProbe: probe }),
+  };
+};
 
 /** The image the agent's container runs: the registry snapshot by digest, the environment's base image, or ostra's. */
 export const agentImageOf = (input: Pick<BoxPodInput, "image" | "spec">, images: PodImages): string =>
@@ -251,6 +292,7 @@ export const boxObjects = (input: BoxPodInput, settings: PodSettings): BoxObject
     ],
   };
 
+  const services = input.spec.services ?? [];
   const memory = { medium: "Memory" };
   const volumes: V1Volume[] = [
     { name: "task", emptyDir: {} },
@@ -277,7 +319,8 @@ export const boxObjects = (input: BoxPodInput, settings: PodSettings): BoxObject
       ...(settings.runtimeClassName === null ? {} : { runtimeClassName: settings.runtimeClassName }),
       securityContext: { seccompProfile: { type: "RuntimeDefault" }, fsGroup: AGENT_UID },
       ...(pullSecret === null ? {} : { imagePullSecrets: [{ name: names.pullSecret }] }),
-      initContainers: [sidecar],
+      initContainers: [sidecar, ...services.map((service) => serviceContainer(service, settings.serviceLimits))],
+      ...(services.length === 0 ? {} : { hostAliases: [{ ip: "127.0.0.1", hostnames: services.map((service) => service.name) }] }),
       containers: [agent],
       volumes,
     },

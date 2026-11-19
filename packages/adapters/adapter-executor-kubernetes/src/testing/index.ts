@@ -5,3 +5,4 @@ export * from "./process-mode.ts";
 export { parseQuantity, parseSelector } from "./selectors.ts";
 export * from "./cluster.ts";
 export * from "./surface.ts";
+export * from "./memory-kube-api.ts";

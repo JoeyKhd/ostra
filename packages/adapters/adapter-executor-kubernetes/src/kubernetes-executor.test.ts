@@ -172,7 +172,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
   it("F-095: a box without a size has no limits of its own, and the environment's base image when no registry image is given", () => {
     const objects = boxObjects(
       { box: newBox(), spec: { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, baseImage: "node:24" } }, size: null, image: null, nonce: "n".repeat(43), taskToken: null },
-      { images: { runner: "r", base: "b" }, serverUrl: "https://ostra.example", runtimeClassName: null, sidecarLimits: { cpuMillis: 1000, memoryMiB: 256 }, bridgePort: 7101, initCommand: ["init"], sidecarCommand: ["sidecar"] },
+      { images: { runner: "r", base: "b" }, serverUrl: "https://ostra.example", runtimeClassName: null, sidecarLimits: { cpuMillis: 1000, memoryMiB: 256 }, serviceLimits: { cpuMillis: 1000, memoryMiB: 1024 }, bridgePort: 7101, initCommand: ["init"], sidecarCommand: ["sidecar"] },
     );
     const agent = objects.pod.spec?.containers[0];
     expect(agent?.resources).toBeUndefined();

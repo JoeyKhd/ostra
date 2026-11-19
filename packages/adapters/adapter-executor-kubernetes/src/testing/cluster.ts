@@ -1,4 +1,7 @@
-import { CoreV1Api } from "@kubernetes/client-node";
+import { CoreV1Api, NetworkingV1Api } from "@kubernetes/client-node";
+import type { V1NetworkPolicy } from "@kubernetes/client-node";
+
+import { baselineEgressPolicy } from "../egress.ts";
 
 import { createKubeApi, kubeConfigFromString } from "../kube-api.ts";
 import type { KubeApi } from "../kube-api.ts";
@@ -16,10 +19,18 @@ export type FakeCluster = {
   readonly kubeconfig: string;
   /** Makes a namespace, as the runner chart does. */
   readonly createNamespace: (name: string) => Promise<void>;
+  /** Applies a NetworkPolicy, as the runner chart does: the egress baseline by default (ticket 08). */
+  readonly applyPolicy: (namespace: string, policy?: V1NetworkPolicy) => Promise<void>;
   readonly close: () => Promise<void>;
 };
 
-export const startFakeCluster = async (options: FakeKubeOptions & { readonly namespaces?: readonly string[] } = {}): Promise<FakeCluster> => {
+export type FakeClusterOptions = FakeKubeOptions & {
+  readonly namespaces?: readonly string[];
+  /** Applies the egress baseline to each namespace made, as the runner chart does. Default true. */
+  readonly egressBaseline?: boolean;
+};
+
+export const startFakeCluster = async (options: FakeClusterOptions = {}): Promise<FakeCluster> => {
   // Under a full machine's parallel test files, a fresh fake's first TLS handshake was seen to fail
   // its verification once (UNABLE_TO_VERIFY_LEAF_SIGNATURE): a fake that can't be reached is
   // replaced, up to three times, before the test sees it.
@@ -32,19 +43,27 @@ export const startFakeCluster = async (options: FakeKubeOptions & { readonly nam
   }
 };
 
-const startOnce = async (options: FakeKubeOptions & { readonly namespaces?: readonly string[] }): Promise<FakeCluster> => {
+const startOnce = async (options: FakeClusterOptions): Promise<FakeCluster> => {
   const fake = await startFakeKubeApi(options);
   const kubeconfig = fake.kubeconfig(options.namespaces?.[0] ?? "default");
   const config = kubeConfigFromString(kubeconfig);
   const core = config.makeApiClient(CoreV1Api);
+  const networking = config.makeApiClient(NetworkingV1Api);
+  const applyPolicy = async (namespace: string, policy?: V1NetworkPolicy): Promise<void> => {
+    const body = policy ?? baselineEgressPolicy({ namespace, server: { kind: "cidr", cidr: "10.20.0.5", port: 443 }, allow: [] });
+    await networking.createNamespacedNetworkPolicy({ namespace, body: { ...body, metadata: { ...body.metadata, namespace } } });
+  };
   const createNamespace = async (name: string): Promise<void> => {
     await core.createNamespace({ body: { metadata: { name, labels: { "kubernetes.io/metadata.name": name } } } });
   };
   try {
-    for (const name of options.namespaces ?? []) await createNamespace(name);
+    for (const name of options.namespaces ?? []) {
+      await createNamespace(name);
+      if (options.egressBaseline ?? true) await applyPolicy(name);
+    }
   } catch (error) {
     await fake.close();
     throw error;
   }
-  return { fake, kube: createKubeApi(config), kubeconfig, createNamespace, close: () => fake.close() };
+  return { fake, kube: createKubeApi(config), kubeconfig, createNamespace, applyPolicy, close: () => fake.close() };
 };

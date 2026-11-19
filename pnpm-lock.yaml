@@ -635,6 +635,9 @@ importers:
       '@kubernetes/client-node':
         specifier: 2.0.2
         version: 2.0.2(bare-buffer@3.7.3)
+      '@ostra/adapter-executor-docker':
+        specifier: workspace:*
+        version: link:../adapter-executor-docker
       '@ostra/adapter-sdk':
         specifier: workspace:*
         version: link:../../adapter-sdk
@@ -645,9 +648,6 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
-      '@ostra/adapter-executor-docker':
-        specifier: workspace:*
-        version: link:../adapter-executor-docker
       vitest:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))

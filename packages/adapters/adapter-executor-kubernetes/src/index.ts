@@ -29,3 +29,13 @@ export {
 } from "./pod.ts";
 export type { BoxObjects, BoxPodInput, PodImages, PodSettings } from "./pod.ts";
 export { cpuMillisOf, cpuQuantity, memoryMiBOf, memoryQuantity } from "./quantity.ts";
+// Ticket 08: services, snapshots on rootless BuildKit, the egress baseline and the node wait.
+export { baselineEgressPolicy, baselineProblem, BASELINE_POLICY_NAME, BOX_BLOCKED_V4, BOX_BLOCKED_V6, BUILD_POLICY_NAME, BUILD_ROLE, buildEgressPolicy, REQUIRED_EXCEPTS } from "./egress.ts";
+export type { BaselineInput, BuildPolicyInput, ServerAddress } from "./egress.ts";
+export { BUILDKIT_IMAGE, BUILDKIT_SWITCHES_OFF, buildNames, buildObjects, buildSelector } from "./snapshots.ts";
+export type { BuildkitSwitches, BuildObjects, BuildPodInput, BuildSettings, ContextPlan } from "./snapshots.ts";
+export { BUILD_STEPS, runBuildStep } from "./build-steps.ts";
+export type { BuildStep } from "./build-steps.ts";
+export { extractTar, parseImageRef, pushOciLayout, registryUrlOf } from "./oci.ts";
+export type { ImageRef, PushResult } from "./oci.ts";
+export { serviceContainer, serviceContainerName } from "./pod.ts";
