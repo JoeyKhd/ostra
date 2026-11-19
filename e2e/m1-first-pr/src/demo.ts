@@ -197,6 +197,9 @@ const createProject = async (page: Page, settings: DemoSettings): Promise<string
     await page.getByRole("button", { name: "Create the project" }).click();
     await page.waitForURL(/\/projects\/[^/]+\/environment/, { timeout: 60_000 });
     await page.getByRole("button", { name: "Save environment" }).waitFor();
+    if (settings.setupScript !== null) {
+      await page.getByRole("textbox", { name: "Setup script" }).fill(settings.setupScript);
+    }
     await screenshot(page, settings, "environment-draft");
     await page.getByRole("button", { name: "Save environment" }).click();
     await page.getByText("Saved.").first().waitFor({ timeout: 30_000 });

@@ -25,6 +25,8 @@ const envSchema = z.object({
   OSTRA_E2E_CORE_URL: z.url().default("http://localhost:8787"),
   OSTRA_E2E_STACK_LOG: z.string().min(1).optional(),
   OSTRA_E2E_PROMPT: z.string().min(1).default("Add a CONTRIBUTING.md with a short section on how to run the tests"),
+  /** A setup script the demo saves in the project's environment, so the runner runs it before each task. */
+  OSTRA_E2E_SETUP_SCRIPT: z.string().min(1).optional(),
   // The admin the dev stack seeded (F-001): the same variables, and defaults, as the server's.
   OSTRA_ADMIN_EMAIL: z.email().default("demo@demo.com"),
   OSTRA_ADMIN_USERNAME: z.string().min(1).default("demo"),
@@ -64,6 +66,8 @@ export type DemoSettings = {
   readonly githubOtherRepo: string;
   readonly runnerName: string;
   readonly prompt: string;
+  /** The environment's setup script, or `null` to keep the drafted one. */
+  readonly setupScript: string | null;
 };
 
 /** The variables the demo reads, named when one is missing; never their values. */
@@ -100,5 +104,6 @@ export const demoSettings = (env: Readonly<Record<string, string | undefined>>):
     githubOtherRepo: value.GITHUB_TEST_OTHER_REPO,
     runnerName: "demo-runner",
     prompt: value.OSTRA_E2E_PROMPT,
+    setupScript: value.OSTRA_E2E_SETUP_SCRIPT ?? null,
   };
 };

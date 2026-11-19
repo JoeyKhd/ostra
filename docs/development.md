@@ -83,7 +83,7 @@ set -a; . ~/.config/ostra-dev/model.env; . ~/.config/ostra-dev/github.env; . ~/.
 pnpm e2e:m1
 ```
 
-It keeps screenshots in `context/specs/m1-first-pr/demo/`, its runner's folder in the system temp folder (outside the repo, so the agent doesn't read ostra's own `AGENTS.md`), and the result in `.ostra-dev/e2e-m1/result.json`. A step that already happened is skipped, so it can be run again on the same stack. `OSTRA_E2E_STACK_LOG` names a file with the stack's output, to search it for credentials too. `pnpm --filter @ostra/e2e-m1 clean-up` closes the demo's PRs and deletes its branches and hidden refs.
+It keeps screenshots in `context/specs/m1-first-pr/demo/`, its runner's folder in the system temp folder (outside the repo, so the agent doesn't read ostra's own `AGENTS.md`), and the result in `.ostra-dev/e2e-m1/result.json`. A step that already happened is skipped, so it can be run again on the same stack. `OSTRA_E2E_STACK_LOG` names a file with the stack's output, to search it for credentials too. `OSTRA_E2E_SETUP_SCRIPT` saves a setup script in the project's environment when the demo creates the project, so its tasks run it (on Windows, in Git for Windows' bash). `pnpm --filter @ostra/e2e-m1 clean-up` closes the demo's PRs and deletes its branches and hidden refs.
 
 ## Database
 
