@@ -27,6 +27,9 @@ const columnsOf = (ticket: TrackerTicket) => ({
   labels: [...ticket.labels],
   parentExternalId: ticket.parentExternalId,
   url: ticket.url,
+  // An adapter that doesn't say (`undefined`) is kept as no assignee.
+  assigneeId: ticket.assignee?.id ?? null,
+  assigneeName: ticket.assignee?.name ?? null,
   open: isOpenCategory(ticket.status.category),
   trackerUpdatedAt: new Date(ticket.updatedAt),
   removedAt: null,

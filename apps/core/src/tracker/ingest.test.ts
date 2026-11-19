@@ -138,6 +138,8 @@ describe("a webhook hint", () => {
     expect(outcome).toEqual({ outcome: "processed", ticketKey: issue.identifier });
     const [row] = await rowsOf(issue.id);
     expect(row).toMatchObject({ boardId, key: issue.identifier, title: "Login button does nothing", labels: ["bug"], open: true, removedAt: null, statusCategory: "open" });
+    // The adapter says who it's assigned to: nobody, here.
+    expect(row).toMatchObject({ assigneeId: null, assigneeName: null });
     // The same hint again changes nothing.
     await trackerWebhookHandler(deps())(deliveryContext(delivery.rawBody));
     expect(await rowsOf(issue.id)).toHaveLength(1);
