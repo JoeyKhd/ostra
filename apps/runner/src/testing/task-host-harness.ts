@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { AdapterResult, AgentCommand, ExportSessionInput, LogRecord } from "@ostra/adapter-sdk";
+import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, ExportSessionInput, LogRecord } from "@ostra/adapter-sdk";
 import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, clientMessageIdSchema, runnerIdSchema, sessionIdSchema, taskCredentialsSchema, taskIdSchema } from "@ostra/protocol";
@@ -86,6 +86,8 @@ export type Harness = {
   readonly host: TaskHost;
   readonly executor: HostExecutor;
   readonly logs: LogRecord[];
+  /** Each agent launch the executor was given, in order. */
+  readonly launches: AgentLaunch[];
   /** A task the fake server hands out, from the fixture, with the prompt and spec fields given. */
   readonly taskFor: (prompt: string, patch?: Partial<TaskSpec>) => { readonly spec: TaskSpec; readonly credentials: TaskCredentials };
   readonly dispatch: (spec: TaskSpec, boxId?: BoxId) => BoxId;
@@ -120,6 +122,12 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
   const logs: LogRecord[] = [];
   const logger = createLogger((record) => logs.push(record));
   const executor = new HostExecutor({ dataDir }, { logger, clock: { now: () => Date.now() } });
+  const launches: AgentLaunch[] = [];
+  const startAgent = executor.startAgent.bind(executor);
+  executor.startAgent = (box: BoxRef, launch: AgentLaunch): Promise<AdapterResult<AgentProcess>> => {
+    launches.push(launch);
+    return startAgent(box, launch);
+  };
   const host = createTaskHost({
     link: runnerServerLink({
       serverUrl: server.url,
@@ -190,6 +198,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
     host,
     executor,
     logs,
+    launches,
     taskFor: (prompt, patch = {}) => {
       tasks += 1;
       const stamp = `${String(run)}-${String(tasks)}-${String(Date.now())}`;

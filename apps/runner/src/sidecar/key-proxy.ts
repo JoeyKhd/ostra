@@ -6,8 +6,10 @@ import type { AddressInfo } from "node:net";
 import { createUsageMeter, formatForPath, resolveUsage } from "@ostra/adapter-sdk";
 import type { Logger, TokenUsage, WireFormat } from "@ostra/adapter-sdk";
 import { RATE_LIMIT_HOLD_DEFAULT_SECONDS, RATE_LIMIT_HOLD_MAX_SECONDS } from "@ostra/protocol";
-import type { ApiFormat, ModelId, ProviderId, TaskCredentials, TaskEventOf, TaskId } from "@ostra/protocol";
+import type { ApiFormat, ModelId, ProviderId, SpendCap, TaskCredentials, TaskEventOf, TaskId } from "@ostra/protocol";
 import { z } from "zod";
+import { createSpendMeter } from "./spend-cap.ts";
+import type { SpendUnit } from "./spend-cap.ts";
 
 // The key proxy (ADR 0030, ADR 0042, F-089). The agent holds a fake key and a base URL that points
 // here; the real token stays in the runner's process. For each request the proxy checks the fake
@@ -22,6 +24,11 @@ import { z } from "zod";
 // Anything else is refused with a 403, before the real token goes near it.
 //
 // It logs the task ID, statuses and counts only: never a key, a prompt or an answer.
+//
+// Milestone 2 (F-068, ticket 25): with the spec's spend cap, every call's usage is priced (or its
+// tokens counted) against the cap, from what the task had spent before. Once the cap is reached,
+// the next model call is refused in the API's own shape, so the agent stops cleanly; a call already
+// streaming finishes and is counted, and a refused call counts as nothing spent.
 //
 // Ported from spikes/how-should-the-runner-drive-opencode/src/lib/key-proxy.ts.
 
@@ -55,8 +62,15 @@ export type KeyProxyOptions = {
   readonly onUsage: (event: TaskEventOf<"usage.recorded">) => void;
   readonly onRateLimited?: (limit: RateLimit) => void;
   readonly onUpstreamRefused?: (refusal: UpstreamRefusal) => void;
+  /** Minor 1: the task's spend cap, which this proxy enforces (F-068). Absent: no cap (milestone 1). */
+  readonly spendCap?: SpendCap;
+  /** Called once, when the cap is reached: what the task has spent, in micro-USD or tokens. */
+  readonly onSpendCapReached?: (reached: SpendCapReached) => void;
   readonly now?: () => number;
 };
+
+/** The cap was reached: `observed` is what the task had spent then, in `unit`. */
+export type SpendCapReached = { readonly observed: number; readonly unit: SpendUnit };
 
 export type KeyProxyTotals = {
   readonly calls: number;
@@ -165,6 +179,20 @@ const rejectBody = (format: WireFormat | undefined): string =>
       : { error: { message: "ostra key proxy: invalid or expired key", type: "invalid_request_error", code: "invalid_api_key" } },
   );
 
+/** What a refused call says once the task's spend cap is reached. */
+export const SPEND_CAP_MESSAGE = "ostra: this task reached its spend cap";
+
+/**
+ * A 400 in the provider's own shape: the agent's SDK reads it as a request it mustn't retry (a 429
+ * or a 5xx would be retried), so the agent stops cleanly.
+ */
+const spendCapBody = (format: WireFormat | ApiFormat): string =>
+  JSON.stringify(
+    format === "anthropic-messages"
+      ? { type: "error", error: { type: "invalid_request_error", message: SPEND_CAP_MESSAGE } }
+      : { error: { message: SPEND_CAP_MESSAGE, type: "invalid_request_error", code: "spend_cap_reached" } },
+  );
+
 /** A 403 in the provider's own shape: the agent's SDK reads it as a refusal, not an outage. */
 const forbiddenBody = (format: ApiFormat): string =>
   JSON.stringify(
@@ -247,6 +275,15 @@ export const startKeyProxy = async (options: KeyProxyOptions): Promise<KeyProxy>
   let refused = 0;
   let estimatedCalls = 0;
   let total: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
+  const meter = options.spendCap === undefined ? undefined : createSpendMeter(options.spendCap);
+  let capNotified = false;
+  const capReached = (): void => {
+    if (meter !== undefined && !capNotified) {
+      capNotified = true;
+      log.warn("the task reached its spend cap", { unit: meter.unit, observed: meter.spent() });
+      options.onSpendCapReached?.({ observed: meter.spent(), unit: meter.unit });
+    }
+  };
 
   const record = (usage: TokenUsage, estimated: boolean): void => {
     total = {
@@ -258,6 +295,9 @@ export const startKeyProxy = async (options: KeyProxyOptions): Promise<KeyProxy>
     };
     if (estimated) {
       estimatedCalls += 1;
+    }
+    if (meter?.add(usage) === true) {
+      capReached();
     }
     options.onUsage({
       kind: "usage.recorded",
@@ -297,6 +337,16 @@ export const startKeyProxy = async (options: KeyProxyOptions): Promise<KeyProxy>
       response.writeHead(403, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
       response.end(payload);
       log.warn("key proxy refused a call", { reason: "path-not-allowed" });
+      return;
+    }
+    if (meter?.reached() === true && request.method === "POST") {
+      // The cap is reached: this call never reaches the provider, and costs nothing.
+      refused += 1;
+      const payload = spendCapBody(format ?? options.model.apiFormat);
+      response.writeHead(400, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
+      response.end(payload);
+      log.warn("key proxy refused a call", { reason: "spend-cap" });
+      capReached();
       return;
     }
     calls += 1;

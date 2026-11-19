@@ -21,7 +21,7 @@ import { startGitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import type { GitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import { hiddenRefFor } from "../sidecar/git-proxy/policy.ts";
 import { rateLimitHoldSeconds, startKeyProxy } from "../sidecar/key-proxy.ts";
-import type { KeyProxy, UpstreamRefusal } from "../sidecar/key-proxy.ts";
+import type { KeyProxy, SpendCapReached, UpstreamRefusal } from "../sidecar/key-proxy.ts";
 import { startMcpTools } from "../sidecar/mcp-tools.ts";
 import type { McpTools } from "../sidecar/mcp-tools.ts";
 import { agentCwd } from "./agent-cwd.ts";
@@ -127,6 +127,11 @@ type Ending =
   | { readonly kind: "finished" }
   /** Milestone 2: the session ended between turns (the idle timer, ticket 23): `session.ended`, the box kept. */
   | { readonly kind: "idle" }
+  /**
+   * Milestone 2: the key proxy reached the task's spend cap (ticket 25): the turn ends, its work is
+   * saved, `session.limit_reached` goes up, and the session ends as a stop does.
+   */
+  | { readonly kind: "limit"; readonly limit: "spend-cap"; readonly observed: number }
   | { readonly kind: "stopped" }
   | { readonly kind: "crashed"; readonly error: string }
   | { readonly kind: "fenced" }
@@ -561,6 +566,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         return `${currentSpec.title} (stopped: unfinished work)`;
       case "crashed":
         return `${currentSpec.title} (crashed: unfinished work)`;
+      case "limit":
+        return `${currentSpec.title} (spend cap reached: unfinished work)`;
       case undefined:
       case "finished":
       case "idle":
@@ -618,6 +625,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         return;
       }
       case "stopped":
+      case "limit":
       case "crashed": {
         await endAgent();
         // A stop or crash outside a turn: what the turn left was saved already, unless no turn ran.
@@ -627,6 +635,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         }
         if (how.kind === "crashed") {
           await crash(how.error);
+        }
+        if (how.kind === "limit") {
+          // The session ends as a stop does, with no `session.ended`: core records the limit (F-068).
+          await emit({ kind: "session.limit_reached", limit: how.limit, observed: how.observed });
         }
         return;
       }
@@ -725,6 +737,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           void agent.cancel(session);
         }
       },
+      // F-068: the key proxy enforces the task's spend cap, in a session across turns only (minor 1).
+      ...(acrossTurns && taskSpec.limits.spendCap !== undefined
+        ? {
+            spendCap: taskSpec.limits.spendCap,
+            onSpendCapReached: (reached: SpendCapReached) => {
+              log.info("the spend cap is reached: ending the turn", { unit: reached.unit, observed: reached.observed });
+              end({ kind: "limit", limit: "spend-cap", observed: reached.observed });
+              if (agent !== undefined && session !== undefined) {
+                void agent.cancel(session).catch(() => undefined);
+              }
+            },
+          }
+        : {}),
     });
     const tokens = new Map(held.repos.map((repo) => [repo.repoId, repo] as const));
     gitProxy = await startGitProxy({
@@ -939,6 +964,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         await emit({ kind: "session.ended", outcome: ahead ? "with-changes" : "without-changes", repos: pushed.repos.map((repo) => ({ repoId: repo.repoId, ahead: repo.ahead })) });
         break;
       }
+      case "limit":
       case "stopped": {
         await endAgent();
         if (taskSpec !== undefined) {
