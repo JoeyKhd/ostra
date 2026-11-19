@@ -56,7 +56,8 @@ describe("runner pools", () => {
       ],
     });
     const counted = (await admin.pools.list()).find((pool) => pool.id === poolId);
-    expect(counted).toMatchObject({ runnerCount: 2, onlineCount: 1, projectCount: 0, activeJoinTokens: 0, isDefault: false });
+    // The pool's first token, made with it.
+    expect(counted).toMatchObject({ runnerCount: 2, onlineCount: 1, projectCount: 0, activeJoinTokens: 1, isDefault: false });
     expect((await (await harness.as(b.admin)).pools.list()).map((pool) => pool.id)).not.toContain(poolId);
     await expect((await harness.as(a.member)).pools.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
@@ -119,13 +120,14 @@ describe("join tokens (Q48, Q94)", () => {
     expect(row).toMatchObject({ organizationId: a.organization.id, poolId, label: "ci", bootstrap: false, createdByMemberId: a.admin.id, revokedAt: null });
 
     const listed = await admin.pools.joinTokens({ poolId });
-    expect(listed).toMatchObject([{ id: made.joinTokenId, label: "ci", bootstrap: false, revokedAt: null, lastUsedAt: null }]);
+    expect(listed[0]).toMatchObject({ id: made.joinTokenId, label: "ci", bootstrap: false, revokedAt: null, lastUsedAt: null });
     expect(JSON.stringify(listed)).not.toContain(made.token);
     expect(JSON.stringify(listed)).not.toContain(row.tokenHash);
     // Not in the audit trail, the log or the change notices either.
     expect(JSON.stringify(await harness.test.db.auditEntry.findMany())).not.toContain(made.token);
     expect(JSON.stringify(harness.logs)).not.toContain(made.token);
-    expect((await admin.pools.list()).find((pool) => pool.id === poolId)?.activeJoinTokens).toBe(1);
+    // This one and the pool's first.
+    expect((await admin.pools.list()).find((pool) => pool.id === poolId)?.activeJoinTokens).toBe(2);
   });
 
   it("can be made without an expiry, and revoked, once", async () => {
@@ -139,7 +141,8 @@ describe("join tokens (Q48, Q94)", () => {
     await admin.pools.revokeJoinToken({ joinTokenId: made.joinTokenId });
     expect((await harness.test.db.joinToken.findUniqueOrThrow({ where: { id: made.joinTokenId } })).revokedAt).toEqual(first);
     expect(await harness.test.db.auditEntry.count({ where: { action: "join-token.revoked", entityId: made.joinTokenId } })).toBe(1);
-    expect((await admin.pools.list()).find((pool) => pool.id === poolId)?.activeJoinTokens).toBe(0);
+    // The pool's first token is left.
+    expect((await admin.pools.list()).find((pool) => pool.id === poolId)?.activeJoinTokens).toBe(1);
   });
 
   it("are for admins of the pool's organization: a member is FORBIDDEN, another organization sees NOT_FOUND", async () => {

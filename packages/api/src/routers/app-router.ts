@@ -12,7 +12,8 @@ import { notificationsRouter } from "./notifications.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
 import { plansRouter, questionsRouter } from "./questions-plans.ts";
-import { poolsRouter, runnersRouter } from "./runners.ts";
+import { joinTokensRouter, poolsRouter } from "./pools.ts";
+import { runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
 import { accountRouter } from "./account.ts";
@@ -58,6 +59,7 @@ export const appRouter = router({
   plans: plansRouter,
   runners: runnersRouter,
   pools: poolsRouter,
+  joinTokens: joinTokensRouter,
   stream: streamRouter,
   insights: insightsRouter,
   spend: spendRouter,

@@ -97,6 +97,8 @@ export type BareHarnessOptions = {
   /** `OSTRA_INVITATION_DAYS` and `OSTRA_RESET_LINK_HOURS`. Default 7 and 24. */
   readonly invitationDays?: number;
   readonly resetLinkHours?: number;
+  /** `OSTRA_DEV_HOST_POOL_SAME_USER`. Default off, as on an install. */
+  readonly devHostPoolSameUser?: boolean;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -157,6 +159,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       insightsIntervalMinutes: 5,
       invitationDays,
       resetLinkHours,
+      joinTokenDays: 30,
+      devHostPoolSameUser: options.devHostPoolSameUser ?? false,
     },
     blobStore: {
       name: "postgres",

@@ -1,6 +1,8 @@
 import { processContainmentFromDb } from "@ostra/db";
-import { approveRunner, generateJoinToken, hashJoinToken, rejectRunner, revokeRunner, revokeRunnerInputSchema } from "@ostra/domain";
-import { joinTokenIdSchema, memberIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
+import type { Db } from "@ostra/db";
+import { approveRunner, rejectRunner, revokeRunner, revokeRunnerInputSchema } from "@ostra/domain";
+import { memberIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
+import type { RunnerId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -33,6 +35,18 @@ const runnerRowSelect = {
   /** Boxes in use: the runner's active leases (F-092). */
   _count: { select: { leases: { where: { state: "active" } } } },
 } as const;
+
+/**
+ * An approve or a reject of a runner that isn't joining any more: its state as it is, unchanged.
+ * Another organization's runner, or none, is `NOT_FOUND`.
+ */
+const decidedAlready = async (db: Db, organizationId: string, runnerId: RunnerId, error: "not-found" | "not-joining") => {
+  const row = error === "not-found" ? null : await db.runner.findFirst({ where: { id: runnerId, organizationId }, select: { state: true } });
+  if (row === null) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "No such runner" });
+  }
+  return { runnerId, state: row.state, changed: false };
+};
 
 export const runnersRouter = router({
   /** The member's own personal runners: the "run on" picker and the checklist's "runner online" step. */
@@ -93,7 +107,8 @@ export const runnersRouter = router({
 
   /**
    * An admin approves a runner that joined a pool requiring approval (F-091, Q130): online at once
-   * when it's connected, else at its next connection.
+   * when it's connected, else at its next connection. A runner already approved or revoked answers
+   * the same, with `changed: false`, and nothing changes.
    */
   approve: adminProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;
@@ -104,13 +119,16 @@ export const runnersRouter = router({
       ),
     );
     if (!result.ok) {
-      throw new TRPCError({ code: result.error === "not-found" ? "NOT_FOUND" : "CONFLICT", message: result.message });
+      return decidedAlready(ctx.deps.db, ctx.scope.organizationId, input.runnerId, result.error);
     }
     ctx.deps.logger.info("runner.approved", { runnerId: input.runnerId, state: result.state });
-    return { runnerId: input.runnerId, state: result.state };
+    return { runnerId: input.runnerId, state: result.state, changed: true };
   }),
 
-  /** An admin rejects a joining runner: revoked, and disconnected with 4403 when it's connected (F-091, Q130). */
+  /**
+   * An admin rejects a joining runner: revoked, and disconnected with 4403 when it's connected
+   * (F-091, Q130). A runner already approved or revoked answers the same, and nothing changes.
+   */
   reject: adminProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;
     const result = await db.$transaction((tx) =>
@@ -120,10 +138,10 @@ export const runnersRouter = router({
       ),
     );
     if (!result.ok) {
-      throw new TRPCError({ code: result.error === "not-found" ? "NOT_FOUND" : "CONFLICT", message: result.message });
+      return decidedAlready(ctx.deps.db, ctx.scope.organizationId, input.runnerId, result.error);
     }
     ctx.deps.logger.info("runner.rejected", { runnerId: input.runnerId, connected: result.wasConnected });
-    return { runnerId: input.runnerId, state: result.state };
+    return { runnerId: input.runnerId, state: result.state, changed: true };
   }),
 
   /**
@@ -139,184 +157,5 @@ export const runnersRouter = router({
     });
     const revoked = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
     return { runnerId: revoked.runnerId, alreadyRevoked: revoked.alreadyRevoked, stoppedTasks: revoked.stoppedTaskIds.length };
-  }),
-});
-
-const poolName = z.string().trim().min(1).max(64);
-
-export const poolsRouter = router({
-  /**
-   * The organization's runner pools, with their runners and projects counted: the boxes in use and
-   * the slots of the runners that take work (online or draining), the executors and versions its
-   * runners run, and the first project that uses it, by name.
-   */
-  list: adminProcedure.query(async ({ ctx }) => {
-    const organizationId = ctx.scope.organizationId;
-    const pools = await ctx.deps.db.runnerPool.findMany({
-      where: { organizationId },
-      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
-      include: {
-        _count: { select: { projectPools: true } },
-        runners: {
-          where: { state: { not: "revoked" } },
-          select: { state: true, capacity: true, executor: true, version: true, _count: { select: { leases: { where: { state: "active" } } } } },
-        },
-        joinTokens: { where: { revokedAt: null }, select: { id: true } },
-        projectPools: { orderBy: { project: { name: "asc" } }, take: 1, select: { project: { select: { name: true } } } },
-      },
-    });
-    return pools.map((pool) => {
-      const working = pool.runners.filter((runner) => runner.state === "online" || runner.state === "draining");
-      return {
-        id: poolIdSchema.parse(pool.id),
-        name: pool.name,
-        isDefault: pool.isDefault,
-        requiresApproval: pool.requiresApproval,
-        maxBoxes: pool.maxBoxes,
-        runnerCount: pool.runners.length,
-        onlineCount: pool.runners.filter((runner) => runner.state === "online").length,
-        projectCount: pool._count.projectPools,
-        firstProjectName: pool.projectPools[0]?.project.name ?? null,
-        activeJoinTokens: pool.joinTokens.length,
-        /** Boxes in use on the runners that take work, and their summed capacity (F-092). */
-        busy: working.reduce((sum, runner) => sum + runner._count.leases, 0),
-        slots: working.reduce((sum, runner) => sum + runner.capacity, 0),
-        executors: [...new Set(pool.runners.map((runner) => runner.executor))].sort((x, y) => x.localeCompare(y)),
-        versions: [...new Set(pool.runners.map((runner) => runner.version))].sort((x, y) => x.localeCompare(y, "en", { numeric: true })),
-      };
-    });
-  }),
-
-  create: adminProcedure
-    .input(z.strictObject({ name: poolName, requiresApproval: z.boolean().default(false), maxBoxes: z.number().int().positive().max(100_000).nullable().default(null) }))
-    .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
-      const organizationId = ctx.scope.organizationId;
-      return db.$transaction(async (tx) => {
-        if ((await tx.runnerPool.count({ where: { organizationId, name: input.name } })) > 0) {
-          throw new TRPCError({ code: "CONFLICT", message: "A pool with that name exists" });
-        }
-        const pool = await tx.runnerPool.create({
-          data: { organizationId, name: input.name, requiresApproval: input.requiresApproval, maxBoxes: input.maxBoxes },
-          select: { id: true },
-        });
-        const poolId = poolIdSchema.parse(pool.id);
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "pool.created", entity: "runner-pool", entityId: poolId });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: poolId });
-        return { poolId };
-      });
-    }),
-
-  update: adminProcedure
-    .input(
-      z.strictObject({
-        poolId: poolIdSchema,
-        name: poolName.optional(),
-        requiresApproval: z.boolean().optional(),
-        maxBoxes: z.number().int().positive().max(100_000).nullable().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
-      const organizationId = ctx.scope.organizationId;
-      return db.$transaction(async (tx) => {
-        const pool = await tx.runnerPool.findFirst({ where: { id: input.poolId, organizationId }, select: { id: true } });
-        if (pool === null) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "No such pool" });
-        }
-        if (input.name !== undefined && (await tx.runnerPool.count({ where: { organizationId, name: input.name, NOT: { id: pool.id } } })) > 0) {
-          throw new TRPCError({ code: "CONFLICT", message: "A pool with that name exists" });
-        }
-        await tx.runnerPool.update({
-          where: { id: pool.id },
-          data: {
-            ...(input.name === undefined ? {} : { name: input.name }),
-            ...(input.requiresApproval === undefined ? {} : { requiresApproval: input.requiresApproval }),
-            ...(input.maxBoxes === undefined ? {} : { maxBoxes: input.maxBoxes }),
-          },
-        });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "pool.updated", entity: "runner-pool", entityId: input.poolId });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: input.poolId });
-        return { poolId: input.poolId };
-      });
-    }),
-
-  /** A pool's join tokens: when made and used, never the token or its hash. */
-  joinTokens: adminProcedure.input(z.strictObject({ poolId: poolIdSchema })).query(async ({ ctx, input }) => {
-    const organizationId = ctx.scope.organizationId;
-    const pool = await ctx.deps.db.runnerPool.findFirst({ where: { id: input.poolId, organizationId }, select: { id: true } });
-    if (pool === null) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "No such pool" });
-    }
-    const rows = await ctx.deps.db.joinToken.findMany({
-      where: { poolId: pool.id, organizationId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, label: true, bootstrap: true, createdAt: true, expiresAt: true, revokedAt: true, lastUsedAt: true, createdByMemberId: true },
-    });
-    return rows.map((row) => ({
-      id: joinTokenIdSchema.parse(row.id),
-      label: row.label,
-      bootstrap: row.bootstrap,
-      createdAt: row.createdAt.getTime(),
-      expiresAt: row.expiresAt === null ? null : row.expiresAt.getTime(),
-      revokedAt: row.revokedAt === null ? null : row.revokedAt.getTime(),
-      lastUsedAt: row.lastUsedAt === null ? null : row.lastUsedAt.getTime(),
-    }));
-  }),
-
-  /** Makes a join token for a pool. The token is in this answer and nowhere else, ever again (Q48, Q94). */
-  createJoinToken: adminProcedure
-    .input(
-      z.strictObject({
-        poolId: poolIdSchema,
-        label: z.string().trim().min(1).max(100).optional(),
-        /** Days until it stops working; `null` for never. */
-        expiresInDays: z.number().int().positive().max(3650).nullable().default(30),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
-      const organizationId = ctx.scope.organizationId;
-      const token = generateJoinToken();
-      const expiresAt = input.expiresInDays === null ? null : new Date(ports.clock.now() + input.expiresInDays * 24 * 60 * 60 * 1000);
-      const created = await db.$transaction(async (tx) => {
-        const pool = await tx.runnerPool.findFirst({ where: { id: input.poolId, organizationId }, select: { id: true } });
-        if (pool === null) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "No such pool" });
-        }
-        const row = await tx.joinToken.create({
-          data: {
-            organizationId,
-            poolId: pool.id,
-            tokenHash: hashJoinToken(token),
-            label: input.label ?? null,
-            createdByMemberId: ctx.scope.memberId,
-            expiresAt,
-          },
-          select: { id: true },
-        });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "join-token.created", entity: "join-token", entityId: joinTokenIdSchema.parse(row.id), data: { poolId: pool.id } });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: input.poolId });
-        return row;
-      });
-      return { joinTokenId: joinTokenIdSchema.parse(created.id), token, expiresAt: expiresAt === null ? null : expiresAt.getTime() };
-    }),
-
-  /** Revokes a join token: a runner can't join with it any more. Revoking one already revoked is a no-op. */
-  revokeJoinToken: adminProcedure.input(z.strictObject({ joinTokenId: joinTokenIdSchema })).mutation(async ({ ctx, input }) => {
-    const { db, ports } = ctx.deps;
-    const organizationId = ctx.scope.organizationId;
-    return db.$transaction(async (tx) => {
-      const row = await tx.joinToken.findFirst({ where: { id: input.joinTokenId, organizationId }, select: { id: true, poolId: true, revokedAt: true } });
-      if (row === null) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "No such join token" });
-      }
-      if (row.revokedAt === null) {
-        await tx.joinToken.update({ where: { id: row.id }, data: { revokedAt: new Date(ports.clock.now()) } });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "join-token.revoked", entity: "join-token", entityId: input.joinTokenId, data: { poolId: row.poolId } });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: poolIdSchema.parse(row.poolId) });
-      }
-      return { joinTokenId: input.joinTokenId, revoked: true as const };
-    });
   }),
 });

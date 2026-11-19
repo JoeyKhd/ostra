@@ -214,7 +214,7 @@ describe("a pool that requires approval", () => {
     await expect((await api.as(a.member)).runners.approve({ runnerId: runner.runnerId })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(await stateOf(runner.runnerId)).toBe("joining");
 
-    expect(await (await api.as(a.admin)).runners.approve({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "online" });
+    expect(await (await api.as(a.admin)).runners.approve({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "online", changed: true });
     const row = await api.test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
     expect(row).toMatchObject({ state: "online", approvedByMemberId: a.admin.id });
     expect(row.approvedAt).not.toBeNull();
@@ -234,7 +234,7 @@ describe("a pool that requires approval", () => {
     const poolId = await defaultPool(true);
     const made = await (await api.as(a.admin)).pools.createJoinToken({ poolId });
     const runner = await joined(made.token, "approved-offline");
-    expect(await (await api.as(a.admin)).runners.approve({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "joining" });
+    expect(await (await api.as(a.admin)).runners.approve({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "joining", changed: true });
     expect(await stateOf(runner.runnerId)).toBe("joining");
     await connected(runner);
     expect(await stateOf(runner.runnerId)).toBe("online");
@@ -253,7 +253,7 @@ describe("a pool that requires approval", () => {
     await expect((await api.as(b.admin)).runners.approve({ runnerId: runner.runnerId })).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await stateOf(runner.runnerId)).toBe("joining");
 
-    expect(await (await api.as(a.admin)).runners.reject({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "revoked" });
+    expect(await (await api.as(a.admin)).runners.reject({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "revoked", changed: true });
     expect(await peer.next("evict")).toEqual({ type: "evict", reason: "revoked" });
     expect(await peer.closed).toBe(closeCodes.revoked);
     const row = await api.test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
@@ -262,8 +262,9 @@ describe("a pool that requires approval", () => {
     expect(await api.test.db.auditEntry.count({ where: { action: "runner.rejected", entityId: runner.runnerId } })).toBe(1);
     const refused = await postJson(`${gateway.url}${runnerPaths.token}`, signAssertion(runner.key, runner.runnerId));
     expect(refused.status).toBe(403);
-    // Only a joining runner is approved or rejected.
-    await expect((await api.as(a.admin)).runners.approve({ runnerId: runner.runnerId })).rejects.toMatchObject({ code: "CONFLICT" });
+    // Only a joining runner is approved or rejected: a revoked one answers its state and changes nothing (ticket 25).
+    expect(await (await api.as(a.admin)).runners.approve({ runnerId: runner.runnerId })).toEqual({ runnerId: runner.runnerId, state: "revoked", changed: false });
+    expect(await stateOf(runner.runnerId)).toBe("revoked");
   });
 });
 

@@ -172,7 +172,8 @@ const cases: readonly Case[] = [
   {
     action: "join-token.created",
     actor: admin,
-    setup: async () => ({ poolId: await newPool() }),
+    // A pool with no token yet: `pools.create` makes its first one, which this case doesn't count.
+    setup: async () => ({ poolId: (await harness.test.db.runnerPool.create({ data: { organizationId: orgA(), name: unique("pool") }, select: { id: true } })).id }),
     act: async (caller, made) => {
       const created = await caller.pools.createJoinToken({ poolId: poolIdSchema.parse(need(made, "poolId")) });
       content.push(created.token);

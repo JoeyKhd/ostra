@@ -1,6 +1,6 @@
 # 25: API: pools, join tokens and approval
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 12
 Features: F-091
@@ -16,8 +16,15 @@ Spec: `../spec.md`, section 4 ("A pool and its tokens", "A join")
 
 ## Done when
 
-- [ ] Tests named for `F-091`: each procedure as an admin, a member and another organization's admin; the token returned once and never by `list` or `get`; the rotation's two tokens both working until the revoke; approve and reject on a joining runner, and their repeats.
-- [ ] Break-it: returning the token's hash from `list` fails its test; recorded in `context/proof/F-091.md`.
-- [ ] Committed as `✨ add pools and join tokens to the API`.
+- [x] Tests named for `F-091`: each procedure as an admin, a member and another organization's admin; the token returned once and never by `list` or `get`; the rotation's two tokens both working until the revoke; approve and reject on a joining runner, and their repeats.
+- [x] Break-it: returning the token's hash from `list` fails its test; recorded in `context/proof/F-091.md`.
+- [x] Committed as `✨ add pools and join tokens to the API`.
 
 ## Comments
+
+- 2026-11-20: built in `packages/api/src/routers/pools.ts` (new: `poolsRouter` moved out of `runners.ts`, and `joinTokensRouter`) and `runners.ts` (`approve`, `reject`), on ticket 12's use cases. Tests: `packages/api/src/routers/pools.test.ts`; proof rows in `context/proof/F-091.md`. Decisions:
+  - `createPool` takes an optional `projectIds` (additive, in `m5-signatures.ts`): the pool goes at the end of each project's ordered list in the pool's own transaction, after the default pool for a project that had no list; another organization's project is `invalid-input` (`BAD_REQUEST`) and nothing of the pool stays.
+  - `pools.create` answers `{ poolId, pool, joinToken }`; `poolId` stays for the panel's callers.
+  - Milestone 2's `pools.joinTokens`, `pools.createJoinToken` and `pools.revokeJoinToken` stay, on the same code as `joinTokens.list`, `create` and `revoke`, until ticket 30 moves the panel. `createJoinToken` without `expiresInDays` now takes the pool's lifetime (else `OSTRA_JOIN_TOKEN_DAYS`, 30), not a fixed 30.
+  - A repeated `joinTokens.revoke` answers the same with `changed: false`; a repeated `runners.approve` or `runners.reject`, or either on a runner already approved or revoked, answers its state with `changed: false` and changes nothing.
+  - The API's settings gain `joinTokenDays` (and `devHostPoolSameUser` for ticket 26).
