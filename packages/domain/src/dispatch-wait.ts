@@ -1,5 +1,5 @@
 import { Prisma } from "@ostra/db";
-import { runnerIdSchema } from "@ostra/protocol";
+import { executorKindSchema, runnerIdSchema } from "@ostra/protocol";
 import type { RunnerId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -29,6 +29,15 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
   z.strictObject({ code: z.literal("offer-declined") }),
   /** A runner didn't answer the offer in time; the next dispatch looks for another. */
   z.strictObject({ code: z.literal("offer-timed-out") }),
+  /**
+   * Milestone 3 (F-094, ADR 0038 amended): the environment has services, and no runner online
+   * that the task may go to can start them (the `docker` executor at minor 2). `online` names the
+   * ones that are, so the panel can say "only `host` runners are online".
+   */
+  z.strictObject({
+    code: z.literal("needs-services-runner"),
+    online: z.array(z.strictObject({ name: z.string().min(1).max(200), executor: executorKindSchema })).max(20),
+  }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -65,6 +74,10 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
       return "The runner declined the offer; looking for another.";
     case "offer-timed-out":
       return "The runner didn't answer the offer in time; looking for another.";
+    case "needs-services-runner":
+      return wait.online.length === 0
+        ? "Needs a runner that can start services (the docker executor); none is online."
+        : `Needs a runner that can start services (the docker executor); only ${[...new Set(wait.online.map((runner) => runner.executor))].join(" and ")} runners are online.`;
     default:
       return wait satisfies never;
   }

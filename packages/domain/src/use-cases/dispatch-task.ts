@@ -7,6 +7,7 @@ import type { BlobRef, BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, Run
 import type { JobPayload } from "../jobs.ts";
 import type { Ports } from "../ports.ts";
 import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
+import { runnerStartsServices } from "../environment/services.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
 import type { UseCaseResult } from "./common.ts";
 import { chooseReopenStep } from "./reopen.ts";
@@ -142,22 +143,39 @@ export const TASK_BUSY = "the task is locked by another transaction; the job ret
 
 type Candidate = { readonly id: RunnerId; readonly executor: "docker" | "host" | "kubernetes"; readonly freeSlots: number };
 
-/** The runners among `ids` that can take a task now: online, present, with a free slot. */
+type RunnerScope = { readonly ids?: readonly RunnerId[]; readonly poolIds?: readonly PoolId[] };
+
+const onlineWhere = (organizationId: OrganizationId, where: RunnerScope, now: number) => ({
+  organizationId,
+  state: "online" as const,
+  revokedAt: null,
+  ...(where.ids === undefined ? {} : { id: { in: [...where.ids] } }),
+  ...(where.poolIds === undefined ? {} : { kind: "pool" as const, poolId: { in: [...where.poolIds] } }),
+  presence: { is: { disconnectedAt: null, lastSeenAt: { gt: new Date(now - runnerLimits.offlineMs) } } },
+});
+
+/**
+ * The runners among `ids` that can take a task now: online, present, with a free slot. A task
+ * whose environment has services goes only to a runner that can start them (F-094, ADR 0038
+ * amended): never to `host`.
+ */
 const available = async (
   tx: Tx,
   organizationId: OrganizationId,
-  where: { readonly ids?: readonly RunnerId[]; readonly poolIds?: readonly PoolId[] },
+  where: RunnerScope,
   now: number,
+  needsServices = false,
 ): Promise<readonly Candidate[]> => {
+  if (needsServices) {
+    const fit = await tx.runner.findMany({ where: onlineWhere(organizationId, where, now), select: { id: true, executor: true, presence: { select: { minor: true } } } });
+    const ids = fit.filter((runner) => runnerStartsServices({ executor: runner.executor, minor: runner.presence?.minor ?? 0 })).map((runner) => runnerIdSchema.parse(runner.id));
+    if (ids.length === 0) {
+      return [];
+    }
+    return available(tx, organizationId, { ...where, ids: where.ids === undefined ? ids : where.ids.filter((id) => ids.includes(id)) }, now);
+  }
   const runners = await tx.runner.findMany({
-    where: {
-      organizationId,
-      state: "online",
-      revokedAt: null,
-      ...(where.ids === undefined ? {} : { id: { in: [...where.ids] } }),
-      ...(where.poolIds === undefined ? {} : { kind: "pool", poolId: { in: [...where.poolIds] } }),
-      presence: { is: { disconnectedAt: null, lastSeenAt: { gt: new Date(now - runnerLimits.offlineMs) } } },
-    },
+    where: onlineWhere(organizationId, where, now),
     select: { id: true, executor: true, capacity: true, _count: { select: { leases: { where: { state: "active" } } } } },
   });
   return runners
@@ -240,11 +258,31 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     }
   }
 
+  // Milestone 3 (F-094, ticket 27): an environment with services runs only where they can start.
+  const needsServices = (await tx.service.count({ where: { projectId: task.projectId, organizationId: task.organizationId } })) > 0;
+  /** Why no runner fits: a services runner missing, when one that can't start them is online in the same scope. */
+  const noFitFor = async (scope: RunnerScope, otherwise: DispatchWait): Promise<DispatchWait> => {
+    if (!needsServices) {
+      return otherwise;
+    }
+    const online = await tx.runner.findMany({
+      where: onlineWhere(organizationIdSchema.parse(task.organizationId), scope, now),
+      select: { name: true, executor: true, presence: { select: { minor: true } } },
+      orderBy: { name: "asc" },
+      take: 20,
+    });
+    // One that could start them is online, only busy: the task waits for a slot, as any task does.
+    if (online.length === 0 || online.some((runner) => runnerStartsServices({ executor: runner.executor, minor: runner.presence?.minor ?? 0 }))) {
+      return otherwise;
+    }
+    return { code: "needs-services-runner", online: online.map((runner) => ({ name: runner.name, executor: runner.executor })) };
+  };
+
   // Milestone 2 (ticket 18): a reopen's step. The same box goes back to its own runner.
   let plan = await reopenPlanInTx(tx, task, session, profile?.adapter ?? null, deps.reopen, now);
   let candidates: readonly Candidate[] = [];
   if (plan.step === "resumed" && plan.keptRunnerId !== undefined) {
-    candidates = await available(tx, task.organizationId, { ids: [plan.keptRunnerId] }, now);
+    candidates = await available(tx, task.organizationId, { ids: [plan.keptRunnerId] }, now, needsServices);
     if (candidates.length === 0) {
       plan = await withoutKeptBox(tx, task, session, profile?.adapter ?? null, deps.reopen);
     }
@@ -263,17 +301,20 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     if (!provider.allowOnPersonalRunners) {
       return noRunner({ code: "personal-runner-not-allowed" });
     }
-    candidates = await available(tx, task.organizationId, { ids: [runnerIdSchema.parse(chosen.id)] }, now);
+    const picked: RunnerScope = { ids: [runnerIdSchema.parse(chosen.id)] };
+    candidates = await available(tx, task.organizationId, picked, now, needsServices);
+    let scope = picked;
     if (candidates.length === 0 && plan.step !== "new") {
       // A reopen goes anywhere (F-033): the owner's other personal runners, when the one picked is gone.
       const owned = await tx.runner.findMany({
         where: { organizationId: task.organizationId, kind: "personal", ownerMemberId: task.creatorMemberId ?? "" },
         select: { id: true },
       });
-      candidates = await available(tx, task.organizationId, { ids: owned.map((row) => runnerIdSchema.parse(row.id)) }, now);
+      scope = { ids: owned.map((row) => runnerIdSchema.parse(row.id)) };
+      candidates = await available(tx, task.organizationId, scope, now, needsServices);
     }
     if (candidates.length === 0) {
-      return noRunner({ code: "personal-runner-unavailable" });
+      return noRunner(await noFitFor(scope, { code: "personal-runner-unavailable" }));
     }
   } else {
     const listed = await tx.projectPool.findMany({ where: { projectId: task.projectId }, select: { poolId: true } });
@@ -283,9 +324,9 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         : (await tx.runnerPool.findMany({ where: { organizationId: task.organizationId, isDefault: true }, select: { id: true } })).map((row) =>
             poolIdSchema.parse(row.id),
           );
-    candidates = poolIds.length === 0 ? [] : await available(tx, task.organizationId, { poolIds }, now);
+    candidates = poolIds.length === 0 ? [] : await available(tx, task.organizationId, { poolIds }, now, needsServices);
     if (candidates.length === 0) {
-      return noRunner({ code: "no-runner-online" });
+      return noRunner(poolIds.length === 0 ? { code: "no-runner-online" } : await noFitFor({ poolIds }, { code: "no-runner-online" }));
     }
   }
   const [runner] = candidates;

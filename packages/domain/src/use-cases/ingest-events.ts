@@ -335,6 +335,39 @@ const applyEffects = async (
         await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
         break;
       }
+      case "service.failed": {
+        // Milestone 3 (F-094, ticket 27): a service that didn't start fails the setup, as a failed
+        // setup script does: needs you, naming the service and the runner's words for why. A
+        // service failing later, after the box was ready, is stored for the environment page only.
+        if (taskRow.state !== "preparing") {
+          break;
+        }
+        await moveSessionInTx(moveDeps, current, { type: "crash" });
+        await reloadSession();
+        await endSessionTimersInTx(deps, tx, sessionRef);
+        const moved = await moveTaskInTx(moveDeps, taskRow, { type: "setup_failed" });
+        await reloadTask();
+        if (moved) {
+          await tx.needsYouItem.create({
+            data: {
+              organizationId: task.organizationId,
+              projectId: task.projectId,
+              taskId: task.id,
+              reason: "setup_failed",
+              audience: "driver",
+              summary: `The ${event.name} service didn't start: ${event.reason}`.slice(0, 2_000),
+            },
+          });
+        }
+        if (current.boxId !== null) {
+          await tx.box.updateMany({
+            where: { id: current.boxId, state: { in: ["creating", "preparing", "ready", "idle"] } },
+            data: { state: "failed", failedReason: `the ${event.name} service failed` },
+          });
+        }
+        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
+        break;
+      }
       case "workspace.files_outside_repos":
         // Q133, ticket 44: one open item per task, updated as the set changes, closed when it's empty.
         await applyFilesOutsideReposInTx(deps, taskRow, event.paths, event.more);
@@ -432,8 +465,9 @@ const applyEffects = async (
       case "check.finished":
       case "snapshot.built":
       case "snapshot.failed":
+      // `service.healthy` is stored on the box's session: the environment page reads a service's
+      // health on its last box from it (F-094, ticket 40).
       case "service.healthy":
-      case "service.failed":
       case "diff.comments_sent":
       case "ticket.closed":
       case "pr.comment_received":

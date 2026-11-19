@@ -67,6 +67,7 @@ export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";
 export * from "./use-cases/repo-checks.ts";
 export * from "./environment/detect.ts";
+export * from "./environment/services.ts";
 
 // Milestone 3.
 export * from "./rules/index.ts";

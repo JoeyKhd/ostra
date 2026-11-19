@@ -2,9 +2,10 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, authSchemeFromDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, taskCredentialsRequestSchema, taskCredentialsSchema } from "@ostra/protocol";
-import type { LeaseEpoch, OrganizationId, RepoSecret, TaskCredentials, TaskId } from "@ostra/protocol";
+import type { LeaseEpoch, OrganizationId, RepoSecret, ServiceSecrets, TaskCredentials, TaskId } from "@ostra/protocol";
 import type { z } from "zod";
 
+import { serviceVariablesFromDb } from "../environment/services.ts";
 import type { Ports } from "../ports.ts";
 
 // ADR 0030, ADR 0034: `POST /runner/v1/tasks/:taskId/credentials`. Only for the runner that holds the
@@ -121,6 +122,28 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     }
   }
 
+  // Milestone 3 (F-094, ticket 27): each service's secret variables, for its container only. Only
+  // a lease on a runner that can start services ever has any (the dispatch's rule), and the spec
+  // never holds them.
+  const services: ServiceSecrets[] = [];
+  const serviceRows = await tx.service.findMany({ where: { projectId: task.projectId, organizationId }, orderBy: { name: "asc" } });
+  for (const service of serviceRows) {
+    const variables: { name: string; value: string }[] = [];
+    for (const variable of serviceVariablesFromDb(service.variables)) {
+      if (variable.kind !== "secret") {
+        continue;
+      }
+      const value = await secretStore.get(organizationId, secretRefSchema.parse(variable.secretRef));
+      if (!value.ok) {
+        return failed("a service's secret couldn't be read from the secret store");
+      }
+      variables.push({ name: variable.name, value: value.value });
+    }
+    if (variables.length > 0) {
+      services.push({ name: service.name, variables });
+    }
+  }
+
   const credentials = taskCredentialsSchema.parse({
     taskId: input.taskId,
     leaseEpoch: input.leaseEpoch,
@@ -133,6 +156,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     repos,
     secrets,
     mcpToken: deps.mcpToken(input.taskId, input.leaseEpoch),
+    ...(services.length === 0 ? {} : { services }),
   });
   await deps.audit.recordInTx(tx, {
     organizationId,
@@ -141,7 +165,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     action: "task.credentials-issued",
     entity: "task",
     entityId: input.taskId,
-    data: { leaseEpoch: input.leaseEpoch, repos: repos.length, secrets: entries.length },
+    data: { leaseEpoch: input.leaseEpoch, repos: repos.length, secrets: entries.length, serviceSecrets: services.reduce((sum, service) => sum + service.variables.length, 0) },
   });
   return { ok: true, credentials };
 };
