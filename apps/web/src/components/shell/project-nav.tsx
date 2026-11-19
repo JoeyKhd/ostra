@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BoxIcon, ListChecksIcon } from "lucide-react";
+import { BoxIcon, GitBranchIcon, ListChecksIcon, SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -17,7 +17,7 @@ import { projectColour } from "./project-colour";
  * something waits on the member there. The open project expands into its pages: Tasks, with the
  * count of its active tasks (every state but stopped, merged and done), and Environment.
  */
-export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) => {
+export const ProjectNav = ({ onNavigate, admin }: { readonly onNavigate: () => void; readonly admin: boolean }) => {
   const trpc = useTRPC();
   const pathname = usePathname();
   const projects = useQuery(trpc.projects.list.queryOptions());
@@ -56,6 +56,14 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
                 <NavLink sub href={`/projects/${project.id}/environment`} icon={<BoxIcon />} onNavigate={onNavigate}>
                   {t("shell.environment")}
                 </NavLink>
+                <NavLink sub href={`/projects/${project.id}/repos`} icon={<GitBranchIcon />} onNavigate={onNavigate}>
+                  {t("shell.repos")}
+                </NavLink>
+                {admin ? (
+                  <NavLink sub href={`/projects/${project.id}/settings`} icon={<SettingsIcon />} onNavigate={onNavigate}>
+                    {t("shell.settings")}
+                  </NavLink>
+                ) : null}
               </>
             ) : null}
           </div>

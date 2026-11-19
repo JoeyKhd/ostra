@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./accounts": "./src/accounts.ts",
-    "./branch-name": "./src/branch-name.ts"
+    "./branch-name": "./src/branch-name.ts",
+    "./ticket-template": "./src/tickets/ticket-template.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

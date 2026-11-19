@@ -9,6 +9,9 @@ import type { SubmitEvent } from "react";
 import { runnerIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 
+import { ComposerRepoNotes, repoBlockId } from "@/components/projects/repo-check-line";
+import { unsupportedRepos } from "@/components/projects/repo-checks-words";
+import type { RepoDetail } from "@/components/projects/repo-checks-words";
 import { runnerStateText } from "@/components/runners/runner-words";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -23,7 +26,7 @@ const POOLS = "pools";
  * The project page's composer (project.md, F-097): a prompt, and on one line under it "Run on"
  * (the member's own personal runners, then the project's pools), `⌘↵` and "Start the task".
  */
-export const ProjectComposer = ({ projectId }: { readonly projectId: ProjectId }) => {
+export const ProjectComposer = ({ projectId, repos }: { readonly projectId: ProjectId; readonly repos: readonly RepoDetail[] }) => {
   const trpc = useTRPC();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -32,6 +35,8 @@ export const ProjectComposer = ({ projectId }: { readonly projectId: ProjectId }
   const [runOn, setRunOn] = useState<string | null>(null);
   const firstOnline = runners.data?.find((runner) => runner.state === "online")?.id;
   const chosen = runOn ?? firstOnline ?? POOLS;
+  // A repo that requires signed commits stops every task in the project (F-055).
+  const blocked = unsupportedRepos(repos).length > 0;
 
   const create = useMutation(
     trpc.tasks.create.mutationOptions({
@@ -48,7 +53,7 @@ export const ProjectComposer = ({ projectId }: { readonly projectId: ProjectId }
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (prompt.trim() === "" || create.isPending) return;
+    if (prompt.trim() === "" || create.isPending || blocked) return;
     create.mutate({
       projectId,
       prompt: prompt.trim(),
@@ -103,11 +108,17 @@ export const ProjectComposer = ({ projectId }: { readonly projectId: ProjectId }
         </Select>
         <span className="ml-auto flex items-center gap-3">
           <Kbd aria-hidden className="text-sm">{t("newTask.kbd")}</Kbd>
-          <Button type="submit" variant="primary" disabled={create.isPending || prompt.trim() === ""}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={create.isPending || prompt.trim() === "" || blocked}
+            {...(blocked ? { "aria-describedby": repoBlockId(projectId) } : {})}
+          >
             <SendIcon aria-hidden /> {create.isPending ? t("newTask.starting") : t("newTask.start")}
           </Button>
         </span>
       </div>
+      <ComposerRepoNotes projectId={projectId} repos={repos} />
       {create.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(create.error)}</p>}
     </form>
   );

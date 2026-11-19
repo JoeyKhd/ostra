@@ -30,6 +30,8 @@ import type { ProjectId } from "@ostra/protocol";
 import { runnerStateText } from "@/components/runners/runner-words";
 import { PageFrame, PageHeading, PropGroup, PropRow, Section, SectionLink } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
+import { ComposerRepoNotes, repoBlockId } from "@/components/projects/repo-check-line";
+import { unsupportedRepos } from "@/components/projects/repo-checks-words";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
@@ -468,10 +470,13 @@ export const NewTaskView = () => {
     }),
   );
   const starting = create.isPending || create.isSuccess;
+  // A repo that requires signed commits stops every task in the project (F-055).
+  const repos = detail.data?.repos ?? [];
+  const blocked = unsupportedRepos(repos).length > 0;
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (projectId === undefined || prompt.trim() === "" || starting) return;
+    if (projectId === undefined || prompt.trim() === "" || starting || blocked) return;
     create.mutate({ projectId, prompt: prompt.trim(), ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }) });
   };
 
@@ -539,12 +544,19 @@ export const NewTaskView = () => {
             )}
             <span className="ml-auto flex items-center gap-3">
               <Kbd aria-hidden>{hint}</Kbd>
-              <Button type="submit" variant="primary" disabled={loading || starting || prompt.trim() === ""} data-action="start-task">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={loading || starting || prompt.trim() === "" || blocked}
+                data-action="start-task"
+                {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : {})}
+              >
                 {starting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : <ArrowUpIcon aria-hidden />}
                 {starting ? t("newTask.starting") : t("newTask.startTask")}
               </Button>
             </span>
           </div>
+          {projectId === undefined ? null : <ComposerRepoNotes projectId={projectId} repos={repos} />}
         </form>
         {create.error === null ? (
           runner !== null && !runner.isolated ? (

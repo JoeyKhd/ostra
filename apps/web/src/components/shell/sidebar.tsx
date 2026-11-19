@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, SearchIcon, ServerIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -103,7 +103,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       </NavLink>
 
       <SectionLabel>{t("shell.projects")}</SectionLabel>
-      <ProjectNav onNavigate={onNavigate} />
+      <ProjectNav onNavigate={onNavigate} admin={admin} />
       {admin ? (
         <NavLink href="/projects/new" icon={<PlusIcon />} onNavigate={onNavigate}>
           {t("shell.newProject")}
@@ -123,6 +123,11 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
             {t("shell.github")}
           </NavLink>
         </>
+      ) : null}
+      {me.instanceAdmin ? (
+        <NavLink href="/organization/storage" icon={<HardDriveIcon />} onNavigate={onNavigate}>
+          {t("shell.storage")}
+        </NavLink>
       ) : null}
 
       <div className="mt-auto pt-3">

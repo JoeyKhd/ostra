@@ -1,11 +1,13 @@
 "use client";
 
-import { BotIcon, BoxIcon, GitBranchIcon, ServerIcon } from "lucide-react";
+import { BanIcon, BotIcon, BoxIcon, GitBranchIcon, ServerIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
+
+import { repoVerdict } from "./repo-checks-words";
 
 type Project = RouterOutputs["projects"]["get"];
 
@@ -27,6 +29,11 @@ export const ProjectProperties = ({ project }: { readonly project: Project }) =>
         <PropRow label={t("projects.repoKey")}>
           <GitBranchIcon aria-hidden />
           <span className="truncate font-mono">{repo.fullName}</span>
+          {repoVerdict(repo) === "unsupported" || repoVerdict(repo) === "warning" ? (
+            <Link href={`/projects/${project.id}/repos?repo=${repo.repoId}`} aria-label={t(`repos.verdict.${repoVerdict(repo)}`)} className="shrink-0">
+              {repoVerdict(repo) === "unsupported" ? <BanIcon aria-hidden className="size-[13px]! text-red!" /> : <TriangleAlertIcon aria-hidden className="size-[13px]!" />}
+            </Link>
+          ) : null}
         </PropRow>
         <PropRow label={t("projects.branch")}>
           <span className="truncate font-mono">{repo.defaultBranch}</span>

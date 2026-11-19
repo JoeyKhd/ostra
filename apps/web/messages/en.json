@@ -19,7 +19,8 @@
     "yes": "Yes",
     "no": "No",
     "unknown": "Unknown",
-    "adminsOnly": "Only an admin of the organization can see this page."
+    "adminsOnly": "Only an admin of the organization can see this page.",
+    "instanceAdminsOnly": "Only an admin of this ostra instance can see this page."
   },
   "errors": {
     "signedOut": "You're signed out. Sign in again.",
@@ -53,7 +54,10 @@
     "switchOrganization": "Switch organization",
     "organizations": "Organizations",
     "current": "Current",
-    "linear": "Linear"
+    "linear": "Linear",
+    "storage": "Storage",
+    "repos": "Repos",
+    "settings": "Settings"
   },
   "signIn": {
     "title": "Sign in",
@@ -998,6 +1002,203 @@
       "eventsHelp": "AgentSessionEvent is asked for now, so agent mode later needs no new app.",
       "webhook": "Webhook",
       "webhookOff": "Off: polling every {seconds} s"
+    }
+  },
+  "storage": {
+    "title": "Storage",
+    "lede": "Where ostra keeps files, and how long it keeps a finished task's history.",
+    "save": "Save retention",
+    "store": {
+      "title": "Blob store",
+      "note": "session archives, ticket images and attachments",
+      "inUse": "Store in use",
+      "postgres": "Built-in, in Postgres",
+      "s3": "S3-compatible",
+      "healthy": "Healthy",
+      "degraded": "Degraded",
+      "unreachable": "Unreachable",
+      "blobs": "Blobs",
+      "totalSize": "Total size",
+      "cap": "Largest blob allowed",
+      "s3Store": "S3-compatible store",
+      "s3NotConfigured": "Not configured",
+      "s3InUse": "Configured, in use",
+      "help": "To move new blobs to an S3-compatible store, set {store} and its five {s3} settings, then restart. Blobs already stored stay readable where they are.",
+      "helpS3": "Blobs stored in Postgres before the switch stay readable from there.",
+      "reference": "Configuration reference"
+    },
+    "retention": {
+      "title": "Retention",
+      "lede": "How long a finished task keeps its history, archives and blobs.",
+      "keep": "As long as the task exists",
+      "default": "default",
+      "deleteAfter": "Delete after",
+      "daysAfter": "days after the task finishes",
+      "daysLabel": "Days",
+      "invalid": "A whole number of days, from 1 to 3650.",
+      "willDelete1": "On save, every night ostra deletes these for tasks finished more than {days} days ago:",
+      "willDelete2": "events and messages, live text, session archives, ticket images and attachments.",
+      "willDelete3": "The task, its repos and its pull request links stay. A reopened task says its history was removed.",
+      "audit": "Changes are recorded in the audit log.",
+      "fromEnv": "From OSTRA_RETENTION_DAYS. Saving here overrides it.",
+      "saved": "Saved.",
+      "source": {
+        "saved": "Saved here",
+        "env": "From OSTRA_RETENTION_DAYS on the server",
+        "default": "Default"
+      },
+      "confirmOnTitle": "Delete history after {days} days?",
+      "confirmOnAfter": "The first sweep runs tonight.",
+      "confirmOnAction": "Delete after {days} days",
+      "confirmOffTitle": "Keep history while tasks exist?",
+      "confirmOffBody": "Nothing more is deleted. What earlier sweeps deleted stays deleted.",
+      "confirmOffAction": "Keep history"
+    },
+    "panel": {
+      "configuration": "Configuration",
+      "unset": "unset",
+      "overridden": "overridden",
+      "sweeps": "Sweeps",
+      "retention": "Retention",
+      "daily": "daily",
+      "lastRan": "Last ran",
+      "never": "never",
+      "uploads": "Unfinished uploads",
+      "uploadsValue": "deleted after 24 h",
+      "lastChange": "Last change",
+      "neverChanged": "Never changed. Retention is off by default.",
+      "setTo": "Set to {days} days, {date}",
+      "turnedOff": "Turned off, {date}",
+      "fromEnv": "Set by OSTRA_RETENTION_DAYS to {days} days."
+    }
+  },
+  "repos": {
+    "title": "Repos",
+    "count": {
+      "one": "{n} repo",
+      "other": "{n} repos"
+    },
+    "checkedAgo": "checked {age}",
+    "neverChecked": "not checked yet",
+    "checkAgain": "Check again",
+    "checking": "Checking…",
+    "blocked": {
+      "title": "Tasks can't start in this project.",
+      "one": "{repo} requires signed commits, which ostra doesn't support yet.",
+      "many": "{n} repos require signed commits, which ostra doesn't support yet."
+    },
+    "private": "Private",
+    "verdict": {
+      "ready": "Ready",
+      "warning": "1 warning",
+      "unsupported": "Not supported",
+      "unknown": "Couldn't check"
+    },
+    "check": {
+      "protected": "Default branch protected",
+      "notProtected": "Default branch not protected",
+      "notProtectedWhy": "Allowed: the agent holds no token, and ostra pushes only the task's own branch.",
+      "protectedUnknown": "Couldn't check protection",
+      "signedNotRequired": "Signed commits not required",
+      "signedRequired": "Requires signed commits: ",
+      "notSupportedYet": "not supported yet",
+      "signedRequiredWhy": "ostra's pushes aren't signed, so GitHub would refuse them.",
+      "signedUnknown": "Couldn't check signed commits",
+      "unknown": "Couldn't check",
+      "noReason": "The code host didn't say why."
+    },
+    "footnote": "ostra reads each default branch's rules when you open this page, at most every 10 minutes, and again when a task starts.",
+    "panel": {
+      "defaultBranch": "Default branch",
+      "visibility": "Visibility",
+      "public": "Public",
+      "checked": "Checked",
+      "protected": "Protected",
+      "signedCommits": "Signed commits",
+      "yes": "Yes",
+      "no": "No",
+      "notRequired": "Not required",
+      "required": "Required",
+      "unknown": "Couldn't check",
+      "whyAllowed": "Why it's allowed",
+      "whyAllowedBody": "The agent never holds a GitHub token. ostra's git proxy accepts pushes only to the task's branch and its hidden ref, so {branch} stays out of the agent's reach. Protecting {branch} still guards it from everyone else.",
+      "whyBlocked": "Why it's blocked",
+      "whyBlockedBody": "GitHub refuses commits that aren't signed on this branch, and ostra can't sign the agent's commits yet. Until it can, no task starts in this project.",
+      "whyUnknown": "Why ostra couldn't check",
+      "whyUnknownAfter": "ostra checks again when a task starts. A task isn't refused because of a check it couldn't make.",
+      "protect": "Protect {branch}",
+      "protectStep1": "On GitHub, open the repo's Settings › Rules.",
+      "protectStep2": "Add a ruleset for {branch} that requires a pull request.",
+      "toStart": "To start tasks here",
+      "toStartBody": "Turn off \"Require signed commits\" for {branch} on GitHub, or remove this repo from the project.",
+      "openRules": "Open the repo's rules on GitHub"
+    },
+    "composer": {
+      "unsupported": "{repo} requires signed commits, which ostra doesn't support yet.",
+      "seeRepos": "See repos",
+      "unprotected": "{repo}'s default branch isn't protected. Tasks still start: the agent can't push to it.",
+      "why": "Why"
+    }
+  },
+  "ticketTemplate": {
+    "title": "Ticket template",
+    "settings": "Settings",
+    "lede": "The first prompt of a task started from a ticket. Ticket text always goes inside marked blocks, so the agent reads it as data, never as instructions.",
+    "readOnly": "Only a project admin can change it.",
+    "eyebrow": {
+      "builtIn": "Built-in template",
+      "custom": "Custom",
+      "saved": "saved {age}",
+      "edited": "edited, not saved",
+      "builtInShort": "Built-in"
+    },
+    "reset": "Reset to built-in",
+    "save": "Save template",
+    "resetTitle": "Go back to the built-in template?",
+    "resetBody": "Your custom template is replaced. Tasks already started keep the prompt they got.",
+    "resetAction": "Reset",
+    "leaveTitle": "Leave without saving the template?",
+    "editor": {
+      "title": "Template",
+      "note": "placeholders in {{ }}, sections in {{#…}} {{/…}}",
+      "label": "The ticket template",
+      "valid": {
+        "one": "Valid · uses {n} placeholder",
+        "other": "Valid · uses {n} placeholders"
+      },
+      "saved": "Saved.",
+      "problem": "Line {line}: {message}"
+    },
+    "placeholders": {
+      "title": "Placeholders",
+      "insert": "Insert {name}",
+      "items": "Inside: {fields}",
+      "describe": {
+        "ticket_key": "The ticket's key",
+        "ticket_title": "Its title",
+        "ticket_url": "Its link on the tracker",
+        "ticket_status": "Its status on the tracker",
+        "ticket_priority": "Its priority, when it has one",
+        "ticket_description": "Its description, in a marked block",
+        "task_branch": "The task's branch",
+        "instructions": "The agent profile's instructions",
+        "labels": "Each label",
+        "comments": "Each comment, oldest first",
+        "parent": "The parent ticket, if any",
+        "children": "Each sub-ticket",
+        "linked": "Each linked ticket",
+        "images": "Each image copied into the workspace"
+      }
+    },
+    "preview": {
+      "title": "Preview",
+      "on": "on",
+      "chars": "{n} characters",
+      "noTicket": "No ticket yet",
+      "empty": "The Inbox has no ticket to preview on. {link} to the project first.",
+      "attach": "Attach a board",
+      "note": "Rendered on the server for this page only. Never logged.",
+      "ticket": "The ticket to preview on"
     }
   }
 }

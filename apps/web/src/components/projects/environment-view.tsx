@@ -11,6 +11,7 @@ import type { ProjectId } from "@ostra/protocol";
 import { PageFrame, PageHeading, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { Input, Textarea } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -120,27 +121,10 @@ const EnvSection = ({ title, count, note, end, children }: { readonly title: Rea
   </section>
 );
 
-/** The setup script: a code editor with a gutter of line numbers. Grows with its text; 3 lines at least. */
-const ScriptEditor = ({ value, readOnly, onChange }: { readonly value: string; readonly readOnly: boolean; readonly onChange: (value: string) => void }) => {
-  const lines = Math.max(3, value.split("\n").length);
-  return (
-    <div className="flex rounded-lg border border-line-2 bg-surface px-3.5 py-2.5 font-mono text-ui leading-[1.75] focus-within:border-faint">
-      <div aria-hidden className="w-6 shrink-0 select-none text-right text-faint">
-        {Array.from({ length: lines }, (_, i) => <div key={i}>{i + 1}</div>)}
-      </div>
-      <textarea
-        aria-label={t("environment.setupScript")}
-        spellCheck={false}
-        wrap="off"
-        className="ml-3.5 min-h-[5.25em] min-w-0 flex-1 resize-none overflow-x-auto bg-transparent text-text outline-none [field-sizing:content] placeholder:text-faint"
-        value={value}
-        readOnly={readOnly}
-        placeholder="pnpm install --frozen-lockfile"
-        onChange={(e) => { onChange(e.target.value); }}
-      />
-    </div>
-  );
-};
+/** The setup script: the shared code editor, with its gutter of line numbers. 3 lines at least. */
+const ScriptEditor = ({ value, readOnly, onChange }: { readonly value: string; readonly readOnly: boolean; readonly onChange: (value: string) => void }) => (
+  <CodeEditor label={t("environment.setupScript")} value={value} readOnly={readOnly} onChange={onChange} placeholder="pnpm install --frozen-lockfile" />
+);
 
 /** The outline badge (`Badge variant="outline"`): 22px, `--line-2`, mono. */
 const Badge = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (

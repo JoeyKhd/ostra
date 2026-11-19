@@ -241,7 +241,7 @@ export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) =>
         </div>
       )}
       <div className="mt-[18px]">
-        <ProjectComposer projectId={projectId} />
+        <ProjectComposer projectId={projectId} repos={project.data?.repos ?? []} />
       </div>
       {groups.error === null ? null : <p role="alert" className="mt-6 text-red">{errorText(groups.error)}</p>}
       {groups.isPending ? <LoadingList /> : null}

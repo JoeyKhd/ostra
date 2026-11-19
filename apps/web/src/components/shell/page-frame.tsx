@@ -112,6 +112,8 @@ export const PageHeading = ({ eyebrow, title, lede, children }: { readonly eyebr
 export type SectionProps = {
   readonly title: string;
   readonly count?: number;
+  /** A short `--muted` note after the title, on its line (storage: what the blob store holds). */
+  readonly note?: string;
   /** A dot before the title: `amber` for Needs you (grey when it's empty), and nothing else. */
   readonly tone?: Tone;
   /** The right-hand end of the title line: a `More →` link (`SectionLink`). */
@@ -121,12 +123,13 @@ export type SectionProps = {
 };
 
 /** A section: a 30px title line and its rows, no box (app-design.md, rule 3; graphite.css `.shead`). */
-export const Section = ({ title, count, tone, end, children, className }: SectionProps) => (
+export const Section = ({ title, count, note, tone, end, children, className }: SectionProps) => (
   <section className={cn("mt-[26px]", className)}>
     <div className="mb-1 flex h-[30px] items-center gap-2">
       {tone === undefined ? null : <Dot tone={tone} className="mr-0.5" />}
       <h2 className="text-body font-semibold">{title}</h2>
       {count === undefined ? null : <span className="font-mono text-[12.5px] text-faint">{count}</span>}
+      {note === undefined ? null : <span className="ml-1.5 hidden truncate text-sm text-muted sm:inline">{note}</span>}
       {end === undefined ? null : <div className="ml-auto flex items-center gap-2 text-sm text-muted">{end}</div>}
     </div>
     {children}
@@ -141,10 +144,13 @@ export const SectionLink = ({ href, children }: { readonly href: string; readonl
   </Link>
 );
 
-/** One key/value row of a properties panel. */
-export const PropRow = ({ label, children }: { readonly label: string; readonly children: ReactNode }) => (
-  <div className="grid min-h-8 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 text-ui">
-    <span className="text-muted">{label}</span>
+/** One key/value row of a properties panel. `labelWidth` widens the key column (storage: 150px). */
+export const PropRow = ({ label, children, labelWidth, labelClassName }: { readonly label: string; readonly children: ReactNode; readonly labelWidth?: number; readonly labelClassName?: string }) => (
+  <div
+    className="grid min-h-8 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 text-ui"
+    {...(labelWidth === undefined ? {} : { style: { gridTemplateColumns: `${String(labelWidth)}px minmax(0,1fr)` } })}
+  >
+    <span className={cn("min-w-0 truncate text-muted", labelClassName)}>{label}</span>
     <span className="flex min-w-0 items-center gap-[7px] text-text [&_svg]:size-[14px] [&_svg]:text-muted">{children}</span>
   </div>
 );
