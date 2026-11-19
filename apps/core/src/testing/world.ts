@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import type { Db } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
-import { leaseEpochSchema, organizationIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { OrganizationId, ProjectId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
+import { leaseEpochSchema, organizationIdSchema, providerIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { OrganizationId, ProjectId, ProviderId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
 
 import type { RunnerRef } from "../gateway/context.ts";
 import type { FakeCodeHost, FakeSecretStore } from "./fake-adapters.ts";
@@ -21,7 +21,7 @@ export const ENV_SECRET = `env-secret-${randomBytes(8).toString("hex")}`;
 export type World = {
   readonly organizationId: OrganizationId;
   readonly projectId: ProjectId;
-  readonly providerId: string;
+  readonly providerId: ProviderId;
   readonly profileId: string;
   readonly repoId: string;
 };
@@ -95,7 +95,7 @@ export const seedWorld = async (
       { organizationId, projectId, environmentId: environment.id, repoId: repo.id, kind: "secret", name: "API_SECRET", secretRef: secretRef.value },
     ],
   });
-  return { organizationId, projectId, providerId: provider.id, profileId: profile.id, repoId: repo.id };
+  return { organizationId, projectId, providerId: providerIdSchema.parse(provider.id), profileId: profile.id, repoId: repo.id };
 };
 
 /** A runner, online and present on a replica now. */

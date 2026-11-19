@@ -5,6 +5,7 @@ import type { ChangeNotices, Clock, CommandOutbox, JobPayload } from "@ostra/dom
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { OrganizationId, ProviderId, TaskId } from "@ostra/protocol";
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
 
@@ -33,7 +34,7 @@ export const dispatchHandler =
     context.logger.info("task.dispatch-done", { taskId: context.payload.taskId, outcome: result.ok ? "offered" : result.error });
   };
 
-const activeSessionOf = (tx: Tx, taskId: string) =>
+const activeSessionOf = (tx: Tx, taskId: TaskId) =>
   tx.session.findFirst({ where: { taskId, state: "starting" }, orderBy: { startedAt: "desc" }, select: { id: true } });
 
 /** An offer not accepted in time goes back to the queue (ADR 0034). */
@@ -48,7 +49,7 @@ export const offerTimeoutHandler = (deps: DispatcherDeps): JobHandler<"task.offe
       await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: new Date(deps.clock.now()), endReason: "offer-timeout" } });
       await tx.box.updateMany({ where: { id: lease.boxId, state: "creating" }, data: { state: "failed", failedReason: "the runner didn't answer the offer" } });
       await tx.task.update({ where: { id: task.id }, data: { dispatchNote: "The runner didn't answer the offer in time; looking for another." } });
-      const session = await activeSessionOf(tx, task.id);
+      const session = await activeSessionOf(tx, context.payload.taskId);
       if (session !== null) {
         await deps.jobs.enqueueInTx(tx, "task.dispatch", {
           organizationId: context.payload.organizationId,
@@ -127,7 +128,7 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
  * Holds new dispatches on a provider until `until` (it answered with a rate limit, F-088). A later
  * hold only extends an earlier one.
  */
-export const holdProviderInTx = async (tx: Tx, organizationId: string, providerId: string, until: Date): Promise<void> => {
+export const holdProviderInTx = async (tx: Tx, organizationId: OrganizationId, providerId: ProviderId, until: Date): Promise<void> => {
   await tx.modelProvider.updateMany({
     where: { id: providerId, organizationId, OR: [{ dispatchHeldUntil: null }, { dispatchHeldUntil: { lt: until } }] },
     data: { dispatchHeldUntil: until },

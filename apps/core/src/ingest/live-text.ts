@@ -1,8 +1,8 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { LIVE_TEXT_TABLE, notifyChannels, Prisma } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { runnerLimits } from "@ostra/protocol";
-import type { LiveText, LiveTextFrame, SegmentId, SessionId, TaskId } from "@ostra/protocol";
+import { organizationIdSchema, projectIdSchema, runnerLimits, taskIdSchema } from "@ostra/protocol";
+import type { LiveText, LiveTextFrame, OrganizationId, ProjectId, SegmentId, SessionId, TaskId, TurnId } from "@ostra/protocol";
 
 import type { RunnerRef } from "../gateway/context.ts";
 
@@ -16,10 +16,10 @@ import type { RunnerRef } from "../gateway/context.ts";
 
 type Segment = {
   readonly taskId: TaskId;
-  readonly organizationId: string;
-  readonly projectId: string;
+  readonly organizationId: OrganizationId;
+  readonly projectId: ProjectId;
   readonly sessionId: SessionId;
-  readonly turnId: string;
+  readonly turnId: TurnId;
   readonly segmentId: SegmentId;
   readonly kind: LiveTextFrame["kind"];
   text: string;
@@ -27,7 +27,12 @@ type Segment = {
   touchedAt: number;
 };
 
-type SessionGrant = { readonly taskId: string; readonly organizationId: string; readonly projectId: string; readonly checkedAt: number } | null;
+type SessionGrant = {
+  readonly taskId: TaskId;
+  readonly organizationId: OrganizationId;
+  readonly projectId: ProjectId;
+  readonly checkedAt: number;
+} | null;
 
 export type LiveTextWriter = {
   readonly write: (runner: RunnerRef, frame: LiveText) => Promise<void>;
@@ -43,7 +48,7 @@ const GRANT_TTL_MS = 30_000;
 const COMPLETED_TTL_MS = 60_000;
 const ABANDONED_MS = 10 * 60_000;
 
-const key = (taskId: string, segmentId: string): string => `${taskId}\u0000${segmentId}`;
+const key = (taskId: TaskId, segmentId: SegmentId): string => `${taskId}\u0000${segmentId}`;
 
 export const createLiveTextWriter = (options: {
   readonly db: Db;
@@ -81,7 +86,12 @@ export const createLiveTextWriter = (options: {
     const result: SessionGrant =
       session === null || lease === null
         ? null
-        : { taskId: session.taskId, organizationId: session.organizationId, projectId: session.projectId, checkedAt: now() };
+        : {
+            taskId: taskIdSchema.parse(session.taskId),
+            organizationId: organizationIdSchema.parse(session.organizationId),
+            projectId: projectIdSchema.parse(session.projectId),
+            checkedAt: now(),
+          };
     grants.set(cacheKey, result);
     return result;
   };

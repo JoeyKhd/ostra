@@ -1,7 +1,7 @@
 import { createPublicKey, verify } from "node:crypto";
 
 import { runnerLimits, tokenAssertionCanonicalString } from "@ostra/protocol";
-import type { TokenAssertion } from "@ostra/protocol";
+import type { RunnerId, TokenAssertion } from "@ostra/protocol";
 
 // A runner's signed assertion (ADR 0034, ticket 01's canonical string): Ed25519, by the runner's
 // own key, over `ostra-runner-token-v1\n<runnerId>\n<issuedAt>\n<nonce>`. The server refuses an
@@ -31,7 +31,7 @@ export const assertionFresh = (issuedAt: number, now: number): boolean =>
  * milestone 1. With several, a replayed assertion could get one more token from another replica
  * within two minutes; F-092 (milestone 5) moves this to Postgres.
  */
-export type NonceCache = { readonly firstUse: (runnerId: string, nonce: string, now: number) => boolean };
+export type NonceCache = { readonly firstUse: (runnerId: RunnerId, nonce: string, now: number) => boolean };
 
 export const createNonceCache = (): NonceCache => {
   const seen = new Map<string, number>();
