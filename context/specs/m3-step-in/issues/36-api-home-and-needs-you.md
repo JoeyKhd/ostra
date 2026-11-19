@@ -1,6 +1,6 @@
 # 36: API: Home and the needs-you list
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 20
 Features: F-062, F-036
@@ -19,9 +19,9 @@ Spec: `../spec.md`, sections 1 ("Home exists"), 2 (F-062, F-036) and 4 ("A notif
 
 ## Done when
 
-- [ ] Tests: Home lists only the member's projects' items, every needs-you reason renders (each seeded once), the board groups by state, unread counts move on read and on answer; a member of another organization sees nothing.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
-- [ ] Committed as `✨ add the Home and needs-you API`.
+- [x] Tests: Home lists only the member's projects' items, every needs-you reason renders (each seeded once), the board groups by state, unread counts move on read and on answer; a member of another organization sees nothing.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
+- [x] Committed as `✨ add the Home and needs-you API`.
 
 ## Decided 2026-11-19
 
@@ -30,3 +30,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **`home.board` returns what the cards need** (`home-board.md`, "Data"): per card, the status line's source (the open needs-you item's reason and detail, the queue's pool or runner, the latest activity for running and preparing, the in-review sub-state with the PR numbers, the stop reason); the column totals apart from the page of cards, with a cursor per column; and the 7-day window for `merged`, `done` and `stopped`, by the time the task entered that state. Nothing is dropped from the card.
 
 ## Comments
+
+- 2026-11-19: done in COMMIT. `home.overview`'s needs-you rows now come from the open items (`routers/needs-you-view.ts`: `listOpenNeedsYou` and `loadNeedsYouViews`, shared with `home.needsYou` and `notifications.list`); `home.board` is `routers/home-board.ts`; `notifications.list`, `.markRead` and `.unreadCount` join `notifications.preferences` in `routers/notifications.ts`. A task in `needs_you` with no open item (one from before items) still shows, as a row with `itemId: null`. A task's "what the agent is doing" moved to `routers/task-doing.ts` (`loadDoingByTask`), which the project list and the board both read. Recent activity gains `approval.answered`, `plan.answered`, `task.driver-changed` and `pr.comment-accepted` (the last is the name ticket 25 is to audit under; no code writes it yet). The 200 ms for 1,000 open items is not measured here: every list is a bulk query by task, kind and project, never one per row, and the Home lists sit on the indexes the migration made (`(memberId, state)`, `(memberId, readAt)`, `(projectId, state)`); a measured run belongs to the end-to-end demo. A finished card's age is its task's `updatedAt`, the nearest thing to when it entered the state. Proof rows: F-062 (3 partial), F-036 (row 2 gains the list's tests).

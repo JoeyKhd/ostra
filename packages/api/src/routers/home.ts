@@ -1,9 +1,12 @@
 import { visibleProjects } from "@ostra/domain";
 import { projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { memberProcedure, router } from "../trpc/init.ts";
+import { boardColumnSchema, boardColumns, boardProjectIds, FINISHED_WINDOW_DAYS, loadBoardColumn } from "./home-board.ts";
+import { listOpenNeedsYou } from "./needs-you-view.ts";
 
 // F-062, F-076, home.md: the organization's Home, in one read. What waits on the member (Needs you),
 // how each project is doing, what just happened, and the right panel's PRs, spend and runners. It
@@ -12,11 +15,21 @@ import { memberProcedure, router } from "../trpc/init.ts";
 const DAY_MS = 86_400_000;
 /** The most rows of each Home section; the rest is one click away. */
 export const homeLimits = { needsYou: 5, projects: 8, activity: 6 } as const;
-const QUESTION_MAX = 200;
-const TITLE_MAX = 200;
 
 /** The audit actions Home words as recent activity; the others stay in the audit log. */
-const activityActions = ["pr.opened", "task.stopped", "runner.registered", "project.created", "provider.added", "github.connected"] as const;
+const activityActions = [
+  "pr.opened",
+  "task.stopped",
+  "runner.registered",
+  "project.created",
+  "provider.added",
+  "github.connected",
+  // Milestone 3 (ticket 36): what members do to a running task.
+  "approval.answered",
+  "plan.answered",
+  "task.driver-changed",
+  "pr.comment-accepted",
+] as const;
 type ActivityAction = (typeof activityActions)[number];
 
 const isActivityAction = (action: string): action is ActivityAction => activityActions.some((known) => known === action);
@@ -48,14 +61,9 @@ export const countByDay = (times: readonly number[], now: number, days: number):
   });
 };
 
-const firstLine = (text: string): string => (text.split(/\r?\n/, 1)[0] ?? "").trim().slice(0, QUESTION_MAX);
-
-const latestRow = z.object({ taskId: z.string(), kind: z.string(), payload: z.unknown(), occurredAt: z.date() });
-const questionPayload = z.object({ message: z.string() });
-const setupPayload = z.object({ exitCode: z.number().int().nullable() });
-const toolPayload = z.object({ title: z.string() });
 const prData = z.object({ number: z.number().int(), reused: z.boolean().optional() });
 const stopData = z.object({ reason: z.string().optional() });
+const approvalData = z.object({ decision: z.enum(["allow_once", "allow_task", "deny"]) });
 
 export const homeRouter = router({
   /** Home, for the member: every section's rows and the right panel's figures. */
@@ -77,24 +85,11 @@ export const homeRouter = router({
     const ids: ProjectId[] = visible.map((project) => project.id);
     const nameOf = new Map(visible.map(({ row }) => [row.id, row.name] as const));
 
-    const [counts, waiting, prEntries, sessions, auditRows] = await Promise.all([
+    const [counts, prEntries, sessions, auditRows, needsYou] = await Promise.all([
       db.task.groupBy({
         by: ["projectId", "state"],
         where: { organizationId, projectId: { in: ids }, state: { in: ["queued", "preparing", "running", "needs_you"] } },
         _count: { _all: true },
-      }),
-      db.task.findMany({
-        where: { organizationId, projectId: { in: ids }, state: "needs_you" },
-        select: {
-          id: true,
-          ticketKey: true,
-          title: true,
-          projectId: true,
-          needsYouReason: true,
-          updatedAt: true,
-          needsYouItems: { where: { state: "open" }, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-          repos: { where: { prNumber: { not: null } }, orderBy: { createdAt: "asc" }, take: 1, select: { prNumber: true } },
-        },
       }),
       db.auditEntry.findMany({
         where: { organizationId, projectId: { in: ids }, action: "pr.opened", createdAt: { gte: weekAgo } },
@@ -108,8 +103,9 @@ export const homeRouter = router({
         where: { organizationId, action: { in: [...activityActions] }, OR: [{ projectId: null }, { projectId: { in: ids } }] },
         orderBy: { createdAt: "desc" },
         take: 40,
-        select: { id: true, projectId: true, action: true, entityId: true, data: true, createdAt: true },
+        select: { id: true, projectId: true, action: true, actorId: true, entityId: true, data: true, createdAt: true },
       }),
+      listOpenNeedsYou({ db }, ctx.scope, { projectIds: ids, limit: homeLimits.needsYou, now }),
     ]);
 
     const countOf = (projectId: string | null, states: readonly string[]): number =>
@@ -141,74 +137,6 @@ export const homeRouter = router({
     const opened = prEntries.filter((entry) => prData.safeParse(entry.data).data?.reused !== true);
     const prsOf = (projectId: string): number => opened.filter((entry) => entry.projectId === projectId).length;
 
-    // ---- needs you: what the agent asked or why it stopped, from the latest events ----
-    const waitingIds = waiting.map((task) => task.id);
-    const latest =
-      waitingIds.length === 0
-        ? []
-        : z.array(latestRow).parse(
-            await db.$queryRaw`
-              SELECT DISTINCT ON ("taskId", "kind") "taskId", "kind", "payload", "occurredAt" FROM "event"
-              WHERE "taskId" = ANY(${waitingIds}::text[]) AND "kind" = ANY(${["question.asked", "environment.setup_finished", "tool.called"]}::text[])
-              ORDER BY "taskId", "kind", "seq" DESC`,
-          );
-    const lastEvent = waitingIds.length === 0
-      ? []
-      : await db.event.groupBy({ by: ["taskId"], where: { taskId: { in: waitingIds } }, _max: { occurredAt: true } });
-    const latestOf = (taskId: string, kind: string) => latest.find((row) => row.taskId === taskId && row.kind === kind);
-
-    const detailOf = (task: (typeof waiting)[number]) => {
-      const reason = task.needsYouReason ?? "stalled";
-      switch (reason) {
-        case "question": {
-          const parsed = questionPayload.safeParse(latestOf(task.id, "question.asked")?.payload);
-          return { reason, question: parsed.success ? firstLine(parsed.data.message) : null };
-        }
-        case "approval": {
-          const parsed = toolPayload.safeParse(latestOf(task.id, "tool.called")?.payload);
-          return { reason, command: parsed.success ? parsed.data.title.slice(0, TITLE_MAX) : null };
-        }
-        case "draft_ready":
-          return { reason, prNumber: task.repos[0]?.prNumber ?? null };
-        case "setup_failed": {
-          const parsed = setupPayload.safeParse(latestOf(task.id, "environment.setup_finished")?.payload);
-          return { reason, exitCode: parsed.success ? parsed.data.exitCode : null };
-        }
-        case "stalled": {
-          const last = lastEvent.find((row) => row.taskId === task.id)?._max.occurredAt ?? task.updatedAt;
-          return { reason, minutes: Math.max(1, Math.round((now - last.getTime()) / 60_000)) };
-        }
-        case "plan":
-        case "no_changes":
-        case "spend_cap":
-        case "crashed":
-        case "ticket_closed":
-        case "round_cap":
-        case "waiting_for_reviewer":
-        case "environment_proposal":
-        // Milestone 2: needs-you items rather than task states, listed for completeness (ticket 06).
-        case "restore_conflict":
-        case "unstorable_event":
-        // Q133, ticket 44: the item names the files; the row says what it is.
-        case "files_outside_repos":
-          return { reason };
-        default:
-          return reason satisfies never;
-      }
-    };
-
-    const needsYou = waiting
-      .map((task) => ({
-        taskId: taskIdSchema.parse(task.id),
-        key: task.ticketKey ?? task.id.slice(0, 8),
-        title: task.title,
-        project: { id: projectIdSchema.parse(task.projectId), name: nameOf.get(task.projectId) ?? "" },
-        detail: detailOf(task),
-        /** Epoch ms: since when it has waited. */
-        since: (task.needsYouItems[0]?.createdAt ?? task.updatedAt).getTime(),
-      }))
-      .sort((a, b) => b.since - a.since);
-
     // ---- projects ----
     const projects = visible
       .map(({ row }) => ({
@@ -226,14 +154,32 @@ export const homeRouter = router({
     // ---- recent activity: the audit log's entries Home words, newest first ----
     const entries = auditRows.flatMap((row) => (isActivityAction(row.action) ? [{ ...row, action: row.action }] : []));
     const entityIds = (action: ActivityAction) => entries.flatMap((entry) => (entry.action === action && entry.entityId !== null ? [entry.entityId] : []));
-    const [activityTasks, activityRunners, activityProviders] = await Promise.all([
+    // An answered approval names the approval; the task it asked on is the one the line is about.
+    const answeredApprovals = await db.approval.findMany({ where: { organizationId, id: { in: entityIds("approval.answered") } }, select: { id: true, taskId: true } });
+    const approvalTask = new Map(answeredApprovals.map((approval) => [approval.id, approval.taskId] as const));
+    const actorIds = entries.flatMap((entry) => (entry.actorId === null ? [] : [entry.actorId]));
+    const [activityTasks, activityRunners, activityProviders, actors] = await Promise.all([
       db.task.findMany({
-        where: { organizationId, id: { in: [...entityIds("pr.opened"), ...entityIds("task.stopped")] } },
+        where: {
+          organizationId,
+          id: {
+            in: [
+              ...entityIds("pr.opened"),
+              ...entityIds("task.stopped"),
+              ...entityIds("plan.answered"),
+              ...entityIds("task.driver-changed"),
+              ...entityIds("pr.comment-accepted"),
+              ...answeredApprovals.map((approval) => approval.taskId),
+            ],
+          },
+        },
         select: { id: true, ticketKey: true, title: true },
       }),
       db.runner.findMany({ where: { organizationId, id: { in: entityIds("runner.registered") } }, select: { id: true, name: true, kind: true, pool: { select: { name: true } } } }),
       db.modelProvider.findMany({ where: { organizationId, id: { in: entityIds("provider.added") } }, select: { id: true, name: true } }),
+      db.member.findMany({ where: { organizationId, id: { in: actorIds } }, select: { id: true, user: { select: { name: true } } } }),
     ]);
+    const actorName = new Map(actors.map((actor) => [actor.id, actor.user.name] as const));
     const taskOf = new Map(activityTasks.map((task) => [task.id, task] as const));
     const runnerOf = new Map(activityRunners.map((runner) => [runner.id, runner] as const));
     const providerOf = new Map(activityProviders.map((provider) => [provider.id, provider] as const));
@@ -265,6 +211,31 @@ export const homeRouter = router({
         }
         case "github.connected":
           return { kind: entry.action };
+        case "approval.answered": {
+          const task = taskOf.get(approvalTask.get(id) ?? "");
+          if (task === undefined) return null;
+          return {
+            kind: entry.action,
+            decision: approvalData.safeParse(entry.data).data?.decision ?? null,
+            key: task.ticketKey ?? task.id.slice(0, 8),
+            title: task.title,
+            taskId: taskIdSchema.parse(task.id),
+            by: entry.actorId === null ? null : (actorName.get(entry.actorId) ?? null),
+          };
+        }
+        case "plan.answered":
+        case "task.driver-changed":
+        case "pr.comment-accepted": {
+          const task = taskOf.get(id);
+          if (task === undefined) return null;
+          return {
+            kind: entry.action,
+            key: task.ticketKey ?? task.id.slice(0, 8),
+            title: task.title,
+            taskId: taskIdSchema.parse(task.id),
+            by: entry.actorId === null ? null : (actorName.get(entry.actorId) ?? null),
+          };
+        }
         default:
           return entry.action satisfies never;
       }
@@ -299,7 +270,8 @@ export const homeRouter = router({
     const prDays = countByDay(opened.map((entry) => entry.createdAt.getTime()), now, 7);
     return {
       summary: { projects: visible.length, running, queued, prsToday: prDays.at(-1)?.count ?? 0 },
-      needsYou: { total: needsYou.length, rows: needsYou.slice(0, homeLimits.needsYou) },
+      /** The open items the member is the audience of or can answer, newest first (ticket 36). */
+      needsYou: { total: needsYou.total, rows: needsYou.rows },
       projects: { total: projects.length, rows: projects.slice(0, homeLimits.projects) },
       activity,
       prsOpened: { total: opened.length, days: prDays },
@@ -314,4 +286,34 @@ export const homeRouter = router({
       })),
     };
   }),
+
+  /**
+   * "Open all" (ticket 36): the member's whole needs-you list, newest first, a page at a time. The
+   * same rows Home shows five of, with what an inline answer needs; a project the member can't open
+   * contributes nothing.
+   */
+  needsYou: memberProcedure
+    .input(z.strictObject({ cursor: z.string().max(200).optional(), limit: z.number().int().min(1).max(50).default(20) }))
+    .query(async ({ ctx, input }) => {
+      const projectIds = (await boardProjectIds(ctx.deps.db, ctx.scope, undefined)) ?? [];
+      return listOpenNeedsYou({ db: ctx.deps.db }, ctx.scope, { projectIds, limit: input.limit, cursor: input.cursor, now: Date.now() });
+    }),
+
+  /**
+   * The board (ticket 36; home-board.md): the organization's tasks the member can open as five
+   * columns by lifecycle state, each with its full total, its first page of cards and a cursor.
+   * `column` and `cursor` ask for one column's next page; `projectId` narrows to one project.
+   */
+  board: memberProcedure
+    .input(z.strictObject({ projectId: projectIdSchema.optional(), column: boardColumnSchema.optional(), cursor: z.string().max(200).optional() }))
+    .query(async ({ ctx, input }) => {
+      const projectIds = await boardProjectIds(ctx.deps.db, ctx.scope, input.projectId);
+      if (projectIds === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No such project" });
+      }
+      const now = Date.now();
+      const columns = input.column === undefined ? boardColumns : ([input.column] as const);
+      const pages = await Promise.all(columns.map((column) => loadBoardColumn({ db: ctx.deps.db }, ctx.scope, { column, projectIds, cursor: column === input.column ? input.cursor : undefined, now })));
+      return { columns: pages, finishedWindowDays: FINISHED_WINDOW_DAYS };
+    }),
 });
