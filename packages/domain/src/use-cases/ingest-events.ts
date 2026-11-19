@@ -541,6 +541,7 @@ const applyEffects = async (
       case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
+      case "effort.changed":
         // Stored for the task page; nothing else moves.
         break;
       default:

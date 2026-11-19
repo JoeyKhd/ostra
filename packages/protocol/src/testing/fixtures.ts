@@ -9,6 +9,7 @@ import {
   clientMessageIdSchema,
   commandIdSchema,
   diffCommentIdSchema,
+  effortChangeIdSchema,
   memberIdSchema,
   modelIdSchema,
   noteIdSchema,
@@ -31,6 +32,7 @@ import {
   turnIdSchema,
   uploadIdSchema,
 } from "../ids.ts";
+import type { EffortLevel, ReasoningControls } from "../agent/effort.ts";
 import type { ApprovalRule, TaskRule } from "../agent/rules.ts";
 import type { MemoryIndexEntry, MemoryNote, MemoryProposalInput } from "../memory/notes.ts";
 import type { TaskEvent, TaskEventKind, TaskEventOf } from "../events/agent-events.ts";
@@ -95,6 +97,7 @@ export const fixtureIds = {
   proposal: proposalIdSchema.parse("0196f1a0-0000-7000-8000-00000000001d"),
   budget: budgetIdSchema.parse("0196f1a0-0000-7000-8000-00000000001e"),
   secondRepo: repoIdSchema.parse("0196f1a0-0000-7000-8000-00000000001f"),
+  effortChange: effortChangeIdSchema.parse("0196f1a0-0000-7000-8000-000000000020"),
 } as const;
 
 const ids = fixtureIds;
@@ -343,6 +346,7 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     prNumber: 7,
     related: [{ repoId: ids.secondRepo, prNumber: 3 }],
   },
+  "effort.changed": { kind: "effort.changed", from: "default", to: "high", memberId: ids.member },
 };
 
 /**
@@ -532,6 +536,13 @@ export const commandFixtures: { readonly [K in CommandKind]: Extract<Command, { 
         inputsHash: fixtureDigests.sha256,
       },
     },
+  },
+  // Minor 3 (milestone 4).
+  "set-effort": {
+    ...commandEnvelope,
+    seq: 15,
+    kind: "set-effort",
+    body: { sessionId: ids.session, level: "high", changeId: ids.effortChange },
   },
 };
 
@@ -798,3 +809,55 @@ export const memoryProposalRefusalFixtures = {
   "limit-reached": { code: "limit-reached" },
   invalid: { code: "invalid" },
 } as const satisfies { readonly [K in MemoryProposalRefusal["code"]]: Extract<MemoryProposalRefusal, { code: K }> };
+
+// ---------- reasoning effort (F-137, ADR 0066) ----------
+
+/** Reasoning controls as the catalog lists them (research `opencode-reasoning-effort.md`, section 2.2). */
+export const reasoningControlsFixtures = {
+  none: { supported: false },
+  noControl: { supported: true },
+  toggle: { supported: true, toggle: true },
+  budget: { supported: true, budget: { min: 1_024 } },
+  /** `anthropic/claude-sonnet-5`. */
+  toggleAndEffort: { supported: true, toggle: true, effort: ["low", "medium", "high", "xhigh", "max"] },
+  /** `openai/gpt-5.5`. */
+  effort: { supported: true, effort: ["none", "low", "medium", "high", "xhigh"] },
+  /** `openai/gpt-5.2-pro`. */
+  effortNoLow: { supported: true, effort: ["medium", "high", "xhigh"] },
+} as const satisfies Readonly<Record<string, ReasoningControls>>;
+
+/** The events whose shape grew in minor 3, with every new field set. */
+export const minor3FieldFixtures = {
+  "turn.started": {
+    kind: "turn.started",
+    turnId: ids.turn,
+    mode: "build",
+    effort: "high",
+    adjustedFrom: "medium",
+  },
+  "usage.recorded": {
+    kind: "usage.recorded",
+    providerId: ids.provider,
+    modelId: ids.model,
+    inputTokens: 1_200,
+    outputTokens: 800,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    estimated: false,
+    reasoningTokens: 500,
+  },
+} as const satisfies Readonly<Record<string, TaskEvent>>;
+
+/** A level a task runs at, other than `default`, so the spec needs minor 3. */
+export const effortFixtureLevel: EffortLevel = "high";
+
+/** A spec at minor 3 with a reasoning level, the model's controls and its real limits. */
+export const taskSpecEffortFixture: TaskSpec = {
+  ...taskSpecMinor2Fixture,
+  agent: {
+    ...taskSpecMinor2Fixture.agent,
+    effort: effortFixtureLevel,
+    reasoning: reasoningControlsFixtures.effortNoLow,
+    limits: { contextWindow: 1_000_000, maxOutputTokens: 128_000 },
+  },
+};

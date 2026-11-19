@@ -814,6 +814,7 @@ export const foldTaskEvents = (
       case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
+      case "effort.changed":
         // Protocol minor 3. No row until the milestone 4 task page draws them.
         break;
       case "session.config_changed":

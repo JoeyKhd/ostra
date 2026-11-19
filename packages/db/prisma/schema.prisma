@@ -520,6 +520,11 @@ model Model {
   /// Milestone 4 (F-037, ADR 0055): where the prices came from, and when they last changed.
   priceSource            PriceSource?
   priceChangedAt         DateTime?
+  /// Milestone 4 (F-137, ADR 0066): the model's reasoning controls, in models.dev's v2 shape as
+  /// `@ostra/protocol`'s `reasoningControlsSchema` parses it. The catalog sync writes
+  /// `catalogReasoning` and never `adminReasoning`, an admin's, which wins over it.
+  catalogReasoning       Json?
+  adminReasoning         Json?
   /// Whether the endpoint still lists it.
   listed             Boolean       @default(true)
   createdAt          DateTime      @default(now())
@@ -680,6 +685,8 @@ model AgentProfile {
   /// name, so a rollback works; nothing new reads it, and a later release drops it.
   modelCatalogId  String?
   modelCustomName String?
+  /// F-137 (ADR 0066): how much the model reasons. A new task copies it.
+  effort         EffortLevel   @default(default)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1226,6 +1233,9 @@ model Task {
   agentProfile      AgentProfile?   @relation(fields: [agentProfileId, organizationId], references: [id, organizationId], onDelete: NoAction)
   /// Plan first's progress (F-063): `none` until a plan is proposed.
   planState         PlanState       @default(none)
+  // ---- milestone 4 ----
+  /// F-137 (ADR 0066): the task's reasoning level, copied from the profile, changed by the driver.
+  effort            EffortLevel     @default(default)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1443,6 +1453,8 @@ model Session {
   outputTokens       Int             @default(0)
   cacheReadTokens    Int             @default(0)
   cacheWriteTokens   Int             @default(0)
+  /// Milestone 4 (F-137): the reasoning tokens, a part of `outputTokens`.
+  reasoningTokens    Int             @default(0)
   /// Milestone 2 (ADR 0039): the last session archive uploaded, and the turn it followed. No
   /// foreign key: retention may delete the blob, and the next reopen then uses the template.
   archiveBlobId      String?
@@ -1502,6 +1514,13 @@ model Turn {
   estimated        Boolean @default(false)
   /// The agent's own time in the turn, in ms.
   agentMs          Int?
+  // ---- milestone 4 (F-137, ADR 0066) ----
+  /// The level the turn ran at, and the level asked for when the clamp changed it. `null` for a
+  /// turn before this release.
+  effort             EffortLevel?
+  effortAdjustedFrom EffortLevel?
+  /// The reasoning tokens the endpoint reported: a part of `outputTokens`.
+  reasoningTokens    Int          @default(0)
 
   @@unique([sessionId, ordinal])
   @@index([taskId, startSeq])
@@ -2242,6 +2261,22 @@ enum CommandKind {
   plan_answer
   /// Protocol minor 2: build a project's snapshot on a `docker` runner (milestone 3).
   snapshot_build
+  /// Protocol minor 3: the driver's new reasoning level for the session (milestone 4, F-137).
+  set_effort
+}
+
+/// A reasoning level (F-137, ADR 0066): `@ostra/protocol`'s `effortLevelSchema`. `default`
+/// sends nothing; `none` to `max` are models.dev's effort values; `on` is a toggle's.
+enum EffortLevel {
+  default
+  none
+  minimal
+  low
+  medium
+  high
+  xhigh
+  max
+  on
 }
 
 enum CommandResult {

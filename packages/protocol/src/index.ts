@@ -11,6 +11,7 @@ export * from "./events/message-deliveries.ts";
 
 export * from "./agent/rules.ts";
 export * from "./agent/prompts.ts";
+export * from "./agent/effort.ts";
 
 export * from "./memory/notes.ts";
 

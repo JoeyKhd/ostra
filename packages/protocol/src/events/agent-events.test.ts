@@ -16,8 +16,8 @@ import { typedToolSchemas } from "./tools.ts";
 const fixtures = Object.values(eventFixtures);
 
 describe("the event union", () => {
-  it("has the 29 kinds of spike 7, milestone 1's 9, minor 1's 4, minor 2's 11 and minor 3's 6", () => {
-    expect(taskEventKinds).toHaveLength(59);
+  it("has the 29 kinds of spike 7, milestone 1's 9, minor 1's 4, minor 2's 11 and minor 3's 7", () => {
+    expect(taskEventKinds).toHaveLength(60);
     for (const kind of [
       "environment.setup_started",
       "environment.setup_output",

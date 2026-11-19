@@ -47,6 +47,10 @@ export type AgentProfileId = z.infer<typeof agentProfileIdSchema>;
 export const noteIdSchema = idBase.brand<"NoteId">();
 export type NoteId = z.infer<typeof noteIdSchema>;
 
+/** The ID of a change of a task's reasoning level (F-137): the runner applies each once. */
+export const effortChangeIdSchema = idBase.brand<"EffortChangeId">();
+export type EffortChangeId = z.infer<typeof effortChangeIdSchema>;
+
 /** The ID of a budget. */
 export const budgetIdSchema = idBase.brand<"BudgetId">();
 export type BudgetId = z.infer<typeof budgetIdSchema>;

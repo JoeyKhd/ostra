@@ -67,9 +67,17 @@ const addedKinds = [
   "turn.released",
   "review.check_updated",
   "pr.related_updated",
+  "effort.changed",
 ] as const satisfies readonly TaskEventKind[];
 
-const serverOnlyAdded = ["memory.proposed", "turn.held", "turn.released", "review.check_updated", "pr.related_updated"] as const;
+const serverOnlyAdded = [
+  "memory.proposed",
+  "turn.held",
+  "turn.released",
+  "review.check_updated",
+  "pr.related_updated",
+  "effort.changed",
+] as const;
 
 const eventsFrame = (event: TaskEvent): UpFrame => ({
   type: "events",
@@ -88,7 +96,7 @@ describe("the version", () => {
     // A minor-3 runner against a minor-2 server speaks minor 2.
     expect(negotiate(2, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 2 });
     expect(upFrameCodec.minors).toEqual([0, 1, 2, 3]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2]);
+    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3]);
   });
 
   it("names the working values", () => {
@@ -105,7 +113,7 @@ describe("the version", () => {
 });
 
 describe("minor 3's events", () => {
-  it("adds six kinds, each with a fixture, none readable below minor 3", () => {
+  it("adds seven kinds, each with a fixture, none readable below minor 3", () => {
     expect([...minor3EventKinds].sort()).toEqual([...addedKinds].sort());
     for (const kind of addedKinds) {
       expect(taskEventKinds).toContain(kind);
@@ -160,7 +168,7 @@ describe("minor 3's events", () => {
     ]);
   });
 
-  it("the server-only set holds the five new server kinds, and a runner's batch with one is refused", () => {
+  it("the server-only set holds the six new server kinds, and a runner's batch with one is refused", () => {
     for (const kind of serverOnlyAdded) {
       expect(serverOnlyKinds.has(kind)).toBe(true);
       const item = { sessionId: ids.session, sessionSeq: 1, leaseEpoch: 1, at: 1, event: eventFixtures[kind] };

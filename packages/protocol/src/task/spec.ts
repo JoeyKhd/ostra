@@ -28,6 +28,7 @@ import {
   serviceNameSchema,
   taskKindSchema,
 } from "../common.ts";
+import { effortLevelSchema, reasoningControlsSchema } from "../agent/effort.ts";
 import { approvalRulesSchema, taskRulesSchema } from "../agent/rules.ts";
 import { ticketFileNameSchema, turnModeSchema } from "../events/agent-events.ts";
 import { blobRefSchema, contentTypeSchema } from "../runner/blobs.ts";
@@ -174,13 +175,29 @@ export const taskSpecAgentSchemaV2 = taskSpecAgentSchemaV1.extend({
   planFirst: z.boolean().optional(),
 });
 
-/** The agent section at the current minor (3): minor 2's, with the profile's closing turn. */
+/** A model's context window and output limit, in tokens, `null` when unknown (F-137, ADR 0066). */
+export const taskSpecModelLimitsSchema = z.strictObject({
+  contextWindow: z.number().int().positive().nullable(),
+  maxOutputTokens: z.number().int().positive().nullable(),
+});
+export type TaskSpecModelLimits = z.infer<typeof taskSpecModelLimitsSchema>;
+
+/**
+ * The agent section at the current minor (3): minor 2's, with the profile's closing turn, and the
+ * task's reasoning level with its model's controls and limits.
+ */
 export const taskSpecAgentSchema = taskSpecAgentSchemaV2.extend({
   /**
    * Minor 3: the profile's closing turn (F-111, ADR 0044). After the task's last turn the runner
    * runs one more, asking the agent to propose what the next task should know. Missing means off.
    */
   closingTurn: z.boolean().optional(),
+  /** Minor 3: the task's reasoning level, clamped to its model's (F-137, ADR 0066). Missing means `default`. */
+  effort: effortLevelSchema.optional(),
+  /** Minor 3: the model's effective reasoning controls, for the agent's config. */
+  reasoning: reasoningControlsSchema.optional(),
+  /** Minor 3: the model's real limits. Missing, or both `null`, keeps the agent's fixed ones. */
+  limits: taskSpecModelLimitsSchema.optional(),
 });
 export type TaskSpecAgent = z.infer<typeof taskSpecAgentSchema>;
 
@@ -493,8 +510,9 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
 
 /**
  * The spec in the shape a runner at `minor` reads: below minor 3, minor 3's fields are dropped
- * (the memory section, the closing turn and each repo's git identity: core has folded the memory
- * block into `agent.instructions` for such a runner); below minor 2, minor 2's; below minor 1,
+ * (the memory section, the closing turn, the reasoning level with the model's controls and limits,
+ * and each repo's git identity: core has folded the memory block into `agent.instructions` for
+ * such a runner); below minor 2, minor 2's; below minor 1,
  * minor 1's. Core never dispatches a task that needs a minor to a runner below it
  * (`taskSpecNeedsMinor2`, `taskSpecNeedsMinor3`), so nothing it needs is lost.
  */
@@ -541,10 +559,12 @@ export const taskSpecNeedsMinor2 = (spec: TaskSpec): boolean =>
 
 /**
  * Whether a spec uses anything a runner below minor 3 can't do: repos whose commits need
- * different bots (F-136). Memory needs no minor 3, since a minor-2 runner gets it folded into its
- * instructions.
+ * different bots (F-136), or a reasoning level other than `default` (F-137, ADR 0066). Memory
+ * needs no minor 3, since a minor-2 runner gets it folded into its instructions; the model's
+ * controls and limits need none either, since a minor-2 runner keeps its fixed limits.
  */
 export const taskSpecNeedsMinor3 = (spec: TaskSpec): boolean =>
+  (spec.agent.effort ?? "default") !== "default" ||
   spec.repos.some(
     (repo) =>
       repo.gitIdentity !== undefined &&

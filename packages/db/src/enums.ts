@@ -7,6 +7,7 @@ import type {
   CheckStatus,
   CommandKind,
   CommandResult,
+  EffortLevel,
   MemoryKind,
   MemoryScope,
   MemoryUseVia,
@@ -28,6 +29,7 @@ import type {
   BoxReleaseReason as DbBoxReleaseReason,
   CommandKind as DbCommandKind,
   CommandResult as DbCommandResult,
+  EffortLevel as DbEffortLevel,
   HeldTurnOrigin as DbHeldTurnOrigin,
   MemoryKind as DbMemoryKind,
   MemoryScope as DbMemoryScope,
@@ -72,6 +74,7 @@ export const commandKindToDb = {
   "question-answer": "question_answer",
   "plan-answer": "plan_answer",
   "snapshot-build": "snapshot_build",
+  "set-effort": "set_effort",
 } as const satisfies Record<CommandKind, DbCommandKind>;
 export const commandKindFromDb = {
   dispatch: "dispatch",
@@ -85,6 +88,7 @@ export const commandKindFromDb = {
   question_answer: "question-answer",
   plan_answer: "plan-answer",
   snapshot_build: "snapshot-build",
+  set_effort: "set-effort",
 } as const satisfies Record<DbCommandKind, CommandKind>;
 
 export const commandResultToDb = {
@@ -226,6 +230,20 @@ export const turnOriginFromDb = {
   closing_turn: "closing-turn",
   automatic_round: "automatic-round",
 } as const satisfies Record<DbHeldTurnOrigin, TurnOrigin>;
+
+/** A reasoning level (F-137, ADR 0066), spelled the same in the database and the protocol. Checked both ways. */
+export const effortLevelFromDb = {
+  default: "default",
+  none: "none",
+  minimal: "minimal",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+  max: "max",
+  on: "on",
+} as const satisfies Record<DbEffortLevel, EffortLevel>;
+export const effortLevelToDb = effortLevelFromDb satisfies Record<EffortLevel, DbEffortLevel>;
 
 // The memory and review vocabularies (F-104, F-109, F-110, F-111), spelled the same in the
 // database and the protocol. Each map is checked both ways.

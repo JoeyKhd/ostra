@@ -3,6 +3,7 @@ import type { AgentProfileId, TaskKind } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { DbOrTx } from "@ostra/db";
+import { effortLevelFromDb, effortLevelToDb } from "@ostra/db";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
@@ -234,6 +235,8 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
       planFirst: input.planFirst,
       access: input.access.kind,
       mcpServers: servers.data,
+      // F-137: the level, kept when the save leaves it out.
+      effort: effortLevelToDb[input.effort ?? (existing === null ? "default" : effortLevelFromDb[existing.effort])],
     };
     const saved =
       existing === null
@@ -274,6 +277,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
               planFirst: existing.planFirst,
               access: existing.access,
               mcpServers: existing.mcpServers,
+              effort: existing.effort,
               skills: skillsOf(existing.skills),
               members: existing.members.map((member) => member.memberId).sort(),
             },
@@ -298,6 +302,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
         mcpServers: servers.data.length,
         access: input.access.kind,
         planFirst: input.planFirst,
+        effort: data.effort,
         changed: changed.join(","),
       },
     });

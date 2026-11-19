@@ -24,6 +24,7 @@ import {
   commandSchema,
   commandSchemaV0,
   commandSchemaV1,
+  commandSchemaV2,
   encodeCommandForMinor,
 } from "./commands.ts";
 import { runnerLimits } from "./limits.ts";
@@ -303,11 +304,20 @@ export const evictSchema = z.strictObject({
 });
 export type Evict = z.infer<typeof evictSchema>;
 
-const downFrameV2 = z.discriminatedUnion("type", [
+const downFrameV3 = z.discriminatedUnion("type", [
   welcomeSchema,
   ackSchema,
   creditSchema,
   commandSchema,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+const downFrameV2 = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV2,
   goawaySchema,
   errorFrameSchema,
   evictSchema,
@@ -330,7 +340,7 @@ const downFrameV0 = z.discriminatedUnion("type", [
   errorFrameSchema,
   evictSchema,
 ]);
-export type DownFrame = z.infer<typeof downFrameV2>;
+export type DownFrame = z.infer<typeof downFrameV3>;
 export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
@@ -375,12 +385,14 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
 /**
  * Down frames, one codec per kept minor. Minor 1 added the `release` command; minor 2 added three
  * commands and two command fields, which a lower minor's encode drops and its decode refuses.
- * Minor 3 added no command, so minor 2's codec serves it.
+ * Minor 3 added `set-effort` (F-137), which minor 2's decode refuses and the outbox never sends
+ * it (`commandKindSupportedAt`).
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
   { minor: 1, decode: downFrameV1, encode: encodeDownFrameFor(1) },
-  { minor: 2, decode: downFrameV2, encode: (frame) => frame },
+  { minor: 2, decode: downFrameV2, encode: encodeDownFrameFor(2) },
+  { minor: 3, decode: downFrameV3, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

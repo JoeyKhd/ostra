@@ -5,6 +5,7 @@ import {
   boxIdSchema,
   clientMessageIdSchema,
   commandIdSchema,
+  effortChangeIdSchema,
   projectIdSchema,
   questionIdSchema,
   repoIdSchema,
@@ -20,6 +21,7 @@ import {
   leaseEpochSchema,
   repoFullNameSchema,
 } from "../common.ts";
+import { effortLevelSchema } from "../agent/effort.ts";
 import { taskRuleSchema } from "../agent/rules.ts";
 import {
   approvalDecisionSchema,
@@ -173,6 +175,17 @@ export const snapshotBuildBodySchema = z.strictObject({
   environment: snapshotBuildEnvironmentSchema,
 });
 
+/**
+ * `set-effort` (minor 3): the driver's new reasoning level for the session (F-137, ADR 0066). The
+ * runner applies it when the running turn has ended, before the next prompt, or at the next
+ * session start, once per `changeId`, clamped to the values the agent advertises.
+ */
+export const setEffortBodySchema = z.strictObject({
+  sessionId: sessionIdSchema,
+  level: effortLevelSchema,
+  changeId: effortChangeIdSchema,
+});
+
 /** `drain`: take no new tasks; let the running ones finish. */
 export const drainBodySchema = z.strictObject({});
 
@@ -215,6 +228,7 @@ export const commandBodySchemas = {
   "question-answer": questionAnswerBodySchema,
   "plan-answer": planAnswerBodySchema,
   "snapshot-build": snapshotBuildBodySchema,
+  "set-effort": setEffortBodySchema,
 } as const;
 
 export const commandKindSchema = z.enum([
@@ -229,6 +243,7 @@ export const commandKindSchema = z.enum([
   "question-answer",
   "plan-answer",
   "snapshot-build",
+  "set-effort",
 ]);
 export type CommandKind = z.infer<typeof commandKindSchema>;
 export type CommandBody<K extends CommandKind> = z.infer<(typeof commandBodySchemas)[K]>;
@@ -236,6 +251,8 @@ export type CommandBody<K extends CommandKind> = z.infer<(typeof commandBodySche
 /** The lowest minor that carries a command kind. The outbox never sends one to a lower peer. */
 export const commandKindMinMinor = (kind: CommandKind): number => {
   switch (kind) {
+    case "set-effort":
+      return 3;
     case "question-answer":
     case "plan-answer":
     case "snapshot-build":
@@ -279,8 +296,7 @@ const steerV1 = z.strictObject({ ...envelope, kind: z.literal("steer"), body: st
 const approvalAnswerV1 = z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchemaV1 });
 const release = z.strictObject({ ...envelope, kind: z.literal("release"), body: releaseBodySchema });
 
-/** Commands at the current minor (2). */
-export const commandSchema = z.discriminatedUnion("kind", [
+const minor2CommandOptions = [
   ...sharedCommandOptions,
   z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchema }),
@@ -288,9 +304,18 @@ export const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...envelope, kind: z.literal("question-answer"), body: questionAnswerBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("plan-answer"), body: planAnswerBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema }),
+] as const;
+
+/** Commands at the current minor (3): minor 2's, with `set-effort`. */
+export const commandSchema = z.discriminatedUnion("kind", [
+  ...minor2CommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("set-effort"), body: setEffortBodySchema }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
+
+/** Minor 2's commands, kept for the down codec: no `set-effort`. */
+export const commandSchemaV2 = z.discriminatedUnion("kind", [...minor2CommandOptions]);
 
 /** Minor 1's commands, kept for the down codec: no minor-2 kind, and no minor-2 field. */
 export const commandSchemaV1 = z.discriminatedUnion("kind", [...sharedCommandOptions, steerV1, approvalAnswerV1, release]);
@@ -300,7 +325,8 @@ export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOpt
 
 /**
  * A command as a peer at `minor` reads it: below minor 2, `steer` loses `intent` and
- * `approval-answer` loses `reason` and `taskRule`. A kind the minor lacks is returned as it is,
+ * `approval-answer` loses `reason` and `taskRule`. Minor 3 added a kind only (`set-effort`), no
+ * field. A kind the minor lacks is returned as it is,
  * and that peer refuses it: the outbox checks `commandKindSupportedAt` first.
  */
 export const encodeCommandForMinor = (command: Command, minor: number): Command => {

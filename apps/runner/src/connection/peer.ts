@@ -575,6 +575,8 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         return handlers["plan-answer"](command);
       case "snapshot-build":
         return handlers["snapshot-build"](command);
+      case "set-effort":
+        return handlers["set-effort"](command);
       default:
         return command satisfies never;
     }

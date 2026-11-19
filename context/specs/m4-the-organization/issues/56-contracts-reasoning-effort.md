@@ -1,6 +1,6 @@
 # 56: Contracts: reasoning effort (protocol, DB and domain)
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: 01, 05, 06, 45
 Features: F-137
@@ -38,16 +38,18 @@ Spec: `../spec.md`, section 5.6; ADR 0066; `context/research/opencode-reasoning-
 
 ## Done when
 
-- [ ] `pnpm db:migrate` applies to an empty database and to one at ticket 45's head, and every existing profile and task reads `default` after it.
-- [ ] Tests named `it("F-137: ...")`:
+- [x] `pnpm db:migrate` applies to an empty database and to one at ticket 45's head, and every existing profile and task reads `default` after it.
+- [x] Tests named `it("F-137: ...")`:
   - the schemas refuse an unknown level, an unknown field in ostra's own shapes, and an effort list holding `default`
   - a minor-2 encoding of a spec and of `turn.started` drops the new fields; a `set-effort` is never encoded for a minor-2 peer
   - the clamp table: every level against no levels, a toggle, a budget (`high`, `max`), and each of the fifteen most common effort sets of the live catalog (research section 2.2), ties going up
   - `effectiveReasoning`'s order, and that a catalog refresh's value never replaces an admin's
   - `setTaskEffort` is refused for a member who isn't the driver, and a take-over racing it never lets the old driver's change land (the counter lock's race test, as F-024's)
   - every use case writes its audit entry, and a rollback leaves none
-- [ ] Nothing is renamed or dropped, and Prisma's generated types compile in every package.
-- [ ] The whole-repo checks pass (spec section 9): it changes the schema and the runner protocol.
-- [ ] Committed as `✨ add the reasoning effort contracts`.
+- [x] Nothing is renamed or dropped, and Prisma's generated types compile in every package.
+- [x] The whole-repo checks pass (spec section 9): it changes the schema and the runner protocol.
+- [x] Committed as `✨ add the reasoning effort contracts`.
 
 ## Comments
+
+- 2026-11-19: protocol minor 3, additive (no minor 4): `packages/protocol/src/agent/effort.ts` (`effortLevelSchema`, `EFFORT_SCALE`, `reasoningControlsSchema` and `clampEffort`, here rather than in the domain because the runner and the adapters apply it too and can't import the domain, Q190), the spec's `agent.effort`, `agent.reasoning` and `agent.limits` (dropped for a minor-2 runner; a level other than `default` makes `taskSpecNeedsMinor3` true), `set-effort` with `EffortChangeId` (minor 3 only, with minor 2's command codec kept), `turn.started.effort` and `adjustedFrom`, `usage.recorded.reasoningTokens` (both dropped below minor 3), and the server-only `effort.changed`; fixtures for each in `@ostra/protocol/testing`, and the fifteen most common effort sets recounted from models.dev's live catalog for the clamp's table. Migration `20261121100000_reasoning_effort`, after ticket 45's: `EffortLevel`, `CommandKind.set_effort`, the model's two controls, the profile's, the task's and the turn's levels, and the reasoning tokens on `Turn` and `Session`; the mappers parse the controls with the protocol's schema. Domain: `effectiveReasoning`, `canSetTaskEffort`, `setModelReasoning` and `setTaskEffort` (under the task's lock, with `effort.changed`, the audit entry and a `set-effort` to a minor-3 runner holding a going session), and the profile save's optional `effort` in its row and its audit entry. Until ticket 60 the runner refuses `set-effort` (`not-supported`), and the task page draws no row for `effort.changed` until ticket 63. Tests: `packages/protocol/src/agent/effort.test.ts`, `packages/db/src/schema-effort.test.ts`, `packages/domain/src/effort/reasoning.test.ts`, `apps/core/src/effort/effort-contracts.test.ts`, each with break-its; proof rows in `context/proof/F-137.md` (F-137 is `building`). Not done here: ticket 09's isolation list and access matrix don't exist yet, and no new model was added, so ticket 09 covers the new columns when it builds them; ticket 59 checks a task's level against its model's. Commit: `✨ add the reasoning effort contracts`.

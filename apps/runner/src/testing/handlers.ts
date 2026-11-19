@@ -15,4 +15,5 @@ export const rejectAllHandlers: CommandHandlers = {
   "question-answer": reject,
   "plan-answer": reject,
   "snapshot-build": reject,
+  "set-effort": reject,
 };

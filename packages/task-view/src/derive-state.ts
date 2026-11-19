@@ -235,6 +235,7 @@ export const deriveTaskState = (
       case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
+      case "effort.changed":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

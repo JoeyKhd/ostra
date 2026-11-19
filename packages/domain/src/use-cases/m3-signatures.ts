@@ -1,6 +1,7 @@
 import type { Db, Tx } from "@ostra/db";
 import type {
   AgentProfileId,
+  EffortLevel,
   ApprovalDecision,
   ApprovalId,
   ApprovalRule,
@@ -96,6 +97,11 @@ export type SaveAgentProfileInput = {
   /** A new header value is stored as a secret here, and only its reference kept. */
   readonly mcpServers: readonly ProfileMcpServer[];
   readonly skills: readonly { readonly name: string; readonly body: string; readonly files: readonly { readonly path: string; readonly blobId: BlobId }[] }[];
+  /**
+   * Milestone 4 (F-137, ADR 0066): how much the model reasons. Absent keeps the profile's level
+   * (`default` for a new one). A new task copies it; an edit changes new tasks only.
+   */
+  readonly effort?: EffortLevel;
 };
 export type SaveAgentProfile = (
   deps: M3Deps,

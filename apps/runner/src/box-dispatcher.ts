@@ -382,6 +382,7 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     // Protocol minor 2. A box's answers go to its sidecar, as above.
     "question-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "plan-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "set-effort": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     // Ticket 14 (F-051): accepted at once, built in turn behind the others, its result a runner event.
     "snapshot-build": (command) => {
       const snapshots = options.snapshots;

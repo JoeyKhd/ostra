@@ -170,3 +170,19 @@ export const canEditProviderLists = (scope: MemberScope, organizationId: Organiz
 /** Anyone who can open the project sees its providers by name and the model each serves, never a token. */
 export const canSeeProjectProviders = (scope: MemberScope, project: ProjectAccessInfo): boolean =>
   requireProjectAccess(scope, project, "read").ok;
+
+// ---------- milestone 4: reasoning effort (F-137, ADR 0066) ----------
+
+/** What `canSetTaskEffort` needs to know about a task. */
+export type TaskDriverInfo = {
+  readonly organizationId: OrganizationId;
+  readonly driverMemberId: MemberId | null;
+};
+
+/**
+ * Who may change a task's reasoning level: its driver (F-024), as for a steer. Anyone else takes
+ * over first. The caller has checked the project's `read` access, and reads the driver under the
+ * task's counter lock.
+ */
+export const canSetTaskEffort = (scope: MemberScope, task: TaskDriverInfo): boolean =>
+  scope.organizationId === task.organizationId && task.driverMemberId !== null && task.driverMemberId === scope.memberId;

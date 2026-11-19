@@ -3,6 +3,7 @@ import {
   agentProfileSkillIdSchema,
   approvalIdSchema,
   approvalRulesSchema,
+  reasoningControlsSchema,
   blobIdSchema,
   checkIdSchema,
   checkRunIdSchema,
@@ -64,6 +65,7 @@ import {
   boxReleaseReasonFromDb,
   checkRunStatusFromDb,
   commandKindFromDb,
+  effortLevelFromDb,
   sessionLimitFromDb,
   turnOriginFromDb,
 } from "./enums.ts";
@@ -171,11 +173,17 @@ export const mapModelProvider = (row: ModelProvider) => ({
   authScheme: authSchemeFromDb[row.authScheme],
 });
 
+/** A model row's reasoning controls (F-137): `null` when not stated. */
+const reasoningControls = reasoningControlsSchema.nullable();
+
 export const mapModel = (row: Model) => ({
   ...row,
   id: modelIdSchema.parse(row.id),
   organizationId: organizationIdSchema.parse(row.organizationId),
   providerId: providerIdSchema.parse(row.providerId),
+  // Milestone 4 (F-137, ADR 0066): the catalog's controls and an admin's, as the protocol parses them.
+  catalogReasoning: reasoningControls.parse(row.catalogReasoning),
+  adminReasoning: reasoningControls.parse(row.adminReasoning),
 });
 
 export const mapRunnerPool = (row: RunnerPool) => ({
@@ -207,6 +215,7 @@ export const mapAgentProfile = (row: AgentProfile) => ({
   modelId: optional(modelIdSchema, row.modelId),
   // Milestone 3: the rules, as the protocol's schema parses them (ADR 0049).
   approvalRules: approvalRulesSchema.parse(row.approvalRules),
+  effort: effortLevelFromDb[row.effort],
 });
 
 export const mapProject = (row: Project) => ({
@@ -244,6 +253,7 @@ export const mapEnvironmentEntry = (row: EnvironmentEntry) => ({
 
 export const mapTask = (row: Task) => ({
   ...row,
+  effort: effortLevelFromDb[row.effort],
   id: taskIdSchema.parse(row.id),
   organizationId: organizationIdSchema.parse(row.organizationId),
   projectId: projectIdSchema.parse(row.projectId),
@@ -310,6 +320,8 @@ export const mapSession = (row: Session) => ({
 
 export const mapTurn = (row: Turn) => ({
   ...row,
+  effort: row.effort === null ? null : effortLevelFromDb[row.effort],
+  effortAdjustedFrom: row.effortAdjustedFrom === null ? null : effortLevelFromDb[row.effortAdjustedFrom],
   id: turnIdSchema.parse(row.id),
   organizationId: organizationIdSchema.parse(row.organizationId),
   projectId: projectIdSchema.parse(row.projectId),

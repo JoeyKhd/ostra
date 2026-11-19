@@ -36,6 +36,7 @@ import {
   sessionSeqSchema,
   taskSeqSchema,
 } from "../common.ts";
+import { effortLevelSchema } from "../agent/effort.ts";
 import { approvalSubjectSchema, taskRuleSchema } from "../agent/rules.ts";
 import { memoryNoteTitleSchema, memoryUseViaSchema } from "../memory/notes.ts";
 import { blobRefSchema } from "../runner/blobs.ts";
@@ -356,9 +357,17 @@ export type SavedCheck = z.infer<typeof savedCheckSchema>;
 
 const turnStartedV1 = z.strictObject({ kind: z.literal("turn.started"), turnId: turnIdSchema });
 
-const turnStarted = turnStartedV1.extend({
+const turnStartedV2 = turnStartedV1.extend({
   /** Minor 2: a plan turn or a build turn. Missing means `build`. */
   mode: turnModeSchema.optional(),
+});
+
+/** `turn.started` at the current minor (3): minor 2's, with the level the turn ran at (F-137). */
+const turnStarted = turnStartedV2.extend({
+  /** Minor 3: the reasoning level the turn ran at. Missing means `default`, or a turn before minor 3. */
+  effort: effortLevelSchema.optional(),
+  /** Minor 3: the level asked for, when the clamp changed it (ADR 0066). */
+  adjustedFrom: effortLevelSchema.optional(),
 });
 
 const approvalRequestedV1 = z.strictObject({
@@ -429,6 +438,25 @@ const setupFinished = setupFinishedV1.extend({
 const sessionSavedV2 = sessionSaved.extend({
   /** Minor 2: the checks run after the turn, in order, for the PR opener (ADR 0052). */
   checks: z.array(savedCheckSchema).max(runnerLimits.checksMax).optional(),
+});
+
+/** `usage.recorded` at minors 0 to 2 (F-089, ADR 0042, ADR 0036). */
+const usageRecordedV2 = z.strictObject({
+  kind: z.literal("usage.recorded"),
+  providerId: providerIdSchema,
+  modelId: modelIdSchema,
+  inputTokens: tokenCount,
+  outputTokens: tokenCount,
+  cacheReadTokens: tokenCount,
+  cacheWriteTokens: tokenCount,
+  /** True when the endpoint reported no usage and the key proxy estimated it. */
+  estimated: z.boolean(),
+});
+
+/** `usage.recorded` at the current minor (3): minor 2's, with the reasoning subset (F-137). */
+const usageRecorded = usageRecordedV2.extend({
+  /** Minor 3: the reasoning tokens, a part of `outputTokens`, where the endpoint reports them. Missing means 0. */
+  reasoningTokens: tokenCount.optional(),
 });
 
 // ---------- the events new in minor 2 ----------
@@ -600,6 +628,14 @@ const minor3NewEventOptions = [
     prNumber: prNumberSchema,
     related: z.array(relatedPullRequestSchema).max(runnerLimits.projectReposMax),
   }),
+  // ---- reasoning effort (F-137, ADR 0066), server-only ----
+  z.strictObject({
+    kind: z.literal("effort.changed"),
+    from: effortLevelSchema,
+    to: effortLevelSchema,
+    /** The driver who changed it. */
+    memberId: memberIdSchema,
+  }),
 ] as const;
 
 // ---------- the events every minor shares ----------
@@ -725,17 +761,7 @@ const sharedEventOptions = [
   }),
 
   // ---- milestone 1: usage (F-089, ADR 0042, ADR 0036) ----
-  z.strictObject({
-    kind: z.literal("usage.recorded"),
-    providerId: providerIdSchema,
-    modelId: modelIdSchema,
-    inputTokens: tokenCount,
-    outputTokens: tokenCount,
-    cacheReadTokens: tokenCount,
-    cacheWriteTokens: tokenCount,
-    /** True when the endpoint reported no usage and the key proxy estimated it. */
-    estimated: z.boolean(),
-  }),
+  // `usage.recorded` grew in minor 3: `usageRecorded` and `usageRecordedV2` above.
   z.strictObject({
     kind: z.literal("provider.rate_limited"),
     /** The key proxy saw the model provider answer with a rate limit (F-088, F-089). */
@@ -761,6 +787,7 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
   ticketFilesReadyV2,
   workspaceFilesOutsideRepos,
   turnStarted,
+  usageRecorded,
   approvalRequested,
   approvalAnswered,
   setupFinished,
@@ -781,7 +808,8 @@ export const taskEventSchemaV2 = z.discriminatedUnion("kind", [
   sessionLimitReached,
   ticketFilesReadyV2,
   workspaceFilesOutsideRepos,
-  turnStarted,
+  turnStartedV2,
+  usageRecordedV2,
   approvalRequested,
   approvalAnswered,
   setupFinished,
@@ -802,6 +830,7 @@ export const taskEventSchemaV1 = z.discriminatedUnion("kind", [
   ticketFilesReady,
   workspaceFilesOutsideRepos,
   turnStartedV1,
+  usageRecordedV2,
   approvalRequestedV1,
   approvalAnsweredV1,
   setupFinishedV1,
@@ -817,6 +846,7 @@ export const taskEventSchemaV0 = z.discriminatedUnion("kind", [
   sessionRestoredV0,
   sessionCrashedV0,
   turnStartedV1,
+  usageRecordedV2,
   approvalRequestedV1,
   approvalAnsweredV1,
   setupFinishedV1,
@@ -886,6 +916,21 @@ const sessionRestoredStripV1 = z.object(sessionRestored.shape);
 const ticketFilesReadyStripV1 = z.object(ticketFilesReady.shape);
 const setupFinishedStripV1 = z.object(setupFinishedV1.shape);
 
+// Minor 2's shapes of the events that grew in minor 3, as stripping objects.
+const turnStartedStripV2 = z.object(turnStartedV2.shape);
+const usageRecordedStripV2 = z.object(usageRecordedV2.shape);
+
+/** An event without the fields minor 3 added: what a minor-2 peer reads. */
+const dropMinor3Fields = (event: TaskEvent): TaskEvent => {
+  if (event.kind === "turn.started") {
+    return turnStartedStripV2.parse(event);
+  }
+  if (event.kind === "usage.recorded") {
+    return usageRecordedStripV2.parse(event);
+  }
+  return event;
+};
+
 /** An event without the fields minor 2 added: what a minor-1 peer reads. */
 const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
   if (event.kind === "user.message") {
@@ -917,14 +962,19 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
 
 /**
  * An event as a peer at `minor` reads it: below minor 2, the fields minor 2 added are dropped;
- * below minor 1, minor 1's too. Minor 3 added kinds only, no field to an existing one. A kind the minor lacks is returned as it is, and that peer
- * refuses it: senders check `eventKindSupportedAt` first.
+ * below minor 1, minor 1's too. Below minor 3, `turn.started` loses its level and
+ * `usage.recorded` its reasoning tokens (F-137). A kind the minor lacks is returned as it is, and
+ * that peer refuses it: senders check `eventKindSupportedAt` first.
  */
 export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
-  if (minor >= 2) {
+  if (minor >= 3) {
     return event;
   }
-  const v1 = dropMinor2Fields(event);
+  const v2 = dropMinor3Fields(event);
+  if (minor >= 2) {
+    return v2;
+  }
+  const v1 = dropMinor2Fields(v2);
   if (minor >= 1) {
     return v1;
   }
@@ -979,6 +1029,7 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "turn.released",
   "review.check_updated",
   "pr.related_updated",
+  "effort.changed",
 ]);
 
 // ---------- the read side ----------
