@@ -27,12 +27,12 @@ Spec: `../spec.md`, sections 2, 3 (step 2) and 4
 
 ## Done when
 
-- [ ] The contract test passes, and a race of two first sign-ups gives one admin.
-- [ ] Every procedure helper has a test that another organization's member gets `FORBIDDEN`.
-- [ ] The setup token and `BETTER_AUTH_SECRET` never appear in a log except the one setup line, which prints the token once at first start.
-- [ ] Their lines are in `docs/configuration.md`.
-- [ ] The whole-repo checks pass (spec section 9: auth).
-- [ ] Committed as `✨ add auth and the first admin`.
+- [x] The contract test passes, and a race of two first sign-ups gives one admin.
+- [x] Every procedure helper has a test that another organization's member gets `FORBIDDEN`.
+- [x] The setup token and `BETTER_AUTH_SECRET` never appear in a log except the one setup line, which prints the token once at first start.
+- [x] Their lines are in `docs/configuration.md`.
+- [x] The whole-repo checks pass (spec section 9: auth).
+- [x] Committed as `✨ add auth and the first admin`.
 
 ## Comments
 

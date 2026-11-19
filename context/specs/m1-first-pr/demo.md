@@ -66,7 +66,7 @@ The first runs failed. Each fix is its own commit on `main`:
 **Other milestone 1 work not done:**
 - Ticket 40: the manifest flow ("Create a new App") run in a browser. F-006 stays `building` until it is.
 - Ticket 34: the milestone 1 screen targets.
-- `pnpm e2e:m1` was run from an empty data folder in this checkout, not from a fresh clone.
+- `pnpm e2e:m1` from a fresh clone (2026-11-19) got through every step to a PR (#21) but failed 3 of its 12 checks, twice: no credential in the task's folders (1 file unreadable), the agent's environment allowlist (`NO_PROXY`, `OPENCODE_CLIENT` outside it) and token counts within 2% of OpenCode's own. Until they pass from a fresh clone, ticket 39's first and third boxes stay open. See ticket 39's comments.
 
 **Gaps found by the demo** (follow-ups, none blocks the demo):
 - **A batch the server can't store is resent forever.** When saving a frame fails, core closes the socket with 1011, and the runner reconnects and resends the same batch, with no limit. Such a batch needs to be refused once, visibly, or held aside.

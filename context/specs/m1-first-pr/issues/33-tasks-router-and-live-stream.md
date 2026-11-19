@@ -25,10 +25,10 @@ Spec: `../spec.md`, sections 3 (steps 7 and 8) and 4
 
 ## Done when
 
-- [ ] Tests: a task created by one member is visible to another member of the project and invisible to another organization; history pages by turn; a stream resumed with `Last-Event-ID` has no gap and no duplicate; live text appears and is replaced by its committed message; a revoked membership closes the stream.
-- [ ] A test with two web-process tailers on one database: both viewers get the same events in the same order.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the tasks router and live stream`.
+- [x] Tests: a task created by one member is visible to another member of the project and invisible to another organization; history pages by turn; a stream resumed with `Last-Event-ID` has no gap and no duplicate; live text appears and is replaced by its committed message; a revoked membership closes the stream.
+- [x] A test with two web-process tailers on one database: both viewers get the same events in the same order.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the tasks router and live stream`.
 
 ## Comments
 

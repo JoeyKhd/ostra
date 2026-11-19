@@ -21,10 +21,10 @@ Spec: `../spec.md`, sections 4 and 5.4
 
 ## Done when
 
-- [ ] Tests on the dev test database: a job enqueued in a rolled-back transaction doesn't exist; a duplicate key returns the first job; a delayed job survives a worker restart and can be cancelled; an `enqueue-only` instance runs no handler.
-- [ ] The lint rule fails a test file that imports `pg-boss` outside the package.
-- [ ] Package checks pass.
-- [ ] Committed as `✨ add the jobs package on pg-boss`.
+- [x] Tests on the dev test database: a job enqueued in a rolled-back transaction doesn't exist; a duplicate key returns the first job; a delayed job survives a worker restart and can be cancelled; an `enqueue-only` instance runs no handler.
+- [x] The lint rule fails a test file that imports `pg-boss` outside the package.
+- [x] Package checks pass.
+- [x] Committed as `✨ add the jobs package on pg-boss`.
 
 ## Comments
 

@@ -20,10 +20,10 @@ All admin-only, organization-scoped, with audit entries for each change.
 
 ## Done when
 
-- [ ] Tests against the stub models and the fake GitHub: each procedure works for an admin, is `FORBIDDEN` for a member and invisible to another organization; the manifest `state` can't be replayed from another session.
-- [ ] Gated live: `connectExisting` with App 5821041 lists the `ostra-test` installation and `test1`.
-- [ ] The whole-repo checks pass (spec section 9: credentials).
-- [ ] Committed as `✨ add provider and GitHub routers`.
+- [x] Tests against the stub models and the fake GitHub: each procedure works for an admin, is `FORBIDDEN` for a member and invisible to another organization; the manifest `state` can't be replayed from another session.
+- [x] Gated live: `connectExisting` with App 5821041 lists the `ostra-test` installation and `test1`.
+- [x] The whole-repo checks pass (spec section 9: credentials).
+- [x] Committed as `✨ add provider and GitHub routers`.
 
 ## Comments
 

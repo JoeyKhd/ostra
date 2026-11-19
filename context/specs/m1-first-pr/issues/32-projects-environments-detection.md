@@ -21,11 +21,11 @@ Spec: `../spec.md`, sections 2 and 3 (step 5)
 
 ## Done when
 
-- [ ] Detection has a test per file type above, and a fixture repo with several at once.
-- [ ] Gated live: detection on `ostra-test/test1` returns a draft, and its reasons name the files it read.
-- [ ] Routers: an admin creates a project on `test1` (fake GitHub), a member can't save its environment, another organization can't see it, and no router returns a secret's value.
-- [ ] The whole-repo checks pass (spec section 9: the schema's data, secrets).
-- [ ] Committed as `✨ add projects, environments and detection`.
+- [x] Detection has a test per file type above, and a fixture repo with several at once.
+- [x] Gated live: detection on `ostra-test/test1` returns a draft, and its reasons name the files it read.
+- [x] Routers: an admin creates a project on `test1` (fake GitHub), a member can't save its environment, another organization can't see it, and no router returns a secret's value.
+- [x] The whole-repo checks pass (spec section 9: the schema's data, secrets).
+- [x] Committed as `✨ add projects, environments and detection`.
 
 ## Comments
 

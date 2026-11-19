@@ -28,11 +28,11 @@ Spec: `../spec.md`, sections 1 and 2
 
 ## Done when
 
-- [ ] Unit tests pass on this machine. The live suite exists and skips with "no Docker on this machine".
-- [ ] The executor contract suite runs against the fake Engine API.
-- [ ] The Dockerfiles and compose file are linted (`hadolint` is not added; a test parses the compose file and checks its services and that no secret value is in it).
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the docker executor and images`.
+- [x] Unit tests pass on this machine. The live suite exists and skips with "no Docker on this machine".
+- [x] The executor contract suite runs against the fake Engine API.
+- [x] The Dockerfiles and compose file are linted (`hadolint` is not added; a test parses the compose file and checks its services and that no secret value is in it).
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the docker executor and images`.
 
 ## Comments
 

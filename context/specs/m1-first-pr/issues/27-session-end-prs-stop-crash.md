@@ -17,10 +17,10 @@ Spec: `../spec.md`, sections 3 and 4
 
 ## Done when
 
-- [ ] Tests against the fake GitHub: a session with changes opens one PR per changed repo, once, even when the job runs twice; a session without changes opens none and lands in needs you with the summary; stop and crash reach their states.
-- [ ] Gated live run: a PR on a test branch of `test1` is opened by the App with the expected title and footer, then closed and its branch deleted.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add PR opening and session end`.
+- [x] Tests against the fake GitHub: a session with changes opens one PR per changed repo, once, even when the job runs twice; a session without changes opens none and lands in needs you with the summary; stop and crash reach their states.
+- [x] Gated live run: a PR on a test branch of `test1` is opened by the App with the expected title and footer, then closed and its branch deleted.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add PR opening and session end`.
 
 ## Comments
 

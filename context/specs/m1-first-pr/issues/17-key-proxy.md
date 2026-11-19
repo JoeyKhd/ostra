@@ -24,11 +24,11 @@ The key proxy of ADR 0030, as a module the task host starts per task (ticket 21)
 
 ## Done when
 
-- [ ] Against both stub formats: the stream reaches the client byte-identical; the counts match the stubs exactly; a wrong or expired fake key gets 401 and never reaches upstream; a client's own `Authorization` is stripped; a rate-limit answer is reported with its retry time; the no-usage stream is counted as estimated.
-- [ ] With `model.env` loaded: one call through the proxy, and its count within 2% of the endpoint's own figure (gated test).
-- [ ] A test proves the real token is in no log line, error or event.
-- [ ] The whole-repo checks pass (spec section 9: credentials).
-- [ ] Committed as `✨ add the key proxy`.
+- [x] Against both stub formats: the stream reaches the client byte-identical; the counts match the stubs exactly; a wrong or expired fake key gets 401 and never reaches upstream; a client's own `Authorization` is stripped; a rate-limit answer is reported with its retry time; the no-usage stream is counted as estimated.
+- [x] With `model.env` loaded: one call through the proxy, and its count within 2% of the endpoint's own figure (gated test).
+- [x] A test proves the real token is in no log line, error or event.
+- [x] The whole-repo checks pass (spec section 9: credentials).
+- [x] Committed as `✨ add the key proxy`.
 
 ## Comments
 

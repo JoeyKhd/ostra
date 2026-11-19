@@ -23,11 +23,11 @@ The body of `ingestEvents` (ticket 08's signature), and core's wiring.
 
 ## Done when
 
-- [ ] Tests: a resent batch stores nothing twice; a gap gets `resendFrom`; a stale epoch is refused; a grace sweep and an ingest run at the same moment and no stored row has an epoch behind its task's (F-045's contract test); live text is shown, then deleted when its message commits, and never stored as an event.
-- [ ] An event that implies a refused transition is stored, and the refusal is logged with IDs only, never acted on.
-- [ ] Every test checks another organization's task is untouched.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add event ingest and fencing`.
+- [x] Tests: a resent batch stores nothing twice; a gap gets `resendFrom`; a stale epoch is refused; a grace sweep and an ingest run at the same moment and no stored row has an epoch behind its task's (F-045's contract test); live text is shown, then deleted when its message commits, and never stored as an event.
+- [x] An event that implies a refused transition is stored, and the refusal is logged with IDs only, never acted on.
+- [x] Every test checks another organization's task is untouched.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add event ingest and fencing`.
 
 ## Comments
 

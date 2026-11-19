@@ -28,11 +28,11 @@ Spec: `../spec.md`, sections 4 and 5.1
 
 ## Done when
 
-- [ ] Against a fake peer: register by device session (and the session is revoked), token, connect, a command written in another transaction reaches the peer within the sweep, an ack advances the cursor, a second connection evicts the first, a revoked runner is refused, runners N-1 and N+1 connect and N+2 is refused with the fix.
-- [ ] The bootstrap join token is stored hashed, and a second use of it for the same runner name is refused.
-- [ ] Every test also checks that a runner of another organization gets nothing.
-- [ ] The whole-repo checks pass (spec section 9: credentials, the runner protocol).
-- [ ] Committed as `✨ add the runner gateway`.
+- [x] Against a fake peer: register by device session (and the session is revoked), token, connect, a command written in another transaction reaches the peer within the sweep, an ack advances the cursor, a second connection evicts the first, a revoked runner is refused, runners N-1 and N+1 connect and N+2 is refused with the fix.
+- [x] The bootstrap join token is stored hashed, and a second use of it for the same runner name is refused.
+- [x] Every test also checks that a runner of another organization gets nothing.
+- [x] The whole-repo checks pass (spec section 9: credentials, the runner protocol).
+- [x] Committed as `✨ add the runner gateway`.
 
 ## Comments
 

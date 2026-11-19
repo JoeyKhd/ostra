@@ -26,11 +26,11 @@ Spec: `../spec.md`, sections 4 ("A personal runner joins") and 5.1
 
 ## Done when
 
-- [ ] Against a fake server built from ticket 01's schemas: first sign-in registers and stores the key; a second start skips the device flow; a revoked runner gets a clear message.
-- [ ] The private key file is readable only by its owner on this machine (checked in the test).
-- [ ] No token or key appears in output or logs (a test captures both).
-- [ ] The whole-repo checks pass (spec section 9: credentials).
-- [ ] Committed as `✨ add the ostra CLI and runner sign-in`.
+- [x] Against a fake server built from ticket 01's schemas: first sign-in registers and stores the key; a second start skips the device flow; a revoked runner gets a clear message.
+- [x] The private key file is readable only by its owner on this machine (checked in the test).
+- [x] No token or key appears in output or logs (a test captures both).
+- [x] The whole-repo checks pass (spec section 9: credentials).
+- [x] Committed as `✨ add the ostra CLI and runner sign-in`.
 
 ## Comments
 

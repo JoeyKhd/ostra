@@ -20,11 +20,11 @@ Spec: `../spec.md`, sections 1, 2 and 11 (items 5, 7, 9, 10)
 
 ## Done when
 
-- [ ] Against the git proxy's upstream stub: a task root with two repos is created, a setup script's output is streamed, a turn's change is committed with the trailer and pushed, a stop pushes the hidden ref with an untracked file in it, release leaves no folder.
-- [ ] A secret written for repo A is not in repo B's folder, and is not committed.
-- [ ] No process survives stop (the agent's tree; the detached case recorded as above).
-- [ ] The whole-repo checks pass (spec section 9: agent output).
-- [ ] Committed as `✨ add the host executor`.
+- [x] Against the git proxy's upstream stub: a task root with two repos is created, a setup script's output is streamed, a turn's change is committed with the trailer and pushed, a stop pushes the hidden ref with an untracked file in it, release leaves no folder.
+- [x] A secret written for repo A is not in repo B's folder, and is not committed.
+- [x] No process survives stop (the agent's tree; the detached case recorded as above).
+- [x] The whole-repo checks pass (spec section 9: agent output).
+- [x] Committed as `✨ add the host executor`.
 
 ## Comments
 

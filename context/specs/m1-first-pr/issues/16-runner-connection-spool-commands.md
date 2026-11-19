@@ -26,10 +26,10 @@ The peer side of ADR 0034, WebSocket only (`ws` 8.23.0, exact pin; the HTTP carr
 
 ## Done when
 
-- [ ] Against a fake gateway from ticket 01's schemas: a batch is resent after a dropped connection and stored once; a gap gets `resendFrom` and recovers; a command is applied once across a reconnect; `notAfter` is honoured; the self-fence fires on a fake clock.
-- [ ] A test kills the runner between spool write and ack, restarts it, and sees every event acked once.
-- [ ] The whole-repo checks pass (spec section 9: the runner protocol).
-- [ ] Committed as `✨ add the runner's connection and spool`.
+- [x] Against a fake gateway from ticket 01's schemas: a batch is resent after a dropped connection and stored once; a gap gets `resendFrom` and recovers; a command is applied once across a reconnect; `notAfter` is honoured; the self-fence fires on a fake clock.
+- [x] A test kills the runner between spool write and ack, restarts it, and sees every event acked once.
+- [x] The whole-repo checks pass (spec section 9: the runner protocol).
+- [x] Committed as `✨ add the runner's connection and spool`.
 
 ## Comments
 

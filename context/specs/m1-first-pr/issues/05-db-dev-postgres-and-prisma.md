@@ -24,7 +24,7 @@ Spec: `../spec.md`, section 5.3
 
 ## Done when
 
-- [ ] On this machine, from a clean clone: `pnpm db:dev` starts Postgres, `pnpm db:migrate` runs against it, Ctrl-C leaves no process (checked with the process list).
+- [x] On this machine, from a clean clone: `pnpm db:dev` starts Postgres, `pnpm db:migrate` runs against it, Ctrl-C leaves no process (checked with the process list).
 - [x] With `DATABASE_URL` set to another server, the dev script doesn't start one.
 - [x] A sample test in `packages/db` gets its own database and sees it empty.
 - [x] `.ostra-dev/` is ignored and nothing under it is staged.
@@ -34,3 +34,4 @@ Spec: `../spec.md`, section 5.3
 ## Comments
 
 - 2026-11-18, contracts: done in ed2cf94 (`🔧 add the dev database and Prisma setup`). Checked on this machine: `pnpm db:dev` starts Postgres 18 in `.ostra-dev/pg` and prints its URL; `pnpm db:migrate` runs twice; a second `db:dev` refuses with a hint; with `DATABASE_URL` set it does nothing; `pnpm dev:reset --yes` stops the cluster (only after the server confirms its data folder) and leaves no `postgres` or `db:dev` process (process list checked). Not checked: a real Ctrl-C in a terminal, which this session can't send to a Windows console process; the script stops Postgres on SIGINT, SIGTERM and SIGHUP, and exits when its cluster goes away. Dev helpers are at `@ostra/db/dev`; Turborepo runs `generate` before typecheck, lint and test. The test helper gives each file a copy of a migrated template database.
+- 2026-11-19, review: the clean-clone box is checked, on a real clone. `git clone` of origin/main into a short path (`C:/Users/santi/ostra-fresh`), `pnpm install`, then `pnpm db:dev`: Postgres 18 came up in the clone's `.ostra-dev/pg` and printed its `DATABASE_URL`; `pnpm db:migrate` applied both migrations; a console Ctrl-C (sent with `GenerateConsoleCtrlEvent` to the process's console, which is what a terminal does) left no `node` or `postgres` process whose command line names the clone, and nothing listening on 54329. A clone under a long path doesn't start Postgres on Windows at all (initdb exits with 3221225734, the 260-character path limit): see ticket 29 and `docs/development.md`.

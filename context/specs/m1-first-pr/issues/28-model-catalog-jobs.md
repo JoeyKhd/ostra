@@ -15,10 +15,10 @@ Spec: `../spec.md`, section 2
 
 ## Done when
 
-- [ ] Tests with a fake catalog server: a fetch stores and matches; a failed fetch keeps the old copy; with the fetch off, no request is made (checked by the fake) and the bundled copy is served.
-- [ ] Both settings' lines are in `docs/configuration.md`.
-- [ ] Package checks pass.
-- [ ] Committed as `✨ add the model catalog jobs`.
+- [x] Tests with a fake catalog server: a fetch stores and matches; a failed fetch keeps the old copy; with the fetch off, no request is made (checked by the fake) and the bundled copy is served.
+- [x] Both settings' lines are in `docs/configuration.md`.
+- [x] Package checks pass.
+- [x] Committed as `✨ add the model catalog jobs`.
 
 ## Comments
 

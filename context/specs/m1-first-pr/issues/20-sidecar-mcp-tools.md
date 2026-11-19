@@ -17,9 +17,9 @@ An MCP server per task on `@modelcontextprotocol/sdk` (exact pin; confirm its li
 
 ## Done when
 
-- [ ] An MCP client in the test lists the tool, calls it, and the event comes out; a wrong bearer gets 401; an unknown repo and an oversized body are refused.
-- [ ] The whole-repo checks pass (spec section 9: agent output).
-- [ ] Committed as `✨ add ostra's MCP tools for agents`.
+- [x] An MCP client in the test lists the tool, calls it, and the event comes out; a wrong bearer gets 401; an unknown repo and an oversized body are refused.
+- [x] The whole-repo checks pass (spec section 9: agent output).
+- [x] Committed as `✨ add ostra's MCP tools for agents`.
 
 ## Comments
 

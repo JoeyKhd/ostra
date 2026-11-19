@@ -21,11 +21,11 @@ The code that runs one task, the same in every executor (ADR 0029). On `host` th
 
 ## Done when
 
-- [ ] An in-process integration test, with the fake gateway, the scripted fake agent (10), the stub models (12) and the git upstream stub, runs dispatch → PR-ready branch, and stop → hidden ref, and crash → hidden ref, with every event stored once.
-- [ ] With `model.env` loaded, the same test with OpenCode instead of the fake agent completes a real turn (gated).
-- [ ] A test searches the task root, the event stream and the logs for the real credential values and finds none.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the task host`.
+- [x] An in-process integration test, with the fake gateway, the scripted fake agent (10), the stub models (12) and the git upstream stub, runs dispatch → PR-ready branch, and stop → hidden ref, and crash → hidden ref, with every event stored once.
+- [x] With `model.env` loaded, the same test with OpenCode instead of the fake agent completes a real turn (gated).
+- [x] A test searches the task root, the event stream and the logs for the real credential values and finds none.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the task host`.
 
 ## Comments
 

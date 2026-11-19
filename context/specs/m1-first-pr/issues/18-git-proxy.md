@@ -24,12 +24,12 @@ The git proxy of ADR 0030 as amended, with everything F-090's "done when" now li
 
 ## Done when
 
-- [ ] Against the upstream stub: stock `git` clones, fetches and pushes the task's branch and hidden ref; a push to the default branch, a delete and a push to another repo each get `! [remote rejected] ... (ostra: <reason>)` with nothing forwarded; LFS upload and download work and a signed URL never reaches the client; every read-only refusal has a test.
-- [ ] The stub refuses a request with no `User-Agent`, and the proxy's requests pass it.
-- [ ] Gated live run against `ostra-test/test1`: clone, push a test branch and its hidden ref, refused push to `main`, then delete the test refs.
-- [ ] A test proves no token reaches the client, a log line or an error.
-- [ ] The whole-repo checks pass (spec section 9: credentials, agent output).
-- [ ] Committed as `✨ add the git proxy`.
+- [x] Against the upstream stub: stock `git` clones, fetches and pushes the task's branch and hidden ref; a push to the default branch, a delete and a push to another repo each get `! [remote rejected] ... (ostra: <reason>)` with nothing forwarded; LFS upload and download work and a signed URL never reaches the client; every read-only refusal has a test.
+- [x] The stub refuses a request with no `User-Agent`, and the proxy's requests pass it.
+- [x] Gated live run against `ostra-test/test1`: clone, push a test branch and its hidden ref, refused push to `main`, then delete the test refs.
+- [x] A test proves no token reaches the client, a log line or an error.
+- [x] The whole-repo checks pass (spec section 9: credentials, agent output).
+- [x] Committed as `✨ add the git proxy`.
 
 ## Comments
 

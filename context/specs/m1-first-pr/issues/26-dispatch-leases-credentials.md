@@ -18,11 +18,11 @@ Spec: `../spec.md`, sections 3 and 4
 
 ## Done when
 
-- [ ] Tests: a task for a personal runner goes only to that member's runner; a provider not allowed on personal runners blocks it with a reason; a stale epoch gets no credentials; an offer timeout requeues; a rate-limit hold delays the next dispatch.
-- [ ] Gated on `github.env`: the minted token works for `test1` and not for `test2`.
-- [ ] Every test checks another organization's runner and secrets stay out of reach.
-- [ ] The whole-repo checks pass (spec section 9: credentials).
-- [ ] Committed as `✨ add dispatch, leases and task credentials`.
+- [x] Tests: a task for a personal runner goes only to that member's runner; a provider not allowed on personal runners blocks it with a reason; a stale epoch gets no credentials; an offer timeout requeues; a rate-limit hold delays the next dispatch.
+- [x] Gated on `github.env`: the minted token works for `test1` and not for `test2`.
+- [x] Every test checks another organization's runner and secrets stay out of reach.
+- [x] The whole-repo checks pass (spec section 9: credentials).
+- [x] Committed as `✨ add dispatch, leases and task credentials`.
 
 ## Comments
 
