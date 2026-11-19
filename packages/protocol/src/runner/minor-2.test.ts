@@ -395,6 +395,19 @@ describe("the credentials at minor 2", () => {
     expect(taskCredentialsResponseSchemaFor(2)).toBe(taskCredentialsSchema);
     expect(taskCredentialsSchema.description).toContain("never logged");
   });
+
+  it("F-094: carry the services' secret variables by service, refuse a name that isn't a host name, and drop them for a minor-1 runner", () => {
+    const withServices = taskCredentialsSchema.parse({
+      ...taskCredentialsFixture,
+      services: [{ name: "db", variables: [{ name: "POSTGRES_PASSWORD", value: "fixture-db-secret" }] }],
+    });
+    expect(taskCredentialsSchema.parse(roundTrip(withServices))).toEqual(withServices);
+    expect(taskCredentialsSchema.safeParse({ ...taskCredentialsFixture, services: [{ name: "DB_1", variables: [] }] }).success).toBe(false);
+    expect(taskCredentialsSchema.safeParse({ ...taskCredentialsFixture, services: [{ name: "db", variables: [], extra: 1 }] }).success).toBe(false);
+    const down = encodeTaskCredentialsForMinor(withServices, 1);
+    expect(down).not.toHaveProperty("services");
+    expect(JSON.stringify(down)).not.toContain("fixture-db-secret");
+  });
 });
 
 describe("the bulk path at minor 2", () => {

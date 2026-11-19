@@ -213,6 +213,9 @@ export type TaskApprovalRuleId = z.infer<typeof taskApprovalRuleIdSchema>;
 export const checkIdSchema = idBase.brand<"CheckId">();
 export type CheckId = z.infer<typeof checkIdSchema>;
 
+/** The ID of a service of an environment (F-094, ADR 0038): a `Service` row. */
+export const serviceIdSchema = idBase.brand<"ServiceId">();
+export type ServiceId = z.infer<typeof serviceIdSchema>;
 /** The ID of one check's run after one turn: a `CheckRun` row. */
 export const checkRunIdSchema = idBase.brand<"CheckRunId">();
 export type CheckRunId = z.infer<typeof checkRunIdSchema>;

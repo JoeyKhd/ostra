@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { repoIdSchema, snapshotIdSchema, taskIdSchema } from "../ids.ts";
-import { apiFormatSchema, authSchemeSchema, envNameSchema, epochMsSchema, leaseEpochSchema } from "../common.ts";
+import { apiFormatSchema, authSchemeSchema, envNameSchema, epochMsSchema, leaseEpochSchema, serviceNameSchema } from "../common.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { agentItemNameSchema, repoRelativePathSchema } from "./spec.ts";
 
@@ -71,6 +71,17 @@ export const mcpServerCredentialsSchema = z.strictObject({
 });
 export type McpServerCredentials = z.infer<typeof mcpServerCredentialsSchema>;
 
+/**
+ * A service's secret variables (minor 2, F-094, ADR 0038): the spec names the service and carries
+ * its plain variables; these are the ones kept in the secret store, for the `docker` executor to
+ * set on the service's container only. Never logged; the agent's container never gets them.
+ */
+export const serviceSecretsSchema = z.strictObject({
+  name: serviceNameSchema,
+  variables: z.array(z.strictObject({ name: envNameSchema, value: z.string().max(65_536) })).max(200),
+});
+export type ServiceSecrets = z.infer<typeof serviceSecretsSchema>;
+
 /** Minor 1's credentials, kept for the endpoint's answer to a minor-1 runner. */
 export const taskCredentialsSchemaV1 = z
   .strictObject(taskCredentialsShapeV1)
@@ -83,12 +94,14 @@ export const taskCredentialsSchema = z
     ...taskCredentialsShapeV1,
     /** Minor 2: the profile's HTTP MCP servers. Never logged. */
     mcpServers: z.array(mcpServerCredentialsSchema).max(runnerLimits.mcpServersMax).optional(),
+    /** Minor 2: the environment's services' secret variables, by service. Never logged. */
+    services: z.array(serviceSecretsSchema).max(runnerLimits.servicesMax).optional(),
   })
   .describe(NEVER_LOGGED)
   .brand<"TaskCredentials">();
 export type TaskCredentials = z.infer<typeof taskCredentialsSchema>;
 
-/** The credentials as a runner at `minor` reads them: below minor 2, without the MCP servers. */
+/** The credentials as a runner at `minor` reads them: below minor 2, without the MCP servers and the services' secrets. */
 export const encodeTaskCredentialsForMinor = (credentials: TaskCredentials, minor: number): TaskCredentials => {
   if (minor >= 2) {
     return credentials;
