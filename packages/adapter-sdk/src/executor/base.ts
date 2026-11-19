@@ -17,7 +17,7 @@ import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
 import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
-import type { AgentLaunch } from "../agent/base.ts";
+import type { AgentCommand, AgentLaunch } from "../agent/base.ts";
 import type { ExecutorCapabilities } from "./capabilities.ts";
 
 // The executor kind (ADR 0025, ADR 0029): `docker`, `host`, then `kubernetes`. It runs in the
@@ -168,6 +168,19 @@ export type RestoreWorkInProgressInput = {
 /** One repo's restore: `conflict` leaves the branch's head checked out (Q150). */
 export type RestoredRepoWork = { readonly repoId: RepoId; readonly outcome: "applied" | "none" | "conflict" };
 
+// ---------- milestone 2: a command beside the agent (tickets 22 and 24) ----------
+
+export type RunAgentCommandInput = {
+  readonly box: BoxRef;
+  /** From the agent adapter (`exportSession`, `importSession`). */
+  readonly command: AgentCommand;
+  /** The command is ended after this long. */
+  readonly timeoutMs: number;
+};
+
+/** A command's end. `stdout` is cut at 64 KiB; it can hold content, so it's never logged. */
+export type AgentCommandResult = { readonly exitCode: number | null; readonly stdout: string };
+
 export abstract class ExecutorAdapter {
   readonly kind = "executor" as const;
   abstract readonly name: string;
@@ -226,6 +239,27 @@ export abstract class ExecutorAdapter {
   restoreWorkInProgress(input: RestoreWorkInProgressInput): Promise<AdapterResult<readonly RestoredRepoWork[]>> {
     this.plumbing.logger.debug("restoreWorkInProgress is not supported", { taskId: input.box.taskId, repos: input.refs.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't restore work in progress yet`));
+  }
+
+  /**
+   * Milestone 2: runs one of the agent adapter's commands (a session's export or import) in the box,
+   * where the agent runs, with the command's own environment and never a shell line. Additive: an
+   * executor answers `unsupported` until it has it (tickets 22 and 24).
+   */
+  runAgentCommand(input: RunAgentCommandInput): Promise<AdapterResult<AgentCommandResult>> {
+    this.plumbing.logger.debug("runAgentCommand is not supported", { taskId: input.box.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't run an agent command yet`));
+  }
+
+  /**
+   * Milestone 2, ADR 0039's `resumed` step: a box this executor still keeps (`stopped` or `idle`)
+   * takes a new session's spec and proxies, so its git talks to the new git proxy, and is `ready`
+   * for the agent again. The workspace, the branch and the agent's own folder stay as they were.
+   * `not-found` when the box is gone. Additive: `unsupported` until an executor has it (ticket 24).
+   */
+  resumeBox(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
+    this.plumbing.logger.debug("resumeBox is not supported", { taskId: input.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't resume a kept box yet`));
   }
 
   /** The box's state as the executor sees it. */

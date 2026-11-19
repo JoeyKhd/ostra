@@ -3,6 +3,7 @@ import { ExecutorAdapter } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
+  AgentCommandResult,
   AgentLaunch,
   AgentProcess,
   BoxRef,
@@ -14,6 +15,7 @@ import type {
   PrepareInput,
   PrepareResult,
   RepoPushResult,
+  RunAgentCommandInput,
   StopInput,
 } from "@ostra/adapter-sdk";
 import type { BoxReleaseReason, BoxState } from "@ostra/protocol";
@@ -83,6 +85,16 @@ export class DockerExecutor extends ExecutorAdapter {
 
   release(box: BoxRef, reason: BoxReleaseReason): Promise<AdapterResult<void>> {
     return this.#inner.release(box, reason);
+  }
+
+  /** In the agent's container, through the bridge: the agent's binary and data are there. */
+  override runAgentCommand(input: RunAgentCommandInput): Promise<AdapterResult<AgentCommandResult>> {
+    return this.#inner.runAgentCommand(input);
+  }
+
+  /** A kept box takes the next session's proxies (ticket 24). */
+  override resumeBox(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
+    return this.#inner.resumeBox(input);
   }
 
   state(box: BoxRef): Promise<AdapterResult<BoxState>> {

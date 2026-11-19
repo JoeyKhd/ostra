@@ -4,6 +4,7 @@ import { adapterError, ExecutorAdapter, ok } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
+  AgentCommandResult,
   AgentLaunch,
   AgentProcess,
   BoxRef,
@@ -16,6 +17,7 @@ import type {
   PrepareResult,
   ProcessExit,
   RepoPushResult,
+  RunAgentCommandInput,
   StopInput,
   TaskProxies,
 } from "@ostra/adapter-sdk";
@@ -87,14 +89,18 @@ type BoxRecord = {
   readonly workspaceDir: string;
   readonly agentDir: string;
   readonly gitConfig: string;
-  readonly spec: TaskSpec;
-  readonly proxies: TaskProxies;
+  /** The session's spec and proxies: a resumed box takes the next session's (ticket 24). */
+  spec: TaskSpec;
+  proxies: TaskProxies;
   /** Every process of the task, as one unit (ticket 42). Made with the folder. */
   unit: ContainmentUnit | undefined;
   agent: RunningAgent | undefined;
 };
 
 const boxKey = (box: BoxRef): string => `${box.taskId}\u0000${box.boxId}`;
+
+/** The most of an agent command's output kept: it can hold content, so it's never logged. */
+const AGENT_COMMAND_OUTPUT_MAX = 64 * 1024;
 
 /** A folder name for a task's root: its ID, with anything odd replaced. */
 const folderOf = (taskId: TaskId): string => taskId.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -431,6 +437,64 @@ export class HostExecutor extends ExecutorAdapter {
 
   state(box: BoxRef): Promise<AdapterResult<BoxState>> {
     return Promise.resolve(ok(this.#boxes.get(boxKey(box))?.state ?? "released"));
+  }
+
+  /** The agent adapter's command (a session's export or import), on this machine, in the task's unit. */
+  override async runAgentCommand(input: RunAgentCommandInput): Promise<AdapterResult<AgentCommandResult>> {
+    const record = this.#boxes.get(boxKey(input.box));
+    if (record === undefined || record.state === "released" || record.state === "creating") {
+      return adapterError("not-found", `no box to run the command in (${record?.state ?? "released"})`);
+    }
+    const result = await this.#processes.run(input.command.command, input.command.args, {
+      cwd: input.command.cwd,
+      // Exactly the command's environment, as the agent's own launch (ADR 0030).
+      env: { ...input.command.env },
+      signal: AbortSignal.timeout(input.timeoutMs),
+      maxBuffer: AGENT_COMMAND_OUTPUT_MAX,
+      ...(record.unit === undefined ? {} : { unit: record.unit }),
+    });
+    this.plumbing.logger.info("agent command ran", { taskId: input.box.taskId, boxId: input.box.boxId, exitCode: result.code });
+    return ok({ exitCode: result.code, stdout: result.stdout.slice(0, AGENT_COMMAND_OUTPUT_MAX) });
+  }
+
+  /**
+   * A kept box takes the next session (ADR 0039, `resumed`): the task's git config and each
+   * checkout's `insteadOf` rules point at the new git proxy, and the trailers at the new co-authors.
+   * The workspace, the branch and the agent's folder stay as they were.
+   */
+  override async resumeBox(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
+    const record = this.#boxes.get(boxKey(input));
+    if (record === undefined || record.state === "released" || record.state === "failed" || record.state === "creating") {
+      return adapterError("not-found", "the box isn't kept here");
+    }
+    if (record.agent !== undefined || record.state === "preparing") {
+      return adapterError("conflict", "the box is still running a session");
+    }
+    record.spec = input.spec;
+    record.proxies = input.proxies;
+    try {
+      await this.#writeTaskGitConfig(record);
+      for (const repo of record.spec.repos) {
+        const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+        // The last session's proxy rules go first: each named the old proxy's address.
+        const rules = await this.#git(record, ["config", "--local", "--name-only", "--get-regexp", "^url\\..*\\.insteadof$"], checkout);
+        for (const name of rules.stdout.split(/\r?\n/).filter((line) => line.trim() !== "")) {
+          await this.#git(record, ["config", "--local", "--unset-all", name.trim()], checkout);
+        }
+        for (const [key, value] of await this.#settings(record)) {
+          const set = await this.#git(record, ["config", "--local", key, value], checkout);
+          if (set.code !== 0) {
+            return adapterError("unavailable", `configuring the checkout failed (${key})`);
+          }
+        }
+        await writeFile(path.join(checkout, ".git", "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+      }
+    } catch (error) {
+      return adapterError("unavailable", `couldn't resume the box (${error instanceof Error ? error.name : "unknown"})`);
+    }
+    record.state = "ready";
+    this.plumbing.logger.info("box resumed", { taskId: input.taskId, boxId: input.boxId });
+    return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
   }
 
   /** The worktree's root: its names, top level only (ticket 44). */

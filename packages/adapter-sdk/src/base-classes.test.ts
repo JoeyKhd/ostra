@@ -1,4 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
+import { taskSpecFixture } from "@ostra/protocol/testing";
 
 import { AgentAdapter } from "./agent/base.ts";
 import type { AgentLaunch, MappedUpdate } from "./agent/base.ts";
@@ -198,5 +200,16 @@ describe("a missing operation", () => {
     const agent = new TinyAgent(scriptedDriver());
     expectTypeOf<Awaited<ReturnType<TinyAgent["prepareLaunch"]>>>().toEqualTypeOf<AdapterResult<AgentLaunch>>();
     expect(await agent.health()).toEqual({ status: "ok" });
+  });
+});
+
+describe("milestone 2's executor operations", () => {
+  it("answer unsupported until an executor has them", async () => {
+    const executor = new TinyExecutor();
+    const box = { taskId: taskIdSchema.parse("task-unsupported"), boxId: boxIdSchema.parse("box-unsupported") };
+    const ran = await executor.runAgentCommand({ box, command: { command: "node", args: [], env: {}, cwd: "." }, timeoutMs: 1_000 });
+    expect(ran.ok ? "ok" : ran.error.code).toBe("unsupported");
+    const resumed = await executor.resumeBox({ ...box, spec: taskSpecFixture, proxies: { gitBaseUrl: "http://127.0.0.1:9", modelBaseUrl: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9" } });
+    expect(resumed.ok ? "ok" : resumed.error.code).toBe("unsupported");
   });
 });
