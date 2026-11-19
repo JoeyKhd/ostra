@@ -1,6 +1,6 @@
 # 45: Check the secrets key at start, and a setting for the runner-token key
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: none
 Features: F-001, F-118 (what its chart will set)
@@ -22,11 +22,13 @@ Settled as Q136, item 1, on 2026-11-19 (`context/open-questions.md`, Settled). T
 
 ## Done when
 
-- [ ] Tests: an empty database starts and stores the check; the same key starts again; another key refuses to start, with the message, and changes nothing; two processes racing on an empty database end with one check value that both read.
-- [ ] Two cores with separate data folders and the same `OSTRA_RUNNER_TOKEN_KEY` accept each other's tokens. A control without the setting shows the refusal.
-- [ ] The settings test still matches `docs/configuration.md`.
-- [ ] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
-- [ ] The whole-repo checks pass (spec section 9: credentials).
-- [ ] Committed as `✨ check the secrets key at start`.
+- [x] Tests: an empty database starts and stores the check; the same key starts again; another key refuses to start, with the message, and changes nothing; two processes racing on an empty database end with one check value that both read.
+- [x] Two cores with separate data folders and the same `OSTRA_RUNNER_TOKEN_KEY` accept each other's tokens. A control without the setting shows the refusal.
+- [x] The settings test still matches `docs/configuration.md`.
+- [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
+- [x] The whole-repo checks pass (spec section 9: credentials).
+- [x] Committed as `✨ check the secrets key at start`.
 
 ## Comments
+
+- 2026-11-19, the builder: done in the commit `✨ check the secrets key at start`. The check is a `secrets_key_check` row per key version (migration `20261119220000_secrets_key_check`), sealed by `BuiltinSecretStore.sealKeyCheck` with its own associated data, and checked by `checkSecretsKey` in `packages/domain` under the first admin's advisory lock. An install that already has secrets and no check stores one only when its key opens its oldest secret, so an upgrade can't vouch for a wrong key. Core (`openSecretStore`, `main.ts`) and the panel (`deps.ts`, `instrumentation-node.ts`) exit with the message. `OSTRA_RUNNER_TOKEN_KEY` takes 32 bytes as base64 or 64 hex characters. Tests: `apps/core/src/secrets.test.ts` (core's own process refusing, and two processes racing) and `apps/core/src/gateway/keys.test.ts` (two gateways with separate data folders), each with a break-it check, in `context/proof/F-001.md`, under three sentences added to F-001's "done when" for Q136. The panel's process has no start test yet: it runs the same `checkSecretsKey`.

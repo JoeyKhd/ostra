@@ -1,9 +1,10 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { SecretRowStore } from "@ostra/adapter-sdk";
-import { generateSecretsKey } from "@ostra/adapter-secret-store-builtin";
+import type { AdapterContext, SecretRowStore } from "@ostra/adapter-sdk";
+import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import type { Db } from "@ostra/db";
+import { checkSecretsKey, secretsKeyMismatchError } from "@ostra/domain";
 import type { ServerSettings } from "@ostra/domain";
 import { errnoCode, organizationIdSchema } from "@ostra/protocol";
 
@@ -76,3 +77,29 @@ export const postgresSecretRows = (db: Db): SecretRowStore => ({
     return count > 0;
   },
 });
+
+/**
+ * The built-in secret store, once its key has passed the check at start (Q136, ticket 45): the
+ * first start of a key stores the check, and a key that can't open it throws
+ * `secretsKeyMismatchError()`, which stops core before it serves anything. Nothing is written then.
+ */
+export const openSecretStore = async (
+  db: Db,
+  settings: Pick<ServerSettings, "secretsKey" | "dataDir">,
+  context: AdapterContext,
+): Promise<BuiltinSecretStore> => {
+  const key = parseSecretsKey(await loadSecretsKey(settings));
+  if (!key.ok) {
+    throw new Error("OSTRA_SECRETS_KEY is not a 32-byte key (64 hex characters or base64)");
+  }
+  const store = new BuiltinSecretStore({ rows: postgresSecretRows(db), key: key.value }, context);
+  const checked = await checkSecretsKey(db, store);
+  if (!checked.ok) {
+    context.logger.error("secrets-key.mismatch", { keyVersion: key.value.version });
+    throw secretsKeyMismatchError();
+  }
+  if (checked.outcome === "stored") {
+    context.logger.info("secrets-key.check-stored", { keyVersion: key.value.version });
+  }
+  return store;
+};

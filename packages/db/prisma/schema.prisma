@@ -249,6 +249,18 @@ model OrganizationSetting {
   @@map("organization_setting")
 }
 
+/// A fixed value sealed with the secrets key, one row per key version (Q136, milestone 2's ticket
+/// 45). At every start core and the panel open it, and refuse to start with a key that can't: the
+/// key isn't the one the database's secrets were written with.
+model SecretsKeyCheck {
+  keyVersion Int      @id
+  ciphertext Bytes
+  nonce      Bytes
+  createdAt  DateTime @default(now())
+
+  @@map("secrets_key_check")
+}
+
 /// Who did what, when (F-073). Written in the transaction of the change it records.
 model AuditEntry {
   id             String         @id @default(uuid(7))

@@ -2,7 +2,7 @@
 // in watch mode. Logs are one JSON object per line, IDs and fields only.
 
 import { createLogger } from "@ostra/adapter-sdk";
-import { parseServerSettings } from "@ostra/domain";
+import { isSecretsKeyMismatch, parseServerSettings } from "@ostra/domain";
 
 import { startCore } from "./core.ts";
 
@@ -18,7 +18,15 @@ if (!parsed.ok) {
   process.exit(1);
 }
 
-const core = await startCore(parsed.settings, logger);
+const core = await startCore(parsed.settings, logger).catch((error: unknown) => {
+  // A secrets key that can't read the database's secrets (Q136): say so, and the two fixes.
+  if (isSecretsKeyMismatch(error)) {
+    process.stderr.write(`core: ${error.message}
+`);
+    process.exit(1);
+  }
+  throw error;
+});
 process.stdout.write(`core is listening on http://localhost:${String(core.port)}\n`);
 
 let stopping = false;

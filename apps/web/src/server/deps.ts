@@ -11,7 +11,7 @@ import type { ApiDeps, ApiRuntime } from "@ostra/api";
 import { createDb } from "@ostra/db";
 import { repoRoot } from "@ostra/db/dev";
 import type { Db } from "@ostra/db";
-import { parseServerSettings, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import { checkSecretsKey, parseServerSettings, postgresCommandOutbox, secretsKeyMismatchError, systemClock } from "@ostra/domain";
 import type { JobQueue, ServerSettings } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import { errnoCode, organizationIdSchema } from "@ostra/protocol";
@@ -117,6 +117,13 @@ const build = async (): Promise<ApiRuntime> => {
 
   const key = parseSecretsKey(await loadSecretsKey(settings));
   if (!key.ok) throw new Error("OSTRA_SECRETS_KEY is not a 32-byte key (64 hex characters or base64)");
+  const secretStore = new BuiltinSecretStore({ rows: prismaSecretRows(db), key: key.value }, context);
+  // A key that can't read the database's secrets stops the panel at start, as it stops core (Q136).
+  const checked = await checkSecretsKey(db, secretStore);
+  if (!checked.ok) {
+    logger.error("secrets-key.mismatch", { keyVersion: key.value.version });
+    throw secretsKeyMismatchError();
+  }
 
   const jobs = createJobs({
     databaseUrl: settings.databaseUrl,
@@ -148,7 +155,7 @@ const build = async (): Promise<ApiRuntime> => {
     adapters: {
       codeHost: new GitHubAdapter({ userAgent: "ostra-panel", apiUrl: settings.githubApiUrl }, context),
       modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
-      secretStore: new BuiltinSecretStore({ rows: prismaSecretRows(db), key: key.value }, context),
+      secretStore,
     },
     jobs: queue,
     outbox: postgresCommandOutbox,

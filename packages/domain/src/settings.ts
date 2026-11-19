@@ -24,6 +24,7 @@ export const settingNames = [
   "OSTRA_GITHUB_API_URL",
   "OSTRA_DATA_DIR",
   "OSTRA_SECRETS_KEY",
+  "OSTRA_RUNNER_TOKEN_KEY",
   "OSTRA_CATALOG_FETCH",
   "OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE",
   "OSTRA_OPEN_SIGNUP_ACCOUNTS",
@@ -69,7 +70,13 @@ export const settingFields = {
   },
   OSTRA_SECRETS_KEY: {
     default: "generated on first start, kept in OSTRA_DATA_DIR",
-    description: "The key the built-in secret store encrypts with (32 bytes, base64). Back it up: without it, stored secrets can't be read.",
+    description:
+      "The key the built-in secret store encrypts with (32 bytes, base64). Back it up: without it, stored secrets can't be read. A key that can't read the database's secrets stops the server at start.",
+  },
+  OSTRA_RUNNER_TOKEN_KEY: {
+    default: "generated on first start, kept in OSTRA_DATA_DIR",
+    description:
+      "The key core signs runners' access tokens and tasks' MCP tokens with (32 bytes, base64 or 64 hex characters). Set the same one on every core replica that doesn't share the data folder. Changing it makes every runner get a new token.",
   },
   OSTRA_CATALOG_FETCH: {
     default: "true",
@@ -137,6 +144,10 @@ const flag = z
   .enum(["true", "false", "1", "0", "on", "off", "yes", "no"])
   .transform((value) => value === "true" || value === "1" || value === "on" || value === "yes");
 
+/** 32 bytes from 64 hex characters or base64 (the schema checked the form). */
+const decodeKey32 = (text: string): Buffer =>
+  /^[0-9a-fA-F]{64}$/.test(text) ? Buffer.from(text, "hex") : Buffer.from(text.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+
 const port = z.coerce.number().pipe(z.number().int().min(1).max(65_535));
 const url = z.url({ protocol: /^https?$/ });
 
@@ -154,6 +165,11 @@ const rawSettingsSchema = z.strictObject({
     .regex(/^[A-Za-z0-9+/_-]{43,}={0,2}$/, "32 bytes or more, base64")
     .optional()
     .describe(describe("OSTRA_SECRETS_KEY")),
+  OSTRA_RUNNER_TOKEN_KEY: z
+    .string()
+    .regex(/^(?:[0-9a-fA-F]{64}|[A-Za-z0-9+/_-]{43}=?)$/, "32 bytes: base64 or 64 hex characters")
+    .optional()
+    .describe(describe("OSTRA_RUNNER_TOKEN_KEY")),
   OSTRA_CATALOG_FETCH: flag.default(true).describe(describe("OSTRA_CATALOG_FETCH")),
   OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: flag.default(false).describe(describe("OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE")),
   OSTRA_OPEN_SIGNUP_ACCOUNTS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ACCOUNTS")),
@@ -182,6 +198,8 @@ export type ServerSettings = {
   readonly dataDir: string;
   /** `null`: generate one on first start and keep it in `dataDir`. */
   readonly secretsKey: string | null;
+  /** OSTRA_RUNNER_TOKEN_KEY, 32 bytes. `null`: generate one on first start and keep it in `dataDir`. Never logged. */
+  readonly runnerTokenKey: Buffer | null;
   readonly catalogFetch: boolean;
   /** OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: model provider URLs may point at private networks. */
   readonly modelEndpointAllowPrivate: boolean;
@@ -251,6 +269,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),
       secretsKey: value.OSTRA_SECRETS_KEY ?? null,
+      runnerTokenKey: value.OSTRA_RUNNER_TOKEN_KEY === undefined ? null : decodeKey32(value.OSTRA_RUNNER_TOKEN_KEY),
       catalogFetch: value.OSTRA_CATALOG_FETCH,
       modelEndpointAllowPrivate: value.OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE,
       openSignupAccounts: value.OSTRA_OPEN_SIGNUP_ACCOUNTS,

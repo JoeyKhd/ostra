@@ -50,3 +50,14 @@ export const loadOrCreateKey = async (dataDir: string, name: string): Promise<Bu
 };
 
 export const readDataFile = (dataDir: string, name: string): Promise<string | null> => readIfThere(path.join(dataDir, name));
+
+/** The file in OSTRA_DATA_DIR that holds the key runners' access tokens are signed with. */
+export const RUNNER_TOKEN_KEY_FILE = "runner-token.key";
+
+/**
+ * The key runners' access tokens and tasks' MCP tokens are signed with (Q136, ticket 45):
+ * OSTRA_RUNNER_TOKEN_KEY, so replicas with data folders of their own accept each other's tokens,
+ * or one made at first start in the data folder.
+ */
+export const loadRunnerTokenKey = (settings: { readonly runnerTokenKey: Buffer | null; readonly dataDir: string }): Promise<Buffer> =>
+  settings.runnerTokenKey === null ? loadOrCreateKey(settings.dataDir, RUNNER_TOKEN_KEY_FILE) : Promise.resolve(settings.runnerTokenKey);

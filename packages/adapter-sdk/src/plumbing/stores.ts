@@ -50,6 +50,16 @@ export type SecretRow = {
   readonly keyVersion: number;
 };
 
+/**
+ * A fixed value sealed with the secrets key, one per key version (Q136): the server opens it at
+ * every start to know that its key is the one the database's secrets were written with.
+ */
+export type SecretsKeyCheck = {
+  readonly keyVersion: number;
+  readonly ciphertext: Uint8Array;
+  readonly nonce: Uint8Array;
+};
+
 /** The built-in secret store's rows (the `Secret` table on the server). */
 export type SecretRowStore = {
   readonly insert: (row: SecretRow) => Promise<void>;

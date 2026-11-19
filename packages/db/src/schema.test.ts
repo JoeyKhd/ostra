@@ -32,6 +32,7 @@ const everyTable = [
   "invitation",
   "deviceCode",
   "instance_setting",
+  "secrets_key_check",
   "audit_entry",
   "change_notice",
   "connection",

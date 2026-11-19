@@ -27,6 +27,7 @@ export * from "./use-cases/accept-offer.ts";
 export * from "./use-cases/add-model-provider.ts";
 export * from "./use-cases/connect-github-app.ts";
 export * from "./use-cases/seed-first-admin.ts";
+export * from "./use-cases/check-secrets-key.ts";
 export * from "./use-cases/create-project.ts";
 export * from "./use-cases/create-prompt-task.ts";
 export * from "./use-cases/dispatch-task.ts";

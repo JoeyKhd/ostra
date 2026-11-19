@@ -9,6 +9,7 @@ import type {
   SecretRow,
   SecretRowStore,
   SecretScope,
+  SecretsKeyCheck,
   SecretStoreCapabilities,
 } from "@ostra/adapter-sdk";
 import { organizationIdSchema } from "@ostra/protocol";
@@ -55,6 +56,10 @@ export const generateSecretsKey = (): string => randomBytes(KEY_BYTES).toString(
 
 const associatedData = (organizationId: string, purpose: string, id: string): Buffer =>
   Buffer.from(JSON.stringify(["ostra-secret-v1", organizationId, purpose, id]), "utf8");
+
+/** The key check's value and associated data (Q136): fixed, and never a secret's. */
+const KEY_CHECK_VALUE = "ostra-secrets-key-check";
+const keyCheckData = (keyVersion: number): Buffer => Buffer.from(JSON.stringify(["ostra-secrets-key-check-v1", keyVersion]), "utf8");
 
 export class BuiltinSecretStore extends SecretStoreAdapter {
   readonly name = STORE_NAME;
@@ -131,6 +136,43 @@ export class BuiltinSecretStore extends SecretStoreAdapter {
     }
     this.plumbing.logger.info("secret.delete", { organizationId, secretId: found.value.id });
     return ok(undefined);
+  }
+
+  /** The key check for this store's key (Q136): a fixed value, sealed under a fresh nonce. */
+  sealKeyCheck(): SecretsKeyCheck {
+    const nonce = randomBytes(NONCE_BYTES);
+    const cipher = createCipheriv("aes-256-gcm", this.#key.bytes, nonce, { authTagLength: TAG_BYTES });
+    cipher.setAAD(keyCheckData(this.#key.version));
+    const sealed = Buffer.concat([cipher.update(KEY_CHECK_VALUE, "utf8"), cipher.final(), cipher.getAuthTag()]);
+    return { keyVersion: this.#key.version, ciphertext: new Uint8Array(sealed), nonce: new Uint8Array(nonce) };
+  }
+
+  /** Whether this store's key opens a stored key check: `false` for another key or another version. */
+  opensKeyCheck(check: SecretsKeyCheck): boolean {
+    if (check.keyVersion !== this.#key.version) {
+      return false;
+    }
+    const opened = this.#decrypt(check.ciphertext, check.nonce, keyCheckData(check.keyVersion));
+    return opened === KEY_CHECK_VALUE;
+  }
+
+  /** Whether this store's key opens a stored secret row, without returning its value. */
+  opensRow(row: SecretRow): boolean {
+    return this.#open(row, row.organizationId).ok;
+  }
+
+  #decrypt(ciphertext: Uint8Array, nonce: Uint8Array, aad: Buffer): string | undefined {
+    if (ciphertext.length < TAG_BYTES || nonce.length !== NONCE_BYTES) {
+      return undefined;
+    }
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", this.#key.bytes, nonce, { authTagLength: TAG_BYTES });
+      decipher.setAAD(aad);
+      decipher.setAuthTag(ciphertext.subarray(ciphertext.length - TAG_BYTES));
+      return Buffer.concat([decipher.update(ciphertext.subarray(0, ciphertext.length - TAG_BYTES)), decipher.final()]).toString("utf8");
+    } catch {
+      return undefined;
+    }
   }
 
   /** The row behind a reference, only when it's this store's and this organization's. */

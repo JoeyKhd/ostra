@@ -5,7 +5,6 @@ import { systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
-import { BuiltinSecretStore, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
@@ -22,14 +21,14 @@ import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
 import type { Gateway } from "./gateway/gateway.ts";
-import { loadOrCreateKey } from "./gateway/keys.ts";
+import { loadRunnerTokenKey, RUNNER_TOKEN_KEY_FILE } from "./gateway/keys.ts";
 import { cancelGraceInTx, graceHandler, startGraceInTx } from "./ingest/grace.ts";
 import type { GraceDeps } from "./ingest/grace.ts";
 import { createIngest } from "./ingest/ingest.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
-import { loadSecretsKey, postgresSecretRows } from "./secrets.ts";
+import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 
 // Core (ADR 0016): one process that holds runner connections, runs the queue's workers and serves
@@ -38,8 +37,7 @@ import { createCoreServer } from "./server.ts";
 /** Core's version: the version `ostra runner` installs to match it (ADR 0046). */
 export const CORE_VERSION = "0.0.0";
 
-/** The file in OSTRA_DATA_DIR that holds the key runners' access tokens are signed with. */
-export const RUNNER_TOKEN_KEY_FILE = "runner-token.key";
+export { RUNNER_TOKEN_KEY_FILE };
 
 /** How often queued tasks with no offer out get a fresh dispatch. */
 const REQUEUE_MS = 5_000;
@@ -47,14 +45,12 @@ const REQUEUE_MS = 5_000;
 /** The adapters core holds (ADR 0025): the code host, the model provider and the secret store. */
 export const createServerAdapters = async (db: Db, settings: ServerSettings, logger: Logger): Promise<ServerAdapters> => {
   const context: AdapterContext = { logger, clock: adapterClock };
-  const key = parseSecretsKey(await loadSecretsKey(settings));
-  if (!key.ok) {
-    throw new Error("OSTRA_SECRETS_KEY is not a 32-byte key (64 hex characters or base64)");
-  }
+  // Before anything else: a key that can't read the database's secrets stops the start (Q136).
+  const secretStore = await openSecretStore(db, settings, context);
   return {
     codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}`, apiUrl: settings.githubApiUrl }, context),
     modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
-    secretStore: new BuiltinSecretStore({ rows: postgresSecretRows(db), key: key.value }, context),
+    secretStore,
   };
 };
 
@@ -103,7 +99,7 @@ export const startCore = async (
     publicUrl: settings.publicUrl,
     logger,
   };
-  const signingKey = await loadOrCreateKey(settings.dataDir, RUNNER_TOKEN_KEY_FILE);
+  const signingKey = await loadRunnerTokenKey(settings);
   const gateway = createGateway({
     db,
     databaseUrl: settings.databaseUrl,
