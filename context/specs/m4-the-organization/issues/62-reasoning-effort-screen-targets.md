@@ -32,8 +32,11 @@ Notes for each target:
 
 ## Done when
 
-- [ ] The three targets exist in `context/brand/app-targets/m4/`, three files each, with the README updated.
-- [ ] They're approved, recorded under `## Comments` with the date, together with the maintainer's word on ADR 0066's settled choices (Q285 to Q292). Until then, ticket 63 builds its data and tests, not its UI.
-- [ ] Committed as `🎨 add the reasoning effort targets`.
+- [x] The three targets exist in `context/brand/app-targets/m4/`, three files each, with the README updated.
+- [x] They're approved, recorded under `## Comments` with the date, together with the maintainer's word on ADR 0066's settled choices (Q285 to Q292). Until then, ticket 63 builds its data and tests, not its UI.
+- [x] Committed as `🎨 add the reasoning effort targets`.
 
 ## Comments
+
+- 2026-11-19: the three targets are in `context/brand/app-targets/m4/` (`agent-profile-effort`, `task-effort`, `model-reasoning`), three files each, made image first with the `ui-taste` skill: GPT Image 2.6 on Higgsfield (3:2, 2k, high), one generation each from the closest approved 2048 original (`agent-profile-model` for 24, `m1/task` for 25, `models-keys` for 26), `app-concepts/html/home-graphite.png` and the Hinge logo, none retouched, downscaled to 1440 px wide WebP. Each build spec lists its states and copy (the research's examples: GPT-5.5 offers Default, Off, Low, Medium, High and Extra high; DeepSeek V4 Pro Default, Low, High and Max), its open points settled by recommendation, its differences from the code on `main`, and what the picture gets wrong. The one screen spec section 12 says grows with F-137, `m1/models`, is drawn by `model-reasoning`'s `Models` tab. Added to the folder's `README.md`.
+- 2026-11-19: approved 2026-11-19 by the lead on the maintainer's delegation, pending the maintainer's review. The lead reviewed each picture by eye against its starting target, the spec and ADR 0066; all three were usable as made, and their faults are listed under each spec's "Wrong in the image" (the thread marker's order and a misspelt path on `task-effort`, the tab count on `model-reasoning`, among others). Open points settled by recommendation: a radio list with hints for the profile (not a select), the task's control in the properties panel and applying from the next turn, the marker in time order, models as their own tab on Models, an override per key's listing, and `Only on or off` for a toggle-only custom endpoint. ADR 0066's choices that the lead settled (Q285 to Q292) stand as the ADR records them; the maintainer's own word on them comes with the maintainer's review of these targets. Ticket 63 may build its UI. Commit: `🎨 add the reasoning effort targets`.

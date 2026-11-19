@@ -11,6 +11,8 @@ These are the design targets for milestone 4's screens (`context/specs/m4-the-or
 
 **Added 2026-11-19 (ticket 52, F-135 and F-136):** `models-keys`, `project-models-keys`, `agent-profile-model`, `no-key-for-model` and `github-organizations`, made the same way, one generation each, approved 2026-11-19 by the lead on the maintainer's delegation, pending the maintainer's review. The screens that only grow with them (spec section 12) get no new picture: their changes are listed in tickets 53 and 54's `## Comments`.
 
+**Added 2026-11-19 (ticket 62, F-137, ADR 0066):** `agent-profile-effort`, `task-effort` and `model-reasoning`, made the same way, one generation each, approved 2026-11-19 by the lead on the maintainer's delegation, pending the maintainer's review. Ticket 63 builds their UI. `app-targets/m1/models`, the one screen spec section 12 says grows with F-137 (a model's row shows whether it reasons and its levels), is drawn by `model-reasoning`'s `Models` tab, so it gets no other picture.
+
 ## Screens
 
 | Screen | Target |
@@ -35,6 +37,9 @@ These are the design targets for milestone 4's screens (`context/specs/m4-the-or
 | The agent profile's model, chosen by name (F-135) | `agent-profile-model` |
 | No key for this model in this project: New task, and the copy for a queued task, a held message and the needs-you row (F-135) | `no-key-for-model` |
 | Organization, GitHub: several Apps and their installations, linked, waiting or removed (F-136) | `github-organizations` |
+| The agent profile's effort: the model's own levels, each with its hint (F-137) | `agent-profile-effort` |
+| A task's effort: the driver's control, "from the next turn", the marker, each turn's level and reasoning tokens (F-137) | `task-effort` |
+| Organization, Models: each model's reasoning and its source, a custom model's "Reasons" beside its limits, the reasoning-price mark (F-137) | `model-reasoning` |
 
 ## Rules
 

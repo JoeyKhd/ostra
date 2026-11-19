@@ -1,0 +1,41 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/task (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+# Not retouched.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the task page of ostra, a self-hosted control panel that runs coding agents. The FIRST attached screenshot is the approved task page of this same app: keep its sidebar, top bar, header, thread layout, composer, scale and right properties panel exactly. This version shows the task's reasoning EFFORT: how long the model thinks before it acts. The viewer, Alex Kim, drives the task, and has just lowered the effort while a turn is running; the change applies from the next turn.
+
+SIDEBAR: identical to the first screenshot ("calculator" expanded, "Tasks" selected).
+
+TOP BAR: breadcrumbs "calculator  ›  Tasks  ›  CALC-161" (last brighter). Right: a link icon, an outlined button "PR #483", an outlined button with a square icon "Stop".
+
+MAIN COLUMN:
+- faint mono eyebrow "CALC-161 · from Linear"; title "Add history panel"; status line: green dot "Working" · muted "Running 22 min on" mono "build-fleet-07".
+- hairline, then the thread:
+  1. Person icon, "Sam Rivera" bold, faint mono "14:02". Text: "Pick up CALC-161. Keep the last 50 results; clicking one should load it back into the input."
+  2. Agent icon, "OpenCode" bold, faint mono "14:02 · DeepSeek V4 Pro". Text: "I'll add a history panel that stores the last 50 results in the calculator state." Two tool rows with thin icons: "Read" mono "src/calculator/state.ts"; "Edited" mono "src/history/panel.tsx" green "+118". Then the turn's USAGE LINE, faint mono 12.5px: "Turn 1 · Max · 48k in · 9.1k out · 6.4k reasoning · $0.06". Directly under it, one muted 12.5px line with a small info icon: "Ran at Max: this model has no Extra high."
+  3. A small centred-left system marker row, faint 13px with a thin sliders icon: "Alex Kim set effort to Low, from the next turn" and faint mono "14:11".
+  4. Agent icon, "OpenCode" bold, faint mono "14:09 · DeepSeek V4 Pro · " and green "working". Text: "Now the keyboard navigation and the tests." One tool row: "Ran" mono "pnpm test history" with a small spinner.
+- The composer at the bottom exactly as in the first screenshot: placeholder "Message the agent...", the info line "Send reaches OpenCode at its next step. Interrupt and send stops the turn first.", outlined "Interrupt and send", off-white "Send".
+
+RIGHT PROPERTIES PANEL, group "Properties". Rows (grey keys in a fixed column, white values):
+- "Status" — green dot "Working"
+- "Driver" — a small round avatar "AK" and "Alex Kim · you"
+- "Agent" — "OpenCode"
+- "Model" — "DeepSeek V4 Pro"
+- "Key" — mono "acme-openrouter"
+- "Effort" — a compact select trigger (#131416, 1px #2A2C30 border, 6px radius) showing "Low" and a small chevron; directly under the trigger, 12.5px muted, two short lines: "From the next turn." / "This turn runs at Max."
+- "Runner" — mono "build-fleet-07" with small outlined chips "Pool" and "docker"
+- "Tokens" — mono "211k in · 38k out"
+- "Reasoning" — mono "19k tokens"
+- "Spend" — mono "$0.31"
+- "Time" — mono "22 min"
+- hairline, group "Code": "Repo" mono "acme/calculator-web"; "Branch" mono "calc-161-add-history…"; "PR" teal "#483" · "draft".
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286 only where the words say a check passed or something is connected; red #E5675C only where written. The primary button is filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple except one 8px project square, no blue tint, no drop shadows, no cards, never a box inside a box, no illustrations, no robot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for provider names, host names, project names inside sentences, repo names, IDs, counts, money, times. Icons: thin Lucide line icons, 15px, stroke 1.75, grey. Vendor model logos (the Anthropic "A\", the OpenAI knot, the OpenRouter mark) small, monochrome light grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron (never the word "ostra"); a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px; at the bottom a round grey avatar "AK" and "Alex Kim". TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's settings pages. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above, no extra words, no charts.
