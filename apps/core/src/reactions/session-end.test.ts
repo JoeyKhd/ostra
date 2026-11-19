@@ -186,6 +186,30 @@ describe("a session that ends with changes", () => {
   });
 });
 
+describe("a plan-first task's PR (F-063)", () => {
+  it("F-063: the plan turn's message never becomes the PR's description", async () => {
+    const task = await runningTask();
+    const planTurn = turnIdSchema.parse(randomUUID());
+    const buildTurn = turnIdSchema.parse(randomUUID());
+    await send(
+      task,
+      task.next,
+      { kind: "turn.started", turnId: planTurn, mode: "plan" },
+      { kind: "agent.message", turnId: planTurn, segmentId: segmentIdSchema.parse("p1"), text: "Plan: read the docs, then write CONTRIBUTING.md." },
+      { kind: "turn.ended", turnId: planTurn, stopReason: "end_turn" },
+      { kind: "turn.started", turnId: buildTurn, mode: "build" },
+      { kind: "turn.ended", turnId: buildTurn, stopReason: "end_turn" },
+      { kind: "session.ended", outcome: "with-changes", repos: [{ repoId: theRepo(), ahead: true }] },
+    );
+    await reactToEnd(task);
+    const before = codeHost.pulls.length;
+    await openPrs(task);
+    const pull = codeHost.pulls.slice(before)[0];
+    expect(pull?.body).not.toContain("Plan: read the docs");
+    expect(pull?.body).toContain("Add a short CONTRIBUTING.md");
+  });
+});
+
 describe("a task with several repos", () => {
   it("F-030: opens one PR for each repo the task changed and none for the one it didn't, each body linking the task and its other PRs", async () => {
     const task = await runningTask();

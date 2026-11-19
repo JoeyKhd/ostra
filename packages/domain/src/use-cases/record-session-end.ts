@@ -52,9 +52,21 @@ const M1_ROUNDS = { ci: false, aiReview: false } as const;
 
 /** The agent's last complete message of the session: the needs-you item's summary, and a PR body's fallback. */
 export const lastAgentMessageInTx = async (tx: Tx, taskId: TaskId, sessionId: SessionId): Promise<string | null> => {
-  const row = await tx.event.findFirst({ where: { taskId, sessionId, kind: "agent.message" }, orderBy: { seq: "desc" }, select: { payload: true } });
-  const parsed = row === null ? null : taskEventSchema.safeParse(row.payload);
-  return parsed?.success === true && parsed.data.kind === "agent.message" ? parsed.data.text : null;
+  // Milestone 3 (F-063): a plan turn's last message is the plan as proposed, never what the work did,
+  // so it never stands in for the PR's description.
+  const planTurns = await tx.event.findMany({ where: { taskId, sessionId, kind: "turn.started", payload: { path: ["mode"], equals: "plan" } }, select: { payload: true } });
+  const planTurnIds = planTurns.flatMap((started) => {
+    const parsed = taskEventSchema.safeParse(started.payload);
+    return parsed.success && parsed.data.kind === "turn.started" ? [parsed.data.turnId] : [];
+  });
+  const rows = await tx.event.findMany({ where: { taskId, sessionId, kind: "agent.message" }, orderBy: { seq: "desc" }, take: 200, select: { payload: true } });
+  for (const row of rows) {
+    const parsed = taskEventSchema.safeParse(row.payload);
+    if (parsed.success && parsed.data.kind === "agent.message" && !planTurnIds.includes(parsed.data.turnId)) {
+      return parsed.data.text;
+    }
+  }
+  return null;
 };
 
 /** Ends the task's active lease and stops its box: the session is over (milestone 1: one turn). */
