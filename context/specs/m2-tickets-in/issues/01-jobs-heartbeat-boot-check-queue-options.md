@@ -25,7 +25,7 @@ ADR 0037 lists four gaps in `packages/jobs` after spike 8. Milestone 2's polling
 - [x] Committed as `🐛 close the job queue's gaps from spike 8`.
 
 ## Comments
-- 2026-11-19, core (contracts): done in `🐛 close the job queue's gaps from spike 8`. On `main` before it: every queue was already `exclusive`, and a duplicate send already returned the existing job; nothing set UTC or the forwarding heartbeat. What it adds:
+- 2026-11-19, core (contracts): done in `497230a` (`🐛 close the job queue's gaps from spike 8`). On `main` before it: every queue was already `exclusive`, and a duplicate send already returned the existing job; nothing set UTC or the forwarding heartbeat. What it adds:
   - **The forwarding queue:** a worker's `start()` sets `heartbeatSeconds: 10` on `__pgboss__send-it` (`FORWARDING_QUEUE`, made first if pg-boss hasn't), then `bootCheck()` reads it back and checks `SHOW timezone`; on a problem it logs `jobs.boot_check_failed` with what's wrong, stops pg-boss and throws, so core never starts its workers. Core gets this through its existing `jobs.start()`.
   - **UTC (Q158):** `utcConnectionString` (in `@ostra/db`) adds `options=-c TimeZone=UTC` to every URL the server opens, through `createDb` and pg-boss both, unless the URL sets a time zone itself. `docs/configuration.md` says so.
   - **Schedules:** `schedule()` stores `singletonSeconds` beside its key: the cron's period (`cronPeriodSeconds`), or the caller's.

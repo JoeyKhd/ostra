@@ -39,7 +39,7 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 - [x] Committed as `✨ add the milestone 2 schema`.
 
 ## Comments
-- 2026-11-19, core (contracts): done in `✨ add the milestone 2 schema`, migration `20261119210000_milestone_2` (and `CommandKind.release` already in ticket 02's `20261119200000_command_release`). What builders should know:
+- 2026-11-19, core (contracts): done in `256bc0a` (`✨ add the milestone 2 schema`), migration `20261119210000_milestone_2` (and `CommandKind.release` already in ticket 02's `20261119200000_command_release`). What builders should know:
   - **Partial unique indexes are declared in `schema.prisma`** (`where: raw(...)`, as milestone 1's are), so Prisma never drops them: `task_one_active_code_task_per_ticket` and `connection_one_linear_per_organization` (one Linear connection that isn't `revoked` per organization). The other checks are raw SQL at the end of the migration, marked `ostra:`.
   - **`Connection.appId` stays required.** A pending Linear row holds `pending` until the admin pastes the client ID, and the development seed holds `api-key` (ticket 06 names both). `Connection.state` defaults to `active` and `webhookMode` to `webhooks`, so milestone 1's GitHub rows stay valid; `failedReason` was added beside `state`.
   - **Blobs:** one `Blob` table for every store (`store` `postgres` or `s3`, `key` the store's key), with `BlobUpload` (with `storeUploadId` and `storeParts` for S3's multipart, ticket 11) and `BlobChunk` (`bytea`, 1 MiB at most). A chunk belongs to its upload or to its blob, never both (a check): finishing moves it.
