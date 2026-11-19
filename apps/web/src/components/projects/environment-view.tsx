@@ -1,21 +1,31 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileIcon, KeyRoundIcon, PlusIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
+import { CheckIcon, FileIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import type { ProjectId } from "@ostra/protocol";
 
-import { PageFrame, PageHeading, PropGroup, Section } from "@/components/shell/page-frame";
+import { PageFrame, PageHeading, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Textarea } from "@/components/ui/input";
-import { Chip } from "@/components/ui/status";
+import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Status } from "@/components/ui/status";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
+
+import { entriesText, lineCount, withoutFinalNewline } from "./environment-words";
 
 type View = RouterOutputs["environments"]["get"];
 type Detected = RouterOutputs["environments"]["detect"];
@@ -78,56 +88,176 @@ const toEntry = (row: Row): SaveEntry => {
   }
 };
 
+/** "2h ago", or "just now". */
+const agoText = (since: number): string => {
+  const age = formatAge(since);
+  return age === "now" ? t("environment.justNow") : t("environment.ago", { age });
+};
+
+const savedAgoText = (since: number): string => {
+  const age = formatAge(since);
+  return age === "now" ? t("environment.savedJustNow") : t("environment.savedAgo", { age });
+};
+
 const kindIcon = { variable: VariableIcon, secret: KeyRoundIcon, file: FileIcon } as const;
 
-/** The detection's reasons, tools and services: why the draft says what it says (F-112). */
-const Reasons = ({ detected }: { readonly detected: Detected }) => (
-  <div data-testid="detection-reasons">
-    {detected.map(({ repoId, fullName, detection }) => (
-      <div key={repoId}>
-        <PropGroup title={t("environment.foundIn", { repo: fullName })}>
-          {detection.reasons.length === 0 ? <p className="text-sm text-muted">{t("environment.nothingFound")}</p> : null}
-          <ul className="space-y-1.5 text-sm">
-            {detection.reasons.map((reason, i) => (
-              <li key={`${reason.file}-${String(i)}`}>
-                <span className="font-mono text-faint">{reason.file}</span>
-                <span className="block text-muted">{reason.finding}</span>
-              </li>
-            ))}
-          </ul>
-        </PropGroup>
-        {detection.tools.length === 0 ? null : (
-          <PropGroup title={t("environment.tools")}>
-            <ul className="flex flex-wrap gap-1.5">
-              {detection.tools.map((tool) => (
-                <li key={tool.tool}><Chip className="font-mono">{tool.tool} {tool.version}</Chip></li>
-              ))}
-            </ul>
-          </PropGroup>
-        )}
-        {detection.services.length === 0 ? null : (
-          <PropGroup title={t("environment.services")}>
-            <ul className="space-y-1.5 text-sm">
-              {detection.services.map((service) => (
-                <li key={service.name} className="flex items-center gap-2">
-                  <span className="font-mono">{service.name}</span>
-                  {service.image === null ? null : <span className="truncate font-mono text-faint">{service.image}</span>}
-                  <Chip className="ml-auto text-amber">{t("environment.notOnHost")}</Chip>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-sm text-faint">{t("environment.servicesHelp")}</p>
-          </PropGroup>
-        )}
+/** An input that reads as text at rest: no border and no fill until hovered or focused. */
+const quietInput =
+  "h-7 w-full rounded-md border border-transparent bg-transparent px-2 font-mono text-body text-text placeholder:text-faint outline-none hover:border-line-2 hover:bg-surface focus-visible:border-faint focus-visible:bg-surface read-only:hover:border-transparent read-only:hover:bg-transparent";
+
+/** A section of the page: a 28px title line with an inline note or a right-hand end, then its body. */
+const EnvSection = ({ title, count, note, end, children }: { readonly title: ReactNode; readonly count?: number; readonly note?: ReactNode; readonly end?: ReactNode; readonly children: ReactNode }) => (
+  <section className="mt-[26px]">
+    <div className="mb-2 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
+      <h2 className="flex items-baseline gap-2 text-body font-semibold">
+        {title}
+        {count === undefined ? null : <span className="font-mono text-[11.5px] font-normal text-faint">{count}</span>}
+      </h2>
+      {note === undefined ? null : <span className="text-[12.5px] text-muted">{note}</span>}
+      {end === undefined ? null : <div className="ml-auto flex items-center gap-2">{end}</div>}
+    </div>
+    {children}
+  </section>
+);
+
+/** The setup script: a code editor with a gutter of line numbers. Grows with its text; 3 lines at least. */
+const ScriptEditor = ({ value, readOnly, onChange }: { readonly value: string; readonly readOnly: boolean; readonly onChange: (value: string) => void }) => {
+  const lines = Math.max(3, value.split("\n").length);
+  return (
+    <div className="flex rounded-lg border border-line-2 bg-surface px-3.5 py-2.5 font-mono text-[12.5px] leading-[1.75] focus-within:border-faint">
+      <div aria-hidden className="w-6 shrink-0 select-none text-right text-faint">
+        {Array.from({ length: lines }, (_, i) => <div key={i}>{i + 1}</div>)}
       </div>
-    ))}
+      <textarea
+        aria-label={t("environment.setupScript")}
+        spellCheck={false}
+        wrap="off"
+        className="ml-3.5 min-h-[5.25em] min-w-0 flex-1 resize-none overflow-x-auto bg-transparent text-text outline-none [field-sizing:content] placeholder:text-faint"
+        value={value}
+        readOnly={readOnly}
+        placeholder="pnpm install --frozen-lockfile"
+        onChange={(e) => { onChange(e.target.value); }}
+      />
+    </div>
+  );
+};
+
+/** The outline badge (`Badge variant="outline"`): 22px, `--line-2`, mono. */
+const Badge = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (
+  <span className={cn("inline-flex h-[22px] shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-line-2 bg-surface px-2 font-mono text-sm text-muted [&_svg]:size-3", className)}>
+    {children}
+  </span>
+);
+
+/** The panel: the environment's status, repos and entries; on a draft, what detection found (F-112). */
+const Properties = ({ view, rows, detected, detecting }: { readonly view: View | undefined; readonly rows: readonly Row[]; readonly detected: Detected | undefined; readonly detecting: boolean }) => (
+  <div data-testid="environment-properties">
+    <PropGroup title={t("environment.group")}>
+      {view === undefined ? (
+        [0, 1, 2].map((i) => (
+          <div key={i} className="grid h-[30px] grid-cols-[96px_minmax(0,1fr)] items-center gap-2">
+            <Skeleton className="w-14" />
+            <Skeleton className="w-28" />
+          </div>
+        ))
+      ) : (
+        <>
+          <PropRow label={t("environment.status")}>
+            {view.status === "draft" ? (
+              <Status tone="grey">{t("environment.statusDraft")}</Status>
+            ) : (
+              <Status tone="green">
+                {t("environment.statusSaved")}
+                {view.savedAt === null ? null : <span className="text-muted">{` · ${agoText(view.savedAt)}`}</span>}
+              </Status>
+            )}
+          </PropRow>
+          {view.repos.map((repo) => (
+            <PropRow key={repo.repoId} label={t("environment.repo")}>
+              <span className="truncate font-mono">{repo.fullName}</span>
+            </PropRow>
+          ))}
+          <PropRow label={t("environment.entriesKey")}>
+            <span className="truncate">{entriesText(rows.map((row) => row.kind)) || "–"}</span>
+          </PropRow>
+        </>
+      )}
+    </PropGroup>
+    {view?.status !== "draft" ? null : detecting && detected === undefined ? (
+      <p className="text-sm text-faint">{t("environment.reading")}</p>
+    ) : (
+      detected?.map(({ repoId, fullName, detection }) => (
+        <div key={repoId} data-testid="detection-reasons">
+          <PropGroup title={t("environment.foundIn", { repo: fullName })}>
+            {detection.reasons.length === 0 ? (
+              <p className="text-[12.5px] text-muted">{t("environment.nothingFound")}</p>
+            ) : (
+              <ul className="space-y-1.5 text-[12.5px]">
+                {detection.reasons.map((reason, i) => (
+                  <li key={`${reason.file}-${String(i)}`}>
+                    <span className="block font-mono text-text">{reason.file}</span>
+                    <span className="block text-muted">{reason.finding}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PropGroup>
+          {detection.reasons.length === 0 || detection.tools.length === 0 ? null : (
+            <PropGroup title={t("environment.tools")}>
+              <ul className="flex flex-wrap gap-1.5">
+                {detection.tools.map((tool) => (
+                  <li key={`${tool.tool}-${tool.source}`}><Badge className="text-text">{tool.tool} {tool.version}</Badge></li>
+                ))}
+              </ul>
+            </PropGroup>
+          )}
+          {detection.reasons.length === 0 || detection.services.length === 0 ? null : (
+            <PropGroup title={t("environment.services")}>
+              <ul>
+                {detection.services.map((service) => (
+                  <li key={service.name} className="flex h-[30px] items-center gap-3 text-[12.5px]">
+                    <span className="font-mono text-text">{service.name}</span>
+                    {service.image === null ? null : <span className="min-w-0 truncate font-mono text-faint">{service.image}</span>}
+                    <Badge className="ml-auto text-[11px]">{t("environment.notOnHost")}</Badge>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-sm text-faint">{t("environment.servicesShort")}</p>
+            </PropGroup>
+          )}
+        </div>
+      ))
+    )}
+  </div>
+);
+
+/** The value cell of a secret: a password input with its badge; read-only, `set` or `No value yet`. */
+const SecretValue = ({ row, admin, onChange }: { readonly row: Extract<Row, { kind: "secret" }>; readonly admin: boolean; readonly onChange: (value: string) => void }) => (
+  <div className="flex min-w-0 items-center gap-2">
+    {admin ? (
+      <input
+        type="password"
+        autoComplete="off"
+        aria-label={t("environment.secretValue")}
+        className="h-7 w-[240px] min-w-0 rounded-md border border-line-2 bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint outline-none focus-visible:border-faint"
+        value={row.value}
+        placeholder={row.hasValue ? t("environment.secretSet") : t("environment.secretEmpty")}
+        onChange={(e) => { onChange(e.target.value); }}
+      />
+    ) : (
+      <span className={cn("px-2 font-mono", row.hasValue ? "text-muted" : "text-faint")}>{row.hasValue ? t("environment.secretStored") : t("environment.secretEmpty")}</span>
+    )}
+    <Badge className="font-sans">
+      <LockIcon aria-hidden className="stroke-[1.75]" />
+      {t("environment.secretBadge")}
+    </Badge>
   </div>
 );
 
 /**
- * A project's environment (F-050, ADR 0038): the setup script, and each repo's variables, secrets
- * and files, edited and saved. A new project lands here on its draft, with detection's reasons.
- * No secret value is ever shown back: a stored secret reads "set".
+ * A project's environment (F-050, ADR 0038, environment.md): the setup script, and each repo's
+ * variables, secrets and files, edited and saved. A new project lands here on its draft, with what
+ * detection found. No secret value is ever shown back: a stored secret reads "set".
  */
 export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }) => {
   const trpc = useTRPC();
@@ -152,7 +282,9 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const [baseImage, setBaseImage] = useState("");
   const [envFiles, setEnvFiles] = useState<Readonly<Record<string, string>>>({});
   const [rows, setRows] = useState<Row[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
   const loaded = useRef(false);
+  const baseImageHelpId = useId();
   const admin = project.data?.role === "admin";
 
   // Load the saved environment once; a draft also asks detection for its reasons.
@@ -160,7 +292,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
     const view = environment.data;
     if (view === undefined || loaded.current) return;
     loaded.current = true;
-    setSetupScript(view.setupScript ?? "");
+    setSetupScript(withoutFinalNewline(view.setupScript ?? ""));
     setBaseImage(view.baseImage ?? "");
     setEnvFiles(Object.fromEntries(view.repos.map((repo) => [repo.repoId, repo.envFile])));
     setRows(rowsOf(view));
@@ -171,7 +303,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           onSuccess: (detected) => {
             if (view.entries.length === 0) setRows(rowsFromDetection(detected));
             const script = detected.map((repo) => repo.detection.setupScript).find((value) => value !== null);
-            if ((view.setupScript ?? "") === "" && script !== undefined) setSetupScript(script);
+            if ((view.setupScript ?? "") === "" && script !== undefined) setSetupScript(withoutFinalNewline(script));
           },
         },
       );
@@ -181,7 +313,6 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const update = (key: string, change: (row: Row) => Row) => {
     setRows((current) => current.map((row) => (row.key === key ? change(row) : row)));
   };
-  const firstRepo = environment.data?.repos[0]?.repoId;
   const add = (kind: Row["kind"], repoId: RepoId) => {
     const key = nextKey();
     const row: Row =
@@ -191,6 +322,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           ? { key, kind, repoId, name: "", value: "", hasValue: false, availableDuringSetup: false }
           : { key, kind, repoId, path: "", content: "", availableDuringSetup: false };
     setRows((current) => [...current, row]);
+    if (kind === "file") setEditing(key);
   };
 
   const submit = () => {
@@ -210,6 +342,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const view = environment.data;
   const name = project.data?.name ?? "";
   const created = params.get("created") !== null;
+  const editedFile = rows.find((row): row is Extract<Row, { kind: "file" }> => row.key === editing && row.kind === "file");
 
   return (
     <PageFrame
@@ -219,116 +352,245 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           {save.isPending ? t("common.saving") : t("environment.save")}
         </Button>
       ) : undefined}
-      properties={detect.data === undefined ? undefined : <Reasons detected={detect.data} />}
+      properties={<Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} />}
       wideProperties
     >
-      <PageHeading
-        eyebrow={view === undefined ? undefined : view.status === "draft" ? t("environment.draft") : t("environment.savedAgo", { age: formatAge(view.savedAt ?? Date.now()) })}
-        title={t("environment.title")}
-        lede={created ? t("environment.createdLede") : t("environment.lede")}
-      />
-      {environment.error === null ? null : <p role="alert" className="text-red">{errorText(environment.error)}</p>}
-      {save.error === null ? null : <p role="alert" className="mt-3 text-sm text-red">{errorText(save.error)}</p>}
-      {save.data === undefined ? null : (
-        <div className="mt-3 text-sm" role="status">
-          <span className="text-green">{t("environment.saved")}</span>
-          {save.data.warnings.map((warning) => (
-            <p key={warning} className="mt-1 flex items-start gap-1.5 text-amber"><TriangleAlertIcon className="mt-0.5 size-[13px] shrink-0" />{warning}</p>
-          ))}
-        </div>
-      )}
-
-      <Section title={t("environment.setupScript")}>
-        <p className="mb-2 text-sm text-muted">{t("environment.setupScriptHelp")}</p>
-        <Textarea
-          aria-label={t("environment.setupScript")}
-          className="min-h-28 font-mono text-[12.5px]"
-          spellCheck={false}
-          value={setupScript}
-          readOnly={!admin}
-          onChange={(e) => { setSetupScript(e.target.value); }}
-          placeholder="pnpm install --frozen-lockfile"
+      <div className="max-w-[720px]">
+        <PageHeading
+          eyebrow={
+            view === undefined
+              ? environment.isPending ? <Skeleton className="my-1 w-32" /> : undefined
+              : view.status === "draft" ? t("environment.draftEyebrow") : savedAgoText(view.savedAt ?? Date.now())
+          }
+          title={t("environment.title")}
+          lede={created && view?.status === "draft" ? t("environment.createdLede") : t("environment.lede")}
         />
-      </Section>
+        {save.error === null ? null : <p role="alert" className="mt-2 text-[12.5px] text-red">{errorText(save.error)}</p>}
+        {save.data === undefined ? null : (
+          <div className="mt-2 space-y-1 text-[12.5px]" role="status">
+            <p className="flex items-center gap-1.5 text-green"><CheckIcon aria-hidden className="size-[13px] stroke-[2]" />{t("environment.saved")}</p>
+            {save.data.warnings.map((warning) => (
+              <p key={warning} className="flex items-start gap-1.5 text-muted"><TriangleAlertIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />{warning}</p>
+            ))}
+          </div>
+        )}
+        {environment.error === null ? null : <p role="alert" className="mt-4 text-[12.5px] text-red">{errorText(environment.error)}</p>}
 
-      {view?.repos.map((repo) => {
-        const repoRows = rows.filter((row) => row.repoId === repo.repoId);
-        return (
-          <Section key={repo.repoId} title={repo.fullName} count={repoRows.length}>
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted">
-              <label htmlFor={`env-file-${repo.repoId}`}>{t("environment.envFile")}</label>
+        {view === undefined ? (
+          environment.isPending ? (
+            <div aria-busy className="mt-[26px] space-y-3">
+              <Skeleton className="w-24" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="mt-6 w-40" />
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-7 w-full" />)}
+            </div>
+          ) : null
+        ) : (
+          <>
+            <EnvSection title={t("environment.setupScript")} note={t("environment.setupScriptNote")}>
+              <ScriptEditor value={setupScript} readOnly={!admin} onChange={setSetupScript} />
+            </EnvSection>
+
+            {view.repos.map((repo) => {
+              const repoRows = rows.filter((row) => row.repoId === repo.repoId);
+              const envFileId = `env-file-${repo.repoId}`;
+              return (
+                <EnvSection
+                  key={repo.repoId}
+                  title={<span className="font-mono font-semibold">{repo.fullName}</span>}
+                  count={repoRows.length}
+                  end={
+                    <>
+                      <label htmlFor={envFileId} className="text-[12.5px] text-muted">{t("environment.writtenTo")}</label>
+                      <input
+                        id={envFileId}
+                        className="h-[26px] w-[82px] rounded-md border border-line-2 bg-surface px-2 font-mono text-sm text-text outline-none focus-visible:border-faint"
+                        value={envFiles[repo.repoId] ?? repo.envFile}
+                        readOnly={!admin}
+                        onChange={(e) => { setEnvFiles((current) => ({ ...current, [repo.repoId]: e.target.value })); }}
+                      />
+                    </>
+                  }
+                >
+                  <Table aria-label={t("environment.entries", { repo: repo.fullName })}>
+                    <colgroup>
+                      <col className="w-7" />
+                      <col className="w-[38%] md:w-[210px]" />
+                      <col />
+                      <col className="hidden w-24 md:table-column" />
+                      <col className="w-7" />
+                    </colgroup>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead><span className="sr-only">{t("environment.kind.variable")}</span></TableHead>
+                        <TableHead className="pl-2">{t("environment.name")}</TableHead>
+                        <TableHead className="pl-2">{t("environment.value")}</TableHead>
+                        <TableHead className="hidden text-center md:table-cell">{t("environment.duringSetupHead")}</TableHead>
+                        <TableHead><span className="sr-only">{t("common.remove")}</span></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {repoRows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-10 text-faint">{t("environment.noEntries")}</TableCell>
+                        </TableRow>
+                      ) : null}
+                      {repoRows.map((row) => {
+                        const Icon = kindIcon[row.kind];
+                        const duringSetup = (
+                          <Checkbox
+                            tone="teal"
+                            aria-label={t("environment.duringSetupHelp")}
+                            checked={row.availableDuringSetup}
+                            disabled={!admin}
+                            onCheckedChange={(checked) => { update(row.key, (r) => ({ ...r, availableDuringSetup: checked === true })); }}
+                          />
+                        );
+                        return (
+                          <TableRow key={row.key} data-kind={row.kind}>
+                            <TableCell className="h-10">
+                              <Icon role="img" aria-label={t(`environment.kind.${row.kind}`)} className="size-[15px] stroke-[1.75] text-faint" />
+                            </TableCell>
+                            <TableCell className="h-10 pr-2">
+                              {row.kind === "file" ? (
+                                <span className="block truncate px-2 font-mono text-body text-text">{row.path}</span>
+                              ) : (
+                                <input
+                                  aria-label={t("environment.name")}
+                                  className={quietInput}
+                                  value={row.name}
+                                  readOnly={!admin}
+                                  placeholder="API_URL"
+                                  onChange={(e) => { update(row.key, (r) => (r.kind === "file" ? r : { ...r, name: e.target.value.toUpperCase() })); }}
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell className="h-10 py-1.5 pr-2">
+                              {row.kind === "variable" ? (
+                                <input
+                                  aria-label={t("environment.value")}
+                                  className={quietInput}
+                                  value={row.value}
+                                  readOnly={!admin}
+                                  placeholder={t("environment.valuePlaceholder")}
+                                  onChange={(e) => { update(row.key, (r) => (r.kind === "variable" ? { ...r, value: e.target.value } : r)); }}
+                                />
+                              ) : row.kind === "secret" ? (
+                                <SecretValue row={row} admin={admin} onChange={(value) => { update(row.key, (r) => (r.kind === "secret" ? { ...r, value } : r)); }} />
+                              ) : (
+                                <span className="flex items-center gap-3 px-2">
+                                  <span className="font-mono text-faint">{plural(lineCount(row.content), "environment.linesOne", "environment.lines")}</span>
+                                  <button type="button" className="text-teal hover:underline" onClick={() => { setEditing(row.key); }}>
+                                    {admin ? t("environment.edit") : t("environment.content")}
+                                  </button>
+                                </span>
+                              )}
+                              <label className="mt-1 flex items-center gap-1.5 px-2 text-sm text-muted md:hidden">
+                                {duringSetup}
+                                {t("environment.duringSetup")}
+                              </label>
+                            </TableCell>
+                            <TableCell className="hidden h-10 text-center md:table-cell">
+                              <div className="flex items-center justify-center">
+                                <Tooltip content={t("environment.duringSetupHelp")}>
+                                  <span className="inline-flex">{duringSetup}</span>
+                                </Tooltip>
+                              </div>
+                            </TableCell>
+                            <TableCell className="h-10 text-right">
+                              {admin ? (
+                                <button
+                                  type="button"
+                                  className="inline-grid size-6 place-items-center rounded-sm text-faint hover:bg-raise hover:text-red"
+                                  aria-label={t("common.remove")}
+                                  onClick={() => { setRows((current) => current.filter((r) => r.key !== row.key)); }}
+                                >
+                                  <XIcon aria-hidden className="size-[14px] stroke-[1.75]" />
+                                </button>
+                              ) : null}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  {admin ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(["variable", "secret", "file"] as const).map((kind) => (
+                        <Button key={kind} size="sm" variant="ghost" className="[&_svg]:size-[13px]" onClick={() => { add(kind, repo.repoId); }}>
+                          <PlusIcon aria-hidden /> {t(`environment.add.${kind}`)}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </EnvSection>
+              );
+            })}
+
+            <EnvSection title={t("environment.baseImage")} note={t("environment.baseImageNote")}>
+              <Tooltip content={t("environment.baseImageHelp")}>
+                <Input
+                  aria-label={t("environment.baseImage")}
+                  aria-describedby={baseImageHelpId}
+                  className="w-full max-w-[320px] font-mono"
+                  value={baseImage}
+                  readOnly={!admin}
+                  placeholder={t("environment.baseImageDefault")}
+                  onChange={(e) => { setBaseImage(e.target.value); }}
+                />
+              </Tooltip>
+              <span id={baseImageHelpId} className="sr-only">{t("environment.baseImageHelp")}</span>
+            </EnvSection>
+
+            <p className="mt-[22px] flex items-start gap-2 text-[12.5px] text-muted">
+              <ShieldCheckIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75] text-faint" />
+              {t("environment.footnote")}
+            </p>
+          </>
+        )}
+      </div>
+
+      <Sheet open={editedFile !== undefined} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+        {editedFile === undefined ? null : (
+          <SheetContent title={t("environment.editFile")} className="w-[min(420px,92vw)] gap-4 p-5">
+            <h2 className="text-body font-semibold">{t("environment.editFile")}</h2>
+            <div>
+              <Label htmlFor="file-path">{t("environment.path")}</Label>
               <Input
-                id={`env-file-${repo.repoId}`}
-                className="h-7 w-48 font-mono text-sm"
-                value={envFiles[repo.repoId] ?? repo.envFile}
+                id="file-path"
+                className="font-mono"
+                value={editedFile.path}
                 readOnly={!admin}
-                onChange={(e) => { setEnvFiles((current) => ({ ...current, [repo.repoId]: e.target.value })); }}
+                placeholder="config/local.json"
+                onChange={(e) => { update(editedFile.key, (r) => (r.kind === "file" ? { ...r, path: e.target.value } : r)); }}
               />
             </div>
-            <ul className="rows" aria-label={t("environment.entries", { repo: repo.fullName })}>
-              {repoRows.map((row) => {
-                const Icon = kindIcon[row.kind];
-                return (
-                  <li key={row.key} data-kind={row.kind} className="flex flex-wrap items-start gap-2 py-2">
-                    <Icon aria-label={t(`environment.kind.${row.kind}`)} className="mt-2 size-[14px] shrink-0 text-muted" />
-                    {row.kind === "file" ? (
-                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                        <Input aria-label={t("environment.path")} className="h-7 font-mono text-sm" value={row.path} readOnly={!admin} placeholder="config/local.json"
-                          onChange={(e) => { update(row.key, (r) => (r.kind === "file" ? { ...r, path: e.target.value } : r)); }} />
-                        <Textarea aria-label={t("environment.content")} className="min-h-16 font-mono text-sm" value={row.content} readOnly={!admin}
-                          onChange={(e) => { update(row.key, (r) => (r.kind === "file" ? { ...r, content: e.target.value } : r)); }} />
-                      </div>
-                    ) : (
-                      <>
-                        <Input aria-label={t("environment.name")} className="h-7 w-full font-mono text-sm sm:w-56" value={row.name} readOnly={!admin} placeholder="API_URL"
-                          onChange={(e) => { update(row.key, (r) => (r.kind === "file" ? r : { ...r, name: e.target.value.toUpperCase() })); }} />
-                        <Input
-                          aria-label={row.kind === "secret" ? t("environment.secretValue") : t("environment.value")}
-                          type={row.kind === "secret" ? "password" : "text"}
-                          autoComplete="off"
-                          className="h-7 min-w-0 flex-1 font-mono text-sm"
-                          value={row.value}
-                          readOnly={!admin}
-                          placeholder={row.kind === "secret" ? (row.hasValue ? t("environment.secretSet") : t("environment.secretEmpty")) : ""}
-                          onChange={(e) => { update(row.key, (r) => (r.kind === "file" ? r : { ...r, value: e.target.value })); }}
-                        />
-                      </>
-                    )}
-                    <label className="mt-1.5 flex shrink-0 items-center gap-1.5 text-sm text-muted" title={t("environment.duringSetupHelp")}>
-                      <input type="checkbox" checked={row.availableDuringSetup} disabled={!admin} className="accent-[var(--teal)]"
-                        onChange={(e) => { update(row.key, (r) => ({ ...r, availableDuringSetup: e.target.checked })); }} />
-                      {t("environment.duringSetup")}
-                    </label>
-                    {admin ? (
-                      <button type="button" className="mt-1.5 rounded-sm p-0.5 text-faint hover:text-red" aria-label={t("common.remove")}
-                        onClick={() => { setRows((current) => current.filter((r) => r.key !== row.key)); }}>
-                        <XIcon className="size-[14px]" />
-                      </button>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-            {admin ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {(["variable", "secret", "file"] as const).map((kind) => (
-                  <Button key={kind} size="sm" variant="ghost" onClick={() => { add(kind, repo.repoId); }}>
-                    <PlusIcon /> {t(`environment.add.${kind}`)}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-          </Section>
-        );
-      })}
-
-      {firstRepo === undefined ? null : (
-        <Section title={t("environment.baseImage")}>
-          <p className="mb-2 text-sm text-muted">{t("environment.baseImageHelp")}</p>
-          <Input aria-label={t("environment.baseImage")} className="max-w-[420px] font-mono" value={baseImage} readOnly={!admin} placeholder={t("environment.baseImageDefault")}
-            onChange={(e) => { setBaseImage(e.target.value); }} />
-        </Section>
-      )}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <Label htmlFor="file-content">{t("environment.content")}</Label>
+              <Textarea
+                id="file-content"
+                className="min-h-[calc(12*1.6em)] flex-1 font-mono text-[12.5px]"
+                spellCheck={false}
+                value={editedFile.content}
+                readOnly={!admin}
+                onChange={(e) => { update(editedFile.key, (r) => (r.kind === "file" ? { ...r, content: e.target.value } : r)); }}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-muted">
+              <Checkbox
+                tone="teal"
+                checked={editedFile.availableDuringSetup}
+                disabled={!admin}
+                onCheckedChange={(checked) => { update(editedFile.key, (r) => ({ ...r, availableDuringSetup: checked === true })); }}
+              />
+              {t("environment.duringSetup")}
+            </label>
+            <div>
+              <Button variant="primary" onClick={() => { setEditing(null); }}>{t("environment.done")}</Button>
+            </div>
+          </SheetContent>
+        )}
+      </Sheet>
     </PageFrame>
   );
 };
