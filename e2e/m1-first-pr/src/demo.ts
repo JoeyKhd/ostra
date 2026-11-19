@@ -191,7 +191,7 @@ const createProject = async (page: Page, settings: DemoSettings): Promise<string
   if (!(await stepDone(page, "project"))) {
     say("step 5: create the project");
     await page.goto("/projects/new");
-    await page.locator(`input[name="repo"][value="${settings.githubOrg}/${settings.githubRepo}"]`).check({ timeout: 60_000 });
+    await page.locator(`li[data-repo="${settings.githubOrg}/${settings.githubRepo}"]`).getByRole("checkbox").check({ timeout: 60_000 });
     await page.locator("#project-name").fill(settings.githubRepo);
     await screenshot(page, settings, "project-new");
     await page.getByRole("button", { name: "Create the project" }).click();
