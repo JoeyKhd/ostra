@@ -194,6 +194,8 @@ const present = <T,>(values: readonly (T | null)[]): T[] => values.flatMap((valu
 export class LinearAdapter extends TrackerAdapter {
   readonly name = "linear";
   readonly capabilities: TrackerCapabilities = {
+    // Milestone 3's ticket 10 builds `findUsersByEmail` on Linear and turns this on.
+    mentions: false,
     // Linear's agent sessions come with milestone 6 (F-012).
     agentSessions: false,
     // A ticket's parent is read, so a sub-issue is told from a ticket.

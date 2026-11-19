@@ -31,6 +31,7 @@ import type {
   TrackerWebhookHint,
   TrackerWebhookRequest,
   WebhookVerification,
+  TrackerUser,
 } from "../tracker/base.ts";
 import type { TrackerCapabilities } from "../tracker/capabilities.ts";
 import { manualClock } from "./memory.ts";
@@ -247,6 +248,10 @@ export type JiraSite = {
   /** Internal: what the adapter reads. */
   readonly issues: Map<ExternalTicketId, JiraIssue>;
   readonly takeFault: () => JiraFault | undefined;
+  /** Milestone 3: the site's people, by account ID and email (F-036). */
+  readonly users: { readonly accountId: string; readonly email: string }[];
+  /** Milestone 3: adds a person to the site, and gives back their account ID. */
+  readonly addUser: (email: string) => string;
   readonly nextId: () => string;
   readonly nextKey: (projectId: string) => TicketKey;
 };
@@ -279,6 +284,7 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
   const counters = new Map<string, number>();
   const issues = new Map<ExternalTicketId, JiraIssue>();
   const faults: JiraFault[] = [];
+  const users: { readonly accountId: string; readonly email: string }[] = [];
   // Each site numbers from its own range, as two Jira sites never share an ID.
   sitesMade += 1;
   let idCounter = sitesMade * 1_000_000;
@@ -314,6 +320,12 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
     devPanelInstalled: false,
     writeLimit: { count: 20, windowMs: 2000 },
     files: new Map(),
+    users,
+    addUser: (email) => {
+      const accountId = `user-${randomUUID()}`;
+      users.push({ accountId, email });
+      return accountId;
+    },
     issues,
     addProject: (key, name) => {
       const project = { id: nextId(), key, name };
@@ -448,6 +460,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
     commentEdit: true,
     attachments: true,
     transitions: true,
+    mentions: true,
   };
 
   readonly #site: JiraSite;
@@ -679,6 +692,21 @@ export class JiraFakeAdapter extends TrackerAdapter {
     return { ok: true, deliveryId: deliveryId.data, signatureHash: sha256Hex(header), sentAt: parsed.data.timestamp, body };
   }
 
+  /** Milestone 3: Jira mentions by account ID, as `[~accountid:<id>]` (F-036). */
+  override findUsersByEmail(board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
+    return this.#read(() => {
+      if (!this.#site.projects.some((project) => project.id === board.externalId)) {
+        return adapterError("not-found", "no such board");
+      }
+      const wanted = new Set(emails.map((email) => email.toLowerCase()));
+      return ok(
+        this.#site.users
+          .filter((user) => wanted.has(user.email.toLowerCase()))
+          .map((user) => ({ email: user.email, userId: user.accountId, mention: `[~accountid:${user.accountId}]` })),
+      );
+    });
+  }
+
   parseWebhook(input: ParseWebhookInput): AdapterResult<TrackerWebhookHint> {
     const parsed = webhookBodySchema.safeParse(input.body);
     if (!parsed.success) {
@@ -897,6 +925,7 @@ export const createJiraFakeSuiteSubject = (
             sentAt: input.sentAt,
           }),
         ),
+      seedUser: (email) => Promise.resolve({ userId: site.addUser(email) }),
       rateLimitNext: (retryAfterSeconds) => {
         site.injectFault({ kind: "rate-limited", retryAfterSeconds });
         return Promise.resolve();

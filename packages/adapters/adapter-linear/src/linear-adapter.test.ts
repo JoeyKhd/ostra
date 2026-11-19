@@ -219,6 +219,8 @@ describe("the Linear adapter", () => {
       commentEdit: true,
       attachments: true,
       transitions: false,
+      // Milestone 3's ticket 10 builds findUsersByEmail on Linear and turns it on.
+      mentions: false,
     });
   });
 });

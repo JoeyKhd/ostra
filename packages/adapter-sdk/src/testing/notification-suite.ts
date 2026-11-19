@@ -1,0 +1,165 @@
+import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
+import { describe, expect, it } from "vitest";
+
+import type { Notification, NotificationAdapter, NotificationRecipient } from "../notification/base.ts";
+import { defineCommonCases, useSubject } from "./common-cases.ts";
+import type { ContractSuiteOptions } from "./common-cases.ts";
+
+// The cases every notification adapter passes (milestone 3, ticket 04; ADR 0050): the panel's, the
+// tracker's (ticket 11) and the two email ones (tickets 12 and 13), each against its own fake (the
+// in-memory rows, the fake Linear server and the Jira fake, the fake Resend API, the fake SMTP
+// server). A notification goes out once per key; a recipient the channel can't reach is reported
+// without failing the others; a rate limit is `rate-limited`; an email carries the link and the
+// subject in both its parts; an adapter with `edits` edits in place.
+
+/** What the channel delivered, as its fake saw it: by the provider's ID. */
+export type DeliveredNotification = {
+  readonly providerMessageId: string;
+  /** The addresses, accounts or mentions it reached. */
+  readonly to: readonly string[];
+  readonly subject: string;
+  /** An email's HTML part, `null` for a channel without one. */
+  readonly html: string | null;
+  /** The text that reached the recipient: an email's text part, a comment, a row's line. */
+  readonly text: string;
+};
+
+export type NotificationSuiteFixture = {
+  /** A recipient the channel reaches. */
+  readonly reachable: NotificationRecipient;
+  /** A second one it reaches, for the case with several. */
+  readonly alsoReachable: NotificationRecipient;
+  /** A recipient the channel refuses: no address, an address the fake refuses, no mention. Absent: the channel reaches every member. */
+  readonly refused?: NotificationRecipient;
+  /** Makes the channel's next call answer a rate limit. Absent: the case is skipped. */
+  readonly rateLimitNext?: () => void;
+  /** Everything the channel delivered so far. */
+  readonly delivered: () => Promise<readonly DeliveredNotification[]>;
+  /** Fills in what this channel needs of a notification (the ticket, the row), around the suite's own fields. */
+  readonly prepare?: (notification: Notification) => Notification | Promise<Notification>;
+};
+
+const organizationId = organizationIdSchema.parse("org-notification-suite");
+
+let keys = 0;
+
+/** A notification of an approval, with a key of its own and its parts rendered for email. */
+export const sampleNotification = (recipients: readonly NotificationRecipient[]): Notification => {
+  keys += 1;
+  const url = `https://ostra.example/t/task-1?item=${String(keys)}`;
+  const subject = "Add CONTRIBUTING.md";
+  return {
+    organizationId,
+    memberIds: recipients.map((recipient) => recipient.memberId),
+    title: "An approval needs you",
+    body: `The agent asks to run pnpm add zod. Open it: ${url}`,
+    url,
+    idempotencyKey: `suite:${String(keys)}:${String(Date.now())}`,
+    kind: "approval",
+    recipients,
+    subject,
+    rendered: {
+      subject: `Approval needed: ${subject}`,
+      html: `<table><tr><td><p>The agent asks to run <code>pnpm add zod</code> on <strong>${subject}</strong>.</p><p><a href="${url}">Open the task</a></p></td></tr></table>`,
+      text: `The agent asks to run pnpm add zod on ${subject}.\n\nOpen the task: ${url}\n`,
+    },
+  };
+};
+
+export const defineNotificationContractSuite = (options: ContractSuiteOptions<NotificationAdapter, NotificationSuiteFixture>): void => {
+  describe(`notification contract: ${options.name}`, () => {
+    const subject = useSubject(options);
+    defineCommonCases(subject, "notification", { channels: "array", edits: "boolean" });
+
+    const make = async (recipients: readonly NotificationRecipient[]): Promise<Notification> => {
+      const notification = sampleNotification(recipients);
+      return (await subject().fixture.prepare?.(notification)) ?? notification;
+    };
+
+    it("F-036: sends once per idempotency key: a second send answers the first's ID and delivers nothing new", async () => {
+      const { adapter, fixture } = subject();
+      const notification = await make([fixture.reachable]);
+      const before = (await fixture.delivered()).length;
+      const first = await adapter.send(notification);
+      if (!first.ok) throw new Error(first.error.message);
+      expect(first.value.refused).toEqual([]);
+      const again = await adapter.send(notification);
+      expect(again).toEqual(first);
+      const delivered = await fixture.delivered();
+      expect(delivered.length).toBe(before + 1);
+      expect(delivered.at(-1)?.providerMessageId).toBe(first.value.providerMessageId);
+    });
+
+    it("F-036: a recipient the channel can't reach is reported, and the others still get it", async (context) => {
+      const { adapter, fixture } = subject();
+      const refusedOne = fixture.refused;
+      if (refusedOne === undefined) {
+        context.skip();
+        return;
+      }
+      const sent = await adapter.send(await make([fixture.reachable, refusedOne, fixture.alsoReachable]));
+      if (!sent.ok) throw new Error(sent.error.message);
+      expect(sent.value.refused.map((refused) => refused.memberId)).toEqual([refusedOne.memberId]);
+      expect(sent.value.refused[0]?.reason.length).toBeGreaterThan(0);
+      const last = (await fixture.delivered()).at(-1);
+      expect(last?.providerMessageId).toBe(sent.value.providerMessageId);
+      expect(last?.to.length).toBe(2);
+    });
+
+    it("F-036: a rate limit answers rate-limited, with when to try again, and the next send goes out", async (context) => {
+      const { adapter, fixture } = subject();
+      if (fixture.rateLimitNext === undefined) {
+        context.skip();
+        return;
+      }
+      const notification = await make([fixture.reachable]);
+      fixture.rateLimitNext();
+      const limited = await adapter.send(notification);
+      expect(limited).toMatchObject({ ok: false, error: { code: "rate-limited" } });
+      expect(limited.ok ? undefined : limited.error.retryAfterMs).toBeGreaterThan(0);
+      expect((await adapter.send(notification)).ok).toBe(true);
+    });
+
+    it("F-115: an email's HTML and text both carry the link and the subject", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.channels.includes("email")) {
+        context.skip();
+        return;
+      }
+      const notification = await make([fixture.reachable]);
+      const sent = await adapter.send(notification);
+      if (!sent.ok) throw new Error(sent.error.message);
+      const mail = (await fixture.delivered()).find((delivered) => delivered.providerMessageId === sent.value.providerMessageId);
+      expect(mail?.subject).toBe(notification.rendered?.subject);
+      expect(mail?.html).toContain(notification.url);
+      expect(mail?.html).toContain(notification.subject);
+      expect(mail?.text).toContain(notification.url);
+      expect(mail?.text).toContain(notification.subject);
+    });
+
+    it("F-036: an adapter that edits changes a sent notification in place; one that can't says so", async () => {
+      const { adapter, fixture } = subject();
+      const notification = await make([fixture.reachable]);
+      const sent = await adapter.send(notification);
+      if (!sent.ok) throw new Error(sent.error.message);
+      const id = sent.value.providerMessageId;
+      const changed: Notification = { ...notification, body: `Answered: approved once. ${notification.url}` };
+      if (!adapter.capabilities.edits || id === null) {
+        expect(await adapter.update(changed, id ?? "none")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      const before = (await fixture.delivered()).length;
+      expect(await adapter.update(changed, id)).toEqual({ ok: true, value: undefined });
+      const delivered = await fixture.delivered();
+      expect(delivered.length).toBe(before);
+      expect(delivered.find((candidate) => candidate.providerMessageId === id)?.text).toContain("Answered: approved once.");
+    });
+  });
+};
+
+/** A recipient for a fixture: a member, with an address and a mention or without. */
+export const suiteRecipient = (name: string, reach: { readonly email: boolean; readonly mention: boolean }): NotificationRecipient => ({
+  memberId: memberIdSchema.parse(`member-${name}`),
+  email: reach.email ? `${name}@example.com` : null,
+  trackerMention: reach.mention ? `@${name}` : null,
+});

@@ -11,9 +11,9 @@ import { defineAgentContractSuite } from "./testing/agent-suite.ts";
 import { defineCodeHostContractSuite } from "./testing/code-host-suite.ts";
 import { defineExecutorContractSuite } from "./testing/executor-suite.ts";
 import { defineBlobStoreFirstCases } from "./testing/blob-store-suite.ts";
-import { defineNotificationContractSuite } from "./testing/first-case-suites.ts";
+import { defineNotificationContractSuite, suiteRecipient } from "./testing/notification-suite.ts";
 import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
-import { defineTrackerContractSuite, defineTrackerFirstCases } from "./testing/tracker-suite.ts";
+import { defineTrackerContractSuite, defineTrackerFirstCases, defineTrackerMentionSuite } from "./testing/tracker-suite.ts";
 import { defineModelProviderContractSuite } from "./testing/model-provider-suite.ts";
 import { defineSecretStoreContractSuite } from "./testing/secret-store-suite.ts";
 import {
@@ -41,9 +41,44 @@ defineTrackerContractSuite({
     return Promise.resolve({ adapter, fixture });
   },
 });
-defineNotificationContractSuite({
-  name: "tiny notifier",
-  create: () => Promise.resolve({ adapter: new TinyNotifier(), fixture: {} }),
+for (const channel of ["panel", "email"] as const) {
+  defineNotificationContractSuite({
+    name: `tiny notifier, ${channel}`,
+    create: () => {
+      const adapter = new TinyNotifier(channel);
+      return Promise.resolve({
+        adapter,
+        fixture: {
+          reachable: suiteRecipient("ada", { email: true, mention: true }),
+          alsoReachable: suiteRecipient("grace", { email: true, mention: false }),
+          // The panel reaches every member; email can't reach one with no address.
+          ...(channel === "email" ? { refused: suiteRecipient("nomail", { email: false, mention: false }) } : {}),
+          rateLimitNext: () => {
+            adapter.rateLimitNext(2000);
+          },
+          delivered: () => Promise.resolve(adapter.delivered),
+        },
+      });
+    },
+  });
+}
+
+defineTrackerMentionSuite({
+  name: "tiny tracker",
+  create: () => {
+    const adapter = new TinyTracker();
+    return Promise.resolve({
+      adapter,
+      fixture: {
+        board: { externalId: "tiny-board" },
+        seedUser: (email: string) => {
+          const userId = `tiny-user-${String(adapter.users.length + 1)}`;
+          adapter.users.push({ email, userId });
+          return Promise.resolve({ userId });
+        },
+      },
+    });
+  },
 });
 defineBlobStoreFirstCases({
   name: "tiny blob store",

@@ -2,6 +2,7 @@ import type { ExternalTicketId, TicketKey, WebhookDeliveryId } from "@ostra/prot
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
+import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { TrackerCapabilities } from "./capabilities.ts";
 
@@ -270,6 +271,14 @@ export type ParseWebhookInput = {
   readonly ownUserId: string | null;
 };
 
+/** A tracker user matched by email (milestone 3, F-036): the markdown in `mention` notifies them. */
+export type TrackerUser = {
+  readonly email: string;
+  readonly userId: string;
+  /** Such as Linear's `@<displayName>` link or Jira's `[~accountid:<id>]`. */
+  readonly mention: string;
+};
+
 export abstract class TrackerAdapter {
   readonly kind = "tracker" as const;
   abstract readonly name: string;
@@ -366,4 +375,14 @@ export abstract class TrackerAdapter {
 
   /** Reads a verified body loosely into a hint. A delivery it can't read is `invalid-response`. */
   abstract parseWebhook(input: ParseWebhookInput): AdapterResult<TrackerWebhookHint>;
+
+  /**
+   * Milestone 3 (F-036): the board's users with these emails, each with the markdown that mentions
+   * them. An email with no user is left out, never an error. Needs the capability `mentions`;
+   * without it, `unsupported`. The emails are never logged.
+   */
+  findUsersByEmail(board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
+    this.plumbing.logger.debug("findUsersByEmail is not supported", { board: board.externalId, count: emails.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't find users by email`));
+  }
 }

@@ -68,13 +68,14 @@ import { ModelProviderAdapter } from "../model-provider/base.ts";
 import type { CatalogEntry, CatalogMatch, ConnectionTest, EndpointModel, ModelEndpoint } from "../model-provider/base.ts";
 import type { ModelProviderCapabilities } from "../model-provider/capabilities.ts";
 import { NotificationAdapter } from "../notification/base.ts";
-import type { Notification } from "../notification/base.ts";
+import type { Notification, SendResult } from "../notification/base.ts";
 import type { SecretRowStore } from "../plumbing/stores.ts";
 import { SecretStoreAdapter, secretRefSchema } from "../secret-store/base.ts";
 import type { SecretRef, SecretScope } from "../secret-store/base.ts";
 import type { StubEndpoint } from "../testing/model-provider-suite.ts";
 import { TrackerAdapter } from "../tracker/base.ts";
 import type {
+  BoardRef,
   CodeHostIntegration,
   DownloadedFile,
   MoveResult,
@@ -83,6 +84,7 @@ import type {
   TicketPage,
   TrackerBoard,
   TrackerStatus,
+  TrackerUser,
   TrackerWebhookHint,
   WebhookVerification,
 } from "../tracker/base.ts";
@@ -106,7 +108,17 @@ export class TinyTracker extends TrackerAdapter {
     commentEdit: false,
     attachments: false,
     transitions: false,
+    mentions: true,
   };
+  /** Milestone 3: the board's users, by email, for `findUsersByEmail`. */
+  readonly users: { readonly email: string; readonly userId: string }[] = [];
+
+  override findUsersByEmail(_board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
+    const wanted = new Set(emails.map((email) => email.toLowerCase()));
+    return Promise.resolve(
+      ok(this.users.filter((user) => wanted.has(user.email.toLowerCase())).map((user) => ({ ...user, mention: `@${user.userId}` }))),
+    );
+  }
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });
   }
@@ -160,15 +172,91 @@ export class TinyTracker extends TrackerAdapter {
   }
 }
 
+/** What the tiny notifier delivered, by its provider ID: what a channel's own inbox would hold. */
+export type TinyDelivery = {
+  readonly providerMessageId: string;
+  readonly to: readonly string[];
+  readonly subject: string;
+  html: string | null;
+  text: string;
+  edits: number;
+};
+
+/**
+ * A notifier with no provider (milestone 3, ticket 04), for the notification suite: `panel` keeps a
+ * row per recipient and edits it in place; `email` needs the rendered parts and an address, and
+ * can't edit. Each sends once per idempotency key, refuses a recipient it can't reach without
+ * failing the others, and can be made to answer a rate limit.
+ */
 export class TinyNotifier extends NotificationAdapter {
-  readonly name = "tiny-notifier";
-  readonly capabilities = { channels: ["panel"] };
+  readonly name: string;
+  readonly capabilities: { readonly channels: readonly string[]; readonly edits: boolean };
   readonly sent: Notification[] = [];
+  readonly delivered: TinyDelivery[] = [];
+  readonly #byKey = new Map<string, SendResult>();
+  readonly #channel: "panel" | "email";
+  #rateLimitMs: number | null = null;
+
+  constructor(channel: "panel" | "email" = "panel") {
+    super();
+    this.#channel = channel;
+    this.name = `tiny-notifier-${channel}`;
+    this.capabilities = { channels: [channel], edits: channel === "panel" };
+  }
+
+  /** The next send answers a rate limit, with this long to wait. */
+  rateLimitNext(retryAfterMs: number): void {
+    this.#rateLimitMs = retryAfterMs;
+  }
+
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });
   }
-  send(notification: Notification): Promise<AdapterResult<void>> {
+
+  send(notification: Notification): Promise<AdapterResult<SendResult>> {
+    const known = this.#byKey.get(notification.idempotencyKey);
+    if (known !== undefined) {
+      return Promise.resolve(ok(known));
+    }
+    if (this.#rateLimitMs !== null) {
+      const retryAfterMs = this.#rateLimitMs;
+      this.#rateLimitMs = null;
+      return Promise.resolve(adapterError("rate-limited", "the channel's rate limit", retryAfterMs));
+    }
+    if (this.#channel === "email" && notification.rendered === null) {
+      return Promise.resolve(adapterError("invalid-input", "an email needs its rendered parts"));
+    }
+    const reachable = notification.recipients.filter((recipient) => this.#channel === "panel" || recipient.email !== null);
+    const refused = notification.recipients
+      .filter((recipient) => !reachable.includes(recipient))
+      .map((recipient) => ({ memberId: recipient.memberId, reason: "the member has no email address" }));
     this.sent.push(notification);
+    const providerMessageId = reachable.length === 0 ? null : `tiny-${randomUUID()}`;
+    if (providerMessageId !== null) {
+      this.delivered.push({
+        providerMessageId,
+        to: reachable.map((recipient) => (this.#channel === "panel" ? String(recipient.memberId) : (recipient.email ?? ""))),
+        subject: notification.rendered?.subject ?? notification.title,
+        html: notification.rendered?.html ?? null,
+        text: notification.rendered?.text ?? notification.body,
+        edits: 0,
+      });
+    }
+    const result: SendResult = { providerMessageId, refused };
+    this.#byKey.set(notification.idempotencyKey, result);
+    return Promise.resolve(ok(result));
+  }
+
+  override update(notification: Notification, providerMessageId: string): Promise<AdapterResult<void>> {
+    if (!this.capabilities.edits) {
+      return super.update(notification, providerMessageId);
+    }
+    const delivery = this.delivered.find((candidate) => candidate.providerMessageId === providerMessageId);
+    if (delivery === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such notification"));
+    }
+    delivery.text = notification.body;
+    delivery.edits += 1;
     return Promise.resolve(ok(undefined));
   }
 }

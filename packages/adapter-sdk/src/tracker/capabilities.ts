@@ -14,4 +14,6 @@ export type TrackerCapabilities = {
   readonly attachments: boolean;
   /** Milestone 2: moves go through a transition graph (Jira), not a direct status write (Linear). */
   readonly transitions: boolean;
+  /** Milestone 3: `findUsersByEmail` matches members to tracker users, whose mention notifies them (F-036). */
+  readonly mentions: boolean;
 };

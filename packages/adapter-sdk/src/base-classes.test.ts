@@ -109,6 +109,7 @@ describe("a missing operation", () => {
         commentEdit: false,
         attachments: false,
         transitions: false,
+        mentions: false,
       };
       health(): Promise<HealthReport> {
         return ok();
@@ -171,7 +172,7 @@ describe("a missing operation", () => {
     // @ts-expect-error send is missing.
     class NoNotifier extends NotificationAdapter {
       readonly name = "no";
-      readonly capabilities = { channels: [] };
+      readonly capabilities = { channels: [], edits: false };
       health(): Promise<HealthReport> {
         return ok();
       }

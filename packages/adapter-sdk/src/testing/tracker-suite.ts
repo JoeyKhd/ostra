@@ -60,6 +60,8 @@ export type TrackerSuiteFixture = {
   }) => Promise<{ readonly rawBody: Uint8Array; readonly headers: Readonly<Record<string, string>> }>;
   /** The tracker's next answer is 429 with `Retry-After`. */
   readonly rateLimitNext: (retryAfterSeconds: number) => Promise<void>;
+  /** Milestone 3: adds a user with this email to the board's tracker. Absent: the mention case is skipped. */
+  readonly seedUser?: (email: string) => Promise<{ readonly userId: string }>;
 };
 
 const must = <T>(result: AdapterResult<T>, what: string): T => {
@@ -86,33 +88,69 @@ const allTickets = async (adapter: TrackerAdapter, board: BoardRef, since: numbe
   throw new Error("listTickets never ended");
 };
 
+const trackerCapabilityTypes = {
+  agentSessions: "boolean",
+  subIssues: "boolean",
+  statusGraph: "boolean",
+  webhooks: "boolean",
+  commentEdit: "boolean",
+  attachments: "boolean",
+  transitions: "boolean",
+  mentions: "boolean",
+} as const;
+
 /** The tracker's first cases only: for an adapter whose milestone 2 operations aren't built yet. */
 export const defineTrackerFirstCases = <Fixture>(options: ContractSuiteOptions<TrackerAdapter, Fixture>): void => {
   describe(`tracker contract (first cases): ${options.name}`, () => {
-    defineCommonCases(useSubject(options), "tracker", {
-      agentSessions: "boolean",
-      subIssues: "boolean",
-      statusGraph: "boolean",
-      webhooks: "boolean",
-      commentEdit: "boolean",
-      attachments: "boolean",
-      transitions: "boolean",
-    });
+    defineCommonCases(useSubject(options), "tracker", trackerCapabilityTypes);
+  });
+};
+
+/** What the mention case needs: a board and a way to add a user to the tracker. */
+export type TrackerMentionFixture = {
+  readonly board: BoardRef;
+  readonly seedUser?: (email: string) => Promise<{ readonly userId: string }>;
+};
+
+/** Milestone 3 (F-036): `findUsersByEmail`, for every tracker that has `mentions`. */
+const defineMentionCases = (subject: () => { readonly adapter: TrackerAdapter; readonly fixture: TrackerMentionFixture }): void => {
+  it("F-036: finds tracker users by email, each with the mention that notifies them: a match, no match, two at once", async (context) => {
+    const { adapter, fixture } = subject();
+    if (!adapter.capabilities.mentions) {
+      expect(await adapter.findUsersByEmail(fixture.board, ["a@example.com"])).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      return;
+    }
+    if (fixture.seedUser === undefined) {
+      context.skip();
+      return;
+    }
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const first = `first-${suffix}@example.com`;
+    const second = `second-${suffix}@example.com`;
+    const one = await fixture.seedUser(first);
+    const two = await fixture.seedUser(second);
+    const found = must(await adapter.findUsersByEmail(fixture.board, [first]), "findUsersByEmail");
+    expect(found.map((user) => ({ email: user.email, userId: user.userId }))).toEqual([{ email: first, userId: one.userId }]);
+    expect(found[0]?.mention.length).toBeGreaterThan(0);
+    expect(found[0]?.mention).toContain(one.userId);
+    expect(must(await adapter.findUsersByEmail(fixture.board, [`nobody-${suffix}@example.com`]), "findUsersByEmail")).toEqual([]);
+    const both = must(await adapter.findUsersByEmail(fixture.board, [second.toUpperCase(), first, `nobody-${suffix}@example.com`]), "findUsersByEmail");
+    expect(both.map((user) => user.userId).sort()).toEqual([one.userId, two.userId].sort());
+  });
+};
+
+/** Milestone 3: the mention case alone, for an adapter whose other operations the full suite doesn't run. */
+export const defineTrackerMentionSuite = (options: ContractSuiteOptions<TrackerAdapter, TrackerMentionFixture>): void => {
+  describe(`tracker contract (mentions): ${options.name}`, () => {
+    defineMentionCases(useSubject(options));
   });
 };
 
 export const defineTrackerContractSuite = (options: ContractSuiteOptions<TrackerAdapter, TrackerSuiteFixture>): void => {
   describe(`tracker contract: ${options.name}`, () => {
     const subject = useSubject(options);
-    defineCommonCases(subject, "tracker", {
-      agentSessions: "boolean",
-      subIssues: "boolean",
-      statusGraph: "boolean",
-      webhooks: "boolean",
-      commentEdit: "boolean",
-      attachments: "boolean",
-      transitions: "boolean",
-    });
+    defineMentionCases(subject);
+    defineCommonCases(subject, "tracker", trackerCapabilityTypes);
 
     const otherSeesNothing = async (ticket: SeededTicket): Promise<void> => {
       const { fixture } = subject();
