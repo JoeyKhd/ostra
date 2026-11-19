@@ -48,9 +48,28 @@ describe("pnpm dev's pieces", () => {
     expect(core?.address({ OSTRA_CORE_PORT: "9999" })).toBe("http://localhost:9999");
     expect(web?.address({ OSTRA_WEB_PORT: "not a port" })).toBe("http://localhost:3000");
     // The panel's `next dev` listens on PORT, set from OSTRA_WEB_PORT.
-    expect(web?.extraEnv({ OSTRA_WEB_PORT: "3401" })).toEqual({ PORT: "3401" });
-    expect(web?.extraEnv({})).toEqual({ PORT: "3000" });
-    expect(core?.extraEnv({ OSTRA_WEB_PORT: "3401" })).toEqual({});
+    expect(web?.extraEnv({ OSTRA_WEB_PORT: "3401" })["PORT"]).toBe("3401");
+    expect(web?.extraEnv({})).toEqual({ PORT: "3000", OSTRA_PUBLIC_URL: "http://localhost:3000", OSTRA_CORE_PUBLIC_URL: "http://localhost:8787" });
+    expect(core?.extraEnv({ OSTRA_WEB_PORT: "3401" })["PORT"]).toBeUndefined();
+  });
+
+  it("F-001: a stack on other ports tells the panel and core their own public addresses, so sign-in accepts the panel's origin", () => {
+    const [core, web] = devApps("/repo");
+    const env = { OSTRA_WEB_PORT: "3710", OSTRA_CORE_PORT: "9310" };
+    // Both pieces get both: the panel's origin is what sign-in trusts, and core sends runners there
+    // to approve a device code; core's is what a runner is told to connect to.
+    for (const app of [core, web]) {
+      expect(app?.extraEnv(env)).toMatchObject({ OSTRA_PUBLIC_URL: "http://localhost:3710", OSTRA_CORE_PUBLIC_URL: "http://localhost:9310" });
+    }
+    expect(web?.extraEnv(env)["OSTRA_PUBLIC_URL"]).toBe(web?.address(env));
+    expect(core?.extraEnv(env)["OSTRA_CORE_PUBLIC_URL"]).toBe(core?.address(env));
+    // An address that's set (a tunnel, a proxy in front) is kept: `pnpm dev` puts these over the
+    // stack's own environment, so it must not send one at all.
+    const own = { ...env, OSTRA_PUBLIC_URL: "https://panel.example", OSTRA_CORE_PUBLIC_URL: "https://core.example" };
+    expect(web?.extraEnv(own)).toEqual({ PORT: "3710" });
+    expect(core?.extraEnv(own)).toEqual({});
+    // The first admin is told to sign in where the panel is.
+    expect(firstAdminSignIn(env).join(" ")).toContain("Sign in at http://localhost:3710");
   });
 
   it("prefixes each piece's lines, and picks out the seeded first admin and the database URL", () => {

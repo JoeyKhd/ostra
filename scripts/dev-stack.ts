@@ -10,7 +10,10 @@ export type DevApp = {
   readonly dir: string;
   /** What the terminal shows when it runs. */
   readonly address: (env: Readonly<Record<string, string | undefined>>) => string;
-  /** What its `dev` script gets besides the stack's own environment: the panel's port, as Next reads it. */
+  /**
+   * What its `dev` script gets besides the stack's own environment: the panel's port, as Next reads
+   * it, and the public addresses that follow the ports (`devPublicUrls`).
+   */
   readonly extraEnv: (env: Readonly<Record<string, string | undefined>>) => Readonly<Record<string, string>>;
 };
 
@@ -20,19 +23,38 @@ const port = (env: Readonly<Record<string, string | undefined>>, name: string, f
   return Number.isInteger(value) && value > 0 && value < 65_536 ? value : fallback;
 };
 
+const isSet = (env: Readonly<Record<string, string | undefined>>, name: string): boolean => {
+  const value = env[name];
+  return value !== undefined && value !== "";
+};
+
+const webAddress = (env: Readonly<Record<string, string | undefined>>): string => `http://localhost:${String(port(env, "OSTRA_WEB_PORT", 3000))}`;
+const coreAddress = (env: Readonly<Record<string, string | undefined>>): string => `http://localhost:${String(port(env, "OSTRA_CORE_PORT", 8787))}`;
+
+/**
+ * The public addresses a dev stack on other ports needs: `OSTRA_PUBLIC_URL` and
+ * `OSTRA_CORE_PUBLIC_URL` default to ports 3000 and 8787, so with `OSTRA_WEB_PORT` alone the panel
+ * moved but sign-in refused its own origin, and runners were sent to the wrong panel to approve a
+ * device code. Each follows its port unless it's set; one that's set is kept as it is.
+ */
+export const devPublicUrls = (env: Readonly<Record<string, string | undefined>>): Readonly<Record<string, string>> => ({
+  ...(isSet(env, "OSTRA_PUBLIC_URL") ? {} : { OSTRA_PUBLIC_URL: webAddress(env) }),
+  ...(isSet(env, "OSTRA_CORE_PUBLIC_URL") ? {} : { OSTRA_CORE_PUBLIC_URL: coreAddress(env) }),
+});
+
 export const devApps = (repoRoot: string): readonly DevApp[] => [
   {
     label: "core",
     dir: path.join(repoRoot, "apps", "core"),
-    address: (env) => `http://localhost:${String(port(env, "OSTRA_CORE_PORT", 8787))}`,
-    extraEnv: () => ({}),
+    address: coreAddress,
+    extraEnv: (env) => devPublicUrls(env),
   },
   {
     label: "web",
     dir: path.join(repoRoot, "apps", "web"),
-    address: (env) => `http://localhost:${String(port(env, "OSTRA_WEB_PORT", 3000))}`,
+    address: webAddress,
     // `next dev` listens on PORT: OSTRA_WEB_PORT moves the panel, so two checkouts can run at once.
-    extraEnv: (env) => ({ PORT: String(port(env, "OSTRA_WEB_PORT", 3000)) }),
+    extraEnv: (env) => ({ PORT: String(port(env, "OSTRA_WEB_PORT", 3000)), ...devPublicUrls(env) }),
   },
 ];
 
@@ -74,7 +96,7 @@ export const firstAdminSignIn = (env: Readonly<Record<string, string | undefined
     return value === undefined || value === "" ? undefined : value;
   };
   const email = set("OSTRA_ADMIN_EMAIL") ?? "demo@demo.com";
-  const url = set("OSTRA_PUBLIC_URL") ?? "http://localhost:3000";
+  const url = set("OSTRA_PUBLIC_URL") ?? webAddress(env);
   return set("OSTRA_ADMIN_PASSWORD") === undefined
     ? [`The first admin is ready. Sign in at ${url}`, `as ${email} with the password demo, then choose your own.`]
     : [`The first admin is ready. Sign in at ${url}`, `as ${email} with the password in OSTRA_ADMIN_PASSWORD.`];
