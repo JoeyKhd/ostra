@@ -107,6 +107,45 @@ describe("register with a device session", () => {
     expect(audit).toMatchObject({ organizationId: fixture.a.organization.id, actorKind: "member", actorId: fixture.a.member.id });
   });
 
+  it("F-013: a device session is used once, even by registers that race with it: one runner, and the others are refused", async () => {
+    const session = await seedDeviceSession(test.db, fixture.a.member);
+    const keys = await Promise.all([makeRunnerKey(), makeRunnerKey(), makeRunnerKey()]);
+    // The race, made certain: this test holds the session's row, so every register reads the
+    // session as valid and then queues on the row; then it lets go.
+    const locked = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
+    const holder = test.db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT 1 FROM "auth_session" WHERE "token" = ${session} FOR UPDATE`;
+        locked.resolve(undefined);
+        await release.promise;
+      },
+      { timeout: 60_000 },
+    );
+    try {
+      await locked.promise;
+      const registers = keys.map((key) => postJson(`${harness.url}${runnerPaths.register}`, registerBody(key), session));
+      const waiting = async (): Promise<number> => {
+        const rows = await test.db.$queryRaw<readonly { readonly waiting: number }[]>`
+          SELECT count(*)::int AS "waiting" FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+        return rows[0]?.waiting ?? 0;
+      };
+      for (let attempt = 0; attempt < 200 && (await waiting()) < keys.length; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(await waiting()).toBe(keys.length);
+      release.resolve(undefined);
+      await holder;
+      const responses = await Promise.all(registers);
+      expect(responses.map((response) => response.status).sort()).toEqual([201, 401, 401]);
+      expect(await test.db.runner.count({ where: { publicKey: { in: keys.map((key) => key.publicKey) } } })).toBe(1);
+      expect(await test.db.authSession.count({ where: { token: session } })).toBe(0);
+    } finally {
+      release.resolve(undefined);
+      await holder.catch(() => undefined);
+    }
+  });
+
   it("puts another organization's member's runner in that organization", async () => {
     const runner = await registerPersonal(harness, test.db, fixture.b.admin);
     const row = await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });

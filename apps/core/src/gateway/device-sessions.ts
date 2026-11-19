@@ -12,8 +12,11 @@ import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 export type DeviceSessions = {
   /** Who the session belongs to, in its active organization; `null` when it's unknown or expired. */
   readonly verify: (token: string) => Promise<DeviceSessionOwner | null>;
-  /** Revokes the session in the caller's transaction, so it goes only if the runner was created. */
-  readonly revokeInTx: (tx: Tx, sessionId: DeviceSessionId) => Promise<void>;
+  /**
+   * Revokes the session in the caller's transaction, so it goes only if the runner was created.
+   * `false` when no session was left to revoke: another register used it first (Q115).
+   */
+  readonly revokeInTx: (tx: Tx, sessionId: DeviceSessionId) => Promise<boolean>;
 };
 
 export const postgresDeviceSessions = (db: Db, now: () => number = Date.now): DeviceSessions => ({
@@ -49,6 +52,8 @@ export const postgresDeviceSessions = (db: Db, now: () => number = Date.now): De
     };
   },
   revokeInTx: async (tx, sessionId) => {
-    await tx.authSession.deleteMany({ where: { id: sessionId } });
+    // A register racing this one waits here on the row, and finds it gone once the first commits.
+    const revoked = await tx.authSession.deleteMany({ where: { id: sessionId } });
+    return revoked.count === 1;
   },
 });

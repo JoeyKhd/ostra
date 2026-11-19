@@ -33,8 +33,11 @@ export type RegisterPersonalRunnerResult = UseCaseResult<
 export type RegisterPersonalRunnerDeps = Pick<Ports, "notices" | "audit" | "clock"> & {
   readonly tx: Tx;
   readonly owner: DeviceSessionOwner;
-  /** Revokes the device session once the runner exists (Q115). */
-  readonly revokeSession: (sessionId: DeviceSessionId) => Promise<void>;
+  /**
+   * Revokes the device session in the caller's transaction (Q115): `false` when it was gone
+   * already, revoked by a register that raced this one.
+   */
+  readonly revokeSession: (sessionId: DeviceSessionId) => Promise<boolean>;
 };
 
 export type RegisterPersonalRunner = (
@@ -58,6 +61,13 @@ export const registerPersonalRunner: RegisterPersonalRunner = async (deps, input
     return refuse("public-key-taken", "a runner with this key exists; make a new key pair");
   }
   const { owner } = deps;
+  // The device session is a full member session for about a week: it's used once, then revoked
+  // (Q115, spike 9). It goes first, so of two registers racing with it only the one that revokes
+  // it makes a runner: the other waits on its row, finds it gone, and makes nothing. If making the
+  // runner fails, the transaction puts the session back. From here on the runner holds its own key.
+  if (!(await deps.revokeSession(owner.sessionId))) {
+    return refuse("no-session", "the device session was used already; sign in again");
+  }
   const runner = await deps.tx.runner.create({
     data: {
       organizationId: owner.organizationId,
@@ -91,8 +101,5 @@ export const registerPersonalRunner: RegisterPersonalRunner = async (deps, input
     entity: "runner",
     entityId: runnerId,
   });
-  // The device session is a full member session for about a week: it's used once, then revoked
-  // (Q115, spike 9). From here on the runner holds its own key.
-  await deps.revokeSession(owner.sessionId);
   return { ok: true, runnerId, kind: "personal", poolId: null };
 };
