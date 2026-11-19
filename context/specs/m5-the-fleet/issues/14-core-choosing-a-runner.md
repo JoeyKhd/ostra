@@ -1,6 +1,6 @@
 # 14: Core: choosing a runner
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 05, 13
 Features: F-069, F-014, F-095
@@ -17,9 +17,15 @@ Spec: `../spec.md`, section 4 ("Choosing a runner"); ADR 0059; section 11, item 
 
 ## Done when
 
-- [ ] Tests named for `F-069`: the table of section 9.1 (pools in order, labels, capacity, personal runners only for their member's own picked tasks, tasks with no member to pools, services never to `host`), each reason the right one; the pick's tie-breaks.
-- [ ] Break-it: offering a no-member task to a personal runner fails its test; recorded in `context/proof/F-069.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ choose a runner by pool, labels and room`.
+- [x] Tests named for `F-069`: the table of section 9.1 (pools in order, labels, capacity, personal runners only for their member's own picked tasks, tasks with no member to pools, services never to `host`), each reason the right one; the pick's tie-breaks.
+- [x] Break-it: offering a no-member task to a personal runner fails its test; recorded in `context/proof/F-069.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ choose a runner by pool, labels and room`.
 
 ## Comments
+
+- 2026-11-20: `chooseRunner`'s body was ticket 05's; this ticket calls it from every dispatch (`dispatchTask` in `packages/domain/src/use-cases/dispatch-task.ts`, with the rows from `fleet-rows.ts`, built with ticket 13) and proves it through the real admission in `apps/core/src/dispatch/choose.test.ts`. `seedTaskStartedByNobody` in `@ostra/domain/testing` makes a task no member started. Every F-069 row is `proved`; the feature stays `building` until ticket 37's demo (step 7) runs it end to end.
+  - "Started by a member" is `creatorMemberId` set. A task with none goes to pools only, even when it names a personal runner or has a driver.
+  - The dispatch's `box.size` (from the project's default, resolved against `BoxSize`) goes only to a runner whose capabilities say `boxSizes` (ticket 13's commit). `box.image` is ticket 17's.
+  - A runner below minor 4 reports no capabilities: core reads them from its executor and minor (`olderCapabilities`): services from minor 2 and never on `host`, no sizes, no registry. So milestone 3's rule keeps its own test (`services.test.ts`) through `chooseRunner`, with its `needs-services-runner` words when only runners that can't start services are online.
+  - `needs-protocol` (a profile or a level a runner's minor can't run) is found by choosing again without the minor filter.

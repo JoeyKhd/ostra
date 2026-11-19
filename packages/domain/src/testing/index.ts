@@ -148,3 +148,30 @@ export const seedQueuedTask = async (
   });
   return { taskId: taskIdSchema.parse(task.id) };
 };
+
+/**
+ * A queued task no member started (ticket 14): what milestone 6's intake rules, schedules and
+ * Linear's agent mode make. Its member may be known (`driverMemberId`), and it may even name a
+ * personal runner, but it goes to pools only (ADR 0059).
+ */
+export const seedTaskStartedByNobody = async (
+  db: Db,
+  input: {
+    readonly organizationId: OrganizationId;
+    readonly projectId: ProjectId;
+    readonly driverMemberId?: MemberId;
+    readonly runnerId?: RunnerId;
+    readonly queuePriority?: number;
+    readonly queuedAt?: Date;
+  },
+): Promise<{ readonly taskId: TaskId }> => {
+  const { taskId } = await seedQueuedTask(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    ...(input.runnerId === undefined ? {} : { runnerId: input.runnerId }),
+    ...(input.queuePriority === undefined ? {} : { queuePriority: input.queuePriority }),
+    ...(input.queuedAt === undefined ? {} : { queuedAt: input.queuedAt }),
+  });
+  await db.task.update({ where: { id: taskId }, data: { creatorMemberId: null, driverMemberId: input.driverMemberId ?? null } });
+  return { taskId };
+};
