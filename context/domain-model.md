@@ -270,6 +270,23 @@ The `host` executor has no box. Its worktree goes through the same states, so a 
 | **draining** | An admin's hold: it takes no new tasks, and its running tasks finish. It stays draining whether it is connected or not, through disconnects and restarts, and the panel shows its connection beside the state (Q108) | An admin resumes it (→ online, or → offline when it isn't connected) |
 | **revoked** | Its identity is revoked, and it can't connect again. An admin can revoke a runner in any other state, and a member their own personal runner. A connected runner is disconnected at once. Its leases end with the revoke, with no grace: its tasks stop, and each is ready to reopen on another runner (Q131, F-045). Each runner is revoked on its own; rotating a join token disconnects no runner that already joined (Q94) | Never |
 
+## A join token's lifecycle
+
+```
+ active ──▶ expired      (its lifetime passed: 30 days by default, another, or none)
+    └─────▶ revoked      (an admin revoked it)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **active** | A runner can join the token's pool with it. It is stored hashed and was shown once (Q48) | Its lifetime passes (→ expired), or an admin revokes it (→ revoked) |
+| **expired** | No runner can join with it. Runners that joined with it stay | Never |
+| **revoked** | The same, by an admin's hand. Rotating a token disconnects no runner (Q94) | Never |
+
+## A queued task's place
+
+A task in `queued` waits in the pool queue of every pool of its project that could run it (ADR 0059). Its place is its ticket priority (Urgent, High, Medium, Low; a prompt task and a ticket without a priority are Medium), then the time it was first queued. A task that goes back to the queue (an offer declined or timed out, a box with no node, a revoked runner) keeps its first queued time. A pool admits a task when one of its runners fits it and its project is under its share of the pool; a project at its share is passed over and the next task considered. An admin cancels a queued task from the pool's queue, and a member their own: it moves to `stopped` with the reason `cancelled`.
+
 ## A snapshot's lifecycle
 
 ```
@@ -381,3 +398,8 @@ From the questions milestone 1 raised (`history/answers-2026-11-19.md`), for tra
 4. **The sidecar's token is the task token:** valid as long as the task's lease (Q129).
 5. **A queued task says why it waits,** an open offer included (Q132).
 6. **Files left outside every repo are a needs-you item** (Q133).
+
+For milestone 5's spec (`specs/m5-the-fleet/spec.md`, the same night):
+
+7. **A join token has a lifecycle,** and a queued task has a place in each of its pools' queues, by ticket priority and then queued time; a cancelled queued task stops with the reason `cancelled` (Q232, Q248).
+8. **A box takes a slot and its size's room on a runner,** and a project holds at most its share of a pool's boxes (Q231, Q233, Q236).

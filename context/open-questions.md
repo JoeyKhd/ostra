@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q229). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q248). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -360,6 +360,32 @@ Writing `specs/m6-whole-team/spec.md` met these questions. The maintainer delega
 | Q227 Does a "changes requested" reviewer become a co-author? | ADR 0040 (amended), ADR 0058, F-105: no, so their approval still counts for the independent-review check |
 | Q228 What may the onboarding task push, and how is its proposal accepted? | ADR 0038 (amended), F-113: only `AGENTS.md`, where a repo has none; the proposal holds variable names and never values, is scanned for secrets, and becomes the environment's next version on a project admin's "Accept" |
 | Q229 What does a runner one minor older get in milestone 6? | `specs/m6-whole-team/spec.md`, section 5.1: no refine, review or onboarding task and no automatic round; everything else works unchanged |
+
+#### Settled for milestone 5's spec (2026-11-19)
+
+Writing `specs/m5-the-fleet/spec.md` met these questions. The maintainer delegated the night's decisions, so each was settled by its recommendation, and the spec's section 11 restates them. Ticket 38 of that spec asks the maintainer to review them; any the maintainer disagrees with moves back to the open list.
+
+| Question | Settled in |
+|---|---|
+| Q230 Where do the proofs that need Linux, Docker, Kubernetes or macOS run? | ADR 0061: jobs of the manual `proof.yml` workflow on GitHub's hosted runners (`ubuntu-24.04`, `macos-15`), never in `ci.yml`, with no secret and their logs kept in the repo as live evidence; a real autoscaler and the full-scale load test on the maintainer's machines |
+| Q231 What does a runner offer, and what does a box take? | ADR 0059, ADR 0029 (amended), F-067: slots everywhere, CPU and memory on `docker` and `kubernetes`, reported in every `status`; a box takes a slot and its whole footprint; a personal runner offers 2 |
+| Q232 What is a pool's queue, and in what order do its tasks start? | ADR 0059, F-067: a query over the tasks the pool could run, by ticket priority (prompts and unprioritized tickets as Medium), then queued time; a job per pool and a 5 s sweep admit; admins cancel from it |
+| Q233 What does a project's share of a pool count? | ADR 0059, F-067, F-095: boxes, per project and pool, none by default, counted from rows in the admitting transaction under the pool's lock; a project at its share is passed over |
+| Q234 How do labels match? | ADR 0059, F-069: a runner's own labels plus `executor:`, `os:` and `arch:`, which only ostra sets; a profile's labels must all be present, compared exactly |
+| Q235 Which runner does a task go to? | ADR 0059, F-069: the project's pools in its order; the fitting runner with the most room, then the snapshot's holder, then the least recently offered; personal runners only for their member's own picked tasks; tasks no member started to pools |
+| Q236 What does a box size limit? | ADR 0059, F-095: three names per organization with editable values; the size limits the agent's container, the sidecar and services have their own limits, capacity counts all; requests equal limits on `kubernetes` |
+| Q237 What does a box's pod look like, and how does the task token reach it? | ADR 0060, F-093: the agent as the container, the sidecar and services as native sidecars; the token in a per-box secret mounted only into the sidecar; no service account token; deleted with the pod |
+| Q238 What does "waiting for a node" do, and for how long? | ADR 0060, F-093: the dispatch accepted at once, `box.waiting` on a scale-up, a requeue after 15 minutes without a node, not counted as a crash |
+| Q239 How does a box reach the server under the egress baseline? | ADR 0060, ADR 0029 (amended), F-116: the server's address and DNS are the baseline's one exception, plus `OSTRA_EGRESS_ALLOW`; the chart writes the policy and the executor checks it |
+| Q240 How do the registry's credentials, names and builds work? | ADR 0060, F-120: one registry per organization with Basic push and pull credentials, or the cluster's identity for pulls; per-project names used by digest; push to the builder only, pull to the lease holder only; ECR pushes wait for `@aws-sdk/client-ecr` |
+| Q241 How are the Helm charts laid out and checked? | ADR 0060, F-118: two charts in `deploy/helm/`, values schemas in Zod, one shared secret made once; the schema check in CI, `helm template` where Helm is installed, kind in the proof jobs |
+| Q242 Where can a `host` pool run its agent as a separate OS user? | ADR 0029 (amended), F-015: Linux and macOS through `sudo -n -u`; a `host` pool runner refuses on Windows in v1; a development-only same-user switch |
+| Q243 How is a runner pinned to its server's version? | ADR 0034 (amended), F-061: at every start an npm-installed runner installs and runs the server's version from the registry `info` names, with its integrity checked; an image runner's tag is its pin |
+| Q244 How are the three images built before they're published? | ADR 0046 (amended), F-039: `pnpm images:build` on Linux (the proof job and the maintainer's machine), `pnpm check:images` everywhere, each built image started and checked; nothing pushed before milestone 7 |
+| Q245 How is the load test run on the plan's machine, and where does it count? | ADR 0061, F-117: product code end to end with simulated runners; a ramp to 1,000 here, recording the largest step that held; the run that counts on Linux with a real Postgres |
+| Q246 What does a runner on protocol minor 3 get in milestone 5? | ADR 0034 (amended), `specs/m5-the-fleet/spec.md` section 5.1: no `resume`, no size, no registry image; a `kubernetes` runner needs minor 4 |
+| Q247 Who hears about a runner joining? | ADR 0059, F-091: the organization's admins, in the panel and by mail, with a needs-you item when the pool requires approval |
+| Q248 What happens to a cancelled queued task? | ADR 0059, F-067: it stops with the new reason `cancelled`, can be reopened, and the audit log has `task.cancelled` |
 
 ## Open
 

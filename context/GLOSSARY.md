@@ -234,8 +234,36 @@ What happens when a task's saved unfinished work can't be merged with commits pu
 _Avoid_: merge failure, failed restore
 
 **Command**:
-A numbered instruction from the server to a runner or a sidecar: dispatch, steer, interrupt, stop, an approval's answer, and (from protocol minor 1) release a box.
+A numbered instruction from the server to a runner or a sidecar: dispatch, steer, interrupt, stop, an approval's answer, (from protocol minor 1) release a box, and (from minor 4) resume a drained runner.
 _Avoid_: message, job
+
+**Carrier**:
+How a runner's session travels: a WebSocket, or HTTP requests when a proxy blocks WebSockets. A runner falls back to HTTP by itself and tries the WebSocket again later; the session is the same on both.
+_Avoid_: transport mode, protocol (the protocol is what both carry)
+
+**Box size**:
+One of an organization's three named sizes (small, medium, large), each a CPU and memory limit for a box's agent container. A project picks its default. The `host` executor counts slots instead.
+_Avoid_: instance type, tier, flavour
+
+**Slot**:
+Room for one box on a runner. Every runner reports how many it has free; `docker` and `kubernetes` runners also report CPU and memory, which a box's size must fit.
+_Avoid_: seat, worker, concurrency
+
+**Share**:
+How many boxes of one pool one project may hold at once, set by an admin. A project at its share waits while others' tasks start.
+_Avoid_: quota (Kubernetes uses that word for something else), limit (a box size is a limit)
+
+**Pool queue**:
+The queued tasks a pool could run, in the order it starts them: ticket priority, then the time each was queued. A task allowed on several pools is in each of their queues and starts in whichever has room first.
+_Avoid_: backlog, the queue (ostra's background jobs are a queue too)
+
+**Runner label**:
+A word a runner carries, such as `tier:fast`, that a profile can require of the runners its tasks go to. ostra adds `executor:`, `os:` and `arch:` labels itself.
+_Avoid_: tag, selector
+
+**Registry**:
+The organization's own container registry, where runners push environment snapshots and boxes pull them. A `kubernetes` pool needs one.
+_Avoid_: image store, repository (a registry holds repositories)
 
 ### The environment
 

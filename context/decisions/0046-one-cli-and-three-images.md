@@ -1,6 +1,6 @@
 # One CLI and three images; signed binaries come after v1
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q80 and Q82. **Supersedes ADR 0023.** Ledger: F-013, F-039, F-103, and F-085, which moves after v1.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q80 and Q82. **Supersedes ADR 0023.** Ledger: F-013, F-039, F-103, and F-085, which moves after v1. **Amended 2026-11-19 for milestone 5's spec**, on the maintainer's delegation: how the images are built and checked before they're published (Q244; "Milestone 5: building the images" below).
 
 ostra ships as one command-line program and three Docker images.
 
@@ -60,3 +60,11 @@ ADR 0023 planned signed native binaries, compiled with Bun, before launch. That 
 - If no reasonable npm name is free, the CLI ships in the runner image and as a download.
 - If the base image grows too large, it splits by language.
 - Milestone 7 publishes the CLI and the images (ADR 0045). Until then, they're built from source.
+
+## Milestone 5: building the images
+
+Added 2026-11-19 (Q244), for `specs/m5-the-fleet/spec.md`.
+
+- **`pnpm images:build`** builds the three images from source on a Linux machine with Docker, tags them with the release version and prints their sizes. It runs in the manual proof job on `ubuntu-24.04` (ADR 0061) and on the maintainer's machine. Nothing is pushed anywhere public before milestone 7.
+- **`pnpm check:images`** runs everywhere, in CI too: every `FROM` pinned by digest, OpenCode's checksum taken from the repo's pin (`pinnedChecksums`) and never from the download, no secret-shaped `ARG`, `ENV` or `RUN`, and the compose file running the images the build tags.
+- **A built image is checked by starting it:** the server's `all` answers its health check, `ostra --version` prints the release in the runner image, and the base image's OpenCode reports the pinned version with the pinned checksum. F-039 stays `building` until the images are published.
