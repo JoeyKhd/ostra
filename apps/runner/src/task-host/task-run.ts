@@ -28,6 +28,8 @@ import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
+import { saveSessionArchive } from "./session-archive.ts";
+import type { ArchiveContext } from "./session-archive.ts";
 import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 
 // One task, from its dispatch to its last event (ticket 21, ADR 0029): the same code on every
@@ -41,6 +43,12 @@ import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 // Stop cancels the turn, pushes the hidden ref, and ends without `session.ended` (core opens no PR
 // for a stopped task). A crash pushes the hidden ref and ends with `session.crashed`. Milestone 1
 // has no approval rules: a permission request is answered "once" and recorded as auto-answered.
+//
+// From protocol minor 1 (milestone 2, a spec with `limits.idleMinutes`) a session spans turns
+// (ADR 0039). After every turn: commit and push the branch, save each repo's working tree to the
+// hidden ref, export the session and upload the archive, then `session.saved`; the agent waits
+// for the next turn. A failed export or hidden ref never fails the turn. The box stays when the
+// session ends. A minor-0 spec keeps milestone 1's one turn and `session.ended`.
 
 /** Why milestone 1 answers every permission itself (F-026 brings rules and the panel's answer). */
 export const NO_RULES_YET = "no rules until F-026";
@@ -66,6 +74,8 @@ export type TaskRunDeps = {
    * the git upstream stub.
    */
   readonly gitUpstreamUrl?: (cloneUrl: string) => string;
+  /** The clock the after-turn figures read. Default: `Date.now`. */
+  readonly now?: () => number;
 };
 
 export type DispatchBody = CommandBody<"dispatch">;
@@ -85,6 +95,8 @@ export type TaskRun = {
 
 type Ending =
   | { readonly kind: "finished" }
+  /** Milestone 2: the session ended between turns (the idle timer, ticket 23): `session.ended`, the box kept. */
+  | { readonly kind: "idle" }
   | { readonly kind: "stopped" }
   | { readonly kind: "crashed"; readonly error: string }
   | { readonly kind: "fenced" }
@@ -92,6 +104,13 @@ type Ending =
 
 /** The longest error text an event carries. */
 const ERROR_MAX = 4000;
+
+/** How long the agent's fake key lasts in a session across turns: the session's end revokes it first. */
+const ACROSS_TURNS_KEY_TTL_MS = 24 * 60 * 60_000;
+
+/** A session spans turns from minor 1 (ADR 0039): its spec carries the idle timer, and the server reads `session.saved`. */
+const spansTurns = (taskSpec: TaskSpec, channel: SessionChannel | undefined): boolean =>
+  taskSpec.limits.idleMinutes !== undefined && channel?.supports("session.saved") === true;
 
 const errorName = (error: unknown): string => (error instanceof Error ? error.name : "unknown");
 
@@ -147,7 +166,20 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   const endingSignal = new AbortController();
   const steers: string[] = [];
   const stopDone = deferred<CommandOutcome>();
-  const turnAbort = new AbortController();
+  /** The running turn's own abort: its time ran out, or it was cancelled to end the session. */
+  let turnAbort = new AbortController();
+  /** A turn is between its prompt and its end. */
+  let turnRunning = false;
+  /** The session spans turns (milestone 2): set once the spec is read. */
+  let acrossTurns = false;
+  const now = deps.now ?? Date.now;
+  /** Wakes the session waiting between turns: a message came, or the session is ending. */
+  let wake: (() => void) | undefined;
+  const nudge = (): void => {
+    const waiting = wake;
+    wake = undefined;
+    waiting?.();
+  };
 
   const emit = (event: TaskEvent): Promise<void> => {
     const target = channel;
@@ -176,6 +208,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (ending === undefined) {
       ending = value;
       endingSignal.abort();
+      nudge();
     }
   };
 
@@ -204,6 +237,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   const onQuestion = async (_agentSessionId: string, request: QuestionRequest, signal: AbortSignal): Promise<QuestionAnswer> => {
     const currentTurn = turn;
+    const thisTurn = turnAbort;
     if (currentTurn === undefined) {
       return { outcome: "cancelled" };
     }
@@ -212,18 +246,18 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // Milestone 1's panel shows the question read-only (F-026 answers it): it waits until the turn's
     // time runs out or the turn is cancelled.
     await new Promise<void>((resolve) => {
-      if (signal.aborted || turnAbort.signal.aborted) {
+      if (signal.aborted || thisTurn.signal.aborted) {
         resolve();
         return;
       }
       signal.addEventListener("abort", () => {
         resolve();
       }, { once: true });
-      turnAbort.signal.addEventListener("abort", () => {
+      thisTurn.signal.addEventListener("abort", () => {
         resolve();
       }, { once: true });
     });
-    void emit({ kind: "question.closed", questionId, reason: turnAbort.signal.aborted ? "expired" : "cancelled" });
+    void emit({ kind: "question.closed", questionId, reason: thisTurn.signal.aborted ? "expired" : "cancelled" });
     return { outcome: "cancelled" };
   };
 
@@ -238,18 +272,39 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // and the prompt never came back.
     const turnId = turnIdSchema.parse(randomUUID());
     turn = turnId;
+    turnOrdinal += 1;
+    unsaved = true;
+    turnRunning = true;
+    const thisTurn = new AbortController();
+    turnAbort = thisTurn;
     const runningAgent = agent;
     const runningSession = session;
     const timer = setTimeout(
       () => {
         log.warn("turn reached its maximum minutes: cancelling", { turnMaxMinutes: currentSpec.limits.turnMaxMinutes });
-        turnAbort.abort();
+        thisTurn.abort();
         void runningAgent.cancel(runningSession);
       },
       currentSpec.limits.turnMaxMinutes * 60_000,
     );
     timer.unref();
-    const exited = agentProcess.exited.then((exit) => ({ kind: "exited" as const, exit }));
+    try {
+      return await promptTurn(text, turnId, runningAgent, runningSession, agentProcess);
+    } finally {
+      clearTimeout(timer);
+      turnRunning = false;
+      turn = undefined;
+    }
+  };
+
+  const promptTurn = async (
+    text: string,
+    turnId: TurnId,
+    runningAgent: AgentAdapter,
+    runningSession: AgentSession,
+    runningProcess: AgentProcess,
+  ): Promise<{ readonly crashed: string | null }> => {
+    const exited = runningProcess.exited.then((exit) => ({ kind: "exited" as const, exit }));
     const prompted = runningAgent.prompt(runningSession, turnId, text).then((result) => ({ kind: "prompted" as const, result }));
     const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
       Promise.race([
@@ -261,7 +316,6 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         }),
       ]);
     const outcome = await Promise.race([prompted, exited]);
-    clearTimeout(timer);
     if (outcome.kind === "exited") {
       const error = `the agent's process exited mid-turn (code ${String(outcome.exit.code)}${outcome.exit.signal === null ? "" : `, ${outcome.exit.signal}`})`;
       // The driver sees the closed pipe and ends the prompt, and the base class writes `turn.failed`;
@@ -306,7 +360,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   // ---------- endings ----------
 
-  const pushWork = async (currentSpec: TaskSpec, message: string): Promise<{ readonly ok: true; readonly repos: readonly RepoPushResult[] } | { readonly ok: false; readonly error: string }> => {
+  const pushWork = async (
+    currentSpec: TaskSpec,
+    message: string,
+    options: { readonly hiddenRefEvent: boolean } = { hiddenRefEvent: true },
+  ): Promise<{ readonly ok: true; readonly repos: readonly RepoPushResult[] } | { readonly ok: false; readonly error: string }> => {
     const hiddenRef = hiddenRefFor(currentSpec.taskId);
     const pushed = await deps.executor.commitAndPush({
       box,
@@ -322,10 +380,201 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     for (const repo of pushed.value) {
       if (repo.ahead && repo.headSha !== null) {
         await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: repo.headSha, ref: `refs/heads/${currentSpec.branchName}` });
-        await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: repo.headSha, ref: hiddenRef });
+        if (options.hiddenRefEvent) {
+          await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: repo.headSha, ref: hiddenRef });
+        }
       }
     }
     return { ok: true, repos: pushed.value };
+  };
+
+  // ---------- after every turn (milestone 2, ticket 22) ----------
+
+  /** The turn within the session, from 1. */
+  let turnOrdinal = 0;
+  /** A turn ran since the work was last saved. */
+  let unsaved = false;
+  /** Each repo's head and whether it's ahead after the last push, for `session.ended`. */
+  let lastPushed: readonly RepoPushResult[] = [];
+
+  /** Where the session's archive is made: the box, the agent, the folder its session opened on. */
+  const archiveContext = (currentSpec: TaskSpec): ArchiveContext | undefined => {
+    if (agent === undefined || dirsCache === undefined) {
+      return undefined;
+    }
+    return {
+      executor: deps.executor,
+      agent,
+      link: deps.link,
+      box,
+      taskId: currentSpec.taskId,
+      leaseEpoch: currentSpec.leaseEpoch,
+      agentDir: dirsCache.agentDir,
+      workspaceDir: agentCwd(dirsCache.workspaceDir, currentSpec.repos),
+    };
+  };
+
+  /**
+   * ADR 0039's order after a turn: the branch, the hidden ref, the archive, then `session.saved`.
+   * Only the branch's push can fail the session; its error comes back for the caller.
+   */
+  const saveWork = async (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> => {
+    unsaved = false;
+    const startedAt = now();
+    const ordinal = Math.max(1, turnOrdinal);
+    // 1. The task's branch in every repo: what the PR is made of.
+    const pushed = await pushWork(currentSpec, message, { hiddenRefEvent: false });
+    if (pushed.ok) {
+      lastPushed = pushed.repos;
+    } else {
+      log.warn("pushing the branch after the turn failed", { turnOrdinal: ordinal, error: pushed.error.slice(0, 200) });
+    }
+    // 2. Each repo's working tree to the hidden ref, forced (uncommitted and untracked work included).
+    const wip = await deps.executor.saveWorkInProgress({ box, turnOrdinal: ordinal });
+    if (!wip.ok) {
+      log.warn("saving the hidden ref failed", { turnOrdinal: ordinal, code: wip.error.code, reason: wip.error.message.slice(0, 200) });
+    }
+    const savedRepos = new Map(wip.ok ? wip.value.map((repo) => [repo.repoId, repo] as const) : []);
+    const hiddenRef = hiddenRefFor(currentSpec.taskId);
+    for (const repo of currentSpec.repos) {
+      const sha = savedRepos.get(repo.repoId)?.sha ?? null;
+      if (sha !== null) {
+        await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: sha, ref: hiddenRef });
+      }
+    }
+    // 3. The session archive: export, gzip, upload with its digest.
+    const context = archiveContext(currentSpec);
+    const archived =
+      context === undefined || session === undefined
+        ? { ok: false as const, reason: "no agent session to export" }
+        : await saveSessionArchive(context, session.agentSessionId, ordinal);
+    if (!archived.ok) {
+      log.warn("the session archive wasn't saved", { turnOrdinal: ordinal, reason: archived.reason.slice(0, 300) });
+    }
+    // 4. What left the box.
+    const pushedRepos = new Map(pushed.ok ? pushed.repos.map((repo) => [repo.repoId, repo] as const) : []);
+    await emit({
+      kind: "session.saved",
+      turnOrdinal: ordinal,
+      repos: currentSpec.repos.map((repo) => ({
+        repoId: repo.repoId,
+        headSha: pushedRepos.get(repo.repoId)?.headSha ?? null,
+        ahead: pushedRepos.get(repo.repoId)?.ahead ?? false,
+        hiddenRefSha: savedRepos.get(repo.repoId)?.sha ?? null,
+      })),
+      archive: archived.ok ? archived.archive : null,
+    });
+    // The working figures (spike 2, gotcha 13): one line per turn, numbers only.
+    log.info("work saved after the turn", {
+      turnOrdinal: ordinal,
+      afterTurnMs: now() - startedAt,
+      archiveBytes: archived.ok ? archived.archive.size : null,
+      hiddenRefs: [...savedRepos.values()].filter((repo) => repo.sha !== null).length,
+      branchPushed: pushed.ok,
+    });
+    return { pushError: pushed.ok ? null : pushed.error };
+  };
+
+  /** The messages queued while a turn ran, as the next turn's prompt. */
+  const takeQueued = (): string | undefined => (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
+
+  /** Between turns: the next turn's text, or `undefined` once the session is ending. */
+  const nextTurn = async (): Promise<string | undefined> => {
+    while (ending === undefined) {
+      const queued = takeQueued();
+      if (queued !== undefined) {
+        return queued;
+      }
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+    }
+    return undefined;
+  };
+
+  /** The commit message for what a turn left, by how the session is going. */
+  const leftoverMessage = (currentSpec: TaskSpec): string => {
+    switch (ending?.kind) {
+      case "stopped":
+        return `${currentSpec.title} (stopped: unfinished work)`;
+      case "crashed":
+        return `${currentSpec.title} (crashed: unfinished work)`;
+      case undefined:
+      case "finished":
+      case "idle":
+      case "fenced":
+      case "abandoned":
+        return currentSpec.title;
+      default:
+        return ending satisfies never;
+    }
+  };
+
+  /** How the session is ending, read fresh: commands end it between awaits. */
+  const endingNow = (): Ending | undefined => ending;
+
+  /** Milestone 2's session: turn after turn, the work saved after each, until the session ends. */
+  const runAcrossTurns = async (taskSpec: TaskSpec): Promise<void> => {
+    let next: string | undefined = taskSpec.prompt;
+    while (ending === undefined) {
+      next ??= await nextTurn();
+      if (next === undefined) {
+        break;
+      }
+      const result = await runTurn(next, taskSpec);
+      next = undefined;
+      if (result.crashed !== null) {
+        end({ kind: "crashed", error: result.crashed });
+      }
+      // `end` runs from the commands too, so the session is asked again after each await.
+      const current = endingNow();
+      if (current?.kind === "fenced" || current?.kind === "abandoned") {
+        break;
+      }
+      await scanOutsideRepos(taskSpec);
+      // A stopped or crashed turn's work is saved too: the hidden ref holds it.
+      const saved = await saveWork(taskSpec, leftoverMessage(taskSpec));
+      if (saved.pushError !== null && endingNow() === undefined) {
+        end({ kind: "crashed", error: saved.pushError });
+      }
+      next = takeQueued();
+    }
+  };
+
+  /** How a session across turns ends. The box stays for a reopen (ADR 0039), unless it never got ready. */
+  const finishAcrossTurns = async (taskSpec: TaskSpec, how: Ending): Promise<void> => {
+    switch (how.kind) {
+      case "finished":
+      case "idle": {
+        await endAgent();
+        const repos = lastPushed.length > 0 ? lastPushed : taskSpec.repos.map((repo) => ({ repoId: repo.repoId, headSha: null, ahead: false }));
+        await emit({
+          kind: "session.ended",
+          outcome: repos.some((repo) => repo.ahead) ? "with-changes" : "without-changes",
+          repos: repos.map((repo) => ({ repoId: repo.repoId, ahead: repo.ahead })),
+        });
+        return;
+      }
+      case "stopped":
+      case "crashed": {
+        await endAgent();
+        // A stop or crash outside a turn: what the turn left was saved already, unless no turn ran.
+        if (boxPrepared && unsaved) {
+          await scanOutsideRepos(taskSpec);
+          await saveWork(taskSpec, leftoverMessage(taskSpec));
+        }
+        if (how.kind === "crashed") {
+          await crash(how.error);
+        }
+        return;
+      }
+      case "fenced":
+      case "abandoned":
+        await endAgent();
+        return;
+      default:
+        how satisfies never;
+    }
   };
 
   const endAgent = async (): Promise<void> => {
@@ -371,6 +620,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { ok: false, error: "the task's spec doesn't match its dispatch" };
     }
     spec = taskSpec;
+    acrossTurns = spansTurns(taskSpec, channel);
     const issued = await deps.link.fetchCredentials(dispatch.taskId, dispatch.leaseEpoch);
     if (!issued.ok) {
       return { ok: false, error: `couldn't get the task's credentials: ${issued.failure.message}` };
@@ -384,7 +634,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       modelId: taskSpec.agent.modelId,
       model: held.model,
       ...listen,
-      fakeKeyTtlMs: (taskSpec.limits.turnMaxMinutes + 30) * 60_000,
+      fakeKeyTtlMs: acrossTurns ? ACROSS_TURNS_KEY_TTL_MS : (taskSpec.limits.turnMaxMinutes + 30) * 60_000,
       logger: log,
       onUsage: (event) => {
         void emit(event);
@@ -576,7 +826,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         end({ kind: "crashed", error: failed });
       }
     }
-    // The turn, and any messages queued for after it.
+    if (taskSpec !== undefined && acrossTurns) {
+      if (ending === undefined) {
+        await runAcrossTurns(taskSpec);
+      }
+      const how: Ending = ending ?? { kind: "idle" };
+      await finishAcrossTurns(taskSpec, how);
+      // The box stays for the next session, unless it never got ready or the server refused the lease.
+      await cleanUp(how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned"));
+      stopDone.resolve({ result: "done" });
+      log.info("task run ended", { ending: how.kind, turns: turnOrdinal });
+      return;
+    }
+    // Milestone 1 (a minor-0 spec): the turn, and any messages queued for after it.
     let next: string | undefined = taskSpec?.prompt;
     while (ending === undefined && taskSpec !== undefined && next !== undefined) {
       const result = await runTurn(next, taskSpec);
@@ -585,11 +847,12 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         break;
       }
       await scanOutsideRepos(taskSpec);
-      next = steers.length > 0 ? steers.splice(0).join("\n\n") : undefined;
+      next = takeQueued();
     }
     end({ kind: "finished" });
     const how: Ending = ending ?? { kind: "finished" };
     switch (how.kind) {
+      case "idle":
       case "finished": {
         await endAgent();
         if (taskSpec === undefined) {
@@ -671,8 +934,14 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { result: "done" };
     },
     steer: async (body) => {
-      if (agent === undefined || session === undefined) {
+      if (agent === undefined || session === undefined || ending !== undefined) {
         return { result: "rejected", reason: "session-not-running" };
+      }
+      if (!turnRunning) {
+        // Between turns (milestone 2): the message is the next turn.
+        steers.push(body.text);
+        nudge();
+        return { result: "accepted" };
       }
       if (body.delivery === "queue" && agent.capabilities.steerMidTurn && session.connection.steeringAdvertised) {
         const steered = await agent.steer(session, body.text);

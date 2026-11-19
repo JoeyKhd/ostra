@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -59,6 +60,41 @@ export type WorkspaceFiles = {
   readonly stage: (file: string) => Promise<void>;
   /** `git status --porcelain` lines, `XY path`. */
   readonly status: () => Promise<readonly string[]>;
+};
+
+/** A checkout on this machine, as the suite's `workInProgress.checkout` reads it (`host`, and a box's task volume in tests). */
+export const localWorkspaceFiles = (checkout: string): WorkspaceFiles => {
+  const git = (args: readonly string[]): Promise<string> =>
+    new Promise((resolve, reject) => {
+      execFile("git", [...args], { cwd: checkout, env: { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(checkout) }, windowsHide: true }, (error, stdout) => {
+        if (error === null) {
+          resolve(stdout);
+        } else {
+          reject(new Error(`git ${args[0] ?? ""} failed`));
+        }
+      });
+    });
+  const at = (file: string): string => path.join(checkout, ...file.split("/"));
+  return {
+    write: async (file, content) => {
+      await mkdir(path.dirname(at(file)), { recursive: true });
+      await writeFile(at(file), content);
+    },
+    remove: async (file) => {
+      await rm(at(file), { force: true });
+    },
+    read: async (file) => {
+      try {
+        return await readFile(at(file), "utf8");
+      } catch {
+        return null;
+      }
+    },
+    stage: async (file) => {
+      await git(["add", "--", file]);
+    },
+    status: async () => (await git(["status", "--porcelain=v1", "--untracked-files=all"])).split(/\r?\n/).filter((line) => line !== ""),
+  };
 };
 
 /** A process that leaves a helper behind, and how the suite finds and ends that helper. */
@@ -136,9 +172,11 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       processContainment: "string",
     });
 
-    const createAndPrepare = async (spec: TaskSpec): Promise<{ readonly box: BoxRef; readonly created: CreatedBox }> => {
+    /** A box, prepared. With `sameTaskAs`, a fresh box of that box's task, as a reopen gets. */
+    const createAndPrepare = async (spec: TaskSpec, sameTaskAs?: BoxRef): Promise<{ readonly box: BoxRef; readonly created: CreatedBox }> => {
       const { adapter, fixture } = subject();
-      const box = newBox();
+      const fresh = newBox();
+      const box = sameTaskAs === undefined ? fresh : { taskId: sameTaskAs.taskId, boxId: fresh.boxId };
       const created = await adapter.create({ ...box, spec, proxies: fixture.proxies });
       if (!created.ok) {
         throw new Error(`create failed: ${created.error.message}`);
@@ -291,7 +329,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         if (repo?.sha === null || repo?.sha === undefined || repo.baseSha === null) throw new Error("no hidden ref was saved");
         await adapter.release(first.box, "requested");
 
-        const second = await createAndPrepare(fixture.spec);
+        const second = await createAndPrepare(fixture.spec, first.box);
         const restored = await adapter.restoreWorkInProgress({
           box: second.box,
           refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }],
@@ -326,7 +364,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         if (repo?.sha === null || repo?.sha === undefined || repo.baseSha === null) throw new Error("no hidden ref was saved");
         expect(repo.sha).not.toBe(one.value[0]?.sha);
         await adapter.release(first.box, "requested");
-        const second = await createAndPrepare(fixture.spec);
+        const second = await createAndPrepare(fixture.spec, first.box);
         await adapter.restoreWorkInProgress({ box: second.box, refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }] });
         expect(await wip.checkout(second.created).read("turn.txt")).toBe("turn 2");
         await adapter.release(second.box, "requested");

@@ -72,6 +72,21 @@ describe("an agent command beside the agent", () => {
     await executor.release(box, "requested");
   }, 60_000);
 
+  it("writes the command's standard output to its stdoutTo file, never through a shell", async () => {
+    const box = newBox();
+    const dirs = await ready(box);
+    const file = path.join(dirs.agentDir, "archive", "export.json");
+    const big = "x".repeat(200_000);
+    const result = await executor.runAgentCommand({
+      box,
+      command: { command: process.execPath, args: ["-e", "process.stdout.write(JSON.stringify({ big: \"x\".repeat(200000) }))"], env: {}, cwd: dirs.agentDir, stdoutTo: file },
+      timeoutMs: 30_000,
+    });
+    expect(result).toEqual({ ok: true, value: { exitCode: 0, stdout: "" } });
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ big });
+    await executor.release(box, "requested");
+  }, 60_000);
+
   it("ends a command past its time, and answers no-box after a release", async () => {
     const box = newBox();
     const dirs = await ready(box);

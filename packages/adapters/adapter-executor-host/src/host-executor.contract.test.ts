@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { isAlive, killTree } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream } from "@ostra/adapter-sdk/testing";
 import type { HelperCase } from "@ostra/adapter-sdk/testing";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { HostExecutor } from "./host-executor.ts";
@@ -47,7 +47,7 @@ defineExecutorContractSuite({
   create: async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "ostra-host-contract-"));
     const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
-    await upstream.createRepo("ostra-test/test1");
+    await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n", "notes.txt": "notes\n" });
     const spec = { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, setupScript: "echo ready\n" } };
     const adapter = await HostExecutor.start({ dataDir: path.join(root, "runner") });
     const treeOnly = adapter.capabilities.processContainment === "process-tree";
@@ -58,6 +58,8 @@ defineExecutorContractSuite({
         proxies: { gitBaseUrl: upstream.origin, modelBaseUrl: "http://127.0.0.1:9/v1", mcpUrl: "http://127.0.0.1:9/mcp" },
         failingSetupSpec: { ...spec, environment: { ...spec.environment, setupScript: "exit 3\n" } },
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
+        // Milestone 2 (ticket 22): the hidden ref is saved and restored in the box's first checkout.
+        workInProgress: { checkout: (box) => localWorkspaceFiles(path.join(box.workspaceDir, "test1")), trackedFiles: ["README.md", "notes.txt"] },
         detachedHelper: helperCase(false),
         cleanEnvHelper: helperCase(true),
         ...(treeOnly

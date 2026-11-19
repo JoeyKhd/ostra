@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isAlive, killTree, silentLogger } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { listenForInit } from "./bridge/bridge-server.ts";
@@ -35,7 +35,7 @@ defineExecutorContractSuite({
   create: async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "ostra-docker-contract-"));
     const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
-    await upstream.createRepo("ostra-test/test1");
+    await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n", "notes.txt": "notes\n" });
     const boxId = boxIdSchema.parse("contract-box");
     const nonce = randomBytes(32).toString("base64url");
     const listener = await listenForInit({ boxId, nonce, host: "127.0.0.1", port: 0, logger: silentLogger });
@@ -53,6 +53,8 @@ defineExecutorContractSuite({
         proxies: { gitBaseUrl: upstream.origin, modelBaseUrl: "http://127.0.0.1:9/v1", mcpUrl: "http://127.0.0.1:9/mcp" },
         failingSetupSpec: { ...spec, environment: { ...spec.environment, setupScript: "exit 3\n" } },
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
+        // Milestone 2 (ticket 22): the hidden ref is saved and restored in the box's first checkout.
+        workInProgress: { checkout: (box) => localWorkspaceFiles(path.join(box.workspaceDir, "test1")), trackedFiles: ["README.md", "notes.txt"] },
         detachedHelper: {
           launch: (box) =>
             nodeLaunch(

@@ -1,14 +1,19 @@
-import { createPublicKey, randomBytes, verify } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  blobChunkQuerySchema,
+  blobUploadFinishRequestSchema,
+  blobUploadStartRequestSchema,
   minorWindow,
   parseJson,
   PROTOCOL_MAJOR,
   PROTOCOL_MINOR,
   registerRequestSchema,
+  runnerHeaders,
   runnerIdSchema,
+  runnerLimits,
   runnerPaths,
   taskCredentialsRequestSchema,
   tokenAssertionCanonicalString,
@@ -27,6 +32,27 @@ export type FakeRunner = {
   /** How it proved itself: the device session it sent, or the join token. */
   readonly proof: "device-session" | "join-token";
   revoked: boolean;
+};
+
+/** A blob the fake server holds for a task: an upload it sealed, or a ticket file a test put there. */
+export type FakeBlob = {
+  readonly taskId: string;
+  readonly bytes: Buffer;
+  readonly sha256: string;
+  readonly contentType: string;
+  readonly purpose: string;
+};
+
+/** Faults the bulk path plays, for the runner's resume and failure cases. */
+export type BulkFaults = {
+  /** The next this many chunk `PUT`s keep half their bytes, then the connection drops. */
+  dropChunks: number;
+  /** Every upload start answers 503: the upload fails, whatever the runner tries. */
+  refuseUploads: boolean;
+  /** Downloads of these blobs answer 503. */
+  readonly failDownloads: Set<string>;
+  /** Downloads of these blobs answer other bytes than the blob's, under its digest: a corrupt copy. */
+  readonly corruptDownloads: Set<string>;
 };
 
 export type FakeServerOptions = {
@@ -54,11 +80,28 @@ export type FakeServer = {
   readonly tasks: Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>;
   /** How many times each task's credentials were issued. */
   readonly credentialsIssued: Map<string, number>;
+  /** The bulk path's sealed blobs, by blob ID. */
+  readonly blobs: Map<string, FakeBlob>;
+  readonly bulkFaults: BulkFaults;
+  /** Every bulk-path call, by kind: `start`, `chunk`, `finish`, `download`. */
+  readonly bulkCalls: string[];
+  /** A blob of the task, as core stores a ticket image (ticket 12). Answers its ID. */
+  readonly putBlob: (taskId: string, bytes: Buffer, contentType: string) => string;
   /** The HTTP server, so the fake gateway can take its WebSocket upgrades. */
   readonly httpServer: Server;
   readonly setInfo: (info: Partial<InfoResponse>) => void;
   readonly close: () => Promise<void>;
 };
+
+const readBytes = async (request: IncomingMessage): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  return Buffer.concat(chunks);
+};
+
+const digest = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
 
 const readBody = async (request: IncomingMessage): Promise<unknown> => {
   const chunks: Buffer[] = [];
@@ -92,6 +135,11 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const tasks = new Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>();
   const credentialsIssued = new Map<string, number>();
   const devices = new Map<string, { polls: number }>();
+  const blobs = new Map<string, FakeBlob>();
+  type Upload = { readonly taskId: string; readonly sha256: string; readonly size: number; readonly contentType: string; readonly purpose: string; held: Buffer };
+  const uploads = new Map<string, Upload>();
+  const bulkFaults: BulkFaults = { dropChunks: 0, refuseUploads: false, failDownloads: new Set(), corruptDownloads: new Set() };
+  const bulkCalls: string[] = [];
   const seenNonces = new Set<string>();
   let counter = 0;
   let url = "";
@@ -106,6 +154,129 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     deviceClientId: "ostra-runner",
     ...infoOverride,
   });
+
+  // The bulk path (ADR 0043, ticket 12's endpoints, as the protocol's schemas say them).
+  const handleBlobs = async (request: IncomingMessage, response: ServerResponse, match: RegExpExecArray): Promise<void> => {
+    const bearer = bearerOf(request);
+    if (bearer === undefined || !accessTokens.has(bearer)) {
+      ostraError(response, 401, "unauthorized", "a valid access token is required");
+      return;
+    }
+    const taskId = decodeURIComponent(match[1] ?? "");
+    const task = tasks.get(taskId);
+    if (task === undefined) {
+      ostraError(response, 404, "not-found", "no such task");
+      return;
+    }
+    const stale = (epoch: number): boolean => {
+      if (epoch !== task.spec.leaseEpoch) {
+        send(response, 409, { error: { code: "stale-lease", message: "stale", currentEpoch: task.spec.leaseEpoch } });
+        return true;
+      }
+      return false;
+    };
+    const id = match[2] === undefined ? undefined : decodeURIComponent(match[2]);
+    const query = Object.fromEntries(new URLSearchParams(match[4] ?? ""));
+    if (request.method === "POST" && id === undefined) {
+      bulkCalls.push("start");
+      const parsed = blobUploadStartRequestSchema.safeParse(await readBody(request));
+      if (!parsed.success) {
+        ostraError(response, 400, "bad-request", "the start body doesn't match the protocol");
+        return;
+      }
+      if (stale(parsed.data.leaseEpoch)) {
+        return;
+      }
+      if (bulkFaults.refuseUploads) {
+        ostraError(response, 503, "unavailable", "the blob store is down");
+        return;
+      }
+      // The same digest and size for the same task resume the upload already open.
+      const open = [...uploads.entries()].find(
+        ([, upload]) => upload.taskId === taskId && upload.sha256 === parsed.data.sha256 && upload.size === parsed.data.size,
+      );
+      if (open !== undefined) {
+        send(response, 200, { uploadId: open[0], receivedBytes: open[1].held.length });
+        return;
+      }
+      const uploadId = randomUUID();
+      uploads.set(uploadId, { taskId, sha256: parsed.data.sha256, size: parsed.data.size, contentType: parsed.data.contentType, purpose: parsed.data.purpose, held: Buffer.alloc(0) });
+      send(response, 200, { uploadId, receivedBytes: 0 });
+      return;
+    }
+    if (request.method === "PUT" && id !== undefined && match[3] === undefined) {
+      bulkCalls.push("chunk");
+      const upload = uploads.get(id);
+      const parsed = blobChunkQuerySchema.safeParse(query);
+      const bytes = await readBytes(request);
+      if (upload?.taskId !== taskId || !parsed.success) {
+        ostraError(response, 404, "not-found", "no such upload");
+        return;
+      }
+      if (stale(parsed.data.leaseEpoch)) {
+        return;
+      }
+      if (bytes.length > runnerLimits.uploadChunkMaxBytes) {
+        ostraError(response, 413, "too-large", "the chunk is over the cap");
+        return;
+      }
+      if (parsed.data.offset !== upload.held.length) {
+        ostraError(response, 409, "offset-mismatch", "the offset isn't the bytes held");
+        return;
+      }
+      if (bulkFaults.dropChunks > 0) {
+        // Half the chunk arrives, then the connection drops: the runner must ask where to resume.
+        bulkFaults.dropChunks -= 1;
+        upload.held = Buffer.concat([upload.held, bytes.subarray(0, Math.floor(bytes.length / 2))]);
+        request.socket.destroy();
+        return;
+      }
+      upload.held = Buffer.concat([upload.held, bytes]);
+      send(response, 200, { receivedBytes: upload.held.length });
+      return;
+    }
+    if (request.method === "POST" && id !== undefined && match[3] !== undefined) {
+      bulkCalls.push("finish");
+      const upload = uploads.get(id);
+      const parsed = blobUploadFinishRequestSchema.safeParse(await readBody(request));
+      if (upload?.taskId !== taskId || !parsed.success) {
+        ostraError(response, 404, "not-found", "no such upload");
+        return;
+      }
+      if (stale(parsed.data.leaseEpoch)) {
+        return;
+      }
+      uploads.delete(id);
+      if (upload.held.length !== upload.size || digest(upload.held) !== upload.sha256) {
+        ostraError(response, 409, "digest-mismatch", "the upload isn't what it said it was");
+        return;
+      }
+      const blobId = randomUUID();
+      blobs.set(blobId, { taskId, bytes: upload.held, sha256: upload.sha256, contentType: upload.contentType, purpose: upload.purpose });
+      send(response, 200, { blobId, size: upload.size, sha256: upload.sha256 });
+      return;
+    }
+    if (request.method === "GET" && id !== undefined) {
+      bulkCalls.push("download");
+      if (stale(Number(query["leaseEpoch"]))) {
+        return;
+      }
+      const blob = blobs.get(id);
+      if (blob?.taskId !== taskId) {
+        ostraError(response, 404, "not-found", "no such blob for this task");
+        return;
+      }
+      if (bulkFaults.failDownloads.has(id)) {
+        ostraError(response, 503, "unavailable", "the blob store is down");
+        return;
+      }
+      const bytes = bulkFaults.corruptDownloads.has(id) ? Buffer.concat([blob.bytes.subarray(0, Math.max(0, blob.bytes.length - 1)), Buffer.from("x")]) : blob.bytes;
+      response.writeHead(200, { "content-type": blob.contentType, "content-length": bytes.length, [runnerHeaders.blobSha256]: blob.sha256 });
+      response.end(bytes);
+      return;
+    }
+    ostraError(response, 404, "not-found", "no such endpoint");
+  };
 
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = request.url ?? "/";
@@ -224,6 +395,11 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       send(response, 200, { accessToken, expiresAt: Date.now() + 600_000 });
       return;
     }
+    const blobMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/blobs(?:\/([^/?]+))?(\/finish)?(?:\?(.*))?$/.exec(path);
+    if (blobMatch !== null) {
+      await handleBlobs(request, response, blobMatch);
+      return;
+    }
     const taskMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/(spec|credentials)(?:\?(.*))?$/.exec(path);
     if (taskMatch !== null) {
       const bearer = bearerOf(request);
@@ -282,6 +458,14 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     requests,
     tasks,
     credentialsIssued,
+    blobs,
+    bulkFaults,
+    bulkCalls,
+    putBlob: (taskId, bytes, contentType) => {
+      const blobId = randomUUID();
+      blobs.set(blobId, { taskId, bytes, sha256: digest(bytes), contentType, purpose: "ticket-file" });
+      return blobId;
+    },
     httpServer: server,
     setInfo: (next) => {
       infoOverride = next;

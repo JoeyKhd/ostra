@@ -15,7 +15,11 @@ import type {
   PrepareInput,
   PrepareResult,
   RepoPushResult,
+  RestoredRepoWork,
+  RestoreWorkInProgressInput,
   RunAgentCommandInput,
+  SavedRepoWork,
+  SaveWorkInProgressInput,
   StopInput,
 } from "@ostra/adapter-sdk";
 import type { BoxReleaseReason, BoxState } from "@ostra/protocol";
@@ -85,6 +89,19 @@ export class DockerExecutor extends ExecutorAdapter {
 
   release(box: BoxRef, reason: BoxReleaseReason): Promise<AdapterResult<void>> {
     return this.#inner.release(box, reason);
+  }
+
+  /**
+   * The hidden ref after a turn, on the agent container's workspace: git runs in the agent's
+   * container through the bridge, the temporary index is on the shared task volume (ticket 22).
+   */
+  override saveWorkInProgress(input: SaveWorkInProgressInput): Promise<AdapterResult<readonly SavedRepoWork[]>> {
+    return this.#inner.saveWorkInProgress(input);
+  }
+
+  /** The hidden ref restored on a fresh box, the same way (ticket 24). */
+  override restoreWorkInProgress(input: RestoreWorkInProgressInput): Promise<AdapterResult<readonly RestoredRepoWork[]>> {
+    return this.#inner.restoreWorkInProgress(input);
   }
 
   /** In the agent's container, through the bridge: the agent's binary and data are there. */

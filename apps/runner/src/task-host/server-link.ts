@@ -6,8 +6,10 @@ import {
   taskSpecResponseSchema,
   taskTokenResponseSchema,
 } from "@ostra/protocol";
-import type { LeaseEpoch, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
+import type { BlobRef, LeaseEpoch, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
+import { createBulkClient } from "../server/bulk.ts";
+import type { BulkResult, DownloadInput, Downloaded, UploadInput } from "../server/bulk.ts";
 import { callJson, describeFailure, joinUrl } from "../server/http.ts";
 import type { TokenSource } from "../connection/peer.ts";
 
@@ -29,6 +31,10 @@ export type ServerLink = {
   readonly fetchCredentials: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<TaskCredentials>>;
   readonly openSession: (ref: SessionRef) => Promise<SessionChannel>;
   readonly statusChanged: () => void;
+  /** Minor 1, the bulk path (ADR 0043): a blob of the task up, in resumable chunks with its digest. */
+  readonly uploadBlob: (input: UploadInput) => Promise<BulkResult<BlobRef>>;
+  /** Minor 1, the bulk path: a blob of the task down. The caller checks its digest. */
+  readonly downloadBlob: (input: DownloadInput) => Promise<BulkResult<Downloaded>>;
 };
 
 const failureOf = (failure: Parameters<typeof describeFailure>[0]): LinkFailure =>
@@ -68,6 +74,13 @@ export const runnerServerLink = (input: {
     const token = await input.tokens.get();
     return token.ok ? { ok: true, token: token.token } : { ok: false, failure: { kind: "unavailable", message: token.message } };
   };
+  const bulk = createBulkClient({
+    serverUrl: input.serverUrl,
+    bearer: async () => {
+      const token = await input.tokens.get();
+      return token.ok ? { ok: true, token: token.token } : { ok: false, message: token.message };
+    },
+  });
   return {
     fetchSpec: async (taskId, leaseEpoch) => {
       const token = await bearer();
@@ -105,6 +118,8 @@ export const runnerServerLink = (input: {
       return result.ok ? { ok: true, value: result.value } : { ok: false, failure: failureOf(result.failure) };
     },
     openSession: (ref) => input.connection.openSession(ref),
+    uploadBlob: (upload) => bulk.upload(upload),
+    downloadBlob: (download) => bulk.download(download),
     statusChanged: () => {
       input.connection.statusChanged();
     },

@@ -1,6 +1,8 @@
+import { createWriteStream } from "node:fs";
+import type { WriteStream } from "node:fs";
 import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { adapterError, ExecutorAdapter, ok } from "@ostra/adapter-sdk";
+import { adapterError, ExecutorAdapter, localWipFiles, ok, restoreWorkInProgressIn, saveWorkInProgressIn } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
@@ -17,9 +19,14 @@ import type {
   PrepareResult,
   ProcessExit,
   RepoPushResult,
+  RestoredRepoWork,
+  RestoreWorkInProgressInput,
   RunAgentCommandInput,
+  SavedRepoWork,
+  SaveWorkInProgressInput,
   StopInput,
   TaskProxies,
+  WipDeps,
 } from "@ostra/adapter-sdk";
 import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
@@ -441,12 +448,80 @@ export class HostExecutor extends ExecutorAdapter {
     return Promise.resolve(ok(this.#boxes.get(boxKey(box))?.state ?? "released"));
   }
 
+  /**
+   * After a turn (ADR 0039): each repo's working tree to the task's hidden ref, by a forced push
+   * through the git proxy. A repo whose save fails answers `null`, and the others still save.
+   */
+  override async saveWorkInProgress(input: SaveWorkInProgressInput): Promise<AdapterResult<readonly SavedRepoWork[]>> {
+    const record = this.#boxes.get(boxKey(input.box));
+    if (record === undefined || record.state === "released" || record.state === "creating" || record.state === "failed") {
+      return adapterError("conflict", `nothing to save from a box that is ${record?.state ?? "released"}`);
+    }
+    const saved: SavedRepoWork[] = [];
+    for (const repo of record.spec.repos) {
+      const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+      const result = await saveWorkInProgressIn(this.#wip(record, checkout), { taskId: record.ref.taskId, turnOrdinal: input.turnOrdinal, remote: "origin" });
+      if (!result.ok) {
+        this.plumbing.logger.warn("saving the hidden ref failed", { taskId: record.ref.taskId, repoId: repo.repoId, reason: result.error.message });
+      }
+      const value = result.ok ? result.value : null;
+      saved.push({ repoId: repo.repoId, sha: value?.sha ?? null, baseSha: value?.baseSha ?? null });
+    }
+    this.plumbing.logger.info("hidden ref saved", { taskId: record.ref.taskId, turnOrdinal: input.turnOrdinal, saved: saved.filter((item) => item.sha !== null).length });
+    return ok(saved);
+  }
+
+  /**
+   * On a fresh box (ADR 0039, Q150): each repo's hidden ref onto its saved commit, the branch's new
+   * commits merged in. A conflict, or a restore that fails, leaves the branch's head checked out
+   * and the ref alone. A repo the spec names no ref for answers `none`.
+   */
+  override async restoreWorkInProgress(input: RestoreWorkInProgressInput): Promise<AdapterResult<readonly RestoredRepoWork[]>> {
+    const record = this.#boxes.get(boxKey(input.box));
+    if (record?.state !== "ready" || record.agent !== undefined) {
+      return adapterError("conflict", `work in progress is restored into a ready box before its agent starts (${record?.state ?? "released"})`);
+    }
+    const restored: RestoredRepoWork[] = [];
+    for (const repo of record.spec.repos) {
+      if (!input.refs.some((ref) => ref.repoId === repo.repoId)) {
+        restored.push({ repoId: repo.repoId, outcome: "none" });
+        continue;
+      }
+      const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+      const result = await restoreWorkInProgressIn(this.#wip(record, checkout), { taskId: record.ref.taskId, remote: "origin", branch: record.spec.branchName });
+      if (!result.ok) {
+        this.plumbing.logger.warn("restoring the hidden ref failed", { taskId: record.ref.taskId, repoId: repo.repoId, reason: result.error.message });
+        // Back to the branch's head, as a conflict leaves it: the ref stays for another try.
+        await this.#git(record, ["checkout", "--quiet", "--force", record.spec.branchName], checkout);
+        await this.#git(record, ["clean", "-fdq"], checkout);
+        restored.push({ repoId: repo.repoId, outcome: "conflict" });
+        continue;
+      }
+      restored.push({ repoId: repo.repoId, outcome: result.value.outcome });
+    }
+    this.plumbing.logger.info("hidden ref restored", {
+      taskId: record.ref.taskId,
+      applied: restored.filter((item) => item.outcome === "applied").length,
+      conflicts: restored.filter((item) => item.outcome === "conflict").length,
+    });
+    return ok(restored);
+  }
+
   /** The agent adapter's command (a session's export or import), on this machine, in the task's unit. */
   override async runAgentCommand(input: RunAgentCommandInput): Promise<AdapterResult<AgentCommandResult>> {
     const record = this.#boxes.get(boxKey(input.box));
     if (record === undefined || record.state === "released" || record.state === "creating") {
       return adapterError("not-found", `no box to run the command in (${record?.state ?? "released"})`);
     }
+    // `stdoutTo`: the command's standard output goes to that file as it comes (OpenCode's export
+    // prints the archive), never through a shell.
+    const target = input.command.stdoutTo;
+    let sink: WriteStream | undefined;
+    if (target !== undefined) {
+      await mkdir(path.dirname(target), { recursive: true });
+      sink = createWriteStream(target, { mode: 0o600 });
+    }
+    const writing = sink;
     const result = await this.#processes.run(input.command.command, input.command.args, {
       cwd: input.command.cwd,
       // Exactly the command's environment, as the agent's own launch (ADR 0030).
@@ -454,9 +529,25 @@ export class HostExecutor extends ExecutorAdapter {
       signal: AbortSignal.timeout(input.timeoutMs),
       maxBuffer: AGENT_COMMAND_OUTPUT_MAX,
       ...(record.unit === undefined ? {} : { unit: record.unit }),
+      ...(writing === undefined
+        ? {}
+        : {
+            onOutput: (stream: "stdout" | "stderr", text: string) => {
+              if (stream === "stdout") {
+                writing.write(text);
+              }
+            },
+          }),
     });
+    if (writing !== undefined) {
+      await new Promise<void>((resolve) => {
+        writing.end(() => {
+          resolve();
+        });
+      });
+    }
     this.plumbing.logger.info("agent command ran", { taskId: input.box.taskId, boxId: input.box.boxId, exitCode: result.code });
-    return ok({ exitCode: result.code, stdout: result.stdout.slice(0, AGENT_COMMAND_OUTPUT_MAX) });
+    return ok({ exitCode: result.code, stdout: writing === undefined ? result.stdout.slice(0, AGENT_COMMAND_OUTPUT_MAX) : "" });
   }
 
   /**
@@ -553,6 +644,9 @@ export class HostExecutor extends ExecutorAdapter {
    * run a program when git reads the repo (`core.fsmonitor` on `status`, a filter driver on `add`, a
    * hook on `commit`). That program must run in the agent's container, which holds no credential,
    * and never in the sidecar, which does (ADR 0030). On `host` the seam is this machine, as before.
+   *
+   * Git never looks for a repository above the task's workspace (spike 2, gotcha 12): a command
+   * that missed its checkout fails instead of acting on whatever repo holds the runner's folder.
    */
   #git(record: BoxRecord, args: readonly string[], cwd: string, extra: Readonly<Record<string, string>> = {}): Promise<RunResult> {
     return this.#processes.run("git", [...GIT_HARDENING, ...args], {
@@ -564,8 +658,14 @@ export class HostExecutor extends ExecutorAdapter {
         GIT_TERMINAL_PROMPT: "0",
         GCM_INTERACTIVE: "never",
         ...extra,
+        GIT_CEILING_DIRECTORIES: record.workspaceDir,
       },
     });
+  }
+
+  /** The shared work-in-progress steps' git, bound to one checkout of the box. */
+  #wip(record: BoxRecord, checkout: string): WipDeps {
+    return { git: (args, env) => this.#git(record, args, checkout, env ?? {}), files: localWipFiles };
   }
 
   async #hasLfs(): Promise<boolean> {
