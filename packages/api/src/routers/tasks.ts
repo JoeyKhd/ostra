@@ -5,6 +5,12 @@ import {
   createPromptTaskInputSchema,
   createTicketForTask,
   createTicketForTaskInputSchema,
+  dismissNeedsYou,
+  dismissNeedsYouInputSchema,
+  reopenTask,
+  reopenTaskInputSchema,
+  retryTicketWrites,
+  retryTicketWritesInputSchema,
   startTicketTask,
   startTicketTaskInputSchema,
   waitingFor,
@@ -35,6 +41,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
+import { loadTaskExtras, prStateOf } from "./task-extras.ts";
 import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
 // F-097, F-023, F-025, F-014 (picking the runner), ticket 33: tasks. A task is visible to every
@@ -162,6 +169,16 @@ const lifecycleOf = (task: Parameters<typeof taskFromColumns>[0]): TaskLifecycle
 const shortKeyOf = (id: string): string => id.replaceAll("-", "").slice(-8);
 
 const notFoundTask = () => new TRPCError({ code: "NOT_FOUND", message: "No such task" });
+
+/** The task states a finished or waiting task can be reopened from (merged is refused in milestone 2: F-066). */
+const REOPEN_FROM = ["stopped", "in_review", "done"] as const;
+/** The needs-you reasons that wait for a reopen, not for an answer to the agent. */
+const REOPEN_FROM_NEEDS_YOU = ["no_changes", "stalled", "spend_cap", "crashed", "setup_failed", "ticket_closed", "files_outside_repos"] as const;
+/** The reasons a one-click reopen needs no message for (the carry-on text is written for the member). */
+const CARRY_ON_REASONS = ["stalled", "spend_cap", "crashed"] as const;
+const finishedTaskStates = ["stopped", "merged", "done"] as const;
+
+const isOneOf = (list: readonly string[], value: string | null): boolean => value !== null && list.includes(value);
 
 export const tasksRouter = router({
   /** Starts a code task from a prompt (F-097): no ticket is created. */
@@ -348,8 +365,28 @@ export const tasksRouter = router({
     ]);
     const pinnedRunner = lease === null && task.runnerId !== null ? await db.runner.findFirst({ where: { id: task.runnerId, organizationId }, select: { id: true, name: true, kind: true, executor: true } }) : null;
     const runner = lease === null ? pinnedRunner : lease.runner;
+    const extras = await loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null);
     const isDriver = task.driverMemberId === ctx.scope.memberId;
     const state = task.state;
+    // The composer reads these and never works out which from the state (ADR 0036): a limit or a crash
+    // that ended the session leaves nothing to stop, and a task in review, merged or done has none running.
+    const newestSession = extras.sessions.at(-1);
+    const endedByLimitOrCrash = newestSession !== undefined && (newestSession.state === "crashed" || newestSession.limit !== null);
+    const otherActive =
+      task.ticketId === null
+        ? 0
+        : await db.task.count({
+            where: { organizationId, projectId: task.projectId, ticketId: task.ticketId, kind: "code", id: { not: task.id }, state: { notIn: [...finishedTaskStates] } },
+          });
+    const reopenState = isOneOf(REOPEN_FROM, state) || (state === "needs_you" && isOneOf(REOPEN_FROM_NEEDS_YOU, task.needsYouReason));
+    const reopenBlocked =
+      state === "merged"
+        ? ("merged_reopen_later" as const)
+        : reopenState && otherActive > 0
+          ? ("ticket_has_task" as const)
+          : reopenState && extras.spend.reached
+            ? ("spend_cap" as const)
+            : null;
     // What the caller may do: send and interrupt as the driver of a task with a session going, answer
     // approvals as any member, take over as any member who isn't the driver, stop until it is stopped.
     const sessionGoing = session !== undefined && ["starting", "running", "waiting", "idle"].includes(session.state);
@@ -384,7 +421,7 @@ export const tasksRouter = router({
         baseBranch: repo.baseBranch,
         state: repo.state,
         headSha: repo.headSha,
-        pr: repo.prNumber === null || repo.prUrl === null ? null : { number: repo.prNumber, url: repo.prUrl },
+        pr: repo.prNumber === null || repo.prUrl === null ? null : { number: repo.prNumber, url: repo.prUrl, state: prStateOf(repo.state) },
       })),
       session:
         session === undefined
@@ -401,12 +438,25 @@ export const tasksRouter = router({
       /** The agent profile the task runs with: its agent and model (task.md, the properties panel). */
       agent,
       needsYou: task.needsYouItems.map((item) => ({ reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
+      ...extras,
       capabilities: {
         send: isDriver && sessionGoing && (state === "running" || state === "needs_you"),
         interrupt: isDriver && sessionGoing && state === "running",
         answerApprovals: state === "needs_you" || state === "running",
         takeOver: !isDriver,
-        stop: state !== "stopped" && state !== "merged" && state !== "done",
+        stop: state !== "stopped" && state !== "merged" && state !== "done" && state !== "in_review" && !endedByLimitOrCrash,
+        /** Any member who can read the project may reopen: stopped, in review, done, or needing a reopen. */
+        reopen: reopenState && reopenBlocked === null,
+        /** Why a task that looks reopenable can't be: a merged task (F-066), another active task on its ticket, or its spend cap. */
+        reopenBlocked: reopenState || state === "merged" ? reopenBlocked : null,
+        /** The one-click reopen from a limit or a crash needs no message. A spend cap needs its cap raised first. */
+        reopenWithoutText:
+          state === "needs_you" &&
+          reopenBlocked === null &&
+          task.needsYouReason !== null &&
+          isOneOf(CARRY_ON_REASONS, task.needsYouReason),
+        /** Retry the ticket writes that failed. */
+        retrySync: extras.sync.some((write) => write.state === "failed"),
       },
     };
   }),
@@ -447,6 +497,41 @@ export const tasksRouter = router({
       headSeq: input.beforeSeq === undefined ? (events.at(-1)?.seq ?? 0) : null,
       taskHeadSeq: task.eventSeq,
     };
+  }),
+
+  /**
+   * Reopens a task (F-032, F-033): any member who can read the project, from stopped, in review, done
+   * or needing a reopen. The same `clientMessageId` twice is applied once. `text` may be left out only
+   * for the one-click reopen from a limit or a crash; a merged task is refused until F-066.
+   */
+  reopen: taskProcedure("read", reopenTaskInputSchema).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) => reopenTask({ tx, scope: ctx.scope, ...ports }, input));
+    const reopened = unwrap(result, {
+      "not-found": "NOT_FOUND",
+      forbidden: "FORBIDDEN",
+      merged_reopen_later: "PRECONDITION_FAILED",
+      "ticket-has-task": "CONFLICT",
+      "not-reopenable": "CONFLICT",
+      "text-required": "BAD_REQUEST",
+    });
+    return { sessionId: reopened.sessionId };
+  }),
+
+  /** "Carry on without it": the driver or a project admin closes a needs-you item that doesn't hold the task, such as a restore conflict. */
+  dismissNeedsYou: taskProcedure("read", dismissNeedsYouInputSchema).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) => dismissNeedsYou({ tx, scope: ctx.scope, ...ports }, input));
+    const dismissed = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-open": "CONFLICT" });
+    return { itemId: dismissed.itemId };
+  }),
+
+  /** Retries the task's failed ticket writes (F-031). They keep their idempotency keys, so a write that did land isn't made twice. */
+  retrySync: taskProcedure("read", retryTicketWritesInputSchema).mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) => retryTicketWrites({ tx, scope: ctx.scope, ...ports }, input));
+    const retried = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
+    return { retried: retried.retried };
   }),
 
   /** Stops the task's agent (F-025): the branch and the hidden ref stay on GitHub. For any member of the project. */

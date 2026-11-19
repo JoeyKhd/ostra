@@ -313,6 +313,57 @@ export type CreateTicketForTaskResult = UseCaseResult<
 /** Writes a `create` ticket write; `ticket.sync` makes the ticket and links the task to it. */
 export type CreateTicketForTask = (deps: StartTicketTaskDeps, input: CreateTicketForTaskInput) => Promise<CreateTicketForTaskResult>;
 
+export const retryTicketWritesInputSchema = z.strictObject({ taskId: taskIdSchema });
+export type RetryTicketWritesInput = z.infer<typeof retryTicketWritesInputSchema>;
+
+export type RetryTicketWritesResult = UseCaseResult<{ readonly retried: number }, "not-found" | "forbidden">;
+
+/**
+ * Sets the task's failed ticket writes back to pending and sends each one's `ticket.sync` job
+ * again (F-031): "Retry sync" on the task page. A write keeps its idempotency key, so a retry
+ * after a write that did reach the tracker finds it instead of making a second one (F-046).
+ */
+export const retryTicketWrites = async (
+  deps: Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & { readonly tx: Tx; readonly scope: MemberScope },
+  input: RetryTicketWritesInput,
+): Promise<RetryTicketWritesResult> => {
+  const { tx, scope } = deps;
+  const organizationId = scope.organizationId;
+  const refuse = (error: "not-found" | "forbidden", message: string): RetryTicketWritesResult => ({ ok: false, error, message });
+  const task = await tx.task.findFirst({ where: { id: input.taskId, organizationId }, select: { id: true, projectId: true } });
+  const project = task === null ? null : await tx.project.findFirst({ where: { id: task.projectId, organizationId }, select: { id: true, access: true } });
+  if (task === null || project === null) {
+    return refuse("not-found", "No such task");
+  }
+  const access = requireProjectAccess(scope, { id: projectIdSchema.parse(project.id), organizationId, access: project.access }, "read");
+  if (!access.ok) {
+    return access.code === "not-found" ? refuse("not-found", "No such task") : refuse("forbidden", "You may not change this task");
+  }
+  const failed = await tx.ticketWrite.findMany({ where: { taskId: task.id, organizationId, state: "failed" }, include: { board: { select: { connectionId: true } } } });
+  for (const write of failed) {
+    await tx.ticketWrite.update({ where: { id: write.id }, data: { state: "pending", error: null } });
+    await deps.jobs.enqueueInTx(
+      tx,
+      "ticket.sync",
+      { organizationId: organizationIdSchema.parse(organizationId), ticketWriteId: ticketWriteIdSchema.parse(write.id) },
+      { group: { id: write.board.connectionId } },
+    );
+  }
+  if (failed.length > 0) {
+    await deps.audit.recordInTx(tx, {
+      organizationId,
+      projectId: projectIdSchema.parse(project.id),
+      actor: { kind: "member", id: scope.memberId },
+      action: "task.ticket-sync-retried",
+      entity: "task",
+      entityId: taskIdSchema.parse(task.id),
+      data: { writes: failed.length },
+    });
+    await deps.notices.emitInTx(tx, { organizationId, projectId: projectIdSchema.parse(project.id), entity: "task", entityId: taskIdSchema.parse(task.id) });
+  }
+  return { ok: true, retried: failed.length };
+};
+
 export const createTicketForTask: CreateTicketForTask = async (deps, input) => {
   const { tx, scope } = deps;
   const organizationId = scope.organizationId;

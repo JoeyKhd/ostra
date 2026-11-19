@@ -25,6 +25,10 @@ export type ApiSettings = Pick<
   | "blobStore"
   | "trackerPollSeconds"
   | "reconcileMinutes"
+  // The task page: when a box's idle stop is due, and the spend cap (ticket 30).
+  | "boxIdleMinutes"
+  | "taskSpendCapMicroUsd"
+  | "taskTokenCap"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
