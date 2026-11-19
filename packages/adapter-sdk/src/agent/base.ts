@@ -615,13 +615,27 @@ export abstract class AgentAdapter {
     session: AgentSession,
     turnId: TurnId,
     text: string,
-    options: { readonly mode?: TurnMode } = {},
+    options: {
+      readonly mode?: TurnMode;
+      /** Milestone 4 (F-137): the level the turn runs at, and the level asked for when the agent's clamp changed it. */
+      readonly effort?: EffortLevel;
+      readonly adjustedFrom?: EffortLevel;
+    } = {},
   ): Promise<AdapterResult<{ readonly stopReason: StopReason }>> {
     const key = String(session.sessionId);
     const emit = this.#emitters.get(key);
     this.#turns.set(key, turnId);
     // Milestone 3: a turn whose mode the runner names says so, for the thread's plan marker (F-063).
-    emit?.([options.mode === undefined ? { kind: "turn.started", turnId } : { kind: "turn.started", turnId, mode: options.mode }]);
+    // Milestone 4: and its reasoning level (F-137), which a peer below minor 3 never sees.
+    emit?.([
+      {
+        kind: "turn.started",
+        turnId,
+        ...(options.mode === undefined ? {} : { mode: options.mode }),
+        ...(options.effort === undefined ? {} : { effort: options.effort }),
+        ...(options.adjustedFrom === undefined ? {} : { adjustedFrom: options.adjustedFrom }),
+      },
+    ]);
     const result = await session.connection.prompt(session.agentSessionId, text);
     const held = this.#driver.finishTurn?.({ taskId: session.taskId, sessionId: session.sessionId, turnId }) ?? [];
     emit?.([

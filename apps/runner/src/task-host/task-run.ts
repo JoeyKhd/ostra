@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, toApprovalOptions } from "@ostra/adapter-sdk";
+import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, toApprovalOptions, unknownModelLimits } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
   AgentAdapter,
@@ -12,6 +12,7 @@ import type {
   LaunchSkill,
   AgentSession,
   BoxRef,
+  EffortModel,
   ExecutorAdapter,
   Logger,
   PermissionAnswer,
@@ -25,6 +26,7 @@ import {
   approvedPlanPrompt,
   denyPrompt,
   firstMatchingTaskRule,
+  noReasoning,
   PLAN_MODE_REFUSED_LINE,
   planRevisionPrompt,
   planText,
@@ -43,6 +45,8 @@ import type {
   CheckId,
   CheckStatus,
   CommandBody,
+  EffortChangeId,
+  EffortLevel,
   PlanEntry,
   QuestionId,
   RuleContext,
@@ -207,6 +211,12 @@ export type TaskRun = {
   readonly answerQuestion: (body: CommandBody<"question-answer">) => Promise<CommandOutcome>;
   /** Minor 2 (ticket 31): the driver's answer to the plan a plan turn proposed. */
   readonly answerPlan: (body: CommandBody<"plan-answer">) => Promise<CommandOutcome>;
+  /**
+   * Minor 3 (F-137, ticket 60): the driver's new reasoning level, once per `changeId`. Applied at
+   * once while the session waits between turns (`done`); during a turn, or before the agent runs,
+   * held for before the next prompt (`accepted`), so every turn runs at one level.
+   */
+  readonly setEffort: (body: CommandBody<"set-effort">) => Promise<CommandOutcome>;
   /** The self-fence: end the agent, keep the workspace, send nothing more. */
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
@@ -345,6 +355,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         resumeId: string | undefined;
       }
     | undefined;
+  // ---------- F-137: the reasoning level (ticket 60, ADR 0066) ----------
+  /** The level the session should run at: the spec's, then each `set-effort`'s. */
+  let effortWanted: EffortLevel = "default";
+  /** The level last asked of the agent; `undefined` when the session's level isn't known (a load). */
+  let effortAsked: EffortLevel | undefined;
+  /** The level the session runs at, after the agent's clamp, and the level asked for when it differed. */
+  let effortNow: { readonly level: EffortLevel; readonly adjustedFrom?: EffortLevel } = { level: "default" };
+  /** Each `set-effort` seen, so a replayed one is applied once. */
+  const effortChanges = new Set<EffortChangeId>();
+  /** Set from the moment the next prompt is decided until its turn ends: a change waits for the turn after. */
+  let effortHeld = false;
+  /** One change at a time, in order: a change while idle and the next prompt never interleave. */
+  let effortQueue: Promise<void> = Promise.resolve();
   /** A reopen's pending messages, each a turn of its own, in order (F-047). Never logged. */
   const pending: string[] = [];
   /** The idle limit of a session across turns, in ms. */
@@ -713,7 +736,82 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     session = switched.value;
     log.info("session mode switched", { mode: target, planMode: agent.capabilities.planMode });
+    if (agent.capabilities.planMode === "relaunch") {
+      // A relaunch loads the session in a new process: its level is set again before the turn (F-137).
+      effortAsked = undefined;
+    }
     return null;
+  };
+
+  /** F-137: the session's model as the agent's levels read it: its controls and its real limits (ADR 0066). */
+  const effortModelOf = (taskSpec: TaskSpec): EffortModel => ({
+    reasoning: taskSpec.agent.reasoning ?? noReasoning,
+    apiFormat: taskSpec.agent.apiFormat,
+    endpointModelId: taskSpec.agent.endpointModelId,
+    limits: taskSpec.agent.limits ?? unknownModelLimits,
+  });
+
+  /**
+   * F-137 (ADR 0066): asks the agent for a level, between turns. The adapter clamps it to what the
+   * agent advertises and never sends a level it lacks; an agent with `none` gets no call. A level
+   * that can't be set never fails the session: it runs at the level it had, and the next turn says so.
+   */
+  const applyEffort = async (level: EffortLevel): Promise<void> => {
+    const runningAgent = agent;
+    const current = session;
+    const taskSpec = spec;
+    if (runningAgent === undefined || current === undefined || taskSpec === undefined) {
+      return;
+    }
+    const set = await runningAgent.setEffort(current, level, effortModelOf(taskSpec));
+    if (!set.ok) {
+      log.warn("the agent's reasoning level couldn't be set: it keeps its last", { level, code: set.error.code });
+      return;
+    }
+    session = set.value.session;
+    effortNow = set.value.adjustedFrom === undefined ? { level: set.value.level } : { level: set.value.level, adjustedFrom: set.value.adjustedFrom };
+    for (const event of set.value.events) {
+      void emit(event);
+    }
+    log.info("reasoning level set", { level: set.value.level, adjustedFrom: set.value.adjustedFrom ?? null, reasoningEffort: runningAgent.capabilities.reasoningEffort });
+  };
+
+  /** Brings the session to the level wanted, once, in order with every other change. */
+  const syncEffort = (): Promise<void> => {
+    effortQueue = effortQueue.then(async () => {
+      const wanted = effortWanted;
+      if (wanted === effortAsked || ending !== undefined) {
+        return;
+      }
+      effortAsked = wanted;
+      await applyEffort(wanted);
+    });
+    return effortQueue;
+  };
+
+  /** Before a prompt: a change held during the last turn is applied now, and none lands until this turn ends. */
+  const effortBeforePrompt = async (): Promise<void> => {
+    effortHeld = true;
+    await syncEffort();
+  };
+
+  const setEffort = async (body: CommandBody<"set-effort">): Promise<CommandOutcome> => {
+    if (effortChanges.has(body.changeId)) {
+      // A replay: applied, or held, once already.
+      return { result: "done" };
+    }
+    if (ending !== undefined) {
+      return { result: "rejected", reason: "session-not-running" };
+    }
+    effortChanges.add(body.changeId);
+    effortWanted = body.level;
+    if (agent === undefined || session === undefined || effortHeld) {
+      // During a turn, or before the agent runs: the running turn keeps its level; the next prompt gets this one.
+      log.info("a reasoning level change, held for the next turn", { level: body.level, turnRunning });
+      return { result: "accepted" };
+    }
+    await syncEffort();
+    return { result: "done" };
   };
 
   /**
@@ -822,6 +920,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Nothing outlives its turn: a request the agent left open is closed with it.
       closeHeld("cancelled");
       turnRunning = false;
+      effortHeld = false;
       turn = undefined;
     }
   };
@@ -836,7 +935,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const exited = runningProcess.exited.then((exit) => ({ kind: "exited" as const, exit }));
     // Minor 2 (F-063): the turn says its mode, for the thread's plan marker. A minor-1 peer's codec drops it.
     const modeOption = channel?.supports("plan.proposed") === true ? { mode } : {};
-    const prompted = runningAgent.prompt(runningSession, turnId, text, modeOption).then((result) => ({ kind: "prompted" as const, result }));
+    // Minor 3 (F-137): and the level it runs at, which a minor-2 peer's codec drops.
+    const effortOption = effortNow.adjustedFrom === undefined ? { effort: effortNow.level } : { effort: effortNow.level, adjustedFrom: effortNow.adjustedFrom };
+    const prompted = runningAgent.prompt(runningSession, turnId, text, { ...modeOption, ...effortOption }).then((result) => ({ kind: "prompted" as const, result }));
     const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
       Promise.race([
         promise,
@@ -1149,6 +1250,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         proposedPlan = undefined;
       }
       const outsideBefore = planTurn ? await outsideNow(taskSpec) : new Set<string>();
+      // F-137: a level changed during the last turn, or while the session waited, before this prompt.
+      await effortBeforePrompt();
       const result = await runTurn(next, taskSpec);
       next = undefined;
       if (result.crashed !== null) {
@@ -1792,7 +1895,15 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       sessionId: taskSpec.sessionId,
       workspaceDir: dirs.workspaceDir,
       agentDir: dirs.agentDir,
-      model: { endpointModelId: taskSpec.agent.endpointModelId, apiFormat: taskSpec.agent.apiFormat, baseUrl: keyProxy.baseUrl, placeholderKey: keyProxy.fakeKey },
+      model: {
+        endpointModelId: taskSpec.agent.endpointModelId,
+        apiFormat: taskSpec.agent.apiFormat,
+        baseUrl: keyProxy.baseUrl,
+        placeholderKey: keyProxy.fakeKey,
+        // F-137 (ADR 0066): the model's own controls and real limits, for the agent's config.
+        ...(taskSpec.agent.reasoning === undefined ? {} : { reasoning: taskSpec.agent.reasoning }),
+        ...(taskSpec.agent.limits === undefined ? {} : { limits: taskSpec.agent.limits }),
+      },
       mcp: { url: mcp.url, bearer: mcp.bearer },
       instructions: taskSpec.agent.instructions,
       extraEnv: agentVariables(taskSpec),
@@ -1887,6 +1998,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return failed(`the agent's session didn't start: ${opened.error.message}`, "session");
     }
     session = opened.value;
+    // F-137 (ADR 0066): the level is set after every `session/new` and `session/load`, before the
+    // first prompt (`effortBeforePrompt`). A new session starts at the agent's default, so `default`
+    // needs no call; a loaded one is set whatever its level, since the session may hold another.
+    effortNow = { level: "default" };
+    effortAsked = resumeAgentSessionId === undefined ? "default" : undefined;
     return { ok: true };
   };
 
@@ -1904,6 +2020,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       end({ kind: "crashed", error: prepared.error });
     }
     const taskSpec = spec;
+    // F-137: the session starts at the spec's level, unless the driver changed it since.
+    if (taskSpec !== undefined && effortChanges.size === 0) {
+      effortWanted = taskSpec.agent.effort ?? "default";
+    }
     // F-063: a plan-first task's first session starts in plan mode, with a peer that reads the plan.
     if (taskSpec !== undefined && acrossTurns && restored === undefined && taskSpec.firstTurnMode === "plan" && channel.supports("plan.proposed")) {
       mode = "plan";
@@ -1936,6 +2056,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // Milestone 1 (a minor-0 spec): the turn, and any messages queued for after it.
     let next: string | undefined = taskSpec?.prompt;
     while (ending === undefined && taskSpec !== undefined && next !== undefined) {
+      await effortBeforePrompt();
       const result = await runTurn(next, taskSpec);
       if (result.crashed !== null) {
         end({ kind: "crashed", error: result.crashed });
@@ -2063,6 +2184,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     answerApproval,
     answerQuestion,
     answerPlan,
+    setEffort,
     endBetweenTurns: async () => {
       if (turnRunning) {
         return false;

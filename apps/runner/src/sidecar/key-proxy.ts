@@ -307,6 +307,9 @@ export const startKeyProxy = async (options: KeyProxyOptions): Promise<KeyProxy>
       outputTokens: usage.output,
       cacheReadTokens: usage.cacheRead,
       cacheWriteTokens: usage.cacheWrite,
+      // Minor 3 (F-137): the part of the output the model spent reasoning, as the endpoint reports
+      // it; still counted in `outputTokens`, and priced as output. A minor-2 peer's codec drops it.
+      ...(usage.reasoning > 0 ? { reasoningTokens: usage.reasoning } : {}),
       estimated,
     });
   };

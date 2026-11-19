@@ -647,3 +647,38 @@ describe.skipIf(!liveEnv.success)("the key proxy, live", () => {
     throw new Error("the live endpoint refused both auth schemes");
   }, 60_000);
 });
+
+describe("F-137: the key proxy's reasoning tokens", () => {
+  // OpenAI's `completion_tokens_details.reasoning_tokens` in the usage chunk; Anthropic's
+  // `output_tokens_details.thinking_tokens` in the final `message_delta`. Each is a part of the
+  // output the proxy already counts, never added to it.
+  const OPENAI_REASONING_CHUNKS = [
+    'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}\n\n',
+    'data: {"id":"c1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":90,"total_tokens":103,"completion_tokens_details":{"reasoning_tokens":64}}}\n\n',
+    "data: [DONE]\n\n",
+  ];
+  const ANTHROPIC_REASONING_CHUNKS = [
+    'event: message_start\ndata: {"type":"message_start","message":{"model":"m","usage":{"input_tokens":11,"output_tokens":1}}}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}\n\n',
+    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":120,"output_tokens_details":{"thinking_tokens":80}}}\n\n',
+  ];
+
+  it.each([
+    { format: "openai-compatible", scheme: "bearer", path: "/chat/completions", chunks: OPENAI_REASONING_CHUNKS, body: openAiBody(true), output: 90, reasoning: 64 },
+    { format: "anthropic-messages", scheme: "x-api-key", path: "/messages", chunks: ANTHROPIC_REASONING_CHUNKS, body: anthropicBody(true), output: 120, reasoning: 80 },
+  ] as const)("F-137: usage.recorded carries the reasoning tokens an endpoint reports in $format, inside its output", async ({ format, scheme, path, chunks, body, output, reasoning }) => {
+    const upstream = await startRawUpstream(200, undefined, chunks);
+    const harness = await startProxy(upstream.baseUrl, format, scheme);
+    expect((await call(harness, path, body)).status).toBe(200);
+    expect(harness.usage).toHaveLength(1);
+    expect(harness.usage[0]).toMatchObject({ outputTokens: output, reasoningTokens: reasoning, estimated: false });
+    expect(harness.proxy.totals().usage).toMatchObject({ output, reasoning });
+  });
+
+  it("F-137: a call that reports no reasoning carries none", async () => {
+    const upstream = await startRawUpstream(200, undefined, OPENAI_SSE_CHUNKS);
+    const harness = await startProxy(upstream.baseUrl, "openai-compatible", "bearer");
+    await call(harness, "/chat/completions", openAiBody(true));
+    expect(harness.usage[0]).not.toHaveProperty("reasoningTokens");
+  });
+});

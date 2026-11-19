@@ -183,9 +183,11 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "no-pending-plan" }) : run.answerPlan(command.body);
     },
-    // F-137: applying a level over ACP is ticket 60's. Until then the runner refuses it, and the
-    // session runs at the level its spec named.
-    "set-effort": () => done({ result: "rejected", reason: "not-supported" }),
+    // Minor 3 (F-137, ticket 60): the driver's new reasoning level, applied before the next prompt.
+    "set-effort": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.setEffort(command.body);
+    },
     // The `host` executor builds no snapshot image (ADR 0038), so it refuses a build.
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };
