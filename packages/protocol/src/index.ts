@@ -8,6 +8,9 @@ export * from "./events/tools.ts";
 export * from "./events/agent-events.ts";
 export * from "./events/live-text.ts";
 
+export * from "./agent/rules.ts";
+export * from "./agent/prompts.ts";
+
 export * from "./task/spec.ts";
 export * from "./task/credentials.ts";
 
@@ -22,3 +25,5 @@ export * from "./runner/messages.ts";
 export * from "./runner/blobs.ts";
 export * from "./runner/http.ts";
 export * from "./runner/config.ts";
+
+export * from "./cli/http.ts";

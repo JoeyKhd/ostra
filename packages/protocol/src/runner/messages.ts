@@ -9,9 +9,22 @@ import {
   runnerLabelSchema,
   sessionSeqSchema,
 } from "../common.ts";
-import { encodeEventForMinor, runnerEventSchema, runnerEventSchemaV0 } from "../events/agent-events.ts";
+import {
+  encodeEventForMinor,
+  runnerEventSchema,
+  runnerEventSchemaV0,
+  runnerEventSchemaV1,
+  runnerScopedEventKinds,
+  taskEventSchema,
+} from "../events/agent-events.ts";
 import { liveTextFrameSchema } from "../events/live-text.ts";
-import { commandResultSchema, commandSchema, commandSchemaV0 } from "./commands.ts";
+import {
+  commandResultSchema,
+  commandSchema,
+  commandSchemaV0,
+  commandSchemaV1,
+  encodeCommandForMinor,
+} from "./commands.ts";
 import { runnerLimits } from "./limits.ts";
 import { peerSchema } from "./peer.ts";
 import { createVersionedCodec, PROTOCOL_MINOR } from "./version.ts";
@@ -75,10 +88,31 @@ export const eventsFrameSchema = z.strictObject({
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
 
+/** Minor 1's `events` frame: its events refuse minor 2's kinds and fields. */
+const eventsFrameSchemaV1 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV1).min(1).max(runnerLimits.eventsPerFrameMax),
+});
+
 /** Minor 0's `events` frame: its events refuse minor 1's kinds and fields. */
 const eventsFrameSchemaV0 = eventsFrameSchema.extend({
   events: z.array(runnerEventSchemaV0).min(1).max(runnerLimits.eventsPerFrameMax),
 });
+
+/**
+ * A runner's own event, outside any task (minor 2): a snapshot build's result when no task
+ * triggered it (F-051). Core applies it idempotently by `snapshotId`. The runner acks the
+ * `snapshot-build` command `done` only after it sent this frame, so a connection lost in between
+ * resends the command and the runner reports the result again.
+ */
+export const runnerEventFrameSchema = z.strictObject({
+  type: z.literal("runner-event"),
+  /** When the runner recorded it, in ms since the epoch, by its clock. */
+  at: epochMsSchema,
+  event: taskEventSchema.refine((event) => runnerScopedEventKinds.has(event.kind), {
+    message: "only a snapshot's result is a runner event",
+  }),
+});
+export type RunnerEventFrame = z.infer<typeof runnerEventFrameSchema>;
 
 export const commandAckItemSchema = z.strictObject({
   id: commandIdSchema,
@@ -137,9 +171,17 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV1 = z.discriminatedUnion("type", [
+const upFrameV2 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
+const upFrameV1 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV1,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
@@ -151,7 +193,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV1>;
+export type UpFrame = z.infer<typeof upFrameV2>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -247,11 +289,20 @@ export const evictSchema = z.strictObject({
 });
 export type Evict = z.infer<typeof evictSchema>;
 
-const downFrameV1 = z.discriminatedUnion("type", [
+const downFrameV2 = z.discriminatedUnion("type", [
   welcomeSchema,
   ackSchema,
   creditSchema,
   commandSchema,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+const downFrameV1 = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV1,
   goawaySchema,
   errorFrameSchema,
   evictSchema,
@@ -265,7 +316,7 @@ const downFrameV0 = z.discriminatedUnion("type", [
   errorFrameSchema,
   evictSchema,
 ]);
-export type DownFrame = z.infer<typeof downFrameV1>;
+export type DownFrame = z.infer<typeof downFrameV2>;
 export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
@@ -277,27 +328,43 @@ const statusForMinor0 = (frame: Status): unknown => {
   return minor0;
 };
 
-/** An up frame in minor 0's shape: an `events` frame's events lose minor 1's fields, and a status its containment. */
-const encodeUpFrameV0 = (frame: UpFrame): unknown =>
-  frame.type === "events"
-    ? { ...frame, events: frame.events.map((item) => ({ ...item, event: encodeEventForMinor(item.event, 0) })) }
-    : frame.type === "status"
-      ? statusForMinor0(frame)
-      : frame;
+/**
+ * An up frame in the shape of a lower minor: an `events` frame's events lose the newer fields,
+ * and below minor 1 a status loses its containment.
+ */
+const encodeUpFrameFor =
+  (minor: number) =>
+  (frame: UpFrame): unknown => {
+    if (frame.type === "events") {
+      return { ...frame, events: frame.events.map((item) => ({ ...item, event: encodeEventForMinor(item.event, minor) })) };
+    }
+    if (frame.type === "status" && minor < 1) {
+      return statusForMinor0(frame);
+    }
+    return frame;
+  };
+
+/** A down frame in the shape of a lower minor: a command loses the newer fields. */
+const encodeDownFrameFor =
+  (minor: number) =>
+  (frame: DownFrame): unknown =>
+    frame.type === "command" ? encodeCommandForMinor(frame, minor) : frame;
 
 /** Up frames, one codec per kept minor. */
 export const upFrameCodec = createVersionedCodec<UpFrame>([
-  { minor: 0, decode: upFrameV0, encode: encodeUpFrameV0 },
-  { minor: 1, decode: upFrameV1, encode: (frame) => frame },
+  { minor: 0, decode: upFrameV0, encode: encodeUpFrameFor(0) },
+  { minor: 1, decode: upFrameV1, encode: encodeUpFrameFor(1) },
+  { minor: 2, decode: upFrameV2, encode: (frame) => frame },
 ]);
 
 /**
- * Down frames, one codec per kept minor. No down frame changed shape in minor 1; only the
- * `release` command is new, and minor 0's decode refuses it.
+ * Down frames, one codec per kept minor. Minor 1 added the `release` command; minor 2 added three
+ * commands and two command fields, which a lower minor's encode drops and its decode refuses.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
-  { minor: 0, decode: downFrameV0, encode: (frame) => frame },
-  { minor: 1, decode: downFrameV1, encode: (frame) => frame },
+  { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
+  { minor: 1, decode: downFrameV1, encode: encodeDownFrameFor(1) },
+  { minor: 2, decode: downFrameV2, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

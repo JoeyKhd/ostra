@@ -755,6 +755,19 @@ export const foldTaskEvents = (
         // Protocol minor 1. No row until the milestone 2 task page (ticket 36) designs them: a limit
         // shows through its needs-you item, saved work and ticket files on the task header.
         break;
+      case "plan.proposed":
+      case "plan.answered":
+      case "check.started":
+      case "check.finished":
+      case "snapshot.built":
+      case "snapshot.failed":
+      case "service.healthy":
+      case "service.failed":
+      case "diff.comments_sent":
+      case "ticket.closed":
+      case "pr.comment_received":
+        // Protocol minor 2. No row until the milestone 3 task page (tickets 43, 46, 47) draws them.
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

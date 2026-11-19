@@ -15,6 +15,7 @@ import {
   taskSpecResponseSchemaFor,
   taskSpecSchema,
   taskSpecSchemaV0,
+  taskSpecSchemaV1,
 } from "../task/spec.ts";
 import {
   eventFixtures,
@@ -60,11 +61,11 @@ const releaseCommand: Command = {
 };
 
 describe("the version", () => {
-  it("is minor 1, and a minor-0 peer is inside its window and speaks minor 0", () => {
-    expect(PROTOCOL_MINOR).toBe(1);
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 0)).toEqual({ ok: true, minor: 0 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 1 });
-    expect(negotiate(0, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 0 });
+  it("at a minor-1 server, a minor-0 peer is inside its window and speaks minor 0", () => {
+    expect(PROTOCOL_MINOR).toBeGreaterThanOrEqual(1);
+    expect(negotiate(1, PROTOCOL_MAJOR, 0)).toEqual({ ok: true, minor: 0 });
+    expect(negotiate(1, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 1 });
+    expect(negotiate(0, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 0 });
   });
 
   it("names the working values", () => {
@@ -279,7 +280,7 @@ describe("the task spec at minor 1", () => {
 
   it("picks the response schema by the negotiated minor", () => {
     expect(taskSpecResponseSchemaFor(0)).toBe(taskSpecSchemaV0);
-    expect(taskSpecResponseSchemaFor(1)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(1)).toBe(taskSpecSchemaV1);
     expect(minorFromHeader("1")).toBe(1);
     expect(minorFromHeader(null)).toBe(0);
     expect(minorFromHeader("one")).toBe(0);

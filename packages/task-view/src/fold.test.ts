@@ -251,6 +251,72 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
+  "plan.proposed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "plan.answered": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "check.started": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "check.finished": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "snapshot.built": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "snapshot.failed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "service.healthy": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "service.failed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "diff.comments_sent": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "ticket.closed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "pr.comment_received": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
   "pr.opened": {
     prefix: [f["pr.text_set"]],
     check: (m) => {

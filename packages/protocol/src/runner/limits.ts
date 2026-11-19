@@ -84,6 +84,44 @@ export const runnerLimits = {
   ticketFilesMax: 20,
   /** Spec section 11, item 9: the largest ticket image copied into the workspace. */
   ticketFileMaxBytes: 10 * MiB,
+
+  // ---- milestone 3, protocol minor 2 ----
+  /** ADR 0052, F-054: one check's timeout, unless the check sets its own (`OSTRA_CHECK_TIMEOUT_SECONDS`). */
+  checkTimeoutSeconds: 600,
+  /** ADR 0052, F-054: the longest one check's timeout may be set to. */
+  checkTimeoutMaxSeconds: 3600,
+  /** ADR 0052, F-054: all of a turn's checks together (`OSTRA_CHECKS_TOTAL_MINUTES`). */
+  checksTotalMinutes: 30,
+  /** ADR 0052: the end of a check's output carried in `check.finished`. */
+  checkOutputTailMaxBytes: 16 * KiB,
+  /** ADR 0052: a check's full output, uploaded as a blob; past it the blob is cut. */
+  checkOutputBlobMaxBytes: 4 * MiB,
+  /** The most checks one environment runs after a turn. */
+  checksMax: 50,
+  /** ADR 0036, F-026: an approval or a question waits this long, then the turn is cancelled. */
+  approvalWaitMinutes: 15,
+  /** ADR 0049, F-063: the plan turn's last message, in `plan.proposed`, and an approved plan's text. */
+  planMessageMaxBytes: 64 * KiB,
+  /** ADR 0049, F-063: the most entries a plan carries. */
+  planEntriesMax: 200,
+  /** ADR 0051, F-072: one diff comment's text, in characters. */
+  diffCommentMaxChars: 4000,
+  /** ADR 0051, F-072: the most comments one send carries. */
+  diffCommentsPerSendMax: 50,
+  /** ADR 0049, F-026: a deny's reason, in characters. */
+  denyReasonMaxChars: 2000,
+  /** ADR 0049, F-021: a skill's files (working value). */
+  skillFilesMax: 20,
+  /** ADR 0049, F-021: one skill file (working value). */
+  skillFileMaxBytes: 1 * MiB,
+  /** ADR 0049, F-021: the most skills a profile hands one task. */
+  skillsMax: 50,
+  /** ADR 0049, F-021: the most MCP servers a profile hands one task. */
+  mcpServersMax: 20,
+  /** ADR 0049, F-026: the most rules a profile or a task carries. */
+  approvalRulesMax: 200,
+  /** F-094: the most services one environment starts. */
+  servicesMax: 20,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;

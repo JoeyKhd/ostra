@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { createVersionedCodec, minorWindow, negotiate, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./version.ts";
+import { createVersionedCodec, minorWindow, negotiate, PROTOCOL_MAJOR } from "./version.ts";
 import type { MinorCodec } from "./version.ts";
 
 describe("negotiate", () => {
@@ -24,7 +24,7 @@ describe("negotiate", () => {
   });
 
   it("a server at minor 0 speaks minor 0 with a newer peer, and never goes below 0", () => {
-    expect(negotiate(0, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 0 });
+    expect(negotiate(0, PROTOCOL_MAJOR, 1)).toEqual({ ok: true, minor: 0 });
     expect(minorWindow(0)).toEqual({ min: 0, max: 1 });
     expect(negotiate(0, PROTOCOL_MAJOR, -1)).toMatchObject({ ok: false });
   });

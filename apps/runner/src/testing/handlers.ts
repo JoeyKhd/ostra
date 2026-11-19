@@ -12,4 +12,7 @@ export const rejectAllHandlers: CommandHandlers = {
   drain: reject,
   "update-hint": reject,
   release: reject,
+  "question-answer": reject,
+  "plan-answer": reject,
+  "snapshot-build": reject,
 };

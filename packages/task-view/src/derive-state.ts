@@ -217,6 +217,17 @@ export const deriveTaskState = (
       case "session.saved":
       case "session.limit_reached":
       case "ticket.files_ready":
+      case "plan.proposed":
+      case "plan.answered":
+      case "check.started":
+      case "check.finished":
+      case "snapshot.built":
+      case "snapshot.failed":
+      case "service.healthy":
+      case "service.failed":
+      case "diff.comments_sent":
+      case "ticket.closed":
+      case "pr.comment_received":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

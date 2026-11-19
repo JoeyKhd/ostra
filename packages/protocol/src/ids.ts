@@ -198,3 +198,45 @@ export type OAuthStateId = z.infer<typeof oauthStateIdSchema>;
 /** The ID of a stored blob, as a blob store gave it (the part of its key after the store's name). */
 export const blobIdSchema = idBase.brand<"BlobId">();
 export type BlobId = z.infer<typeof blobIdSchema>;
+
+// ---------- milestone 3 (protocol minor 2) ----------
+
+/** The ID of an approval rule inside an agent profile (ADR 0049). The profile stores its rules as JSON. */
+export const approvalRuleIdSchema = idBase.brand<"ApprovalRuleId">();
+export type ApprovalRuleId = z.infer<typeof approvalRuleIdSchema>;
+
+/** The ID of a "for this task" rule: a `TaskApprovalRule` row (ADR 0049). */
+export const taskApprovalRuleIdSchema = idBase.brand<"TaskApprovalRuleId">();
+export type TaskApprovalRuleId = z.infer<typeof taskApprovalRuleIdSchema>;
+
+/** The ID of a check of an environment (F-054, ADR 0052). */
+export const checkIdSchema = idBase.brand<"CheckId">();
+export type CheckId = z.infer<typeof checkIdSchema>;
+
+/** The ID of one check's run after one turn: a `CheckRun` row. */
+export const checkRunIdSchema = idBase.brand<"CheckRunId">();
+export type CheckRunId = z.infer<typeof checkRunIdSchema>;
+
+/** The ID of a member's comment on a task's diff (F-072, ADR 0051). */
+export const diffCommentIdSchema = idBase.brand<"DiffCommentId">();
+export type DiffCommentId = z.infer<typeof diffCommentIdSchema>;
+
+/** The ID of one PR a task repo has had: a `TaskPullRequest` row (F-066). */
+export const taskPullRequestIdSchema = idBase.brand<"TaskPullRequestId">();
+export type TaskPullRequestId = z.infer<typeof taskPullRequestIdSchema>;
+
+/** The ID of a member's notification of one moment (F-036, ADR 0050). */
+export const notificationIdSchema = idBase.brand<"NotificationId">();
+export type NotificationId = z.infer<typeof notificationIdSchema>;
+
+/** The ID of one channel's delivery of a notification. */
+export const notificationDeliveryIdSchema = idBase.brand<"NotificationDeliveryId">();
+export type NotificationDeliveryId = z.infer<typeof notificationDeliveryIdSchema>;
+
+/** The ID of a member's `ostra login` session (F-103, ADR 0051). */
+export const cliSessionIdSchema = idBase.brand<"CliSessionId">();
+export type CliSessionId = z.infer<typeof cliSessionIdSchema>;
+
+/** The ID of a skill of an agent profile (F-021). */
+export const agentProfileSkillIdSchema = idBase.brand<"AgentProfileSkillId">();
+export type AgentProfileSkillId = z.infer<typeof agentProfileSkillIdSchema>;

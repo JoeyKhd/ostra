@@ -1689,6 +1689,12 @@ enum CommandKind {
   update_hint
   /// Protocol minor 1: remove the box and its workspace (milestone 2).
   release
+  /// Protocol minor 2: the driver's answer to the agent's question (milestone 3).
+  question_answer
+  /// Protocol minor 2: the driver's answer to a plan (milestone 3).
+  plan_answer
+  /// Protocol minor 2: build a project's snapshot on a `docker` runner (milestone 3).
+  snapshot_build
 }
 
 enum CommandResult {

@@ -74,6 +74,9 @@ export const runnerServerLink = (input: {
         schema: taskCredentialsResponseSchema,
         body: { taskId, leaseEpoch },
         bearer: token.token,
+        // Minor 2: the credentials in this build's shape, with the MCP servers' headers. A server
+        // below minor 2 ignores the header and answers minor 1's, which this schema reads.
+        headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
         timeoutMs: 30_000,
       });
       return result.ok ? { ok: true, value: result.value } : { ok: false, failure: failureOf(result.failure) };

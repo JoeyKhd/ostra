@@ -2,8 +2,11 @@ import { z } from "zod";
 
 import {
   approvalIdSchema,
+  approvalRuleIdSchema,
   blobIdSchema,
+  checkIdSchema,
   clientMessageIdSchema,
+  diffCommentIdSchema,
   memberIdSchema,
   modelIdSchema,
   optionIdSchema,
@@ -13,6 +16,8 @@ import {
   runnerIdSchema,
   segmentIdSchema,
   sessionIdSchema,
+  snapshotIdSchema,
+  taskApprovalRuleIdSchema,
   taskIdSchema,
   toolCallIdSchema,
   turnIdSchema,
@@ -21,10 +26,14 @@ import {
   branchNameSchema,
   epochMsSchema,
   gitShaSchema,
+  httpUrlSchema,
+  imageDigestSchema,
   leaseEpochSchema,
+  serviceNameSchema,
   sessionSeqSchema,
   taskSeqSchema,
 } from "../common.ts";
+import { approvalSubjectSchema, taskRuleSchema } from "../agent/rules.ts";
 import { blobRefSchema } from "../runner/blobs.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { toolKindSchema } from "./tools.ts";
@@ -225,11 +234,204 @@ const ticketFilesReady = z.strictObject({
     .max(runnerLimits.ticketFilesMax),
 });
 
-// ---------- the events minor 0 and minor 1 share ----------
+// ---------- protocol minor 2's vocabularies (milestone 3) ----------
+
+/** How a turn runs (ADR 0049, F-063): a plan turn reads and never writes; a build turn works. */
+export const turnModeSchema = z.enum(["plan", "build"]);
+export type TurnMode = z.infer<typeof turnModeSchema>;
+
+/**
+ * Why a member's message was written (milestone 3): typed in the composer, or rendered by ostra
+ * from diff comments, "Update branch", a plan revision, an `@ostra` comment, "Ask the agent to
+ * fix" or "Keep working". The thread draws each with its own marker.
+ */
+export const messageIntentSchema = z.enum([
+  "message",
+  "diff-comments",
+  "update-branch",
+  "plan-revision",
+  "pr-comment",
+  "fix-checks",
+  "keep-working",
+]);
+export type MessageIntent = z.infer<typeof messageIntentSchema>;
+
+/** A check's result (ADR 0052, F-054). */
+export const checkStatusSchema = z.enum(["passed", "failed", "timed-out", "error"]);
+export type CheckStatus = z.infer<typeof checkStatusSchema>;
+
+/** Why a snapshot build failed (F-051, ADR 0038). `secret-found`: the image scan found a setup secret's value. */
+export const snapshotFailureReasonSchema = z.enum(["setup-failed", "secret-found", "build-failed"]);
+export type SnapshotFailureReason = z.infer<typeof snapshotFailureReasonSchema>;
+
+/** The rule that asked for an approval, for the card and the receipt (ADR 0049). */
+export const approvalRuleRefSchema = z.discriminatedUnion("source", [
+  z.strictObject({ source: z.literal("profile"), ruleId: approvalRuleIdSchema, name: z.string().min(1).max(200) }),
+  z.strictObject({ source: z.literal("task"), ruleId: taskApprovalRuleIdSchema, name: z.string().min(1).max(200) }),
+]);
+export type ApprovalRuleRef = z.infer<typeof approvalRuleRefSchema>;
+
+/** A plan's entries, at most `planEntriesMax`. */
+export const planEntriesSchema = z.array(planEntrySchema).max(runnerLimits.planEntriesMax);
+
+/** A plan turn's message or an approved plan's text: capped (64 KiB), never logged. */
+export const planTextSchema = z.string().max(runnerLimits.planMessageMaxBytes);
+
+/** A deny's reason (ADR 0049): shown to the project's members, never logged, never in the audit entry. */
+export const denyReasonSchema = z.string().trim().min(1).max(runnerLimits.denyReasonMaxChars);
+
+/** A check's result as `session.saved` carries it, for the PR opener. */
+export const savedCheckSchema = z.strictObject({ checkId: checkIdSchema, status: checkStatusSchema });
+export type SavedCheck = z.infer<typeof savedCheckSchema>;
+
+// ---------- the events whose shape changed in minor 2 ----------
+
+const turnStartedV1 = z.strictObject({ kind: z.literal("turn.started"), turnId: turnIdSchema });
+
+const turnStarted = turnStartedV1.extend({
+  /** Minor 2: a plan turn or a build turn. Missing means `build`. */
+  mode: turnModeSchema.optional(),
+});
+
+const approvalRequestedV1 = z.strictObject({
+  kind: z.literal("approval.requested"),
+  turnId: turnIdSchema,
+  approvalId: approvalIdSchema,
+  toolCallId: toolCallIdSchema,
+  options: z.array(approvalOptionSchema).min(1),
+});
+
+const approvalRequested = approvalRequestedV1.extend({
+  /** Minor 2: the rule that asked, or `null` when the agent asked on its own. */
+  rule: approvalRuleRefSchema.nullable().optional(),
+  /** Minor 2: what the request touches, which the card shows and "for this task" narrows. Never logged. */
+  subject: approvalSubjectSchema.optional(),
+});
+
+const approvalAnsweredV1 = z.strictObject({
+  kind: z.literal("approval.answered"),
+  approvalId: approvalIdSchema,
+  optionId: optionIdSchema,
+  decision: approvalDecisionSchema,
+  memberId: memberIdSchema,
+});
+
+const approvalAnswered = approvalAnsweredV1.extend({
+  /** Minor 2: a deny's reason. Never logged, never in the audit entry. */
+  reason: denyReasonSchema.optional(),
+  /** Minor 2: the task rule "Approve for this task" wrote, or `null`. */
+  taskRule: taskRuleSchema.nullable().optional(),
+});
+
+const userMessageV2 = userMessage.extend({
+  /** Minor 2: why the message was written. Missing means `message`. */
+  intent: messageIntentSchema.optional(),
+});
+
+const sessionSavedV2 = sessionSaved.extend({
+  /** Minor 2: the checks run after the turn, in order, for the PR opener (ADR 0052). */
+  checks: z.array(savedCheckSchema).max(runnerLimits.checksMax).optional(),
+});
+
+// ---------- the events new in minor 2 ----------
+
+const minor2NewEventOptions = [
+  // ---- plan first (F-063) ----
+  z.strictObject({
+    kind: z.literal("plan.proposed"),
+    turnId: turnIdSchema,
+    entries: planEntriesSchema,
+    /** The plan turn's last agent message. Never logged. */
+    message: planTextSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("plan.answered"),
+    decision: z.enum(["approve", "revise"]),
+    /** The plan as approved, or the driver's request for changes. Never logged. */
+    text: planTextSchema,
+    memberId: memberIdSchema,
+    /** On an approve: the plan as approved, structured, for the receipt's `edited` marks. */
+    entries: planEntriesSchema.optional(),
+    /** On an approve: the plan's message as approved. Never logged. */
+    message: planTextSchema.optional(),
+  }),
+
+  // ---- checks (F-054, ADR 0052) ----
+  z.strictObject({
+    kind: z.literal("check.started"),
+    checkId: checkIdSchema,
+    /** The repo the check runs in, or `null` for the workspace root (Q188). */
+    repoId: repoIdSchema.nullable(),
+    name: z.string().min(1).max(200),
+  }),
+  z.strictObject({
+    kind: z.literal("check.finished"),
+    checkId: checkIdSchema,
+    status: checkStatusSchema,
+    /** `null` when the check was killed (a timeout) or never started (an error). */
+    exitCode: z.number().int().nullable(),
+    durationMs: z.number().int().nonnegative(),
+    /** The output's end, at most 16 KiB. Never logged. */
+    outputTail: z.string().max(runnerLimits.checkOutputTailMaxBytes),
+    /** The full output as a blob, or `null` when its upload failed. */
+    outputBlobId: blobIdSchema.nullable(),
+  }),
+
+  // ---- snapshots and services (F-051, F-094) ----
+  z.strictObject({
+    kind: z.literal("snapshot.built"),
+    snapshotId: snapshotIdSchema,
+    imageDigest: imageDigestSchema,
+    durationMs: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    kind: z.literal("snapshot.failed"),
+    snapshotId: snapshotIdSchema,
+    reason: snapshotFailureReasonSchema,
+    /** Words for the panel, never a secret's value or the build's output. */
+    detail: z.string().max(2000),
+  }),
+  z.strictObject({
+    kind: z.literal("service.healthy"),
+    name: serviceNameSchema,
+    afterMs: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    kind: z.literal("service.failed"),
+    name: serviceNameSchema,
+    /** Words for the panel, never the service's output. */
+    reason: z.string().max(2000),
+  }),
+
+  // ---- server-only (milestone 3) ----
+  z.strictObject({
+    kind: z.literal("diff.comments_sent"),
+    /** The drafts the member message carried (F-072). */
+    commentIds: z.array(diffCommentIdSchema).min(1).max(runnerLimits.diffCommentsPerSendMax),
+    count: z.number().int().positive().max(runnerLimits.diffCommentsPerSendMax),
+  }),
+  z.strictObject({
+    kind: z.literal("ticket.closed"),
+    /** The ticket's new status, as the tracker names it. */
+    status: z.string().min(1).max(200),
+    category: z.enum(["done", "cancelled"]),
+  }),
+  z.strictObject({
+    kind: z.literal("pr.comment_received"),
+    /** The `@ostra` comment's URL. Its text is in the member message, never here. */
+    url: httpUrlSchema,
+    /** The commenter's code host login. */
+    login: z.string().min(1).max(100),
+    /** For a line comment, its file and line; `null` for a PR comment. */
+    path: z.string().min(1).max(1024).nullable(),
+    line: z.number().int().positive().nullable(),
+  }),
+] as const;
+
+// ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
   // ---- members and turns ----
-  z.strictObject({ kind: z.literal("turn.started"), turnId: turnIdSchema }),
   z.strictObject({ kind: z.literal("turn.ended"), turnId: turnIdSchema, stopReason: stopReasonSchema }),
   z.strictObject({ kind: z.literal("turn.failed"), turnId: turnIdSchema, error: z.string().max(4000) }),
   z.strictObject({ kind: z.literal("turn.cancel_requested"), memberId: memberIdSchema }),
@@ -263,20 +465,6 @@ const sharedEventOptions = [
   z.strictObject({ kind: z.literal("tool.failed"), toolCallId: toolCallIdSchema, error: z.string().max(4000) }),
 
   // ---- approvals and questions ----
-  z.strictObject({
-    kind: z.literal("approval.requested"),
-    turnId: turnIdSchema,
-    approvalId: approvalIdSchema,
-    toolCallId: toolCallIdSchema,
-    options: z.array(approvalOptionSchema).min(1),
-  }),
-  z.strictObject({
-    kind: z.literal("approval.answered"),
-    approvalId: approvalIdSchema,
-    optionId: optionIdSchema,
-    decision: approvalDecisionSchema,
-    memberId: memberIdSchema,
-  }),
   z.strictObject({
     kind: z.literal("approval.auto_answered"),
     approvalId: approvalIdSchema,
@@ -394,14 +582,35 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (1). */
+/** The event union at the current minor (2). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessageV2,
+  sessionRestored,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReady,
+  turnStarted,
+  approvalRequested,
+  approvalAnswered,
+  ...minor2NewEventOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 1's event union, kept for the codecs (ADR 0034): a minor-1 peer's events parse with it,
+ * and it refuses minor 2's kinds and fields.
+ */
+export const taskEventSchemaV1 = z.discriminatedUnion("kind", [
   userMessage,
   sessionRestored,
   sessionCrashed,
   sessionSaved,
   sessionLimitReached,
   ticketFilesReady,
+  turnStartedV1,
+  approvalRequestedV1,
+  approvalAnsweredV1,
   ...sharedEventOptions,
 ]);
 
@@ -413,6 +622,9 @@ export const taskEventSchemaV0 = z.discriminatedUnion("kind", [
   userMessageV0,
   sessionRestoredV0,
   sessionCrashedV0,
+  turnStartedV1,
+  approvalRequestedV1,
+  approvalAnsweredV1,
   ...sharedEventOptions,
 ]);
 
@@ -430,38 +642,89 @@ export const minor1EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
   "ticket.files_ready",
 ]);
 
+/** The kinds minor 2 added (milestone 3). As with minor 1's, a sender checks the minor first. */
+export const minor2EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor2NewEventOptions.map((option) => option.shape.kind.value),
+);
+
+/**
+ * The kinds a runner may also send outside a task, in a `runner-event` frame: a snapshot build's
+ * result when no task triggered the build (F-051).
+ */
+export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>([
+  "snapshot.built",
+  "snapshot.failed",
+]);
+
 /** The lowest minor that carries an event kind. */
-export const eventKindMinMinor = (kind: TaskEventKind): number => (minor1EventKinds.has(kind) ? 1 : 0);
+export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor2EventKinds.has(kind)) {
+    return 2;
+  }
+  return minor1EventKinds.has(kind) ? 1 : 0;
+};
 
 /** Whether a peer at `minor` can read an event of `kind`. */
 export const eventKindSupportedAt = (kind: TaskEventKind, minor: number): boolean =>
   eventKindMinMinor(kind) <= minor;
 
-/**
- * An event as a peer at `minor` reads it: below minor 1, the fields minor 1 added are dropped.
- * A kind the minor lacks is returned as it is, and that peer refuses it: senders check
- * `eventKindSupportedAt` first.
- */
-export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
-  if (minor >= 1) {
-    return event;
-  }
+// Minor 1's shapes of the events that grew in minor 2, as stripping objects: parsing a current
+// event with one keeps minor 1's fields and drops the rest.
+const userMessageStripV1 = z.object(userMessage.shape);
+const turnStartedStripV1 = z.object(turnStartedV1.shape);
+const approvalRequestedStripV1 = z.object(approvalRequestedV1.shape);
+const approvalAnsweredStripV1 = z.object(approvalAnsweredV1.shape);
+const sessionSavedStripV1 = z.object(sessionSaved.shape);
+
+/** An event without the fields minor 2 added: what a minor-1 peer reads. */
+const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
   if (event.kind === "user.message") {
-    return {
-      kind: event.kind,
-      memberId: event.memberId,
-      clientMessageId: event.clientMessageId,
-      text: event.text,
-      delivery: event.delivery,
-    };
+    return userMessageStripV1.parse(event);
   }
-  if (event.kind === "session.restored") {
-    return { kind: event.kind };
+  if (event.kind === "turn.started") {
+    return turnStartedStripV1.parse(event);
   }
-  if (event.kind === "session.crashed") {
-    return { kind: event.kind, error: event.error };
+  if (event.kind === "approval.requested") {
+    return approvalRequestedStripV1.parse(event);
+  }
+  if (event.kind === "approval.answered") {
+    return approvalAnsweredStripV1.parse(event);
+  }
+  if (event.kind === "session.saved") {
+    return sessionSavedStripV1.parse(event);
   }
   return event;
+};
+
+/**
+ * An event as a peer at `minor` reads it: below minor 2, the fields minor 2 added are dropped;
+ * below minor 1, minor 1's too. A kind the minor lacks is returned as it is, and that peer
+ * refuses it: senders check `eventKindSupportedAt` first.
+ */
+export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
+  if (minor >= 2) {
+    return event;
+  }
+  const v1 = dropMinor2Fields(event);
+  if (minor >= 1) {
+    return v1;
+  }
+  if (v1.kind === "user.message") {
+    return {
+      kind: v1.kind,
+      memberId: v1.memberId,
+      clientMessageId: v1.clientMessageId,
+      text: v1.text,
+      delivery: v1.delivery,
+    };
+  }
+  if (v1.kind === "session.restored") {
+    return { kind: v1.kind };
+  }
+  if (v1.kind === "session.crashed") {
+    return { kind: v1.kind, error: v1.error };
+  }
+  return v1;
 };
 
 export const taskEventKinds: readonly TaskEventKind[] = taskEventSchema.options.map(
@@ -486,6 +749,11 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "runner.connected",
   "runner.lost",
   "pr.opened",
+  // Minor 2 (milestone 3):
+  "plan.answered",
+  "diff.comments_sent",
+  "ticket.closed",
+  "pr.comment_received",
 ]);
 
 // ---------- the read side ----------
@@ -541,6 +809,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 1's `runnerEventSchema`, for the up codec of a minor-1 peer. */
+export const runnerEventSchemaV1 = runnerEventSchema.extend({
+  event: taskEventSchemaV1.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 0's `runnerEventSchema`, for the up codec of a minor-0 peer. */
 export const runnerEventSchemaV0 = runnerEventSchema.extend({

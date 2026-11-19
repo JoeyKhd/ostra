@@ -91,3 +91,15 @@ export const envNameSchema = z
  */
 export const boxStateSchema = z.enum(["creating", "preparing", "ready", "idle", "stopped", "released", "failed"]);
 export type BoxState = z.infer<typeof boxStateSchema>;
+
+// ---------- milestone 3 (protocol minor 2) ----------
+
+/** An OCI image digest: `sha256:` and 64 lower-case hex digits (F-051). */
+export const imageDigestSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/, "an image digest, sha256:<hex>");
+
+/** A service's name, which is also its host name on the box's network (F-094). */
+export const serviceNameSchema = z
+  .string()
+  .min(1)
+  .max(63)
+  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, "lower-case letters, digits and hyphens, as a host name");

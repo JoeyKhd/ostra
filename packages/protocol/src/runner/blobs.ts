@@ -25,8 +25,11 @@ export const blobRefSchema = z.strictObject({
 });
 export type BlobRef = z.infer<typeof blobRefSchema>;
 
-/** What a runner uploads. Ticket files go the other way: core stores them, the runner downloads them. */
-export const blobUploadPurposeSchema = z.enum(["session-archive"]);
+/**
+ * What a runner uploads. Ticket files go the other way: core stores them, the runner downloads
+ * them. Minor 2: a check's full output (F-054), sent only to a minor-2 server.
+ */
+export const blobUploadPurposeSchema = z.enum(["session-archive", "check-output"]);
 export type BlobUploadPurpose = z.infer<typeof blobUploadPurposeSchema>;
 
 /** A content type as a `Content-Type` header carries it, without parameters. */
@@ -38,6 +41,9 @@ export const contentTypeSchema = z
 
 /** The session archive's content type: a gzipped export (ADR 0039). */
 export const SESSION_ARCHIVE_CONTENT_TYPE = "application/gzip";
+
+/** A check's output's content type: its stdout and stderr together, as text (minor 2). Never logged. */
+export const CHECK_OUTPUT_CONTENT_TYPE = "text/plain";
 
 // ---------- POST /runner/v1/tasks/:taskId/blobs ----------
 

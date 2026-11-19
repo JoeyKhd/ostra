@@ -11,7 +11,17 @@ import {
   runnerLimits,
   runnerPaths,
 } from "@ostra/protocol";
-import type { Command, CommandAck, DownFrame, LiveTextFrame, RunnerEvent, SessionId, Status, UpFrame } from "@ostra/protocol";
+import type {
+  Command,
+  CommandAck,
+  DownFrame,
+  LiveTextFrame,
+  RunnerEvent,
+  RunnerEventFrame,
+  SessionId,
+  Status,
+  UpFrame,
+} from "@ostra/protocol";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { FakeServer } from "./fake-server.ts";
@@ -38,6 +48,8 @@ export type FakeGateway = {
   readonly acks: CommandAck[];
   readonly statuses: Status[];
   readonly liveText: LiveTextFrame[];
+  /** Protocol minor 2: a runner's own events, outside any task (a snapshot's result). */
+  readonly runnerEvents: RunnerEventFrame[];
   readonly hellos: Extract<UpFrame, { type: "hello" }>[];
   /** Frames the gateway refused: each is a bug in the peer. A test checks this stays empty. */
   readonly protocolErrors: string[];
@@ -86,6 +98,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
   const acks: CommandAck[] = [];
   const statuses: Status[] = [];
   const liveText: LiveTextFrame[] = [];
+  const runnerEvents: RunnerEventFrame[] = [];
   const hellos: Extract<UpFrame, { type: "hello" }>[] = [];
   const protocolErrors: string[] = [];
   let current: WebSocket | undefined;
@@ -116,6 +129,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
     acks,
     statuses,
     liveText,
+    runnerEvents,
     hellos,
     protocolErrors,
     maxUnackedFrames: () => maxUnacked,
@@ -234,6 +248,9 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
         return;
       case "live-text":
         liveText.push(...frame.frames);
+        return;
+      case "runner-event":
+        runnerEvents.push(frame);
         return;
       default:
         frame satisfies never;

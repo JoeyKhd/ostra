@@ -16,11 +16,14 @@ import { runnerLimits } from "./limits.ts";
 export const PROTOCOL_MAJOR = 1;
 
 /**
- * This build's minor. Milestone 1 shipped minor 0. Milestone 2 ships minor 1: sessions across
- * turns, the bulk path, the `release` command, restores and limits. A minor-0 peer still works
- * inside the window: it's never sent `release` or the new spec fields, and it sends no new event.
+ * This build's minor. Milestone 1 shipped minor 0. Milestone 2 shipped minor 1: sessions across
+ * turns, the bulk path, the `release` command, restores and limits. Milestone 3 ships minor 2:
+ * approval rules and task rules, questions, plan first, checks, snapshots, services and the
+ * profile's skills and MCP servers. A minor-1 peer still works inside the window: it's never
+ * sent `question-answer`, `plan-answer`, `snapshot-build` or the new spec sections, and it sends
+ * no new event. A minor-0 peer is outside the window and refused at `hello`.
  */
-export const PROTOCOL_MINOR = 1;
+export const PROTOCOL_MINOR = 2;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

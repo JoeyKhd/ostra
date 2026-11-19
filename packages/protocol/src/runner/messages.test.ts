@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { eventFixtures, fixtureIds as ids } from "../testing/fixtures.ts";
+import { commandFixtures, eventFixtures, fixtureIds as ids } from "../testing/fixtures.ts";
 import { commandKindSchema } from "./commands.ts";
-import type { Command, CommandKind } from "./commands.ts";
 import {
   closeCodes,
   encodeDownFrame,
@@ -13,38 +12,7 @@ import {
 import type { DownFrame, DownFrameType, UpFrame, UpFrameType } from "./messages.ts";
 import { runnerLimits } from "./limits.ts";
 
-const envelope = { type: "command", id: ids.command, notAfter: 1_900_000_000_000 } as const;
-
-const commands: { readonly [K in CommandKind]: Extract<Command, { kind: K }> } = {
-  dispatch: {
-    ...envelope,
-    seq: 1,
-    kind: "dispatch",
-    body: { taskId: ids.task, sessionId: ids.session, boxId: ids.box, leaseEpoch: 1 },
-  },
-  steer: {
-    ...envelope,
-    seq: 2,
-    kind: "steer",
-    body: { sessionId: ids.session, clientMessageId: ids.clientMessage, text: "also add a test", delivery: "queue" },
-  },
-  interrupt: { ...envelope, seq: 3, kind: "interrupt", body: { sessionId: ids.session } },
-  stop: {
-    ...envelope,
-    seq: 4,
-    kind: "stop",
-    body: { taskId: ids.task, sessionId: ids.session, leaseEpoch: 1, reason: "requested" },
-  },
-  "approval-answer": {
-    ...envelope,
-    seq: 5,
-    kind: "approval-answer",
-    body: { sessionId: ids.session, approvalId: ids.approval, decision: "allow_once" },
-  },
-  drain: { ...envelope, seq: 6, kind: "drain", body: {} },
-  "update-hint": { ...envelope, seq: 7, kind: "update-hint", body: { version: "0.2.0" } },
-  release: { ...envelope, seq: 8, kind: "release", body: { taskId: ids.task, boxId: ids.box, reason: "prs-closed" } },
-};
+const commands = commandFixtures;
 
 const upFrames: { readonly [T in UpFrameType]: Extract<UpFrame, { type: T }> } = {
   hello: {
@@ -96,6 +64,7 @@ const upFrames: { readonly [T in UpFrameType]: Extract<UpFrame, { type: T }> } =
       },
     ],
   },
+  "runner-event": { type: "runner-event", at: 1_700_000_000_002, event: eventFixtures["snapshot.built"] },
 };
 
 const downFrames: { readonly [T in Exclude<DownFrameType, "command">]: Extract<DownFrame, { type: T }> } = {

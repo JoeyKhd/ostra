@@ -1,10 +1,13 @@
 import {
   agentProfileIdSchema,
   approvalIdSchema,
+  approvalRuleIdSchema,
   blobIdSchema,
   boxIdSchema,
+  checkIdSchema,
   clientMessageIdSchema,
   commandIdSchema,
+  diffCommentIdSchema,
   memberIdSchema,
   modelIdSchema,
   optionIdSchema,
@@ -17,15 +20,19 @@ import {
   runnerIdSchema,
   segmentIdSchema,
   sessionIdSchema,
+  snapshotIdSchema,
+  taskApprovalRuleIdSchema,
   taskIdSchema,
   ticketKeySchema,
   toolCallIdSchema,
   turnIdSchema,
   uploadIdSchema,
 } from "../ids.ts";
+import type { ApprovalRule, TaskRule } from "../agent/rules.ts";
 import type { TaskEvent, TaskEventKind, TaskEventOf } from "../events/agent-events.ts";
-import { taskCredentialsSchema } from "../task/credentials.ts";
-import type { TaskCredentials } from "../task/credentials.ts";
+import type { Command, CommandKind } from "../runner/commands.ts";
+import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
+import type { SnapshotCredentials, TaskCredentials } from "../task/credentials.ts";
 import type { TaskSpec } from "../task/spec.ts";
 
 // Fixed test data: one valid example of every event kind, a task spec and its credentials. The
@@ -61,6 +68,15 @@ export const fixtureIds = {
   upload: uploadIdSchema.parse("0196f1a0-0000-7000-8000-000000000012"),
   ticketKey: ticketKeySchema.parse("OST-12"),
   replayedMessage: clientMessageIdSchema.parse("client-msg-2"),
+  // Minor 2 (milestone 3).
+  profileRule: approvalRuleIdSchema.parse("0196f1a0-0000-7000-8000-000000000013"),
+  taskRule: taskApprovalRuleIdSchema.parse("0196f1a0-0000-7000-8000-000000000014"),
+  check: checkIdSchema.parse("0196f1a0-0000-7000-8000-000000000015"),
+  checkOutputBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000016"),
+  snapshot: snapshotIdSchema.parse("0196f1a0-0000-7000-8000-000000000017"),
+  diffComment: diffCommentIdSchema.parse("0196f1a0-0000-7000-8000-000000000018"),
+  skillBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000019"),
+  skillFileBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-00000000001a"),
 } as const;
 
 const ids = fixtureIds;
@@ -71,7 +87,56 @@ export const fixtureDigests = {
   headSha: "0123456789abcdef0123456789abcdef01234567",
   hiddenRefSha: "89abcdef0123456789abcdef0123456789abcdef",
   baseSha: "fedcba9876543210fedcba9876543210fedcba98",
+  imageDigest: `sha256:${"b".repeat(64)}`,
 } as const;
+
+/** A profile's rules, one per match kind (ADR 0049), as the presets and a custom rule make them. */
+export const approvalRuleFixtures = {
+  dependencyFiles: {
+    ruleId: ids.profileRule,
+    name: "Adding a dependency",
+    tool: "edit",
+    match: { kind: "path-glob", glob: "**/package.json" },
+    preset: "dependency",
+  },
+  dependencyCommands: {
+    ruleId: approvalRuleIdSchema.parse("rule-dependency-commands"),
+    name: "Adding a dependency",
+    tool: "execute",
+    match: { kind: "command-prefix", prefixes: ["pnpm add", "npm install"] },
+    preset: "dependency",
+  },
+  allowlist: {
+    ruleId: approvalRuleIdSchema.parse("rule-allowlist"),
+    name: "Commands outside an allowlist",
+    tool: "execute",
+    match: { kind: "command-outside", allowlist: ["git status", "pnpm test", "ls"] },
+    preset: "allowlist",
+  },
+  network: {
+    ruleId: approvalRuleIdSchema.parse("rule-network"),
+    name: "Reaching the network",
+    tool: "fetch",
+    match: { kind: "any" },
+    preset: "network",
+  },
+  mcp: {
+    ruleId: approvalRuleIdSchema.parse("rule-mcp"),
+    name: "Reaching the network",
+    tool: "mcp",
+    match: { kind: "mcp-not-read-only" },
+    preset: "network",
+  },
+  custom: {
+    ruleId: approvalRuleIdSchema.parse("rule-custom"),
+    name: "Touching the CI",
+    tool: "edit",
+    match: { kind: "path-glob", glob: ".github/**" },
+  },
+} as const satisfies Readonly<Record<string, ApprovalRule>>;
+
+/** A "for this task" rule, as "Approve for this task" on `pnpm add zod` writes it. */
+export const taskRuleFixture: TaskRule = { ruleId: ids.taskRule, tool: "execute", pattern: "pnpm add" };
 
 /** One valid example of every event kind. A missing kind is a type error. */
 export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = {
@@ -190,6 +255,55 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
   },
   "session.limit_reached": { kind: "session.limit_reached", limit: "spend-cap", observed: 25_000_000 },
   "ticket.files_ready": { kind: "ticket.files_ready", files: [{ path: "screenshot-1.png", blobId: ids.ticketFileBlob }] },
+  // Minor 2 (milestone 3).
+  "plan.proposed": {
+    kind: "plan.proposed",
+    turnId: ids.turn,
+    entries: [
+      { content: "Read the README and the docs folder", priority: "medium", status: "pending" },
+      { content: "Add CONTRIBUTING.md", priority: "high", status: "pending" },
+    ],
+    message: "I'll add a short guide and link it from the README.",
+  },
+  "plan.answered": {
+    kind: "plan.answered",
+    decision: "revise",
+    text: "Also mention the commit message format.",
+    memberId: ids.member,
+  },
+  "check.started": { kind: "check.started", checkId: ids.check, repoId: ids.repo, name: "Tests" },
+  "check.finished": {
+    kind: "check.finished",
+    checkId: ids.check,
+    status: "failed",
+    exitCode: 1,
+    durationMs: 18_400,
+    outputTail: "FAIL src/add.test.ts > adds\n",
+    outputBlobId: ids.checkOutputBlob,
+  },
+  "snapshot.built": {
+    kind: "snapshot.built",
+    snapshotId: ids.snapshot,
+    imageDigest: fixtureDigests.imageDigest,
+    durationMs: 95_000,
+  },
+  "snapshot.failed": {
+    kind: "snapshot.failed",
+    snapshotId: ids.snapshot,
+    reason: "secret-found",
+    detail: "The image holds the value of NPM_TOKEN.",
+  },
+  "service.healthy": { kind: "service.healthy", name: "postgres", afterMs: 2_400 },
+  "service.failed": { kind: "service.failed", name: "redis", reason: "The health check timed out after 60 s." },
+  "diff.comments_sent": { kind: "diff.comments_sent", commentIds: [ids.diffComment], count: 1 },
+  "ticket.closed": { kind: "ticket.closed", status: "Done", category: "done" },
+  "pr.comment_received": {
+    kind: "pr.comment_received",
+    url: "https://github.com/ostra-test/test1/pull/1#discussion_r1",
+    login: "ostra-test-member",
+    path: "src/add.ts",
+    line: 12,
+  },
 };
 
 /**
@@ -221,6 +335,179 @@ export const minor1FieldFixtures = {
     archive: null,
   },
 } as const satisfies Readonly<Record<string, TaskEvent>>;
+
+/**
+ * Minor 2's optional fields, present: the events whose shape grew in minor 2, with every new
+ * field set. `eventFixtures` holds the same kinds without them, as a minor-1 peer sends them.
+ */
+export const minor2FieldFixtures = {
+  "user.message": {
+    kind: "user.message",
+    memberId: ids.member,
+    clientMessageId: ids.clientMessage,
+    text: "Please look at the comments below.",
+    delivery: "queued",
+    intent: "diff-comments",
+  },
+  "turn.started": { kind: "turn.started", turnId: ids.turn, mode: "plan" },
+  "approval.requested": {
+    kind: "approval.requested",
+    turnId: ids.turn,
+    approvalId: ids.approval,
+    toolCallId: ids.toolCall,
+    options: [
+      { optionId: ids.option, label: "Allow once", kind: "allow-once", decision: "allow_once" },
+      { optionId: optionIdSchema.parse("reject-once"), label: "Deny", kind: "reject-once", decision: "deny" },
+    ],
+    rule: { source: "profile", ruleId: ids.profileRule, name: "Adding a dependency" },
+    subject: { kind: "command", value: "pnpm add zod" },
+  },
+  "approval.requested, asked by the agent": {
+    kind: "approval.requested",
+    turnId: ids.turn,
+    approvalId: ids.approval,
+    toolCallId: ids.toolCall,
+    options: [{ optionId: ids.option, label: "Allow once", kind: "allow-once", decision: "allow_once" }],
+    rule: null,
+    subject: { kind: "path", value: "package.json" },
+  },
+  "approval.answered, for this task": {
+    kind: "approval.answered",
+    approvalId: ids.approval,
+    optionId: ids.option,
+    decision: "allow_task",
+    memberId: ids.member,
+    taskRule: { ruleId: ids.taskRule, tool: "execute", pattern: "pnpm add" },
+  },
+  "approval.answered, denied with a reason": {
+    kind: "approval.answered",
+    approvalId: ids.approval,
+    optionId: optionIdSchema.parse("reject-once"),
+    decision: "deny",
+    memberId: ids.member,
+    reason: "Use the date-fns we already have.",
+    taskRule: null,
+  },
+  "session.saved": {
+    kind: "session.saved",
+    turnOrdinal: 1,
+    repos: [
+      { repoId: ids.repo, headSha: fixtureDigests.headSha, ahead: true, hiddenRefSha: fixtureDigests.hiddenRefSha },
+    ],
+    archive: { blobId: ids.blob, size: 48_213, sha256: fixtureDigests.sha256 },
+    checks: [{ checkId: ids.check, status: "failed" }],
+  },
+  "plan.answered, approved with edits": {
+    kind: "plan.answered",
+    decision: "approve",
+    text: "1. Add CONTRIBUTING.md\n\nKeep it short.",
+    memberId: ids.member,
+    entries: [{ content: "Add CONTRIBUTING.md", priority: "high", status: "pending" }],
+    message: "Keep it short.",
+  },
+} as const satisfies Readonly<Record<string, TaskEvent>>;
+
+const commandEnvelope = { type: "command", id: ids.command, notAfter: 1_900_000_000_000 } as const;
+
+/** One valid example of every command kind. A missing kind is a type error. */
+export const commandFixtures: { readonly [K in CommandKind]: Extract<Command, { kind: K }> } = {
+  dispatch: {
+    ...commandEnvelope,
+    seq: 1,
+    kind: "dispatch",
+    body: { taskId: ids.task, sessionId: ids.session, boxId: ids.box, leaseEpoch: 1 },
+  },
+  steer: {
+    ...commandEnvelope,
+    seq: 2,
+    kind: "steer",
+    body: { sessionId: ids.session, clientMessageId: ids.clientMessage, text: "also add a test", delivery: "queue" },
+  },
+  interrupt: { ...commandEnvelope, seq: 3, kind: "interrupt", body: { sessionId: ids.session } },
+  stop: {
+    ...commandEnvelope,
+    seq: 4,
+    kind: "stop",
+    body: { taskId: ids.task, sessionId: ids.session, leaseEpoch: 1, reason: "requested" },
+  },
+  "approval-answer": {
+    ...commandEnvelope,
+    seq: 5,
+    kind: "approval-answer",
+    body: { sessionId: ids.session, approvalId: ids.approval, decision: "allow_once" },
+  },
+  drain: { ...commandEnvelope, seq: 6, kind: "drain", body: {} },
+  "update-hint": { ...commandEnvelope, seq: 7, kind: "update-hint", body: { version: "0.2.0" } },
+  release: { ...commandEnvelope, seq: 8, kind: "release", body: { taskId: ids.task, boxId: ids.box, reason: "prs-closed" } },
+  // Minor 2 (milestone 3).
+  "question-answer": {
+    ...commandEnvelope,
+    seq: 9,
+    kind: "question-answer",
+    body: { sessionId: ids.session, questionId: ids.question, answers: { runner: "vitest" } },
+  },
+  "plan-answer": {
+    ...commandEnvelope,
+    seq: 10,
+    kind: "plan-answer",
+    body: { sessionId: ids.session, decision: "approve", text: "1. Add CONTRIBUTING.md" },
+  },
+  "snapshot-build": {
+    ...commandEnvelope,
+    seq: 11,
+    kind: "snapshot-build",
+    body: {
+      snapshotId: ids.snapshot,
+      projectId: ids.project,
+      environment: {
+        baseImage: null,
+        setupScript: "pnpm install",
+        repos: [
+          {
+            repoId: ids.repo,
+            fullName: "ostra-test/test1",
+            cloneUrl: "https://github.com/ostra-test/test1.git",
+            defaultBranch: "main",
+            checkoutDir: "test1",
+            variables: [{ name: "NODE_ENV", value: "test", availableDuringSetup: true }],
+            files: [],
+            envFile: ".env",
+            setupSecrets: { variables: ["NPM_TOKEN"], files: [] },
+          },
+        ],
+        inputsHash: fixtureDigests.sha256,
+      },
+    },
+  },
+};
+
+/** Minor 2's optional command fields, present. */
+export const minor2CommandFixtures = {
+  "steer, from diff comments": {
+    ...commandEnvelope,
+    seq: 12,
+    kind: "steer",
+    body: {
+      sessionId: ids.session,
+      clientMessageId: ids.clientMessage,
+      text: "Please look at the comments below.",
+      delivery: "queue",
+      intent: "diff-comments",
+    },
+  },
+  "approval-answer, for this task": {
+    ...commandEnvelope,
+    seq: 13,
+    kind: "approval-answer",
+    body: { sessionId: ids.session, approvalId: ids.approval, decision: "allow_task", taskRule: taskRuleFixture },
+  },
+  "approval-answer, denied with a reason": {
+    ...commandEnvelope,
+    seq: 14,
+    kind: "approval-answer",
+    body: { sessionId: ids.session, approvalId: ids.approval, decision: "deny", reason: "Use date-fns instead." },
+  },
+} as const satisfies Readonly<Record<string, Command>>;
 
 /** A full task spec for `ostra-test/test1`. */
 export const taskSpecFixture: TaskSpec = {
@@ -314,4 +601,62 @@ export const taskCredentialsFixture: TaskCredentials = taskCredentialsSchema.par
     },
   ],
   mcpToken: "fixture-mcp-token",
+});
+
+/** A plan-first task's first session at minor 2: every minor-2 field set. */
+export const taskSpecMinor2Fixture: TaskSpec = {
+  ...taskSpecMinor1Fixture,
+  agent: {
+    ...taskSpecFixture.agent,
+    skills: [
+      { name: "release-notes", blobId: ids.skillBlob, files: [{ path: "templates/notes.md", blobId: ids.skillFileBlob }] },
+    ],
+    mcpServers: [
+      { name: "linear", transport: "http", proxyPath: "/mcp/linear", readOnly: true },
+      { name: "files", transport: "stdio", command: "mcp-files", args: ["--root", "."], env: { LOG_LEVEL: "warn" }, readOnly: false },
+    ],
+    approvalRules: [approvalRuleFixtures.dependencyFiles, approvalRuleFixtures.dependencyCommands, approvalRuleFixtures.mcp],
+    taskRules: [taskRuleFixture],
+    planFirst: true,
+  },
+  firstTurnMode: "plan",
+  checks: [
+    { checkId: ids.check, name: "Tests", command: "pnpm test", repoId: ids.repo, timeoutSeconds: 600 },
+    { checkId: checkIdSchema.parse("check-lint"), name: "Lint", command: "pnpm lint", repoId: null, timeoutSeconds: 300 },
+  ],
+  services: [
+    {
+      name: "postgres",
+      image: "postgres:17",
+      port: 5432,
+      variables: [{ name: "POSTGRES_PASSWORD", value: "postgres" }],
+      healthCheck: "pg_isready -U postgres",
+    },
+  ],
+  snapshot: {
+    kind: "image",
+    snapshotId: ids.snapshot,
+    imageRef: "ostra-snapshot/0196f1a0:17",
+    digest: fixtureDigests.imageDigest,
+  },
+};
+
+/** Task credentials at minor 2, with an HTTP MCP server's address and secret header. Every value is fake. */
+export const taskCredentialsMinor2Fixture: TaskCredentials = taskCredentialsSchema.parse({
+  ...taskCredentialsFixture,
+  mcpServers: [
+    { name: "linear", url: "https://mcp.linear.app/mcp", headers: { authorization: "Bearer fixture-mcp-secret" } },
+  ],
+});
+
+/** A snapshot build's credentials. Every value is fake. */
+export const snapshotCredentialsFixture: SnapshotCredentials = snapshotCredentialsSchema.parse({
+  snapshotId: ids.snapshot,
+  repos: [{ repoId: ids.repo, gitToken: "fixture-git-token", expiresAt: 1_900_000_000_000 }],
+  secrets: [
+    {
+      repoId: ids.repo,
+      entries: [{ kind: "variable", name: "NPM_TOKEN", value: "fixture-npm-token", availableDuringSetup: true }],
+    },
+  ],
 });

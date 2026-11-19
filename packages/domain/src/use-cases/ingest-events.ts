@@ -256,6 +256,20 @@ const applyEffects = async (
       case "session.saved":
       case "session.limit_reached":
       case "ticket.files_ready":
+      // Protocol minor 2 (milestone 3): stored for now. Tickets 18 (plans), 23 (checks), 26
+      // (snapshots) and 27 (services) give them their reactions; the server-only ones never come
+      // from a runner, since the gateway refuses them.
+      case "plan.proposed":
+      case "plan.answered":
+      case "check.started":
+      case "check.finished":
+      case "snapshot.built":
+      case "snapshot.failed":
+      case "service.healthy":
+      case "service.failed":
+      case "diff.comments_sent":
+      case "ticket.closed":
+      case "pr.comment_received":
         // Stored for the task page; nothing else moves.
         break;
       default:

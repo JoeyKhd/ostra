@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   agentProfileIdSchema,
   blobIdSchema,
+  checkIdSchema,
   clientMessageIdSchema,
   modelIdSchema,
   organizationIdSchema,
@@ -10,6 +11,7 @@ import {
   providerIdSchema,
   repoIdSchema,
   sessionIdSchema,
+  snapshotIdSchema,
   taskIdSchema,
   ticketKeySchema,
 } from "../ids.ts";
@@ -19,11 +21,14 @@ import {
   envNameSchema,
   gitShaSchema,
   httpUrlSchema,
+  imageDigestSchema,
   leaseEpochSchema,
   repoFullNameSchema,
+  serviceNameSchema,
   taskKindSchema,
 } from "../common.ts";
-import { ticketFileNameSchema } from "../events/agent-events.ts";
+import { approvalRulesSchema, taskRulesSchema } from "../agent/rules.ts";
+import { ticketFileNameSchema, turnModeSchema } from "../events/agent-events.ts";
 import { blobRefSchema, contentTypeSchema } from "../runner/blobs.ts";
 import { runnerLimits } from "../runner/limits.ts";
 
@@ -68,7 +73,8 @@ export const taskSpecRepoSchema = z.strictObject({
 });
 export type TaskSpecRepo = z.infer<typeof taskSpecRepoSchema>;
 
-export const taskSpecAgentSchema = z.strictObject({
+/** The agent section at minors 0 and 1. */
+export const taskSpecAgentSchemaV1 = z.strictObject({
   profileId: agentProfileIdSchema,
   /** The `AgentAdapter`'s registered name, such as `opencode`. */
   adapter: z.string().min(1).max(64),
@@ -80,6 +86,69 @@ export const taskSpecAgentSchema = z.strictObject({
   apiFormat: apiFormatSchema,
   /** The profile's extra instructions, when it has any. */
   instructions: z.string().max(65_536).nullable(),
+});
+
+// ---------- minor 2's agent section (milestone 3, ADR 0049) ----------
+
+/** A skill's or an MCP server's name: letters, digits, `_` and `-`. */
+export const agentItemNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "letters, digits, '_' and '-'");
+
+/** A skill (F-021): its `SKILL.md` as a blob and up to 20 more files, written into the task's own config folder. */
+export const taskSpecSkillSchema = z.strictObject({
+  name: agentItemNameSchema,
+  /** The `SKILL.md` text, as a blob. */
+  blobId: blobIdSchema,
+  files: z.array(z.strictObject({ path: repoRelativePathSchema, blobId: blobIdSchema })).max(runnerLimits.skillFilesMax),
+});
+export type TaskSpecSkill = z.infer<typeof taskSpecSkillSchema>;
+
+/** A path on the sidecar's MCP proxy, such as `/mcp/linear`. */
+export const mcpProxyPathSchema = z
+  .string()
+  .min(2)
+  .max(256)
+  .regex(/^\/[A-Za-z0-9/_-]+$/, "a path on the sidecar's MCP proxy");
+
+const mcpReadOnly = {
+  /** Plan mode may call only a read-only server's tools, and "Reaching the network" doesn't ask for them. Absent: false. */
+  readOnly: z.boolean().default(false),
+};
+
+/**
+ * An MCP server (ADR 0049, Q170). An HTTP server is a path on the sidecar's MCP proxy, which adds
+ * its URL and secret headers from the credentials, so the agent never holds them. A stdio server
+ * is a command already in the image, with variables that hold no secret.
+ */
+export const taskSpecMcpServerSchema = z.discriminatedUnion("transport", [
+  z.strictObject({ name: agentItemNameSchema, transport: z.literal("http"), proxyPath: mcpProxyPathSchema, ...mcpReadOnly }),
+  z.strictObject({
+    name: agentItemNameSchema,
+    transport: z.literal("stdio"),
+    command: z.string().min(1).max(1024),
+    args: z.array(z.string().max(4096)).max(100),
+    /** Variables for the server's process. Never a secret: a server that needs one is an HTTP server behind the proxy. */
+    env: z.record(envNameSchema, z.string().max(65_536)),
+    ...mcpReadOnly,
+  }),
+]);
+export type TaskSpecMcpServer = z.infer<typeof taskSpecMcpServerSchema>;
+
+/** The agent section at the current minor (2): minor 1's, with the profile's skills, MCP servers and rules. */
+export const taskSpecAgentSchema = taskSpecAgentSchemaV1.extend({
+  /** Minor 2: the profile's skills. */
+  skills: z.array(taskSpecSkillSchema).max(runnerLimits.skillsMax).optional(),
+  /** Minor 2: the profile's MCP servers. */
+  mcpServers: z.array(taskSpecMcpServerSchema).max(runnerLimits.mcpServersMax).optional(),
+  /** Minor 2: the profile's approval rules: what needs a person. */
+  approvalRules: approvalRulesSchema.optional(),
+  /** Minor 2: the task's "for this task" rules, which the runner answers itself. */
+  taskRules: taskRulesSchema.optional(),
+  /** Minor 2: the profile's plan first. The task's first session starts in plan mode (`firstTurnMode`). */
+  planFirst: z.boolean().optional(),
 });
 export type TaskSpecAgent = z.infer<typeof taskSpecAgentSchema>;
 
@@ -235,7 +304,7 @@ const taskSpecShapeV0 = {
   branchName: branchNameSchema,
   leaseEpoch: leaseEpochSchema,
   repos: z.array(taskSpecRepoSchema).min(1),
-  agent: taskSpecAgentSchema,
+  agent: taskSpecAgentSchemaV1,
   environment: taskSpecEnvironmentSchema,
   /** The App's bot identity, which authors every commit (F-078, ADR 0040). */
   gitIdentity: gitPersonSchema,
@@ -248,25 +317,120 @@ export const taskSpecSchemaV0 = z
   .strictObject({ ...taskSpecShapeV0, limits: taskSpecLimitsV0 })
   .describe("The task spec a dispatch hands a minor-0 runner. It holds no secret.");
 
-/** The task spec at the current minor (1). Every minor-1 field is optional, so a minor-0 spec parses. */
+
+const taskSpecShapeV1 = {
+  ...taskSpecShapeV0,
+  limits: taskSpecLimits,
+  /** Minor 1: the ticket of a ticket task, `null` for a prompt task. */
+  ticket: taskSpecTicketSchema.nullable().optional(),
+  /** Minor 1: ticket images to write under `TICKET_FILES_DIR` before the agent starts. */
+  contextFiles: z.array(taskSpecContextFileSchema).max(runnerLimits.ticketFilesMax).optional(),
+  /** Minor 1: how the session starts. Missing means `new`. The pending messages' text is never logged. */
+  restore: taskSpecRestoreSchema.optional(),
+};
+
+/** Minor 1's task spec, kept for the spec endpoint's answer to a minor-1 runner. */
+export const taskSpecSchemaV1 = z
+  .strictObject(taskSpecShapeV1)
+  .describe("The task spec a dispatch hands a minor-1 runner. It holds no secret.");
+
+// ---------- minor 2's additions (milestone 3) ----------
+
+/**
+ * A check the runner runs after a turn with changes, before the push (F-054, ADR 0052). Its
+ * command is the environment's, written by an admin: run as a command line in the agent's
+ * environment, never built from task text, and never with a model key or a git token.
+ */
+export const taskSpecCheckSchema = z.strictObject({
+  checkId: checkIdSchema,
+  name: z.string().min(1).max(200),
+  command: z.string().min(1).max(8192),
+  /** Runs in this repo's folder on a turn that changed it; `null` runs once at the workspace root (Q188). */
+  repoId: repoIdSchema.nullable(),
+  timeoutSeconds: z.number().int().positive().max(runnerLimits.checkTimeoutMaxSeconds),
+});
+export type TaskSpecCheck = z.infer<typeof taskSpecCheckSchema>;
+
+/** A service the `docker` executor starts on the box's network before the agent (F-094). */
+export const taskSpecServiceSchema = z.strictObject({
+  /** Also its host name on the box's network. */
+  name: serviceNameSchema,
+  image: z.string().min(1).max(512),
+  port: z.number().int().min(1).max(65_535).nullable(),
+  /** Non-secret variables of the service's container. */
+  variables: z.array(z.strictObject({ name: envNameSchema, value: z.string().max(65_536) })).max(200),
+  /** A command run in the service's container until it exits 0, or `null` to wait for the port. */
+  healthCheck: z.string().min(1).max(2048).nullable(),
+});
+export type TaskSpecService = z.infer<typeof taskSpecServiceSchema>;
+
+/**
+ * What the box starts from (F-051, ADR 0038): on `docker`, a snapshot image this runner holds; on
+ * `host`, the project's repo mirrors and dependency cache; `null` for a full setup.
+ */
+export const taskSpecSnapshotSchema = z
+  .discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("image"),
+      snapshotId: snapshotIdSchema,
+      imageRef: z.string().min(1).max(512),
+      digest: imageDigestSchema,
+    }),
+    z.strictObject({
+      kind: z.literal("host-cache"),
+      /** Names the project's mirror and cache folder on the runner. */
+      cacheKey: z.string().min(1).max(200).regex(/^[A-Za-z0-9._-]+$/, "a folder-safe key"),
+    }),
+  ])
+  .nullable();
+export type TaskSpecSnapshot = z.infer<typeof taskSpecSnapshotSchema>;
+
+/**
+ * The task spec at the current minor (2). Every minor-1 and minor-2 field is optional, so a
+ * minor-1 or minor-0 spec parses.
+ */
 export const taskSpecSchema = z
   .strictObject({
-    ...taskSpecShapeV0,
-    limits: taskSpecLimits,
-    /** Minor 1: the ticket of a ticket task, `null` for a prompt task. */
-    ticket: taskSpecTicketSchema.nullable().optional(),
-    /** Minor 1: ticket images to write under `TICKET_FILES_DIR` before the agent starts. */
-    contextFiles: z.array(taskSpecContextFileSchema).max(runnerLimits.ticketFilesMax).optional(),
-    /** Minor 1: how the session starts. Missing means `new`. The pending messages' text is never logged. */
-    restore: taskSpecRestoreSchema.optional(),
+    ...taskSpecShapeV1,
+    agent: taskSpecAgentSchema,
+    /** Minor 2: how the session's first turn runs. `plan` only for a task's first session with plan first. */
+    firstTurnMode: turnModeSchema.optional(),
+    /** Minor 2: the environment's checks, in order. */
+    checks: z.array(taskSpecCheckSchema).max(runnerLimits.checksMax).optional(),
+    /** Minor 2: the environment's services; a `host` runner is never offered a task that has any. */
+    services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
+    /** Minor 2: what the box starts from. */
+    snapshot: taskSpecSnapshotSchema.optional(),
   })
   .describe("The task spec a dispatch hands the runner. It holds no secret.");
 export type TaskSpec = z.infer<typeof taskSpecSchema>;
 
-/** The spec in the shape a runner at `minor` reads: below minor 1, minor 1's fields are dropped. */
+/** Minor 1's spec as a stripping object: parsing a current spec keeps minor 1's top-level fields. */
+const taskSpecStripV1 = z.object({ ...taskSpecShapeV1, agent: z.object(taskSpecAgentSchemaV1.shape) });
+
+/** The agent section without minor 2's fields. */
+const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
+  profileId: agent.profileId,
+  adapter: agent.adapter,
+  providerId: agent.providerId,
+  modelId: agent.modelId,
+  endpointModelId: agent.endpointModelId,
+  apiFormat: agent.apiFormat,
+  instructions: agent.instructions,
+});
+
+/**
+ * The spec in the shape a runner at `minor` reads: below minor 2, minor 2's fields are dropped;
+ * below minor 1, minor 1's too. Core never dispatches a task that needs minor 2 (plan first,
+ * checks, services, profile rules) to a minor-1 runner, so nothing it needs is lost.
+ */
 export const encodeTaskSpecForMinor = (spec: TaskSpec, minor: number): TaskSpec => {
-  if (minor >= 1) {
+  if (minor >= 2) {
     return spec;
+  }
+  const agent = agentForMinor1(spec.agent);
+  if (minor >= 1) {
+    return { ...taskSpecStripV1.parse(spec), agent };
   }
   return {
     taskId: spec.taskId,
@@ -279,7 +443,7 @@ export const encodeTaskSpecForMinor = (spec: TaskSpec, minor: number): TaskSpec 
     branchName: spec.branchName,
     leaseEpoch: spec.leaseEpoch,
     repos: spec.repos,
-    agent: spec.agent,
+    agent,
     environment: spec.environment,
     gitIdentity: spec.gitIdentity,
     coAuthors: spec.coAuthors,
@@ -287,6 +451,22 @@ export const encodeTaskSpecForMinor = (spec: TaskSpec, minor: number): TaskSpec 
   };
 };
 
+/** Whether a spec uses anything a runner below minor 2 can't do, so core offers it only to a minor-2 runner. */
+export const taskSpecNeedsMinor2 = (spec: TaskSpec): boolean =>
+  spec.firstTurnMode === "plan" ||
+  (spec.checks?.length ?? 0) > 0 ||
+  (spec.services?.length ?? 0) > 0 ||
+  (spec.snapshot !== undefined && spec.snapshot !== null) ||
+  (spec.agent.approvalRules?.length ?? 0) > 0 ||
+  (spec.agent.skills?.length ?? 0) > 0 ||
+  (spec.agent.mcpServers?.length ?? 0) > 0;
+
 /** The spec endpoint's answer schema for a runner at `minor`. */
-export const taskSpecResponseSchemaFor = (minor: number): typeof taskSpecSchema | typeof taskSpecSchemaV0 =>
-  minor >= 1 ? taskSpecSchema : taskSpecSchemaV0;
+export const taskSpecResponseSchemaFor = (
+  minor: number,
+): typeof taskSpecSchema | typeof taskSpecSchemaV1 | typeof taskSpecSchemaV0 => {
+  if (minor >= 2) {
+    return taskSpecSchema;
+  }
+  return minor >= 1 ? taskSpecSchemaV1 : taskSpecSchemaV0;
+};

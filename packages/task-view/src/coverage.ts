@@ -46,4 +46,16 @@ export const foldCoverage = {
   "session.saved": "no row (ticket 36)",
   "session.limit_reached": "no row (its needs-you item shows it; ticket 36)",
   "ticket.files_ready": "no row (ticket 36)",
+  // Protocol minor 2: no row until the milestone 3 task page (tickets 43, 46, 47) draws them.
+  "plan.proposed": "no row (milestone 3, ticket 43)",
+  "plan.answered": "no row (milestone 3, ticket 43)",
+  "check.started": "no row (milestone 3, ticket 43)",
+  "check.finished": "no row (milestone 3, ticket 43)",
+  "snapshot.built": "no row (milestone 3, ticket 43)",
+  "snapshot.failed": "no row (milestone 3, ticket 43)",
+  "service.healthy": "no row (milestone 3, ticket 43)",
+  "service.failed": "no row (milestone 3, ticket 43)",
+  "diff.comments_sent": "no row (milestone 3, ticket 43)",
+  "ticket.closed": "no row (milestone 3, ticket 43)",
+  "pr.comment_received": "no row (milestone 3, ticket 43)",
 } as const satisfies Record<TaskEventKind, string>;

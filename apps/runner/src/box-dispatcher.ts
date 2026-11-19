@@ -221,6 +221,10 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       log.info("release asked", { taskId: command.body.taskId, boxId: command.body.boxId, reason: command.body.reason, held });
       return done(held ? { result: "rejected", reason: "box-busy" } : { result: "done", reason: "not-held" });
     },
+    // Protocol minor 2. A box's answers go to its sidecar; snapshot builds come with ticket 14.
+    "question-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "plan-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };
 
   return {

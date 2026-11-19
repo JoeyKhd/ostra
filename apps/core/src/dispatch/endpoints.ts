@@ -6,6 +6,7 @@ import type { Db } from "@ostra/db";
 import { issueTaskCredentials } from "@ostra/domain";
 import type { AuditLog, Clock, ServerAdapters } from "@ostra/domain";
 import {
+  encodeTaskCredentialsForMinor,
   encodeTaskSpecForMinor,
   minorFromHeader,
   RUNNER_PATH_PREFIX,
@@ -129,7 +130,10 @@ export const handleTaskEndpoint =
       );
       if (result.ok) {
         logger.info("task.credentials-issued", { leaseEpoch: parsed.data.leaseEpoch, repos: result.credentials.repos.length });
-        sendJson(response, 200, result.credentials);
+        // Minor 2 adds the MCP servers' headers; a runner below it sends no such header and gets minor 1's shape.
+        const header = request.headers[runnerHeaders.minor];
+        const minor = minorFromHeader(typeof header === "string" ? header : undefined);
+        sendJson(response, 200, encodeTaskCredentialsForMinor(result.credentials, minor));
         return true;
       }
       logger.info("task.credentials-refused", { leaseEpoch: parsed.data.leaseEpoch, error: result.error });

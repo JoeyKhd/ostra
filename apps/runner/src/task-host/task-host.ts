@@ -99,6 +99,11 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       log.info("release asked", { taskId: command.body.taskId, boxId: command.body.boxId, reason: command.body.reason, held });
       return done(held ? { result: "rejected", reason: "box-busy" } : { result: "done", reason: "not-held" });
     },
+    // Protocol minor 2. Questions and plans are answered with tickets 30 and 31; the `host`
+    // executor builds no snapshot image (ADR 0038), so it refuses a build.
+    "question-answer": () => done({ result: "rejected", reason: "no-pending-question" }),
+    "plan-answer": () => done({ result: "rejected", reason: "no-pending-plan" }),
+    "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };
 
   return {

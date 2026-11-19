@@ -1,6 +1,6 @@
 # 01: Protocol: minor 2
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none
 Features: F-021, F-024, F-026, F-063, F-054, F-051, F-094, F-072, F-053, F-066, F-103 (their wire shapes)
@@ -24,10 +24,10 @@ Every change is additive. The schema is written once, Zod first; the types are `
 
 ## Done when
 
-- [ ] Tests: every new shape round-trips; a minor-1 spec and a minor-0 spec still parse, and a minor-1 peer's codec drops the new fields and commands; a strict object refuses an unknown field; the server-only set includes the new server-only kinds; the fixtures in `src/testing/` cover each new kind and command.
-- [ ] Every caller in the repo still compiles, and no existing schema changed shape.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add protocol minor 2`.
+- [x] Tests: every new shape round-trips; a minor-1 spec and a minor-0 spec still parse, and a minor-1 peer's codec drops the new fields and commands; a strict object refuses an unknown field; the server-only set includes the new server-only kinds; the fixtures in `src/testing/` cover each new kind and command.
+- [x] Every caller in the repo still compiles, and no existing schema changed shape.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add protocol minor 2`.
 
 ## Decided 2026-11-19
 
@@ -42,3 +42,4 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - Tests for each: a server without `readOnly` parses as false; `mcp-not-read-only` with `edit` is refused; a rule without `preset` parses; a task rule without `ruleId` is refused; an approve without `entries` parses.
 
 ## Comments
+- 2026-11-19, core (contracts): done in `✨ add protocol minor 2`. `PROTOCOL_MINOR` is 2; the window is 1 to 3, so a minor-1 runner keeps working and a minor-0 one is refused at `hello`. Minor 1's codecs stay beside minor 2's (`taskEventSchemaV1`, `runnerEventSchemaV1`, `commandSchemaV1`, `taskSpecSchemaV1`, `taskCredentialsSchemaV1`), and the encoders drop minor 2's fields for a minor-1 peer by re-parsing with minor 1's shape (`encodeEventForMinor`, `encodeCommandForMinor`, `encodeTaskSpecForMinor`, `encodeTaskCredentialsForMinor`). `eventKindMinMinor` and `commandKindMinMinor` return 2 for the new kinds, so senders that check `eventKindSupportedAt` and `commandKindSupportedAt` never make one for a minor-1 peer. `taskSpecNeedsMinor2` says when core must offer a task only to a minor-2 runner (plan first, checks, services, a snapshot, profile rules, skills, MCP servers). `src/agent/rules.ts` holds the schemas and the matcher (globs, the command reader that splits at `&&`, `;`, `|`, parentheses and substitutions without a shell, the allowlist, the MCP match, the task rule's pattern and its narrower match), and `src/agent/prompts.ts` the marked block (a numbered fence past every closing line the text holds) and the four runner prompts. `src/cli/http.ts` has the CLI's paths, bodies and the 401 messages (`cliSessionMessages`). **Decided here** (no ticket named them, and builders need them): a snapshot result with no task goes up in a new minor-2 `runner-event` up frame, applied by `snapshotId`, and the runner acks `snapshot-build` `done` only after sending it; the build's setup secrets come from a new `POST /runner/v1/snapshots/:snapshotId/credentials` (`snapshotCredentialsSchema`), answered only to the runner the build went to; a check's output uploads with the new blob purpose `check-output` (`text/plain`); new branded IDs for every milestone-3 record (`ApprovalRuleId`, `TaskApprovalRuleId`, `CheckId`, `CheckRunId`, `DiffCommentId`, `TaskPullRequestId`, `NotificationId`, `NotificationDeliveryId`, `CliSessionId`, `AgentProfileSkillId`). The runner now sends `x-ostra-minor` on the credentials request too, and core answers it in that minor's shape. The DB's three new `CommandKind` values came in this commit, in their own small migration (`20261119230000_command_minor_2`), as minor 1's `release` did, because `packages/db`'s enum map wouldn't compile without them; ticket 06 has the rest. Callers: the runner rejects `question-answer` and `plan-answer` (`no-pending-question`, `no-pending-plan`; tickets 30, 31) and `snapshot-build` (`not-supported`; ticket 14); core logs a `runner-event` by kind (ticket 26); ingest stores the new kinds and does nothing else yet (tickets 18, 23, 26, 27); the fold gives them no row until tickets 43, 46 and 47. Break-it checks: seventeen breaks in the protocol (the server-only set, each down-encoder, the command minors, `readOnly`'s default, the match-and-tool check, the compound command, `**`, substitutions, the MCP match, the fence, the deny block, the runner event's kinds, the CLI's strict repo, the minor), each failing its test. Note for every later run: turbo's test, lint and typecheck depend only on `^generate`, so a change in `@ostra/protocol` doesn't invalidate its dependents' cache; run the whole-repo checks with `--force` after a contract change.

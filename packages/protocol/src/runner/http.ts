@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { poolIdSchema, runnerIdSchema, taskIdSchema } from "../ids.ts";
+import { poolIdSchema, runnerIdSchema, snapshotIdSchema, taskIdSchema } from "../ids.ts";
 import {
   epochMsSchema,
   executorKindSchema,
@@ -9,7 +9,7 @@ import {
   runnerKindSchema,
   runnerLabelSchema,
 } from "../common.ts";
-import { taskCredentialsSchema } from "../task/credentials.ts";
+import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import { taskSpecSchema } from "../task/spec.ts";
 import { downFrameCodec, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
 import type { DownFrame, UpFrame } from "./messages.ts";
@@ -43,6 +43,10 @@ export const runnerPaths = {
   /** `GET ?leaseEpoch=`: a blob of the task, as bytes. */
   taskBlob: (taskId: string, blobId: string): string =>
     `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/blobs/${encodeURIComponent(blobId)}`,
+  // Minor 2 (milestone 3).
+  /** `POST`: a snapshot build's credentials, only for the runner the build was sent to (F-051). */
+  snapshotCredentials: (snapshotId: string): string =>
+    `${RUNNER_PATH_PREFIX}/snapshots/${encodeURIComponent(snapshotId)}/credentials`,
 } as const;
 
 /** Headers the HTTP carrier uses (ADR 0034). */
@@ -213,6 +217,17 @@ export const taskCredentialsRequestSchema = z.strictObject({
 export type TaskCredentialsRequest = z.infer<typeof taskCredentialsRequestSchema>;
 
 export const taskCredentialsResponseSchema = taskCredentialsSchema;
+
+// ---------- POST /runner/v1/snapshots/:snapshotId/credentials (minor 2) ----------
+
+/**
+ * A snapshot build's credentials request. The server answers only when the snapshot is building
+ * and its `snapshot-build` command went to this runner; otherwise `409` with `conflict`.
+ */
+export const snapshotCredentialsRequestSchema = z.strictObject({ snapshotId: snapshotIdSchema });
+export type SnapshotCredentialsRequest = z.infer<typeof snapshotCredentialsRequestSchema>;
+
+export const snapshotCredentialsResponseSchema = snapshotCredentialsSchema;
 
 // ---------- the HTTP fallback carrier (milestone 5) ----------
 
