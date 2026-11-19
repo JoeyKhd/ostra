@@ -1,8 +1,8 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Db, Task, Tx } from "@ostra/db";
-import { appendServerEvent, moveSessionInTx, moveTaskInTx } from "@ostra/domain";
-import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobPayload } from "@ostra/domain";
+import { appendServerEvent, endSessionTimersInTx, moveSessionInTx, moveTaskInTx } from "@ostra/domain";
+import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobPayload, SessionTimers } from "@ostra/domain";
 import type { JobContext, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -19,6 +19,11 @@ import type { RunnerRef, SidecarLease } from "../gateway/context.ts";
 // A `docker` or `kubernetes` box's task is its sidecar's (Q129, ticket 41): its grace starts when
 // the sidecar's connection goes, and a reconnect of the sidecar cancels it. The runner's own
 // connection doesn't touch it, so a pool runner that stops or upgrades doesn't interrupt its boxes.
+//
+// Milestone 2 (ticket 17): a task in review whose idle box's runner went away keeps its state. Its
+// work already left the box after its last turn (the branch, the hidden ref, the archive), so only
+// the lease, the session and the box go; a reopen carries on from what was saved, on a fresh box
+// if the old one doesn't come back. A task that was working stops with `runner_lost` as before.
 
 export type GraceDeps = {
   readonly jobs: Jobs;
@@ -28,6 +33,8 @@ export type GraceDeps = {
   readonly clock: Clock;
   readonly logger: Logger;
   readonly graceMs?: number;
+  /** Milestone 2: the session's timers, cancelled when the grace ends it (ticket 19). */
+  readonly timers?: SessionTimers;
 };
 
 /** The runner's active leases on `host`: the ones whose grace its own connection holds. */
@@ -156,12 +163,21 @@ export const endGraceInTx = async (
   // The fence: from here on, a write carrying the old epoch is refused (F-045).
   await tx.task.update({ where: { id: task.id }, data: { leaseEpoch: { increment: 1 } } });
   const moveDeps = { tx, notices: deps.notices, logger: deps.logger };
-  await moveTaskInTx(moveDeps, mapTask(task), { type: "stop", reason: "runner_lost" });
+  // A task whose work already left its box (in review, merged, done) isn't stopped by losing it.
+  const keepsState = task.state === "in_review" || task.state === "merged" || task.state === "done";
+  if (!keepsState) {
+    await moveTaskInTx(moveDeps, mapTask(task), { type: "stop", reason: "runner_lost" });
+  }
   const session = await activeSession(tx, task.id);
   if (session !== null) {
     await moveSessionInTx(moveDeps, session, { type: "stop" });
+    await endSessionTimersInTx(deps, tx, {
+      organizationId: organizationIdSchema.parse(task.organizationId),
+      taskId: payload.taskId,
+      sessionId: sessionIdSchema.parse(session.id),
+    });
   }
-  await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["ready", "idle"] } }, data: { state: "stopped" } });
+  await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["ready", "idle"] } }, data: { state: "stopped", stoppedAt: at, idleSince: null } });
   await tx.box.updateMany({
     where: { id: lease.boxId, state: { in: ["creating", "preparing"] } },
     data: { state: "failed", failedReason: "the runner was gone for the whole grace" },
@@ -176,6 +192,9 @@ export const endGraceInTx = async (
       notAfter: deps.clock.now() + 7 * 24 * 3_600_000,
       task: { taskId: payload.taskId, projectId },
     });
+  }
+  if (keepsState) {
+    return "stopped";
   }
   await deps.audit.recordInTx(tx, {
     organizationId,

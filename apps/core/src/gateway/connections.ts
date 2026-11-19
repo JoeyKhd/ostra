@@ -25,6 +25,7 @@ import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import { z } from "zod";
 
+import { salvageEventsFrame } from "../ingest/ingest.ts";
 import { bearerToken, runnerIsLive } from "./access-token.ts";
 import type { AckedCommand, GatewayContext, RunnerRef } from "./context.ts";
 import { databaseErrorCodes } from "./database-error.ts";
@@ -519,7 +520,16 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       }
       const parsed = parseUpFrame(text, peer.minor);
       if (!parsed.ok) {
-        violation(parsed.error.detail);
+        // An events frame whose envelopes read but some body doesn't is refused once, per event,
+        // and acked past (ticket 17, F-043): resent as it is, it would fail forever.
+        const salvaged = salvageEventsFrame(text, peer.minor);
+        if (salvaged === null) {
+          violation(parsed.error.detail);
+          return;
+        }
+        for (const reply of await hooks.ingest(runner, salvaged.frame, salvaged.refused)) {
+          send(peer, reply);
+        }
         return;
       }
       const frame = parsed.frame;

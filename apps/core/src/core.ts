@@ -8,7 +8,7 @@ import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
-import type { ServerAdapters, ServerSettings } from "@ostra/domain";
+import type { ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { replicaIdSchema } from "@ostra/protocol";
@@ -87,6 +87,12 @@ export const startCore = async (
   const replicaId = replicaIdSchema.parse(`core:${randomUUID()}`);
   const notices = postgresChangeNotices;
   const liveText = createLiveTextWriter({ db, logger });
+  // Milestone 2: the session's maximum duration and the idle box's release (tickets 19, 20).
+  const timers: SessionTimers = {
+    sessionMaxMs: settings.sessionMaxMinutes * 60_000,
+    boxReleaseIdleMs: settings.boxReleaseIdleDays * 24 * 3_600_000,
+    cancelInTx: (tx, job, payload) => jobs.cancelInTx(tx, job, payload),
+  };
   const graceDeps: GraceDeps = {
     jobs,
     outbox: postgresCommandOutbox,
@@ -94,6 +100,7 @@ export const startCore = async (
     audit: postgresAuditLog,
     clock: systemClock,
     logger,
+    timers,
   };
   const dispatcherDeps: DispatcherDeps = { db, jobs, outbox: postgresCommandOutbox, notices, clock: systemClock, logger };
   const reactionDeps: ReactionDeps = {
@@ -105,6 +112,7 @@ export const startCore = async (
     adapters,
     publicUrl: settings.publicUrl,
     logger,
+    timers,
   };
   const signingKey = await loadRunnerTokenKey(settings);
   const gateway = createGateway({
@@ -117,7 +125,7 @@ export const startCore = async (
     deviceSessions: postgresDeviceSessions(db),
     ports: { notices, audit: postgresAuditLog, clock: systemClock },
     hooks: {
-      ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger }),
+      ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers }),
       liveText: liveText.write,
       onConnectedInTx: (tx, runner) => cancelGraceInTx(graceDeps, tx, runner),
       onDisconnectedInTx: (tx, runner) => startGraceInTx(graceDeps, tx, runner),

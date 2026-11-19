@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { moveSessionInTx, openPullRequests, recordSessionEnd, releaseLeaseInTx } from "@ostra/domain";
-import type { AuditLog, ChangeNotices, Clock, JobQueue, ServerAdapters } from "@ostra/domain";
+import { endSessionTimersInTx, moveSessionInTx, openPullRequests, recordSessionEnd, releaseLeaseInTx } from "@ostra/domain";
+import type { AuditLog, ChangeNotices, Clock, JobQueue, ServerAdapters, SessionTimers } from "@ostra/domain";
 import type { JobHandler } from "@ostra/jobs";
 import { organizationIdSchema, projectIdSchema, stopBodySchema } from "@ostra/protocol";
 
@@ -22,13 +22,26 @@ export type ReactionDeps = {
   /** The panel's address: each PR links its task there. */
   readonly publicUrl: string;
   readonly logger: Logger;
+  /** Milestone 2: the session's and the box's timers (tickets 19, 20). */
+  readonly timers?: SessionTimers;
 };
 
 export const sessionEndedHandler =
   (deps: ReactionDeps): JobHandler<"task.session-ended"> =>
   async (context) => {
     const result = await deps.db.$transaction((tx) =>
-      recordSessionEnd({ tx, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock, logger: context.logger }, context.payload),
+      recordSessionEnd(
+        {
+          tx,
+          jobs: deps.jobs,
+          notices: deps.notices,
+          audit: deps.audit,
+          clock: deps.clock,
+          logger: context.logger,
+          ...(deps.timers === undefined ? {} : { timers: deps.timers }),
+        },
+        context.payload,
+      ),
     );
     context.logger.info("task.session-ended", { taskId: context.payload.taskId, outcome: result.ok ? result.outcome : result.error });
   };
@@ -71,7 +84,7 @@ export const openPullRequestsHandler =
  * the box go, so the runner's slot is free. The task was already stopped by whoever asked.
  */
 export const applyStopResultsInTx = async (
-  deps: Pick<ReactionDeps, "notices" | "clock" | "logger">,
+  deps: Pick<ReactionDeps, "notices" | "clock" | "logger"> & Partial<Pick<ReactionDeps, "timers">>,
   tx: Tx,
   runner: RunnerRef,
   results: readonly AckedCommand[],
@@ -92,6 +105,7 @@ export const applyStopResultsInTx = async (
     if (session !== null && ["starting", "running", "waiting", "idle"].includes(session.state)) {
       await moveSessionInTx({ tx, notices: deps.notices, logger: deps.logger }, session, { type: "stop" });
     }
+    await endSessionTimersInTx(deps, tx, { organizationId: runner.organizationId, taskId: body.data.taskId, sessionId: body.data.sessionId });
     const lease = await tx.lease.findFirst({ where: { taskId: task.id, epoch: body.data.leaseEpoch, runnerId: runner.runnerId, state: "active" } });
     if (lease !== null) {
       await releaseLeaseInTx(tx, body.data.taskId, new Date(deps.clock.now()), "released");

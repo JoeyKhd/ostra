@@ -43,8 +43,11 @@ export type AckedCommand = {
 };
 
 export type GatewayHooks = {
-  /** Saves an `events` frame and returns the frames to send once it committed: acks or errors. */
-  readonly ingest: (runner: RunnerRef, frame: EventsFrame) => Promise<readonly DownFrame[]>;
+  /**
+   * Saves an `events` frame and returns the frames to send once it committed: acks or errors.
+   * `refused` names the events a salvaged frame replaced by placeholders (`salvageEventsFrame`).
+   */
+  readonly ingest: (runner: RunnerRef, frame: EventsFrame, refused?: ReadonlySet<string>) => Promise<readonly DownFrame[]>;
   /** Partial text: shown, never saved as an event (ADR 0035). */
   readonly liveText: (runner: RunnerRef, frame: LiveText) => Promise<void>;
   /** In the transaction that records the results: a dispatch's offer accepted or rejected, a stop done. */

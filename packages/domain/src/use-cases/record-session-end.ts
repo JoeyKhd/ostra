@@ -3,6 +3,7 @@ import { mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { organizationIdSchema, projectIdSchema, taskEventSchema } from "@ostra/protocol";
 import type { SessionId, TaskId } from "@ostra/protocol";
+import { boxIdSchema } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
@@ -10,6 +11,8 @@ import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { endSessionTimersInTx, startBoxIdleTimerInTx } from "./sessions-m2.ts";
+import type { SessionTimers } from "./sessions-m2.ts";
 
 // F-030, F-065: the `task.session-ended` job, reacting to a stored `session.ended`. The session ends
 // with or without changes, its box is released, and its lease ends. With changes: each task repo
@@ -19,6 +22,12 @@ import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 //
 // A task a member stopped ends its session too (the runner pushes what's there, then sends
 // `session.ended`): its branch and hidden ref stay on GitHub, and no PR and no needs-you item follow.
+//
+// Protocol minor 1 (milestone 2, ticket 17): a session spans turns, and each turn's work left the box
+// with its `session.saved`, whose reaction opened the PRs or raised needs you. Its `session.ended`
+// only says the idle timer stopped the box: the session ends, the lease ends and the box stops (kept
+// until its release), and nothing else. A session with no `session.saved` (a minor-0 runner's, or
+// one that never finished a turn) keeps milestone 1's meaning.
 
 export type RecordSessionEndInput = JobPayload<"task.session-ended">;
 
@@ -28,7 +37,12 @@ export type RecordSessionEndResult = UseCaseResult<
   "stale" | "not-found"
 >;
 
-export type RecordSessionEndDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & { readonly tx: Tx; readonly logger?: Logger };
+export type RecordSessionEndDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & {
+  readonly tx: Tx;
+  readonly logger?: Logger;
+  /** Milestone 2: the session's and the box's timers (tickets 19, 20). */
+  readonly timers?: SessionTimers;
+};
 
 export type RecordSessionEnd = (deps: RecordSessionEndDeps, input: RecordSessionEndInput) => Promise<RecordSessionEndResult>;
 
@@ -49,7 +63,7 @@ export const releaseLeaseInTx = async (tx: Tx, taskId: TaskId, at: Date, reason:
     return;
   }
   await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: at, endReason: reason } });
-  await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["ready", "idle"] } }, data: { state: "stopped" } });
+  await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["ready", "idle"] } }, data: { state: "stopped", stoppedAt: at, idleSince: null } });
   await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["creating", "preparing"] } }, data: { state: "failed", failedReason: "the session ended before the box was ready" } });
 };
 
@@ -85,7 +99,28 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
     await moveSessionInTx(moveDeps, current, { type: "stop" });
   }
   const at = new Date(deps.clock.now());
+  const lease = await tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { boxId: true } });
   await releaseLeaseInTx(tx, task.id, at, "released");
+  const sessionRef = { organizationId: input.organizationId, taskId: task.id, sessionId: input.sessionId };
+  await endSessionTimersInTx(deps, tx, sessionRef);
+
+  // Minor 1: the turns' work was already saved and acted on. The box stopped and is kept.
+  const saved = await tx.event.findFirst({ where: { taskId: task.id, sessionId: input.sessionId, kind: "session.saved" }, select: { seq: true } });
+  if (saved !== null) {
+    if (lease !== null) {
+      const box = await tx.box.findUnique({ where: { id: lease.boxId }, select: { state: true } });
+      if (box?.state === "stopped") {
+        await startBoxIdleTimerInTx(deps, tx, { organizationId: input.organizationId, taskId: task.id, boxId: boxIdSchema.parse(lease.boxId) });
+      }
+    }
+    await deps.notices.emitInTx(tx, {
+      organizationId: organizationIdSchema.parse(task.organizationId),
+      projectId: projectIdSchema.parse(task.projectId),
+      entity: "task",
+      entityId: task.id,
+    });
+    return { ok: true, outcome: withChanges ? "with-changes" : "without-changes" };
+  }
 
   // Each repo's branch: ahead means pushed, ready for its PR.
   for (const repo of ended.repos) {

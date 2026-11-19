@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
 import type { Session, Tx } from "@ostra/db";
-import { runnerEventSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
+import { boxIdSchema, organizationIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
 import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -12,6 +12,8 @@ import { holdProviderInTx } from "./hold-provider.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
+import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
+import type { SessionTimers } from "./sessions-m2.ts";
 
 // ADR 0034, ADR 0035, F-045: one `events` frame, saved in one transaction. Idempotent on
 // `(sessionId, sessionSeq)`; numbered per task under the task row's lock (so a grace sweep can't
@@ -55,6 +57,8 @@ export type IngestEventsDeps = Pick<Ports, "jobs" | "notices" | "clock"> & {
   readonly tx: Tx;
   /** Where refused transitions are logged, with IDs only. */
   readonly logger?: Logger;
+  /** Milestone 2: the session's and the box's timers (tickets 17, 19, 20). */
+  readonly timers?: SessionTimers;
 };
 
 export type IngestEvents = (deps: IngestEventsDeps, input: IngestEventsInput) => Promise<IngestEventsResult>;
@@ -122,6 +126,9 @@ export const applyFilesOutsideReposInTx = async (
   await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
 };
 
+/** The session's ID, branded: the row was found by it. */
+const item0SessionId = (session: Session): SessionId => sessionIdSchema.parse(session.id);
+
 /** What the stored events imply, in the same transaction (ticket 25). */
 const applyEffects = async (
   deps: IngestEventsDeps,
@@ -140,6 +147,8 @@ const applyEffects = async (
   const reloadTask = async (): Promise<void> => {
     taskRow = (await lockTaskRow(tx, task.id)) ?? taskRow;
   };
+  const organizationId = organizationIdSchema.parse(task.organizationId);
+  const sessionRef = { organizationId, taskId: task.id, sessionId: item0SessionId(session) };
   for (const { item, seq } of stored) {
     const event = item.event;
     switch (event.kind) {
@@ -157,8 +166,18 @@ const applyEffects = async (
           },
         });
         if (current.state === "starting" || current.state === "idle") {
-          await moveSessionInTx(moveDeps, current, { type: current.state === "starting" ? "agent_ready" : "turn_started" });
+          const starting = current.state === "starting";
+          const moved = await moveSessionInTx(moveDeps, current, { type: starting ? "agent_ready" : "turn_started" });
           await reloadSession();
+          if (moved && starting) {
+            // The session's maximum duration starts with its first turn (F-068).
+            await startSessionTimersInTx(deps, tx, sessionRef);
+          }
+        }
+        if (current.boxId !== null) {
+          // The box is in use: ready, or warm again after idling (F-096); its idle timer goes.
+          await markBoxBusyInTx(tx, current.boxId, new Date(item.at));
+          await cancelBoxIdleTimerInTx(deps, tx, { organizationId, taskId: task.id, boxId: boxIdSchema.parse(current.boxId) });
         }
         if (taskRow.state !== "running") {
           await moveTaskInTx(moveDeps, taskRow, { type: "box_ready" });
@@ -247,9 +266,11 @@ const applyEffects = async (
         });
         break;
       case "session.crashed": {
-        // Needs you for the driver; the box failed; the branch and the hidden ref stay (ticket 27).
+        // Needs you for the driver; the box failed; the branch, the hidden ref and the last archive
+        // stay, and a reopen carries on from them (ticket 27, F-047).
         await moveSessionInTx(moveDeps, current, { type: "crash" });
         await reloadSession();
+        await endSessionTimersInTx(deps, tx, sessionRef);
         const moved = await moveTaskInTx(moveDeps, taskRow, { type: "crashed" });
         await reloadTask();
         if (moved) {
@@ -275,6 +296,20 @@ const applyEffects = async (
         // Q133, ticket 44: one open item per task, updated as the set changes, closed when it's empty.
         await applyFilesOutsideReposInTx(deps, taskRow, event.paths, event.more);
         break;
+
+      case "session.saved": {
+        // After every turn (ticket 17): heads, hidden refs, the archive, then PRs or needs you.
+        const saved = await recordWorkSaved(
+          { tx, jobs: deps.jobs, notices: deps.notices, clock: deps.clock, timers: deps.timers, logger: deps.logger },
+          { organizationId, taskId: task.id, sessionId: sessionRef.sessionId, event, eventSeq: seq },
+        );
+        if (!saved.ok) {
+          deps.logger?.warn("ingest.work-saved-refused", { taskId: task.id, sessionId: session.id, error: saved.error });
+        }
+        await reloadSession();
+        await reloadTask();
+        break;
+      }
       case "user.message":
       case "turn.cancel_requested":
       case "agent.content":
@@ -302,9 +337,8 @@ const applyEffects = async (
       case "environment.setup_output":
       case "environment.setup_finished":
       case "session.usage":
-      // Protocol minor 1: stored for now. Tickets 17 (saved work), 19 (limits) and 26 (ticket files)
-      // give them their reactions.
-      case "session.saved":
+      // Protocol minor 1: stored for now. Tickets 19 (limits) and 26 (ticket files) give them their
+      // reactions.
       case "session.limit_reached":
       case "ticket.files_ready":
       // Protocol minor 2 (milestone 3): stored for now. Tickets 18 (plans), 23 (checks), 26
