@@ -168,8 +168,12 @@ const isGitGuardName = (name: string): boolean => GIT_GUARD_ENV_NAMES.some((guar
 /** Git never asks the agent's terminal for a credential. The rest of the git guard comes from the task run. */
 const GIT_TERMINAL_PROMPT_OFF = { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" } as const;
 
-/** The agent's whole environment, from an allowlist: the runner's own is never inherited. */
-export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record<string, string> => {
+/**
+ * The environment of an OpenCode process in the task's own folders: an allowlist, and no credential
+ * of any kind. The agent's launch adds the fake key to it; the session export and import commands,
+ * which call no model, run with it as it is.
+ */
+export const buildCliEnv = (dirs: TaskDirs): Record<string, string> => {
   const env: Record<string, string> = {};
   for (const name of PASSTHROUGH) {
     const value = process.env[name];
@@ -194,8 +198,14 @@ export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record
     OPENCODE_DISABLE_AUTOUPDATE: "1",
     OPENCODE_DISABLE_CLAUDE_CODE: "1",
     OPENCODE_DISABLE_FREE_MODELS: "1",
-    [KEY_ENV]: input.model.placeholderKey,
   });
+  return env;
+};
+
+/** The agent's whole environment, from an allowlist: the runner's own is never inherited. */
+export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record<string, string> => {
+  const env = buildCliEnv(dirs);
+  env[KEY_ENV] = input.model.placeholderKey;
   // The environment's own variables, which are not secrets (secrets go to each repo's checkout only).
   // They never override the git guard: git reads the task's config and nothing of the machine's.
   for (const [name, value] of Object.entries(input.extraEnv)) {

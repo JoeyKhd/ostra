@@ -20,6 +20,13 @@ import { z } from "zod";
 export const OPENCODE_VERSION = "2.3.2";
 
 /**
+ * The versions whose session export and import ostra has run: spike 2 did 2.3.0 to 2.3.2, and a later
+ * version joins only once the agent suite's archive case has passed on it (ticket 10, F-033). A pinned
+ * version missing here reads `sessionArchive: false`, and reopening uses the rebuild template.
+ */
+export const ARCHIVE_VERIFIED_VERSIONS: readonly string[] = ["2.3.0", "2.3.1", "2.3.2"];
+
+/**
  * SHA-256 of each platform package's executable, at `OPENCODE_VERSION`, computed from the packages
  * the npm registry serves. A package missing here has no pin, and its binary is refused.
  * Regenerate them with a bump: they're the supply-chain check.

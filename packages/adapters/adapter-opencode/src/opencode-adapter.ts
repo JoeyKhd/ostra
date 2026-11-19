@@ -1,20 +1,25 @@
+import path from "node:path";
+
 import { adapterError, AgentAdapter, createAcpDriver, ok } from "@ostra/adapter-sdk";
 import type {
   AcpUpdate,
   AdapterContext,
   AdapterResult,
   AgentCapabilities,
+  AgentCommand,
   AgentLaunch,
   DriverPort,
+  ExportSessionInput,
   HealthReport,
+  ImportSessionInput,
   MapContext,
   MappedUpdate,
   PrepareLaunchInput,
 } from "@ostra/adapter-sdk";
 
-import { resolveOpenCodeBinary } from "./binary.ts";
+import { ARCHIVE_VERIFIED_VERSIONS, OPENCODE_VERSION, resolveOpenCodeBinary } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
-import { buildAgentEnv, launchFiles, taskDirs } from "./config.ts";
+import { buildAgentEnv, buildCliEnv, launchFiles, taskDirs } from "./config.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 import type { TodoTracker } from "./todo-plan.ts";
 
@@ -29,6 +34,11 @@ export type OpenCodeAdapterOptions = {
   readonly resolveBinary?: () => Promise<AdapterResult<OpenCodeBinary>>;
 };
 
+/** An agent session ID is OpenCode's own (`ses_…`): never one that a flag could be mistaken for. */
+const AGENT_SESSION_ID = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+
+const isAbsolutePath = (value: string): boolean => path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
+
 export class OpenCodeAdapter extends AgentAdapter {
   readonly name = "opencode";
   readonly capabilities: AgentCapabilities = {
@@ -42,8 +52,10 @@ export class OpenCodeAdapter extends AgentAdapter {
     rejectAndContinue: false,
     elicitationForm: true,
     modelBaseUrlAndPlaceholderKey: true,
-    // Ticket 10 builds `opencode export` and `import --directory`, and turns this on.
-    sessionArchive: false,
+    // `opencode session export` and `import --directory` (ticket 10). Only for a version whose archive
+    // ostra has run (ADR 0039, spike 2): another pinned version reads false until the agent suite has
+    // passed on it, and reopening then uses the rebuild template.
+    sessionArchive: ARCHIVE_VERIFIED_VERSIONS.includes(OPENCODE_VERSION),
   };
 
   readonly #resolveBinary: () => Promise<AdapterResult<OpenCodeBinary>>;
@@ -77,6 +89,59 @@ export class OpenCodeAdapter extends AgentAdapter {
       cwd: input.workspaceDir,
       files: launchFiles(input, dirs),
     });
+  }
+
+  // The archive commands run beside the live agent, in its box, with the task's own folders and no
+  // credential: an argument array and an allowlisted environment, never a shell line. `--standalone`
+  // gives the one command a private server, so OpenCode's background service never starts (spike 1).
+
+  override async exportSession(input: ExportSessionInput): Promise<AdapterResult<AgentCommand>> {
+    const checked = await this.#archiveCommand(input.agentSessionId, [input.workspaceDir, input.agentDir, input.archivePath]);
+    if (!checked.ok) {
+      return checked;
+    }
+    return ok({
+      command: checked.value.path,
+      // `session export` prints the archive; the executor wires its stdout to the file.
+      args: ["session", "export", input.agentSessionId, "--standalone"],
+      env: buildCliEnv(taskDirs(input.agentDir)),
+      cwd: input.workspaceDir,
+      stdoutTo: input.archivePath,
+    });
+  }
+
+  override async importSession(input: ImportSessionInput): Promise<AdapterResult<AgentCommand>> {
+    const checked = await this.#archiveCommand(input.agentSessionId, [input.workspaceDir, input.agentDir, input.archivePath]);
+    if (!checked.ok) {
+      return checked;
+    }
+    return ok({
+      command: checked.value.path,
+      // Always `--directory`: the archive names the old box's absolute path, and a session loads only in
+      // the directory it is bound to (spike 2, surprise 5).
+      args: ["session", "import", input.archivePath, "--standalone", "--directory", input.workspaceDir],
+      env: buildCliEnv(taskDirs(input.agentDir)),
+      cwd: input.workspaceDir,
+    });
+  }
+
+  /** The binary and the inputs of an archive command, checked before any command is named. */
+  async #archiveCommand(agentSessionId: string, paths: readonly string[]): Promise<AdapterResult<OpenCodeBinary>> {
+    if (!AGENT_SESSION_ID.test(agentSessionId)) {
+      return adapterError("invalid-input", "an OpenCode session ID is letters, digits, `_`, `-` and `.`, and does not start with a dash");
+    }
+    if (paths.some((value) => !isAbsolutePath(value) || value.includes("\u0000"))) {
+      return adapterError("invalid-input", "the folders and the archive of a session move are absolute paths");
+    }
+    const binary = await this.#resolveBinary();
+    if (!binary.ok) {
+      this.plumbing.logger.error("opencode.binary.refused", { code: binary.error.code });
+      return binary;
+    }
+    if (!ARCHIVE_VERIFIED_VERSIONS.includes(binary.value.packageVersion)) {
+      return adapterError("unsupported", `OpenCode ${binary.value.packageVersion} has not passed ostra's session archive checks`);
+    }
+    return binary;
   }
 
   protected mapUpdate(update: AcpUpdate, context: MapContext): MappedUpdate {

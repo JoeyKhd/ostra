@@ -2,12 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { AgentSession } from "@ostra/adapter-sdk";
+import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import {
   createScenarioBrain,
   defineAgentContractSuite,
   FakeAgentAdapter,
   fakeMarker,
+  runAgentCommand,
   spawnAgentProcess,
   startStubModelServer,
   stubMarker,
@@ -47,21 +48,41 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
   const workspaceDir = path.join(root, "workspace");
   await mkdir(workspaceDir, { recursive: true });
   await writeFile(path.join(workspaceDir, "README.md"), "hello\n", "utf8");
+  const launchInput = {
+    taskId: fixtureIds.task,
+    sessionId: fixtureIds.session,
+    workspaceDir,
+    agentDir: path.join(root, "agent"),
+    model: { endpointModelId: MODEL, apiFormat: format, baseUrl: stub.baseUrl, placeholderKey: TASK_KEY },
+    mcp: { url: "http://127.0.0.1:9/mcp" },
+    instructions: null,
+    extraEnv: {},
+  } satisfies PrepareLaunchInput;
+  let boxes = 0;
   return {
-    launchInput: {
-      taskId: fixtureIds.task,
-      sessionId: fixtureIds.session,
-      workspaceDir,
-      agentDir: path.join(root, "agent"),
-      model: { endpointModelId: MODEL, apiFormat: format, baseUrl: stub.baseUrl, placeholderKey: TASK_KEY },
-      mcp: { url: "http://127.0.0.1:9/mcp" },
-      instructions: null,
-      extraEnv: {},
-    },
+    launchInput,
     secrets: ["the-real-model-token", "the-real-git-token", "ghs_realtokenvalue0123456789"],
     start: spawnAgentProcess,
     simplePrompt: `${stubMarker("hello")} say hello`,
     longPrompt: `${stubMarker("long")} wait`,
+    // ADR 0039: the session moves to a fresh box (a new agent folder and workspace), as the runner does it.
+    archive: {
+      run: runAgentCommand,
+      freshBox: async () => {
+        boxes += 1;
+        const box = path.join(root, `fresh-${String(boxes)}`);
+        const freshWorkspace = path.join(box, "workspace");
+        await mkdir(freshWorkspace, { recursive: true });
+        await writeFile(path.join(freshWorkspace, "README.md"), "hello\n", "utf8");
+        return { ...launchInput, agentDir: path.join(box, "agent"), workspaceDir: freshWorkspace };
+      },
+      archivePath: path.join(root, "session-archive.json"),
+      remember: {
+        prompt: `${stubMarker("remember")} The project codename is ospreyabc123.`,
+        recall: `${stubMarker("recall")} What was the codename?`,
+        fact: "ospreyabc123",
+      },
+    },
     probes: {
       tools: { prompt: `${stubMarker("tools")} work`, kinds: ["read", "edit", "execute"], expectFailure: true },
       // OpenCode plans through its todo tool, without declaring a native plan.

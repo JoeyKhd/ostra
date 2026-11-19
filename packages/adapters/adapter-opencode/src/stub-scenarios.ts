@@ -11,6 +11,23 @@ export const sleepCommand = (ms: number): string => `node -e "setTimeout(()=>{},
 export const scenarios: Readonly<Record<string, Scenario>> = {
   hello: ({ step }) => (step === 0 ? { text: "hello from the stub" } : undefined),
 
+  /** A turn that states nothing itself: the member put the fact in the prompt (the archive case). */
+  remember: ({ step }) => (step === 0 ? { text: "Noted." } : undefined),
+
+  /**
+   * The question about an earlier turn. The stub keeps nothing: it reads the answer out of the
+   * messages OpenCode sent it in this very request, so a right answer proves the fact is in the
+   * model's context after a session moved to another box.
+   */
+  recall: ({ step, request }) => {
+    if (step !== 0) {
+      return undefined;
+    }
+    const earlier = conversationText(request.messages.slice(0, -1));
+    const fact = /(osprey[0-9a-f]{6})/.exec(earlier)?.[1];
+    return { text: fact === undefined ? "I do not remember any codename." : `The codename is ${fact}.` };
+  },
+
   /** A model that never answers: the turn runs until it's cancelled. */
   long: ({ step }) => (step === 0 ? { text: "never sent", delayMs: 120_000, keepalive: false } : undefined),
 
