@@ -741,6 +741,13 @@ export class HostExecutor extends ExecutorAdapter {
           }
         }
         await writeFile(path.join(checkout, ".git", "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+        // F-103: a reopen starts from the branch as it is. A member may have pushed to it since the
+        // last turn (`ostra checkout`): their commits come into the kept worktree before the agent
+        // starts, or the next push, which is forced, would drop them.
+        const taken = await this.#takeRemoteCommits(record, checkout);
+        if (!taken.ok) {
+          return taken;
+        }
       }
     } catch (error) {
       return adapterError("unavailable", `couldn't resume the box (${error instanceof Error ? error.name : "unknown"})`);
@@ -749,6 +756,34 @@ export class HostExecutor extends ExecutorAdapter {
     record.state = "ready";
     this.plumbing.logger.info("box resumed", { taskId: input.taskId, boxId: input.boxId });
     return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
+  }
+
+  /**
+   * Brings the task branch's commits from the code host into a kept checkout: a fast-forward when
+   * the checkout has nothing new, a merge when both moved. A branch not pushed yet has nothing to
+   * take. A merge that conflicts is undone and the box isn't resumed: the runner then builds a fresh
+   * one from the branch as it is on the host.
+   */
+  async #takeRemoteCommits(record: BoxRecord, checkout: string): Promise<AdapterResult<void>> {
+    const branch = record.spec.branchName;
+    const remote = `refs/remotes/origin/${branch}`;
+    const fetched = await this.#git(record, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:${remote}`], checkout);
+    if (fetched.code !== 0) {
+      // Nothing pushed yet, or the host can't be reached: the checkout stays as it was.
+      return ok(undefined);
+    }
+    const has = await this.#git(record, ["merge-base", "--is-ancestor", remote, "HEAD"], checkout);
+    if (has.code === 0) {
+      return ok(undefined);
+    }
+    const merged = await this.#git(record, ["merge", "--quiet", "--no-edit", remote], checkout);
+    if (merged.code !== 0) {
+      await this.#git(record, ["merge", "--abort"], checkout);
+      this.plumbing.logger.warn("the branch moved on the host and doesn't merge", { taskId: record.ref.taskId });
+      return adapterError("conflict", "the task's branch moved on the code host and doesn't merge into the kept worktree");
+    }
+    this.plumbing.logger.info("took the branch's new commits", { taskId: record.ref.taskId });
+    return ok(undefined);
   }
 
   /** The worktree's root: its names, top level only (ticket 44). */

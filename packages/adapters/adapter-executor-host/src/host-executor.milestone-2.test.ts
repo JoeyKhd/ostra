@@ -137,6 +137,36 @@ describe("a kept box resumed (ADR 0039, resumed)", () => {
     }
   }, 60_000);
 
+  it("F-103: a reopen in a kept box starts from the branch as it is, with a member's pushed commit", async () => {
+    const box = newBox();
+    const spec = specFor(box);
+    const dirs = await ready(box, spec);
+    const checkout = path.join(dirs.workspaceDir, "test1");
+    const git = (...args: string[]) => run("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args], { cwd: checkout });
+    // The agent's turn: a commit on the task branch, pushed.
+    await writeFile(path.join(checkout, "agent.txt"), "the agent's work\n");
+    await git("add", "agent.txt");
+    await git("commit", "--quiet", "-m", "the agent's commit");
+    await git("push", "--quiet", "origin", `HEAD:refs/heads/${spec.branchName}`);
+    // A member's commit after it, pushed to the same branch from their own clone (`ostra checkout`):
+    // made here and taken back out of the kept worktree, so only the host has it.
+    await writeFile(path.join(checkout, "member.txt"), "the member's work\n");
+    await git("add", "member.txt");
+    await git("commit", "--quiet", "-m", "the member's commit");
+    await git("push", "--quiet", "origin", `HEAD:refs/heads/${spec.branchName}`);
+    await git("reset", "--quiet", "--hard", "HEAD~1");
+    await executor.stop({ box, graceMs: 100 });
+    try {
+      const resumed = await executor.resumeBox({ ...box, spec: { ...spec, leaseEpoch: spec.leaseEpoch + 1 }, proxies });
+      expect(resumed.ok).toBe(true);
+      expect(await readFile(path.join(checkout, "member.txt"), "utf8")).toBe("the member's work\n");
+      expect(await readFile(path.join(checkout, "agent.txt"), "utf8")).toBe("the agent's work\n");
+      expect((await git("log", "-1", "--format=%s")).stdout.trim()).toBe("the member's commit");
+    } finally {
+      await executor.release(box, "requested");
+    }
+  }, 60_000);
+
   it("answers not-found for a box it doesn't keep, and conflict while its agent runs", async () => {
     const missing = newBox();
     const answer = await executor.resumeBox({ ...missing, spec: specFor(missing), proxies });
