@@ -9,7 +9,7 @@ The control panel is a web app. Members sign up, are invited and sign in through
 - The server is TypeScript (ADR 0008), so better-auth runs inside it.
 - **v1 sign-in is a username or an email, plus a password** (the maintainer, 2026-11-18; Q54). GitHub sign-in and SSO come later as plugins (F-004).
   - Every account has a unique username and an email address, and a member signs in with either one.
-  - An invite is a link. An admin can copy it, and ostra also mails it when email is set up (Resend, ADR 0007).
+  - An invite is a link. An admin can copy it, and ostra also mails it when email is set up (Resend, or SMTP; ADR 0007).
   - Without email, an admin creates a one-time reset link for a member who forgot their password.
   - Email addresses are verified only when email is set up.
   - Spike 9 (`auth-foundation`) confirmed the username plugin: a member signs in by username and by email on better-auth 1.7.25 with Prisma 7.10.1. So the fallback, "members sign in with their email only", doesn't apply and is dropped.

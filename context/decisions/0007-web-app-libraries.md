@@ -1,6 +1,6 @@
 # The web app uses the libraries the maintainer already works with
 
-**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) for email in place of `nodemailer`. First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
+**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) as the first email option, with SMTP through `nodemailer` as the second. First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
 
 | Area | Choice |
 |---|---|
@@ -57,7 +57,8 @@ Milestone 1 starts from these and pins exactly (a version less than a day old is
 |---|---|---|---|
 | `dockerode` | runner | The `docker` executor (ADR 0029, F-017) | Apache-2.0; confirmed 2026-11-19 |
 | `@kubernetes/client-node` | runner | The `kubernetes` executor (ADR 0029, F-093) | Apache-2.0; confirmed 2026-11-19 |
-| `resend` | server | Email for invites, reset links and notifications (F-115, Q54), as the email channel's `NotificationAdapter` and better-auth's mail callbacks. Chosen by the maintainer on 2026-11-19 in place of `nodemailer` ("resend is better and works with better-auth"). An SMTP channel for installs that can't use a hosted service can be added later as another adapter, with its own yes | MIT; confirmed 2026-11-19 |
+| `resend` | server | Email for invites, reset links and notifications (F-115, Q54), as the email channel's `NotificationAdapter` and better-auth's mail callbacks. Chosen by the maintainer on 2026-11-19 as the first email option ("resend is better and works with better-auth", "resend is priority") | MIT; confirmed 2026-11-19 |
+| `nodemailer` | server | The second email option: SMTP, for installs that can't or won't use a hosted service (a company's own mail relay, an air-gapped network). Same channel, same mail; built after Resend ("add smtp as an option as well, but resend is priority") | MIT-0; confirmed 2026-11-19 |
 | `@tanstack/react-virtual` | web | List virtualization on the task page for long tasks (ADR 0036, Q112) | MIT; confirmed 2026-11-19 |
 | A way to make a Windows job object from Node | runner | Process containment on the `host` executor on Windows (ADR 0029, Q126): a native addon or a small helper program | to choose and confirm |
 

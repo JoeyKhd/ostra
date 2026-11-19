@@ -34,7 +34,7 @@ A settled question leaves this file. Its answer lives on in the ADR (`decisions/
 | Q-28 | ADR 0018: Claude Code through ACP. Amended by ADR 0032: OpenCode through ACP first |
 | Q60–Q63, the panel's look (asked in chat 2026-11-18) | `brand/app-design.md`: neutral graphite chrome with brand accents, denser type, few boxes, concepts in real HTML; direction B picked |
 | Q164 agent reach on `host` | `AGENTS.md` Boundaries (2026-11-19): enforced by the box on `docker` and `kubernetes`; `host` is labelled not isolated (ADR 0029, ADR 0031) |
-| Q127 dependencies waiting for a yes | ADR 0007 (2026-11-19): `@tanstack/react-virtual`, `dockerode` and `@kubernetes/client-node` confirmed; Resend (`resend`) for email in place of `nodemailer`; ADR 0043: `@aws-sdk/client-s3`. Q126's Windows helper gets its own yes when it's chosen |
+| Q127 dependencies waiting for a yes | ADR 0007 (2026-11-19): `@tanstack/react-virtual`, `dockerode` and `@kubernetes/client-node` confirmed; email through Resend (`resend`) first, with SMTP (`nodemailer`) as the second option; ADR 0043: `@aws-sdk/client-s3`. Q126's Windows helper gets its own yes when it's chosen |
 
 ### Delegated on 2026-11-18
 
