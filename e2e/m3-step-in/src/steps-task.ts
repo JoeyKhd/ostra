@@ -7,6 +7,7 @@ import { createIssue, ensureLabel, readIssue } from "@ostra/e2e-m2/linear";
 import { taskIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import type { Page } from "@playwright/test";
+import { z } from "zod";
 
 import type { Demo } from "./context.ts";
 import { PROFILE } from "./steps-config.ts";
@@ -35,12 +36,41 @@ export const worktreeStatus = async (d: Demo): Promise<string | null> =>
 export const eventsOf = async (d: Demo, kind: string) =>
   d.db.event.findMany({ where: { taskId: taskIdOf(d), kind }, orderBy: { seq: "asc" }, select: { seq: true, payload: true, occurredAt: true, sessionId: true } });
 
+const SETTINGS_FILE = "config/settings.json";
+const fileContentSchema = z.object({ type: z.literal("file"), content: z.string(), sha: z.string() });
+const settingsObjectSchema = z.record(z.string(), z.unknown());
+
+/**
+ * `test1`'s settings file as the ticket needs it: an earlier run's step 11 merged `releaseName`
+ * into main, and then the agent finds nothing to edit, so the rule never asks (step 4). Removes the
+ * key on main, through the App, when it's there.
+ */
+const resetSettingsOnMain = async (d: Demo): Promise<void> => {
+  const { github } = d;
+  const found = await github.octokit.rest.repos.getContent({ owner: github.owner, repo: github.repo, path: SETTINGS_FILE, ref: "main" });
+  const file = fileContentSchema.safeParse(found.data);
+  if (!file.success) return;
+  const parsed = settingsObjectSchema.safeParse(JSON.parse(Buffer.from(file.data.content, "base64").toString("utf8")));
+  if (!parsed.success || !("releaseName" in parsed.data)) return;
+  const kept = Object.fromEntries(Object.entries(parsed.data).filter(([key]) => key !== "releaseName"));
+  await github.octokit.rest.repos.createOrUpdateFileContents({
+    owner: github.owner,
+    repo: github.repo,
+    path: SETTINGS_FILE,
+    message: "Reset releaseName for the milestone 3 demo",
+    content: Buffer.from(`${JSON.stringify(kept, null, 2)}\n`).toString("base64"),
+    sha: file.data.sha,
+    branch: "main",
+  });
+  say(`step 2: removed releaseName from ${SETTINGS_FILE} on main, which an earlier run merged`);
+};
 
 /** Step 2: the ticket in OST, started from the Inbox with the profile picker on `Careful`. */
 export const ticket = async (d: Demo): Promise<void> => {
   const { demo, settings, tool } = d;
   if (d.run.projectHref === null) throw new Error("run setup first");
   if (d.run.ticket === null) {
+    await resetSettingsOnMain(d);
     const label = await ensureLabel(tool, settings.linearTeamId, "ostra-demo");
     d.run.ticket = await createIssue(tool, {
       teamId: settings.linearTeamId,
