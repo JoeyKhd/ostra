@@ -68,12 +68,16 @@
 }
 
 @layer base {
+  /* The root keeps the browser's 16px, so Tailwind's rem spacing (h-8 = 32px) means what the
+     targets say; the body's text is 13px. */
   html,
   body {
     background: var(--bg);
     color: var(--text);
-    font: 400 13px/1.5 var(--font-sans);
     -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font: 400 13px/1.5 var(--font-sans);
   }
   * {
     border-color: var(--line);
