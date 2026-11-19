@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Builder: runner
-Blocked by: 08
+Blocked by: 08, 35
 Features: F-039, F-018
 Packages: `deploy/` (`Dockerfile.agent.template` (new)), `packages/deploy-checks`
 Spec: `../spec.md`, sections 2 and 7; ADR 0046 (amended), ADR 0062
@@ -10,7 +10,7 @@ Spec: `../spec.md`, sections 2 and 7; ADR 0046 (amended), ADR 0062
 ## What to build
 
 - **`pnpm check:images`** grows: a published image (server, runner, base) holds no file from an `@anthropic-ai/*` package and no `claude` binary, unless ADR 0046 records the maintainer's yes; the agent image's template holds only constants and the base digest; each image carries `THIRD_PARTY_NOTICES` generated from the packages it bundles, each with its license, and fails on a license the license check doesn't know.
-- **The notices' generator** (`packages/deploy-checks`), reading the pnpm lockfile and each bundled package's `license` field and license file.
+- **The notices' generator** (`packages/deploy-checks`), from `pnpm licenses list --json` for the packages each image bundles, plus each one's license file, with no new dependency.
 - **The runner image** carries no agent install: in a box, the agent runs in the base or agent image.
 
 ## Done when

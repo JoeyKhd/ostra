@@ -9,7 +9,7 @@ Spec: `../spec.md`, sections 9 and 10.1; Q261
 
 ## What to build
 
-Two checks, ostra's own code on Playwright (no new dependency), over **every route** of the panel, listed from the app's route tree so a new route can't be missed, in both themes, at 1440 px and 390 px, on seeded data that puts each screen in its fullest state:
+Two checks, ostra's own code on Playwright (no new dependency), over **every route** of the panel, listed from the app's route tree so a new route can't be missed, and over every dialog, sheet, menu and palette step a route opens (the approval card, the reopen sheet, ⌘K, the `?` sheet), listed beside the route, in both themes, at 1440 px and 390 px, on seeded data that puts each screen in its fullest state:
 - **The keyboard walk:** Tab from the top reaches every visible interactive element once, in an order that follows the layout, each with a visible focus indicator (a computed outline or ring of at least 2 px and 3:1 against its background), with no trap; Escape closes any open dialog or menu.
 - **The contrast check:** for every visible text node, the computed color against the composited background behind it: 4.5:1 for normal text, 3:1 for large text (24 px, or 18.66 px bold) and for the borders of inputs and buttons. Placeholders count. Disabled controls are listed, not failed.
 

@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Builder: runner
-Blocked by: 07, 08
+Blocked by: 07, 08, 35
 Features: F-018, F-017, F-093, F-014 (their Claude Code halves)
 Packages: `.github/workflows/proof.yml` (steps in its existing jobs), `scripts/live/`
 Spec: `../spec.md`, section 1 ("On this machine"); ADR 0061

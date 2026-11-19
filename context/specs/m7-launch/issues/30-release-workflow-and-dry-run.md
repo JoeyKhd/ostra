@@ -14,10 +14,11 @@ Spec: `../spec.md`, section 4; ADR 0045 (amended), ADR 0064 ("The release")
 - **`release.yml`,** by hand only (`workflow_dispatch` with `version` and `dry-run`), actions pinned by SHA, permissions `contents: write`, `packages: write`, `id-token: write`: every check; the images built, checked and pushed by digest; `npm publish` through npm's trusted publishing; the GitHub release with the changelog, digests and versions; then `docs.yml`. No npm token.
 - **The dry run:** `dry-run: true` pushes the images to a `registry:2` service inside the job and runs `npm publish --dry-run`; its log is kept in `context/specs/m7-launch/demo/release-dry-run.log`.
 - **`CONTRIBUTING.md`:** how to build and test, the proof rule, and that no outside code is accepted until the CLA exists (Q109), as the README says. **`NOTICE`** checked current.
+- **One licensor line.** The licensor and copyright line (ADR 0048, today "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra") is read from one place by every `LICENSE`, `NOTICE` and published `package.json` `author`, and a test fails when any differs, so Q110's answer is one edit before the release (ticket 33).
 
 ## Done when
 
-- [ ] Tests: every published package has its license, files and provenance; no server package is publishable (break-it: one made public fails); the version script sets one version everywhere.
+- [ ] Tests: every published package has its license, files and provenance; no server package is publishable (break-it: one made public fails); the version script sets one version everywhere; every licensor line matches (break-it: one `LICENSE` changed fails).
 - [ ] The dry run passed by hand, its log kept.
 - [ ] `CONTRIBUTING.md` exists, and the README links it.
 - [ ] Committed as `🔧 add the release workflow`.

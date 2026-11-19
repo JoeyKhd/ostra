@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Builder: api (with web for the checklist's links)
-Blocked by: 05
+Blocked by: 36
 Features: F-076
 Packages: `packages/api` (`src/routers/setup.ts`), `apps/web` (the checklist), `scripts/measure-setup.ts` (new), `package.json` (`measure:setup`)
 Spec: `../spec.md`, sections 4 and 10.1; ADR 0064 ("The 30-minute measure")

@@ -9,7 +9,7 @@ Spec: `../spec.md`, section 6; ADR 0063 (sections 4 to 8 of "What the site holds
 
 ## What to build
 
-- **Agents and models:** providers in either format; OpenCode; Claude Code on keys: that it needs Anthropic's Messages API, that no subscription login is used and `--hide-claude-auth` refuses one, where its binary comes from and that it's downloaded from npm under Anthropic's terms, the one-time image, the repo's Claude settings set aside; the parity table of spec section 6 in plain words; profiles, approval rules, plan first.
+- **Agents and models:** providers in either format; OpenCode; Claude Code on keys: that it needs Anthropic's Messages API, that no subscription login is used and `--hide-claude-auth` refuses one, where its binary comes from and that it's downloaded from npm under Anthropic's terms (about 371 MB on Linux x64), the one-time image, the repo's Claude settings set aside and its agents' and skills' hooks and inline shell turned off, that a `host` machine with a managed Claude Code policy can't run it and why, and that on Windows its Bash tool needs Git for Windows; the parity table of spec section 6 in plain words; profiles, approval rules, plan first.
 - **Using ostra:** one short page per concept, linking the panel's own words.
 - **Security:** what the box holds and doesn't, the proxies, `host` isn't isolated, the review's summary and its open mediums and lows (ticket 27), how to report (`SECURITY.md`).
 - **Reference:** the configuration reference (rendered by ticket 21), the CLI's commands from its own `--help`, the protocol's window, the ports.

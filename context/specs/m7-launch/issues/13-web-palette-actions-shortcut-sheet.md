@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Builder: web
-Blocked by: 05, 12
+Blocked by: 12, 36
 Features: F-081
 Packages: `apps/web` (`src/components/shell/command-menu.tsx`, `src/components/shell/actions/` (new), `src/components/shell/shortcut-sheet.tsx` (new), `messages/en.json`)
 Spec: `../spec.md`, sections 4 and 12 (item 11); targets `command-palette`, `shortcut-sheet`

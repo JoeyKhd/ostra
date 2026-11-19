@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q266). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q267). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -408,7 +408,8 @@ Writing `specs/m7-launch/spec.md` met these questions. The maintainer delegated 
 | Q262 Where does a member choose the theme? | F-082: Account, "Appearance", dark by default, light or match my system; saved on the account and in a cookie, applied before first paint |
 | Q263 How is "every string in message files" checked? | F-083: an AST check over the panel's code in `pnpm test`, every key used, and a pseudo-locale pass over every route; next-intl stays unneeded while one language ships |
 | Q264 What does a runner one minor older get in milestone 7? | `specs/m7-launch/spec.md`, section 5.1: OpenCode tasks only; it reports no agents |
-| Q265 How does the task page show Claude Code's subagents? | `specs/m7-launch/spec.md`, section 4: an optional `parentToolCallId` on tool events, nested and collapsed on the task page; flat for an agent that doesn't say |
+| Q265 How does the task page show Claude Code's subagents? | `specs/m7-launch/spec.md`, section 4: an optional `parentToolCallId` on `tool.called`, `agent.message`, `agent.thought` and `plan.updated`, nested and collapsed on the task page; a subagent's plan never replaces the task's; flat for an agent that doesn't say (widened by the spec's review) |
+| Q267 What happens on a `host` machine with a managed Claude Code policy? | ADR 0062, `specs/m7-launch/spec.md` section 6: the policy (a system `managed-settings.json`, a macOS profile, a `Policies\ClaudeCode` registry value) outranks every setting ostra writes and can't be hidden, so the runner reports Claude Code `failed: unsupported` there with the reason, and the task goes to another runner. Raised and settled by the spec's review, on the same delegation |
 
 ## Open
 

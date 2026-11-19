@@ -6,7 +6,7 @@
 
 - **Fumadocs** (`fumadocs-core`, `fumadocs-ui`, `fumadocs-mdx`, MIT), on Next.js 16 and React 19, the panel's own versions. ADR 0045 asked for the panel's stack, and Fumadocs is a Next.js App Router app with MDX pages, its own search index and Tailwind 4 styling, so the docs share the panel's tokens (`brand/files/tokens/`) and its builders.
 - **Search is built in and static:** Fumadocs' own index, built with the site and served as a file. No hosted search service.
-- **Each is pinned exactly** when ticket 07 adds it, at the newest release at least a day old (pnpm's policy, ADR 0007). **They're added only after the maintainer's yes**, recorded in ADR 0007's "waiting for a yes" lines. Without it, ticket 07 builds the same pages on Next.js alone, from Markdown rendered by the panel's existing renderer (`@assistant-ui/react-markdown`), with a navigation of its own and no search, and says so in its `## Comments`.
+- **Each is pinned exactly** when milestone 7's ticket 21 adds it, at the newest release at least a day old (pnpm's policy, ADR 0007). **They're added only after the maintainer's yes**, recorded in ADR 0007's "waiting for a yes" lines. Without it, ticket 21 builds the same pages on Next.js alone, from Markdown rendered by the panel's existing renderer (`@assistant-ui/react-markdown`), with a navigation of its own and no search, and says so in its `## Comments`.
 
 ## Where the words live
 

@@ -1,16 +1,17 @@
-# 08: Runner: installing agents, agent images and reporting them
+# 08: Runner: installing agents on `host` and reporting them
 
 Status: ready-for-agent
 Builder: runner
 Blocked by: 01, 02
 Features: F-018, F-014, F-015, F-093 (their agents)
-Packages: `apps/runner` (`src/agents/` (new), `src/cli/`, `src/connection/`, `src/task-host/`), `packages/adapters/adapter-executor-docker`, `packages/adapters/adapter-executor-kubernetes`
+Packages: `apps/runner` (`src/agents/` (new), `src/cli/`, `src/connection/`, `src/task-host/`)
+Note: agent images on `docker` and `kubernetes` moved to ticket 35 in the spec's review, so this ticket is one builder's change.
 Spec: `../spec.md`, sections 4 and 5.1; ADR 0062; ADR 0046 (amended)
 
 ## What to build
 
-- **On `host`:** `prepareAgent(adapter)` runs `npm install --ignore-scripts --no-audit --no-fund --prefix <OSTRA_AGENTS_DIR>/<agent>/<version> <package>@<version>` with `--registry <OSTRA_NPM_REGISTRY>`, through the async child-process API, as an argument array; then `verifyAgentBinary`. A half-done install is removed; two tasks asking at once share one install. The binary's checksum is checked again before every launch.
-- **On `docker`:** the agent image through milestone 3's snapshot builder, from a Dockerfile generated from `imageInstall(baseDigest)`, tagged `ostra-agent-<agent>:<version>-<baseDigest short>`, kept by the runner. **On `kubernetes`:** milestone 5's BuildKit pod and the organization's registry, by digest. `OSTRA_AGENT_IMAGE_CLAUDE_CODE` set uses that image instead. A Claude Code box uses the agent image (or a project snapshot built on it) as its agent container's image.
+- **On `host`:** `prepareAgent(adapter)` runs `npm install --ignore-scripts --no-audit --no-fund --prefix <OSTRA_AGENTS_DIR>/<agent>/<version> <package>@<version>` with `--registry <OSTRA_NPM_REGISTRY>`, through the async child-process API, as an argument array, with the `npm` beside the runner's own Node (else the one on `PATH`, else the agent is reported `failed: unsupported`, "npm not found"); then `verifyAgentBinary`. A half-done install is removed; two tasks asking at once share one install. The binary's checksum is checked again before every launch. The adapter's `health()` (ticket 06) runs before the agent is reported `ready`, so a machine with a managed Claude Code policy reports `failed: unsupported` with its reason.
+- **Saying what it downloads.** The first preparation of an agent version prints one line in the runner's terminal and its log: the package, its version, its size on disk once installed, and, for Claude Code, that it comes from npm under Anthropic's terms. On a personal runner, the member's own machine is the one downloading it. `OSTRA_AGENT_PREPARE=manual` makes it wait for `ostra agents install` or an admin's "Prepare now".
 - **`OSTRA_AGENT_PREPARE`:** `auto`, `manual` or `off`, as spec section 5.4 says.
 - **Reporting:** `agents` on `hello` and `status`; the three events; `agent.prepare` handled; an offer for an agent it can't run or prepare declined with `agent-missing`.
 - **`ostra agents list`** and **`ostra agents install <agent>`**.
@@ -18,7 +19,7 @@ Spec: `../spec.md`, sections 4 and 5.1; ADR 0062; ADR 0046 (amended)
 
 ## Done when
 
-- [ ] Tests named for `F-018`: an install against the fake registry succeeds and is reported `ready`; a checksum mismatch, a missing platform package and a registry that's down each report `failed` with their reason and leave nothing half-installed; two tasks share one install; the agent image's Dockerfile holds only the constants and the base digest; the image builds against the fake engine and the fake BuildKit; an offer for a missing agent with `OSTRA_AGENT_PREPARE=off` is declined `agent-missing`; the launch record holds names only.
+- [ ] Tests named for `F-018`: an install against the fake registry succeeds and is reported `ready`; a checksum mismatch, a missing platform package, a registry that's down and no `npm` each report `failed` with their reason and leave nothing half-installed; two tasks share one install; a planted managed-policy file reports `failed: unsupported` and the task is declined `agent-missing`; an offer for a missing agent with `OSTRA_AGENT_PREPARE=off` is declined `agent-missing`; the first preparation's line names the package and size and no path outside the data folder; the launch record holds names only.
 - [ ] `ostra agents install claude-code` installs the real pinned package here, and its checksum matches.
 - [ ] The whole-repo checks pass (spec section 10).
 - [ ] Committed as `✨ install agents and build agent images`.

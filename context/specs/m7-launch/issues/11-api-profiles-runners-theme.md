@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Builder: api
-Blocked by: 05, 09
+Blocked by: 05, 09, 36
 Features: F-018, F-082
 Packages: `packages/api`
 Spec: `../spec.md`, sections 4 and 5.4

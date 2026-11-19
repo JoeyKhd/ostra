@@ -22,7 +22,7 @@ Each step needs an account, a machine, a person, a legal decision or a yes that 
 9. **The go** (ticket 33), after reading the gates' evidence.
 10. **Approve the milestone 7 screen targets** (ticket 12), recorded there with the date.
 11. **Read and sign the security review** (ticket 27). An outside penetration test is your choice.
-12. **Review spec section 12's sixteen choices** (Q250 to Q265 in `context/open-questions.md`), all settled on the delegation of 2026-11-19, and move back to the open list any you disagree with.
+12. **Review spec section 12's seventeen choices** (Q250 to Q265 and Q267 in `context/open-questions.md`), all settled on the delegation of 2026-11-19, and move back to the open list any you disagree with. Two the review added deserve a look: Q267 (a `host` machine with a managed Claude Code policy can't run Claude Code), and the default `OSTRA_AGENT_PREPARE=auto`, under which a personal runner downloads Claude Code (about 371 MB, under Anthropic's terms) to a member's machine the first time a task needs it, saying so in its terminal; `manual` is the alternative.
 
 ## Done when
 
