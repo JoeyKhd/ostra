@@ -53,7 +53,7 @@ Every package is `private: true` for now, including the ones ADR 0045 lists as p
 
 **The proof check.** `pnpm check:proof` reads `context/features.md` and `context/proof/`. It fails when a `done` row lacks a proof for any sentence of its "done when", or cites a test that doesn't exist, doesn't run or doesn't name the row's ID, and warns about the rows still `building`. `pnpm proof:new F-nnn` writes a row's proof file. CI runs it with the other checks. The rules: `context/proof/README.md`.
 
-**The panel's browser checks.** `pnpm --filter @ostra/web test:e2e` builds the panel and runs its Playwright suite (`apps/web/e2e/`) on a throwaway stack: an embedded Postgres, a fake GitHub, a stub model endpoint in each API format, core and a runner on the `host` executor. CI runs it in its own job. It listens on 3100 to 3103; `OSTRA_E2E_PORT` moves all four, so two checkouts can run it at once.
+**The panel's browser checks.** `pnpm --filter @ostra/web test:e2e` builds the panel and runs its Playwright suite (`apps/web/e2e/`) on a throwaway stack: an embedded Postgres, a fake GitHub, a stub model endpoint in each API format, core and a runner on the `host` executor. A second stack, started with `OSTRA_ALLOW_DEFAULT_PASSWORD=true`, serves `06-default-password.spec.ts` (the `default-password` project). CI runs it in its own job. The first stack listens on 3100 to 3103 and the second on 3110 to 3113; `OSTRA_E2E_PORT` moves all eight, so two checkouts can run it at once.
 
 ## Run it
 

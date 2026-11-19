@@ -50,19 +50,19 @@ describe("the seeded admin with the default password", () => {
     await harness.dispose();
   });
 
-  it("signs in, and is told to choose a new password", async () => {
+  it("F-001: the seeded default-password admin signs in, and is told to choose a new password", async () => {
     const caller = await callerWith(harness, await signInAsDemo(harness));
     expect(await caller.me.get()).toMatchObject({ username: "demo", instanceAdmin: true, passwordChange: "required" });
   });
 
-  it("can do nothing else in the panel's API until it does", async () => {
+  it("F-001: can do nothing else in the panel's API until it does", async () => {
     const caller = await callerWith(harness, await signInAsDemo(harness));
     await expect(caller.organization.get()).rejects.toMatchObject({ code: "FORBIDDEN", message: PASSWORD_CHANGE_REQUIRED });
     await expect(caller.setup.status()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.projects.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("can't reach better-auth's other routes either: no invitation, no organization, no device approval", async () => {
+  it("F-001: can't reach better-auth's other routes either: no invitation, no organization, no device approval", async () => {
     const cookie = await signInAsDemo(harness);
     const organization = await harness.test.db.organization.findFirstOrThrow();
     expect(
@@ -78,7 +78,7 @@ describe("the seeded admin with the default password", () => {
     expect((await harness.auth.api.getSession({ headers: cookie }))?.user.mustChangePassword).toBe(true);
   });
 
-  it("can't set the flag itself, nor clear it by updating its profile", async () => {
+  it("F-001: can't set the flag itself, nor clear it by updating its profile", async () => {
     const cookie = await signInAsDemo(harness);
     await expect(
       // @ts-expect-error -- `mustChangePassword` is `input: false`: the types leave it out, the route ignores or refuses it.
@@ -87,7 +87,7 @@ describe("the seeded admin with the default password", () => {
     expect((await harness.test.db.user.findFirstOrThrow()).mustChangePassword).toBe(true);
   });
 
-  it("must choose a password that meets the normal policy", async () => {
+  it("F-001: must choose a password that meets the normal policy", async () => {
     const cookie = await signInAsDemo(harness);
     for (const newPassword of ["demo", "short-pass1"]) {
       expect(await refusalOf(() => harness.auth.api.changePassword({ body: { currentPassword: "demo", newPassword }, headers: cookie }))).toMatchObject({
@@ -100,7 +100,7 @@ describe("the seeded admin with the default password", () => {
     expect((await harness.test.db.user.findFirstOrThrow()).mustChangePassword).toBe(true);
   });
 
-  it("changing it clears the flag, signs out the other sessions, and opens the panel", async () => {
+  it("F-001: changing it clears the flag, signs out the other sessions, and opens the panel", async () => {
     const other = await signInAsDemo(harness);
     const cookie = await signInAsDemo(harness);
     const { headers } = await harness.auth.api.changePassword({
@@ -119,7 +119,7 @@ describe("the seeded admin with the default password", () => {
     expect(await signInAsDemo(harness, TEST_PASSWORD)).toBeInstanceOf(Headers);
   });
 
-  it("is never seeded again, whatever the settings say now", async () => {
+  it("F-001: is never seeded again, whatever the settings say now", async () => {
     expect(await seed(harness)).toBeNull();
     expect(await harness.test.db.user.count()).toBe(1);
     expect((await harness.test.db.user.findFirstOrThrow()).mustChangePassword).toBe(false);
@@ -138,7 +138,7 @@ describe("with OSTRA_ALLOW_DEFAULT_PASSWORD", () => {
     await harness.dispose();
   });
 
-  it("forces no change, but still says the password is the default one (the panel's warning)", async () => {
+  it("F-001: OSTRA_ALLOW_DEFAULT_PASSWORD forces no change, but still says the password is the default one (the panel's warning)", async () => {
     const cookie = await signInAsDemo(harness);
     const caller = await callerWith(harness, cookie);
     expect(await caller.me.get()).toMatchObject({ passwordChange: "suggested" });
@@ -148,7 +148,7 @@ describe("with OSTRA_ALLOW_DEFAULT_PASSWORD", () => {
     expect(invitation.role).toBe("member");
   });
 
-  it("drops the warning once the password changes", async () => {
+  it("F-001: OSTRA_ALLOW_DEFAULT_PASSWORD drops the warning once the password changes", async () => {
     const cookie = await signInAsDemo(harness);
     await harness.auth.api.changePassword({ body: { currentPassword: "demo", newPassword: TEST_PASSWORD }, headers: cookie });
     const caller = await callerWith(harness, await signInAsDemo(harness, TEST_PASSWORD));

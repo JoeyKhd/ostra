@@ -91,6 +91,8 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 
 The `docker` executor finds the Docker Engine as Docker's own tools do: `DOCKER_HOST` (`unix://`, `npipe://` or `tcp://host:port`), or the platform's default socket. The socket is root on the host, so pool runners belong on dedicated hosts (Q97).
 
+**The Docker socket** (Q97, ADR 0029). The compose file's pool runner (`deploy/compose.yaml`) mounts the Docker socket, `/var/run/docker.sock`, to start its boxes. That socket is root on that machine: whoever controls the runner, or escapes a box onto it, controls the host. That's right for a one-machine install. Beyond one, pool runners belong on dedicated hosts that run nothing else, preferably with rootless Docker or the gVisor runtime.
+
 **The sidecar.** The runner sets a `docker` box's sidecar's environment itself, so none of it is an admin's setting: the server's address, the path of the task's token file (`/run/ostra/token`, which the runner rewrites every few minutes), the task, session, box and lease epoch, the bridge's nonce and port (7101), the sidecar's name on the box network (`sidecar`) and the task volume (`/task`). `ostra sidecar` refuses to start without them. OpenCode is the base image's `/opt/opencode/bin/opencode`, checked against its SHA-256 when the image is built.
 
 ## Development and tests only

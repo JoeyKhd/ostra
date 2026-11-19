@@ -19,6 +19,8 @@ import EmbeddedPostgres from "embedded-postgres";
 import { e2eCorePort, e2eModelToken, e2eOpenAiStubPort, e2ePort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
+/** F-001: the second stack runs with the default password allowed (`06-default-password.spec.ts`). */
+const allowDefaultPassword = process.env["OSTRA_ALLOW_DEFAULT_PASSWORD"] === "true";
 const webDir = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 
@@ -122,8 +124,9 @@ const main = async (): Promise<void> => {
   });
 
   // The specs read the database's address, the data folder and the fake GitHub's App from here (gitignored).
+  // The second stack (OSTRA_ALLOW_DEFAULT_PASSWORD, playwright.config.ts) keeps its own.
   await writeFile(
-    path.join(webDir, "e2e", ".stack.json"),
+    path.join(webDir, "e2e", allowDefaultPassword ? ".stack-default-password.json" : ".stack.json"),
     JSON.stringify({
       databaseUrl,
       github: { appId: github.appId, privateKey: github.privateKey, webhookSecret: github.webhookSecret, slug: github.appSlug },
@@ -144,6 +147,7 @@ const main = async (): Promise<void> => {
       OSTRA_DATA_DIR: dataDir,
       OSTRA_PUBLIC_URL: panelUrl,
       // No OSTRA_ADMIN_*: the panel seeds demo@demo.com / demo, as a fresh install does (F-001).
+      ...(allowDefaultPassword ? { OSTRA_ALLOW_DEFAULT_PASSWORD: "true" } : {}),
       OSTRA_CORE_PUBLIC_URL: coreUrl,
       OSTRA_CATALOG_FETCH: "false",
       OSTRA_GITHUB_API_URL: github.apiUrl,

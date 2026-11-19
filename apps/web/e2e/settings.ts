@@ -2,20 +2,26 @@
 // starts.
 
 /**
- * The stack's four ports are OSTRA_E2E_PORT (3100 by default) and the three after it, so two
- * checkouts on one machine can each run the suite.
+ * The stack's four ports are OSTRA_E2E_PORT (3100 by default) and the three after it, and the
+ * second stack's are the same ten up, so two checkouts on one machine can each run the suite.
  */
 const basePort = ((): number => {
   const raw = process.env["OSTRA_E2E_PORT"] ?? "3100";
   const port = Number.parseInt(raw, 10);
-  if (!/^\d+$/.test(raw) || port < 1024 || port > 65_532) {
-    throw new Error(`OSTRA_E2E_PORT must be a port from 1024 to 65532, not "${raw}"`);
+  if (!/^\d+$/.test(raw) || port < 1024 || port > 65_522) {
+    throw new Error(`OSTRA_E2E_PORT must be a port from 1024 to 65522, not "${raw}"`);
   }
   return port;
 })();
 
 export const e2ePort = basePort;
 export const e2eBaseUrl = `http://localhost:${String(e2ePort)}`;
+/**
+ * F-001: a second stack, ten ports up, started with OSTRA_ALLOW_DEFAULT_PASSWORD=true, for
+ * `06-default-password.spec.ts` (the `default-password` project in playwright.config.ts).
+ */
+export const e2eDefaultPasswordPort = basePort + 10;
+export const e2eDefaultPasswordBaseUrl = `http://localhost:${String(e2eDefaultPasswordPort)}`;
 
 /**
  * The admin a fresh install seeds with no OSTRA_ADMIN_* set (F-001): demo@demo.com / demo, in an

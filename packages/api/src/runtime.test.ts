@@ -77,7 +77,7 @@ describe("a fresh install with no setting", () => {
     install = await freshInstall();
   });
 
-  it("seeds demo@demo.com / demo, the instance admin of a first organization named Demo", async () => {
+  it("F-001: a fresh install with no setting seeds demo@demo.com / demo, the instance admin of a first organization named Demo", async () => {
     const { logs } = await start(install);
     const { db } = install.test;
     const user = await db.user.findUniqueOrThrow({ where: { email: "demo@demo.com" } });
@@ -101,7 +101,7 @@ describe("a fresh install with no setting", () => {
     expect(lines).not.toContain('"demo"');
   });
 
-  it("stores the default password hashed, and signs in with it although it is under the length rule", async () => {
+  it("F-001: stores the default password hashed, and signs in with it although it is under the length rule", async () => {
     const account = await install.test.db.account.findFirstOrThrow({ where: { providerId: "credential" } });
     expect(account.password).not.toBeNull();
     expect(account.password).not.toContain("demo");
@@ -117,7 +117,7 @@ describe("a fresh install with no setting", () => {
     }
   });
 
-  it("never seeds again: a restart finds the account and creates nothing", async () => {
+  it("F-001: never seeds again: a restart finds the account and creates nothing", async () => {
     const { logs } = await start(install);
     expect(seededLines(logs)).toEqual([]);
     expect(await install.test.db.user.count()).toBe(1);
@@ -132,7 +132,7 @@ describe("a fresh install with no setting", () => {
 });
 
 describe("two replicas starting at once on a fresh install", () => {
-  it("seed exactly one admin, one organization and one member", async () => {
+  it("F-001: two replicas starting at once on a fresh install seed exactly one admin, one organization and one member", async () => {
     const install = await freshInstall();
     const started = await Promise.all([start(install), start(install)]);
     expect(started.flatMap(({ logs }) => seededLines(logs))).toHaveLength(1);
@@ -145,7 +145,7 @@ describe("two replicas starting at once on a fresh install", () => {
 });
 
 describe("a fresh install with OSTRA_ADMIN_* set", () => {
-  it("seeds that account and organization, with no forced change, and the routers work at once", async () => {
+  it("F-001: a fresh install with OSTRA_ADMIN_* set seeds that account and organization, with no forced change, and the routers work at once", async () => {
     const install = await freshInstall();
     const { runtime } = await start(install, {
       OSTRA_ADMIN_EMAIL: "Ada@Example.com",

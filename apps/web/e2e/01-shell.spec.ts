@@ -9,8 +9,9 @@ import { e2eAdmin } from "./settings.ts";
 
 test.describe.configure({ mode: "serial" });
 
-test("a fresh install signs in as demo@demo.com / demo, and must choose a new password first", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "the default password is changed once");
+// The default password is changed once, so these two run at desktop width only (the phone project
+// leaves out `@desktop-only`, playwright.config.ts).
+test("F-001: a fresh install signs in as demo@demo.com / demo, and must choose a new password first", { tag: "@desktop-only" }, async ({ page }) => {
   const origins = watchOrigins(page);
   await page.goto("/");
   await expect(page).toHaveURL(/\/sign-in$/);
@@ -51,8 +52,7 @@ test("a fresh install signs in as demo@demo.com / demo, and must choose a new pa
   expect(origins.foreign()).toEqual([]);
 });
 
-test("the default password stops working once it is changed", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "one refused sign-in is enough, under the rate limit");
+test("F-001: the default password stops working once it is changed", { tag: "@desktop-only" }, async ({ page }) => {
   await expectSignInRefused(page, e2eAdmin.username, e2eAdmin.defaultPassword);
 });
 
@@ -61,7 +61,7 @@ test("the old setup page sends a visitor to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in$/);
 });
 
-test("sign in by username and by email reaches Home; sign out returns to sign-in", async ({ page }) => {
+test("F-002: sign in by username and by email reaches Home; sign out returns to sign-in", async ({ page }) => {
   const origins = watchOrigins(page);
   await signIn(page, e2eAdmin.username);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(e2eAdmin.organizationName);
