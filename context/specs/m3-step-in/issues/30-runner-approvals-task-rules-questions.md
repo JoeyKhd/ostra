@@ -1,6 +1,6 @@
 # 30: Runner: approvals, task rules and question answers
 
-Status: ready-for-agent
+Status: done
 Builder: runner
 Blocked by: 01, 08
 Features: F-026
@@ -20,9 +20,9 @@ Milestone 1 auto-answers every request under `NO_RULES_YET` and rejects `approva
 
 ## Done when
 
-- [ ] Tests: on both fake agents and on OpenCode with the stub models: a rule asks and an answer goes through; a task rule answers the second request; a deny with a reason re-prompts with it and closes the other held requests; an expired request cancels the turn; a question's answer reaches the agent; on `host` and through the box dispatcher alike.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ hold approvals for a person's answer`.
+- [x] Tests: on both fake agents and on OpenCode with the stub models: a rule asks and an answer goes through; a task rule answers the second request; a deny with a reason re-prompts with it and closes the other held requests; an expired request cancels the turn; a question's answer reaches the agent; on `host` and through the box dispatcher alike.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ hold approvals for a person's answer`.
 
 ## Decided 2026-11-19
 
@@ -32,3 +32,8 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **The matcher and the deny's re-prompt come from `@ostra/protocol`** (Q190), not from the domain, which the runner can't import.
 
 ## Comments
+
+- 2026-11-19: done in `✨ hold approvals for a person's answer`. The runner holds what a profile rule covers (`apps/runner/src/task-host/permission-decision.ts`, `task-run.ts`), answers a task rule's matches itself (held ones included, as decided), re-prompts after a deny with `denyPrompt` from `@ostra/protocol`, cancels the turn after 15 minutes, and hands a question's answers to the agent. Proved on both fake agents (`approvals.test.ts`) and on the pinned OpenCode with the stub models (`approvals.opencode.test.ts`); break-it checks in `context/proof/F-026.md`. Three things to know:
+  - **OpenCode now asks.** It declared `runner-only` while its config allowed everything, so it never asked. `taskPermissionRules` (`adapter-opencode/src/config.ts`) makes it ask before each call of a tool a rule watches (and of all three in a plan turn); ticket 08 still writes the rules natively.
+  - **OpenCode asks one request at a time**, so a deny there ends the turn before its next request; closing the other held requests is proved on the fake agents, which ask two at once.
+  - **The box path is the sidecar's connection** (Q129: core sends a box's commands to its sidecar), tested with the sidecar's peer. The box dispatcher still refuses a misrouted answer, as it does a steer.

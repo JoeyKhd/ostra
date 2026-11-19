@@ -5,7 +5,7 @@ import path from "node:path";
 import { createAcpMapper, GIT_GUARD_ENV_NAMES, ok } from "@ostra/adapter-sdk";
 import type { AdapterResult, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import { memoryAdapterContext } from "@ostra/adapter-sdk/testing";
-import { sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
+import { approvalRuleIdSchema, sessionIdSchema, taskApprovalRuleIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
@@ -92,6 +92,43 @@ describe("the OpenCode adapter's launch", () => {
     const config = jsonFile((await launch()).files, "opencode.json");
     expect(config["permissions"]).toEqual([
       { action: "*", resource: "*", effect: "allow" },
+      { action: "external_directory", resource: "*", effect: "deny" },
+    ]);
+  });
+
+  it("F-026: asks the runner before each call of a tool a profile rule or a task rule watches, and of all three in a plan turn, with `external_directory` still denied last", async () => {
+    const withRules = jsonFile(
+      (
+        await launch({
+          approvalRules: [
+            { ruleId: approvalRuleIdSchema.parse("rule-1"), name: "Dependencies", tool: "execute", match: { kind: "command-prefix", prefixes: ["pnpm add"] } },
+            { ruleId: approvalRuleIdSchema.parse("rule-2"), name: "Migrations", tool: "edit", match: { kind: "path-glob", glob: "migrations/**" } },
+          ],
+        })
+      ).files,
+      "opencode.json",
+    );
+    expect(withRules["permissions"]).toEqual([
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "edit", resource: "*", effect: "ask" },
+      { action: "shell", resource: "*", effect: "ask" },
+      { action: "external_directory", resource: "*", effect: "deny" },
+    ]);
+    const withTaskRule = jsonFile(
+      (await launch({ taskRules: [{ ruleId: taskApprovalRuleIdSchema.parse("task-rule-1"), tool: "fetch", pattern: "example.com" }] })).files,
+      "opencode.json",
+    );
+    expect(withTaskRule["permissions"]).toEqual([
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "webfetch", resource: "*", effect: "ask" },
+      { action: "external_directory", resource: "*", effect: "deny" },
+    ]);
+    const plan = jsonFile((await launch({ mode: "plan" })).files, "opencode.json");
+    expect(plan["permissions"]).toEqual([
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "edit", resource: "*", effect: "ask" },
+      { action: "shell", resource: "*", effect: "ask" },
+      { action: "webfetch", resource: "*", effect: "ask" },
       { action: "external_directory", resource: "*", effect: "deny" },
     ]);
   });

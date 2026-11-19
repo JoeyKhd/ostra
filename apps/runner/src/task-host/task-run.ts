@@ -15,11 +15,18 @@ import type {
   QuestionRequest,
   RepoPushResult,
 } from "@ostra/adapter-sdk";
-import { approvalIdSchema, questionIdSchema, runnerLimits, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, denyPrompt, firstMatchingTaskRule, questionIdSchema, runnerLimits, turnIdSchema } from "@ostra/protocol";
 import type {
+  ApprovalId,
+  ApprovalOption,
+  ApprovalRequestSubject,
   CheckId,
   CheckStatus,
   CommandBody,
+  QuestionId,
+  RuleContext,
+  TaskRule,
+  TurnMode,
   HiddenRefOutcome,
   RestoreOrigin,
   SessionId,
@@ -41,6 +48,7 @@ import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
+import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
 import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
 import { writeTicketFiles } from "./ticket-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
@@ -56,8 +64,12 @@ import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 //   proxies, release the workspace
 //
 // Stop cancels the turn, pushes the hidden ref, and ends without `session.ended` (core opens no PR
-// for a stopped task). A crash pushes the hidden ref and ends with `session.crashed`. Milestone 1
-// has no approval rules: a permission request is answered "once" and recorded as auto-answered.
+// for a stopped task). A crash pushes the hidden ref and ends with `session.crashed`.
+//
+// Milestone 3 (ticket 30, ADR 0049): a permission request goes through the task rules, then the
+// profile's rules (`permission-decision.ts`). What needs a person is held, at most 15 minutes,
+// until an `approval-answer`; a deny ends the turn, closes the other held requests and re-prompts
+// with the reason as data (ADR 0032). A question is held for a `question-answer` the same way.
 //
 // From protocol minor 1 (milestone 2, a spec with `limits.idleMinutes`) a session spans turns
 // (ADR 0039). After every turn: commit and push the branch, save each repo's working tree to the
@@ -72,8 +84,30 @@ import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 // A step that can't be done falls back to `rebuilt` and says why. Then each pending message is a
 // turn of its own, in order.
 
-/** Why milestone 1 answers every permission itself (F-026 brings rules and the panel's answer). */
-export const NO_RULES_YET = "no rules until F-026";
+/**
+ * The rule an approval is recorded as auto-answered by when the server is below minor 2 and can't
+ * send an answer: it's answered "once", as milestone 1 did (spec section 5.1).
+ */
+export const PEER_TOO_OLD = "peer-too-old";
+
+/** An approval held for a person's answer. */
+type HeldApproval = {
+  readonly approvalId: ApprovalId;
+  /** What it touches, for a later task rule. The agent's text: never logged. */
+  readonly subject: ApprovalRequestSubject | null;
+  readonly options: readonly ApprovalOption[];
+  /** Answers the agent, once. */
+  readonly settle: (answer: PermissionAnswer) => void;
+  /** Answers "cancelled" and reports the approval closed, unless it was answered already. */
+  readonly close: (reason: "cancelled" | "expired") => void;
+};
+
+/** A question held for the driver's answer. */
+type HeldQuestion = {
+  readonly questionId: QuestionId;
+  readonly answer: (answers: Readonly<Record<string, string>>) => void;
+  readonly close: (reason: "cancelled" | "expired") => void;
+};
 
 /** How much of the push work a stop waits for before it acks anyway. */
 /** A rate-limit hold is reported again only when it reaches this far past the last one reported. */
@@ -137,6 +171,10 @@ export type TaskRun = {
   readonly stop: (reason: CommandBody<"stop">["reason"]) => Promise<CommandOutcome>;
   readonly interrupt: () => Promise<CommandOutcome>;
   readonly steer: (body: CommandBody<"steer">) => Promise<CommandOutcome>;
+  /** Minor 2 (ticket 30): a person's answer to a held approval. */
+  readonly answerApproval: (body: CommandBody<"approval-answer">) => Promise<CommandOutcome>;
+  /** Minor 2 (ticket 30): the driver's answer to a held question. */
+  readonly answerQuestion: (body: CommandBody<"question-answer">) => Promise<CommandOutcome>;
   /** The self-fence: end the agent, keep the workspace, send nothing more. */
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
@@ -292,68 +330,259 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
   };
 
-  // ---------- the agent's requests ----------
+  // ---------- the agent's requests (F-026, ticket 30) ----------
+
+  /** The session's "for this task" rules: the spec's, then each one an `allow_task` answer added. */
+  const taskRules: TaskRule[] = [];
+  /** Approvals waiting on a person, by ID. Their subjects are the agent's text: never logged. */
+  const heldApprovals = new Map<ApprovalId, HeldApproval>();
+  /** Questions waiting on the driver, by ID. */
+  const heldQuestions = new Map<QuestionId, HeldQuestion>();
+  /**
+   * The runner's own next prompt, before any queued message: a deny's re-prompt (ADR 0032), or a
+   * plan's answer (ticket 31). Never logged.
+   */
+  let ownPrompt: string | undefined;
+  /** The session's mode (F-063): plan mode comes with ticket 31. */
+  const mode: TurnMode = "build";
+  const waitMs = runnerLimits.approvalWaitMinutes * 60_000;
+
+  /** What the rules read from the spec: the MCP servers and which are read-only. */
+  const ruleContext = (): RuleContext => ({
+    mcpServers: (spec?.agent.mcpServers ?? []).map((server) => ({ name: server.name, readOnly: server.readOnly })),
+  });
+
+  /** Every held request answered "cancelled", each reported closed with `reason`. */
+  const closeHeld = (reason: "cancelled" | "expired"): void => {
+    for (const held of [...heldApprovals.values()]) {
+      held.close(reason);
+    }
+    for (const held of [...heldQuestions.values()]) {
+      held.close(reason);
+    }
+  };
+
+  /**
+   * Cancels the running turn. The held requests are answered first: an agent that waits on one
+   * can't end its turn until it has its answer (ACP's cancel).
+   */
+  const cancelTurn = async (): Promise<void> => {
+    closeHeld("cancelled");
+    if (agent !== undefined && session !== undefined) {
+      await agent.cancel(session).catch(() => undefined);
+    }
+  };
+
+  /** A held request's wait ran out (15 minutes): the turn is cancelled, and the item stays open on the server. */
+  const expire = (what: "approval" | "question"): void => {
+    log.info("a held request waited its limit: cancelling the turn", { what, waitMinutes: runnerLimits.approvalWaitMinutes });
+    void cancelTurn();
+  };
 
   const onPermission = (agentSessionId: string, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> => {
     const options = toApprovalOptions(request);
-    const chosen =
-      options.find((option) => option.kind === "allow-once") ?? options.find((option) => option.decision !== "deny");
     const currentTurn = turn;
-    if (chosen === undefined || currentTurn === undefined || signal.aborted || options[0] === undefined) {
+    const first = options[0];
+    if (currentTurn === undefined || signal.aborted || first === undefined) {
       return Promise.resolve({ outcome: "cancelled" });
     }
+    const listed: [ApprovalOption, ...ApprovalOption[]] = [first, ...options.slice(1)];
     const approvalId = approvalIdSchema.parse(randomUUID());
+    // A server below minor 2 can't send an answer: milestone 1's "once", recorded so (spec section 5.1).
+    if (channel?.supports("plan.proposed") !== true) {
+      void emit({ kind: "approval.requested", turnId: currentTurn, approvalId, toolCallId: request.toolCallId, options: listed });
+      void emit({ kind: "approval.auto_answered", approvalId, ruleId: PEER_TOO_OLD });
+      log.info("permission answered once: the server can't answer it", { agentSessionId });
+      return Promise.resolve(allowOnce(options));
+    }
+    const decision = decidePermission({
+      request,
+      mode,
+      approvalRules: spec?.agent.approvalRules ?? [],
+      taskRules,
+      context: ruleContext(),
+      permissionRules: agent?.capabilities.permissionRules ?? "runner-only",
+    });
+    const subject = request.subject ?? null;
+    const shown = subject === null ? {} : { subject: { kind: subject.subject.kind, value: subject.subject.value.slice(0, 8192) } };
+    switch (decision.kind) {
+      case "refuse-in-plan":
+        log.info("a plan turn's request was refused", { tool: subject?.tool ?? null, toolKind: request.toolKind ?? null });
+        return Promise.resolve(rejectOnce(options));
+      case "allow":
+        return Promise.resolve(allowOnce(options));
+      case "task-rule":
+        void emit({
+          kind: "approval.requested",
+          turnId: currentTurn,
+          approvalId,
+          toolCallId: request.toolCallId,
+          options: listed,
+          rule: { source: "task", ruleId: decision.rule.ruleId, name: TASK_RULE_NAME },
+          ...shown,
+        });
+        void emit({ kind: "approval.auto_answered", approvalId, ruleId: decision.rule.ruleId });
+        log.info("permission answered by a task rule", { approvalId, ruleId: decision.rule.ruleId });
+        return Promise.resolve(allowOnce(options));
+      case "ask":
+        break;
+      default:
+        return decision satisfies never;
+    }
     void emit({
       kind: "approval.requested",
       turnId: currentTurn,
       approvalId,
       toolCallId: request.toolCallId,
-      options: [options[0], ...options.slice(1)],
+      options: listed,
+      rule: decision.rule,
+      ...shown,
     });
-    void emit({ kind: "approval.auto_answered", approvalId, ruleId: NO_RULES_YET });
-    log.info("permission answered once", { agentSessionId, decision: chosen.decision });
-    return Promise.resolve({ outcome: "selected", optionId: chosen.optionId });
+    log.info("permission held for a person", { approvalId, ruleId: decision.rule?.ruleId ?? null, tool: subject?.tool ?? null });
+    return new Promise<PermissionAnswer>((resolve) => {
+      let settled = false;
+      const settle = (answer: PermissionAnswer): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        disarm();
+        heldApprovals.delete(approvalId);
+        resolve(answer);
+      };
+      const close = (reason: "cancelled" | "expired"): void => {
+        if (!settled) {
+          void emit({ kind: "approval.closed", approvalId, reason });
+        }
+        settle({ outcome: "cancelled" });
+      };
+      const disarm = timers.after(waitMs, () => {
+        close("expired");
+        expire("approval");
+      });
+      signal.addEventListener("abort", () => {
+        close("cancelled");
+      }, { once: true });
+      heldApprovals.set(approvalId, { approvalId, subject, options, settle, close });
+    });
+  };
+
+  /** `approval-answer` (ADR 0036): "once" for both allows, "reject" for a deny, which ends the turn and re-prompts. */
+  const answerApproval = async (body: CommandBody<"approval-answer">): Promise<CommandOutcome> => {
+    const held = heldApprovals.get(body.approvalId);
+    if (held === undefined) {
+      return { result: "rejected", reason: "no-pending-approval" };
+    }
+    switch (body.decision) {
+      case "allow_once":
+        held.settle(allowOnce(held.options));
+        log.info("approval answered", { approvalId: body.approvalId, decision: body.decision });
+        return { result: "done" };
+      case "allow_task": {
+        held.settle(allowOnce(held.options));
+        const rule = body.taskRule ?? null;
+        if (rule !== null) {
+          taskRules.push(rule);
+          // The other held requests the new rule covers are answered by it at once (ticket 30's decision).
+          for (const other of [...heldApprovals.values()]) {
+            if (other.subject !== null && firstMatchingTaskRule([rule], other.subject) !== null) {
+              void emit({ kind: "approval.auto_answered", approvalId: other.approvalId, ruleId: rule.ruleId });
+              other.settle(allowOnce(other.options));
+            }
+          }
+        }
+        log.info("approval answered", { approvalId: body.approvalId, decision: body.decision, ruleId: rule?.ruleId ?? null });
+        return { result: "done" };
+      }
+      case "deny": {
+        held.settle(rejectOnce(held.options));
+        // ADR 0032: the turn ends, the other held requests close, and the agent hears why.
+        ownPrompt = denyPrompt(body.reason ?? null);
+        log.info("approval denied: ending the turn to re-prompt", { approvalId: body.approvalId, withReason: (body.reason ?? "").trim() !== "" });
+        if (turnRunning) {
+          await cancelTurn();
+        } else {
+          closeHeld("cancelled");
+          nudge();
+        }
+        return { result: "done" };
+      }
+      default:
+        return body.decision satisfies never;
+    }
   };
 
   const onQuestion = async (_agentSessionId: string, request: QuestionRequest, signal: AbortSignal): Promise<QuestionAnswer> => {
     const currentTurn = turn;
     const thisTurn = turnAbort;
-    if (currentTurn === undefined) {
+    if (currentTurn === undefined || signal.aborted) {
       return { outcome: "cancelled" };
     }
     const questionId = questionIdSchema.parse(randomUUID());
     void emit({ kind: "question.asked", turnId: currentTurn, questionId, message: request.message, fields: [...request.fields] });
-    // A turn that waits on a person follows the idle timer (ADR 0039, ticket 23): when it fires, the
-    // turn is cancelled, its work saved, and the session ends. The needs-you item stays on the server.
+    // A turn that waits on a person follows the idle timer too (ADR 0039, ticket 23): when it fires,
+    // the turn is cancelled, its work saved, and the session ends. The needs-you item stays on the server.
     const waitingSpec = spec;
-    const disarm =
+    const disarmIdle =
       acrossTurns && waitingSpec !== undefined
         ? timers.after(idleMs(waitingSpec), () => {
             log.info("a turn waited on a person past the idle limit: ending the session", { idleMinutes: waitingSpec.limits.idleMinutes ?? null });
             end({ kind: "idle" });
             thisTurn.abort();
-            if (agent !== undefined && session !== undefined) {
-              void agent.cancel(session).catch(() => undefined);
-            }
+            held.close("expired");
+            void cancelTurn();
           })
         : () => undefined;
-    // Milestone 1's panel shows the question read-only (F-026 answers it): it waits until the turn's
-    // time runs out or the turn is cancelled.
-    await new Promise<void>((resolve) => {
-      if (signal.aborted || thisTurn.signal.aborted) {
-        resolve();
+    let settle: (answer: QuestionAnswer) => void = () => undefined;
+    const answered = new Promise<QuestionAnswer>((resolve) => {
+      settle = resolve;
+    });
+    let settled = false;
+    const finish = (answer: QuestionAnswer): void => {
+      if (settled) {
         return;
       }
-      signal.addEventListener("abort", () => {
-        resolve();
-      }, { once: true });
-      thisTurn.signal.addEventListener("abort", () => {
-        resolve();
-      }, { once: true });
+      settled = true;
+      disarmIdle();
+      disarmWait();
+      heldQuestions.delete(questionId);
+      settle(answer);
+    };
+    const held: HeldQuestion = {
+      questionId,
+      answer: (answers) => {
+        finish({ outcome: "answered", answers });
+      },
+      close: (reason) => {
+        if (!settled) {
+          void emit({ kind: "question.closed", questionId, reason });
+        }
+        finish({ outcome: "cancelled" });
+      },
+    };
+    const disarmWait = timers.after(waitMs, () => {
+      held.close("expired");
+      expire("question");
     });
-    disarm();
-    void emit({ kind: "question.closed", questionId, reason: thisTurn.signal.aborted ? "expired" : "cancelled" });
-    return { outcome: "cancelled" };
+    heldQuestions.set(questionId, held);
+    signal.addEventListener("abort", () => {
+      held.close("cancelled");
+    }, { once: true });
+    thisTurn.signal.addEventListener("abort", () => {
+      held.close("expired");
+    }, { once: true });
+    return answered;
+  };
+
+  /** `question-answer`: the driver's answers reach the agent. The text is never logged. */
+  const answerQuestion = (body: CommandBody<"question-answer">): Promise<CommandOutcome> => {
+    const held = heldQuestions.get(body.questionId);
+    if (held === undefined) {
+      return Promise.resolve({ result: "rejected", reason: "no-pending-question" });
+    }
+    held.answer(body.answers);
+    log.info("question answered", { questionId: body.questionId, fields: Object.keys(body.answers).length });
+    return Promise.resolve({ result: "done" });
   };
 
   // ---------- one turn ----------
@@ -378,6 +607,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       () => {
         log.warn("turn reached its maximum minutes: cancelling", { turnMaxMinutes: currentSpec.limits.turnMaxMinutes });
         thisTurn.abort();
+        closeHeld("expired");
         void runningAgent.cancel(runningSession);
       },
       currentSpec.limits.turnMaxMinutes * 60_000,
@@ -387,6 +617,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return await promptTurn(text, turnId, runningAgent, runningSession, agentProcess);
     } finally {
       clearTimeout(timer);
+      // Nothing outlives its turn: a request the agent left open is closed with it.
+      closeHeld("cancelled");
       turnRunning = false;
       turn = undefined;
     }
@@ -617,7 +849,15 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   };
 
   /** The next turn's prompt: a reopen's pending message, one at a time, then the messages queued while a turn ran. */
-  const takeQueued = (): string | undefined => pending.shift() ?? (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
+  const takeQueued = (): string | undefined => {
+    // The runner's own prompt first: a deny's re-prompt answers the turn the deny ended.
+    if (ownPrompt !== undefined) {
+      const own = ownPrompt;
+      ownPrompt = undefined;
+      return own;
+    }
+    return pending.shift() ?? (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
+  };
 
   /**
    * Between turns: the next turn's text, or `undefined` once the session is ending. The idle timer
@@ -789,6 +1029,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     spec = taskSpec;
     acrossTurns = spansTurns(taskSpec, channel);
+    taskRules.push(...(taskSpec.agent.taskRules ?? []));
     const issued = await deps.link.fetchCredentials(dispatch.taskId, dispatch.leaseEpoch);
     if (!issued.ok) {
       return { ok: false, error: `couldn't get the task's credentials: ${issued.failure.message}` };
@@ -821,9 +1062,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       onUpstreamRefused: (refusal: UpstreamRefusal) => {
         // F-089: an upstream 401 or 403 fails the task at once, with a typed reason.
         end({ kind: "crashed", error: `the model provider refused the task's token (status ${String(refusal.status)})` });
-        if (agent !== undefined && session !== undefined) {
-          void agent.cancel(session);
-        }
+        void cancelTurn();
       },
       // F-068: the key proxy enforces the task's spend cap, in a session across turns only (minor 1).
       ...(acrossTurns && taskSpec.limits.spendCap !== undefined
@@ -832,9 +1071,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
             onSpendCapReached: (reached: SpendCapReached) => {
               log.info("the spend cap is reached: ending the turn", { unit: reached.unit, observed: reached.observed });
               end({ kind: "limit", limit: "spend-cap", observed: reached.observed });
-              if (agent !== undefined && session !== undefined) {
-                void agent.cancel(session).catch(() => undefined);
-              }
+              void cancelTurn();
             },
           }
         : {}),
@@ -1121,6 +1358,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       mcp: { url: mcp.url, bearer: mcp.bearer },
       instructions: taskSpec.agent.instructions,
       extraEnv: agentVariables(taskSpec),
+      // Milestone 3 (ADR 0049): a `native` agent writes the rules into its own settings as "ask".
+      approvalRules: taskSpec.agent.approvalRules ?? [],
+      taskRules: [...taskRules],
+      mode,
     });
     if (!launch.ok) {
       return failed(`the agent couldn't be launched: ${launch.error.message}`);
@@ -1282,9 +1523,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     stop: async (reason) => {
       log.info("stop requested", { reason });
       end({ kind: "stopped" });
-      if (agent !== undefined && session !== undefined) {
-        await agent.cancel(session).catch(() => undefined);
-      }
+      await cancelTurn();
       const deadline = new Promise<CommandOutcome>((resolve) => {
         setTimeout(() => {
           resolve({ result: "done", reason: "stop-still-pushing" });
@@ -1296,7 +1535,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       if (agent === undefined || session === undefined || turn === undefined) {
         return { result: "rejected", reason: "no-turn" };
       }
-      await agent.cancel(session);
+      await cancelTurn();
       return { result: "done" };
     },
     steer: async (body) => {
@@ -1316,24 +1555,22 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Queued for after the turn; an interrupt cancels the turn first.
       steers.push(body.text);
       if (body.delivery === "interrupt") {
-        await agent.cancel(session);
+        await cancelTurn();
       }
       return { result: "accepted" };
     },
     fence: async () => {
       end({ kind: "fenced" });
-      if (agent !== undefined && session !== undefined) {
-        await agent.cancel(session).catch(() => undefined);
-      }
+      await cancelTurn();
       await done;
     },
     abandon: async () => {
       end({ kind: "abandoned" });
-      if (agent !== undefined && session !== undefined) {
-        await agent.cancel(session).catch(() => undefined);
-      }
+      await cancelTurn();
       await done;
     },
+    answerApproval,
+    answerQuestion,
     endBetweenTurns: async () => {
       if (turnRunning) {
         return false;

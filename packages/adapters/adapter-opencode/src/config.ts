@@ -46,14 +46,42 @@ export const taskDirs = (agentDir: string) => ({
 export type TaskDirs = ReturnType<typeof taskDirs>;
 
 /**
- * Edit and shell inside the worktree are allowed, and `external_directory` is denied: with no
- * approval rules until F-026, the agent's reach ends at its task's workspace (AGENTS.md). Rules
- * are ordered, and the last that matches wins.
+ * Edit and shell inside the worktree are allowed, and `external_directory` is denied: the agent's
+ * reach ends at its task's workspace (AGENTS.md). Rules are ordered, and the last that matches
+ * wins. These are the whole of a task with no approval rule and no plan turn.
  */
 export const permissionRules = [
   { action: "*", resource: "*", effect: "allow" },
   { action: "external_directory", resource: "*", effect: "deny" },
 ] as const;
+
+/** OpenCode's permission action for each tool an approval rule watches (ADR 0049). */
+const ACTION_BY_TOOL = { edit: "edit", execute: "shell", fetch: "webfetch" } as const;
+type WatchedTool = keyof typeof ACTION_BY_TOOL;
+
+export type OpenCodePermissionRule = { readonly action: string; readonly resource: string; readonly effect: "allow" | "ask" | "deny" };
+
+const isWatched = (tool: string): tool is WatchedTool => Object.hasOwn(ACTION_BY_TOOL, tool);
+
+/**
+ * The task's permissions (F-026, F-063). OpenCode declares `permissionRules: "runner-only"` until
+ * ticket 08 writes the rules into its own settings, so the runner's check must stand: OpenCode asks
+ * the runner before each call of a tool a rule watches (the tools of the profile's rules and of the
+ * task rules, and all three in a plan turn), and the runner decides each request. The rest stays
+ * allowed, and `external_directory` stays denied, last, so it always wins.
+ */
+export const taskPermissionRules = (input: PrepareLaunchInput): readonly OpenCodePermissionRule[] => {
+  const watched = new Set<WatchedTool>();
+  const tools = [...(input.approvalRules ?? []).map((rule) => rule.tool), ...(input.taskRules ?? []).map((rule) => rule.tool)];
+  for (const tool of input.mode === "plan" ? [...tools, "edit", "execute", "fetch"] : tools) {
+    if (isWatched(tool)) {
+      watched.add(tool);
+    }
+  }
+  const [allowAll, denyOutside] = permissionRules;
+  const asks = [...watched].sort().map((tool): OpenCodePermissionRule => ({ action: ACTION_BY_TOOL[tool], resource: "*", effect: "ask" }));
+  return [allowAll, ...asks, denyOutside];
+};
 
 export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath: string | null): Record<string, unknown> => {
   const { model } = input;
@@ -67,7 +95,7 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
     // Nothing leaves the box on OpenCode's own account.
     share: "disabled",
     update: "disable",
-    permissions: permissionRules,
+    permissions: taskPermissionRules(input),
     experimental: { todo: true },
     providers: {
       [PROVIDER_ID]: {

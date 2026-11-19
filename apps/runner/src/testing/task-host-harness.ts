@@ -5,9 +5,9 @@ import { HostExecutor } from "@ostra/adapter-executor-host";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, ExportSessionInput, LogRecord } from "@ostra/adapter-sdk";
 import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
-import type { GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
+import type { GitUpstream, StubBrain, StubServer } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, clientMessageIdSchema, runnerIdSchema, sessionIdSchema, taskCredentialsSchema, taskIdSchema } from "@ostra/protocol";
-import type { BoxId, Command, RunnerEvent, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
+import type { BoxId, Command, Peer, RunnerEvent, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { startConnection } from "../connection/peer.ts";
 import type { RunnerConnection } from "../connection/peer.ts";
@@ -54,12 +54,15 @@ export type Shared = {
   readonly close: () => Promise<void>;
 };
 
-export const startShared = async (name: string): Promise<Shared> => {
+/** What a file's tests share can differ: the stub model's brain, for a test on a real agent (OpenCode). */
+export type SharedOptions = { readonly brain?: StubBrain };
+
+export const startShared = async (name: string, options: SharedOptions = {}): Promise<Shared> => {
   const root = await mkdtemp(path.join(os.tmpdir(), `ostra-${name}-`));
   const upstream = await startGitUpstream(path.join(root, "upstream"));
   await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n", "notes.txt": "notes\n" });
   upstream.tokens.set(GIT_TOKEN, Date.now() + 3_600_000);
-  const models = await startAnthropicStub({ realKey: MODEL_TOKEN, models: ["stub-model"], brain: () => ({ text: "ok" }) });
+  const models = await startAnthropicStub({ realKey: MODEL_TOKEN, models: ["stub-model"], brain: options.brain ?? (() => ({ text: "ok" })) });
   return {
     root,
     upstream,
@@ -79,6 +82,11 @@ export type HarnessOptions = {
   readonly dataDir?: string;
   /** The agent adapters, by name. Default: the fake agents. */
   readonly agents?: AgentRegistry;
+  /**
+   * Who the connection says it is: the runner (default), or a box's sidecar for one task, as
+   * `ostra sidecar` connects (ADR 0029, Q129: core sends a box's commands to its sidecar).
+   */
+  readonly peer?: Peer;
 };
 
 export type Harness = {
@@ -159,7 +167,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
   });
   holder.connection = await startConnection({
     serverUrl: server.url,
-    peer: { kind: "runner", runnerId },
+    peer: options.peer ?? { kind: "runner", runnerId },
     tokens,
     dataDir,
     handlers: host.handlers,
@@ -204,10 +212,9 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
     taskFor: (prompt, patch = {}) => {
       tasks += 1;
       const stamp = `${String(run)}-${String(tasks)}-${String(Date.now())}`;
-      const taskId = taskIdSchema.parse(`0196f1a0-m2-${stamp}`);
       const spec: TaskSpec = {
         ...taskSpecFixture,
-        taskId,
+        taskId: taskIdSchema.parse(`0196f1a0-m2-${stamp}`),
         sessionId: sessionIdSchema.parse(`session-m2-${stamp}`),
         branchName: `ostra/m2-${stamp}-work`,
         prompt,
@@ -217,6 +224,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
         limits: { turnMaxMinutes: 30, idleMinutes: 60 },
         ...patch,
       };
+      const taskId = spec.taskId;
       const credentials = taskCredentialsSchema.parse({
         taskId,
         leaseEpoch: spec.leaseEpoch,

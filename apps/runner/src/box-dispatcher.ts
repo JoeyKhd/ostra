@@ -187,7 +187,9 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       options.link.statusChanged();
       return done({ result: "accepted" });
     },
-    // A box's task is its sidecar's: the server sends it these.
+    // A box's task is its sidecar's: core's outbox sends these to the box's own connection (Q129),
+    // where the sidecar's task host answers them as `host` does. One that reaches the runner was
+    // misrouted, and is refused so core sees it.
     stop: () => done({ result: "done", reason: "the box's sidecar stops it" }),
     interrupt: () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     steer: () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
@@ -200,14 +202,15 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     "update-hint": (command) => {
       log.info("a newer runner is available", { version: command.body.version });
       return done({ result: "done" });
-    },    // Protocol minor 1. A box is removed when its sidecar exits, so a box not running here is already
+    },
+    // Protocol minor 1. A box is removed when its sidecar exits, so a box not running here is already
     // gone. Ticket 23 keeps stopped boxes and releases them here.
     release: (command) => {
       const held = running.has(command.body.boxId);
       log.info("release asked", { taskId: command.body.taskId, boxId: command.body.boxId, reason: command.body.reason, held });
       return done(held ? { result: "rejected", reason: "box-busy" } : { result: "done", reason: "not-held" });
     },
-    // Protocol minor 2. A box's answers go to its sidecar; snapshot builds come with ticket 14.
+    // Protocol minor 2. A box's answers go to its sidecar, as above; snapshot builds come with ticket 14.
     "question-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "plan-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),

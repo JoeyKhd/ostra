@@ -138,6 +138,8 @@ export const fakeScripts = [
   "ask-command",
   /** Asks to edit `pair-a.txt` and `pair-b.txt` at once. */
   "ask-pair",
+  /** Asks to run each of the commands given, separated by `;`, at once, and says which ran. */
+  "ask-commands",
   /** A plan: plan entries, a write attempted, a tool called on each MCP server, and a message. */
   "plan-turn",
   /** Says the session's mode. */
@@ -538,6 +540,21 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         ]);
         await say(`pair: a=${first} b=${second}`);
         return first === "denied" || second === "denied" ? afterDeny(io, "edit") : "end_turn";
+      }
+
+      case "ask-commands": {
+        const commands = args.split(";").map((each) => each.trim()).filter((each) => each !== "");
+        const outcomes = await Promise.all(
+          commands.map((command, index) =>
+            askedTool(
+              io,
+              { toolCallId: `ask-commands-${String(index + 1)}`, title: command, kind: "execute", rawInput: { command }, subject: { tool: "execute", subject: { kind: "command", value: command } } },
+              () => Promise.resolve(),
+            ),
+          ),
+        );
+        await say(`commands: ${commands.map((command, index) => `${command}=${outcomes[index] ?? "denied"}`).join(", ")}`);
+        return outcomes.includes("denied") ? afterDeny(io, "command") : "end_turn";
       }
 
       case "plan-turn": {

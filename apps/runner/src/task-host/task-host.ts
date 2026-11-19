@@ -150,8 +150,11 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.steer(command.body);
     },
-    // Approvals answered in the panel come with F-026 (milestone 3): milestone 1 answers them itself.
-    "approval-answer": () => done({ result: "rejected", reason: "no-pending-approval" }),
+    // Minor 2 (F-026, ticket 30): a person's answer to a held approval, the driver's to a question.
+    "approval-answer": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "no-pending-approval" }) : run.answerApproval(command.body);
+    },
     drain: () => {
       draining = true;
       log.info("draining: no new tasks");
@@ -164,9 +167,12 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
     },
     // Protocol minor 1: remove a kept box (ticket 23). Idempotent: a box already gone acks `done`.
     release: (command) => release(command.body),
-    // Protocol minor 2. Questions and plans are answered with tickets 30 and 31; the `host`
-    // executor builds no snapshot image (ADR 0038), so it refuses a build.
-    "question-answer": () => done({ result: "rejected", reason: "no-pending-question" }),
+    "question-answer": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "no-pending-question" }) : run.answerQuestion(command.body);
+    },
+    // Protocol minor 2. Plans are answered with ticket 31; the `host` executor builds no snapshot
+    // image (ADR 0038), so it refuses a build.
     "plan-answer": () => done({ result: "rejected", reason: "no-pending-plan" }),
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };
