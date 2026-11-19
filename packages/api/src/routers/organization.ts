@@ -1,9 +1,10 @@
+import { retentionInEffect } from "@ostra/domain";
 import { memberIdSchema, organizationIdSchema, userIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { highestRole, organizationRoleNames } from "../auth/roles.ts";
-import { adminProcedure, authedProcedure, memberProcedure, router } from "../trpc/init.ts";
+import { adminProcedure, authedProcedure, instanceAdminProcedure, memberProcedure, router } from "../trpc/init.ts";
 
 // The organization and its members (ticket 30, F-003's first slice). Roles are `admin` and
 // `member` only (ADR 0026). Invitations and the rest of F-002 are milestone 4.
@@ -75,7 +76,56 @@ export const meRouter = router({
   }),
 });
 
+const storageViewSchema = z.object({
+  /** The blob store in use, and whether it answers (F-114). */
+  store: z.object({
+    name: z.enum(["postgres", "s3"]),
+    health: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("ok") }),
+      z.object({ status: z.literal("degraded"), reason: z.string() }),
+      z.object({ status: z.literal("down"), reason: z.string() }),
+    ]),
+    /** The S3-compatible store is the one in use, with its settings complete (`OSTRA_BLOB_STORE=s3`). */
+    s3Configured: z.boolean(),
+  }),
+  /** This organization's blobs only. */
+  blobCount: z.number().int(),
+  totalBytes: z.number().int(),
+  /** The largest blob (`OSTRA_BLOB_MAX_MIB`), in bytes. */
+  capBytes: z.number().int(),
+  /** The retention in effect: a saved choice wins over `OSTRA_RETENTION_DAYS`; `days: null` keeps. */
+  retention: z.object({ days: z.number().int().nullable(), source: z.enum(["saved", "env", "default"]), savedAt: z.number().int().nullable() }),
+  /** The newest `retention.swept` entry of the audit log (ticket 20): when, and what it recorded. */
+  lastSweep: z.object({ at: z.number().int(), data: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])) }).nullable(),
+});
+
 export const organizationRouter = router({
+  /**
+   * Storage and retention (F-114, F-079, ticket 31), for instance admins: the blob store in use, how
+   * much this organization keeps in it, and how long finished tasks' histories, archives and blobs
+   * are kept.
+   */
+  storage: instanceAdminProcedure.output(storageViewSchema).query(async ({ ctx }) => {
+    const { db, settings, blobStore } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
+    const [totals, instance, sweep, health] = await Promise.all([
+      db.blob.aggregate({ where: { organizationId }, _count: { _all: true }, _sum: { size: true } }),
+      db.instanceSetting.findUnique({ where: { id: "instance" }, select: { retentionDays: true, retentionSetAt: true } }),
+      db.auditEntry.findFirst({ where: { organizationId, action: "retention.swept" }, orderBy: { createdAt: "desc" }, select: { createdAt: true, data: true } }),
+      blobStore.health(),
+    ]);
+    const retention = retentionInEffect(instance, settings.retentionDays);
+    const data = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).safeParse(sweep?.data);
+    return {
+      store: { name: blobStore.name, health, s3Configured: settings.blobStore.kind === "s3" },
+      blobCount: totals._count._all,
+      totalBytes: totals._sum.size ?? 0,
+      capBytes: settings.blobStore.maxBytes,
+      retention: { days: retention.days, source: retention.source, savedAt: instance?.retentionSetAt?.getTime() ?? null },
+      lastSweep: sweep === null ? null : { at: sweep.createdAt.getTime(), data: data.success ? data.data : {} },
+    };
+  }),
+
   get: memberProcedure.output(organizationViewSchema).query(async ({ ctx }) => {
     const row = await ctx.deps.db.organization.findUnique({
       where: { id: ctx.scope.organizationId },

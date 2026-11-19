@@ -12,6 +12,7 @@ import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
 import { appendServerEvent } from "./server-events.ts";
 
 // F-097: a member starts a code task in a project by typing a prompt. In one transaction: the task
@@ -38,6 +39,8 @@ export type CreatePromptTaskResult = UseCaseResult<
   | "provider-not-allowed-on-personal-runners"
   | "no-agent-profile"
   | "no-repo"
+  /** A repo's default branch requires signed commits (F-055, ticket 31). */
+  | "repo-unsupported"
 >;
 
 export type CreatePromptTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & {
@@ -139,6 +142,13 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
     return refuse("no-repo", "The project has no repo");
+  }
+
+  // F-055: ostra's commits aren't signed, so a repo that requires signed commits can't take a task.
+  // The router refreshed the stored check just before this transaction; `unknown` never refuses.
+  const unsupported = await unsupportedRepos(tx, organizationId, projectIdSchema.parse(project.id));
+  if (unsupported.length > 0) {
+    return refuse("repo-unsupported", signedCommitRefusal(unsupported));
   }
 
   // "Run on": the member's own personal runner, or the project's pools (unset).

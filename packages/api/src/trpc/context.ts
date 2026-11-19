@@ -6,12 +6,24 @@ import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
 import type { MemberContext, SessionUser } from "../auth/scope.ts";
 import type { CatalogSource } from "../catalog/catalog-source.ts";
+import type { BlobStoreView } from "../services/blob-store-view.ts";
 import type { StreamHub } from "../stream/hub.ts";
 
 /** The settings the routers read: a subset of the server's, so a test names only what it needs. */
 export type ApiSettings = Pick<
   ServerSettings,
-  "mode" | "publicUrl" | "corePublicUrl" | "catalogFetch" | "openSignupAccounts" | "openSignupOrganizations" | "allowDefaultPassword"
+  | "mode"
+  | "publicUrl"
+  | "corePublicUrl"
+  | "catalogFetch"
+  | "openSignupAccounts"
+  | "openSignupOrganizations"
+  | "allowDefaultPassword"
+  // Milestone 2: the storage page and the Linear page read these (tickets 27 and 31).
+  | "retentionDays"
+  | "blobStore"
+  | "trackerPollSeconds"
+  | "reconcileMinutes"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
@@ -25,6 +37,8 @@ export type ApiDeps = {
   /** better-auth's `hashPassword`, handed to the domain so it doesn't import the auth library. */
   readonly hashPassword: (password: string) => Promise<string>;
   readonly catalog: CatalogSource;
+  /** The blob store's name and health, for the storage page (F-114, ticket 31). */
+  readonly blobStore: BlobStoreView;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */

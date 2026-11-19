@@ -59,4 +59,5 @@ export * from "./use-cases/reopen.ts";
 export * from "./use-cases/sessions-m2.ts";
 export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";
+export * from "./use-cases/repo-checks.ts";
 export * from "./environment/detect.ts";

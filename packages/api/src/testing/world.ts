@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import { notifyChannels } from "@ostra/db";
 import { ensureBuiltInAgentProfile } from "@ostra/domain";
-import { projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { ConnectionId, OrganizationId, ProjectId, RunnerId, SessionId, TaskEvent, TaskId } from "@ostra/protocol";
+import { boardIdSchema, connectionIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
+import type { BoardId, ConnectionId, OrganizationId, ProjectId, RunnerId, SessionId, TaskEvent, TaskId, TicketId } from "@ostra/protocol";
 
 import type { ApiHarness } from "./harness.ts";
 
@@ -196,4 +196,99 @@ export const writeLiveText = async (
 
 export const deleteLiveText = async (harness: ApiHarness, task: SeededTask, segmentId: string): Promise<void> => {
   await harness.test.db.$executeRaw`DELETE FROM "ostra_live"."live_text" WHERE "taskId" = ${task.taskId} AND "segmentId" = ${segmentId}`;
+};
+
+// ---------- milestone 2: a Linear connection, a board and tickets ----------
+
+/** Organization A's Linear connection, written directly: the API's tests of boards and the Inbox start from it. */
+export const seedLinearConnection = async (
+  harness: ApiHarness,
+  over: { readonly organizationId?: OrganizationId; readonly state?: "pending" | "active" | "failed" | "revoked" } = {},
+): Promise<ConnectionId> => {
+  const row = await harness.test.db.connection.create({
+    data: {
+      organizationId: over.organizationId ?? harness.fixture.a.organization.id,
+      kind: "linear",
+      appId: "linear-client-id",
+      state: over.state ?? "active",
+      credentialKind: "app_oauth",
+      externalWorkspaceId: "workspace-1",
+      externalWorkspaceKey: "ostra-test",
+      externalWorkspaceName: "ostra-test",
+      appUserId: "app-user-1",
+      appUserName: "ostra",
+      activatedAt: new Date(),
+    },
+    select: { id: true },
+  });
+  return connectionIdSchema.parse(row.id);
+};
+
+export const seedBoard = async (
+  harness: ApiHarness,
+  input: { readonly projectId: ProjectId; readonly connectionId: ConnectionId; readonly externalId?: string; readonly key?: string; readonly organizationId?: OrganizationId },
+): Promise<BoardId> => {
+  const row = await harness.test.db.board.create({
+    data: {
+      organizationId: input.organizationId ?? harness.fixture.a.organization.id,
+      projectId: input.projectId,
+      connectionId: input.connectionId,
+      externalId: input.externalId ?? "team-1",
+      name: "Engineering",
+      key: input.key ?? "ENG",
+      statusMap: { open: ["s-backlog", "s-todo"], started: "s-progress", inReview: "s-review", done: "s-done", doneBy: "ostra", magicWord: "Closes" },
+    },
+    select: { id: true },
+  });
+  return boardIdSchema.parse(row.id);
+};
+
+let ticketCounter = 0;
+
+/** A cached ticket row. */
+export const seedTicket = async (
+  harness: ApiHarness,
+  input: {
+    readonly projectId: ProjectId;
+    readonly boardId: BoardId;
+    readonly connectionId: ConnectionId;
+    readonly organizationId?: OrganizationId;
+    readonly key?: string;
+    readonly title?: string;
+    readonly description?: string | null;
+    readonly statusId?: string;
+    readonly statusName?: string;
+    readonly statusCategory?: "open" | "started" | "done" | "cancelled";
+    readonly priority?: number | null;
+    readonly labels?: readonly string[];
+    readonly open?: boolean;
+    readonly trackerUpdatedAt?: Date;
+    readonly removedAt?: Date | null;
+  },
+): Promise<TicketId> => {
+  ticketCounter += 1;
+  const key = input.key ?? `ENG-${String(ticketCounter)}`;
+  const row = await harness.test.db.ticket.create({
+    data: {
+      organizationId: input.organizationId ?? harness.fixture.a.organization.id,
+      projectId: input.projectId,
+      boardId: input.boardId,
+      connectionId: input.connectionId,
+      externalId: `ext-${key}-${randomBytes(3).toString("hex")}`,
+      key,
+      title: input.title ?? `Ticket ${key}`,
+      description: input.description === undefined ? "A description" : input.description,
+      statusId: input.statusId ?? "s-todo",
+      statusName: input.statusName ?? "Todo",
+      statusCategory: input.statusCategory ?? "open",
+      priority: input.priority === undefined ? null : input.priority,
+      labels: [...(input.labels ?? [])],
+      url: `https://linear.app/ostra-test/issue/${key}`,
+      open: input.open ?? true,
+      trackerUpdatedAt: input.trackerUpdatedAt ?? new Date(),
+      removedAt: input.removedAt ?? null,
+    },
+    select: { id: true },
+  });
+  return ticketIdSchema.parse(row.id);
 };

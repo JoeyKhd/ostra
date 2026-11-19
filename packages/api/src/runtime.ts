@@ -9,6 +9,7 @@ import type { OstraAuth } from "./auth/create-auth.ts";
 import { ensureFirstAdmin } from "./auth/first-admin.ts";
 import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
+import type { BlobStoreView } from "./services/blob-store-view.ts";
 import { createStreamHub } from "./stream/hub.ts";
 import type { ApiDeps, Context } from "./trpc/context.ts";
 import { createContext } from "./trpc/context.ts";
@@ -27,6 +28,8 @@ export type ApiRuntimeInput = {
   /** Core's command outbox implementation (ADR 0034). */
   readonly outbox: CommandOutbox;
   readonly catalog: CatalogSource;
+  /** The blob store's name and health, for the storage page (ticket 31). */
+  readonly blobStore: BlobStoreView;
   readonly logger: Logger;
 };
 
@@ -74,6 +77,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     logger: input.logger,
     hashPassword,
     catalog: input.catalog,
+    blobStore: input.blobStore,
     stream: hub,
   };
 

@@ -152,6 +152,19 @@ const build = async (): Promise<ApiRuntime> => {
       clock: systemClock,
       logger,
     }),
+    blobStore: {
+      name: settings.blobStore.kind,
+      // The built-in store lives in the database: it is as healthy as a query. An S3-compatible
+      // store's own health check joins this when its adapter is wired into the panel.
+      health: async () => {
+        try {
+          await db.$queryRaw`SELECT 1`;
+          return { status: "ok" };
+        } catch {
+          return { status: "down", reason: "The database did not answer." };
+        }
+      },
+    },
     logger,
   });
   logger.info("web.started", { mode: settings.mode, publicUrl: settings.publicUrl });

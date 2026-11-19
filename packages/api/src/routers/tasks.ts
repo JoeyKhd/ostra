@@ -1,5 +1,6 @@
 import {
   appendServerEvent,
+  checkProjectRepos,
   createPromptTask,
   createPromptTaskInputSchema,
   waitingFor,
@@ -162,6 +163,12 @@ export const tasksRouter = router({
   /** Starts a code task from a prompt (F-097): no ticket is created. */
   create: projectProcedure("read", createPromptTaskInputSchema).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;
+    // F-055: the repos' branch rules are read again as a task starts, so the use case refuses on a
+    // current answer. A host that can't say never refuses.
+    await checkProjectRepos(
+      { db, clock: ports.clock, adapters: ports.adapters },
+      { organizationId: ctx.scope.organizationId, projectId: input.projectId, force: true },
+    );
     const result = await db.$transaction((tx) => createPromptTask({ tx, scope: ctx.scope, ...ports }, input));
     const created = unwrap(result, {
       "not-found": "NOT_FOUND",
@@ -170,6 +177,7 @@ export const tasksRouter = router({
       "provider-not-allowed-on-personal-runners": "PRECONDITION_FAILED",
       "no-agent-profile": "PRECONDITION_FAILED",
       "no-repo": "PRECONDITION_FAILED",
+      "repo-unsupported": "PRECONDITION_FAILED",
     });
     return { taskId: created.taskId, sessionId: created.sessionId, branchName: created.branchName };
   }),

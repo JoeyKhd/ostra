@@ -73,6 +73,17 @@ export const adminProcedure = memberProcedure.use(({ ctx, next }) => {
   return next();
 });
 
+/**
+ * The instance admin (Q102), apart from an organization admin: the install's own settings, such as
+ * its retention and its storage, are theirs. The first admin is both (F-001).
+ */
+export const instanceAdminProcedure = memberProcedure.use(({ ctx, next }) => {
+  if (!ctx.user.instanceAdmin) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only an instance admin may do this" });
+  }
+  return next();
+});
+
 /** An `AccessDenied` code as the tRPC error a caller sees. */
 export const denied = (code: "not-found" | "forbidden", what: string): TRPCError =>
   code === "not-found"

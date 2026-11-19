@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { CodeHostAdapter, ModelProviderAdapter, SecretStoreAdapter, adapterError, ok, secretRefSchema } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
+  BranchRules,
   AppInfo,
   AppManifest,
   AppManifestInput,
@@ -145,7 +146,7 @@ export type FakeApp = {
 /** A code host with a few Apps, their installations, repos and files. */
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true };
   /** By App ID. */
   readonly apps = new Map<string, FakeApp>();
   /** File contents by `owner/name`, then path. */
@@ -156,6 +157,12 @@ export class FakeCodeHost extends CodeHostAdapter {
   readonly manifestCodes = new Map<string, CreatedApp>();
   /** The manifests `appManifest` produced. */
   readonly manifests: AppManifestInput[] = [];
+  /** What `readBranchRules` answers for a repo (`owner/name`); a repo not listed is unprotected and unsigned. */
+  readonly branchRules = new Map<string, BranchRules>();
+  /** How `readBranchRules` fails for every repo: `unsupported` like a host without the capability, or `down`. */
+  branchRulesFailure: "unsupported" | "down" | null = null;
+  /** How many times `readBranchRules` was called. */
+  branchRulesReads = 0;
 
   health(): Promise<HealthReport> {
     return healthy;
@@ -266,5 +273,16 @@ export class FakeCodeHost extends CodeHostAdapter {
 
   verifyWebhook(): boolean {
     return false;
+  }
+
+  override readBranchRules(access: RepoAccess): Promise<AdapterResult<BranchRules>> {
+    this.branchRulesReads += 1;
+    if (this.branchRulesFailure === "unsupported") {
+      return Promise.resolve(adapterError("unsupported", "the fake code host can't read branch rules"));
+    }
+    if (this.branchRulesFailure === "down") {
+      return Promise.resolve(adapterError("unavailable", "the fake code host did not answer"));
+    }
+    return Promise.resolve(ok(this.branchRules.get(access.repo) ?? { protected: false, requiresSignedCommits: false, reasons: [] }));
   }
 }

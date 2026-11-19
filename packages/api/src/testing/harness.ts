@@ -104,7 +104,12 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       openSignupAccounts: false,
       openSignupOrganizations: false,
       allowDefaultPassword,
+      retentionDays: null,
+      blobStore: { kind: "postgres", maxBytes: 64 * 1024 * 1024 },
+      trackerPollSeconds: 60,
+      reconcileMinutes: 5,
     },
+    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
     ports: {
       jobs,
       outbox,
