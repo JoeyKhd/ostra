@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -41,5 +41,16 @@ describe("the secret a fresh install generates (self-hosting: no setting needed)
   it("agrees between two processes starting at once", async () => {
     const [a, b] = await Promise.all([loadServerSecrets({ dataDir, betterAuthSecret: null }), loadServerSecrets({ dataDir, betterAuthSecret: null })]);
     expect(a).toEqual(b);
+  });
+
+  it("agrees between many starting at once, and none reads the file half written", async () => {
+    // Twenty at once, five times over, each in a fresh folder: a writer that made the file before
+    // it wrote the value let another read it empty, and fail ("could not be read back").
+    for (let round = 0; round < 5; round += 1) {
+      const folder = path.join(dataDir, `round-${String(round)}`);
+      const all = await Promise.all(Array.from({ length: 20 }, () => loadServerSecrets({ dataDir: folder, betterAuthSecret: null })));
+      expect(new Set(all.map((secrets) => secrets.betterAuthSecret)).size).toBe(1);
+      expect(await readdir(folder)).toEqual(["better-auth-secret"]);
+    }
   });
 });

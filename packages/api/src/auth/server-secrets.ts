@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { ServerSettings } from "@ostra/domain";
@@ -37,13 +37,19 @@ const readKept = async (file: string): Promise<string | null> => {
 
 const keep = async (file: string, value: string): Promise<void> => {
   await mkdir(path.dirname(file), { recursive: true });
-  // `wx`: never overwrite a value another process just wrote.
+  // Written whole under a name of its own, then linked into place. A `wx` write made the file
+  // before it held the value, so a second process starting at the same moment could read it
+  // empty and fail. `link` is atomic and never overwrites a value another process just kept.
+  const draft = `${file}.${randomBytes(6).toString("hex")}.draft`;
+  await writeFile(draft, `${value}\n`, { mode: 0o600, flag: "wx" });
   try {
-    await writeFile(file, `${value}\n`, { mode: 0o600, flag: "wx" });
+    await link(draft, file);
   } catch (error) {
     if (Reflect.get(Object(error), "code") !== "EEXIST") {
       throw error;
     }
+  } finally {
+    await rm(draft, { force: true });
   }
   // Windows has no file modes; chmod there is a no-op, not an error.
   await chmod(file, 0o600).catch(() => undefined);
