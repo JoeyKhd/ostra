@@ -401,3 +401,103 @@ describe("the executor's git, where the agent controls the checkout", () => {
     await executor.release(box);
   });
 });
+
+describe("a workspace per task (F-016)", () => {
+  const prepared = async (box: BoxRef): Promise<{ readonly spec: TaskSpec; readonly workspaceDir: string }> => {
+    const spec = twoRepoSpec(box, null);
+    const created = await executor.create({ ...box, spec, proxies });
+    if (!created.ok) throw new Error(created.error.message);
+    const ready = await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+    if (!ready.ok) throw new Error(ready.error.message);
+    return { spec, workspaceDir: created.value.workspaceDir };
+  };
+
+  it("F-016: every repo of the task is checked out side by side in its workspace, all on the task's one branch", async () => {
+    const box = newBox();
+    const { spec, workspaceDir } = await prepared(box);
+    expect((await readdir(workspaceDir)).sort()).toEqual(["test1", "test2"]);
+    for (const repo of spec.repos) {
+      const checkout = path.join(workspaceDir, repo.checkoutDir);
+      const top = (await run("git", ["rev-parse", "--show-toplevel"], { cwd: checkout })).stdout.trim();
+      expect(path.resolve(top)).toBe(path.resolve(checkout));
+      expect((await run("git", ["branch", "--show-current"], { cwd: checkout })).stdout.trim()).toBe(spec.branchName);
+    }
+    await executor.release(box);
+  });
+
+
+  it("F-016: the task's branch is made in each repo it changes, and in no other", async () => {
+    const box = newBox();
+    const { spec, workspaceDir } = await prepared(box);
+    const [one, two] = spec.repos;
+    if (one === undefined || two === undefined) throw new Error("two repos");
+    const push = () =>
+      executor.commitAndPush({ box, message: "Change", author: spec.gitIdentity, coAuthors: spec.coAuthors, branchName: spec.branchName, hiddenRef: `refs/ostra/wip/${box.taskId}` });
+
+    // A change in the second repo only: the branch is made there, not in the first.
+    await writeFile(path.join(workspaceDir, two.checkoutDir, "TWO.md"), "two\n");
+    expect((await push()).ok).toBe(true);
+    expect(await upstream.refSha(two.fullName, `refs/heads/${spec.branchName}`)).not.toBeNull();
+    expect(await upstream.refSha(one.fullName, `refs/heads/${spec.branchName}`)).toBeNull();
+
+    // Then a change in the first: the same name is made there too.
+    await writeFile(path.join(workspaceDir, one.checkoutDir, "ONE.md"), "one\n");
+    expect((await push()).ok).toBe(true);
+    expect(await upstream.treeFiles(one.fullName, `refs/heads/${spec.branchName}`)).toContain("ONE.md");
+    expect(await upstream.treeFiles(two.fullName, `refs/heads/${spec.branchName}`)).toContain("TWO.md");
+    await executor.release(box);
+  });
+  it("F-016: two tasks never share a workspace, a working tree or a branch, and one's release leaves the other whole", async () => {
+    const one = newBox();
+    const two = newBox();
+    const first = await prepared(one);
+    const second = await prepared(two);
+
+    expect(first.spec.branchName).not.toBe(second.spec.branchName);
+    const relative = path.relative(first.workspaceDir, second.workspaceDir);
+    expect(relative.startsWith("..")).toBe(true);
+    expect(path.relative(second.workspaceDir, first.workspaceDir).startsWith("..")).toBe(true);
+
+    for (const repo of first.spec.repos) {
+      const a = path.join(first.workspaceDir, repo.checkoutDir);
+      const b = path.join(second.workspaceDir, repo.checkoutDir);
+      const gitDir = async (dir: string): Promise<string> => path.resolve(dir, (await run("git", ["rev-parse", "--git-dir"], { cwd: dir })).stdout.trim());
+      expect(await gitDir(a)).not.toBe(await gitDir(b));
+      expect((await run("git", ["branch", "--show-current"], { cwd: a })).stdout.trim()).toBe(first.spec.branchName);
+      expect((await run("git", ["branch", "--show-current"], { cwd: b })).stdout.trim()).toBe(second.spec.branchName);
+    }
+
+    // The first task's change is in its tree only, and goes out on its branch only.
+    const [repo] = first.spec.repos;
+    if (repo === undefined) throw new Error("no repo");
+    await writeFile(path.join(first.workspaceDir, repo.checkoutDir, "ONE.md"), "one\n");
+    expect((await run("git", ["status", "--porcelain"], { cwd: path.join(second.workspaceDir, repo.checkoutDir) })).stdout.trim()).toBe("");
+    const pushed = await executor.commitAndPush({
+      box: one,
+      message: "Add ONE.md",
+      author: first.spec.gitIdentity,
+      coAuthors: first.spec.coAuthors,
+      branchName: first.spec.branchName,
+      hiddenRef: `refs/ostra/wip/${one.taskId}`,
+    });
+    expect(pushed.ok).toBe(true);
+    expect(await upstream.treeFiles(repo.fullName, `refs/heads/${first.spec.branchName}`)).toContain("ONE.md");
+    expect(await upstream.refSha(repo.fullName, `refs/heads/${second.spec.branchName}`)).toBeNull();
+
+    // Releasing the first task's box leaves the second's as it was.
+    expect(await executor.release(one)).toEqual({ ok: true, value: undefined });
+    expect(await exists(first.workspaceDir)).toBe(false);
+    expect(await exists(path.join(second.workspaceDir, repo.checkoutDir, "README.md"))).toBe(true);
+    expect(await executor.state(two)).toEqual({ ok: true, value: "ready" });
+    await executor.release(two);
+  });
+
+  it("F-016: a box serves one task: its ID can't be created twice, and a released box isn't prepared again", async () => {
+    const box = newBox();
+    const spec = twoRepoSpec(box, null);
+    expect((await executor.create({ ...box, spec, proxies })).ok).toBe(true);
+    expect(await executor.create({ ...box, spec, proxies })).toMatchObject({ ok: false, error: { code: "conflict" } });
+    await executor.release(box);
+    expect(await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined })).toMatchObject({ ok: false, error: { code: "conflict" } });
+  });
+});

@@ -63,7 +63,7 @@ describe("a box's resources", () => {
     expect(boxResources({ ...input, baseImage: "node:24-bookworm" }, { images }).agent.body.Image).toBe("node:24-bookworm");
   });
 
-  it("gives the sidecar the token file, read-only, and the server; the agent gets neither", () => {
+  it("F-017: gives the sidecar the token file, read-only, and the server; the agent gets neither", () => {
     const resources = boxResources(input, { images, runtime: "runsc" });
     const sidecar = resources.sidecar.body;
     expect(sidecar.Image).toBe(images.runner);
