@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 
 import { devDatabaseUrl, devPgPort } from "@ostra/db/dev";
+import type { TaskId } from "@ostra/protocol";
 import pg from "pg";
+import { z } from "zod";
 
 import type { DemoGitHub } from "./github.ts";
 import type { DemoSettings } from "./settings.ts";
@@ -31,11 +33,11 @@ const runGit = (args: readonly string[], cwd: string, home: string): Promise<Git
   });
 
 /** The task's checkout of the demo repo, while the task runs on the host executor. */
-export const taskCheckout = (settings: DemoSettings, taskId: string): string =>
+export const taskCheckout = (settings: DemoSettings, taskId: TaskId): string =>
   path.join(settings.runnerDataDir, "tasks", taskId, "workspace", settings.githubRepo);
 
 /** From the task's checkout, pushes to `main` and to another repo must be refused by the git proxy. */
-export const checkGitProxy = async (settings: DemoSettings, taskId: string): Promise<readonly CheckResult[]> => {
+export const checkGitProxy = async (settings: DemoSettings, taskId: TaskId): Promise<readonly CheckResult[]> => {
   const checkout = taskCheckout(settings, taskId);
   const home = await mkdtemp(path.join(os.tmpdir(), "ostra-e2e-git-"));
   try {
@@ -64,13 +66,19 @@ const withDatabase = async <T,>(run: (client: pg.Client) => Promise<T>): Promise
   }
 };
 
-const countRows = (result: pg.QueryResult): number => Number(Reflect.get(Object(result.rows[0]), "n"));
+// What a query returns is external data: each row is parsed with a schema, never claimed.
+const countRowSchema = z.object({ n: z.coerce.number() });
 
-const branchOf = async (taskId: string): Promise<string> => {
+/** The `n` of a `SELECT count(*) AS n` result: a row that isn't a number fails, it doesn't become NaN. */
+export const countRows = (result: pg.QueryResult): number => countRowSchema.parse(result.rows[0]).n;
+
+const branchRowSchema = z.object({ name: z.string() });
+
+const branchOf = async (taskId: TaskId): Promise<string> => {
   const result = await withDatabase((client) => client.query(`SELECT "branchName" AS name FROM task WHERE id = $1`, [taskId]));
-  const name: unknown = Reflect.get(Object(result.rows[0]), "name");
-  if (typeof name !== "string") throw new Error("no such task");
-  return name;
+  const row = branchRowSchema.safeParse(result.rows[0]);
+  if (!row.success) throw new Error("no such task");
+  return row.data.name;
 };
 
 /** The real model token and any GitHub token or key appear in no event, no log line and no task folder left behind. */
@@ -97,8 +105,18 @@ export const checkNoCredential = async (settings: DemoSettings, logFiles: readon
   };
 };
 
+const tokensRowSchema = z.object({
+  in: z.coerce.number(),
+  out: z.coerce.number(),
+  cache: z.coerce.number(),
+  eventsIn: z.coerce.number(),
+  eventsOut: z.coerce.number(),
+  calls: z.coerce.number(),
+});
+const zeroTokens: z.infer<typeof tokensRowSchema> = { in: 0, out: 0, cache: 0, eventsIn: 0, eventsOut: 0, calls: 0 };
+
 /** The key proxy's counts are stored with the session, and equal the sum of its usage events. */
-export const checkTokens = async (taskId: string): Promise<CheckResult> =>
+export const checkTokens = async (taskId: TaskId): Promise<CheckResult> =>
   withDatabase(async (client) => {
     const result = await client.query(
       `SELECT s."inputTokens" AS "in", s."outputTokens" AS "out", s."cacheReadTokens" AS "cache",
@@ -109,18 +127,19 @@ export const checkTokens = async (taskId: string): Promise<CheckResult> =>
         WHERE s."taskId" = $1 GROUP BY s.id`,
       [taskId],
     );
-    const row: unknown = result.rows[0];
-    const field = (name: string): number => Number(Reflect.get(Object(row), name));
-    const ok = row !== undefined && field("calls") > 0 && field("in") === field("eventsIn") && field("out") === field("eventsOut") && field("out") > 0;
+    // No session row is a failed check with zero counts; a row of the wrong shape throws.
+    const found = result.rows[0] !== undefined;
+    const row = found ? tokensRowSchema.parse(result.rows[0]) : zeroTokens;
+    const ok = found && row.calls > 0 && row.in === row.eventsIn && row.out === row.eventsOut && row.out > 0;
     return {
       name: "tokens counted by the key proxy and stored with the session",
       ok,
-      detail: `${String(field("calls"))} model calls; input ${String(field("in"))}, output ${String(field("out"))}, cache read ${String(field("cache"))}`,
+      detail: `${String(row.calls)} model calls; input ${String(row.in)}, output ${String(row.out)}, cache read ${String(row.cache)}`,
     };
   });
 
 /** A task that ended without changes opened no PR and has an open needs-you item with the agent's summary. */
-export const checkNoEmptyPr = async (github: DemoGitHub, taskId: string): Promise<CheckResult> => {
+export const checkNoEmptyPr = async (github: DemoGitHub, taskId: TaskId): Promise<CheckResult> => {
   const item = await withDatabase((client) =>
     client.query(`SELECT count(*)::int AS n FROM needs_you_item WHERE "taskId" = $1 AND state = 'open' AND coalesce(summary, '') <> ''`, [taskId]),
   );
@@ -135,7 +154,7 @@ export const checkNoEmptyPr = async (github: DemoGitHub, taskId: string): Promis
 };
 
 /** A stopped task left its branch and its hidden ref on GitHub. */
-export const checkStoppedRefs = async (github: DemoGitHub, taskId: string): Promise<CheckResult> => {
+export const checkStoppedRefs = async (github: DemoGitHub, taskId: TaskId): Promise<CheckResult> => {
   const branch = await branchOf(taskId);
   const branches = await github.octokit.rest.git.listMatchingRefs({ owner: github.owner, repo: github.repo, ref: `heads/${branch}` });
   const hidden = await github.octokit.rest.git.listMatchingRefs({ owner: github.owner, repo: github.repo, ref: `ostra/wip/${taskId}` });

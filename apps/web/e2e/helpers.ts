@@ -5,6 +5,9 @@ import { promisify } from "node:util";
 
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { taskIdSchema } from "@ostra/protocol";
+import type { TaskId } from "@ostra/protocol";
+import { z } from "zod";
 
 import { e2eAdmin, e2eBaseUrl } from "./settings.ts";
 
@@ -45,15 +48,19 @@ export const signIn = async (page: Page, identifier: string = e2eAdmin.username)
   throw new Error("signing in kept being rate limited");
 };
 
+// The stack file the e2e stack writes, and the line seed-task.ts prints: both are read through a schema.
+const stackSchema = z.object({ databaseUrl: z.string() });
+const seededSchema = z.object({ taskId: taskIdSchema });
+
 /** Seeds a task with a replayed log in the e2e database (`seed-task.ts`) and returns its ID. */
-export const seedTask = async (scenario: "mid-turn" | "rest" | "without-changes" | "long", taskId?: string): Promise<string> => {
-  const stack: unknown = JSON.parse(await readFile(path.join(import.meta.dirname, ".stack.json"), "utf8"));
-  const databaseUrl: unknown = typeof stack === "object" && stack !== null ? Reflect.get(stack, "databaseUrl") : undefined;
-  if (typeof databaseUrl !== "string") throw new Error("the e2e stack isn't running");
+export const seedTask = async (scenario: "mid-turn" | "rest" | "without-changes" | "long", taskId?: TaskId): Promise<TaskId> => {
+  const stack = stackSchema.safeParse(JSON.parse(await readFile(path.join(import.meta.dirname, ".stack.json"), "utf8")));
+  if (!stack.success) throw new Error("the e2e stack isn't running");
+  const databaseUrl = stack.data.databaseUrl;
   const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-task.ts"), JSON.stringify({ databaseUrl, scenario, ...(taskId === undefined ? {} : { taskId }) })], {
     cwd: path.resolve(import.meta.dirname, ".."),
   });
-  const id: unknown = Reflect.get(Object(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}")), "taskId");
-  if (typeof id !== "string") throw new Error("seeding the task failed");
-  return id;
+  const seeded = seededSchema.safeParse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}"));
+  if (!seeded.success) throw new Error("seeding the task failed");
+  return seeded.data.taskId;
 };

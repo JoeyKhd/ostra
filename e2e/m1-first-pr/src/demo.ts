@@ -13,6 +13,8 @@ import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { chromium } from "@playwright/test";
+import { taskIdSchema } from "@ostra/protocol";
+import type { TaskId } from "@ostra/protocol";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import { checkGitProxy, checkNoCredential, checkNoEmptyPr, checkStoppedRefs, checkTokens, taskCheckout } from "./checks.ts";
@@ -202,7 +204,7 @@ const connectRunner = async (page: Page, settings: DemoSettings): Promise<Runnin
   return runner;
 };
 
-const startTask = async (page: Page, settings: DemoSettings, projectHref: string, prompt: string): Promise<string> => {
+const startTask = async (page: Page, settings: DemoSettings, projectHref: string, prompt: string): Promise<TaskId> => {
   await page.goto(projectHref);
   const form = page.getByTestId("new-task");
   await form.locator("textarea").fill(prompt);
@@ -215,7 +217,7 @@ const startTask = async (page: Page, settings: DemoSettings, projectHref: string
   await screenshot(page, settings, "prompt");
   await form.getByRole("button", { name: /Start/ }).click();
   await page.waitForURL(/\/tasks\/[^/]+$/, { timeout: 30_000 });
-  const taskId = new URL(page.url()).pathname.split("/").at(-1) ?? "";
+  const taskId = taskIdSchema.parse(new URL(page.url()).pathname.split("/").at(-1));
   say(`task ${taskId} started`);
   return taskId;
 };
@@ -260,7 +262,7 @@ const watchUntilPullRequest = async (context: BrowserContext, page: Page, settin
 };
 
 /** A task whose prompt asks only for an explanation: it ends without changes and lands in needs you. */
-const emptyTask = async (page: Page, settings: DemoSettings, projectHref: string): Promise<string> => {
+const emptyTask = async (page: Page, settings: DemoSettings, projectHref: string): Promise<TaskId> => {
   const taskId = await startTask(page, settings, projectHref, "In two sentences, explain what this repository is for. Only answer: do not create, change or commit any file.");
   await page.getByTestId("needs-you").waitFor({ timeout: 15 * 60_000 });
   await screenshot(page, settings, "needs-you");
@@ -268,7 +270,7 @@ const emptyTask = async (page: Page, settings: DemoSettings, projectHref: string
 };
 
 /** A task stopped mid-turn; while it runs, the git proxy is tried from its checkout. */
-const stoppedTask = async (page: Page, settings: DemoSettings, projectHref: string): Promise<{ readonly taskId: string; readonly proxy: readonly CheckResult[] }> => {
+const stoppedTask = async (page: Page, settings: DemoSettings, projectHref: string): Promise<{ readonly taskId: TaskId; readonly proxy: readonly CheckResult[] }> => {
   const taskId = await startTask(
     page,
     settings,

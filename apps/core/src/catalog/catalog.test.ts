@@ -15,6 +15,7 @@ import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { organizationIdSchema, providerIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { PROVIDER_TOKEN, seedWorld } from "../testing/world.ts";
@@ -159,14 +160,16 @@ describe("catalog.refresh", () => {
     expect(entries.length).toBeGreaterThan(0);
     // No schedule either.
     await ensureSchedules({ db: test.db, jobs, catalogFetch: false });
-    expect(await test.db.$queryRaw<unknown[]>`SELECT 1 FROM pgboss.schedule WHERE name = 'catalog.refresh'`).toEqual([]);
+    expect(await test.db.$queryRaw<readonly unknown[]>`SELECT 1 FROM pgboss.schedule WHERE name = 'catalog.refresh'`).toEqual([]);
   });
 });
 
 describe("provider.refresh-models", () => {
   it("is scheduled daily per provider, and another organization's provider is out of reach", async () => {
     await ensureSchedules({ db: test.db, jobs, catalogFetch: true });
-    const rows = await test.db.$queryRaw<{ name: string; key: string }[]>`SELECT name, key FROM pgboss.schedule ORDER BY name, key`;
+    const rows = z
+      .array(z.object({ name: z.string(), key: z.string() }))
+      .parse(await test.db.$queryRaw<readonly unknown[]>`SELECT name, key FROM pgboss.schedule ORDER BY name, key`);
     expect(rows).toContainEqual({ name: "catalog.refresh", key: "daily" });
     expect(rows).toContainEqual({ name: "provider.refresh-models", key: world.providerId });
 

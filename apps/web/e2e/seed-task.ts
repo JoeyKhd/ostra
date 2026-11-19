@@ -13,14 +13,14 @@ import { randomUUID } from "node:crypto";
 
 import { createDb, notifyChannels } from "@ostra/db";
 import type { TaskEvent } from "@ostra/protocol";
-import { storedEventSchema, taskEventSchema } from "@ostra/protocol";
+import { storedEventSchema, taskEventSchema, taskIdSchema } from "@ostra/protocol";
 import { longSession, recordedOpenCodeSession } from "@ostra/task-view/testing";
 import { z } from "zod";
 
 const argsSchema = z.strictObject({
   databaseUrl: z.string(),
   scenario: z.enum(["mid-turn", "rest", "without-changes", "long"]),
-  taskId: z.string().optional(),
+  taskId: taskIdSchema.optional(),
 });
 
 const args = argsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));

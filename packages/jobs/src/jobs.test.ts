@@ -7,6 +7,7 @@ import type { JobPayload } from "@ostra/domain";
 import { leaseEpochSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { createJobs } from "./jobs.ts";
 import type { Jobs } from "./jobs.ts";
@@ -257,11 +258,13 @@ describe("schedules", () => {
   it("stores a schedule under its key and removes it", async () => {
     const core = await start("worker");
     await core.schedule("catalog.refresh", "daily", "0 4 * * *", {});
-    const rows = await test.db.$queryRaw<{ name: string; key: string; cron: string }[]>`
-      SELECT name, key, cron FROM pgboss.schedule WHERE name = 'catalog.refresh'`;
+    const rows = z.array(z.object({ name: z.string(), key: z.string(), cron: z.string() })).parse(
+      await test.db.$queryRaw<readonly unknown[]>`
+      SELECT name, key, cron FROM pgboss.schedule WHERE name = 'catalog.refresh'`,
+    );
     expect(rows).toEqual([{ name: "catalog.refresh", key: "daily", cron: "0 4 * * *" }]);
     await core.unschedule("catalog.refresh", "daily");
-    const after = await test.db.$queryRaw<unknown[]>`SELECT 1 FROM pgboss.schedule WHERE name = 'catalog.refresh'`;
+    const after = await test.db.$queryRaw<readonly unknown[]>`SELECT 1 FROM pgboss.schedule WHERE name = 'catalog.refresh'`;
     expect(after).toEqual([]);
   });
 });

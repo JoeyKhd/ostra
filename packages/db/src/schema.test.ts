@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from "vitest"
 
 import type { OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
+import { z } from "zod";
 
 import { mapCommandToFrame, mapEventToStored, mapTask } from "./mappers.ts";
 import { createTestDatabase } from "./testing/test-database.ts";
@@ -82,19 +83,22 @@ const newTask = async (organizationId: string, projectId: string) =>
 
 describe("the first migration", () => {
   it("creates every table of the milestone 1 schema", async () => {
-    const rows = await test.db.$queryRaw<{ tablename: string }[]>`
+    const rows = await test.db.$queryRaw<readonly unknown[]>`
       SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
-    const tables = rows.map((row) => row.tablename);
+    const tables = z
+      .array(z.object({ tablename: z.string() }))
+      .parse(rows)
+      .map((row) => row.tablename);
     for (const table of everyTable) {
       expect(tables).toContain(table);
     }
   });
 
   it("creates the live-text table UNLOGGED, in its own schema", async () => {
-    const rows = await test.db.$queryRaw<{ relpersistence: string }[]>`
+    const rows = await test.db.$queryRaw<readonly unknown[]>`
       SELECT c.relpersistence::text AS relpersistence FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'ostra_live' AND c.relname = 'live_text'`;
-    expect(rows).toEqual([{ relpersistence: "u" }]);
+    expect(z.array(z.object({ relpersistence: z.string() })).parse(rows)).toEqual([{ relpersistence: "u" }]);
   });
 });
 

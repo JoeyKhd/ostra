@@ -8,6 +8,7 @@ import type { Jobs } from "@ostra/jobs";
 import { modelIdSchema, providerIdSchema, repoIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { DownFrame, EventsFrame, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import type { RunnerRef } from "../gateway/context.ts";
 import { connect, registerPersonal, startGateway } from "../testing/harness.ts";
@@ -231,7 +232,10 @@ describe("live text", () => {
       type: "live-text" as const,
       frames: [{ taskId: task.taskId, sessionId: task.sessionId, turnId, segmentId, kind: "message" as const, offset, text }],
     });
-    const rows = () => test.db.$queryRaw<{ text: string }[]>`SELECT "text" FROM "ostra_live"."live_text" WHERE "taskId" = ${task.taskId}`;
+    const rows = async () =>
+      z
+        .array(z.object({ text: z.string() }))
+        .parse(await test.db.$queryRaw<readonly unknown[]>`SELECT "text" FROM "ostra_live"."live_text" WHERE "taskId" = ${task.taskId}`);
     await liveText.write(ours, live(0, "Hel"));
     await liveText.write(ours, live(3, "lo"));
     // A frame whose offset doesn't match is dropped.
