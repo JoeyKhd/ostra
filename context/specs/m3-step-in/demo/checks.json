@@ -1,0 +1,370 @@
+[
+  {
+    "name": "demo sees /needs-you",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "demo sees /account",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "demo sees /account/notifications",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "demo sees /?view=board",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "demo sees /",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "sam sees /needs-you",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "sam sees /account",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "sam sees /account/notifications",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "sam sees /?view=board",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "sam sees /",
+    "ok": true,
+    "detail": "loads",
+    "run": "2026-11-19T15:01:17.371Z"
+  },
+  {
+    "name": "step 2: the picker offers Careful first, and OpenCode",
+    "ok": true,
+    "detail": "offers Careful, OpenCode",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 2: the task runs with Careful, and Demo drives",
+    "ok": true,
+    "detail": "profile Careful",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: the plan turn changed no file",
+    "ok": true,
+    "detail": "git status is clean",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: the first turn ran in plan mode",
+    "ok": true,
+    "detail": "turn.started carries mode plan",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: the sidebar's Needs you count rose",
+    "ok": true,
+    "detail": "shows 1",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: Home shows the plan first",
+    "ok": true,
+    "detail": "Home's Needs you names the plan",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: the ticket's comment says ostra waits for a plan approval",
+    "ok": true,
+    "detail": "154 characters, mentions a plan",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: a mail reached Demo with the plan's moment",
+    "ok": true,
+    "detail": "subject \"=?UTF-8?Q?A_plan_to_approve_=C2=B7_OST-75_Set_the_?=\", -3.6 s after the plan showed",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: the mail carries no task content",
+    "ok": true,
+    "detail": "no ticket text in the mail",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 3: the approved plan carries the added step",
+    "ok": true,
+    "detail": "plan.answered holds the edited plan",
+    "run": "2026-11-19T15:13:03.948Z"
+  },
+  {
+    "name": "step 4: the card names the file and the rule",
+    "ok": true,
+    "detail": "names config/settings.json and the rule",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 4: Approve for this task shows the rule it adds",
+    "ok": true,
+    "detail": "Approve for this task also approves later requests that match: Edit config/settings.json in this task.",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 4: the task rule is Edit config/settings.json",
+    "ok": true,
+    "detail": "edit config/settings.json",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 4: the audit log has the answer",
+    "ok": true,
+    "detail": "1 approval entries",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 5: Send reached the agent",
+    "ok": true,
+    "detail": "delivered immediate",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 5: Interrupt and send",
+    "ok": true,
+    "detail": "the message went after an interrupt",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 5: Demo's composer reads Sam is driving",
+    "ok": true,
+    "detail": "sam is driving.\nAny member can answer approvals. Take over to send messages.\nTake over",
+    "run": "2026-11-19T15:13:46.361Z"
+  },
+  {
+    "name": "step 6: both checks ran and passed",
+    "ok": true,
+    "detail": "whitespace passed, settings-json passed",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 6: the PR opened ready for review",
+    "ok": true,
+    "detail": "ready",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 6: the Checks tab shows both",
+    "ok": true,
+    "detail": "both named in the tab",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 6: the PR body has a Checks section naming both as passed",
+    "ok": true,
+    "detail": "whitespace and settings-json passed",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 7: one member message carries both comments, as diff comments",
+    "ok": true,
+    "detail": "one message, intent diff-comments",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 7: the agent's commit updates the same PR",
+    "ok": true,
+    "detail": "PR #71 head 456114e",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 7: the comments show as sent",
+    "ok": true,
+    "detail": "sent, sent",
+    "run": "2026-11-19T15:21:10.312Z"
+  },
+  {
+    "name": "step 8: the task says test1 is behind main",
+    "ok": true,
+    "detail": "3 commit behind after 90.4 s (the reconcile; the test App has no webhook)",
+    "run": "2026-11-19T15:56:52.235Z"
+  },
+  {
+    "name": "step 8: Update branch sent one message",
+    "ok": true,
+    "detail": "a member message with intent update-branch",
+    "run": "2026-11-19T15:56:52.235Z"
+  },
+  {
+    "name": "step 8: the PR is up to date",
+    "ok": true,
+    "detail": "0 behind main",
+    "run": "2026-11-19T15:56:52.235Z"
+  },
+  {
+    "name": "step 9: Take it local shows the checkout line",
+    "ok": true,
+    "detail": "ostra checkout OST-75",
+    "run": "2026-11-19T16:04:33.610Z"
+  },
+  {
+    "name": "step 9: ostra checkout put the task's branch at the PR's head",
+    "ok": true,
+    "detail": "exit 0, HEAD 9d292e4 vs PR 9d292e4",
+    "run": "2026-11-19T16:04:33.610Z"
+  },
+  {
+    "name": "step 9: after Revoke the next checkout is refused",
+    "ok": true,
+    "detail": "exit 1",
+    "run": "2026-11-19T16:04:33.610Z"
+  },
+  {
+    "name": "step 9: the agent read the hand-made commit (the session resumed)",
+    "ok": true,
+    "detail": "its answer names NOTES-88a8.md",
+    "run": "2026-11-19T16:03:05.093Z"
+  },
+  {
+    "name": "step 9: the agent read the hand-made commit (the session rebuilt)",
+    "ok": true,
+    "detail": "its answer names NOTES-9dfd.md",
+    "run": "2026-11-19T16:04:33.610Z"
+  },
+  {
+    "name": "step 11: the task merged and the ticket moved to done",
+    "ok": false,
+    "detail": "the ticket didn't move",
+    "run": "2026-11-19T16:12:21.737Z",
+    "note": "The wait was 5 minutes; OST-75 moved In Progress -> Done at 16:06:17 UTC, a minute after it ended (the merge is read by the 2-minute reconcile: the test App has no webhook). The wait is 12 minutes now."
+  },
+  {
+    "name": "step 11: a fresh branch named -2 and a new PR, the merged one kept",
+    "ok": true,
+    "detail": "branch ostra/ost-75-20647d98-set-the-release-name-in-config-settings-2, PRs #71 merged, #77 open",
+    "run": "2026-11-19T16:12:21.737Z"
+  },
+  {
+    "name": "step 12: the turn was interrupted and the task needs you · ticket closed",
+    "ok": false,
+    "detail": "0 cancel request, 2 s after the cancel",
+    "run": "2026-11-19T16:15:58.009Z",
+    "note": "The check looked for turn.cancel_requested; the log has ticket.closed (seq 511) and turn.ended with stopReason cancelled (seq 515), both at 16:15:44 UTC, 2 s after the cancel. The check reads those now."
+  },
+  {
+    "name": "step 12: the task stopped and its PR stays open",
+    "ok": true,
+    "detail": "PR #77 is open",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 13: the task's totals equal the sum of its usage.recorded events",
+    "ok": true,
+    "detail": "77 events: {\"inputTokens\":144064,\"outputTokens\":29346,\"cacheReadTokens\":2251136,\"cacheWriteTokens\":0}",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 13: each turn has its own figures and agent time",
+    "ok": true,
+    "detail": "12 turns",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 13: the properties show tokens, cache and agent time",
+    "ok": true,
+    "detail": "144.1k in · 29.3k out · 2.25M read · 0 write · 3m 18s",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 13: each turn in the thread shows its own",
+    "ok": true,
+    "detail": "12 turn footers",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 14: the board groups the tasks by state",
+    "ok": true,
+    "detail": "five columns",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 14: notifications reached Sam",
+    "ok": true,
+    "detail": "1 notifications",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 15: the test mail and the needs-you mails went through SMTP",
+    "ok": true,
+    "detail": "3 mails, each signed in with AUTH",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 15: no mail carries the ticket's text",
+    "ok": true,
+    "detail": "none does",
+    "run": "2026-11-19T16:15:58.009Z"
+  },
+  {
+    "name": "step 16: test2's task waits for a runner that can start services",
+    "ok": true,
+    "detail": "Waiting for a runner that can start services. Online now: m3-runner (host).",
+    "run": "2026-11-19T16:33:14.419Z"
+  },
+  {
+    "name": "step 16: the second test1 task finds the dependency cache warm",
+    "ok": true,
+    "detail": "rounds: warm, warm",
+    "run": "2026-11-19T16:33:14.419Z"
+  },
+  {
+    "name": "after: no credential reached the event log or a log line",
+    "ok": true,
+    "detail": "searched the event log and 3 logs for 29 values and the GitHub token pattern",
+    "run": "2026-11-19T16:34:21.945Z"
+  },
+  {
+    "name": "after: no credential in the runner's folder (worktrees and the agent's folders)",
+    "ok": true,
+    "detail": "searched 583 files",
+    "run": "2026-11-19T16:34:21.945Z"
+  },
+  {
+    "name": "after: the agent reached release-names only through the sidecar, with the token",
+    "ok": true,
+    "detail": "1 tool calls, 0 refused requests",
+    "run": "2026-11-19T16:34:21.945Z"
+  },
+  {
+    "name": "after: ostra's comments on the ticket stay few (edited in place)",
+    "ok": true,
+    "detail": "2 of ostra's comments on OST-75",
+    "run": "2026-11-19T16:34:21.945Z"
+  },
+  {
+    "name": "after: one mail per member and moment",
+    "ok": true,
+    "detail": "5 mails, 5 distinct",
+    "run": "2026-11-19T16:34:21.945Z"
+  }
+]

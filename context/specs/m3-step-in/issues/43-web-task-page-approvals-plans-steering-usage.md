@@ -37,3 +37,4 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **Reordering steps** (point 3): `Alt+↑` / `Alt+↓` and the remove button ship and are tested. Drag uses the browser's own drag events, with no dependency, as the target draws it. At phone width there's no grip.
 
 ## Comments
+- 2026-11-19, integrate (ticket 50): the approval card, the question form, the plan with Edit and approve, the watcher's bar, the usage rows, the task rules group and the ticket-closed block are wired to `tasks.get`, `approvals.*`, `questions.answer` and `plans.answer` (`3af06b0`), and used live in milestone 3's demo (`../demo.md`). Not done: this ticket's Playwright cases, the by-eye check against the targets, and the differences `demo.md` lists.

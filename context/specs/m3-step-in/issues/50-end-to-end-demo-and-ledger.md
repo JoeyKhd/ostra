@@ -20,7 +20,7 @@ Spec: `../spec.md`, section 3
 - [ ] `pnpm e2e:m3` passes on this machine twice in a row from an empty data folder.
 - [ ] Every step of section 3 happened in the manual run, recorded in `demo.md`.
 - [ ] Every check after the run passes.
-- [ ] What waits for Linux is listed in `demo.md` and in the ledger notes.
+- [x] What waits for Linux is listed in `demo.md` and in the ledger notes.
 - [ ] `pnpm check:proof` passes with every `done` row of section 2 proved.
 - [ ] All the checks for the whole repo pass.
 - [ ] Committed as `✅ add the milestone 3 end-to-end demo`, and the record and ledger as `📝 set milestone 3's ledger statuses`.
@@ -35,3 +35,4 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 ## Comments
 
 - 2026-11-19, runner (ticket 14): **waits for Linux.** Two live suites, gated on a Docker host with the images built (`OSTRA_TEST_BASE_IMAGE`, `OSTRA_TEST_RUNNER_IMAGE` from `deploy/`), skip themselves on this machine: `packages/adapters/adapter-executor-docker/src/snapshot/snapshot.live.test.ts` (a snapshot built with BuildKit and its setup secret mounted, scanned clean, kept and started from, the box's volume holding the checkouts; a setup that writes the secret's base64 into a file fails with `secret-found` and the image is deleted; a service from `OSTRA_TEST_SERVICE_IMAGE`, default `redis:7-alpine`, healthy by its health check and reached by name from the agent's container) and milestone 1's `docker.live.test.ts`. The nightly rebuild after a default branch moved needs a `docker` pool runner online against the dev stack, as spec section 3 says. List them in `demo.md` and the F-051 and F-094 ledger notes.
+- 2026-11-19, integrate (ticket 50): the scripted run, step by step on one fresh stack on `host` against `ostra-test` (`e2e/m3-step-in/`, commit `4eea2cf`; the record in `demo.md` and `demo/`). Steps 1 to 9 and 11 to 16 ran live; step 10 (`@ostra`) waits for ticket 51 steps 9 and 10; mail went over SMTP to the script's own server (Q186). The run found and fixed four bugs (`54194b1`, `b8d9a26`, `60d0a3d`, `761a908`, the last a member's commit lost on a reopen) and wired tickets 43 to 47's screens (`3af06b0`). Not ticked: two passing runs in a row from an empty data folder, the run by hand, and every `done` row proved: no milestone 3 row can be `done` until the panel's Playwright cases land, so the ledger sets them `building` with dated notes.

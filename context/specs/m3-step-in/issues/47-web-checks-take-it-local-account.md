@@ -31,3 +31,4 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 ## Comments
 
 - 2026-11-19: the parts are in, `57d40d6` (`✨ add the checks, take it local and Account parts`). Checked by eye against `task-checks`, `take-it-local` and `account`: they match; the popover's text is about 1px smaller than the picture's. **Not done yet:** the Checks tab in the task page, the Account route, the device page's wording and the Playwright run wait on ticket 39 (`tasks.checks`, `tasks.local`, `account.*`) and ticket 33, not on `main` yet.
+- 2026-11-19, integrate (ticket 50): the Checks tab over `tasks.checks`/`fixChecks`, Take it local over `tasks.local`, and `/account` (GitHub link, CLI sessions) are wired (`3af06b0`), and used live in milestone 3's demo (`../demo.md`). Not done: this ticket's Playwright cases, the by-eye check against the targets, and the differences `demo.md` lists.
