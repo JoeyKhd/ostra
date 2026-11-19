@@ -1,0 +1,29 @@
+F-014: git on a Windows data folder with paths over 260 characters
+Run 2026-11-19 on Windows 11 x64, git version 2.53.0.windows.1, node v24.14.0.
+Test: packages/adapters/adapter-executor-host/src/host-executor.test.ts, 'F-014: clones, branches, commits and pushes a checkout whose paths pass 260 characters (Windows only)'.
+The test asserts the deep file's path and the branch ref's lock path are each over 260 characters before it clones.
+
+=== 1. With core.longpaths on (the fix) ===
+ ✓ src/host-executor.test.ts > git on Windows, where a path over 260 characters needs core.longpaths > F-014: gives the task's config and every checkout's config core.longpaths, on any system 2549ms
+ ✓ src/host-executor.test.ts > git on Windows, where a path over 260 characters needs core.longpaths > F-014: clones, branches, commits and pushes a checkout whose paths pass 260 characters (Windows only) 7495ms
+ Test Files  1 passed (1)
+      Tests  2 passed | 15 skipped (17)
+
+=== 2. Break-it: core.longpaths removed from the executor's git (hardening flag and both configs) ===
+ × src/host-executor.test.ts > git on Windows, where a path over 260 characters needs core.longpaths > F-014: gives the task's config and every checkout's config core.longpaths, on any system 1096ms
+ × src/host-executor.test.ts > git on Windows, where a path over 260 characters needs core.longpaths > F-014: clones, branches, commits and pushes a checkout whose paths pass 260 characters (Windows only) 2926ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: {"ok":false,"error":{"code":"unavailable","message":"cloning ostra-test/deep through the git proxy failed (exit 128)"}}: expected { ok: false, error: { …(2) } } to match object { ok: true }
+ Test Files  1 failed (1)
+      Tests  2 failed | 15 skipped (17)
+
+=== 3. Raw git, for the cause (Git for Windows 2.53, a checkout under a 110-character data folder, no core.longpaths) ===
+git clone of a repo with a file 4 folders deep (70 characters each):  warning: unable to access '.../.gitattributes': Filename too long
+                                                                       warning: Clone succeeded, but checkout failed.
+git checkout -b ostra/<120 characters> in a clone under that folder:   fatal: cannot lock ref 'refs/heads/ostra/bbbb...': Unable to create '.../.git/refs/heads/ostra/bbbb....lock': Filename too long
+The same commands with -c core.longpaths=true succeed.
+
+=== 4. The limit that core.longpaths does not lift ===
+git itself refuses a git directory path of about 250 characters or more ("fatal: '$GIT_DIR' too big", seen at a 210-character data folder).
+So the runner's data folder still has to be short enough for <data folder>\tasks\<task id>\workspace\<checkout>\.git to stay under that;
+core.longpaths lifts the limit for everything below it: the files of a checkout, and the refs and locks inside .git.

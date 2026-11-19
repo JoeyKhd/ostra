@@ -129,9 +129,11 @@ exit 0
 /**
  * Settings on every checkout git command, which beat the checkout's own config: no filesystem
  * monitor (a repo-local `core.fsmonitor` runs a program), no `ext::` transport, no ssh command. Not
- * `core.hooksPath`: the `prepare-commit-msg` hook below is how every commit gets its trailers.
+ * `core.hooksPath`: the `prepare-commit-msg` hook below is how every commit gets its trailers. And
+ * `core.longpaths`, on: Windows stops git at 260 characters otherwise, and a long data folder or a deep
+ * file in a repo fails a clone with "Filename too long" and a checkout with "cannot lock ref".
  */
-const GIT_HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never"] as const;
+const GIT_HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never", "-c", "core.longpaths=true"] as const;
 
 /** Setup output split so no piece passes the event's cap. */
 const splitOutput = (text: string): readonly string[] => {
@@ -589,6 +591,9 @@ export class HostExecutor extends ExecutorAdapter {
       // No credential helper: the proxy adds the token, and nothing should ask for one.
       ["credential.helper", ""],
       ["advice.detachedHead", "false"],
+      // Windows stops git at 260 characters unless it is told otherwise: a deep file in a checkout,
+      // or a branch's ref lock under a long data folder, fails with "cannot lock ref". Harmless elsewhere.
+      ["core.longpaths", "true"],
     ];
     for (const rule of this.#insteadOf(record)) {
       settings.push([`url.${rule.to}.insteadOf`, rule.from]);

@@ -104,7 +104,8 @@ const readBody = async (request: IncomingMessage): Promise<Buffer> => {
 };
 
 const git = async (args: readonly string[], cwd?: string): Promise<string> => {
-  const { stdout } = await run("git", [...args], { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+  // core.longpaths: a seed repo or a test tree can pass Windows' 260 characters.
+  const { stdout } = await run("git", ["-c", "core.longpaths=true", ...args], { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   return stdout;
 };
 

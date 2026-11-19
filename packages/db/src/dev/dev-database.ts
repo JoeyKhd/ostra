@@ -59,3 +59,19 @@ export const resolveDatabaseUrl = (env: Readonly<Record<string, string | undefin
   const url = env["DATABASE_URL"];
   return url !== undefined && url !== "" ? url : devDatabaseUrl(devPgPort(env));
 };
+
+/**
+ * A checkout path longer than this on Windows is likely to stop the embedded Postgres: it unpacks
+ * deep inside `node_modules/.pnpm`, and initdb failed at 123 characters and worked at 27.
+ */
+export const WINDOWS_LONG_CHECKOUT_PATH = 100;
+
+/**
+ * What to tell a developer whose embedded Postgres failed to start on a long Windows path, or null
+ * when the path isn't the likely cause. Windows' 260-character limit (MAX_PATH) stops initdb with
+ * exit code 3221225734 (`STATUS_NAME_TOO_LONG`); the fix is a shorter checkout path.
+ */
+export const longPathHint = (checkoutPath: string, platform: NodeJS.Platform = process.platform): string | null =>
+  platform === "win32" && checkoutPath.length > WINDOWS_LONG_CHECKOUT_PATH
+    ? `This checkout is at ${checkoutPath} (${String(checkoutPath.length)} characters), and the embedded Postgres unpacks deep inside it: Windows stops paths at 260 characters. Clone ostra to a shorter folder, such as C:\\src\\ostra, and run \`pnpm install\` there.`
+    : null;

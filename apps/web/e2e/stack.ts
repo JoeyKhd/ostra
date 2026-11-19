@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { createFakeGitHub } from "@ostra/adapter-github/testing";
 import { createScenarioBrain, startAnthropicStub, startOpenAiStub } from "@ostra/adapter-sdk/testing";
-import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "@ostra/db/dev";
+import { devDataDir, embeddedInitdbFlags, longPathHint, migrateDeploy } from "@ostra/db/dev";
 import { createJobs } from "@ostra/jobs";
 import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
@@ -74,8 +74,13 @@ const main = async (): Promise<void> => {
     onLog: () => undefined,
     onError: () => undefined,
   });
-  await server.initialise();
-  await server.start();
+  try {
+    await server.initialise();
+    await server.start();
+  } catch (error) {
+    const hint = longPathHint(repoRoot);
+    throw hint === null ? error : new Error(`the e2e Postgres did not start. ${hint}`, { cause: error });
+  }
   await server.createDatabase("ostra");
   const databaseUrl = `postgresql://ostra:${password}@127.0.0.1:${String(port)}/ostra`;
   const migrated = await migrateDeploy(databaseUrl);

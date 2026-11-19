@@ -78,7 +78,7 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 | Setting | Flag | Default | What it does |
 |---|---|---|---|
 | `OSTRA_SERVER_URL` | `--server` | (required) | The ostra server's core address, such as `http://localhost:8787`. |
-| `OSTRA_RUNNER_DATA_DIR` | `--data-dir` | `~/.ostra/runner` | The runner's folder: its key pair, its spool and the task workspaces. |
+| `OSTRA_RUNNER_DATA_DIR` | `--data-dir` | `~/.ostra/runner` | The runner's folder: its key pair, its spool and the task workspaces (`tasks/<task>/workspace/<repo>`). On Windows the runner turns on git's `core.longpaths` for every clone and checkout it makes, so a repo with deep paths works under a long folder; git still refuses a `.git` folder path of about 250 characters, so keep this folder short. |
 | `OSTRA_RUNNER_TRANSPORT` | `--transport` | `websocket` | How the runner talks to the server. Milestone 1 has `websocket` only; `auto` and `http` come in milestone 5. |
 | `OSTRA_RUNNER_EXECUTOR` | `--executor` | `host` | Where tasks run: `host` (a worktree on this machine, not isolated) or `docker` (a box per task). |
 | `OSTRA_RUNNER_CAPACITY` | `--capacity` | `1` | How many tasks the runner runs at once. |

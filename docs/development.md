@@ -66,7 +66,7 @@ pnpm dev:reset           # says what it would delete; `pnpm dev:reset --yes` del
 
 Ctrl-C stops everything: the servers' process trees first, then the dev database, which stops Postgres. No `node` or `postgres` process of the stack is left. If one is (after a crash of the terminal, say), `pnpm dev:reset --yes` stops the dev cluster.
 
-**Windows: keep the checkout path short.** The embedded Postgres unpacks deep inside `node_modules/.pnpm`, and Windows' 260-character path limit stops it (initdb exits with code 3221225734, `STATUS_NAME_TOO_LONG`) when the checkout's own path is long: it failed at 123 characters and worked at 27. Clone to something like `C:\src\ostra`.
+**Windows: keep the checkout path short.** The embedded Postgres unpacks deep inside `node_modules/.pnpm`, and Windows' 260-character path limit stops it (initdb exits with code 3221225734, `STATUS_NAME_TOO_LONG`) when the checkout's own path is long: it failed at 123 characters and worked at 27. Clone to something like `C:\src\ostra`. When the embedded Postgres fails to start on a checkout path over 100 characters, `pnpm dev`, the tests and the e2e stack say so, with the path and its length. That limit is the checkout's own: the runner's git is long-path safe (see the runner's data folder in `docs/configuration.md`).
 
 **A runner, from source.** With the stack running, start a personal runner on the same machine in another terminal:
 

@@ -344,6 +344,74 @@ describe("the host executor", () => {
   });
 });
 
+describe("git on Windows, where a path over 260 characters needs core.longpaths", () => {
+  const SEGMENT = "a-deep-folder-".padEnd(40, "x");
+  const deepFolder = [SEGMENT, SEGMENT, SEGMENT].join("/");
+
+  it("F-014: gives the task's config and every checkout's config core.longpaths, on any system", async () => {
+    const box = newBox();
+    const spec = twoRepoSpec(box, null);
+    const created = await executor.create({ ...box, spec, proxies });
+    if (!created.ok) {
+      throw new Error("create failed");
+    }
+    expect((await run("git", ["config", "--file", created.value.gitConfig, "--get", "core.longpaths"])).stdout.trim()).toBe("true");
+    const prepared = await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+    expect(prepared.ok).toBe(true);
+    for (const checkout of ["test1", "test2"]) {
+      const local = await run("git", ["config", "--local", "--get", "core.longpaths"], { cwd: path.join(created.value.workspaceDir, checkout) });
+      expect(local.stdout.trim(), checkout).toBe("true");
+    }
+    await executor.release(box);
+  });
+
+  // Windows' limit is Windows' alone (MAX_PATH, 260 characters): on Linux and macOS this is a
+  // plain checkout that always worked, so the case is skipped there. The unconditional test above
+  // and the recorded-command test below hold the setting on every system.
+  it.skipIf(process.platform !== "win32")(
+    "F-014: clones, branches, commits and pushes a checkout whose paths pass 260 characters (Windows only)",
+    async () => {
+      await upstream.createRepo("ostra-test/deep", { "README.md": "# deep\n", [`${deepFolder}/file.txt`]: "deep\n" });
+      const longDataDir = path.join(root, "a-long-runner-data-folder-".padEnd(110, "x"));
+      const long = new HostExecutor({ dataDir: longDataDir });
+      const box = newBox();
+      const spec: TaskSpec = {
+        ...twoRepoSpec(box, null),
+        // A branch named for a ticket, as the real ones are.
+        branchName: `ostra/${box.taskId}-add-a-health-check-endpoint-that-reports-the-queue-depth-and-the-last-job`,
+        repos: [{ ...baseRepo, repoId: repoA, fullName: "ostra-test/deep", cloneUrl: "https://github.com/ostra-test/deep.git", checkoutDir: "deep" }],
+        environment: { setupScript: null, baseImage: null, repos: [] },
+      };
+      const created = await long.create({ ...box, spec, proxies });
+      if (!created.ok) {
+        throw new Error("create failed");
+      }
+      const checkout = path.join(created.value.workspaceDir, "deep");
+      const deepFile = path.join(checkout, ...deepFolder.split("/"), "file.txt");
+      const lockPath = path.join(checkout, ".git", "refs", "heads", `${spec.branchName}.lock`);
+      // The test only means something if the paths are over the limit.
+      expect(deepFile.length).toBeGreaterThan(260);
+      expect(lockPath.length).toBeGreaterThan(260);
+      const prepared = await long.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+      expect(prepared, JSON.stringify(prepared)).toMatchObject({ ok: true });
+      expect(await readFile(deepFile, "utf8")).toBe("deep\n");
+      await writeFile(path.join(checkout, ...deepFolder.split("/"), "second.txt"), "second\n");
+      const pushed = await long.commitAndPush({
+        box,
+        message: "Add second.txt",
+        author: spec.gitIdentity,
+        coAuthors: [],
+        branchName: spec.branchName,
+        hiddenRef: `refs/ostra/wip/${box.taskId}`,
+      });
+      expect(pushed, JSON.stringify(pushed)).toMatchObject({ ok: true });
+      expect(await upstream.treeFiles("ostra-test/deep", `refs/heads/${spec.branchName}`)).toContain(`${deepFolder}/second.txt`);
+      await long.release(box);
+    },
+    60_000,
+  );
+});
+
 describe("the executor's git, where the agent controls the checkout", () => {
   type GitRun = { readonly command: string; readonly args: readonly string[] };
 
@@ -364,10 +432,10 @@ describe("the executor's git, where the agent controls the checkout", () => {
   };
 
   const gitRuns = (calls: readonly GitRun[]): readonly GitRun[] => calls.filter((call) => call.command === "git");
-  const HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never"];
+  const HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never", "-c", "core.longpaths=true"];
   const subcommand = (call: GitRun): string | undefined => call.args.slice(HARDENING.length)[0];
 
-  it("runs every git command, the sidecar's included, through the processes seam", async () => {
+  it("F-014: runs every git command, the sidecar's included, through the processes seam, each with the hardening and core.longpaths on", async () => {
     const calls: GitRun[] = [];
     const recorded = recordingExecutor(calls);
     const box = newBox();

@@ -7,7 +7,7 @@ import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
 import type { TestProject } from "vitest/node";
 
-import { devDataDir, embeddedInitdbFlags, migrateDeploy } from "../dev/index.ts";
+import { devDataDir, embeddedInitdbFlags, longPathHint, migrateDeploy, repoRoot } from "../dev/index.ts";
 import "./provided-context.ts";
 
 // Vitest global setup (ticket 05): one Postgres server per test run, and one migrated template
@@ -104,8 +104,13 @@ export const setup = async (project: TestProject): Promise<void> => {
       onLog: () => undefined,
       onError: () => undefined,
     });
-    await server.initialise();
-    await server.start();
+    try {
+      await server.initialise();
+      await server.start();
+    } catch (error) {
+      const hint = longPathHint(repoRoot);
+      throw hint === null ? error : new Error(`the test Postgres did not start. ${hint}`, { cause: error });
+    }
     stopServer = async () => {
       await server.stop();
       await rm(clusterDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }).catch(() => undefined);

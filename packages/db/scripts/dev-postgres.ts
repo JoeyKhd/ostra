@@ -17,6 +17,8 @@ import {
   devPgDir,
   devPgPort,
   embeddedInitdbFlags,
+  longPathHint,
+  repoRoot,
 } from "@ostra/db/dev";
 
 const exists = async (file: string): Promise<boolean> => {
@@ -83,6 +85,10 @@ const main = async (): Promise<void> => {
     const reason = error instanceof Error ? error.message : "unknown error";
     console.error(`The dev database did not start: ${reason}`);
     console.error(recentLog.join("\n"));
+    const hint = longPathHint(repoRoot);
+    if (hint !== null) {
+      console.error(hint);
+    }
     console.error(
       "If another `pnpm db:dev` is running, stop it first. If one crashed and left Postgres behind, " +
         "`pnpm dev:reset --yes` stops it (and deletes the dev data).",
