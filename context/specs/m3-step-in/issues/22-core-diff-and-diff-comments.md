@@ -1,6 +1,6 @@
 # 22: Core: the diff and diff comments
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 07, 09
 Features: F-027, F-072
@@ -16,8 +16,8 @@ Spec: `../spec.md`, section 4 ("The diff", "Diff comments"); ADR 0051
 
 ## Done when
 
-- [ ] Tests: one compare per head for many readers; the too-large cut; the parser's cases; drafts are private to their member until sent; a send makes one message and marks every draft sent, and a second send of the same drafts sends nothing; a comment on a line that changed is outdated and one on an untouched line isn't; another organization's comments are invisible.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
-- [ ] Committed as `✨ add the diff and diff comments`.
+- [x] Tests: one compare per head for many readers; the too-large cut; the parser's cases; drafts are private to their member until sent; a send makes one message and marks every draft sent, and a second send of the same drafts sends nothing; a comment on a line that changed is outdated and one on an untouched line isn't; another organization's comments are invisible.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
+- [x] Committed as `✨ add the diff and diff comments`.
 
 ## Comments

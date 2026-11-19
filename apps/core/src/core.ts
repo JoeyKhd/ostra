@@ -51,6 +51,7 @@ import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 import { createReconcileSchedules, githubWebhookHandler, reconcileHandler } from "./code-host/pull-requests.ts";
+import { diffFetchHandler } from "./diff/diff-fetch.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
@@ -284,6 +285,9 @@ export const startCore = async (
     logger,
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
+  // Milestone 3's diff (ticket 22): one compare per head, cached, and outdated comments.
+  const diffLimits = { maxFiles: settings.diffMaxFiles, maxPatchBytes: settings.diffMaxPatchBytes };
+  await jobs.work("diff.fetch", diffFetchHandler({ db, notices, clock: systemClock, adapters, limits: diffLimits, logger }), { localConcurrency: 2 });
   const reconcileSchedules = createReconcileSchedules({ db, jobs, reconcileMinutes: settings.reconcileMinutes });
   const webhookHandlers: WebhookHandlers = {
     linear: trackerWebhookHandler(ingestDeps),

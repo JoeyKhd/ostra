@@ -75,3 +75,8 @@ export * from "./rules/index.ts";
 export * from "./notifications/index.ts";
 export * from "./prompts/index.ts";
 export * from "./use-cases/m3-signatures.ts";
+export * from "./diff/unified-diff.ts";
+export * from "./diff/stored-diff.ts";
+export * from "./use-cases/repo-access.ts";
+export * from "./use-cases/member-message.ts";
+export * from "./use-cases/diff-comments.ts";

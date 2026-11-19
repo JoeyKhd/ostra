@@ -4,6 +4,9 @@ import { adapterError, CodeHostAdapter, ModelProviderAdapter, ok, secretRefSchem
 import type {
   AdapterResult,
   CodeHostWebhookEvent,
+  CommentRef,
+  CompareResult,
+  Reaction,
   DeleteRefResult,
   PullRequestDetails,
   WebhookInput,
@@ -83,7 +86,7 @@ export type OpenedPull = PullRequest & { readonly repo: string; readonly body: s
 
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: false, draftPullRequests: false, prComments: false, userLink: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false };
   /** App ID to its private key and bot. */
   readonly apps = new Map<string, { readonly privateKey: string; readonly bot: GitPerson }>();
   /** Installation ID to the repos it lists. */
@@ -179,6 +182,7 @@ export class FakeCodeHost extends CodeHostAdapter {
       title: input.title,
       repo: input.access.repo,
       body: input.body,
+      draft: input.draft,
     };
     this.pulls.push(pull);
     if (this.loseOpenAnswers > 0) {
@@ -298,6 +302,121 @@ export class FakeCodeHost extends CodeHostAdapter {
     };
   }
 
+  // ---------- milestone 3: compares, drafts, reactions (tickets 22 to 25) ----------
+
+  /** Compares by `repo:base...head`, or `repo:*...head` for any base. */
+  readonly compares = new Map<string, CompareResult>();
+  /** Every `compare` call, so a test can count them. */
+  readonly compareCalls: { readonly repo: string; readonly base: string; readonly head: string }[] = [];
+  /** Every `setPullRequestDraft` call. */
+  readonly draftCalls: { readonly repo: string; readonly number: number; readonly draft: boolean }[] = [];
+  /** Every `addReaction` call, and the reactions made (one per comment and reaction). */
+  readonly reactionCalls: { readonly repo: string; readonly comment: CommentRef; readonly reaction: Reaction }[] = [];
+  readonly reactions = new Set<string>();
+
+  /** The compare `compare` answers for a head, on any base or on `base`. */
+  setCompare(repo: string, head: string, result: CompareResult, base = "*"): void {
+    this.compares.set(`${repo}:${base}...${head}`, result);
+  }
+
+  override compare(access: RepoAccess, base: string, head: string): Promise<AdapterResult<CompareResult>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    this.compareCalls.push({ repo: access.repo, base, head });
+    const found = this.compares.get(`${access.repo}:${base}...${head}`) ?? this.compares.get(`${access.repo}:*...${head}`);
+    return Promise.resolve(found === undefined ? adapterError("not-found", "no such commits") : ok(found));
+  }
+
+  override setPullRequestDraft(access: RepoAccess, number: number, draft: boolean): Promise<AdapterResult<PullRequest>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    const index = this.pulls.findIndex((pull) => pull.repo === access.repo && pull.number === number);
+    const found = this.pulls[index];
+    if (found === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    this.draftCalls.push({ repo: access.repo, number, draft });
+    const updated: OpenedPull = { ...found, draft };
+    this.pulls[index] = updated;
+    return Promise.resolve(ok(updated));
+  }
+
+  /** A person makes a PR a draft, or ready, on the host. */
+  setDraftByPerson(repo: string, number: number, draft: boolean): void {
+    const index = this.pulls.findIndex((pull) => pull.repo === repo && pull.number === number);
+    const found = this.pulls[index];
+    if (found !== undefined) {
+      this.pulls[index] = { ...found, draft };
+    }
+  }
+
+  override addReaction(access: RepoAccess, comment: CommentRef, reaction: Reaction): Promise<AdapterResult<{ readonly created: boolean }>> {
+    if (!this.known(access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    this.reactionCalls.push({ repo: access.repo, comment, reaction });
+    const key = `${access.repo}:${comment.kind}:${comment.commentId}:${reaction}`;
+    const created = !this.reactions.has(key);
+    this.reactions.add(key);
+    return Promise.resolve(ok({ created }));
+  }
+
+  /** An `issue_comment` or `pull_request_review_comment` delivery as GitHub sends it, signed. */
+  commentDelivery(
+    repo: string,
+    input: {
+      readonly number: number;
+      readonly commentId: number;
+      readonly body: string;
+      readonly authorId: number;
+      readonly authorLogin: string;
+      readonly action?: string;
+      readonly line?: { readonly path: string; readonly line: number; readonly side?: "LEFT" | "RIGHT" };
+      readonly onPullRequest?: boolean;
+      readonly deliveryId?: string;
+    },
+  ): { readonly body: string; readonly headers: Readonly<Record<string, string>>; readonly event: string } {
+    const anchor = input.line === undefined ? "issuecomment-" : "discussion_r";
+    const comment = {
+      id: input.commentId,
+      body: input.body,
+      html_url: `https://github.example/${repo}/pull/${String(input.number)}#${anchor}${String(input.commentId)}`,
+      user: { id: input.authorId, login: input.authorLogin, type: input.authorLogin.endsWith("[bot]") ? "Bot" : "User" },
+      ...(input.line === undefined ? {} : { path: input.line.path, line: input.line.line, side: input.line.side ?? "RIGHT" }),
+    };
+    const event = input.line === undefined ? "issue_comment" : "pull_request_review_comment";
+    const where =
+      input.line === undefined
+        ? { issue: { number: input.number, ...(input.onPullRequest === false ? {} : { pull_request: { url: `https://api.github.example/repos/${repo}/pulls/${String(input.number)}` } }) } }
+        : { pull_request: { number: input.number } };
+    const body = JSON.stringify({
+      action: input.action ?? "created",
+      installation: { id: 777 },
+      repository: { id: this.hostRepoIdOf(repo), full_name: repo },
+      comment,
+      ...where,
+    });
+    return { body, headers: this.sign(body, event, input.deliveryId), event };
+  }
+
+  /** A `push` delivery as GitHub sends it, signed. */
+  pushDelivery(
+    repo: string,
+    input: { readonly branch: string; readonly before: string; readonly after: string; readonly paths?: readonly string[]; readonly deliveryId?: string },
+  ): { readonly body: string; readonly headers: Readonly<Record<string, string>> } {
+    const body = JSON.stringify({
+      ref: `refs/heads/${input.branch}`,
+      before: input.before,
+      after: input.after,
+      installation: { id: 777 },
+      repository: { id: this.hostRepoIdOf(repo), full_name: repo },
+      commits: [{ added: [], removed: [], modified: [...(input.paths ?? [])] }],
+    });
+    return { body, headers: this.sign(body, "push", input.deliveryId) };
+  }
+
   verifyWebhook(input: WebhookInput): boolean {
     const header = input.headers["x-hub-signature-256"];
     if (header === undefined) {
@@ -314,11 +433,14 @@ export class FakeCodeHost extends CodeHostAdapter {
     if (!json.ok) {
       return adapterError("invalid-response", "not JSON");
     }
+    const read = (...path: readonly string[]): unknown =>
+      path.reduce<unknown>((at, key) => (typeof at === "object" && at !== null ? Reflect.get(at, key) : undefined), json.value);
+    if (event === "issue_comment" || event === "pull_request_review_comment" || event === "push") {
+      return this.#parseM3(event, read);
+    }
     if (event !== "pull_request") {
       return ok({ kind: "other", event });
     }
-    const read = (...path: readonly string[]): unknown =>
-      path.reduce<unknown>((at, key) => (typeof at === "object" && at !== null ? Reflect.get(at, key) : undefined), json.value);
     const number = read("number");
     const repoId = read("repository", "id");
     const repo = repoFullNameSchema.safeParse(read("repository", "full_name"));
@@ -349,6 +471,74 @@ export class FakeCodeHost extends CodeHostAdapter {
       headBranch,
       headSha,
       changedAt: Date.parse(updatedAt),
+    });
+  }
+
+  #parseM3(event: "issue_comment" | "pull_request_review_comment" | "push", read: (...path: readonly string[]) => unknown): AdapterResult<CodeHostWebhookEvent> {
+    const repoId = read("repository", "id");
+    const repo = repoFullNameSchema.safeParse(read("repository", "full_name"));
+    const installation = read("installation", "id");
+    if ((typeof repoId !== "string" && typeof repoId !== "number") || !repo.success) {
+      return adapterError("invalid-response", `not a ${event} event`);
+    }
+    const common = { installationId: typeof installation === "number" ? String(installation) : null, hostRepoId: String(repoId), repo: repo.data };
+    if (event === "push") {
+      const ref = read("ref");
+      const before = read("before");
+      const after = read("after");
+      const commits = read("commits");
+      if (typeof ref !== "string" || typeof before !== "string" || typeof after !== "string") {
+        return adapterError("invalid-response", "not a push event");
+      }
+      const changedPaths = Array.isArray(commits)
+        ? commits.flatMap((commit: unknown) =>
+            ["added", "removed", "modified"].flatMap((key) => {
+              const paths: unknown = typeof commit === "object" && commit !== null ? Reflect.get(commit, key) : undefined;
+              return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : [];
+            }),
+          )
+        : null;
+      return ok({ kind: "push", ...common, ref, before, after, changedPaths });
+    }
+    const commentId = read("comment", "id");
+    const authorId = read("comment", "user", "id");
+    const authorLogin = read("comment", "user", "login");
+    const body = read("comment", "body");
+    const url = read("comment", "html_url");
+    const action = read("action");
+    if (
+      typeof commentId !== "number" ||
+      typeof authorId !== "number" ||
+      typeof authorLogin !== "string" ||
+      typeof body !== "string" ||
+      typeof url !== "string" ||
+      typeof action !== "string"
+    ) {
+      return adapterError("invalid-response", `not a ${event} event`);
+    }
+    const comment = { commentId: String(commentId), authorId: String(authorId), authorLogin, body, url };
+    if (event === "issue_comment") {
+      const number = read("issue", "number");
+      if (typeof number !== "number") {
+        return adapterError("invalid-response", "not an issue_comment event");
+      }
+      return ok({ kind: "issue_comment", action, ...common, number, onPullRequest: read("issue", "pull_request") !== undefined, comment });
+    }
+    const number = read("pull_request", "number");
+    const path = read("comment", "path");
+    const line = read("comment", "line");
+    if (typeof number !== "number" || typeof path !== "string") {
+      return adapterError("invalid-response", "not a pull_request_review_comment event");
+    }
+    return ok({
+      kind: "pull_request_review_comment",
+      action,
+      ...common,
+      number,
+      comment,
+      path,
+      side: read("comment", "side") === "LEFT" ? "old" : "new",
+      line: typeof line === "number" ? line : null,
     });
   }
 

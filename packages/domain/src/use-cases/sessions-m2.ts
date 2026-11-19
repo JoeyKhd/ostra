@@ -182,6 +182,17 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
         ...(pushed?.ok === true ? { state: taskRepoToColumns(pushed.state).state } : {}),
       },
     });
+    // F-072: a head newer than the one a comment was written on is compared, so the comments whose
+    // line changed show as outdated (ticket 22). No comments, no call: the diff is fetched when read.
+    if (saved.headSha !== null) {
+      const older = await tx.diffComment.findFirst({
+        where: { taskRepoId: taskRepo.id, state: { in: ["draft", "sent"] }, outdatedAt: null, headSha: { not: saved.headSha } },
+        select: { id: true },
+      });
+      if (older !== null) {
+        await deps.jobs.enqueueInTx(tx, "diff.fetch", { organizationId: input.organizationId, taskId: task.id, repoId: saved.repoId, baseSha: null, headSha: saved.headSha });
+      }
+    }
   }
   // The archive: a failed export or upload (`null`) keeps the last good one (ADR 0039).
   if (input.event.archive !== null) {
