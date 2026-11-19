@@ -33,6 +33,7 @@ import { AgentGot, LimitBlock, MergedHint, RestoreConflict, TicketLine, TicketPr
 import { headerActivity, shownInThread, stateTone, taskStateLine } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, TicketClosedBlock, WatcherBar, approvalReceipt } from "./task-answers";
 import { ChangesTab } from "./task-changes/changes-tab";
+import { EventLogTab } from "./task-event-log/event-log-tab";
 import { ChecksTab, checksMarkerOf } from "./task-checks/checks-tab";
 import { ChecksTabMarker } from "./task-checks/task-checks";
 import { ReasoningRow, TaskEffortRow } from "./task-effort";
@@ -44,7 +45,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 type Task = RouterOutputs["tasks"]["get"];
 
-type TaskTab = "activity" | "changes" | "checks";
+type TaskTab = "activity" | "changes" | "checks" | "events";
 
 /** Records how long the fold of the default view took, for ADR 0036's render bar (the e2e reads it). */
 const recordFold = (ms: number, messages: number): void => {
@@ -260,7 +261,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const router = useRouter();
   const params = useSearchParams();
   const tabParam = params.get("tab");
-  const tab: TaskTab = tabParam === "changes" || tabParam === "checks" ? tabParam : "activity";
+  const tab: TaskTab = tabParam === "changes" || tabParam === "checks" || tabParam === "events" ? tabParam : "activity";
+  const seqParam = Number.parseInt(params.get("seq") ?? "", 10);
   const selectTab = useCallback((next: TaskTab) => {
     const query = new URLSearchParams(params.toString());
     if (next === "activity") query.delete("tab");
@@ -505,6 +507,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               { id: "activity", label: t("taskAnswers.tabs.activity") },
               { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
               { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={checksMarkerOf(checksMarker.data)} /> },
+              { id: "events", label: t("taskAnswers.tabs.events") },
             ]}
           />
         </div>
@@ -512,6 +515,10 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         {tab === "changes" ? (
           <div className="min-h-0 flex-1" id="task-tab-changes">
             <ChangesTab taskId={taskId} agent={agentName} driver={driverName} isDriver={isDriver} running={running} steersMidTurn={data.capabilities.steersMidTurn} sessionGoing={sessionGoing} onTakeOver={takeOverNow} onSeeActivity={() => { selectTab("activity"); }} />
+          </div>
+        ) : tab === "events" ? (
+          <div className="flex min-h-0 flex-1 flex-col" id="task-tab-events">
+            <EventLogTab taskId={taskId} names={names} executor={data.runner?.executor ?? null} seq={Number.isInteger(seqParam) && seqParam > 0 ? seqParam : null} />
           </div>
         ) : tab === "checks" ? (
           <div className="min-h-0 flex-1" id="task-tab-checks">
