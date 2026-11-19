@@ -97,8 +97,16 @@ export const commandAckSchema = z.strictObject({
 });
 export type CommandAck = z.infer<typeof commandAckSchema>;
 
+/**
+ * How a runner ends every process of a task together (ADR 0029, Q126): a box's container, a
+ * Windows job object, a Linux cgroup, or the agent's process tree, which can miss a process that
+ * detached itself. The panel says so for `process-tree`.
+ */
+export const processContainmentSchema = z.enum(["container", "job-object", "cgroup", "process-tree"]);
+export type ProcessContainment = z.infer<typeof processContainmentSchema>;
+
 /** What the peer can take, sent after `welcome` and whenever it changes (F-013, F-067). */
-export const statusSchema = z.strictObject({
+const statusSchemaV0 = z.strictObject({
   type: z.literal("status"),
   executor: executorKindSchema,
   /** How many tasks the peer runs at once. A sidecar reports 1. */
@@ -111,6 +119,14 @@ export const statusSchema = z.strictObject({
   running: z.array(sessionIdSchema).max(runnerLimits.helloSessionsMax),
   /** Bytes in the disk spool not yet acked. */
   spoolBytes: count,
+});
+
+/**
+ * Minor 1 (milestone 2's ticket 42): the status also says how the runner contains a task's
+ * processes. Optional: a sidecar and an older runner leave it out. Minor 0 never sees it.
+ */
+export const statusSchema = statusSchemaV0.extend({
+  processContainment: processContainmentSchema.optional(),
 });
 export type Status = z.infer<typeof statusSchema>;
 
@@ -132,7 +148,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchemaV0,
   commandAckSchema,
-  statusSchema,
+  statusSchemaV0,
   liveTextSchema,
 ]);
 export type UpFrame = z.infer<typeof upFrameV1>;
@@ -254,11 +270,20 @@ export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
 
-/** An up frame in minor 0's shape: an `events` frame's events lose minor 1's fields. */
+/** A status in minor 0's shape: without `processContainment`. */
+const statusForMinor0 = (frame: Status): unknown => {
+  const minor0: Record<string, unknown> = { ...frame };
+  Reflect.deleteProperty(minor0, "processContainment");
+  return minor0;
+};
+
+/** An up frame in minor 0's shape: an `events` frame's events lose minor 1's fields, and a status its containment. */
 const encodeUpFrameV0 = (frame: UpFrame): unknown =>
   frame.type === "events"
     ? { ...frame, events: frame.events.map((item) => ({ ...item, event: encodeEventForMinor(item.event, 0) })) }
-    : frame;
+    : frame.type === "status"
+      ? statusForMinor0(frame)
+      : frame;
 
 /** Up frames, one codec per kept minor. */
 export const upFrameCodec = createVersionedCodec<UpFrame>([

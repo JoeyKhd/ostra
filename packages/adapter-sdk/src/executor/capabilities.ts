@@ -1,7 +1,9 @@
+import type { ProcessContainment } from "@ostra/protocol";
+
 /**
  * What an executor can do (ADR 0025, ADR 0029). The differences between executors are these
- * declarations; `host` has the only allowed ones (no services, no box sizes, and on macOS weaker
- * process containment).
+ * declarations; `host` has the only allowed ones (no services, no box sizes, and weaker process
+ * containment wherever the machine gives no kernel unit, which the runner reports).
  */
 export type ExecutorCapabilities = {
   /** `container`: the agent runs in a box with no credential. `none`: a worktree, "not isolated". */
@@ -17,5 +19,5 @@ export type ExecutorCapabilities = {
    * object, a Linux cgroup, or only by walking the agent's process tree (which can miss a process
    * that detached itself).
    */
-  readonly processContainment: "container" | "job-object" | "cgroup" | "process-tree";
+  readonly processContainment: ProcessContainment;
 };

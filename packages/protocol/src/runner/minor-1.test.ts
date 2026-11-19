@@ -36,7 +36,7 @@ import { commandKindSchema, commandKindSupportedAt } from "./commands.ts";
 import type { Command } from "./commands.ts";
 import { minorFromHeader, runnerHttpErrorSchema, runnerPaths } from "./http.ts";
 import { runnerLimits } from "./limits.ts";
-import { encodeDownFrame, encodeUpFrame, parseDownFrame, parseUpFrame } from "./messages.ts";
+import { encodeDownFrame, encodeUpFrame, parseDownFrame, parseUpFrame, processContainmentSchema } from "./messages.ts";
 import type { UpFrame } from "./messages.ts";
 import { negotiate, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./version.ts";
 
@@ -184,6 +184,38 @@ describe("up frames across minors", () => {
   it("a minor-0 peer's frame still parses at minor 1", () => {
     const frame = eventsFrame(eventFixtures["session.crashed"]);
     expect(parseUpFrame(encodeUpFrame(frame, 0), 1)).toEqual({ ok: true, frame });
+  });
+});
+
+describe("the status's process containment (ticket 42)", () => {
+  const status: UpFrame = {
+    type: "status",
+    executor: "host",
+    capacity: 1,
+    freeSlots: 1,
+    labels: [],
+    version: "0.1.0",
+    running: [],
+    spoolBytes: 0,
+    processContainment: "job-object",
+  };
+
+  it("F-014: round-trips at minor 1, with each kind and without one", () => {
+    expect(parseUpFrame(encodeUpFrame(status, 1), 1)).toEqual({ ok: true, frame: status });
+    for (const kind of processContainmentSchema.options) {
+      const frame = { ...status, processContainment: kind };
+      expect(parseUpFrame(encodeUpFrame(frame, 1), 1)).toEqual({ ok: true, frame });
+    }
+    const without: UpFrame = { type: "status", executor: "host", capacity: 1, freeSlots: 1, labels: [], version: "0.1.0", running: [], spoolBytes: 0 };
+    expect(parseUpFrame(encodeUpFrame(without, 1), 1)).toEqual({ ok: true, frame: without });
+  });
+
+  it("F-014: refuses an unknown kind, and a minor-0 peer never sees the field", () => {
+    expect(parseUpFrame(JSON.stringify({ ...status, processContainment: "chroot" }), 1).ok).toBe(false);
+    const text = encodeUpFrame(status, 0);
+    expect(text).not.toContain("processContainment");
+    expect(parseUpFrame(text, 0).ok).toBe(true);
+    expect(parseUpFrame(encodeUpFrame(status, 1), 0).ok).toBe(false);
   });
 });
 
