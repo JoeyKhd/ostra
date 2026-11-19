@@ -1,0 +1,4 @@
+{
+  "$comment": "Rows marked done before the proof ledger existed (2026-11-19), waiting for their proofs. check:proof only warns about them. It only shrinks: remove a row once its proof file is all proved, as check:proof then asks. Never add one (context/proof/README.md).",
+  "rows": ["F-023", "F-025", "F-030", "F-065", "F-088"]
+}
