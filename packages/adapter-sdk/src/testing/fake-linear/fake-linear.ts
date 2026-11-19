@@ -31,8 +31,19 @@ import type { GraphqlValue, TopLevelField } from "./graphql-lite.ts";
 //   against ostra-test on 2026-11-19 (ticket 07's live suite pages with the ascending one).
 // - An issue looked up by an identifier it had before it moved team is not found. Unverified.
 // - A webhook retry is stamped afresh (the spike's assumption, research/spike-linear-agent-mode.md).
+// - `users(filter: { email: { in } })` compares emails exactly, and leaves out deactivated users
+//   unless `includeDisabled` is true (the schema's default). A comment mentions a user when its
+//   markdown links the user's profile URL (github.com/linear/linear/issues/351); ticket 10's live
+//   case checks that against ostra-test.
 
 export type FakeLinearPerson = { readonly id: string; readonly name: string; readonly email: string };
+
+/** A person added with `addUser` (milestone 3, F-036): their profile URL is the markdown mention. */
+export type FakeLinearUser = FakeLinearPerson & {
+  readonly displayName: string;
+  /** `https://linear.app/<workspace>/profiles/<displayName>`, Linear's `User.url`. */
+  readonly url: string;
+};
 
 export type FakeLinearTeam = { readonly id: string; readonly key: string; readonly name: string };
 
@@ -175,10 +186,15 @@ export type FakeLinear = {
   readonly moveIssue: (id: ExternalTicketId, teamId: string) => Promise<TicketKey>;
   /** A person comments. */
   readonly addComment: (issueId: ExternalTicketId, body: string) => Promise<string>;
+  /** Milestone 3: adds a person to the workspace, active unless `active` is false. */
+  readonly addUser: (input: { readonly name: string; readonly email: string; readonly displayName?: string; readonly active?: boolean }) => FakeLinearUser;
+  /** Deactivates (or reactivates) a person, as an admin suspending them does. */
+  readonly setUserActive: (userId: string, active: boolean) => void;
   readonly issueView: (id: ExternalTicketId) => {
     readonly identifier: TicketKey;
     readonly stateId: string;
-    readonly comments: readonly { readonly id: string; readonly body: string; readonly userId: string }[];
+    /** `mentions`: the IDs of the users the comment's markdown mentions, as Linear reads it. */
+    readonly comments: readonly { readonly id: string; readonly body: string; readonly userId: string; readonly mentions: readonly string[] }[];
     readonly attachments: readonly { readonly id: string; readonly url: string }[];
   };
   /** A delivery about an issue, signed with the app's (or a workspace webhook's) secret. Not sent. */
@@ -292,6 +308,8 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
   const admin: FakeLinearPerson = { id: `user-${randomUUID()}`, name: "Test Admin", email: "admin@example.test" };
   const adminApiKey = `lin_api_${randomBytes(20).toString("hex")}`;
   const people = new Map<string, FakeLinearPerson>([[admin.id, admin]]);
+  /** Each person's display name and whether they're active; a person without a row is active, named by `name`. */
+  const profiles = new Map<string, { displayName: string; active: boolean }>();
 
   const teams: FakeLinearTeam[] = [];
   const states: FakeLinearState[] = [];
@@ -359,10 +377,17 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
 
   // ---------- JSON shapes, as Linear names its fields ----------
 
+  const profileOf = (person: FakeLinearPerson) => profiles.get(person.id) ?? { displayName: person.name, active: true };
+  const profileUrl = (person: FakeLinearPerson): string => `https://linear.app/${organization.urlKey}/profiles/${encodeURIComponent(profileOf(person).displayName)}`;
   const userJson = (id: string) => {
     const person = people.get(id);
-    return person === undefined ? null : { id: person.id, name: person.name, displayName: person.name, email: person.email };
+    if (person === undefined) return null;
+    const profile = profileOf(person);
+    return { id: person.id, name: person.name, displayName: profile.displayName, email: person.email, url: profileUrl(person), active: profile.active };
   };
+  /** The users a comment's markdown mentions: a link to their profile URL. */
+  const mentionsIn = (body: string): string[] =>
+    [...people.values()].filter((person) => body.includes(`](${profileUrl(person)})`)).map((person) => person.id);
   const teamJson = (found: FakeLinearTeam) => ({ __typename: "Team", id: found.id, key: found.key, name: found.name });
   const stateJson = (state: FakeLinearState) => ({
     __typename: "WorkflowState",
@@ -680,6 +705,23 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         const found = comments.find((comment) => comment.id === stringArg(args["id"]));
         if (found === undefined) throw notFound("Comment");
         return commentJson(found);
+      }
+      case "users": {
+        const filter = objectArg(args["filter"]);
+        const emailIn = listArg(nested(filter["email"], "in")).flatMap((value) => (typeof value === "string" ? [value] : []));
+        const emailEq = stringArg(nested(filter["email"], "eq"));
+        const activeEq = nested(filter["active"], "eq");
+        const includeDisabled = args["includeDisabled"] === true;
+        const list = [...people.values()].filter((person) => {
+          const { active } = profileOf(person);
+          if (!includeDisabled && !active) return false;
+          if (typeof activeEq === "boolean" && active !== activeEq) return false;
+          if ("email" in filter && emailIn.length === 0 && emailEq === undefined) return false;
+          if (emailIn.length > 0 && !emailIn.includes(person.email)) return false;
+          if (emailEq !== undefined && person.email !== emailEq) return false;
+          return true;
+        });
+        return pageOf(list, args, (person) => userJson(person.id));
       }
       case "integrations":
         return connection(githubIntegration ? [{ id: "integration-github", service: "github", createdAt: iso(0) }] : []);
@@ -1102,12 +1144,26 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       await settle();
       return comment.id;
     },
+    addUser: (input) => {
+      const person: FakeLinearPerson = { id: `user-${randomUUID()}`, name: input.name, email: input.email };
+      people.set(person.id, person);
+      const displayName = input.displayName ?? (input.email.split("@")[0] ?? input.name).replace(/[^A-Za-z0-9._-]/g, "");
+      profiles.set(person.id, { displayName, active: input.active ?? true });
+      return { ...person, displayName, url: profileUrl(person) };
+    },
+    setUserActive: (userId, active) => {
+      const person = people.get(userId);
+      if (person === undefined) throw new Error("the fake Linear has no such user");
+      profiles.set(userId, { ...profileOf(person), active });
+    },
     issueView: (id) => {
       const issue = issueOf(id);
       return {
         identifier: issue.identifier,
         stateId: issue.stateId,
-        comments: comments.filter((comment) => comment.issueId === issue.id).map((comment) => ({ id: comment.id, body: comment.body, userId: comment.userId })),
+        comments: comments
+          .filter((comment) => comment.issueId === issue.id)
+          .map((comment) => ({ id: comment.id, body: comment.body, userId: comment.userId, mentions: mentionsIn(comment.body) })),
         attachments: attachments.filter((attachment) => attachment.issueId === issue.id).map((attachment) => ({ id: attachment.id, url: attachment.url })),
       };
     },
@@ -1198,6 +1254,10 @@ export const fakeLinearSuiteFixture = (input: {
     rateLimitNext: (retryAfterSeconds) => {
       fake.injectFaults([{ kind: "rate-limited", retryAfterSeconds }]);
       return Promise.resolve();
+    },
+    seedUser: (email) => {
+      const user = fake.addUser({ name: `Seeded ${email.split("@")[0] ?? "user"}`, email });
+      return Promise.resolve({ userId: user.id, mentionHolds: user.url });
     },
   };
 };

@@ -1,0 +1,9 @@
+# F-036: Linear users and mentions, live on ostra-test (team OST), 2026-11-19
+# Run: set -a; . ~/.config/ostra-dev/linear.env; set +a; npx vitest run src/linear-adapter.live.test.ts -t F-036 --reporter=verbose
+# What it checked: findUsersByEmail found the API key's own user (the maintainer) by their address, given upper-cased,
+# and nothing for an unknown one; the mention is [@displayName](https://linear.app/<workspace>/profiles/<name>);
+# the comment the adapter posted with it holds exactly one user-mention node in Linear's bodyData, with that user's ID,
+# and a comment without it holds none. The test ticket was archived afterwards. No address, name or key is printed.
+
+ ✓ src/linear-adapter.live.test.ts > the Linear adapter, live on ostra-test (team OST) > F-036: finds the maintainer by their own address, and a comment with that mention is a mention in Linear 854ms
+      Tests  1 passed | 1 skipped (2)

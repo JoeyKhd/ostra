@@ -13,6 +13,8 @@ export const LABELS_PER_ISSUE = 20;
 export const COMMENTS_PER_PAGE = 100;
 /** Pages of comments read at most: a ticket with more is read up to there. */
 export const MAX_COMMENT_PAGES = 10;
+/** Emails asked for in one `users` query (F-036): a delivery's audience is a handful. */
+export const USERS_PER_QUERY = 50;
 
 // ---------- fields ----------
 
@@ -49,6 +51,9 @@ export const documents = {
   attachmentLinkGitHubPR: "mutation OstraLinkPullRequest($issueId: String!, $url: String!) { attachmentLinkGitHubPR(issueId: $issueId, url: $url) { success } }",
   attachmentLinkGitHubPRWithKind:
     "mutation OstraLinkPullRequestWithKind($issueId: String!, $url: String!, $linkKind: GitLinkKind!) { attachmentLinkGitHubPR(issueId: $issueId, url: $url, linkKind: $linkKind) { success } }",
+  // Active users only: Linear leaves out deactivated ones by default (`includeDisabled: false`),
+  // and the filter says so too.
+  usersByEmail: `query OstraUsersByEmail($emails: [String!]!, $first: Int) { users(first: $first, filter: { email: { in: $emails }, active: { eq: true } }) { nodes { id name displayName email url active } } }`,
   issueCreate: `mutation OstraIssueCreate($teamId: String!, $title: String!, $description: String) { issueCreate(input: { teamId: $teamId, title: $title, description: $description }) { success issue { ${ISSUE_FIELDS} } } }`,
 } as const;
 
@@ -72,6 +77,7 @@ export const worstCaseVariables: Readonly<Record<DocumentName, Readonly<Record<s
   attachmentCreate: {},
   attachmentLinkGitHubPR: {},
   attachmentLinkGitHubPRWithKind: {},
+  usersByEmail: { first: USERS_PER_QUERY * 2 },
   issueCreate: {},
 };
 
@@ -156,5 +162,17 @@ export const answers = {
     attachmentCreate: z.looseObject({ success: z.boolean(), attachment: z.looseObject({ id: z.string() }).nullish() }),
   }),
   attachmentLinkGitHubPR: z.looseObject({ attachmentLinkGitHubPR: z.looseObject({ success: z.boolean() }) }),
+  usersByEmail: z.looseObject({
+    users: nodes(
+      z.looseObject({
+        id: z.string(),
+        name: z.string(),
+        displayName: z.string(),
+        email: z.string(),
+        url: z.string(),
+        active: z.boolean().nullish(),
+      }),
+    ),
+  }),
   issueCreate: z.looseObject({ issueCreate: z.looseObject({ success: z.boolean(), issue: issueSchema.nullish() }) }),
 } as const;

@@ -40,6 +40,16 @@ const raw = async (token: string, query: string, variables: Record<string, unkno
   return parsed.data;
 };
 
+/** The user IDs of every mention node in a comment's rich body (Linear's ProseMirror `bodyData`). */
+const mentionedIds = (node: unknown): string[] => {
+  const parsed = z.looseObject({ type: z.string().optional(), attrs: z.looseObject({ id: z.string().optional() }).nullish(), content: z.array(z.unknown()).optional() }).safeParse(node);
+  if (!parsed.success) {
+    return [];
+  }
+  const own = parsed.data.type?.toLowerCase().includes("mention") === true && parsed.data.attrs?.id !== undefined ? [parsed.data.attrs.id] : [];
+  return [...own, ...(parsed.data.content ?? []).flatMap(mentionedIds)];
+};
+
 /** Uploads an image the way Linear's editor does, and answers its asset URL. */
 const uploadImage = async (token: string): Promise<string> => {
   const data = await raw(
@@ -181,4 +191,37 @@ describe.skipIf(!env.success)("the Linear adapter, live on ostra-test (team OST)
     expect(complexities.length).toBeGreaterThan(0);
     expect(Math.max(...complexities)).toBeLessThan(LINEAR_MAX_COMPLEXITY);
   }, 120_000);
+
+  it("F-036: finds the maintainer by their own address, and a comment with that mention is a mention in Linear", async () => {
+    if (!env.success) return;
+    const token = env.data.LINEAR_API_KEY;
+    const board = { externalId: env.data.LINEAR_TEST_TEAM_ID };
+    const adapter: TrackerAdapter = new LinearAdapter({ auth: { kind: "api-key", token } });
+    // The key is the maintainer's: `viewer` is them. Their address and name are never printed.
+    const viewer = z.object({ viewer: z.object({ id: z.string(), email: z.string() }) }).parse(await raw(token, "query { viewer { id email } }", {})).viewer;
+
+    const found = must(await adapter.findUsersByEmail(board, [viewer.email.toUpperCase(), "nobody-ostra-live@example.invalid"]), "findUsersByEmail");
+    expect(found.map((user) => user.userId)).toEqual([viewer.id]);
+    const mention = found[0]?.mention ?? "";
+    expect(mention).toMatch(/^\[@.+\]\(https:\/\/linear\.app\/[^/]+\/profiles\/[^)]+\)$/);
+
+    // The tracker notification's comment, as ticket 11 writes it, on a test ticket archived at the end.
+    const ticket = must(await adapter.createTicket(board, { title: "ostra live test: a mention", description: "Archived by the test." }), "createTicket");
+    created.push(ticket.externalId);
+    const { commentId } = must(await adapter.comment(board, ticket.key, `ostra needs you: an approval. ${mention}`), "comment");
+    // Linear reads the profile link as a mention: its rich body holds a user-mention node with the ID.
+    const comment = z
+      .object({ comment: z.object({ bodyData: z.string() }) })
+      .parse(await raw(token, "query ($id: String!) { comment(id: $id) { bodyData } }", { id: commentId })).comment;
+    const bodyData: unknown = JSON.parse(comment.bodyData);
+    const mentioned = mentionedIds(bodyData);
+    expect(mentioned).toEqual([viewer.id]);
+    // The negative control: a comment without the mention holds no mention node.
+    const plain = must(await adapter.comment(board, ticket.key, "ostra needs you: no one is mentioned here."), "comment").commentId;
+    const plainBody: unknown = JSON.parse(
+      z.object({ comment: z.object({ bodyData: z.string() }) }).parse(await raw(token, "query ($id: String!) { comment(id: $id) { bodyData } }", { id: plain }))
+        .comment.bodyData,
+    );
+    expect(mentionedIds(plainBody)).toEqual([]);
+  }, 60_000);
 });

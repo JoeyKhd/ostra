@@ -30,6 +30,7 @@ import type {
   TrackerBoard,
   TrackerCapabilities,
   TrackerStatus,
+  TrackerUser,
   TrackerWebhookHint,
   TrackerWebhookRequest,
   WebhookVerification,
@@ -40,7 +41,7 @@ import { z } from "zod";
 
 import { linearWebhookHint, verifyLinearWebhook } from "./app/webhooks.ts";
 import { imageName, looksLikeImage, markdownImages } from "./markdown-images.ts";
-import { answers, documents, MAX_COMMENT_PAGES, MAX_TICKET_PAGE } from "./queries.ts";
+import { answers, documents, MAX_COMMENT_PAGES, MAX_TICKET_PAGE, USERS_PER_QUERY } from "./queries.ts";
 import type { DocumentName, LinearComment, LinearIssue, LinearSummary } from "./queries.ts";
 
 // The Linear tracker adapter (ADR 0013, ADR 0025): Linear's plain API over GraphQL with `fetch`
@@ -189,13 +190,32 @@ const linkKindOf = (type: string, inverse: boolean): TicketLinkKind | null => {
   }
 };
 
+/** Markdown's own characters in a link's text, escaped so a display name can't end the link early. */
+const linkText = (text: string): string => text.replace(/[\\[\]()*_`<>]/g, (char) => `\\${char}`);
+
+/**
+ * Linear's mention: a markdown link to the user's profile URL, which Linear turns into a mention
+ * that notifies them (github.com/linear/linear/issues/351; checked live on ostra-test, ticket 10).
+ * `null` for a profile URL that isn't Linear's own, which mentions nobody.
+ */
+export const linearMention = (user: { readonly displayName: string; readonly url: string }): string | null => {
+  if (!URL.canParse(user.url)) {
+    return null;
+  }
+  const url = new URL(user.url);
+  if (url.protocol !== "https:" || url.hostname !== "linear.app" || !url.pathname.includes("/profiles/")) {
+    return null;
+  }
+  return `[@${linkText(user.displayName)}](${url.href})`;
+};
+
 const present = <T,>(values: readonly (T | null)[]): T[] => values.flatMap((value) => (value === null ? [] : [value]));
 
 export class LinearAdapter extends TrackerAdapter {
   readonly name = "linear";
   readonly capabilities: TrackerCapabilities = {
-    // Milestone 3's ticket 10 builds `findUsersByEmail` on Linear and turns this on.
-    mentions: false,
+    // `findUsersByEmail`: a profile link in a comment's markdown notifies the user (F-036).
+    mentions: true,
     // Linear's agent sessions come with milestone 6 (F-012).
     agentSessions: false,
     // A ticket's parent is read, so a sub-issue is told from a ticket.
@@ -565,6 +585,48 @@ export class LinearAdapter extends TrackerAdapter {
     }
     const { success, issue } = created.value.issueCreate;
     return success && issue !== null && issue !== undefined ? toTicket(issue) : adapterError("conflict", "Linear did not create the ticket");
+  }
+
+  // ---------- people ----------
+
+  /**
+   * The workspace's active users with these emails (F-036), each with the markdown mention that
+   * notifies them. Linear's users belong to the workspace, not a team, so the board only names the
+   * call. Emails match case-insensitively and come back as they were asked; nothing about a person is
+   * kept here, and no email reaches a log line.
+   */
+  override async findUsersByEmail(board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
+    const asked = new Map<string, string>();
+    for (const email of emails) {
+      const key = email.trim().toLowerCase();
+      if (key !== "" && !asked.has(key)) {
+        asked.set(key, email);
+      }
+    }
+    const keys = [...asked.keys()];
+    const found: TrackerUser[] = [];
+    const seen = new Set<string>();
+    for (let start = 0; start < keys.length; start += USERS_PER_QUERY) {
+      const chunk = keys.slice(start, start + USERS_PER_QUERY);
+      // Linear keeps addresses as they were typed: both the asked form and the lowercase one are sent.
+      const forms = [...new Set(chunk.flatMap((key) => [key, asked.get(key) ?? key]))];
+      const listed = await this.#query("usersByEmail", { emails: forms, first: forms.length }, answers.usersByEmail);
+      if (!listed.ok) {
+        this.plumbing.logger.warn("linear.users.failed", { board: board.externalId, code: listed.error.code, count: chunk.length });
+        return listed;
+      }
+      for (const user of listed.value.users.nodes) {
+        const email = asked.get(user.email.toLowerCase());
+        const mention = linearMention(user);
+        if (email === undefined || mention === null || user.active === false || seen.has(user.id)) {
+          continue;
+        }
+        seen.add(user.id);
+        found.push({ email, userId: user.id, mention });
+      }
+    }
+    this.plumbing.logger.debug("linear.users.found", { board: board.externalId, asked: keys.length, found: found.length });
+    return ok(found);
   }
 
   // ---------- webhooks ----------

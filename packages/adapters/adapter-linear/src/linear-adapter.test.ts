@@ -7,7 +7,7 @@ import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { LinearAdapter } from "./linear-adapter.ts";
+import { LinearAdapter, linearMention } from "./linear-adapter.ts";
 import { markdownImages } from "./markdown-images.ts";
 
 // The Linear adapter against the fake Linear server (spec section 8): the tracker contract suite,
@@ -210,6 +210,51 @@ describe("the Linear adapter", () => {
     expect(everything).not.toContain("Entity not found");
   });
 
+  it("F-036: finds an active user by email, and their mention, posted in a comment, mentions them in Linear", async () => {
+    const maya = fake.addUser({ name: "Maya Brook", email: "maya@example.test", displayName: "maya" });
+    const found = await adapter.findUsersByEmail(board(), ["Maya@Example.test"]);
+    expect(found).toEqual({
+      ok: true,
+      value: [{ email: "Maya@Example.test", userId: maya.id, mention: `[@maya](https://linear.app/ostra-test/profiles/maya)` }],
+    });
+    if (!found.ok) throw new Error(found.error.message);
+    // The comment ticket 11's tracker notifications write: the fake reads mentions as Linear does.
+    const issue = await fake.createIssue({ title: "Mentions" });
+    const posted = await adapter.comment(board(), issue.identifier, `Needs you: an approval. ${found.value[0]?.mention ?? ""}`);
+    if (!posted.ok) throw new Error(posted.error.message);
+    expect(fake.issueView(issue.id).comments.find((comment) => comment.id === posted.value.commentId)?.mentions).toEqual([maya.id]);
+  });
+
+  it("F-036: leaves out deactivated users, unknown emails and blank ones, and asks in batches", async () => {
+    const gone = fake.addUser({ name: "Gone", email: "gone@example.test" });
+    fake.setUserActive(gone.id, false);
+    const many = Array.from({ length: 120 }, (_, index) => `nobody-${String(index)}@example.test`);
+    const before = fake.apiCalls()["users"] ?? 0;
+    expect(await adapter.findUsersByEmail(board(), ["gone@example.test", "", "  ", ...many])).toEqual({ ok: true, value: [] });
+    expect((fake.apiCalls()["users"] ?? 0) - before).toBe(3);
+    expect(await adapter.findUsersByEmail(board(), [])).toEqual({ ok: true, value: [] });
+    expect(fake.apiCalls()["users"] ?? 0).toBe(before + 3);
+  });
+
+  it("F-036: keeps every email out of its log lines, and reports Linear's failure as an error", async () => {
+    fake.addUser({ name: "Quiet", email: "quiet.person@example.test" });
+    fake.injectFaults([{ kind: "http500" }]);
+    const failed = await adapter.findUsersByEmail(board(), ["quiet.person@example.test"]);
+    expect(failed).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    expect(await adapter.findUsersByEmail(board(), ["quiet.person@example.test"])).toMatchObject({ ok: true, value: [{ email: "quiet.person@example.test" }] });
+    expect(JSON.stringify([failed, context.logger.records])).not.toContain("quiet.person");
+  });
+
+  it("F-036: writes a mention whose display name can't break the link, and none for a URL that isn't Linear's", () => {
+    expect(linearMention({ displayName: "a](https://evil.test)[b", url: "https://linear.app/ostra-test/profiles/a" })).toBe(
+      String.raw`[@a\]\(https://evil.test\)\[b](https://linear.app/ostra-test/profiles/a)`,
+    );
+    expect(linearMention({ displayName: "x", url: "https://evil.test/profiles/x" })).toBeNull();
+    expect(linearMention({ displayName: "x", url: "http://linear.app/ostra-test/profiles/x" })).toBeNull();
+    expect(linearMention({ displayName: "x", url: "https://linear.app/ostra-test/issue/OST-1" })).toBeNull();
+    expect(linearMention({ displayName: "x", url: "not a url" })).toBeNull();
+  });
+
   it("declares what it has: sub-issues, webhooks, comment edits and attachments; no agent sessions, graph or transitions", () => {
     expect(adapter.capabilities).toEqual({
       agentSessions: false,
@@ -219,8 +264,8 @@ describe("the Linear adapter", () => {
       commentEdit: true,
       attachments: true,
       transitions: false,
-      // Milestone 3's ticket 10 builds findUsersByEmail on Linear and turns it on.
-      mentions: false,
+      // F-036: findUsersByEmail, with the profile link as the mention.
+      mentions: true,
     });
   });
 });
