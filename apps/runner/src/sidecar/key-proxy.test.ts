@@ -287,6 +287,83 @@ describe("F-089: the key proxy", () => {
     }
   });
 
+  it("F-089: passes each chunk of a stream on as it comes, before the provider has sent the rest, in both API formats", async () => {
+    for (const { format, scheme, path, chunks } of formats) {
+      const [firstChunk] = chunks;
+      if (firstChunk === undefined) {
+        throw new Error("the answer has no chunk");
+      }
+      // The provider sends its first chunk, then holds the rest until the agent has read that one.
+      const gate = Promise.withResolvers<undefined>();
+      const server = createServer((request, response) => {
+        request.resume();
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(firstChunk);
+        void gate.promise.then(() => {
+          response.end(chunks.slice(1).join(""));
+        });
+      });
+      await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+      });
+      closers.push(
+        () =>
+          new Promise<void>((resolve) => {
+            gate.resolve(undefined);
+            server.closeAllConnections();
+            server.close(() => {
+              resolve();
+            });
+          }),
+      );
+      const address: AddressInfo | string | null = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      const harness = await startProxy(`http://127.0.0.1:${String(port)}/v1`, format, scheme);
+      const response = await fetch(`${harness.proxy.baseUrl}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${harness.proxy.fakeKey}`, "x-api-key": harness.proxy.fakeKey },
+        body: format === "openai-compatible" ? openAiBody(true) : anthropicBody(true),
+      });
+      const reader = response.body?.getReader();
+      if (reader === undefined) {
+        throw new Error("the answer has no body");
+      }
+      const decoder = new TextDecoder();
+      let text = "";
+      const append = (value: unknown): void => {
+        if (value instanceof Uint8Array) {
+          text += decoder.decode(value, { stream: true });
+        }
+      };
+      const timedOut = Symbol("timed out");
+      // Read until the first chunk is in, or give up: a proxy that holds the answer never sends it.
+      while (text.length < firstChunk.length) {
+        const read = await Promise.race([
+          reader.read(),
+          new Promise<typeof timedOut>((resolve) => {
+            setTimeout(() => {
+              resolve(timedOut);
+            }, 5_000);
+          }),
+        ]);
+        if (read === timedOut || read.done) {
+          break;
+        }
+        append(read.value);
+      }
+      expect(text, `${format}: the first chunk, while the provider holds the rest`).toBe(firstChunk);
+      gate.resolve(undefined);
+      for (;;) {
+        const read = await reader.read();
+        if (read.done) {
+          break;
+        }
+        append(read.value);
+      }
+      expect(text).toBe(chunks.join(""));
+    }
+  });
+
   it("F-089: its count equals what the endpoint reports, in both formats, streamed or not", async () => {
     for (const { format, scheme, path } of formats) {
       for (const stream of [true, false]) {
