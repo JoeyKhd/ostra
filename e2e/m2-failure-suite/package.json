@@ -1,0 +1,30 @@
+{
+  "name": "@ostra/e2e-m2-failures",
+  "version": "0.0.0",
+  "description": "Milestone 2's failure suite against a fresh stack, the test org and the test Linear workspace (ticket 38)",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "suite": "node src/suite.ts",
+    "clean-up": "node src/clean-up-cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/adapter-secret-store-builtin": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/domain": "workspace:*",
+    "@ostra/e2e-m1": "workspace:*",
+    "@ostra/e2e-m2": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}

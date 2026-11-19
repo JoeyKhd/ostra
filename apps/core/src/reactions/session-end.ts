@@ -53,6 +53,7 @@ export const CODE_HOST_FAILED = "the code host failed; the job retries";
 export const openPullRequestsHandler =
   (deps: ReactionDeps): JobHandler<"task.open-pull-requests"> =>
   async (context) => {
+    killPoint("open-pull-requests.before");
     const result = await openPullRequests(
       {
         db: deps.db,

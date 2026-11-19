@@ -359,6 +359,7 @@ export const ticketSyncHandler =
   async (context) => {
     const { organizationId, ticketWriteId } = context.payload;
     const logger = context.logger.child({ organizationId, ticketWriteId });
+    killPoint("ticket.sync.before");
     let outcome: ApplyOutcome;
     try {
       outcome = await applyTicketWrite(deps, { organizationId, ticketWriteId });

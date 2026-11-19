@@ -12,8 +12,12 @@ export const killPointNames = [
   "dispatch.offered",
   /** Inside `webhook.process`, after its handler acted and before the delivery is marked. */
   "webhook.process",
+  /** Inside `ticket.sync`, before the tracker is called (ticket 38: spike 8's first kill point). */
+  "ticket.sync.before",
   /** Inside `ticket.sync`, after the tracker answered and before the write is recorded done. */
   "ticket.sync.answered",
+  /** Inside `task.open-pull-requests`, before GitHub is called (ticket 38: spike 8's first kill point). */
+  "open-pull-requests.before",
   /** Inside `task.open-pull-requests`, after GitHub opened the PR and before its row records it. */
   "open-pull-requests.answered",
 ] as const;

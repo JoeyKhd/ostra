@@ -144,6 +144,11 @@ export const startCore = async (
     readonly linearApiUrl?: string;
     /** Tests only: the queue's poll and supervise intervals, so a dead worker's job is freed in seconds. */
     readonly jobIntervals?: { readonly pollingIntervalSeconds: number; readonly superviseIntervalSeconds: number };
+    /**
+     * Tests only (ticket 38's failure suite): the session's maximum duration and the stall in
+     * milliseconds instead of the settings' minutes, so the runaway cases run in seconds.
+     */
+    readonly limitsMs?: { readonly sessionMaxMs?: number; readonly stallMs?: number };
   } = {},
 ): Promise<RunningCore> => {
   // An upgraded install may still set a retired setting: core starts, and says it ignores it.
@@ -164,7 +169,7 @@ export const startCore = async (
   const liveText = createLiveTextWriter({ db, logger });
   // Milestone 2: the session's maximum duration and the idle box's release (tickets 19, 20).
   const timers: SessionTimers = {
-    sessionMaxMs: settings.sessionMaxMinutes * 60_000,
+    sessionMaxMs: options.limitsMs?.sessionMaxMs ?? settings.sessionMaxMinutes * 60_000,
     boxReleaseIdleMs: settings.boxReleaseIdleDays * 24 * 3_600_000,
     cancelInTx: (tx, job, payload) => jobs.cancelInTx(tx, job, payload),
   };
@@ -255,7 +260,7 @@ export const startCore = async (
     clock: systemClock,
     logger,
     timers,
-    stallMs: settings.sessionStallMinutes * 60_000,
+    stallMs: options.limitsMs?.stallMs ?? settings.sessionStallMinutes * 60_000,
   };
   await jobs.work("session.max-duration", maxDurationHandler(limitDeps));
   await jobs.work("session.stall-sweep", stallSweepHandler(limitDeps), { localConcurrency: 1 });

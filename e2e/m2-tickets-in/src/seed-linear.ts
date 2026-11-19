@@ -58,6 +58,11 @@ export type SeedInput = {
   readonly teamId: string;
   /** Core's public address (the tunnel), or `null` to poll. */
   readonly publicUrl: string | null;
+  /**
+   * The webhook's label on Linear: an earlier run's webhook with it is deleted first. The demo's by
+   * default; the failure suite (ticket 38) has its own, so neither deletes the other's.
+   */
+  readonly webhookLabel?: string;
 };
 
 export type SeededConnection = {
@@ -111,8 +116,9 @@ export const seedLinear = async (input: SeedInput): Promise<SeededConnection> =>
   }
 
   // An earlier run's webhook points at an old tunnel, or at this one twice: delete it first.
+  const label = input.webhookLabel ?? SEED_WEBHOOK_LABEL;
   for (const hook of await listWebhooks(input.tool)) {
-    if (hook.label === SEED_WEBHOOK_LABEL) await deleteWebhook(input.tool, hook.id);
+    if (hook.label === label) await deleteWebhook(input.tool, hook.id);
   }
   if (input.publicUrl === null) {
     await db.connection.update({ where: { id: connectionId }, data: { webhookMode: "polling" } });
@@ -126,7 +132,7 @@ export const seedLinear = async (input: SeedInput): Promise<SeededConnection> =>
     url: `${input.publicUrl}/webhooks/linear/${connectionId}`,
     teamId: input.teamId,
     secret: signingSecret,
-    label: SEED_WEBHOOK_LABEL,
+    label,
   });
   return { organizationId, connectionId, workspaceKey: workspace.organization.urlKey, webhookId, created };
 };

@@ -142,6 +142,11 @@ export type InjectedFailure = {
   readonly body?: unknown;
   /** How many requests it answers; default 1. */
   times?: number;
+  /**
+   * Ticket 38: the request is applied first, then answered with this failure instead of its real
+   * answer, as a write that committed and lost its reply. Off by default.
+   */
+  readonly afterWrite?: boolean;
 };
 
 export type FakeGitHub = {
@@ -159,6 +164,11 @@ export type FakeGitHub = {
   readonly orgId: number;
   readonly requests: FakeRequest[];
   readonly pulls: FakePullRequest[];
+  /**
+   * Ticket 38: the head branch of every `POST /pulls` that reached the handler, accepted or not, in
+   * order: the count of creates per key (spike 8's counting device), which a lookup keeps at one.
+   */
+  readonly pullCreates: string[];
   /** Refs besides branches, per `owner/name`. */
   readonly refs: Map<string, Set<string>>;
   /** Merges or closes a PR, as a person on the host would, and stamps its times. */
@@ -308,6 +318,9 @@ export const createFakeGitHub = async (options: {
   const refs = new Map<string, Set<string>>(options.repos.map((repo) => [`${repo.owner}/${repo.name}`, new Set(repo.refs ?? [])]));
   const tokens = new Map<string, TokenScope>();
   const failures: InjectedFailure[] = [];
+  const pullCreates: string[] = [];
+  /** Answers whose real reply is replaced by an injected failure after the write (`afterWrite`). */
+  const failAfterWrite = new WeakMap<ServerResponse, InjectedFailure>();
   const comments: { readonly repo: string; readonly kind: "issue" | "review"; readonly id: string }[] = [];
   const reactions = new Map<string, number>();
   let draftChanges = 0;
@@ -345,7 +358,12 @@ export const createFakeGitHub = async (options: {
   });
   const nodeIdOf = (pr: FakePullRequest): string => `PR_fake_${Buffer.from(`${pr.repo}#${String(pr.number)}`).toString("base64url")}`;
 
-  const send = (response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void => {
+  const send = (response: ServerResponse, realStatus: number, realBody: unknown, realHeaders: Record<string, string> = {}): void => {
+    const after = failAfterWrite.get(response);
+    failAfterWrite.delete(response);
+    const status = after?.status ?? realStatus;
+    const body = after === undefined ? realBody : (after.body ?? { message: "an injected failure after the write" });
+    const headers = after === undefined ? realHeaders : { ...after.headers };
     response.writeHead(status, {
       "content-type": "application/json",
       "x-ratelimit-limit": "5000",
@@ -445,7 +463,10 @@ export const createFakeGitHub = async (options: {
     const injected = failures.find(
       (failure) => (failure.times ?? 1) > 0 && failure.pathPattern.test(url.pathname) && (failure.method ?? method) === method,
     );
-    if (injected !== undefined) {
+    if (injected?.afterWrite === true) {
+      injected.times = (injected.times ?? 1) - 1;
+      failAfterWrite.set(response, injected);
+    } else if (injected !== undefined) {
       injected.times = (injected.times ?? 1) - 1;
       send(response, injected.status, injected.body ?? { message: "an injected failure, with a secret-looking value ghp_0123456789abcdefghijklmnop" }, { ...injected.headers });
       return;
@@ -742,6 +763,7 @@ export const createFakeGitHub = async (options: {
       }
       const body = bodySchema.parse(await readBody(request));
       const head = body.head ?? "";
+      pullCreates.push(head);
       if (!repo.branches.includes(head)) {
         send(response, 422, { message: "Validation Failed", errors: [{ resource: "PullRequest", field: "head", code: "invalid" }] });
         return;
@@ -1047,6 +1069,7 @@ export const createFakeGitHub = async (options: {
     orgId,
     requests,
     pulls,
+    pullCreates,
     refs,
     finishPullRequest,
     reopenPullRequest,
