@@ -22,3 +22,8 @@ Spec: `../spec.md`, sections 3 (step 15) and 12; target `github-organizations`
 - [ ] Committed as `✨ add GitHub organizations to the panel`.
 
 ## Comments
+
+- 2026-11-19 (ticket 52): target approved (`app-targets/m4/github-organizations`), so the UI can start. Its open points are settled in the build spec; record them here as built. **The screens that only grow**, built against their existing targets with no new picture:
+  - `app-targets/m1/github-not-connected`: on `Create a new App`, a `RadioGroup` under the organization field, label `Will repos outside this account use the App?`: `No, only this account's repos` (default) and `Yes, other GitHub organizations install it too`; help, 12px `--faint`: `Private is the default: a public App can't be made private again once another account installs it.` The answer goes to `github.createApp` as `public`.
+  - `app-targets/m1/project-new` and `app-targets/m4/project-repos`' `Add a repo` sheet: repos from every linked installation, grouped by GitHub account (a 12px 500 `--faint` group label: the login in mono and `organization` / `user`), never from a waiting or removed one.
+  - `app-targets/m4/project-repos`: the repo list grouped by GitHub account the same way when the project's repos span two; a repo whose installation was unlinked or removed shows the check line `ban` 15px `--red` + `Its installation on globex was unlinked` and, after a `·` in `--faint`, `New tasks here wait until an admin links it again.`; the verdict reads `Not usable` in `--red`.

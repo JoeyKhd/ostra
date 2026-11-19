@@ -9,6 +9,8 @@ These are the design targets for milestone 4's screens (`context/specs/m4-the-or
 
 **Postponed 2026-11-19:** the targets that exist only for several organizations wait for F-134, after v1. One team runs each install, with its clients as projects inside one organization; the lead proposed moving F-049's multi-organization features after v1, and the maintainer answered "sure". So `org-switcher`, `org-switcher-create` and `org-switcher-switched`, and `instance-settings.webp` (the instance's Organizations page) aren't built in milestone 4 (its ticket 44 is `wontfix`). Their files stay, as approved, for when F-134 is built. `instance-settings-accounts.webp` (the Accounts page) is built, from `instance-settings.md`'s page 2 (ticket 33). Until then the sidebar's organization row shows the organization's name, as milestone 1 built it.
 
+**Added 2026-11-19 (ticket 52, F-135 and F-136):** `models-keys`, `project-models-keys`, `agent-profile-model`, `no-key-for-model` and `github-organizations`, made the same way, one generation each, approved 2026-11-19 by the lead on the maintainer's delegation, pending the maintainer's review. The screens that only grow with them (spec section 12) get no new picture: their changes are listed in tickets 53 and 54's `## Comments`.
+
 ## Screens
 
 | Screen | Target |
@@ -28,6 +30,11 @@ These are the design targets for milestone 4's screens (`context/specs/m4-the-or
 | Insights | `insights` |
 | Memory, a note and proposals | `memory`, `memory-note`, `memory-proposals` |
 | The account mails, light and dark | `email-account` |
+| Organization, Models: each provider as a key, the projects that use it, the default list (F-135) | `models-keys` |
+| A project's Models and keys, with the save's preview (F-135) | `project-models-keys` |
+| The agent profile's model, chosen by name (F-135) | `agent-profile-model` |
+| No key for this model in this project: New task, and the copy for a queued task, a held message and the needs-you row (F-135) | `no-key-for-model` |
+| Organization, GitHub: several Apps and their installations, linked, waiting or removed (F-136) | `github-organizations` |
 
 ## Rules
 

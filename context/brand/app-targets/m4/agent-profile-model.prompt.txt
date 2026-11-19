@@ -1,0 +1,37 @@
+# Generation 1 (kept, the only one). References: app-targets/m3/agent-profile (its 2048 original), app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+# Not retouched.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the agent profile editor of ostra, a self-hosted control panel that runs coding agents. The FIRST attached screenshot is the approved profile editor of this same app: keep its sidebar, top bar, title, sections, form fields, scale and right panel exactly. Here the "Model" field's picker is OPEN as a dropdown popover: a profile names a MODEL by its name, never a key, and each project's own key serves it.
+
+SIDEBAR rows: "Home"; "Needs you" with a small amber pill "2". Faint label "Projects": "calculator" (teal square), "northwind-portal" (blue square), "globex-shop" (pink square), "New project". Faint label "Organization": "Runners", "Models", "GitHub", "Linear", "Agent profiles" (SELECTED, background #1A1B1E), "Members", "Spend".
+
+TOP BAR: breadcrumbs "Acme Corp  ›  Agent profiles  ›  Builder" (last brighter). Right: the page's ONE filled off-white button "Save profile".
+
+MAIN COLUMN, padding 28px 40px:
+- faint mono eyebrow "Agent profile · saved 1d ago"; title "Builder"; muted lede "The default for code tasks in 3 projects."
+- Section "Agent and model": three fields in a row with small labels: "Name" input "Builder"; "Agent" select "OpenCode"; "Model" select, FOCUSED with a 1px light border, showing an Anthropic logo, "Claude Sonnet 5.5" and a chevron.
+- Directly under the Model field, the OPEN POPOVER, 520px wide, right-aligned to the Model field, background #131416, 1px #2A2C30 border, 8px radius, no shadow, overlapping the sections below it:
+  - a search input at its top with a search icon and the typed text "claude" and a hairline under it.
+  - faint 12px label "Models any key lists".
+  - Row 1 (highlighted #1A1B1E, check mark at its left): Anthropic logo · "Claude Sonnet 5.5" · on the right faint "acme-anthropic, northwind-anthropic". Under the name, a 12.5px second line with a small grey triangle-alert icon: muted "No key in globex-shop".
+  - Row 2: Anthropic logo · "Claude Opus 5.5" · right faint "acme-anthropic, northwind-anthropic". Second line muted "No key in globex-shop".
+  - Row 3: Anthropic logo · "Claude Haiku 5" · right faint "acme-anthropic". Second line muted "No key in northwind-portal, globex-shop".
+  - hairline. one row with a plus icon: "Custom model by its endpoint ID" in muted text.
+  - footer, faint 12px: "A profile names a model, not a key. Each project's own key serves it."
+- Below the popover, partly visible: the section "Instructions" with a text area holding "Keep the PR under 400 changed lines." in mono, and the section "Skills" with faint "0".
+
+RIGHT PROPERTIES PANEL:
+- group label "Profile". Rows: "Status" — small green dot "Active"; "Created" — "12 Nov by Alex Kim"; "Used by" — "3 projects".
+- hairline. group label "Claude Sonnet 5.5 in each project". Rows, each project with its small coloured square: "calculator" — mono "acme-anthropic"; "web-storefront" — mono "acme-anthropic"; "northwind-portal" — mono "northwind-anthropic"; "globex-shop" — a grey triangle-alert icon and the word "No key" in red #E5675C.
+- Under them, faint 12.5px: "globex-shop's tasks on this profile can't start until an organization admin adds a key that lists it."
+- hairline. group label "Who may use it". Two radio rows: "Everyone" (chosen), "Only these members".
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286 only where the words say a check passed or something is connected; red #E5675C only where written. The primary button is filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple except one 8px project square, no blue tint, no drop shadows, no cards, never a box inside a box, no illustrations, no robot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for provider names, host names, project names inside sentences, repo names, IDs, counts, money, times. Icons: thin Lucide line icons, 15px, stroke 1.75, grey. Vendor model logos (the Anthropic "A\", the OpenAI knot, the OpenRouter mark) small, monochrome light grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron (never the word "ostra"); a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px; at the bottom a round grey avatar "AK" and "Alex Kim". TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's settings pages. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above, no extra words, no charts.

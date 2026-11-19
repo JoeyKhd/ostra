@@ -1,0 +1,37 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/github.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+# Not retouched.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the organization's "GitHub" page of ostra, a self-hosted control panel that runs coding agents. The FIRST attached screenshot is the approved GitHub page of this same app: keep its sidebar, top bar, title, lede, section lines, hairline rows, scale and right panel exactly. This version shows SEVERAL GitHub accounts: Acme Corp's own App is installed on its clients' GitHub organizations too, and one client connected an App of its own. ostra uses an installation only once an organization admin has linked it.
+
+SIDEBAR rows: "Home"; "Needs you" with a small amber pill "2"; "My tasks" "7". Faint label "Projects": "calculator" (teal square), "northwind-portal" (blue square), "globex-shop" (pink square), "··· 14 more". Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub" (SELECTED, background #1A1B1E), "Linear", "Members", "Spend", "Audit log".
+
+TOP BAR: breadcrumbs "Acme Corp  ›  GitHub" ("GitHub" brighter). Right: an outlined button "Connect another App", then 8px after it the page's ONE filled off-white button with a plus icon "Add a GitHub organization".
+
+MAIN COLUMN, padding 28px 40px:
+- Title "GitHub".
+- Muted lede, two lines: "Each App opens pull requests as its own bot. ostra mints a token only for an installation an admin has linked, and never hands it to an agent."
+- Section line: GitHub mark icon, "ostra-acme" (mono, 600), then faint "owned by acme · public", and on the right a small green dot and muted "Webhook receiving".
+  Under it the installations as rows 42px with hairlines, no boxes, one grid (account 200px, kind 120px, repos flexible, state 170px, actions right):
+  building icon · mono "acme" · faint "organization" · muted "All repositories" · small green check and muted "Linked" · faint "owner".
+  building icon · mono "globex" · faint "organization" · muted "2 repositories" · small green check and muted "Linked" · teal "Unlink".
+  Row 3 (SELECTED, background #1A1B1E, 6px radius): user icon · mono "dana-dev" · faint "user" · muted "1 repository" · a small grey clock icon and bright "Waiting to be linked" · two small outlined buttons "Link" and "Remove".
+  faint building icon · faint mono "initech" · faint "organization" · faint "–" · faint "Removed 3 Nov" · nothing.
+- 28px below, second section line: GitHub mark icon, "northwind-ostra" (mono, 600), faint "owned by northwind-co · private", right: small green dot, muted "Webhook receiving".
+  One row: building icon · mono "northwind-co" · faint "organization" · muted "3 repositories" · green check "Linked" · faint "owner".
+- 16px below, one faint 13px line with an info icon: "A stranger who installs a public App reaches nothing: ostra drops its events and lists none of its repos until you link it."
+
+RIGHT PROPERTIES PANEL, the selected installation:
+- group label "Installation"; a title "dana-dev" (mono, 15px semibold). Rows: "Account" — "dana-dev · user"; "App" — mono "ostra-acme"; "Installed" — mono "18 Nov" "by dana-dev"; "Repos" — mono "dana-dev/size-guide".
+- Muted 13px paragraph: "Someone installed ostra-acme on this account. Link it if it's a client's, and its repos can join projects. Remove it to uninstall the App there."
+- hairline. group label "Add a GitHub organization". Muted 13px: "Send this link to the organization's owner. They pick the repos; the installation waits here until you link it." Then a mono field #131416 with "github.com/apps/ostra-acme/installations/new" and a small copy icon button.
+- hairline. group label "Private Apps". Muted 13px paragraph: "GitHub lets only its owner install a private App, so northwind-ostra stays on northwind-co. Making an App public is one way: once another account installs it, it can't be made private again." then a teal link "The App's settings on GitHub ↗".
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286 only where the words say a check passed or something is connected; red #E5675C only where written. The primary button is filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple except one 8px project square, no blue tint, no drop shadows, no cards, never a box inside a box, no illustrations, no robot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for provider names, host names, project names inside sentences, repo names, IDs, counts, money, times. Icons: thin Lucide line icons, 15px, stroke 1.75, grey. Vendor model logos (the Anthropic "A\", the OpenAI knot, the OpenRouter mark) small, monochrome light grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron (never the word "ostra"); a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px; at the bottom a round grey avatar "AK" and "Alex Kim". TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's settings pages. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above, no extra words, no charts.

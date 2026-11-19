@@ -1,0 +1,33 @@
+# Generation 1 (kept, the only one). References: app-targets/m1/task-new.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+# Not retouched.
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the "New task" page of ostra, a self-hosted control panel that runs coding agents. The FIRST attached screenshot is the approved New task page of this same app: keep its sidebar, top bar, eyebrow, title, the composer box with its bottom pickers and button, the rows below and the right panel exactly, at the same scale. Here the project "globex-shop" has NO key that serves the profile's model, so the task can't start: the page says why BEFORE Start, and Start is disabled.
+
+SIDEBAR rows: "Home"; "Needs you" with a small amber pill "2"; "My tasks" "7". Faint label "Projects": "calculator" (teal square), "northwind-portal" (blue square), "globex-shop" (pink square), "··· 14 more". Faint label "Organization": "Runners", "Models", "Agent profiles", "GitHub", "Members", "Spend", "Audit log".
+
+TOP BAR: breadcrumbs "Acme Corp  ›  New task" ("New task" brighter). Nothing on the right.
+
+MAIN COLUMN, padding 28px 40px:
+- faint mono eyebrow "globex-shop · prompt task"; title "New task"; muted lede "Type what the agent should do. It works on its own branch and opens a pull request."
+- The composer box (as in the reference, #131416, 1px #2A2C30 border, 8px radius) holding the typed text: "Add a size guide link under every product's price, and cover it with a test." At its bottom row: pink square "globex-shop" with chevron; sliders icon "OpenCode · Claude Sonnet 5.5" with chevron; laptop icon "build-fleet · pool" with chevron; at the right "⌘ ↵" faint and the button "Start task" DISABLED: a dimmed outlined button with faint text and an up-arrow icon, NOT filled.
+- 12px under the composer, one line with NO box and NO colour fill: a small grey key icon with a slash, then 14px text "No key for Claude Sonnet 5.5 in globex-shop." in bright #F2F3F4 and then muted "An organization admin picks one in Models and keys." 
+- Under it, faint 13px: "Who can: Alex Kim, Priya Nair." 
+- 28px below, section "What happens next" with three hairline rows exactly as the reference but the first row in faint text: folder icon "Nothing starts until globex-shop has a key that lists Claude Sonnet 5.5."; branch icon faint "Or pick a profile whose model has a key here."; pull-request icon faint "Your text stays here while you wait."
+- 28px below, section "Recent in globex-shop" faint "2", then rows 36px with hairlines:
+  hourglass icon "Queued" · "Translate the checkout page" · muted "Waiting · no key for Claude Sonnet 5.5" · faint mono "14m".
+  pull-request icon "In review" · "Fix the cart total rounding" · muted "PR #212 · key globex-openrouter" · faint mono "2d".
+
+RIGHT PROPERTIES PANEL:
+- group label "This task". Rows: "Project" — pink square "globex-shop"; "Repo" — mono "globex/shop-web"; "Base" — mono "main".
+- hairline. group label "Agent profile" with a teal "Change" at the right. Rows: "Profile" — "Builder"; "Agent" — "OpenCode"; "Model" — "Claude Sonnet 5.5"; "Key" — the words "None in globex-shop" in red #E5675C.
+- hairline. group label "globex-shop's keys". One row: mono "globex-openrouter" — faint "Kimi K3.1 Pro, GPT-6.2 Sol, DeepSeek V4 Flash". Under it faint 12.5px: "None of them lists Claude Sonnet 5.5."
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, outline buttons) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; links teal #6FB8AA; success green #4FB286 only where the words say a check passed or something is connected; red #E5675C only where written. The primary button is filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple except one 8px project square, no blue tint, no drop shadows, no cards, never a box inside a box, no illustrations, no robot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for provider names, host names, project names inside sentences, repo names, IDs, counts, money, times. Icons: thin Lucide line icons, 15px, stroke 1.75, grey. Vendor model logos (the Anthropic "A\", the OpenAI knot, the OpenRouter mark) small, monochrome light grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron (never the word "ostra"); a search field "Search" with "⌘K" and a small square off-white "+" button; rows 28px; at the bottom a round grey avatar "AK" and "Alex Kim". TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear's settings pages. Everything aligned on a strict grid, crisp small legible text, every word spelled exactly as written above, no extra words, no charts.

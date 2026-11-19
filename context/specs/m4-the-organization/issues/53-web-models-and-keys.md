@@ -28,3 +28,11 @@ Spec: `../spec.md`, sections 3 (steps 16 and 17) and 12; targets `models-keys`, 
 - [ ] Committed as `✨ add keys per project to the panel`.
 
 ## Comments
+
+- 2026-11-19 (ticket 52): targets approved (`app-targets/m4/models-keys`, `project-models-keys`, `agent-profile-model`, `no-key-for-model`), so the UI can start. Their open points are settled in each build spec; record them here as built. **The screens that only grow**, built against their existing targets with no new picture:
+  - `app-targets/m1/task`: `Key · <provider>` beside the model in the properties panel (the key's name in mono, `--muted` before it), and the held-turn marker's no-key line (`no-key-for-model.md`, section 3).
+  - `app-targets/m4/spend-budgets`: a third grouping, `Keys`, beside Projects and Models: one row per provider with the month's spend and token counts, as the Models table's columns (ticket 50's per-provider grouping); a provider with no spend reads `$0.00`.
+  - `app-targets/m1/project-new`: a `Keys` field, organization admins only: `Follow the organization's default` (default, with `Today: acme-anthropic.`) or `Use its own list` with the providers as checkboxes; a project admin who isn't an organization admin sees the default and no field.
+  - `app-targets/m3/needs-you` and `app-targets/m1/home`: the `no_provider_for_model` row for organization admins (`no-key-for-model.md`, section 4).
+  - `app-targets/m2/task-limits`: a task queued with no key (`no-key-for-model.md`, section 2).
+  - The project's settings tab row (`project-access`, `project-repos`) gains `Models and keys` between `Repos` and `Access`.
