@@ -8,6 +8,7 @@ import { leaseEpochSchema, organizationIdSchema, projectIdSchema, sessionIdSchem
 import type { TaskId } from "@ostra/protocol";
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
+import { killPoint } from "../kill-points.ts";
 
 // The dispatcher (ticket 26, ADR 0034): the `task.dispatch` and `task.offer-timeout` workers, the
 // runner's answers to offers, and a requeue sweep that sends a fresh dispatch for every queued task
@@ -44,6 +45,9 @@ export const dispatchHandler =
         ),
       { timeout: 30_000 },
     );
+    if (result.ok) {
+      killPoint("dispatch.offered");
+    }
     context.logger.info("task.dispatch-done", { taskId: context.payload.taskId, outcome: result.ok ? "offered" : result.error });
   };
 

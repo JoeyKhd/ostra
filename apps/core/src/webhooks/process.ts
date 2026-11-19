@@ -6,6 +6,8 @@ import type { JobHandler } from "@ostra/jobs";
 import { connectionIdSchema, organizationIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId, WebhookDeliveryId } from "@ostra/protocol";
 
+import { killPoint } from "../kill-points.ts";
+
 // `webhook.process` (ticket 13): acts on a delivery the inbox saved, from the queue, never before
 // the 200. It dispatches by the connection's kind (ticket 14's tracker ingest, ticket 16's PR
 // states), then marks the delivery `processed`, `ignored` or `failed` with a reason in words. A
@@ -94,6 +96,7 @@ export const webhookProcessHandler =
       }
       outcome = { outcome: "failed", reason: `gave up after ${String(context.retryCount + 1)} attempts (${error instanceof Error ? error.name : "unknown"})` };
     }
+    killPoint("webhook.process");
     const status = outcome.outcome;
     const marked = await deps.db.webhookDelivery.updateMany({
       // Only from `received`: a delivery marked meanwhile keeps its first mark.

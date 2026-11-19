@@ -16,6 +16,7 @@ import type { OrganizationId, TicketWriteId } from "@ostra/protocol";
 
 import { z } from "zod";
 
+import { killPoint } from "../kill-points.ts";
 import type { ConnectionTrackers } from "./connections.ts";
 import { hedgedCall } from "./retry.ts";
 
@@ -366,6 +367,7 @@ export const ticketSyncHandler =
     }
     const last = context.retryCount >= queueSettings["ticket.sync"].retryLimit;
     if (outcome.outcome === "done") {
+      killPoint("ticket.sync.answered");
       await deps.db.ticketWrite.updateMany({
         where: { id: ticketWriteId, organizationId, state: "pending" },
         data: { state: "done", externalId: outcome.externalId, doneAt: new Date(deps.clock.now()), error: null, attempts: { increment: 1 } },

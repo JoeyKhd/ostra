@@ -48,6 +48,8 @@ export type OpenPullRequestsDeps = Pick<Ports, "notices" | "audit" | "clock" | "
   /** The panel's address, for the link to the task in each PR's body (OSTRA_PUBLIC_URL). */
   readonly publicUrl: string;
   readonly logger?: Logger;
+  /** Called once a PR exists on the code host and before its row says so: the restart harness's seam (ticket 21). */
+  readonly afterHostWrite?: () => void;
 };
 
 export type OpenPullRequests = (deps: OpenPullRequestsDeps, input: OpenPullRequestsInput) => Promise<OpenPullRequestsResult>;
@@ -171,6 +173,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       if (!created.ok) {
         return { ok: false, error: "code-host-failed", message: `the code host refused the PR (${created.error.code})` };
       }
+      deps.afterHostWrite?.();
       pull = created.value;
       openedHere.push({ repoId, access, number: created.value.number, text, linked: opened.length, checks });
     } else {

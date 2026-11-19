@@ -23,6 +23,7 @@ import type { DownFrame, EventsFrame, RunnerEvent, SessionId, SessionSeq } from 
 import { z } from "zod";
 
 import type { RunnerRef } from "../gateway/context.ts";
+import { killPoint } from "../kill-points.ts";
 import { databaseErrorCodes, isDataRefusal } from "../gateway/database-error.ts";
 import type { DatabaseErrorCodes } from "../gateway/database-error.ts";
 import type { LiveTextWriter } from "./live-text.ts";
@@ -225,6 +226,7 @@ export const createIngest = (options: {
       if (refused.size > 0) {
         await raiseUnstorableInTx(tx, options, events, result.outcomes, refused);
       }
+      killPoint("ingest.batch-open");
       return result;
     }, transactionOptions);
 
@@ -339,6 +341,7 @@ export const createIngest = (options: {
       }
     }
     await save(runner, frame.events, outcomes, skipped, refused);
+    killPoint("ingest.batch-committed");
     // Committed: a completed message's partial text is never written again.
     const saved = new Map(outcomes.flatMap((outcome) => (outcome.kind === "saved" ? [[outcome.sessionId, outcome.taskId] as const] : [])));
     for (const item of frame.events) {

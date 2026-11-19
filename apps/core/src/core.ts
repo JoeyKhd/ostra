@@ -130,6 +130,10 @@ export const startCore = async (
     readonly adapters?: ServerAdapters;
     /** OSTRA_DEV_BLOCK_WEBHOOKS, development only: `linear`, `github`, comma separated. */
     readonly devBlockWebhooks?: string;
+    /** Tests only (ticket 21's restart harness): a fake Linear's GraphQL endpoint. */
+    readonly linearApiUrl?: string;
+    /** Tests only: the queue's poll and supervise intervals, so a dead worker's job is freed in seconds. */
+    readonly jobIntervals?: { readonly pollingIntervalSeconds: number; readonly superviseIntervalSeconds: number };
   } = {},
 ): Promise<RunningCore> => {
   const db = createDb(settings.databaseUrl);
@@ -139,6 +143,7 @@ export const startCore = async (
     role: "worker",
     instanceName: `core-${hostname()}-${String(process.pid)}`,
     logger,
+    ...(options.jobIntervals ?? {}),
   });
   await jobs.start();
   // A colon, not a dash: the log guard reads a long dashed run as a token.
@@ -304,7 +309,13 @@ export const startCore = async (
     blocked: parseBlockedWebhooks(options.devBlockWebhooks, settings.mode),
   });
   // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
-  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger });
+  const trackers = createConnectionTrackers({
+    db,
+    secretStore: adapters.secretStore,
+    clock: systemClock,
+    logger,
+    ...(options.linearApiUrl === undefined ? {} : { linearApiUrl: options.linearApiUrl }),
+  });
   const ingestDeps = { db, trackers, notices, clock: systemClock, logger };
   // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.
   const prDeps = {

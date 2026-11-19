@@ -6,6 +6,7 @@ import type { JobHandler } from "@ostra/jobs";
 import { organizationIdSchema, projectIdSchema, stopBodySchema } from "@ostra/protocol";
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
+import { killPoint } from "../kill-points.ts";
 
 // The reactions to a session's end (ticket 27): the `task.session-ended` and
 // `task.open-pull-requests` workers, and what a runner's answer to a `stop` does. Each re-reads the
@@ -61,6 +62,9 @@ export const openPullRequestsHandler =
         adapters: deps.adapters,
         publicUrl: deps.publicUrl,
         logger: context.logger,
+        afterHostWrite: () => {
+          killPoint("open-pull-requests.answered");
+        },
       },
       context.payload,
     );
