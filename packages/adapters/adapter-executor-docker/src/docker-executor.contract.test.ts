@@ -39,6 +39,9 @@ const helperPid = async (box: CreatedBox): Promise<number | null> => {
   }
 };
 
+/** Node, as a check's command line names it: the setup shell reads forward slashes on every OS. */
+const node = `'${process.execPath.replaceAll("\\", "/")}'`;
+
 // By birth as well as PID: a stop that takes seconds leaves a killed helper's PID to another process.
 const helpers = trackedPids();
 
@@ -67,6 +70,14 @@ defineExecutorContractSuite({
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
         // Milestone 2 (ticket 22): the hidden ref is saved and restored in the box's first checkout.
         workInProgress: { checkout: (box) => localWorkspaceFiles(path.join(box.workspaceDir, "test1")), trackedFiles: ["README.md", "notes.txt"] },
+        // Milestone 3 (ticket 14): the checks run in the agent's container through the bridge.
+        checks: {
+          passing: "exit 0",
+          failing: "exit 3",
+          slow: `${node} -e 'setTimeout(() => {}, 60000)'`,
+          printsEnv: `${node} -e 'process.stdout.write(JSON.stringify(process.env))'`,
+          noisy: `${node} -e 'console.log("first line"); console.log("x".repeat(20 * 1024)); console.log("the last line")'`,
+        },
         detachedHelper: {
           launch: (box) =>
             nodeLaunch(

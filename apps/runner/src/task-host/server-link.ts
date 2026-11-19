@@ -2,11 +2,12 @@ import {
   PROTOCOL_MINOR,
   runnerHeaders,
   runnerPaths,
+  snapshotCredentialsResponseSchema,
   taskCredentialsResponseSchema,
   taskSpecResponseSchema,
   taskTokenResponseSchema,
 } from "@ostra/protocol";
-import type { BlobRef, LeaseEpoch, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
+import type { BlobRef, LeaseEpoch, ServiceSecrets, SnapshotCredentials, SnapshotId, TaskCredentials, TaskId, TaskSpec } from "@ostra/protocol";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
 import { createBulkClient } from "../server/bulk.ts";
 import type { BulkResult, DownloadInput, Downloaded, UploadInput } from "../server/bulk.ts";
@@ -62,6 +63,50 @@ export const fetchTaskToken =
       timeoutMs: 30_000,
     });
     return result.ok ? { ok: true, value: result.value.taskToken } : { ok: false, failure: failureOf(result.failure) };
+  };
+
+/**
+ * Milestone 3 (F-094): a `docker` box's services' secret variables, which the pool runner sets on
+ * each service's container. A boxed lease's credentials go to its task token only (Q129), so the
+ * pool runner asks with the task token it fetched for the box's sidecar, before the sidecar starts,
+ * and keeps the services' part alone: the rest of the answer is dropped at once. Never logged.
+ */
+export const fetchServiceSecrets =
+  (input: { readonly serverUrl: string }) =>
+  async (taskId: TaskId, leaseEpoch: LeaseEpoch, taskToken: string): Promise<LinkResult<readonly ServiceSecrets[]>> => {
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, runnerPaths.taskCredentials(taskId)),
+      method: "POST",
+      schema: taskCredentialsResponseSchema,
+      body: { taskId, leaseEpoch },
+      bearer: taskToken,
+      headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      timeoutMs: 30_000,
+    });
+    return result.ok ? { ok: true, value: result.value.services ?? [] } : { ok: false, failure: failureOf(result.failure) };
+  };
+
+/**
+ * Milestone 3 (F-051): a snapshot build's credentials, a git token per repo and the setup secrets,
+ * answered only to the runner the build went to while it builds. Held in memory for the build only.
+ */
+export const fetchSnapshotCredentials =
+  (input: { readonly serverUrl: string; readonly tokens: TokenSource }) =>
+  async (snapshotId: SnapshotId): Promise<LinkResult<SnapshotCredentials>> => {
+    const token = await input.tokens.get();
+    if (!token.ok) {
+      return { ok: false, failure: { kind: "unavailable", message: token.message } };
+    }
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, runnerPaths.snapshotCredentials(snapshotId)),
+      method: "POST",
+      schema: snapshotCredentialsResponseSchema,
+      body: { snapshotId },
+      bearer: token.token,
+      headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      timeoutMs: 30_000,
+    });
+    return result.ok ? { ok: true, value: result.value } : { ok: false, failure: failureOf(result.failure) };
   };
 
 /** The runner's own link: its connection for events, and HTTP with its access token for the rest. */

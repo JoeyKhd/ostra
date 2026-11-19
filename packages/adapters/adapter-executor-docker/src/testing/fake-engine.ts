@@ -1,11 +1,12 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 // A fake Docker Engine API for the docker executor's unit tests (spec section 8): it keeps
-// networks, volumes and containers in memory, records every create body, and answers the calls
-// `createDockerBoxes` makes, under the API version prefix. No container runs.
+// networks, volumes, containers and images in memory, records every create body, and answers the
+// calls `createDockerBoxes` and `createDockerSnapshots` make, under the API version prefix. No
+// container runs: a test sets a container's health and answers its execs (milestone 3).
 
 export type FakeContainer = {
   readonly id: string;
@@ -14,13 +15,34 @@ export type FakeContainer = {
   status: "created" | "running" | "exited";
   exitCode: number;
   readonly networks: string[];
+  /** Docker's health, for a container with a health check: `starting` until a test says. */
+  health: "starting" | "healthy" | "unhealthy" | undefined;
 };
+
+/** An image the fake holds: what `docker build` would have left. */
+export type FakeImage = {
+  readonly id: string;
+  readonly tags: readonly string[];
+  readonly labels: Readonly<Record<string, string>>;
+  /** `docker save`'s archive of it. */
+  readonly archive: Buffer;
+};
+
+/** How the fake answers an exec: by the container and the command. */
+export type FakeExec = (container: FakeContainer, cmd: readonly string[]) => { readonly exitCode: number; readonly output: string };
 
 export type FakeEngine = {
   readonly address: { readonly kind: "tcp"; readonly host: string; readonly port: number };
   readonly networks: Map<string, Readonly<Record<string, unknown>>>;
   readonly volumes: Map<string, Readonly<Record<string, unknown>>>;
   readonly containers: Map<string, FakeContainer>;
+  readonly images: Map<string, FakeImage>;
+  /** Adds an image, as a build would: its ID is the digest of its archive. */
+  readonly addImage: (image: { readonly tag: string; readonly labels: Readonly<Record<string, string>>; readonly archive: Buffer }) => FakeImage;
+  /** Every exec, in order: the container's name and the command. */
+  readonly execs: { readonly container: string; readonly cmd: readonly string[]; readonly user: string | null }[];
+  /** Answers each exec; by default every command exits 0 with no output. */
+  exec: FakeExec;
   readonly calls: string[];
   /** Fails the next create of this kind with a status. */
   readonly failNext: Map<"container" | "network" | "volume", number>;
@@ -55,10 +77,40 @@ const labelsOf = (body: Readonly<Record<string, unknown>>): Record<string, strin
 
 const listOf = (value: unknown): readonly string[] => (Array.isArray(value) ? value.map(String) : []);
 
+/** A tar archive of the entries, as `docker save` and a layer are: ustar headers, 512-byte blocks. */
+export const tarOf = (entries: readonly { readonly name: string; readonly content: Buffer }[]): Buffer => {
+  const blocks: Buffer[] = [];
+  for (const entry of entries) {
+    const header = Buffer.alloc(512);
+    header.write(entry.name.slice(0, 100), 0, "latin1");
+    header.write("0000644\0", 100, "latin1");
+    header.write("0000000\0", 108, "latin1");
+    header.write("0000000\0", 116, "latin1");
+    header.write(`${entry.content.length.toString(8).padStart(11, "0")}\0`, 124, "latin1");
+    header.write("00000000000\0", 136, "latin1");
+    header.write("        ", 148, "latin1");
+    header.write("0", 156, "latin1");
+    header.write("ustar\u000000", 257, "latin1");
+    let sum = 0;
+    for (const byte of header) {
+      sum += byte;
+    }
+    header.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148, "latin1");
+    blocks.push(header, entry.content, Buffer.alloc((512 - (entry.content.length % 512)) % 512));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return Buffer.concat(blocks);
+};
+
 export const startFakeEngine = async (): Promise<FakeEngine> => {
   const networks = new Map<string, Readonly<Record<string, unknown>>>();
   const volumes = new Map<string, Readonly<Record<string, unknown>>>();
   const containers = new Map<string, FakeContainer>();
+  const images = new Map<string, FakeImage>();
+  const execs: FakeEngine["execs"] = [];
+  const pendingExecs = new Map<string, { readonly container: FakeContainer; readonly cmd: readonly string[] }>();
+  const doneExecs = new Map<string, number>();
+  const answerExec: { current: FakeExec } = { current: () => ({ exitCode: 0, output: "" }) };
   const calls: string[] = [];
   const failNext = new Map<"container" | "network" | "volume", number>();
   const byIdOrName = (key: string): FakeContainer | undefined => containers.get(key) ?? [...containers.values()].find((item) => item.name === key);
@@ -81,6 +133,67 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
       send(response, status, { message: `fake ${kind} failure` });
       return true;
     };
+    // ---- images (milestone 3: snapshots) ----
+    if (method === "GET" && path === "/images/json") {
+      const filter: unknown = JSON.parse(url.searchParams.get("filters") ?? "{}");
+      const pairs = listOf(Reflect.get(Object(filter), "label")).map((item) => item.split("="));
+      const matching = [...images.values()].filter((image) => pairs.every(([key = "", value]) => image.labels[key] === value));
+      send(response, 200, matching.map((image) => ({ Id: image.id, RepoTags: image.tags, Labels: image.labels })));
+      return;
+    }
+    const imageAction = /^\/images\/([^/]+)\/get$/.exec(path);
+    if (method === "GET" && imageAction?.[1] !== undefined) {
+      const image = images.get(decodeURIComponent(imageAction[1]));
+      if (image === undefined) {
+        send(response, 404, { message: "no such image" });
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/x-tar" }).end(image.archive);
+      return;
+    }
+    const imageRemoved = /^\/images\/([^/]+)$/.exec(path);
+    if (method === "DELETE" && imageRemoved?.[1] !== undefined) {
+      const existed = images.delete(decodeURIComponent(imageRemoved[1]));
+      send(response, existed ? 200 : 404, existed ? [{ Deleted: imageRemoved[1] }] : { message: "no such image" });
+      return;
+    }
+    // ---- exec (milestone 3: a service's port probe) ----
+    const execCreate = /^\/containers\/([^/]+)\/exec$/.exec(path);
+    if (method === "POST" && execCreate?.[1] !== undefined) {
+      const container = byIdOrName(execCreate[1]);
+      const body = await readJson(request);
+      if (container?.status !== "running") {
+        send(response, container === undefined ? 404 : 409, { message: "no such running container" });
+        return;
+      }
+      const id = randomBytes(8).toString("hex");
+      const cmd = listOf(body["Cmd"]);
+      pendingExecs.set(id, { container, cmd });
+      execs.push({ container: container.name, cmd, user: typeof body["User"] === "string" ? body["User"] : null });
+      send(response, 201, { Id: id });
+      return;
+    }
+    const execStart = /^\/exec\/([^/]+)\/(start|json)$/.exec(path);
+    if (execStart?.[1] !== undefined) {
+      if (execStart[2] === "json") {
+        send(response, 200, { ExitCode: doneExecs.get(execStart[1]) ?? null });
+        return;
+      }
+      const pending = pendingExecs.get(execStart[1]);
+      if (pending === undefined) {
+        send(response, 404, { message: "no such exec" });
+        return;
+      }
+      const answer = answerExec.current(pending.container, pending.cmd);
+      doneExecs.set(execStart[1], answer.exitCode);
+      // Docker's multiplexed stream: one stdout frame.
+      const payload = Buffer.from(answer.output);
+      const frame = Buffer.alloc(8);
+      frame[0] = 1;
+      frame.writeUInt32BE(payload.length, 4);
+      response.writeHead(200, { "content-type": "application/vnd.docker.raw-stream" }).end(Buffer.concat([frame, payload]));
+      return;
+    }
     if (method === "GET" && path === "/_ping") {
       response.writeHead(200, { "content-type": "text/plain" }).end("OK");
       return;
@@ -152,7 +265,16 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
       const id = randomBytes(16).toString("hex");
       const hostConfig: unknown = body["HostConfig"];
       const mode: unknown = Reflect.get(Object(hostConfig), "NetworkMode");
-      containers.set(id, { id, name: url.searchParams.get("name") ?? id, body, status: "created", exitCode: 0, networks: typeof mode === "string" ? [mode] : [] });
+      const healthcheck: unknown = body["Healthcheck"];
+      containers.set(id, {
+        id,
+        name: url.searchParams.get("name") ?? id,
+        body,
+        status: "created",
+        exitCode: 0,
+        networks: typeof mode === "string" ? [mode] : [],
+        health: typeof healthcheck === "object" && healthcheck !== null ? "starting" : undefined,
+      });
       send(response, 201, { Id: id, Warnings: [] });
       return;
     }
@@ -180,7 +302,15 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
         send(response, 204);
         return;
       }
-      send(response, 200, { Id: container.id, State: { Status: container.status, Running: container.status === "running", ExitCode: container.exitCode } });
+      send(response, 200, {
+        Id: container.id,
+        State: {
+          Status: container.status,
+          Running: container.status === "running",
+          ExitCode: container.exitCode,
+          ...(container.health === undefined ? {} : { Health: { Status: container.health } }),
+        },
+      });
       return;
     }
     const removed = /^\/containers\/([^/]+)$/.exec(path);
@@ -212,6 +342,20 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
     networks,
     volumes,
     containers,
+    images,
+    addImage: (image) => {
+      const id = `sha256:${createHash("sha256").update(image.archive).digest("hex")}`;
+      const made = { id, tags: [image.tag], labels: image.labels, archive: image.archive };
+      images.set(id, made);
+      return made;
+    },
+    execs,
+    get exec(): FakeExec {
+      return answerExec.current;
+    },
+    set exec(answer: FakeExec) {
+      answerExec.current = answer;
+    },
     calls,
     failNext,
     close: () =>

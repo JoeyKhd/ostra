@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { silentLogger } from "@ostra/adapter-sdk";
 import { recordingLogger } from "@ostra/adapter-sdk/testing";
-import { leaseEpochSchema, runnerIdSchema, segmentIdSchema, sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
+import { imageDigestSchema, leaseEpochSchema, runnerIdSchema, segmentIdSchema, sessionIdSchema, snapshotIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { SessionId, TaskEvent } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generateRunnerKeyPair } from "../identity/key-pair.ts";
@@ -522,5 +522,30 @@ describe("live text", () => {
     await gw.waitFor(() => gw.liveText.length > 4);
     expect(gw.liveText.slice(4).every((frame) => frame.segmentId === "seg-2")).toBe(true);
     expect(await spoolFolders()).not.toContain("live");
+  });
+});
+
+describe("a runner's own events (minor 2)", () => {
+  it("F-051: a snapshot's result goes up in a runner-event frame, and goes again on the next connection, with one recorded while it was down", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    const connection = await connect(fake);
+    await gw.waitFor(() => gw.connected());
+    const built: TaskEvent = { kind: "snapshot.built", snapshotId: snapshotIdSchema.parse("snapshot-1"), imageDigest: imageDigestSchema.parse(`sha256:${"c".repeat(64)}`), durationMs: 4_200 };
+    connection.sendRunnerEvent(built);
+    await gw.waitFor(() => gw.runnerEvents.length === 1);
+    expect(gw.runnerEvents[0]).toMatchObject({ type: "runner-event", event: built });
+
+    // The server is gone: a socket that died unnoticed may have swallowed the first, and the second waits.
+    gw.refuseUpgrades = true;
+    gw.drop();
+    await gw.waitFor(() => !gw.connected());
+    const failed: TaskEvent = { kind: "snapshot.failed", snapshotId: snapshotIdSchema.parse("snapshot-2"), reason: "secret-found", detail: "The setup secret API_TOKEN was found in the image." };
+    connection.sendRunnerEvent(failed);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(gw.runnerEvents).toHaveLength(1);
+    gw.refuseUpgrades = false;
+    await gw.waitFor(() => gw.runnerEvents.length === 3);
+    expect(gw.runnerEvents.map((frame) => frame.event)).toEqual([built, built, failed]);
+    expect(gw.protocolErrors).toEqual([]);
   });
 });

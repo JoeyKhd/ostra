@@ -1,4 +1,6 @@
+import { createWriteStream } from "node:fs";
 import http from "node:http";
+import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 
 // The Docker Engine API, over its socket with `node:http` (answers section 4.6 allowed this over
@@ -45,6 +47,8 @@ export type Engine = {
   ) => Promise<EngineResult<z.infer<Schema>>>;
   /** Runs a command in a running container and returns its output (the live suite's checks). */
   readonly exec: (containerId: string, cmd: readonly string[], user?: string) => Promise<EngineResult<{ readonly exitCode: number; readonly output: string }>>;
+  /** Streams a GET's body to a file: an image's archive (`/images/<id>/get`) for the scan. */
+  readonly download: (path: string, file: string) => Promise<EngineResult<void>>;
 };
 
 /** Docker's multiplexed stream (no TTY): 8-byte headers, then each frame's bytes. */
@@ -96,6 +100,38 @@ const rawCall = (address: EngineAddress, method: "POST", path: string, body: unk
   });
 
 export const createEngine = (address: EngineAddress, timeoutMs = 60_000): Engine => ({
+  download: (path, file) =>
+    new Promise((resolve) => {
+      const target = address.kind === "socket" ? { socketPath: address.path } : { host: address.host, port: address.port };
+      const request = http.request(
+        { ...target, method: "GET", path: `/${ENGINE_API_VERSION}${path}`, headers: { "user-agent": "ostra-runner" }, timeout: timeoutMs },
+        (response) => {
+          const status = response.statusCode ?? 0;
+          if (status >= 400) {
+            response.resume();
+            resolve({ ok: false, error: { status, message: `status ${String(status)}` } });
+            return;
+          }
+          // An image is gigabytes: to the file as it comes, never in memory.
+          pipeline(response, createWriteStream(file, { mode: 0o600 })).then(
+            () => {
+              resolve({ ok: true, value: undefined });
+            },
+            (error: unknown) => {
+              resolve({ ok: false, error: { status: 0, message: `the download failed (${error instanceof Error ? error.name : "unknown"})` } });
+            },
+          );
+        },
+      );
+      // Only while nothing comes: an export that streams for minutes isn't cut.
+      request.on("timeout", () => {
+        request.destroy(new Error("timeout"));
+      });
+      request.on("error", (error) => {
+        resolve({ ok: false, error: { status: 0, message: `the Docker Engine is unreachable (${error.name})` } });
+      });
+      request.end();
+    }),
   exec: async (containerId, cmd, user) => {
     const engine = createEngine(address, timeoutMs);
     const created = await engine.call("POST", `/containers/${containerId}/exec`, execCreatedSchema, {

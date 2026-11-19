@@ -15,7 +15,7 @@ import type {
   QuestionRequest,
   RepoPushResult,
 } from "@ostra/adapter-sdk";
-import { approvalIdSchema, denyPrompt, firstMatchingTaskRule, questionIdSchema, runnerLimits, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, denyPrompt, firstMatchingTaskRule, questionIdSchema, runnerLimits, serviceNameSchema, turnIdSchema } from "@ostra/protocol";
 import type {
   ApprovalId,
   ApprovalOption,
@@ -1153,6 +1153,21 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     });
     if (!prepared.ok) {
       return { ok: false, error: `preparing the workspace failed: ${prepared.error.message}` };
+    }
+    // Milestone 3 (F-094): each service's health, as the box's runner reported it. A service that
+    // didn't start fails the setup, as a failed setup script does (core raises it as needs you).
+    const services = prepared.value.services ?? [];
+    for (const service of services) {
+      await emit(
+        service.outcome === "healthy"
+          ? { kind: "service.healthy", name: serviceNameSchema.parse(service.name), afterMs: service.afterMs }
+          : { kind: "service.failed", name: serviceNameSchema.parse(service.name), reason: service.reason.slice(0, 2000) },
+      );
+    }
+    const failedService = services.find((service) => service.outcome === "failed");
+    if (failedService !== undefined) {
+      log.info("a service didn't start: no setup", { failed: services.filter((service) => service.outcome === "failed").length });
+      return { ok: false, error: `the environment's service ${failedService.name} didn't start` };
     }
     if (prepared.value.setup !== null) {
       const cache = prepared.value.dependencyCache;

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { ServiceHealth } from "@ostra/adapter-sdk";
 import type { BoxId, BoxState, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import { emptySchema } from "./engine.ts";
@@ -24,6 +25,16 @@ import type { Engine, EngineResult } from "./engine.ts";
 //
 // The egress baseline (no private ranges, no metadata address, no other box) is host rules on the
 // egress network (`egress.ts`), unverified until the live run on Linux.
+//
+// Milestone 3 (ticket 14):
+//
+//   svc-<name>               each of the environment's services (F-094): its image, on the box network
+//                            only, by its name, with its variables, Docker's health check when it has
+//                            one; started before the agent, removed with the box
+//
+// A box from a snapshot (F-051, Q153) starts the agent's container from the snapshot image, and makes
+// it before the sidecar: Docker fills a new, empty volume from the first container that mounts it, so
+// the task volume starts with the snapshot's checkouts, and no mount hides them.
 
 export const BRIDGE_PORT = 7101;
 export const TASK_ROOT = "/task";
@@ -62,7 +73,24 @@ export type BoxInput = {
    * isn't root): added to the sidecar's supplementary groups so it can read the file.
    */
   readonly tokenGroup?: number;
+  /** Milestone 3 (F-051): the snapshot image this host keeps, which the agent's container starts from. */
+  readonly snapshotImage?: string;
+  /** Milestone 3 (F-094): the environment's services, each with its variables, secrets included. */
+  readonly services?: readonly BoxService[];
 };
+
+/** A service as a box starts it: the spec's, with its secret variables from the credentials. */
+export type BoxService = {
+  readonly name: string;
+  readonly image: string;
+  readonly port: number | null;
+  /** Plain and secret together: only the service's own container gets them. Never logged. */
+  readonly variables: readonly { readonly name: string; readonly value: string }[];
+  readonly healthCheck: string | null;
+};
+
+/** How long a box waits for its services to be healthy (F-094, working value). */
+export const SERVICES_HEALTHY_WITHIN_MS = 120_000;
 
 export type BoxOptions = {
   readonly images: BoxImages;
@@ -82,6 +110,8 @@ export type ContainerSpec = {
     readonly Labels: Readonly<Record<string, string>>;
     readonly HostConfig: Readonly<Record<string, unknown>>;
     readonly NetworkingConfig: Readonly<Record<string, unknown>>;
+    /** Docker's health check, for a service that names one. */
+    readonly Healthcheck?: Readonly<Record<string, unknown>>;
   };
 };
 
@@ -90,6 +120,8 @@ export type BoxResources = {
   readonly volume: { readonly Name: string; readonly Labels: Readonly<Record<string, string>> };
   readonly agent: ContainerSpec;
   readonly sidecar: ContainerSpec;
+  /** Milestone 3: the services' containers, in the environment's order. */
+  readonly services: readonly ContainerSpec[];
   readonly egressNetwork: string;
   /** The box's one-time bridge nonce: in the init's and the sidecar's environment only. */
   readonly bridgeNonce: string;
@@ -101,6 +133,7 @@ const names = (boxId: BoxId) =>
     volume: `ostra-box-${boxId}-task`,
     agent: `ostra-box-${boxId}-agent`,
     sidecar: `ostra-box-${boxId}-sidecar`,
+    service: (name: string) => `ostra-box-${boxId}-svc-${name}`,
   }) as const;
 
 /** Everything a box gets, as the Engine API's create bodies. Pure: the unit tests read it. */
@@ -114,7 +147,36 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
     ...(options.runtime === undefined ? {} : { Runtime: options.runtime }),
   };
   const taskMount = { Type: "volume", Source: n.volume, Target: TASK_ROOT };
+  const services = (input.services ?? []).map(
+    (service): ContainerSpec => ({
+      name: n.service(service.name),
+      body: {
+        Image: service.image,
+        // The image's own command and user: a database's entrypoint drops to its own user.
+        Cmd: [],
+        Env: service.variables.map((variable) => `${variable.name}=${variable.value}`),
+        User: "",
+        WorkingDir: "",
+        Labels: { ...labels("service"), "ostra.service": service.name },
+        HostConfig: {
+          SecurityOpt: ["no-new-privileges:true"],
+          PidsLimit: 4096,
+          ...(options.runtime === undefined ? {} : { Runtime: options.runtime }),
+          // The box's network only, which is internal: the egress baseline holds for services too.
+          NetworkMode: n.network,
+        },
+        NetworkingConfig: { EndpointsConfig: { [n.network]: { Aliases: [service.name] } } },
+        ...(service.healthCheck === null
+          ? {}
+          : {
+              // Docker runs it in the service's container; nanoseconds, as the Engine API reads them.
+              Healthcheck: { Test: ["CMD-SHELL", service.healthCheck], Interval: 2_000_000_000, Timeout: 5_000_000_000, Retries: 60, StartPeriod: 0 },
+            }),
+      },
+    }),
+  );
   return {
+    services,
     network: { Name: n.network, Driver: "bridge", Internal: true, Labels: labels("network") },
     volume: { Name: n.volume, Labels: labels("volume") },
     egressNetwork: options.egressNetwork ?? DEFAULT_EGRESS_NETWORK,
@@ -122,7 +184,7 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
     agent: {
       name: n.agent,
       body: {
-        Image: input.baseImage ?? options.images.base,
+        Image: input.snapshotImage ?? input.baseImage ?? options.images.base,
         Cmd: ["node", "/opt/ostra/init/main.ts"],
         // The init's own: the box, the nonce and where the sidecar is. Never a credential.
         Env: [
@@ -135,7 +197,7 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
         // The init is root to start processes as the agent's user; those are never root.
         User: "0:0",
         WorkingDir: TASK_ROOT,
-        Labels: labels("agent"),
+        Labels: { ...labels("agent"), ...(input.snapshotImage === undefined ? {} : { "ostra.snapshot-image": input.snapshotImage }) },
         HostConfig: {
           ...hardening,
           Init: true,
@@ -191,6 +253,13 @@ const listedSchema = z.array(z.looseObject({ Id: z.string(), Labels: z.record(z.
 const inspectSchema = z.looseObject({ State: z.looseObject({ Status: z.string(), Running: z.boolean() }) });
 const networksSchema = z.array(z.looseObject({ Id: z.string(), Name: z.string() }));
 const exitSchema = z.looseObject({ State: z.looseObject({ Status: z.string(), Running: z.boolean(), ExitCode: z.number().int().optional() }) });
+const healthSchema = z.looseObject({
+  State: z.looseObject({ Status: z.string(), Running: z.boolean(), ExitCode: z.number().int().optional(), Health: z.looseObject({ Status: z.string() }).nullish() }),
+});
+
+/** The port probe, run by `node -e` in the sidecar with the host and port as arguments: never built from them. */
+const PORT_PROBE =
+  "const [host, port] = process.argv.slice(1); const socket = require('node:net').connect(Number(port), host); socket.on('connect', () => process.exit(0)); socket.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 2000);";
 /** How often the runner looks at a box's sidecar while the task runs. */
 export const WAIT_POLL_MS = 2_000;
 
@@ -200,6 +269,15 @@ export type DockerBoxes = {
   /** Can the runner use the Engine here (`docker version` answers)? */
   readonly ping: () => Promise<boolean>;
   readonly createBox: (input: BoxInput) => Promise<EngineResult<CreatedDockerBox>>;
+  /**
+   * Milestone 3 (F-094): each service's health, in order, once each is healthy or failed, or the
+   * time is up: Docker's health check, or the port reached from the box's sidecar.
+   */
+  readonly waitForServices: (
+    boxId: BoxId,
+    services: readonly Pick<BoxService, "name" | "port" | "healthCheck">[],
+    options?: { readonly timeoutMs?: number; readonly pollMs?: number },
+  ) => Promise<readonly ServiceHealth[]>;
   /** The box's state, from its sidecar's: no containers is `released`. */
   readonly boxState: (boxId: BoxId) => Promise<BoxState>;
   /** Resolves with the sidecar's exit code once it exits (the task is over). */
@@ -279,15 +357,31 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
       if (!volume.ok) {
         return fail(volume.error);
       }
-      // The sidecar first: its image's /task, owned by the agent's user, seeds the new volume.
-      const sidecar = await engine.call("POST", `/containers/create?name=${resources.sidecar.name}`, createdSchema, resources.sidecar.body);
-      if (!sidecar.ok) {
-        return fail(sidecar.error);
+      // The services first: the agent may reach for them as soon as it starts (F-094).
+      for (const service of resources.services) {
+        const made = await engine.call("POST", `/containers/create?name=${service.name}`, createdSchema, service.body);
+        if (!made.ok) {
+          return fail(made.error);
+        }
+        const started = await engine.call("POST", `/containers/${made.value.Id}/start`, emptySchema);
+        if (!started.ok) {
+          return fail(started.error);
+        }
       }
-      const agent = await engine.call("POST", `/containers/create?name=${resources.agent.name}`, createdSchema, resources.agent.body);
-      if (!agent.ok) {
-        return fail(agent.error);
+      // The first container made with the new volume fills it from its image: the sidecar's /task,
+      // owned by the agent's user, or, for a box from a snapshot, the snapshot's checkouts (Q153).
+      const makeSidecar = () => engine.call("POST", `/containers/create?name=${resources.sidecar.name}`, createdSchema, resources.sidecar.body);
+      const makeAgent = () => engine.call("POST", `/containers/create?name=${resources.agent.name}`, createdSchema, resources.agent.body);
+      const fromSnapshot = input.snapshotImage !== undefined;
+      const first = await (fromSnapshot ? makeAgent() : makeSidecar());
+      if (!first.ok) {
+        return fail(first.error);
       }
+      const second = await (fromSnapshot ? makeSidecar() : makeAgent());
+      if (!second.ok) {
+        return fail(second.error);
+      }
+      const [sidecar, agent] = fromSnapshot ? [second, first] : [first, second];
       const connected = await engine.call("POST", `/networks/${resources.egressNetwork}/connect`, emptySchema, { Container: sidecar.value.Id });
       if (!connected.ok) {
         return fail(connected.error);
@@ -299,6 +393,75 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
         }
       }
       return { ok: true, value: { agentId: agent.value.Id, sidecarId: sidecar.value.Id, resources } };
+    },
+    waitForServices: async (boxId, services, waitOptions = {}) => {
+      const timeoutMs = waitOptions.timeoutMs ?? SERVICES_HEALTHY_WITHIN_MS;
+      const pollMs = waitOptions.pollMs ?? 1_000;
+      const started = Date.now();
+      const results = new Map<string, ServiceHealth>();
+      for (;;) {
+        const containers = await containersOf(boxId);
+        const sidecar = containers.find((container) => roleOf(container) === "sidecar");
+        for (const service of services) {
+          if (results.has(service.name)) {
+            continue;
+          }
+          const container = containers.find((each) => roleOf(each) === "service" && each.Labels?.["ostra.service"] === service.name);
+          if (container === undefined) {
+            results.set(service.name, { name: service.name, outcome: "failed", reason: "The service's container is gone." });
+            continue;
+          }
+          const inspected = await engine.call("GET", `/containers/${container.Id}/json`, healthSchema);
+          if (!inspected.ok) {
+            continue;
+          }
+          const state = inspected.value.State;
+          if (!state.Running && state.Status !== "created") {
+            results.set(service.name, { name: service.name, outcome: "failed", reason: `The service's container exited (exit ${String(state.ExitCode ?? "unknown")}) before it was healthy.` });
+            continue;
+          }
+          const healthy = (): void => {
+            results.set(service.name, { name: service.name, outcome: "healthy", afterMs: Date.now() - started });
+          };
+          if (service.healthCheck !== null) {
+            if (state.Health?.Status === "healthy") {
+              healthy();
+            } else if (state.Health?.Status === "unhealthy") {
+              results.set(service.name, { name: service.name, outcome: "failed", reason: "The service's health check kept failing." });
+            }
+            continue;
+          }
+          if (service.port === null) {
+            if (state.Running) {
+              healthy();
+            }
+            continue;
+          }
+          // The port, from the box's sidecar, which is on the box's network as the agent is.
+          if (sidecar !== undefined) {
+            const probed = await engine.exec(sidecar.Id, ["node", "-e", PORT_PROBE, service.name, String(service.port)], `${String(SIDECAR_UID)}:${String(SIDECAR_GID)}`);
+            if (probed.ok && probed.value.exitCode === 0) {
+              healthy();
+            }
+          }
+        }
+        if (results.size === services.length) {
+          break;
+        }
+        if (Date.now() - started >= timeoutMs) {
+          for (const service of services) {
+            if (!results.has(service.name)) {
+              results.set(service.name, { name: service.name, outcome: "failed", reason: `The service wasn't healthy within ${String(Math.ceil(timeoutMs / 1000))} s.` });
+            }
+          }
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+      }
+      return services.flatMap((service) => {
+        const result = results.get(service.name);
+        return result === undefined ? [] : [result];
+      });
     },
     boxState: async (boxId) => {
       const containers = await containersOf(boxId);

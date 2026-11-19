@@ -175,6 +175,12 @@ export type RunnerConnection = {
   readonly restoredSessions: () => readonly SessionRef[];
   /** Sends the status again (a task started or ended). */
   readonly statusChanged: () => void;
+  /**
+   * Minor 2: a runner's own event, outside any task (a snapshot build's result, F-051), sent in a
+   * `runner-event` frame as soon as the connection is ready, and kept in memory for an hour to go
+   * again on each new connection (a frame has no ack). Core applies it idempotently by its snapshot.
+   */
+  readonly sendRunnerEvent: (event: TaskEvent) => void;
   readonly report: () => ConnectionReport;
   /** Closes the connection and the spools. The spools stay on disk for the next start. */
   readonly stop: () => Promise<void>;
@@ -208,6 +214,9 @@ const EVENTS_FRAME_OVERHEAD = 64;
 export const MAX_EVENT_BYTES = runnerLimits.frameMaxBytes - EVENTS_FRAME_OVERHEAD;
 /** How many recent command results are kept, to answer a resent command with its result. */
 const RESULTS_KEPT = 512;
+/** How long, and how many, of the runner's own events are kept to send again on a new connection. */
+const RUNNER_EVENTS_KEPT_MS = 60 * 60_000;
+const RUNNER_EVENTS_KEPT = 64;
 
 const sleep = (ms: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
@@ -264,6 +273,12 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   let commandChain: Promise<void> = Promise.resolve();
   const results = new Map<string, CommandAckItem>();
   let unsentResults: CommandAckItem[] = [];
+  /**
+   * The runner's own events of the last hour, each with the socket it last went out on. A frame has
+   * no ack, and a socket that died unnoticed swallows what was sent on it, so each is sent again on
+   * every new connection while it's kept: core applies a snapshot's result idempotently.
+   */
+  const runnerEvents: { readonly at: number; readonly event: TaskEvent; sentOn: WebSocket | undefined }[] = [];
   const quotaWaiters: (() => void)[] = [];
 
   const persist = (): Promise<void> => store.save(state);
@@ -386,7 +401,26 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     }
   };
 
-  const freeInflight = (keep: (frame: InflightFrame) => boolean): void => {
+  const flushRunnerEvents = (): void => {
+    const keptSince = now() - RUNNER_EVENTS_KEPT_MS;
+    while (runnerEvents.length > RUNNER_EVENTS_KEPT || (runnerEvents[0] !== undefined && runnerEvents[0].at < keptSince)) {
+      runnerEvents.shift();
+    }
+    if (!ready) {
+      return;
+    }
+    for (const item of runnerEvents) {
+      if (item.sentOn !== undefined && item.sentOn === socket) {
+        continue;
+      }
+      if (!send({ type: "runner-event", at: item.at, event: item.event })) {
+        return;
+      }
+      item.sentOn = socket;
+    }
+  };
+
+  const freeInflight =(keep: (frame: InflightFrame) => boolean): void => {
     inflight = inflight.filter(keep);
     inflightBytes = inflight.reduce((sum, frame) => sum + frame.bytes, 0);
   };
@@ -561,6 +595,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           sendResults([]);
         }
         flush();
+        flushRunnerEvents();
         return;
       case "ack":
         await onAck(frame);
@@ -945,6 +980,10 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       if (ready) {
         sendStatus();
       }
+    },
+    sendRunnerEvent: (event) => {
+      runnerEvents.push({ at: now(), event, sentOn: undefined });
+      flushRunnerEvents();
     },
     report: () => ({
       connected: ready,

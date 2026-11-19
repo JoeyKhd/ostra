@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 import type { WriteStream } from "node:fs";
-import { chmod, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   adapterError,
@@ -31,6 +31,7 @@ import type {
   PrepareInput,
   PrepareResult,
   ProcessExit,
+  ServiceHealth,
   RepoPushResult,
   RestoredRepoWork,
   RestoreWorkInProgressInput,
@@ -100,7 +101,24 @@ export type HostExecutorOptions = {
   readonly env?: NodeJS.ProcessEnv;
   /** How long a project's host cache stays without a task using it (F-051). Default: 30 days. */
   readonly cacheIdleDays?: number;
+  /**
+   * A `docker` box's sidecar runs this executor on the task volume, and declares its box's own:
+   * services, and a snapshot image (ticket 14). Default: `host`'s (no services, the host cache).
+   */
+  readonly boxCapabilities?: Pick<ExecutorCapabilities, "services" | "snapshots">;
+  /**
+   * Milestone 3 (F-094), in a `docker` box: each of the spec's services' health, which the pool
+   * runner reports once each is healthy or failed. `prepare` waits for it before the setup script.
+   */
+  readonly awaitServices?: (spec: TaskSpec, signal: AbortSignal | undefined) => Promise<readonly ServiceHealth[]>;
 };
+
+/**
+ * Where a `docker` box's task volume holds a snapshot's checkouts (F-051, Q153), from the image
+ * that filled it: `<dataDir>/snapshot/workspace/<checkoutDir>`, and the snapshot's ID in
+ * `<dataDir>/snapshot/snapshot-id` (the docker executor's Dockerfile writes both).
+ */
+export const SNAPSHOT_FOLDER = "snapshot";
 
 /** A project's host cache stays this long without a task (F-051, working value). */
 export const CACHE_IDLE_DAYS = 30;
@@ -238,6 +256,7 @@ export class HostExecutor extends ExecutorAdapter {
   readonly #processes: TaskProcesses;
   #lfs: boolean | undefined;
   readonly #cacheIdleMs: number;
+  readonly #awaitServices: HostExecutorOptions["awaitServices"];
   /** One cache update per project at a time: two tasks of a project never fetch one mirror together. */
   readonly #cacheLocks = new Map<string, Promise<unknown>>();
   /** When the idle caches were last swept: at start, then at most hourly as boxes use a cache. */
@@ -260,8 +279,15 @@ export class HostExecutor extends ExecutorAdapter {
       });
     const kind = options.processContainment ?? options.containment?.kind ?? "process-tree";
     this.#cacheIdleMs = (options.cacheIdleDays ?? CACHE_IDLE_DAYS) * 24 * 60 * 60_000;
+    this.#awaitServices = options.awaitServices;
     // The repo mirrors and the dependency cache stand in for a snapshot image (ADR 0038, Q185).
-    this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: "host-cache", processContainment: kind };
+    this.capabilities = {
+      isolation: "none",
+      services: options.boxCapabilities?.services ?? false,
+      boxSizes: false,
+      snapshots: options.boxCapabilities?.snapshots ?? "host-cache",
+      processContainment: kind,
+    };
   }
 
   /**
@@ -379,15 +405,21 @@ export class HostExecutor extends ExecutorAdapter {
     const log = this.plumbing.logger.child({ taskId: record.ref.taskId, boxId: record.ref.boxId });
     // The project's host cache first (F-051): the mirrors make the clones local, the deps folder the install warm.
     const cache = await this.#useCache(record, input.signal);
+    // A `docker` box from a snapshot (F-051): its volume came with the checkouts, which move in.
+    const snapshot = await this.#adoptSnapshot(record);
     for (const repo of record.spec.repos) {
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+      const updated = snapshot === "used" ? await this.#updateAdopted(record, repo, checkout) : null;
+      if (updated !== null && !updated.ok) {
+        record.state = "failed";
+        return updated;
+      }
       // From the mirror's objects, then dissociated: the worktree needs nothing of the mirror after.
       const reference = cache === null ? [] : ["--reference-if-able", this.#mirrorOf(cache.projectId, repo.repoId), "--dissociate"];
-      const cloned = await this.#git(
-        record,
-        ["clone", "--quiet", ...reference, "--origin", "origin", "--branch", repo.defaultBranch, repo.cloneUrl, checkout],
-        record.workspaceDir,
-      );
+      const cloned =
+        updated !== null
+          ? { code: 0, stdout: "", stderr: "" }
+          : await this.#git(record, ["clone", "--quiet", ...reference, "--origin", "origin", "--branch", repo.defaultBranch, repo.cloneUrl, checkout], record.workspaceDir);
       if (cloned.code !== 0) {
         record.state = "failed";
         log.warn("clone failed", { repoId: repo.repoId, code: cloned.code });
@@ -405,6 +437,13 @@ export class HostExecutor extends ExecutorAdapter {
         return written;
       }
     }
+    // The services before the setup script, which may need them (F-094): the box's runner reports them.
+    const services = (record.spec.services?.length ?? 0) > 0 && this.#awaitServices !== undefined ? await this.#awaitServices(record.spec, input.signal) : undefined;
+    if (services?.some((service) => service.outcome === "failed") === true) {
+      record.state = "ready";
+      log.warn("a service didn't start: no setup", { failed: services.filter((service) => service.outcome === "failed").length });
+      return ok({ setup: null, services, ...(snapshot === null ? {} : { snapshot }) });
+    }
     const setup = await this.#runSetup(record, input, cache?.prepared.dependencyCacheDir ?? null);
     if (!setup.ok) {
       record.state = "failed";
@@ -416,6 +455,8 @@ export class HostExecutor extends ExecutorAdapter {
     return ok({
       setup: setup.value,
       ...(cache === null ? {} : { dependencyCache: { cacheKey: cache.prepared.cacheKey, reused: cache.prepared.reused } }),
+      ...(snapshot === null ? {} : { snapshot }),
+      ...(services === undefined ? {} : { services }),
     });
   }
 
@@ -830,6 +871,61 @@ export class HostExecutor extends ExecutorAdapter {
       notPassed: results.filter((result) => result.status !== "passed").length,
     });
     return ok(results);
+  }
+
+  // ---------- inside: a docker box's snapshot (F-051, ticket 14) ----------
+
+  /**
+   * `used` when the spec names a snapshot image and the task volume holds that snapshot's
+   * checkouts, which then move into the task's workspace; `fell-back` when it names one this box
+   * doesn't have, so the box clones and sets up in full; `null` when it names none.
+   */
+  async #adoptSnapshot(record: BoxRecord): Promise<"used" | "fell-back" | null> {
+    const wanted = record.spec.snapshot ?? null;
+    if (wanted?.kind !== "image") {
+      return null;
+    }
+    const folder = path.join(this.#dataDir, SNAPSHOT_FOLDER);
+    const held = (await readFile(path.join(folder, "snapshot-id"), "utf8").catch(() => "")).trim();
+    if (held !== wanted.snapshotId) {
+      this.plumbing.logger.info("the box has no copy of the task's snapshot: a full setup", { taskId: record.ref.taskId, snapshotId: wanted.snapshotId });
+      return "fell-back";
+    }
+    try {
+      for (const repo of record.spec.repos) {
+        await rename(path.join(folder, "workspace", repo.checkoutDir), path.join(record.workspaceDir, repo.checkoutDir));
+      }
+    } catch (error) {
+      this.plumbing.logger.warn("the snapshot's checkouts couldn't move in: a full setup", { taskId: record.ref.taskId, code: errorCode(error) });
+      for (const repo of record.spec.repos) {
+        await rm(path.join(record.workspaceDir, repo.checkoutDir), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      }
+      return "fell-back";
+    }
+    await rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
+    this.plumbing.logger.info("the box starts from its snapshot", { taskId: record.ref.taskId, snapshotId: wanted.snapshotId });
+    return "used";
+  }
+
+  /**
+   * A snapshot's checkout brought up to the task's start: every branch fetched through the git proxy,
+   * and the default branch's current head checked out. What the setup made (ignored and untracked
+   * files: the installed dependencies) stays, so the setup that runs next is incremental.
+   */
+  async #updateAdopted(record: BoxRecord, repo: TaskSpec["repos"][number], checkout: string): Promise<AdapterResult<void>> {
+    for (const args of [
+      ["config", "--local", "remote.origin.url", repo.cloneUrl],
+      ["config", "--local", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+      ["fetch", "--quiet", "--prune", "origin"],
+      ["checkout", "--quiet", "--force", "-B", repo.defaultBranch, `refs/remotes/origin/${repo.defaultBranch}`],
+    ]) {
+      const ran = await this.#git(record, args, checkout);
+      if (ran.code !== 0) {
+        this.plumbing.logger.warn("updating the snapshot's checkout failed", { taskId: record.ref.taskId, repoId: repo.repoId, step: args[0] ?? "git" });
+        return adapterError("unavailable", `updating ${repo.fullName}'s checkout from the snapshot failed${this.#reason(ran)}`);
+      }
+    }
+    return ok(undefined);
   }
 
   // ---------- inside: the host cache and checks ----------

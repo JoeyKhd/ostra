@@ -13,3 +13,11 @@ export { listenForInit } from "./bridge/bridge-server.ts";
 export type { Bridge, BridgeListener, BridgeListenOptions } from "./bridge/bridge-server.ts";
 export { bridgeProcesses } from "./bridge-processes.ts";
 export { initEnvSchema, runInit } from "./init/init.ts";
+// Milestone 3 (ticket 14): snapshots built and kept on the pool runner's Docker, and the services' health report.
+export { SERVICES_HEALTHY_WITHIN_MS } from "./boxes.ts";
+export type { BoxService } from "./boxes.ts";
+export { awaitServicesFile, SERVICES_FILE, servicesFileSchema, servicesFileText, SIDECAR_SERVICES_FILE, writeServicesFile } from "./services-file.ts";
+export { createDockerSnapshots, dockerCliBuilder } from "./snapshot/snapshots.ts";
+export type { DockerSnapshots, DockerSnapshotsOptions, SnapshotBuilder, SnapshotGit } from "./snapshot/snapshots.ts";
+export { planSnapshotBuild, snapshotTag } from "./snapshot/dockerfile.ts";
+export { scanImageArchive } from "./snapshot/image-scan.ts";

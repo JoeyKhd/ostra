@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createDockerBoxes, createEngine, engineAddressFrom } from "@ostra/adapter-executor-docker";
+import { createDockerBoxes, createDockerSnapshots, createEngine, engineAddressFrom } from "@ostra/adapter-executor-docker";
 import { HostExecutor } from "@ostra/adapter-executor-host";
 import type { RunnerConfig } from "@ostra/protocol";
 import type { RunSignedIn } from "./cli/cli.ts";
@@ -9,7 +9,7 @@ import { startConnection } from "./connection/peer.ts";
 import type { CommandHandlers, ConnectionHooks, PeerStatus, RunnerConnection } from "./connection/peer.ts";
 import { signInAgainAdvice, updateStatus } from "./identity/store.ts";
 import { defaultAgents } from "./task-host/agents.ts";
-import { fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
+import { fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
 import { RUNNER_VERSION } from "./version.ts";
 
@@ -107,7 +107,8 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         terminal.warn("DOCKER_HOST isn't unix://, npipe:// or tcp://host:port.");
         return exitCodes.usage;
       }
-      const boxes = createDockerBoxes(createEngine(address), { images: imagesOf(config) });
+      const engine = createEngine(address);
+      const boxes = createDockerBoxes(engine, { images: imagesOf(config) });
       if (!(await boxes.ping())) {
         terminal.warn("The docker executor needs a Docker Engine, and none answers here (DOCKER_HOST, or the default socket).");
         return exitCodes.failed;
@@ -121,6 +122,13 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         capacity: config.capacity,
         labels: config.labels,
         logger,
+        // Milestone 3 (ticket 14): the services' secrets, and the snapshots built and kept here.
+        serviceSecrets: fetchServiceSecrets({ serverUrl: config.serverUrl }),
+        snapshots: createDockerSnapshots({ engine, workDir: path.resolve(dataDir), defaultBaseImage: imagesOf(config).base, logger }),
+        snapshotCredentials: fetchSnapshotCredentials({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        reportRunnerEvent: (event) => {
+          holder.connection?.sendRunnerEvent(event);
+        },
       });
       work = {
         handlers: dispatcher.handlers,

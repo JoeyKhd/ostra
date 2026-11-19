@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
+import type { HostExecutorOptions } from "@ostra/adapter-executor-host";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, ExportSessionInput, LogRecord } from "@ostra/adapter-sdk";
 import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
@@ -87,6 +88,8 @@ export type HarnessOptions = {
    * `ostra sidecar` connects (ADR 0029, Q129: core sends a box's commands to its sidecar).
    */
   readonly peer?: Peer;
+  /** Overrides of the host executor's options (milestone 3: a docker box's services, as its sidecar runs them). */
+  readonly executor?: Partial<Omit<HostExecutorOptions, "dataDir">>;
 };
 
 export type Harness = {
@@ -131,7 +134,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
   const holder: { connection: RunnerConnection | undefined } = { connection: undefined };
   const logs: LogRecord[] = [];
   const logger = createLogger((record) => logs.push(record));
-  const executor = new HostExecutor({ dataDir }, { logger, clock: { now: () => Date.now() } });
+  const executor = new HostExecutor({ ...options.executor, dataDir }, { logger, clock: { now: () => Date.now() } });
   const launches: AgentLaunch[] = [];
   const startAgent = executor.startAgent.bind(executor);
   executor.startAgent = (box: BoxRef, launch: AgentLaunch): Promise<AdapterResult<AgentProcess>> => {
