@@ -121,6 +121,36 @@ describe("github.installations and github.repos", () => {
   });
 });
 
+describe("github.appRequest", () => {
+  it("lists the manifest's permissions in its order, leaves workflows out, and says when no webhook is possible", async () => {
+    const request = await (await harness.as(harness.fixture.b.admin)).github.appRequest();
+    expect(request.permissions.map((row) => `${row.name} ${row.level}`)).toEqual([
+      "contents write",
+      "pull_requests write",
+      "checks write",
+      "actions read",
+      "issues read",
+      "statuses read",
+      "metadata read",
+    ]);
+    expect(request.notAsked).toEqual(["workflows"]);
+    expect(request.webhookPossible).toBe(false);
+  });
+
+  it("says a webhook is possible when the server's address is public", async () => {
+    const context = await harness.contextOf(harness.fixture.b.admin);
+    const caller = harness.callerFor({
+      ...context,
+      deps: { ...context.deps, settings: { ...context.deps.settings, corePublicUrl: "https://ostra.example.com" } },
+    });
+    expect((await caller.github.appRequest()).webhookPossible).toBe(true);
+  });
+
+  it("is for admins", async () => {
+    await expect((await harness.as(harness.fixture.a.member)).github.appRequest()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
 describe("the manifest flow", () => {
   const created = {
     appId: "5821099",

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
 import { connectGitHubApp } from "@ostra/domain";
 import { connectionIdSchema, memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -68,6 +69,27 @@ export const githubRouter = router({
       permissions: permissions.success ? permissions.data : {},
     };
   }),
+
+  /**
+   * What a new App asks GitHub for, in the manifest's order, and whether it can get events: the
+   * not-connected page shows both before the admin starts (F-006). Read from the manifest itself,
+   * never typed again in the panel.
+   */
+  appRequest: adminProcedure
+    .output(
+      z.object({
+        permissions: z.array(z.object({ name: z.string(), level: z.enum(["read", "write"]) })),
+        /** Permissions left out on purpose: a push that touches `.github/workflows/` fails. */
+        notAsked: z.array(z.string()),
+        /** Whether GitHub can reach the server's webhook address (OSTRA_CORE_PUBLIC_URL). */
+        webhookPossible: z.boolean(),
+      }),
+    )
+    .query(({ ctx }) => ({
+      permissions: Object.entries(appPermissions).map(([name, level]) => ({ name, level })),
+      notAsked: ["workflows"],
+      webhookPossible: isPublicWebhookUrl(`${ctx.deps.settings.corePublicUrl}/webhooks/github`),
+    })),
 
   /**
    * "Use an existing App": reads the App with the credentials given, checks its permissions include
