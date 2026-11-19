@@ -1,4 +1,4 @@
-import type { OrganizationId } from "@ostra/protocol";
+import type { OrganizationId, UploadId } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
@@ -18,7 +18,7 @@ export type StoredBlob = {
   readonly sha256: string;
 };
 
-export type UploadSession = { readonly uploadId: string; readonly receivedBytes: number };
+export type UploadSession = { readonly uploadId: UploadId; readonly receivedBytes: number };
 
 export abstract class BlobStoreAdapter {
   readonly kind = "blob-store" as const;
@@ -53,8 +53,8 @@ export abstract class BlobStoreAdapter {
   abstract startUpload(scope: BlobScope, expectedSha256: string, size: number): Promise<AdapterResult<UploadSession>>;
 
   /** Appends a chunk at `offset`. Milestone 2. */
-  abstract appendUpload(uploadId: string, offset: number, chunk: Uint8Array): Promise<AdapterResult<UploadSession>>;
+  abstract appendUpload(uploadId: UploadId, offset: number, chunk: Uint8Array): Promise<AdapterResult<UploadSession>>;
 
   /** Checks the digest and stores the blob. Milestone 2. */
-  abstract finishUpload(uploadId: string): Promise<AdapterResult<StoredBlob>>;
+  abstract finishUpload(uploadId: UploadId): Promise<AdapterResult<StoredBlob>>;
 }

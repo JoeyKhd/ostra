@@ -122,7 +122,7 @@ describe("the ACP driver, in process", () => {
     expect(Date.now() - at).toBeLessThan(3000);
   });
 
-  it("routes a permission request to the decider, with its options, and carries its answer back", async () => {
+  it("routes a permission request to the decider with branded IDs, leaves out an option with no usable ID, and carries its answer back", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
     const result = await peer.connection.prompt(id, fakeMarker("permission"));

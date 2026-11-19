@@ -20,7 +20,7 @@ import type {
   TaskProxies,
 } from "@ostra/adapter-sdk";
 import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
-import type { BoxState, GitPerson, RepoSecret, TaskSpec } from "@ostra/protocol";
+import type { BoxState, GitPerson, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
 import { detectContainment, processTreeContainment } from "./containment.ts";
 import { localProcesses } from "./task-processes.ts";
 import type { TaskProcesses } from "./task-processes.ts";
@@ -84,7 +84,7 @@ type BoxRecord = {
 const boxKey = (box: BoxRef): string => `${box.taskId}\u0000${box.boxId}`;
 
 /** A folder name for a task's root: its ID, with anything odd replaced. */
-const folderOf = (taskId: string): string => taskId.replace(/[^A-Za-z0-9._-]/g, "_");
+const folderOf = (taskId: TaskId): string => taskId.replace(/[^A-Za-z0-9._-]/g, "_");
 
 /** A `Co-authored-by` trailer, as git and GitHub read it. */
 export const coAuthorTrailer = (person: GitPerson): string => `Co-authored-by: ${person.name} <${person.email}>`;

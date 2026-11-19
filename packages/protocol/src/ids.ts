@@ -171,3 +171,11 @@ export type ReplicaId = z.infer<typeof replicaIdSchema>;
 /** The ID of a code host's or tracker's webhook delivery, as the vendor sent it. */
 export const webhookDeliveryIdSchema = idBase.brand<"WebhookDeliveryId">();
 export type WebhookDeliveryId = z.infer<typeof webhookDeliveryIdSchema>;
+
+/** The ID of a chunked blob upload in flight, as a blob store gave it. */
+export const uploadIdSchema = idBase.brand<"UploadId">();
+export type UploadId = z.infer<typeof uploadIdSchema>;
+
+/** The ID of a stored blob, as a blob store gave it (the part of its key after the store's name). */
+export const blobIdSchema = idBase.brand<"BlobId">();
+export type BlobId = z.infer<typeof blobIdSchema>;

@@ -255,6 +255,8 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
             { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
             { optionId: "allow-always", name: "Allow for this task", kind: "allow_always" },
             { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+            // Not an ID: the driver leaves it out before any decider sees it.
+            { optionId: "has space", name: "Broken", kind: "allow_once" },
           ],
         });
         if (answer.outcome.outcome === "selected" && answer.outcome.optionId.startsWith("allow")) {

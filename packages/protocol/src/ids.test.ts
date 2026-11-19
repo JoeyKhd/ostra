@@ -29,6 +29,8 @@ describe("branded IDs", () => {
       "boxIdSchema",
       "providerIdSchema",
       "noteIdSchema",
+      "uploadIdSchema",
+      "blobIdSchema",
     ]) {
       expect(names).toContain(expected);
     }

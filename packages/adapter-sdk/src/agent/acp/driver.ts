@@ -1,7 +1,7 @@
 import type { Readable, Writable } from "node:stream";
 
 import * as acp from "@agentclientprotocol/sdk/unstable";
-import { stopReasonSchema } from "@ostra/protocol";
+import { optionIdSchema, stopReasonSchema, toolCallIdSchema } from "@ostra/protocol";
 import type { QuestionField, StopReason, TaskEvent } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -125,7 +125,7 @@ const updateNotificationSchema = z.looseObject({
 });
 
 const permissionSchema = z.looseObject({
-  toolCall: z.looseObject({ toolCallId: z.string(), title: z.string().nullish() }),
+  toolCall: z.looseObject({ toolCallId: toolCallIdSchema, title: z.string().nullish() }),
   options: z.array(z.looseObject({ optionId: z.string(), name: z.string(), kind: z.string() })),
 });
 
@@ -284,7 +284,11 @@ const connectAgent = async (
       const request: PermissionRequest = {
         toolCallId: parsed.data.toolCall.toolCallId,
         title: parsed.data.toolCall.title ?? "",
-        options: parsed.data.options.map((option) => ({ optionId: option.optionId, name: option.name, kind: option.kind })),
+        // An option whose ID can't be an ID is left out; the IDs are parsed here, once.
+        options: parsed.data.options.flatMap((option) => {
+          const optionId = optionIdSchema.safeParse(option.optionId);
+          return optionId.success ? [{ optionId: optionId.data, name: option.name, kind: option.kind }] : [];
+        }),
       };
       const answer: PermissionAnswer = await handlers.onPermission(ctx.params.sessionId, request, ctx.signal);
       return answer.outcome === "selected"

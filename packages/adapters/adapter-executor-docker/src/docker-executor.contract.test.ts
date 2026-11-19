@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { isAlive, killTree, silentLogger } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
 import { defineExecutorContractSuite, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { boxIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { listenForInit } from "./bridge/bridge-server.ts";
 import { DockerExecutor } from "./docker-executor.ts";
@@ -35,7 +36,7 @@ defineExecutorContractSuite({
     const root = await mkdtemp(path.join(os.tmpdir(), "ostra-docker-contract-"));
     const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
     await upstream.createRepo("ostra-test/test1");
-    const boxId = "contract-box";
+    const boxId = boxIdSchema.parse("contract-box");
     const nonce = randomBytes(32).toString("base64url");
     const listener = await listenForInit({ boxId, nonce, host: "127.0.0.1", port: 0, logger: silentLogger });
     const init: ChildProcess = spawn(process.execPath, [INIT], {

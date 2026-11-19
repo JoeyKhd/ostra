@@ -10,7 +10,8 @@ import type {
   StoredBlob,
   UploadSession,
 } from "@ostra/adapter-sdk";
-import type { OrganizationId } from "@ostra/protocol";
+import { blobIdSchema, uploadIdSchema } from "@ostra/protocol";
+import type { BlobId, OrganizationId, UploadId } from "@ostra/protocol";
 
 import type { BlobRows, UploadRow } from "./blob-rows.ts";
 
@@ -29,8 +30,14 @@ const STORE = "postgres";
 const SHA256 = /^[0-9a-f]{64}$/;
 
 const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
-const keyOf = (id: string): string => `${STORE}:${id}`;
-const idOf = (key: string): string | undefined => (key.startsWith(`${STORE}:`) ? key.slice(STORE.length + 1) : undefined);
+const keyOf = (id: BlobId): string => `${STORE}:${id}`;
+const idOf = (key: string): BlobId | undefined => {
+  if (!key.startsWith(`${STORE}:`)) {
+    return undefined;
+  }
+  const parsed = blobIdSchema.safeParse(key.slice(STORE.length + 1));
+  return parsed.success ? parsed.data : undefined;
+};
 
 const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
   const out = new Uint8Array(a.length + b.length);
@@ -100,7 +107,7 @@ export class PostgresBlobStore extends BlobStoreAdapter {
         return ok({ uploadId: existing.uploadId, receivedBytes: existing.received.length });
       }
       const row: UploadRow = {
-        uploadId: randomUUID(),
+        uploadId: uploadIdSchema.parse(randomUUID()),
         organizationId: scope.organizationId,
         purpose: scope.purpose,
         expectedSha256,
@@ -115,7 +122,7 @@ export class PostgresBlobStore extends BlobStoreAdapter {
     }
   }
 
-  async appendUpload(uploadId: string, offset: number, chunk: Uint8Array): Promise<AdapterResult<UploadSession>> {
+  async appendUpload(uploadId: UploadId, offset: number, chunk: Uint8Array): Promise<AdapterResult<UploadSession>> {
     const upload = await this.#rows.getUpload(uploadId).catch(() => undefined);
     if (upload?.blobId !== null) {
       return adapterError("not-found", "no such open upload");
@@ -147,7 +154,7 @@ export class PostgresBlobStore extends BlobStoreAdapter {
     return ok({ uploadId, receivedBytes: next.length });
   }
 
-  async finishUpload(uploadId: string): Promise<AdapterResult<StoredBlob>> {
+  async finishUpload(uploadId: UploadId): Promise<AdapterResult<StoredBlob>> {
     const upload = await this.#rows.getUpload(uploadId).catch(() => undefined);
     if (upload === undefined) {
       return adapterError("not-found", "no such upload");
@@ -161,8 +168,11 @@ export class PostgresBlobStore extends BlobStoreAdapter {
     }
     const stored = await this.#store(upload.organizationId, upload.purpose, "application/octet-stream", upload.received, upload.expectedSha256);
     if (stored.ok) {
+      // The store just made this key, so it always has an ID.
       const id = idOf(stored.value.key);
-      await this.#rows.putUpload({ ...upload, received: new Uint8Array(0), blobId: id ?? "" }).catch(() => undefined);
+      if (id !== undefined) {
+        await this.#rows.putUpload({ ...upload, received: new Uint8Array(0), blobId: id }).catch(() => undefined);
+      }
     }
     return stored;
   }
@@ -179,7 +189,7 @@ export class PostgresBlobStore extends BlobStoreAdapter {
       this.plumbing.logger.warn("blob.digest_mismatch", { organizationId, purpose, size: bytes.length });
       return adapterError("conflict", "the bytes do not match their SHA-256");
     }
-    const id = randomUUID();
+    const id = blobIdSchema.parse(randomUUID());
     try {
       await this.#rows.insertBlob({ id, organizationId, purpose, contentType, size: bytes.length, sha256: actual, bytes });
     } catch {

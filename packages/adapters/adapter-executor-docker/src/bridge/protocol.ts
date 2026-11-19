@@ -1,3 +1,4 @@
+import { boxIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 // The bridge between a box's sidecar and its agent's container (ADR 0029: the sidecar holds the
@@ -14,7 +15,12 @@ import { z } from "zod";
 // One JSON object per line. ostra owns this format, so every schema is strict.
 
 /** A box's name on the bridge: the box ID, as its containers are named. */
-export const bridgeBoxIdSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9._-]+$/, "a box ID");
+export const bridgeBoxIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9._-]+$/, "a box ID")
+  .pipe(boxIdSchema);
 
 /** A process the sidecar asked the init to start. Per connection, from 1. */
 export const procIdSchema = z.number().int().positive().brand<"ProcId">();

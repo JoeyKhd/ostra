@@ -2,11 +2,13 @@ import type { Readable, Writable } from "node:stream";
 
 import type {
   ApiFormat,
+  OptionId,
   QuestionField,
   SessionId,
   StopReason,
   TaskEvent,
   TaskId,
+  ToolCallId,
   TurnId,
 } from "@ostra/protocol";
 
@@ -89,13 +91,13 @@ export type AcpUpdate = { readonly sessionUpdate: string; readonly [field: strin
 
 /** An ACP permission request, reduced to what ostra uses. */
 export type PermissionRequest = {
-  readonly toolCallId: string;
+  readonly toolCallId: ToolCallId;
   readonly title: string;
-  readonly options: readonly { readonly optionId: string; readonly name: string; readonly kind: string }[];
+  readonly options: readonly { readonly optionId: OptionId; readonly name: string; readonly kind: string }[];
 };
 
 export type PermissionAnswer =
-  | { readonly outcome: "selected"; readonly optionId: string }
+  | { readonly outcome: "selected"; readonly optionId: OptionId }
   | { readonly outcome: "cancelled" };
 
 /** An ACP `elicitation.form` request, mapped to ostra's question fields. */

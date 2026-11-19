@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import type { AddressInfo, Socket } from "node:net";
 import { Readable, Writable } from "node:stream";
 import type { Logger, ProcessExit } from "@ostra/adapter-sdk";
+import type { BoxId } from "@ostra/protocol";
 import { createLineSplitter, encodeFrame, parseFrame, toBase64Chunks } from "./framing.ts";
 import { BRIDGE_VERSION, CHUNK_BYTES, initFrameSchema, procIdSchema, REQUEST_DEADLINE_MS, reqIdSchema } from "./protocol.ts";
 import type { BridgeProcess, InitFrame, ProcId, ReqId, SidecarFrame } from "./protocol.ts";
@@ -60,7 +61,7 @@ export type BridgeListener = {
 };
 
 export type BridgeListenOptions = {
-  readonly boxId: string;
+  readonly boxId: BoxId;
   readonly nonce: string;
   readonly host: string;
   readonly port: number;

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { optionIdSchema, segmentIdSchema, toolCallIdSchema } from "@ostra/protocol";
+import { segmentIdSchema, toolCallIdSchema } from "@ostra/protocol";
 import type { ApprovalOption, ContentBlock, PlanEntry, SegmentId, TaskEvent, ToolKind } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -572,29 +572,25 @@ const toContentBlock = (content: { readonly type: string }): ContentBlock | unde
 
 /**
  * An ACP permission request's options as the approval card shows them (ADR 0036, F-026): ACP's
- * four kinds become ostra's, and `allow_always` is "allow for this task". An option whose ID
- * can't be an ID is left out; none left means no card.
+ * four kinds become ostra's, and `allow_always` is "allow for this task". The driver has
+ * already left out an option whose ID can't be an ID; none left means no card.
  */
 export const toApprovalOptions = (request: PermissionRequest): readonly ApprovalOption[] => {
   const options: ApprovalOption[] = [];
   for (const option of request.options) {
-    const optionId = optionIdSchema.safeParse(option.optionId);
-    if (!optionId.success) {
-      continue;
-    }
     const label = option.name.slice(0, 500);
     switch (option.kind) {
       case "allow_once":
-        options.push({ optionId: optionId.data, label, kind: "allow-once", decision: "allow_once" });
+        options.push({ optionId: option.optionId, label, kind: "allow-once", decision: "allow_once" });
         break;
       case "allow_always":
-        options.push({ optionId: optionId.data, label, kind: "allow-always", decision: "allow_task" });
+        options.push({ optionId: option.optionId, label, kind: "allow-always", decision: "allow_task" });
         break;
       case "reject_always":
-        options.push({ optionId: optionId.data, label, kind: "reject-always", decision: "deny" });
+        options.push({ optionId: option.optionId, label, kind: "reject-always", decision: "deny" });
         break;
       default:
-        options.push({ optionId: optionId.data, label, kind: "reject-once", decision: "deny" });
+        options.push({ optionId: option.optionId, label, kind: "reject-once", decision: "deny" });
         break;
     }
   }

@@ -13,7 +13,7 @@ import type {
   QuestionRequest,
   RepoPushResult,
 } from "@ostra/adapter-sdk";
-import { approvalIdSchema, questionIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, questionIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { CommandBody, StopReason, TaskCredentials, TaskEvent, TaskSpec, TurnId } from "@ostra/protocol";
 import type { CommandOutcome, SessionChannel } from "../connection/peer.ts";
 import { startGitProxy } from "../sidecar/git-proxy/git-proxy.ts";
@@ -174,7 +174,6 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const options = toApprovalOptions(request);
     const chosen =
       options.find((option) => option.kind === "allow-once") ?? options.find((option) => option.decision !== "deny");
-    const toolCallId = toolCallIdSchema.safeParse(request.toolCallId);
     const currentTurn = turn;
     if (chosen === undefined || currentTurn === undefined || signal.aborted || options[0] === undefined) {
       return Promise.resolve({ outcome: "cancelled" });
@@ -184,7 +183,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       kind: "approval.requested",
       turnId: currentTurn,
       approvalId,
-      toolCallId: toolCallId.success ? toolCallId.data : toolCallIdSchema.parse(`tool-${randomUUID()}`),
+      toolCallId: request.toolCallId,
       options: [options[0], ...options.slice(1)],
     });
     void emit({ kind: "approval.auto_answered", approvalId, ruleId: NO_RULES_YET });

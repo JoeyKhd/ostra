@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { defineBlobStoreContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
-import { organizationIdSchema } from "@ostra/protocol";
+import { organizationIdSchema, uploadIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import { createMemoryBlobRows } from "./blob-rows.ts";
@@ -109,8 +109,8 @@ describe("the postgres blob store", () => {
     it("refuses a bad digest, and an upload that doesn't exist", async () => {
       const { store } = setup();
       expect(await store.startUpload(scope, "not-a-digest", 3)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
-      expect(await store.appendUpload("nope", 0, bytesOf("a"))).toMatchObject({ ok: false, error: { code: "not-found" } });
-      expect(await store.finishUpload("nope")).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await store.appendUpload(uploadIdSchema.parse("nope"), 0, bytesOf("a"))).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await store.finishUpload(uploadIdSchema.parse("nope"))).toMatchObject({ ok: false, error: { code: "not-found" } });
     });
   });
 

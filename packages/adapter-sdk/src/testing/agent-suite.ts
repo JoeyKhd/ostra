@@ -1,5 +1,5 @@
 import { turnIdSchema } from "@ostra/protocol";
-import type { TaskEvent, ToolKind } from "@ostra/protocol";
+import type { OptionId, TaskEvent, ToolKind } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import { isRunning } from "../agent/acp/process-tree.ts";
@@ -94,7 +94,7 @@ const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
 const CANCEL_BUDGET_MS = 5000;
 
 type Handlers = {
-  readonly onPermission?: (request: { readonly options: readonly { readonly optionId: string; readonly kind: string }[] }) => PermissionAnswer;
+  readonly onPermission?: (request: { readonly options: readonly { readonly optionId: OptionId; readonly kind: string }[] }) => PermissionAnswer;
   readonly onQuestion?: () => QuestionAnswer;
 };
 

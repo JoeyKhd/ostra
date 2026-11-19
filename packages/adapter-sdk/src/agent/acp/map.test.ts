@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { sessionIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
+import { optionIdSchema, sessionIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -289,16 +289,15 @@ describe("the ACP mapping", () => {
 });
 
 describe("approval options", () => {
-  it("maps ACP's four kinds to ostra's decisions, and leaves out an option with no usable ID", () => {
+  it("maps ACP's four kinds to ostra's decisions", () => {
     const options = toApprovalOptions({
-      toolCallId: "t",
+      toolCallId: toolCallIdSchema.parse("t"),
       title: "Edit",
       options: [
-        { optionId: "a1", name: "Allow once", kind: "allow_once" },
-        { optionId: "a2", name: "Allow for the task", kind: "allow_always" },
-        { optionId: "r1", name: "Reject", kind: "reject_once" },
-        { optionId: "r2", name: "Never", kind: "reject_always" },
-        { optionId: "has space", name: "Broken", kind: "allow_once" },
+        { optionId: optionIdSchema.parse("a1"), name: "Allow once", kind: "allow_once" },
+        { optionId: optionIdSchema.parse("a2"), name: "Allow for the task", kind: "allow_always" },
+        { optionId: optionIdSchema.parse("r1"), name: "Reject", kind: "reject_once" },
+        { optionId: optionIdSchema.parse("r2"), name: "Never", kind: "reject_always" },
       ],
     });
     expect(options.map((option) => [option.kind, option.decision])).toEqual([
