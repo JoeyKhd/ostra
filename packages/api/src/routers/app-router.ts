@@ -11,6 +11,7 @@ import { linearRouter } from "./linear.ts";
 import { notificationsRouter } from "./notifications.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
+import { plansRouter, questionsRouter } from "./questions-plans.ts";
 import { poolsRouter, runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
@@ -40,6 +41,8 @@ export const appRouter = router({
   diff: diffRouter,
   tasks: tasksRouter,
   approvals: approvalsRouter,
+  questions: questionsRouter,
+  plans: plansRouter,
   runners: runnersRouter,
   pools: poolsRouter,
   stream: streamRouter,
