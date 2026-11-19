@@ -1,0 +1,18 @@
+# F-110, ticket 07: the live memory run on OpenCode 2.3.2
+#
+# 2026-11-19, Windows 11, the development endpoint from ~/.config/ostra-dev/model.env (an OpenAI-compatible
+# endpoint behind the test's key-proxy stand-in; neither its URL nor its token is printed). ostra's MCP
+# server and core are the fake core of @ostra/adapter-sdk/testing (the sidecar's real MCP server is ticket 20).
+# Command: set -a; . ~/.config/ostra-dev/model.env; set +a; npx vitest run src/opencode-adapter.live.test.ts -t F-110 --reporter=verbose
+
+ RUN  v5.1.1 <repo>/packages/adapters/adapter-opencode
+ ↓ src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > completes a turn, with the fake key at the agent and the real one only past the stand-in
+ ↓ src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > F-063: a plan turn on the real model, in OpenCode's plan agent, changes no file and yields a plan
+ ↓ src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > F-033: a real session exported after three turns, imported in a fresh directory, answers about its first turn
+stdout | src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > F-110: the real model calls memory_search and memory_propose when its prompt asks, each through ostra's MCP server to core
+live memory run: model tool calls ostra_memory_search, ostra_memory_propose; core answered search=1 read=0 propose=1; proposals recorded 1
+ ✓ src/opencode-adapter.live.test.ts > OpenCode on the development endpoint, live > F-110: the real model calls memory_search and memory_propose when its prompt asks, each through ostra's MCP server to core 7632ms
+ Test Files  1 passed (1)
+      Tests  1 passed | 3 skipped (4)
+   Start at  18:24:58
+   Duration  8.04s (tests 96%, import 2%, transform 1%)

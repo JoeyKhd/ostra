@@ -266,6 +266,12 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
 
   const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    // No server-sent stream, as MCP's streamable HTTP lets a server say: a client that opens one
+    // (OpenCode does, after `initialize`) goes on with plain answers.
+    if (path === MCP_PATH && request.method !== "POST") {
+      response.writeHead(405, { allow: "POST" }).end();
+      return;
+    }
     const handled = path === MCP_PATH ? mcp(request, response) : core(request, response, path);
     handled.catch(() => {
       if (!response.headersSent) send(response, 500, { error: "the fake core failed" });

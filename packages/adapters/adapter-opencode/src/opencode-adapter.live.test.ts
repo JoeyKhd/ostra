@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
-import { runAgentCommand, spawnAgentProcess } from "@ostra/adapter-sdk/testing";
+import { memoryNoteFixtures, runAgentCommand, spawnAgentProcess, startFakeMemoryCore } from "@ostra/adapter-sdk/testing";
 import type { TaskEvent } from "@ostra/protocol";
 import { planTurnPrompt, turnIdSchema } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
@@ -335,4 +335,65 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((call) => call.presented === `Bearer ${FAKE_KEY}`)).toBe(true);
   }, 480_000);
+
+  it("F-110: the real model calls memory_search and memory_propose when its prompt asks, each through ostra's MCP server to core", async () => {
+    if (!env.success) {
+      return;
+    }
+    const { baseUrl } = await startStandIn();
+    const core = await startFakeMemoryCore({ taskId: fixtureIds.task, taskToken: "ostra-task-live-token", mcpBearer: "live-mcp-bearer", notes: memoryNoteFixtures });
+    closers.push(core.close);
+    const block = [
+      "## Project memory",
+      "These are the organization's and the project's approved notes. Search them with memory_search before you guess a convention, and propose what the next task should know with memory_propose.",
+      ...memoryNoteFixtures.map((note) => `- ${note.noteId} (${note.kind}, ${note.scope}): ${note.title}`),
+    ].join("\n");
+    const input = { ...(await newBox(baseUrl)), mcp: { url: core.mcpUrl, bearer: core.mcpBearer }, memory: { block, tools: true } };
+    const adapter = new OpenCodeAdapter();
+    const prepared = await adapter.prepareLaunch(input);
+    if (!prepared.ok) {
+      throw new Error(`prepareLaunch failed: ${prepared.error.message}`);
+    }
+    const started = await spawnAgentProcess(prepared.value);
+    closers.push(started.stop);
+    const events: TaskEvent[] = [];
+    const session = await adapter.startSession({
+      taskId: fixtureIds.task,
+      sessionId: fixtureIds.session,
+      io: started.io,
+      cwd: input.workspaceDir,
+      mcpServers: [],
+      onEvents: (batch) => {
+        events.push(...batch);
+      },
+      onPermission: () => Promise.resolve({ outcome: "cancelled" }),
+      onQuestion: () => Promise.resolve({ outcome: "cancelled" }),
+    });
+    if (!session.ok) {
+      throw new Error(`startSession failed: ${session.error.message}`);
+    }
+    const searched = await adapter.prompt(
+      session.value,
+      turnIdSchema.parse("live-memory-turn-1"),
+      "Use the ostra memory_search tool to search the project's memory for \"pnpm install\", then tell me in one sentence which package manager this project uses. Use no other tool.",
+    );
+    const proposed = await adapter.prompt(
+      session.value,
+      turnIdSchema.parse("live-memory-turn-2"),
+      'Use the ostra memory_propose tool once to propose a note with the title "Run the linter before a commit", the body "Run pnpm lint before every commit.", the kind "convention" and the scope "project". Then reply with the proposal ID it returns. Use no other tool.',
+    );
+    await adapter.close(session.value);
+
+    expect(searched, "the search turn").toMatchObject({ ok: true, value: { stopReason: "end_turn" } });
+    expect(proposed, "the propose turn").toMatchObject({ ok: true, value: { stopReason: "end_turn" } });
+    expect(core.toolCalls).toContain("memory_search");
+    expect(core.toolCalls).toContain("memory_propose");
+    expect(core.calls.search).toBeGreaterThanOrEqual(1);
+    expect(core.proposals.some((proposal) => proposal.title === "Run the linter before a commit")).toBe(true);
+    const memoryCalls = events.flatMap((event) => (event.kind === "tool.called" && event.title.includes("memory_") ? [event.title] : []));
+    // The log line names the tools and counts, never a note's text, a query or a proposal's text.
+    console.info(
+      `live memory run: model tool calls ${memoryCalls.join(", ")}; core answered search=${String(core.calls.search)} read=${String(core.calls.read)} propose=${String(core.calls.propose)}; proposals recorded ${String(core.proposals.length)}`,
+    );
+  }, 300_000);
 });

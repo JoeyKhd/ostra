@@ -74,6 +74,13 @@ const checkProfileInputs = (input: PrepareLaunchInput): string | null => {
   return null;
 };
 
+/**
+ * The OpenCode adapter. **Native memory** (ADR 0044, Q91): OpenCode documents no memory feature of
+ * its own (`context/research/project-memory.md`, section 8), so this adapter turns nothing off.
+ * Project memory reaches it only as the launch's memory block, written into the task's instructions
+ * file after the profile's instructions and before the repos' own `AGENTS.md`, and as ostra's
+ * memory tools on the ostra MCP server its config already names.
+ */
 export class OpenCodeAdapter extends AgentAdapter {
   readonly name = "opencode";
   readonly capabilities: AgentCapabilities = {
@@ -101,9 +108,9 @@ export class OpenCodeAdapter extends AgentAdapter {
     skills: true,
     mcp: { http: true, stdio: true },
     projectConfigOverride: true,
-    // Milestone 4 (ADR 0044): OpenCode reaches ostra's MCP server, so it takes the memory tools;
-    // ticket 07 writes the block and the tools into its config. Native memory: OpenCode has none
-    // of its own, so there is nothing to turn off.
+    // Milestone 4 (ADR 0044, ticket 07): OpenCode reaches ostra's MCP server, so it takes the memory
+    // tools; the block goes into its instructions file (`instructionsText`). Native memory: OpenCode
+    // has none of its own, so there is nothing to turn off.
     memory: "mcp",
   };
 

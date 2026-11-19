@@ -196,7 +196,7 @@ describe("the profile's side of the launch", () => {
       servers: {
         docs: { type: "remote", url: "http://127.0.0.1:7/mcp/docs", codemode: false },
         files: { type: "local", command: ["/usr/bin/mcp-files", "--root", "."], environment: { FILES_MODE: "rw" }, codemode: false },
-        ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp" },
+        ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false },
       },
     });
   });

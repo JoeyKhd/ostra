@@ -1,6 +1,6 @@
 # 07: OpenCode adapter: the memory block and the memory tools
 
-Status: ready-for-agent
+Status: resolved
 Builder: adapters
 Blocked by: 02
 Features: F-110, F-111
@@ -17,8 +17,10 @@ Spec: `../spec.md`, sections 4 ("Memory at a session's start") and 5.2; ADR 0044
 
 ## Done when
 
-- [ ] The agent contract suite of ticket 02 passes against OpenCode on the stub models: the block reaches the agent, no repo has it, the three tools are listed and round-trip.
-- [ ] Gated on `model.env`: a live run where the real model calls `memory_search` and `memory_propose` when its prompt asks, recorded in `## Comments` with the log kept in the repo.
-- [ ] Committed as `✨ give OpenCode the memory block and tools`.
+- [x] The agent contract suite of ticket 02 passes against OpenCode on the stub models: the block reaches the agent, no repo has it, the three tools are listed and round-trip.
+- [x] Gated on `model.env`: a live run where the real model calls `memory_search` and `memory_propose` when its prompt asks, recorded in `## Comments` with the log kept in the repo.
+- [x] Committed as `✨ give OpenCode the memory block and tools`.
 
 ## Comments
+
+- 2026-11-19 (adapters builder): built and proved. OpenCode's instructions file (`instructionsText`, in the task's agent folder) now holds the profile's instructions and skills, the repos side by side and the memory block, and the config names it before the repos' own `AGENTS.md` globs, so the block sits between them (checked on the pinned 2.3.2 by the order case). ostra's MCP server is written with `codemode: false`: without it OpenCode 2.3.2 puts the server's tools behind its one `execute` tool and the model never sees `ostra_memory_search` by name (one config change beyond the instructions, found by the suite). A profile still can't name a server `ostra` (`checkProfileInputs`, milestone 3). The suite's memory cases pass on both stubs. Two shared fixes in `@ostra/adapter-sdk/testing`: the fake core answers a `GET /mcp` with 405, as MCP lets a server without a stream (OpenCode opens one after `initialize`), and the suite's tool-call check reads a call's title as well as its input, since OpenCode names an MCP tool in the title. Live run on the development model (`model.env`): the model called `memory_search` and `memory_propose` when asked, log in `packages/adapters/adapter-opencode/evidence/f-110-memory-live.txt`. Proof rows in `context/proof/F-110.md` (still partial for tickets 15 and 20).

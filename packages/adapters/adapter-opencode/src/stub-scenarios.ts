@@ -182,6 +182,51 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     return { text: `servers: ${offered.length === 0 ? "none" : offered.join(" ")}` };
   },
 
+  // ---- milestone 4: project memory (ADR 0044, F-110). Each says what OpenCode gave the model. ----
+
+  /** Says the instructions OpenCode put in its system prompt. */
+  instructions: ({ step, request }) => {
+    if (step !== 0) {
+      return undefined;
+    }
+    const system = request.messages.flatMap((message) => (message.role === "system" ? [message.text] : [])).join("\n");
+    return { text: `instructions: ${system}` };
+  },
+
+  /** Names the memory tools ostra's MCP server offers, as OpenCode lists them (`ostra_<tool>`). */
+  "memory-tools": ({ step, request }) => {
+    if (step !== 0) {
+      return undefined;
+    }
+    const names = request.toolNames.filter((name) => name.includes("memory_"));
+    return { text: `memory tools: ${names.length === 0 ? "none" : names.join(", ")}` };
+  },
+
+  /** Searches memory for the marker's query, and says what came back. */
+  "memory-search": ({ step, args, lastToolResults }) => memoryCall(step, "ostra_memory_search", { query: args, limit: 5 }, lastToolResults),
+
+  /** Reads the note the marker names, and says what came back. */
+  "memory-read": ({ step, args, lastToolResults }) => memoryCall(step, "ostra_memory_read", { noteId: args }, lastToolResults),
+
+  /** Proposes a note titled by the marker, and says what came back. */
+  "memory-propose": ({ step, args, lastToolResults }) =>
+    memoryCall(step, "ostra_memory_propose", { title: args, body: "Run pnpm lint before every commit.", kind: "convention", scope: "project" }, lastToolResults),
+
+  /**
+   * The order the marker's list of markers sits in the model's prompt (`a<b<c`), each found as a
+   * file writes it (`<marker>:`), or the ones missing, so a case can check how OpenCode ordered its instructions.
+   */
+  order: ({ step, args, request }) => {
+    if (step !== 0) {
+      return undefined;
+    }
+    const all = request.messages.map((message) => message.text).join("\n");
+    const markers = args.split(",");
+    const missing = markers.filter((marker) => !all.includes(`${marker}:`));
+    const found = [...markers].sort((a, b) => all.indexOf(`${a}:`) - all.indexOf(`${b}:`));
+    return { text: missing.length === 0 ? `order: ${found.join("<")}` : `missing: ${missing.join(",")}` };
+  },
+
   /**
    * Whether each marker of the marker's list reached the model, in its instructions or anywhere
    * else, as a file writes it (`<marker>:`): the prompt names the markers bare, so it never counts.
@@ -193,6 +238,14 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     const all = request.messages.map((message) => message.text).join("\n");
     return { text: args.split(",").map((marker) => `${marker}=${String(all.includes(`${marker}:`))}`).join(" ") };
   },
+};
+
+/** One call of a memory tool, then a reply with what it answered. */
+const memoryCall = (step: number, name: string, args: Record<string, unknown>, results: readonly NormalizedMessage[]): ReturnType<Scenario> => {
+  if (step === 0) {
+    return { toolCalls: [{ name, arguments: args }] };
+  }
+  return step === 1 ? { text: `${name} answered: ${results.map((result) => (result.isError ? `error: ${result.text}` : result.text)).join(" | ")}` } : undefined;
 };
 
 /** A tool result OpenCode refused: no such tool in this mode, or a permission it denied. */

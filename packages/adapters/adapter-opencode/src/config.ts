@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
+import { composeLaunchInstructions, GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
 import type { LaunchFile, LaunchMcpServer, PrepareLaunchInput } from "@ostra/adapter-sdk";
 
 import { agentForMode, buildPermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
@@ -128,15 +128,22 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
         models: { [model.endpointModelId]: providerModel },
       },
     },
-    instructions: [...repoInstructionGlobs(input.workspaceDir), ...(instructionsPath === null ? [] : [instructionsPath])],
+    // The task's instructions file first (the profile's, the repos side by side, then the memory
+    // block, F-110), then the repos' own AGENTS.md: OpenCode puts them in its prompt in this order.
+    instructions: [...(instructionsPath === null ? [] : [instructionsPath]), ...repoInstructionGlobs(input.workspaceDir)],
     mcp: {
       servers: {
         // The profile's servers, beside ostra's own.
         ...Object.fromEntries(mcpServers.map((server) => [server.name, mcpServerConfig(server)])),
-        // ostra's tools for the task: the PR's title and body are written through them (ticket 20).
+        // ostra's tools for the task: the PR's title and body (ticket 20), and with milestone 4 the
+        // memory tools, `memory_search`, `memory_read` and `memory_propose` (F-110), on the same
+        // server. A profile can't name a server `ostra` (`checkProfileInputs`), so this one is always ostra's.
         [OSTRA_MCP_SERVER]: {
           type: "remote",
           url: input.mcp.url,
+          // Each tool listed to the model by its name (`ostra_memory_search`), as the profile's are:
+          // with OpenCode's code mode on, they'd sit behind its one `execute` tool (checked on 2.3.2).
+          codemode: false,
           ...(input.mcp.bearer === undefined ? {} : { headers: { authorization: `Bearer ${input.mcp.bearer}` } }),
         },
       },
@@ -290,17 +297,20 @@ export const launchFiles = (input: PrepareLaunchInput, dirs: TaskDirs): readonly
 };
 
 /**
- * The profile's instructions, with the IDs of its skills after them. OpenCode lists a skill to the
- * model only when its `SKILL.md` starts with a `description` (checked on 2.3.2), and a profile's
- * skill may have none: named here, every one of them can be loaded with the `skill` tool.
+ * The task's instructions file, in the task's config folder and never in a repo: the profile's
+ * instructions with the IDs of its skills after them, then (milestone 4) the repos side by side and
+ * the memory block, which comes after the profile's instructions and before the repos' own
+ * `AGENTS.md` (`buildOpenCodeConfig` names this file first). OpenCode lists a skill to the model
+ * only when its `SKILL.md` starts with a `description` (checked on 2.3.2), and a profile's skill
+ * may have none: named here, every one of them can be loaded with the `skill` tool.
  */
 export const instructionsText = (input: PrepareLaunchInput): string | null => {
   const skills = input.skills ?? [];
-  if (skills.length === 0) {
-    return input.instructions;
-  }
-  const index = `${SKILLS_HEADING}: ${skills.map((skill) => `\`${skill.name}\``).join(", ")}.\n`;
-  return input.instructions === null ? index : `${input.instructions.replace(/\n*$/, "")}\n\n${index}`;
+  const index = skills.length === 0 ? null : `${SKILLS_HEADING}: ${skills.map((skill) => `\`${skill.name}\``).join(", ")}.\n`;
+  const profile = index === null ? input.instructions : input.instructions === null ? index : `${input.instructions.replace(/\n*$/, "")}\n\n${index}`;
+  // Milestone 4: with several repos or a memory block, the base class's one text (F-098, F-110).
+  const more = (input.repoDirs ?? []).length > 1 || (input.memory?.block ?? "").trim() !== "";
+  return more ? composeLaunchInstructions({ ...input, instructions: profile }) : profile;
 };
 
 /** The line that names the profile's skills in the instructions. */

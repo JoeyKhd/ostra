@@ -168,8 +168,8 @@ export const defineAgentMemoryCases = (subject: Subject): void => {
     expect(core.calls.propose - before.propose).toBe(1);
     expect(core.proposals.at(-1)?.title).toBe("Run the linter before a commit");
     expect(core.proposals.length - before.proposals).toBe(1);
-    // The event log shows each tool call.
-    const called = events.flatMap((event) => (event.kind === "tool.called" ? [JSON.stringify(event.input)] : []));
+    // The event log shows each tool call, by its title or its input (an agent names an MCP tool in either).
+    const called = events.flatMap((event) => (event.kind === "tool.called" ? [`${event.title} ${JSON.stringify(event.input)}`] : []));
     for (const name of memoryToolNames) {
       expect(called.some((input) => input.includes(name)), name).toBe(true);
     }
@@ -193,7 +193,7 @@ export const defineAgentMemoryCases = (subject: Subject): void => {
       expect(tools, name).not.toContain(name);
     }
     expect(search).not.toContain(memoryNoteFixtures[0]?.title ?? "a note's title");
-    expect(events.some((event) => event.kind === "tool.called" && JSON.stringify(event.input).includes("memory_search"))).toBe(false);
+    expect(events.some((event) => event.kind === "tool.called" && `${event.title} ${JSON.stringify(event.input)}`.includes("memory_search"))).toBe(false);
   }, 60_000);
 
   it("F-098: two repos side by side, the agent at the workspace's root, its instructions naming both", async (context) => {

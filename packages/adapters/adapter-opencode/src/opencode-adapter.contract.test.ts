@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import {
@@ -8,12 +10,14 @@ import {
   defineAgentContractSuite,
   FakeAgentAdapter,
   fakeMarker,
+  memoryNoteFixtures,
   runAgentCommand,
   spawnAgentProcess,
+  startFakeMemoryCore,
   startStubModelServer,
   stubMarker,
 } from "@ostra/adapter-sdk/testing";
-import type { AgentFixture, StubServer } from "@ostra/adapter-sdk/testing";
+import type { AgentFixture, FakeMemoryCore, StubServer } from "@ostra/adapter-sdk/testing";
 import { approvalRuleIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { ApiFormat, ApprovalRule, TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
@@ -33,11 +37,17 @@ const MODEL = "stub-model";
 const roots: string[] = [];
 const servers: StubServer[] = [];
 const mcpServers: TestMcpHttp[] = [];
+const cores: FakeMemoryCore[] = [];
 afterAll(async () => {
   await Promise.all(servers.map((server) => server.close()));
+  await Promise.all(cores.map((core) => core.close()));
   await Promise.all(mcpServers.map((server) => server.close()));
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 });
+
+/** Milestone 4: the two repos every fixture's workspace holds side by side. */
+const REPOS = ["test1", "test2"] as const;
+const run = promisify(execFile);
 
 /** A repo's own OpenCode config that allows everything and adds a server of its own (ADR 0049, Q171). */
 const allowAllRepoConfig = (evilUrl: string): string =>
@@ -65,6 +75,14 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
   const workspaceDir = path.join(root, "workspace");
   await mkdir(workspaceDir, { recursive: true });
   await writeFile(path.join(workspaceDir, "README.md"), "hello\n", "utf8");
+  // Milestone 4: two repos side by side under the workspace's root, each a git repo, for the memory cases.
+  for (const repo of REPOS) {
+    await mkdir(path.join(workspaceDir, repo), { recursive: true });
+    await run("git", ["init", "-q"], { cwd: path.join(workspaceDir, repo) });
+  }
+  // And the fake core with its stand-in for the sidecar's MCP server: ostra's server in the config.
+  const core = await startFakeMemoryCore({ taskId: fixtureIds.task, taskToken: "ostra-task-fake-token", mcpBearer: "fake-mcp-bearer", notes: memoryNoteFixtures });
+  cores.push(core);
   // The profile cases' MCP servers answer for real: OpenCode lists a server's tools only once it connects.
   const mcpHttp = await startTestMcpHttp("search");
   mcpServers.push(mcpHttp);
@@ -76,7 +94,7 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
     workspaceDir,
     agentDir: path.join(root, "agent"),
     model: { endpointModelId: MODEL, apiFormat: format, baseUrl: stub.baseUrl, placeholderKey: TASK_KEY },
-    mcp: { url: "http://127.0.0.1:9/mcp" },
+    mcp: { url: core.mcpUrl, bearer: core.mcpBearer },
     instructions: null,
     extraEnv: { PATH: `${fakeBin}${path.delimiter}${process.env["PATH"] ?? ""}` },
   } satisfies PrepareLaunchInput;
@@ -132,6 +150,16 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
       asksOneAtATime: true,
       mcpUrl: (name) => mcpHttp.urlFor(name),
       mcpStdio,
+    },
+    // Milestone 4 (ticket 07, ADR 0044): the memory cases, played by the stub model on the real binary.
+    memory: {
+      instructions: `${stubMarker("instructions")} say them`,
+      tools: `${stubMarker("memory-tools")} list them`,
+      search: (query) => `${stubMarker("memory-search", query)} search`,
+      read: (noteId) => `${stubMarker("memory-read", noteId)} read it`,
+      propose: (title) => `${stubMarker("memory-propose", title)} propose it`,
+      core: () => core,
+      repos: REPOS,
     },
   };
 };
@@ -325,6 +353,7 @@ const openProfiled = async (setup: Partial<PrepareLaunchInput>, prepare?: (works
     events,
     asked,
     mcpUrl: fixture.profile?.mcpUrl ?? ((name: string) => `http://127.0.0.1:9/mcp/${name}`),
+    core: fixture.memory?.core?.(),
     session: session.value,
     prompt: async (text: string) => {
       turns += 1;
@@ -470,4 +499,60 @@ describe("milestone 3 on the pinned OpenCode", () => {
       await planned.stop();
     }
   }, 180_000);
+});
+
+// Milestone 4 on the pinned OpenCode (ticket 07, ADR 0044): where the memory block sits.
+
+describe("milestone 4 on the pinned OpenCode", () => {
+  it("F-110: the memory block reaches OpenCode's prompt after the profile's instructions and before the repos' own AGENTS.md", async () => {
+    const profiled = await openProfiled(
+      {
+        instructions: "PROFILE-INSTRUCTIONS-MARKER: write tests first.",
+        memory: { block: "## Project memory\nMEMORY-BLOCK-MARKER: use pnpm, never npm.", tools: true },
+        repoDirs: ["test1", "test2"],
+      },
+      async (workspaceDir) => {
+        await writeFile(path.join(workspaceDir, "AGENTS.md"), "ROOT-AGENTS-MARKER: use tabs.\n");
+        await writeFile(path.join(workspaceDir, "test1", "AGENTS.md"), "REPO-AGENTS-MARKER: run pnpm test.\n");
+      },
+    );
+    try {
+      expect(await profiled.prompt(`${stubMarker("order", "REPO-AGENTS-MARKER,MEMORY-BLOCK-MARKER,ROOT-AGENTS-MARKER,PROFILE-INSTRUCTIONS-MARKER")} where`)).toBe("end_turn");
+      expect(messageText(profiled.events)).toContain("order: PROFILE-INSTRUCTIONS-MARKER<MEMORY-BLOCK-MARKER<ROOT-AGENTS-MARKER<REPO-AGENTS-MARKER");
+      // The repo's AGENTS.md was the repo's own: the block went into no repo, which git keeps clean but for it.
+      expect((await run("git", ["status", "--porcelain"], { cwd: path.join(profiled.input.workspaceDir, "test1") })).stdout.trim()).toBe("?? AGENTS.md");
+      expect((await run("git", ["status", "--porcelain"], { cwd: path.join(profiled.input.workspaceDir, "test2") })).stdout).toBe("");
+    } finally {
+      await profiled.stop();
+    }
+  }, 120_000);
+
+  it("F-110: OpenCode lists ostra's memory tools by name, and memory_search, memory_read and memory_propose each reach core with the task's token", async () => {
+    const profiled = await openProfiled({ memory: { block: "## Project memory", tools: true } });
+    const core = profiled.core;
+    if (core === undefined) throw new Error("the fixture starts the fake core");
+    const [note] = memoryNoteFixtures;
+    if (note === undefined) throw new Error("the fixtures hold a note");
+    try {
+      expect(await profiled.prompt(`${stubMarker("memory-tools")} list`)).toBe("end_turn");
+      expect(messageText(profiled.events)).toContain("memory tools: ostra_memory_propose, ostra_memory_read, ostra_memory_search");
+      expect(await profiled.prompt(`${stubMarker("memory-search", "pnpm install")} search`)).toBe("end_turn");
+      expect(await profiled.prompt(`${stubMarker("memory-read", note.noteId)} read`)).toBe("end_turn");
+      expect(await profiled.prompt(`${stubMarker("memory-propose", "Lint before a commit")} propose`)).toBe("end_turn");
+      const said = messageText(profiled.events);
+      expect(said).toContain(`ostra_memory_search answered: {"results":[{"noteId":"${note.noteId}"`);
+      expect(said).toContain(note.body);
+      expect(said).toContain('ostra_memory_propose answered: {"proposalId":"proposal-1"}');
+      expect(core.toolCalls).toEqual(["memory_search", "memory_read", "memory_propose"]);
+      expect(core.calls).toEqual({ search: 1, read: 1, propose: 1 });
+      expect(core.proposals).toEqual([{ title: "Lint before a commit", body: "Run pnpm lint before every commit.", kind: "convention", scope: "project", relatesTo: null, relation: null }]);
+      // Each call is in the event log, by its name.
+      const called = profiled.events.flatMap((event) => (event.kind === "tool.called" ? [event.title] : []));
+      expect(called.filter((title) => title.includes("memory_"))).toHaveLength(3);
+      // None of them asked a person: ostra's own tools are under no rule.
+      expect(profiled.asked).toEqual([]);
+    } finally {
+      await profiled.stop();
+    }
+  }, 120_000);
 });

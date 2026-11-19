@@ -77,7 +77,7 @@ describe("the OpenCode adapter's launch", () => {
       },
     });
     expect(config["mcp"]).toEqual({
-      servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", headers: { authorization: "Bearer task-mcp-bearer-xyz" } } },
+      servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false, headers: { authorization: "Bearer task-mcp-bearer-xyz" } } },
     });
   });
 
@@ -134,11 +134,42 @@ describe("the OpenCode adapter's launch", () => {
   it("omits the MCP header when there is no bearer, and writes the instructions when there are some", async () => {
     const { files } = await launch({ mcp: { url: "http://127.0.0.1:8124/mcp" }, instructions: "Prefer small commits." });
     const config = jsonFile(files, "opencode.json");
-    expect(config["mcp"]).toEqual({ servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp" } } });
+    expect(config["mcp"]).toEqual({ servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false } } });
     const written = files.find((file) => file.path.endsWith("instructions.md"));
     expect(written?.content).toBe("Prefer small commits.");
-    // The repo's own AGENTS.md comes first, named because OpenCode's project config is off (ADR 0049).
-    expect(config["instructions"]).toEqual([...repoInstructionGlobs(input().workspaceDir), written?.path]);
+    // The task's file comes first, then the repo's own AGENTS.md, named because OpenCode's project
+    // config is off (ADR 0049): the memory block sits before the repo's instructions (ticket 07).
+    expect(config["instructions"]).toEqual([written?.path, ...repoInstructionGlobs(input().workspaceDir)]);
+  });
+
+  it("F-110: writes the memory block after the profile's instructions and its skills, in the task's config folder, named before the repos' own AGENTS.md", async () => {
+    const block = "## Project memory\nAlways:\n- Use pnpm, never npm: run pnpm install at the root.";
+    const skillDir = path.join(input().agentDir, "ostra-skills", "release-notes");
+    const { files } = await launch({ instructions: "Prefer small commits.", skills: [{ name: "release-notes", dir: skillDir }], memory: { block, tools: true }, repoDirs: ["web", "api"] });
+    const written = files.find((file) => file.path.endsWith("instructions.md"));
+    expect(written?.path).toBe(path.join(input().agentDir, "instructions.md"));
+    const text = written?.content ?? "";
+    const at = (part: string): number => text.indexOf(part);
+    expect(at("Prefer small commits.")).toBe(0);
+    expect(at("`release-notes`")).toBeGreaterThan(at("Prefer small commits."));
+    expect(at("web, api")).toBeGreaterThan(at("`release-notes`"));
+    expect(at(block)).toBeGreaterThan(at("web, api"));
+    expect(text.endsWith(block)).toBe(true);
+    const config = jsonFile(files, "opencode.json");
+    expect(config["instructions"]).toEqual([written?.path, ...repoInstructionGlobs(input().workspaceDir)]);
+    // Nothing in the launch lands in the workspace, where the repos are.
+    for (const file of files) {
+      expect(path.relative(input().workspaceDir, file.path).startsWith("..")).toBe(true);
+    }
+    // The memory tools are on ostra's own server, which the config always names, with the task's bearer.
+    expect(record(record(config["mcp"])["servers"])["ostra"]).toEqual({ type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false, headers: { authorization: "Bearer task-mcp-bearer-xyz" } });
+  });
+
+  it("F-110: with no memory block and one repo, the instructions file is the profile's alone, as before milestone 4", async () => {
+    const { files } = await launch({ instructions: "Prefer small commits.", memory: null, repoDirs: ["web"] });
+    expect(files.find((file) => file.path.endsWith("instructions.md"))?.content).toBe("Prefer small commits.");
+    const blockOnly = await launch({ memory: { block: "## Project memory", tools: true } });
+    expect(blockOnly.files.find((file) => file.path.endsWith("instructions.md"))?.content).toBe("## Project memory");
   });
 
   it("F-019: writes the model catalog as a file, and points OpenCode at it with its own fetch off", async () => {
