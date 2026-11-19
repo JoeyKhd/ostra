@@ -49,7 +49,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_S3_REGION` | unset: us-east-1 | The store's region, which AWS S3 needs and most other stores ignore. Read only with `OSTRA_BLOB_STORE=s3`. |
 | `OSTRA_S3_ACCESS_KEY_ID` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's ID. |
 | `OSTRA_S3_SECRET_ACCESS_KEY` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's secret. Never logged. |
-| `OSTRA_EMAIL_PROVIDER` | unset: the panel decides, and mail is off until an admin sets it | The install's email (F-115): `resend`, `smtp` or `off`. Set, it locks the panel's email settings to it; unset, an instance admin chooses in the panel, and mail stays off until they do. Everything else works without email. |
+| `OSTRA_EMAIL_PROVIDER` | unset: the panel decides, and mail is off until an admin sets it | The install's email (F-115): `resend`, `smtp` or `off`. Set, it locks the panel's email settings to it; unset, an instance admin chooses in the panel, and mail stays off until they do. Everything else works without email. Until milestone 4 verifies addresses, a "needs you" mail goes to the member's account address. |
 | `OSTRA_EMAIL_FROM` | unset; required with `OSTRA_EMAIL_PROVIDER=resend` or `smtp` | The address mail comes from, such as `ostra@example.com`. Its domain must be one the provider sends for. |
 | `OSTRA_EMAIL_FROM_NAME` | `ostra` | The name mail comes from. |
 | `OSTRA_RESEND_API_KEY` | unset; required with `OSTRA_EMAIL_PROVIDER=resend` | Resend's API key. Never logged. Read only when the provider is `resend`. |

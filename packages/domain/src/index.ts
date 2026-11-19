@@ -65,6 +65,7 @@ export * from "./use-cases/tickets.ts";
 export * from "./use-cases/reopen.ts";
 export * from "./use-cases/needs-you-items.ts";
 export * from "./use-cases/notifications.ts";
+export * from "./use-cases/email-settings.ts";
 export * from "./use-cases/sessions-m2.ts";
 export * from "./use-cases/spend.ts";
 export * from "./use-cases/rebuild-history.ts";

@@ -17,6 +17,7 @@ import {
   postgresCommandOutbox,
   postgresIdempotencyStore,
   postgresRateBudgetStore,
+  syncEmailSettingsRow,
   systemClock,
 } from "@ostra/domain";
 import type { ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
@@ -46,7 +47,7 @@ import { createIngest } from "./ingest/ingest.ts";
 import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler } from "./limits/limits.ts";
 import type { LimitDeps } from "./limits/limits.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
-import { createNotificationChannels, mailOffChannel, notifyDeliverHandler, notifyFanoutHandler } from "./notifications/index.ts";
+import { createEmailChannel, createNotificationChannels, notifyDeliverHandler, notifyFanoutHandler, realEmailFactories } from "./notifications/index.ts";
 import type { NotifyDeps } from "./notifications/index.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
@@ -368,6 +369,18 @@ export const startCore = async (
   // written where no queue was at hand (a task's move), every 2 s.
   await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
   // Notifications (ticket 20): a needs-you moment fans out to its audience, and each channel delivers on its own.
+  // Mail goes through the install's own settings when they set it (they lock the panel's choice), else the saved row.
+  await syncEmailSettingsRow(db, settings.email);
+  const emailChannel = createEmailChannel({
+    db,
+    secretStore: adapters.secretStore,
+    clock: systemClock,
+    logger,
+    publicUrl: settings.publicUrl,
+    stallMinutes: settings.sessionStallMinutes,
+    fromSettings: settings.email,
+    factories: realEmailFactories,
+  });
   const notifyDeps: NotifyDeps = {
     db,
     jobs,
@@ -379,7 +392,7 @@ export const startCore = async (
     logger,
     trackers,
     channels: createNotificationChannels(db, { logger, clock: adapterClock }),
-    email: mailOffChannel,
+    email: emailChannel,
     publicUrl: settings.publicUrl,
     emailDelaySeconds: settings.emailDelaySeconds,
     trackerCoalesceMinutes: settings.trackerNotifyCoalesceMinutes,
@@ -488,6 +501,7 @@ export const startCore = async (
       await liveText.stop();
       await jobs.stop({ graceful: true, timeoutMs: 10_000 });
       s3?.close();
+      emailChannel.close();
       await db.$disconnect();
     },
   };

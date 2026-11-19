@@ -63,7 +63,7 @@ export const DELIVERY_SELECT = {
           driverMemberId: true,
           spentMicroUsd: true,
           project: { select: { id: true, name: true, organization: { select: { name: true } } } },
-          ticket: { select: { externalId: true, key: true } },
+          ticket: { select: { externalId: true, key: true, statusName: true } },
           board: { select: { externalId: true, connectionId: true } },
         },
       },
@@ -103,7 +103,7 @@ export type EmailChannel = {
 export const mailOffChannel: EmailChannel = { deliver: () => Promise.resolve({ outcome: "skipped", why: "mail-off" }) };
 
 /** Errors another attempt may fix, as in the tracker writer: the vendor is busy or away. */
-const retryable = (error: AdapterError): boolean => {
+export const retryable = (error: AdapterError): boolean => {
   switch (error.code) {
     case "rate-limited":
     case "unavailable":
@@ -122,7 +122,7 @@ const retryable = (error: AdapterError): boolean => {
   }
 };
 
-const words = (error: AdapterError): string => `${error.code}: ${error.message}`.slice(0, 500);
+export const words = (error: AdapterError): string => `${error.code}: ${error.message}`.slice(0, 500);
 
 export const loadDelivery = (db: Db, organizationId: OrganizationId, deliveryId: NotificationDeliveryId): Promise<DeliveryRow | null> =>
   db.notificationDelivery.findFirst({ where: { id: deliveryId, organizationId }, select: DELIVERY_SELECT });
@@ -142,13 +142,13 @@ const lineOf = async (deps: NotifyDeps, row: DeliveryRow, change: "created" | "a
   return `${heading}: ${verb.toLowerCase()} by ${member?.user.name ?? "a member"}.`;
 };
 
-const urlOf = (deps: NotifyDeps, row: DeliveryRow): string => {
+export const urlOf = (deps: Pick<NotifyDeps, "publicUrl">, row: DeliveryRow): string => {
   const task = row.notification.task;
   return task === null ? deps.publicUrl.replace(/\/+$/, "") : taskUrlOf(deps.publicUrl, task.id);
 };
 
 /** The adapter contract's notification of one delivery, for the panel and the ticket (never mail: that has its own). */
-const baseNotification = async (
+export const baseNotification = async (
   deps: NotifyDeps,
   row: DeliveryRow,
   change: "created" | "answered" | "dismissed",

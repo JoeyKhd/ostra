@@ -267,8 +267,7 @@ export type DeliveryOutcome =
 /**
  * Records what one delivery did (ticket 20). `sent` keeps the provider's ID, which an edit needs;
  * `skipped` says why in words; `failed` with a wait stays pending to retry, and `failed` with none
- * is final. Each attempt counts. A test mail's outcome is also written on the install's email
- * settings, in words (ticket 21).
+ * is final. Each attempt counts.
  */
 export const recordDelivery = async (
   deps: Pick<M3Deps, "db" | "clock" | "notices">,
@@ -307,9 +306,6 @@ export const recordDelivery = async (
       default:
         input satisfies never;
     }
-    if (delivery.notification.kind === "test" && delivery.channel === "email") {
-      await tx.emailSettings.updateMany({ where: { id: "instance" }, data: { lastTestAt: at, lastTestResult: testResultWords(input, delivery.adapter) } });
-    }
     await deps.notices.emitInTx(tx, {
       organizationId: organizationIdSchema.parse(delivery.organizationId),
       projectId: null,
@@ -318,20 +314,6 @@ export const recordDelivery = async (
     });
     return { ok: true, deliveryId: input.deliveryId } as const;
   });
-
-/** A test mail's result, in words and never an address, a body or a key. */
-const testResultWords = (outcome: DeliveryOutcome, adapter: string): string => {
-  switch (outcome.outcome) {
-    case "sent":
-      return `Sent through ${adapter}.`;
-    case "skipped":
-      return `Not sent. ${skipWords(outcome.why)}`;
-    case "failed":
-      return `Failed: ${outcome.error}`.slice(0, ERROR_MAX);
-    default:
-      return outcome satisfies never;
-  }
-};
 
 // ---------- reading ----------
 

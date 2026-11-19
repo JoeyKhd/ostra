@@ -44,6 +44,12 @@ importers:
       '@ostra/adapter-blob-s3':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-blob-s3
+      '@ostra/adapter-email-resend':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-email-resend
+      '@ostra/adapter-email-smtp':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-email-smtp
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-github

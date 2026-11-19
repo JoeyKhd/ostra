@@ -1,6 +1,6 @@
 # 21: Core: email delivery and its settings
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 12, 13, 20
 Features: F-115, F-036
@@ -17,9 +17,9 @@ Spec: `../spec.md`, sections 4 ("A notification") and 5.4 (settings); ADR 0050
 
 ## Done when
 
-- [ ] Tests: with mail off, every email delivery is skipped and the rest are sent; with Resend on the fake, a due delivery sends once, a read one is skipped, a replayed job sends nothing; switching to SMTP on the fake sends the next one through SMTP; `OSTRA_EMAIL_PROVIDER` locks the row; the test mail records its result; a mail's HTML and text hold only the allowed fields.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
-- [ ] Committed as `✨ deliver notifications by email`.
+- [x] Tests: with mail off, every email delivery is skipped and the rest are sent; with Resend on the fake, a due delivery sends once, a read one is skipped, a replayed job sends nothing; switching to SMTP on the fake sends the next one through SMTP; `OSTRA_EMAIL_PROVIDER` locks the row; the test mail records its result; a mail's HTML and text hold only the allowed fields.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
+- [x] Committed as `✨ deliver notifications by email`.
 
 ## Decided 2026-11-19
 

@@ -1,0 +1,287 @@
+import { ResendEmailAdapter } from "@ostra/adapter-email-resend";
+import type { ResendEmailAdapterOptions } from "@ostra/adapter-email-resend";
+import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
+import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
+import { secretRefSchema } from "@ostra/adapter-sdk";
+import type { AdapterContext, Logger, Notification, NotificationAdapter, SecretStoreAdapter } from "@ostra/adapter-sdk";
+import type { Db } from "@ostra/db";
+import { emailStillNeeded, momentHeading, renderNeedsYouEmail } from "@ostra/domain";
+import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
+import { approvalSubjectSchema, memberIdSchema, notificationIdSchema, organizationIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { ApprovalSubject } from "@ostra/protocol";
+
+import { retryable, urlOf, words } from "./deliver.ts";
+import type { ChannelOutcome, DeliveryRow, EmailChannel } from "./deliver.ts";
+
+// The email channel (F-115, F-036, ADR 0050, ticket 21). A mail waits its delay; at the due time it
+// is skipped when the member read the notification in the panel or the item is no longer open, and
+// otherwise it's rendered by the domain's template for the moment and sent through whichever
+// provider the install has set up: Resend or SMTP, built from the saved settings (or the install's
+// own `OSTRA_EMAIL_*`, which win and lock the panel's choice). Settings changes are seen at the next
+// delivery, on every replica, because each delivery reads the row. A mail carries the fields its
+// template allows, never ticket text, agent output, a diff or check output; and no mail body, subject
+// or address ever reaches a log line.
+
+/** The adapters mail can go through, built per settings. Tests pass others, pointed at fakes. */
+export type EmailAdapterFactories = {
+  readonly resend: (options: ResendEmailAdapterOptions, context: AdapterContext) => NotificationAdapter;
+  readonly smtp: (options: SmtpEmailAdapterOptions, context: AdapterContext) => NotificationAdapter;
+};
+
+/** The real adapters: Resend (ticket 12) and SMTP (ticket 13). */
+export const realEmailFactories: EmailAdapterFactories = {
+  resend: (options, context) => new ResendEmailAdapter(options, context),
+  smtp: (options, context) => new SmtpEmailAdapter(options, context),
+};
+
+export type EmailChannelDeps = {
+  readonly db: Db;
+  readonly secretStore: SecretStoreAdapter;
+  readonly clock: Clock;
+  readonly logger: Logger;
+  /** `OSTRA_PUBLIC_URL`: the mail's links and its mark are served from it. */
+  readonly publicUrl: string;
+  /** `OSTRA_SESSION_STALL_MINUTES`, for the stall mail's one line. */
+  readonly stallMinutes: number;
+  /** `OSTRA_EMAIL_*` as the install's settings gave them. */
+  readonly fromSettings: EmailFromSettings;
+  readonly factories: EmailAdapterFactories;
+};
+
+/** What mail is set up to go through, with its secrets resolved. Never logged. */
+type EmailConfig =
+  | { readonly provider: "off" }
+  | { readonly provider: "resend"; readonly apiKey: string; readonly from: string; readonly fromName: string }
+  | ({ readonly provider: "smtp" } & SmtpEmailAdapterOptions);
+
+type Configured = { readonly fingerprint: string; readonly config: EmailConfig } | { readonly failed: string };
+
+const closeIfClosable = (adapter: NotificationAdapter): void => {
+  // Only the SMTP adapter holds a pooled transport to close.
+  const close: unknown = Reflect.get(adapter, "close");
+  if (typeof close === "function") {
+    Reflect.apply(close, adapter, []);
+  }
+};
+
+/** A task's spend, as a mail says it. */
+const usd = (microUsd: number): string => `$${(microUsd / 1_000_000).toFixed(2)}`;
+
+const askedAtOf = (at: Date): string => `${at.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { readonly close: () => void } => {
+  const context: AdapterContext = { logger: deps.logger, clock: { now: () => deps.clock.now() } };
+  // The adapter in use, kept while the settings stay as they were; a change rebuilds it.
+  let current: { readonly fingerprint: string; readonly adapter: NotificationAdapter } | null = null;
+
+  /** The provider and its secrets, from the install's settings or the saved row. */
+  const configOf = async (): Promise<Configured> => {
+    const settings = deps.fromSettings;
+    if (settings.source === "settings") {
+      // The install's settings win; the row only mirrors them for the panel.
+      const fingerprint = `settings:${settings.provider}`;
+      switch (settings.provider) {
+        case "off":
+          return { fingerprint, config: { provider: "off" } };
+        case "resend":
+          return { fingerprint, config: { provider: "resend", apiKey: settings.apiKey, from: settings.from, fromName: settings.fromName } };
+        case "smtp":
+          return {
+            fingerprint,
+            config: {
+              provider: "smtp",
+              host: settings.host,
+              port: settings.port,
+              secure: settings.secure,
+              from: settings.from,
+              fromName: settings.fromName,
+              ...(settings.user === null ? {} : { user: settings.user }),
+              ...(settings.password === null ? {} : { password: settings.password }),
+            },
+          };
+        default:
+          return settings satisfies never;
+      }
+    }
+    const row = await deps.db.emailSettings.findUnique({ where: { id: "instance" } });
+    if (row === null || row.provider === "off") {
+      return { fingerprint: "off", config: { provider: "off" } };
+    }
+    const fingerprint = `${row.provider}:${String(row.updatedAt.getTime())}`;
+    if (row.fromAddress === null || row.secretsOrganizationId === null) {
+      return { failed: "the email settings are incomplete" };
+    }
+    const from = row.fromAddress;
+    const fromName = row.fromName ?? settings.fromName;
+    const organizationId = organizationIdSchema.parse(row.secretsOrganizationId);
+    const secret = async (value: string | null): Promise<string | null> => {
+      const ref = value === null ? null : secretRefSchema.safeParse(value);
+      if (ref?.success !== true) {
+        return null;
+      }
+      const read = await deps.secretStore.get(organizationId, ref.data);
+      return read.ok ? read.value : null;
+    };
+    if (row.provider === "resend") {
+      const apiKey = await secret(row.resendApiKeySecretRef);
+      return apiKey === null ? { failed: "the Resend key can't be read from the secret store" } : { fingerprint, config: { provider: "resend", apiKey, from, fromName } };
+    }
+    if (row.smtpHost === null || row.smtpPort === null || row.smtpSecure === null) {
+      return { failed: "the SMTP settings are incomplete" };
+    }
+    const password = await secret(row.smtpPasswordSecretRef);
+    if (row.smtpPasswordSecretRef !== null && password === null) {
+      return { failed: "the SMTP password can't be read from the secret store" };
+    }
+    return {
+      fingerprint,
+      config: {
+        provider: "smtp",
+        host: row.smtpHost,
+        port: row.smtpPort,
+        secure: row.smtpSecure,
+        from,
+        fromName,
+        ...(row.smtpUser === null ? {} : { user: row.smtpUser }),
+        ...(password === null ? {} : { password }),
+      },
+    };
+  };
+
+  const adapterFor = (fingerprint: string, config: Exclude<EmailConfig, { readonly provider: "off" }>): NotificationAdapter => {
+    if (current?.fingerprint === fingerprint) {
+      return current.adapter;
+    }
+    const adapter =
+      config.provider === "resend"
+        ? deps.factories.resend({ apiKey: config.apiKey, from: config.from, fromName: config.fromName }, context)
+        : deps.factories.smtp(
+            {
+              host: config.host,
+              port: config.port,
+              secure: config.secure,
+              from: config.from,
+              ...(config.fromName === undefined ? {} : { fromName: config.fromName }),
+              ...(config.user === undefined ? {} : { user: config.user }),
+              ...(config.password === undefined ? {} : { password: config.password }),
+            },
+            context,
+          );
+    if (current !== null) {
+      closeIfClosable(current.adapter);
+    }
+    current = { fingerprint, adapter };
+    return adapter;
+  };
+
+  /** The moment's one line, from the rows (never from the moment's own text). */
+  const detailOf = async (row: DeliveryRow): Promise<MomentDetail> => {
+    const { kind, task, needsYouItem: item } = row.notification;
+    switch (kind) {
+      case "approval": {
+        const approval =
+          item?.approvalId === null || item === null
+            ? null
+            : await deps.db.approval.findUnique({ where: { id: item.approvalId }, select: { subjectKind: true, subjectValue: true } });
+        const subject = approvalSubjectSchema.safeParse({ kind: approval?.subjectKind, value: approval?.subjectValue });
+        const fallback: ApprovalSubject = { kind: "tool", value: "a tool" };
+        return { kind, subject: subject.success ? subject.data : fallback };
+      }
+      case "question":
+        return { kind, askedAt: askedAtOf(item?.createdAt ?? new Date(deps.clock.now())) };
+      case "plan": {
+        const turnId = item?.planTurnId ?? null;
+        const proposed = await deps.db.event.findFirst({
+          where: { taskId: task?.id ?? "", kind: "plan.proposed", ...(turnId === null ? {} : { payload: { path: ["turnId"], equals: turnId } }) },
+          orderBy: { seq: "desc" },
+          select: { payload: true },
+        });
+        const payload: unknown = proposed?.payload;
+        const entries = typeof payload === "object" && payload !== null && "entries" in payload && Array.isArray(payload.entries) ? payload.entries.length : 0;
+        return { kind, steps: entries };
+      }
+      case "pr_ready":
+        return { kind, pullRequests: await deps.db.taskPullRequest.count({ where: { taskRepo: { taskId: task?.id ?? "" } } }) };
+      case "no_changes":
+      case "crashed":
+      case "setup_failed":
+      case "test":
+        return { kind };
+      case "stalled":
+        return { kind, minutes: deps.stallMinutes };
+      case "spend_cap":
+        return { kind, spent: usd(task?.spentMicroUsd ?? 0) };
+      case "ticket_closed":
+        return { kind, status: task?.ticket?.statusName ?? "closed" };
+      default:
+        return kind satisfies never;
+    }
+  };
+
+  const deliver = async (row: DeliveryRow): Promise<ChannelOutcome> => {
+    const configured = await configOf();
+    if ("failed" in configured) {
+      // The settings can't be used as saved: another attempt after a fix may work, so it retries.
+      return { outcome: "failed", error: configured.failed, retryable: true };
+    }
+    if (configured.config.provider === "off") {
+      return { outcome: "skipped", why: "mail-off" };
+    }
+    const { notification: stored } = row;
+    // Due now: a member who read it in the panel meanwhile, or an item closed meanwhile, needs no mail.
+    if (!emailStillNeeded({ kind: stored.kind, readAt: stored.readAt?.getTime() ?? null, itemState: stored.needsYouItem?.state ?? null })) {
+      return { outcome: "skipped", why: stored.readAt === null ? "closed" : "read" };
+    }
+    // Milestone 4's verification (F-002) restricts mail to a verified address; until then the account's address is used.
+    const address = stored.member.user.email.trim();
+    if (address === "") {
+      return { outcome: "skipped", why: "no-address" };
+    }
+    const organization = await deps.db.organization.findUnique({ where: { id: row.organizationId }, select: { name: true } });
+    const task = stored.task;
+    const rendered = renderNeedsYouEmail({
+      detail: await detailOf(row),
+      organizationName: organization?.name ?? "ostra",
+      projectName: task?.project.name ?? null,
+      task: task === null ? null : { title: task.title, key: task.ticketKey, url: urlOf(deps, row) },
+      reason: task?.driverMemberId === stored.memberId ? "driver" : "project_member",
+      publicUrl: deps.publicUrl,
+    });
+    const memberId = memberIdSchema.parse(stored.memberId);
+    const notification: Notification = {
+      organizationId: organizationIdSchema.parse(row.organizationId),
+      memberIds: [memberId],
+      title: momentHeading[stored.kind],
+      body: momentHeading[stored.kind],
+      url: urlOf(deps, row),
+      idempotencyKey: row.idempotencyKey,
+      kind: stored.kind,
+      recipients: [{ memberId, email: address, trackerMention: null }],
+      subject: task?.title ?? "",
+      rendered,
+      notificationId: notificationIdSchema.parse(stored.id),
+      taskId: task === null ? null : taskIdSchema.parse(task.id),
+      ticket: null,
+    };
+    const sent = await adapterFor(configured.fingerprint, configured.config).send(notification);
+    if (!sent.ok) {
+      return { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+    }
+    const refused = sent.value.refused.find((entry) => entry.memberId === memberId);
+    if (refused !== undefined) {
+      // The provider refused this address alone; trying again won't change it.
+      return { outcome: "failed", error: `the mail provider refused the address: ${refused.reason}`.slice(0, 500), retryable: false };
+    }
+    return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
+  };
+
+  return {
+    deliver,
+    close: () => {
+      if (current !== null) {
+        closeIfClosable(current.adapter);
+        current = null;
+      }
+    },
+  };
+};
