@@ -1,6 +1,6 @@
 # 41: Milestone 3 screen targets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: none
 Features: F-021, F-024, F-026, F-063, F-062, F-036, F-115, F-027, F-072, F-028, F-103, F-070, F-054, F-051, F-094, F-119, F-075 (their screens)
@@ -25,3 +25,5 @@ The screens that only grow (section 12's second list) get no new picture: their 
 - [ ] Committed as `🎨 add milestone 3 screen targets`.
 
 ## Comments
+
+- 2026-11-19, lead: 18 pictures for 15 screens are in `context/brand/app-targets/m3/`. The lead reviewed each by eye and approved them for the build on the maintainer's delegation, pending the maintainer's own review; `README.md` there records it.
