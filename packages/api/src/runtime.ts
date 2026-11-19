@@ -10,6 +10,8 @@ import { ensureFirstAdmin } from "./auth/first-admin.ts";
 import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
+import { noEmailDirectory } from "./services/email.ts";
+import type { EmailDirectory } from "./services/email.ts";
 import { createLinearAppKit } from "./services/linear-app.ts";
 import type { LinearEndpoints } from "./services/linear-app.ts";
 import { createTrackerDirectory } from "./services/trackers.ts";
@@ -38,6 +40,8 @@ export type ApiRuntimeInput = {
   readonly linearEndpoints?: LinearEndpoints;
   /** Builds a Linear adapter from a stored credential (tickets 27 to 29). */
   readonly makeLinearTracker: (auth: LinearTrackerAuth) => TrackerAdapter;
+  /** Builds the adapter that sends mail for the install's email (Resend, SMTP). Unset, the build has none and "Send a test mail" says so. */
+  readonly email?: EmailDirectory;
   readonly logger: Logger;
 };
 
@@ -88,6 +92,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     blobStore: input.blobStore,
     linear: createLinearAppKit(input.linearEndpoints === undefined ? {} : { endpoints: input.linearEndpoints }),
     trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),
+    email: input.email ?? noEmailDirectory,
     stream: hub,
   };
 

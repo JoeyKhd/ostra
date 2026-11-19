@@ -17,6 +17,8 @@ import { appRouter } from "../routers/app-router.ts";
 import { createLinearAppKit } from "../services/linear-app.ts";
 import type { LinearEndpoints } from "../services/linear-app.ts";
 import { createTrackerDirectory } from "../services/trackers.ts";
+import { noEmailDirectory } from "../services/email.ts";
+import type { EmailDirectory } from "../services/email.ts";
 import { createStreamHub } from "../stream/hub.ts";
 import type { StreamHub } from "../stream/hub.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
@@ -79,6 +81,8 @@ export type BareHarnessOptions = {
   readonly modelProvider?: ModelProviderAdapter;
   /** Linear's OAuth and API addresses: a test points them at the fake Linear server. Default: the real ones. */
   readonly linearEndpoints?: LinearEndpoints;
+  /** The adapters that send mail (the test mail). Default: none. */
+  readonly email?: EmailDirectory;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -107,6 +111,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const trackerTokens: string[] = [];
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
   const catalogEntries: CatalogEntry[] = [];
+  const emailDirectory: EmailDirectory = options.email ?? noEmailDirectory;
 
   const deps: ApiDeps = {
     db: test.db,
@@ -126,6 +131,9 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       boxIdleMinutes: 15,
       taskSpendCapMicroUsd: 25_000_000,
       taskTokenCap: 10_000_000,
+      email: { source: "panel", fromName: "ostra" },
+      emailDelaySeconds: 120,
+      cliSessionDays: 30,
     },
     blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
     linear: createLinearAppKit(options.linearEndpoints === undefined ? {} : { endpoints: options.linearEndpoints }),
@@ -154,6 +162,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       clock: systemClock,
       logger: silentLogger,
     }),
+    email: emailDirectory,
     stream: hub,
   };
 

@@ -7,6 +7,7 @@ import { loadMemberContext, resolveSession } from "../auth/scope.ts";
 import type { MemberContext, SessionUser } from "../auth/scope.ts";
 import type { CatalogSource } from "../catalog/catalog-source.ts";
 import type { BlobStoreView } from "../services/blob-store-view.ts";
+import type { EmailDirectory } from "../services/email.ts";
 import type { TrackerDirectory } from "../services/trackers.ts";
 import type { StreamHub } from "../stream/hub.ts";
 
@@ -29,6 +30,11 @@ export type ApiSettings = Pick<
   | "boxIdleMinutes"
   | "taskSpendCapMicroUsd"
   | "taskTokenCap"
+  // Milestone 3: the email page and the notification choices read the email settings and their delay
+  // (ticket 37); the Account page reads how long a CLI session lasts (ticket 39).
+  | "email"
+  | "emailDelaySeconds"
+  | "cliSessionDays"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
@@ -48,6 +54,8 @@ export type ApiDeps = {
   readonly trackers: TrackerDirectory;
   /** The calls the Linear connection flow makes to Linear (ticket 27). */
   readonly linear: LinearAppKit;
+  /** The adapters that send mail for the install's email, by provider (ticket 37); the test mail goes through one. */
+  readonly email: EmailDirectory;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */

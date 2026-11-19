@@ -85,3 +85,4 @@ export * from "./use-cases/member-message.ts";
 export * from "./use-cases/diff-comments.ts";
 export * from "./checks/pr-checks.ts";
 export * from "./use-cases/checks.ts";
+export * from "./use-cases/notification-settings.ts";

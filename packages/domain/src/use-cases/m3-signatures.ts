@@ -16,6 +16,7 @@ import type {
   NotificationDeliveryId,
   NotificationId,
   OptionId,
+  OrganizationId,
   PlanEntry,
   ProjectId,
   QuestionId,
@@ -228,7 +229,7 @@ export type SaveEmailSettingsInput =
     };
 export type SaveEmailSettings = (
   deps: M3Deps,
-  actor: { readonly userId: UserId; readonly instanceAdmin: boolean },
+  actor: { readonly userId: UserId; readonly memberId: MemberId; readonly organizationId: OrganizationId; readonly instanceAdmin: boolean },
   input: SaveEmailSettingsInput,
 ) => Promise<UseCaseResult<{ readonly provider: SaveEmailSettingsInput["provider"] }, "forbidden" | "locked-by-settings" | "invalid-input">>;
 

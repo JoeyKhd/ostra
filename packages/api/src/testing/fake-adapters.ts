@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { CodeHostAdapter, ModelProviderAdapter, SecretStoreAdapter, adapterError, ok, secretRefSchema } from "@ostra/adapter-sdk";
+import { CodeHostAdapter, ModelProviderAdapter, NotificationAdapter, SecretStoreAdapter, adapterError, ok, secretRefSchema } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
   BranchRules,
@@ -18,12 +18,14 @@ import type {
   HostRepo,
   Installation,
   ModelEndpoint,
+  Notification,
   PullRequest,
   ReadFilesResult,
   RepoAccess,
   RepoToken,
   SecretRef,
   SecretScope,
+  SendResult,
 } from "@ostra/adapter-sdk";
 import type { ApiFormat, AuthScheme, GitPerson, OrganizationId } from "@ostra/protocol";
 
@@ -284,5 +286,37 @@ export class FakeCodeHost extends CodeHostAdapter {
       return Promise.resolve(adapterError("unavailable", "the fake code host did not answer"));
     }
     return Promise.resolve(ok(this.branchRules.get(access.repo) ?? { protected: false, requiresSignedCommits: false, reasons: [] }));
+  }
+}
+
+// ---------- mail ----------
+
+/**
+ * An email adapter that keeps what it is asked to send and can be made to fail (ticket 37). The
+ * test mail goes through one; a test reads `sent` to see the parts, the recipient and the sender's
+ * configuration, and `failWith` to see a provider refuse.
+ */
+export class FakeMailAdapter extends NotificationAdapter {
+  readonly name = "fake-mail";
+  readonly capabilities = { channels: ["email"], edits: false } as const;
+  readonly sent: Notification[] = [];
+  /** The next send fails with this (an adapter error code and words). */
+  failWith: { readonly code: "unauthorized" | "unavailable" | "rate-limited"; readonly message: string } | null = null;
+  /** Addresses the provider refuses without failing the call. */
+  readonly refuse = new Set<string>();
+
+  health(): Promise<HealthReport> {
+    return healthy;
+  }
+
+  send(notification: Notification): Promise<AdapterResult<SendResult>> {
+    if (this.failWith !== null) {
+      const failure = this.failWith;
+      this.failWith = null;
+      return Promise.resolve(adapterError(failure.code, failure.message));
+    }
+    this.sent.push(notification);
+    const refused = notification.recipients.filter((recipient) => recipient.email !== null && this.refuse.has(recipient.email)).map((recipient) => ({ memberId: recipient.memberId, reason: "the address was refused" }));
+    return Promise.resolve(ok({ providerMessageId: `fake-mail-${String(this.sent.length)}`, refused }));
   }
 }

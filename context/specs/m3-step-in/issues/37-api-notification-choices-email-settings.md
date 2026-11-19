@@ -1,6 +1,6 @@
 # 37: API: notification choices and email settings
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 20, 21
 Features: F-036, F-115
@@ -17,9 +17,9 @@ Spec: `../spec.md`, sections 4 and 5.4; ADR 0050
 
 ## Done when
 
-- [ ] Tests: a member's choices save and read back with defaults; an organization admin who isn't the instance admin can't change email; secrets never come back; locked settings refuse a save; the test mail's result returns; another organization's members' choices are untouched.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
-- [ ] Committed as `✨ add notification and email settings API`.
+- [x] Tests: a member's choices save and read back with defaults; an organization admin who isn't the instance admin can't change email; secrets never come back; locked settings refuse a save; the test mail's result returns; another organization's members' choices are untouched.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
+- [x] Committed as `✨ add notification and email settings API`.
 
 ## Decided 2026-11-19
 
@@ -29,3 +29,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **`email.settings.get` adds** (`email-settings.md`, "Data"): the delay in effect; the values of the non-secret settings that are set (`OSTRA_EMAIL_PROVIDER`, `OSTRA_EMAIL_FROM` and the SMTP host, port, security and user), never a secret's; the last email audit entry (who, what, when); and the admin's own address.
 
 ## Comments
+
+- 2026-11-19: done in COMMIT. `notifications.preferences` (`routers/notifications.ts`, whose list and count ticket 36 adds) and `email` (`routers/email.ts`) are in; `saveNotificationPreferences`, `saveEmailSettings` and `recordEmailTest` are written in `packages/domain/src/use-cases/notification-settings.ts`. `SaveEmailSettings`' actor gained `memberId` and `organizationId` (additive: the secrets live in the saving admin's namespace, and the audit entry names the member). The test mail goes through `ApiDeps.email` (an `EmailDirectory` that builds the adapter for a configuration): `createApiRuntime` takes it as `email`, and `apps/web` has no Resend or SMTP adapter to hand it until tickets 12 and 13 land, so "Send a test mail" answers "This build has no ... adapter" until then; a test supplies a fake adapter. Proof rows: F-115 (3 partial) and F-036 (row 2 gains the choices' tests).
