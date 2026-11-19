@@ -147,7 +147,7 @@ describe("projects.list and projects.get", () => {
     const asMember = await (await harness.as(a.member)).projects.get({ projectId: projectIdSchema.parse(project.id) });
     expect(asMember).toMatchObject({ slug: "test-one", role: "member", environmentStatus: "draft", repos: [{ fullName: "ostra-test/test1" }] });
     expect(asMember.pools).toHaveLength(1);
-    expect(asMember.defaultCodeProfile).toMatchObject({ name: "OpenCode" });
+    expect(asMember.defaultCodeProfile).toMatchObject({ name: "OpenCode", adapter: "opencode", agentName: "OpenCode" });
     await expect((await harness.as(b.admin)).projects.get({ projectId: projectIdSchema.parse(project.id) })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect((await harness.as(a.member)).projects.get({ projectId: a.restrictedProject.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });

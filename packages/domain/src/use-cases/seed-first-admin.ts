@@ -6,6 +6,7 @@ import type { MemberId, OrganizationId, UserId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, organizationNameSchema, usernameSchema } from "../accounts.ts";
+import { slugify } from "../branch-name.ts";
 import type { AuditLog, ChangeNotices, Clock } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import { ensureDefaultPool } from "./pools.ts";
@@ -60,19 +61,6 @@ export type SeedFirstAdmin = (deps: SeedFirstAdminDeps, input: SeedFirstAdminInp
 
 /** A fixed key for the advisory lock that serialises "who is the first account". */
 export const FIRST_ACCOUNT_LOCK_KEY = 4_270_901;
-
-/** A URL-safe slug of an organization's name, never empty. */
-export const slugify = (name: string, fallback: string): string => {
-  const slug = name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48)
-    .replace(/-+$/g, "");
-  return slug === "" ? fallback : slug;
-};
 
 const hasAccount = async (db: Pick<Db, "user" | "instanceSetting">): Promise<boolean> => {
   const setting = await db.instanceSetting.findUnique({ where: { id: "instance" }, select: { firstAdminCreatedAt: true } });

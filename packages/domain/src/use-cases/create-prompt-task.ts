@@ -6,12 +6,12 @@ import type { SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
+import { branchSlugFor, titleFromPrompt } from "../branch-name.ts";
 import type { MemberScope } from "../access.ts";
 import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
-import { slugify } from "./seed-first-admin.ts";
 import { appendServerEvent } from "./server-events.ts";
 
 // F-097: a member starts a code task in a project by typing a prompt. In one transaction: the task
@@ -53,21 +53,13 @@ const refuse = (error: Exclude<CreatePromptTaskResult, { readonly ok: true }>["e
   message,
 });
 
-/** The task's title when the member gave none: the prompt's first non-empty line, kept short. */
-export const titleFromPrompt = (prompt: string): string => {
-  const first = prompt.split(/\r?\n/).find((line) => line.trim() !== "") ?? prompt;
-  const trimmed = first.trim().replace(/\s+/g, " ");
-  return trimmed.length <= 120 ? trimmed : `${trimmed.slice(0, 117).trimEnd()}...`;
-};
-
 /**
  * The same branch name in every repo of the task (spec section 11, item 10). The ID part is the
  * last 8 hex digits: a UUIDv7 starts with its timestamp, so its first 8 are the same for every task
  * made within about a minute, and the same prompt twice would get the same branch.
  */
 export const branchNameFor = (taskId: TaskId, title: string): string => {
-  const slug = slugify(title, "task").slice(0, 40).replace(/-+$/g, "");
-  return `ostra/${taskId.replaceAll("-", "").slice(-8)}-${slug === "" ? "task" : slug}`;
+  return `ostra/${taskId.replaceAll("-", "").slice(-8)}-${branchSlugFor(title)}`;
 };
 
 export const createPromptTask: CreatePromptTask = async (deps, input) => {

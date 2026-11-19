@@ -1,8 +1,9 @@
 import { createProject, createProjectInputSchema, visibleProjects } from "@ostra/domain";
-import { agentProfileIdSchema, environmentIdSchema, poolIdSchema, projectIdSchema, repoIdSchema } from "@ostra/protocol";
+import { environmentIdSchema, poolIdSchema, projectIdSchema, repoIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 import { adminProcedure, memberProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
+import { agentProfileViewSchema, loadAgentProfileView } from "./agent-profile-view.ts";
 import { detectionViewSchema } from "./environments.ts";
 
 // F-086, ticket 32: projects. A project is one repo linked through the organization's App, with its
@@ -33,7 +34,8 @@ const projectDetailSchema = projectSummarySchema.extend({
   environmentStatus: z.enum(["draft", "saved"]).nullable(),
   /** The pools its tasks may go to. */
   pools: z.array(z.object({ poolId: poolIdSchema, name: z.string(), isDefault: z.boolean() })),
-  defaultCodeProfile: z.object({ id: agentProfileIdSchema, name: z.string() }).nullable(),
+  /** The profile a prompt task uses (F-097): its agent and model, shown before the task starts. */
+  defaultCodeProfile: agentProfileViewSchema.nullable(),
 });
 
 const createdSchema = z.object({
@@ -108,10 +110,7 @@ export const projectsRouter = router({
           pools: { include: { pool: { select: { id: true, name: true, isDefault: true } } } },
         },
       });
-      const profile =
-        project.defaultCodeProfileId === null
-          ? null
-          : await db.agentProfile.findFirst({ where: { id: project.defaultCodeProfileId, organizationId }, select: { id: true, name: true } });
+      const profile = await loadAgentProfileView(db, organizationId, project.defaultCodeProfileId);
       const [needsYou, running, active] = await Promise.all([
         db.task.count({ where: { organizationId, projectId: project.id, state: "needs_you" } }),
         db.task.count({ where: { organizationId, projectId: project.id, state: { in: ["running", "preparing"] } } }),

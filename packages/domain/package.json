@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./accounts": "./src/accounts.ts"
+    "./accounts": "./src/accounts.ts",
+    "./branch-name": "./src/branch-name.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
