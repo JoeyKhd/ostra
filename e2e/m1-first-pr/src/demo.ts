@@ -22,14 +22,15 @@ import {
   checkAgentTokenCount,
   checkGitProxy,
   checkNoCredential,
+  checkLeftovers,
   checkNoEmptyPr,
-  checkNoTaskFolderLeft,
   checkPullRequest,
   checkStoppedMidTurn,
   checkStoppedRefs,
   checkTaskFolder,
   checkTokens,
   taskCheckout,
+  waitForSessionsEnded,
 } from "./checks.ts";
 import type { CheckResult } from "./checks.ts";
 import { cleanUp, demoGitHub } from "./github.ts";
@@ -379,11 +380,19 @@ const main = async (): Promise<void> => {
     checks.push(await checkTokens(taskId));
 
     if (process.argv.includes("--checks")) {
+      // The runner has one slot, and a finished turn's box keeps it warm for the idle timer (F-096):
+      // each next task starts once the last one's box has stopped.
+      say(`waiting for task ${taskId}'s box to stop (OSTRA_BOX_IDLE_MINUTES=${String(settings.idleMinutes)})`);
+      await waitForSessionsEnded([taskId], settings.idleMinutes);
       const empty = await emptyTask(page, settings, projectHref);
       checks.push(await checkNoEmptyPr(github, empty));
+      say(`waiting for task ${empty}'s box to stop`);
+      await waitForSessionsEnded([empty], settings.idleMinutes);
       const stopped = await stoppedTask(page, settings, github, runner, projectHref);
       checks.push(...stopped.live, await checkStoppedMidTurn(github, stopped.taskId), await checkStoppedRefs(github, stopped.taskId));
-      checks.push(await checkNoCredential(settings, settings.logFiles), await checkNoTaskFolderLeft(settings));
+      const all = [taskId, empty, stopped.taskId];
+      await waitForSessionsEnded(all, settings.idleMinutes);
+      checks.push(await checkNoCredential(settings, settings.logFiles), await checkLeftovers(settings, all, runner.pid));
     }
     for (const check of checks) say(`${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}`);
     await writeFile(path.join(settings.dataDir, "e2e-m1", "result.json"), JSON.stringify({ taskId, pullRequest: pr, checks }, null, 2));

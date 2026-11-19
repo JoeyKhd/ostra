@@ -32,6 +32,9 @@ const envSchema = z.object({
   OSTRA_ADMIN_USERNAME: z.string().min(1).default("demo"),
   OSTRA_ADMIN_PASSWORD: z.string().min(1).optional(),
   OSTRA_ORGANIZATION_NAME: z.string().min(1).default("Demo"),
+  // The stack's idle timer, as the stack reads it (the same default): a capacity-1 runner takes the
+  // next task only once the last one's box has gone from idle to stopped (F-096).
+  OSTRA_BOX_IDLE_MINUTES: z.coerce.number().int().positive().default(15),
 });
 
 export type DemoSettings = {
@@ -68,6 +71,8 @@ export type DemoSettings = {
   readonly prompt: string;
   /** The environment's setup script, or `null` to keep the drafted one. */
   readonly setupScript: string | null;
+  /** `OSTRA_BOX_IDLE_MINUTES`, as the stack has it: how long a finished turn's box stays warm on the runner's slot. */
+  readonly idleMinutes: number;
 };
 
 /** The variables the demo reads, named when one is missing; never their values. */
@@ -105,5 +110,6 @@ export const demoSettings = (env: Readonly<Record<string, string | undefined>>):
     runnerName: "demo-runner",
     prompt: value.OSTRA_E2E_PROMPT,
     setupScript: value.OSTRA_E2E_SETUP_SCRIPT ?? null,
+    idleMinutes: value.OSTRA_BOX_IDLE_MINUTES,
   };
 };

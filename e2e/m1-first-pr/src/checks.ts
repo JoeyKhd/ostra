@@ -166,15 +166,85 @@ export const checkNoCredential = async (settings: DemoSettings, logFiles: readon
   };
 };
 
-/** Once the tasks ended, the runner's data folder holds no task folder: the worktrees were released. */
-export const checkNoTaskFolderLeft = async (settings: DemoSettings): Promise<CheckResult> => {
-  const leftover = await readdir(path.join(settings.runnerDataDir, "tasks")).catch(() => []);
+/** A session that still holds its task's lease, and its runner's slot: one whose box is warm or busy. */
+const OPEN_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const;
+
+/** How many of these tasks' sessions haven't ended, stopped or crashed yet. */
+export const openSessions = async (taskIds: readonly TaskId[]): Promise<number> =>
+  withDatabase(async (client) =>
+    countRows(await client.query(`SELECT count(*)::int AS n FROM session WHERE "taskId" = ANY($1::text[]) AND state::text = ANY($2::text[])`, [taskIds, OPEN_SESSION_STATES])),
+  );
+
+/**
+ * Waits until every session of these tasks is over. Since milestone 2 a turn's box stays warm, on
+ * its runner's slot, for the idle timer (F-096): the demo's capacity-1 runner takes its next task
+ * only once the last one's box has stopped. Throws, naming the timer, when one is still open.
+ */
+export const waitForSessionsEnded = async (taskIds: readonly TaskId[], idleMinutes: number): Promise<void> => {
+  // The timer, plus the stop and the after-turn work.
+  const timeoutMs = (idleMinutes + 3) * 60_000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const open = await openSessions(taskIds);
+    if (open === 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `${String(open)} session(s) still open ${String(idleMinutes + 3)} minutes on: the idle timer (OSTRA_BOX_IDLE_MINUTES=${String(idleMinutes)}, as the demo was told) didn't end them. ` +
+          "Start the stack and the demo with the same OSTRA_BOX_IDLE_MINUTES",
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+};
+
+export type LeftoverFacts = {
+  /** The task folders in the runner's data folder, each with its task's box states on this stack. */
+  readonly folders: readonly { readonly name: string; readonly boxStates: readonly string[] }[];
+  /** Sessions of the demo's tasks that haven't ended. */
+  readonly openSessions: number;
+  /** Agent processes still running below the runner, or `null` when the runner's process isn't known. */
+  readonly agents: number | null;
+};
+
+/**
+ * Once every session ended: no agent process is left below the runner, and each task folder left
+ * is a kept box's. On `host` a box's worktree stays after its session, so the task can resume in
+ * place, until the box is released (its last PR merged or closed, or 14 idle days: ticket 23,
+ * F-079). A folder of a released or failed box, or of no task on this stack, is left behind.
+ */
+export const judgeLeftovers = (facts: LeftoverFacts): CheckResult => {
+  const stray = facts.folders.filter((folder) => !folder.boxStates.includes("stopped")).map((folder) => folder.name);
   return {
-    name: "no task folder left behind",
-    ok: leftover.length === 0,
-    detail: `${String(leftover.length)} task folders left in the runner's data folder`,
+    name: "no agent left once the sessions ended, and no task folder but a kept box's",
+    ok: facts.openSessions === 0 && facts.agents === 0 && stray.length === 0,
+    detail:
+      `${String(facts.openSessions)} sessions open; ` +
+      (facts.agents === null ? "the runner's process unknown, so its agents weren't counted" : `${String(facts.agents)} agent processes below the runner`) +
+      `; ${String(facts.folders.length)} task folders left, ${String(facts.folders.length - stray.length)} of kept (stopped) boxes` +
+      (stray.length === 0 ? "" : `; not kept: ${stray.join(", ")}`),
   };
 };
+
+/** After the run, once `waitForSessionsEnded`: the agents below the runner, and each task folder's box. */
+export const checkLeftovers = async (settings: DemoSettings, taskIds: readonly TaskId[], runnerPid: number | null): Promise<CheckResult> => {
+  const names = await readdir(path.join(settings.runnerDataDir, "tasks")).catch(() => []);
+  const folders = await withDatabase(async (client) => {
+    const rows: { readonly name: string; readonly boxStates: readonly string[] }[] = [];
+    for (const name of names) {
+      const result = /^[0-9a-f-]{36}$/i.test(name) ? await client.query(`SELECT state::text AS state FROM box WHERE "taskId" = $1`, [name]) : { rows: [] };
+      rows.push({ name, boxStates: boxStatesSchema.parse(result.rows).map((row) => row.state) });
+    }
+    return rows;
+  });
+  let agents: number | null = null;
+  if (runnerPid !== null) {
+    const below = descendantsOf(await listProcesses(), runnerPid);
+    agents = agentLaunches(below, await readEnvironments(below.map((item) => item.pid))).length;
+  }
+  return judgeLeftovers({ folders, openSessions: await openSessions(taskIds), agents });
+};
+
+const boxStatesSchema = z.array(z.object({ state: z.string() }));
 
 /** Names a process gets from Windows itself, whatever it is launched with: not the runner's doing. */
 const WINDOWS_BASELINE = ["HOMEDRIVE", "HOMEPATH", "LOGONSERVER", "SYSTEMDRIVE", "USERDOMAIN", "USERNAME", "WINDIR", "USERPROFILE", "TEMP"];

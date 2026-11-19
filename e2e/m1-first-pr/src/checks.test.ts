@@ -7,6 +7,7 @@ import {
   countLines,
   countRows,
   judgeAgentEnvironment,
+  judgeLeftovers,
   judgePullRequest,
   judgeStoppedMidTurn,
   judgeStoppedRefs,
@@ -197,5 +198,33 @@ describe("judgeAgentEnvironment", () => {
     expect(outside.ok).toBe(false);
     expect(outside.detail).toContain("AWS_SECRET");
     expect(judgeAgentEnvironment({ launches: 1, outside: [], leaking: 1 }).ok).toBe(false);
+  });
+});
+
+describe("judgeLeftovers", () => {
+  const kept = { name: "01a1f252-b203-71b0-8eb7-1bb74d80bbbb", boxStates: ["stopped"] };
+
+  it("F-096: passes once every session ended, with no agent left and only kept boxes' folders", () => {
+    const result = judgeLeftovers({ folders: [kept, { ...kept, name: "01a1f253-0a12-77db-8f75-8d43bb6b26f6" }], openSessions: 0, agents: 0 });
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain("2 task folders left, 2 of kept (stopped) boxes");
+    expect(judgeLeftovers({ folders: [], openSessions: 0, agents: 0 }).ok).toBe(true);
+  });
+
+  it("F-096: fails a box still warm on its slot, or an agent still running after its session", () => {
+    expect(judgeLeftovers({ folders: [{ ...kept, boxStates: ["idle"] }], openSessions: 1, agents: 1 }).ok).toBe(false);
+    expect(judgeLeftovers({ folders: [kept], openSessions: 1, agents: 0 }).ok).toBe(false);
+    const agent = judgeLeftovers({ folders: [kept], openSessions: 0, agents: 1 });
+    expect(agent.ok).toBe(false);
+    expect(agent.detail).toContain("1 agent processes below the runner");
+    expect(judgeLeftovers({ folders: [kept], openSessions: 0, agents: null }).ok).toBe(false);
+  });
+
+  it("F-096: fails a folder of a released or failed box, or of no task on this stack", () => {
+    for (const boxStates of [["released"], ["failed"], []]) {
+      const result = judgeLeftovers({ folders: [kept, { name: "left", boxStates }], openSessions: 0, agents: 0 });
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain("not kept: left");
+    }
   });
 });
