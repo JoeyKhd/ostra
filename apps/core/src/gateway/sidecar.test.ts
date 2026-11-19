@@ -263,6 +263,16 @@ describe("the task token", () => {
     expect((await specOf(lost, lostToken)).status).toBe(409);
     expect((await credentialsOf(lost, lostToken)).status).toBe(409);
     await expect(connectPeer(harness.url, lostToken, poolRunner, { peer: { kind: "sidecar", taskId: lost.taskId, boxId: lost.boxId, leaseEpoch: 1 } })).rejects.toThrow("409");
+    // And the old lease's writes: its runner's late batch, at the epoch the grace ended, is refused
+    // by core's ingest, and nothing of it is stored.
+    const ingest = createIngest({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, liveText, logger: createLogger(() => undefined) });
+    const lateBatch = async (task: Boxed, text: string) => {
+      const before = await test.db.event.count({ where: { taskId: task.taskId } });
+      const replies = await ingest({ runnerId: poolRunner, organizationId: task.organizationId }, { type: "events", events: [runnerEvent(task, 1, thought(text))] });
+      expect(replies).toEqual([expect.objectContaining({ type: "error", code: "stale-lease", sessionId: task.sessionId, currentEpoch: 2 })]);
+      expect(await test.db.event.count({ where: { taskId: task.taskId } })).toBe(before);
+    };
+    await lateBatch(lost, "after the grace");
 
     // A new dispatch: the offer timed out, and the task went out again at the next epoch.
     const moved = await boxedTask();
@@ -273,6 +283,7 @@ describe("the task token", () => {
     expect((await specOf(moved, movedToken)).status).toBe(409);
     expect((await credentialsOf(moved, movedToken)).status).toBe(409);
     await expect(connectPeer(harness.url, movedToken, poolRunner, { peer: { kind: "sidecar", taskId: moved.taskId, boxId: moved.boxId, leaseEpoch: 1 } })).rejects.toThrow("409");
+    await lateBatch(moved, "after the new dispatch");
     // The new box's own token works.
     expect((await specOf(again, await taskTokenFor(again), 2)).status).toBe(200);
   });
