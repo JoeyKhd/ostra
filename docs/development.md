@@ -45,9 +45,11 @@ pnpm dev                 # the whole dev stack: the dev database, the migrations
 pnpm dev:reset           # says what it would delete; `pnpm dev:reset --yes` deletes .ostra-dev/
 ```
 
-`pnpm dev` starts the dev database (below) unless `DATABASE_URL` is set, applies the migrations, then starts `apps/core` and `apps/web` in watch mode. Each line of output carries its piece's label (`[db  ]`, `[core]`, `[web ]`), and the terminal shows the panel's address (`http://localhost:3000`, `OSTRA_WEB_PORT`) and core's (`http://localhost:8787`, `OSTRA_CORE_PORT`). While there's no account yet, the server prints the setup token for the first admin, and `pnpm dev` repeats that line in a box. A server whose package has no `dev` script yet isn't started, and `pnpm dev` says so.
+`pnpm dev` starts the dev database (below) unless `DATABASE_URL` is set, generates Prisma's client (a fresh clone has none), applies the migrations, then starts `apps/core` and `apps/web` in watch mode. Each line of output carries its piece's label (`[db  ]`, `[core]`, `[web ]`), and the terminal shows the panel's address (`http://localhost:3000`, `OSTRA_WEB_PORT`) and core's (`http://localhost:8787`, `OSTRA_CORE_PORT`). While there's no account yet, the server prints the setup token for the first admin, and `pnpm dev` repeats that line in a box. A server whose package has no `dev` script yet isn't started, and `pnpm dev` says so.
 
 Ctrl-C stops everything: the servers' process trees first, then the dev database, which stops Postgres. No `node` or `postgres` process of the stack is left. If one is (after a crash of the terminal, say), `pnpm dev:reset --yes` stops the dev cluster.
+
+**Windows: keep the checkout path short.** The embedded Postgres unpacks deep inside `node_modules/.pnpm`, and Windows' 260-character path limit stops it (initdb exits with code 3221225734, `STATUS_NAME_TOO_LONG`) when the checkout's own path is long: it failed at 123 characters and worked at 27. Clone to something like `C:\src\ostra`.
 
 **A runner, from source.** With the stack running, start a personal runner on the same machine in another terminal:
 

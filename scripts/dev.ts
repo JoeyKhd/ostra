@@ -1,7 +1,8 @@
 // `pnpm dev` (ticket 29): the whole dev stack in one command. It starts the dev database unless
-// DATABASE_URL is set, runs the migrations, then starts apps/core and apps/web in watch mode with
-// their output prefixed, and prints where they are. Each server starts once its package has a
-// `dev` script; until then `pnpm dev` says so and runs the rest.
+// DATABASE_URL is set, generates Prisma's client (a fresh clone has none), runs the migrations, then
+// starts apps/core and apps/web in watch mode with their output prefixed, and prints where they
+// are. Each server starts once its package has a `dev` script; until then `pnpm dev` says so and
+// runs the rest.
 //
 // Ctrl-C (or SIGTERM) stops everything and leaves no process: the servers' process trees are ended,
 // then the dev database stops Postgres cleanly. A process that started this one with an IPC
@@ -205,18 +206,29 @@ const startDatabase = async (): Promise<boolean> => {
   });
 };
 
-const migrate = async (): Promise<boolean> => {
-  say("running the migrations...");
-  const migration = runNode("migrate", path.join(repoRoot, "packages", "db", "scripts", "migrate.ts"), {
+/** Runs one of the db package's scripts to its end and says whether it succeeded. */
+const runDbScript = async (label: string, script: string): Promise<boolean> => {
+  const step = runNode(label, path.join(repoRoot, "packages", "db", "scripts", script), {
     oneShot: true,
   });
-  pipeLines(migration);
+  pipeLines(step);
   const code = await new Promise<number | null>((resolve) => {
-    migration.child.once("exit", (exitCode) => {
+    step.child.once("exit", (exitCode) => {
       resolve(exitCode);
     });
   });
   return code === 0;
+};
+
+/** Prisma's client is generated, not committed: a fresh clone has none until this runs. */
+const generateClient = async (): Promise<boolean> => {
+  say("generating Prisma's client...");
+  return runDbScript("generate", "generate.ts");
+};
+
+const migrate = async (): Promise<boolean> => {
+  say("running the migrations...");
+  return runDbScript("migrate", "migrate.ts");
 };
 
 const main = async (): Promise<void> => {
@@ -231,6 +243,11 @@ const main = async (): Promise<void> => {
 
   if (!(await startDatabase())) {
     say("the dev database did not start. `pnpm dev:reset` says how to clear a crashed one.");
+    await shutdown(1);
+    return;
+  }
+  if (!(await generateClient())) {
+    say("generating Prisma's client failed.");
     await shutdown(1);
     return;
   }
