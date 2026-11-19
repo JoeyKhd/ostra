@@ -12,6 +12,7 @@ import type {
   RunnerCapabilities,
   RunnerId,
   RunnerInstall,
+  RunnerOs,
   RunnerResources,
   SnapshotId,
   TaskId,
@@ -47,11 +48,15 @@ export type PoolSettings = {
   readonly joinTokenDays: number | null;
 };
 
+/** A join token as its creation answers it: shown once, stored hashed. */
+export type NewJoinToken = { readonly joinTokenId: JoinTokenId; /** Shown once. Never logged. */ readonly token: string; readonly expiresAt: number | null };
+
+/** Makes the pool and its first join token in one transaction (spec section 4, "A pool and its tokens"). */
 export type CreatePool = (
   deps: M5Deps,
   scope: MemberScope,
   input: PoolSettings,
-) => Promise<UseCaseResult<{ readonly poolId: PoolId }, "forbidden" | "name-taken" | "invalid-input">>;
+) => Promise<UseCaseResult<{ readonly poolId: PoolId; readonly joinToken: NewJoinToken }, "forbidden" | "name-taken" | "invalid-input">>;
 
 export type UpdatePool = (
   deps: M5Deps,
@@ -63,13 +68,13 @@ export type UpdatePool = (
 export type CreateJoinToken = (
   deps: M5Deps,
   scope: MemberScope,
-  input: { readonly poolId: PoolId; readonly label: string | null },
-) => Promise<
-  UseCaseResult<
-    { readonly joinTokenId: JoinTokenId; /** Shown once. Never logged. */ readonly token: string; readonly expiresAt: number | null },
-    "forbidden" | "not-found"
-  >
->;
+  input: {
+    readonly poolId: PoolId;
+    readonly label: string | null;
+    /** The admin's lifetime in days: `null` for none; left out for the pool's (or `OSTRA_JOIN_TOKEN_DAYS`). */
+    readonly days?: number | null;
+  },
+) => Promise<UseCaseResult<NewJoinToken, "forbidden" | "not-found">>;
 
 /** Revokes a token: no new runner joins with it; the runners that joined stay (rotation disconnects nobody). */
 export type RevokeJoinToken = (
@@ -88,6 +93,10 @@ export type PoolRunnerJoin = {
   readonly version: string;
   readonly install: RunnerInstall | null;
   readonly labels: readonly string[];
+  /** Milestone 1's register request's slots; 1 when left out. */
+  readonly capacity?: number;
+  /** Milestone 1's register request's system; `null` when left out. */
+  readonly os?: RunnerOs;
 };
 
 export type RegisterPoolRunner = (
