@@ -1,6 +1,6 @@
 # 11: The panel and tracker notification adapters
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 04
 Features: F-036
@@ -18,9 +18,9 @@ Two Apache-2.0 packages, each with one class that extends `NotificationAdapter`,
 
 ## Done when
 
-- [ ] Tests: the suite passes for both; the tracker one sends one comment per key, edits on `update`, mentions only recipients with a mention, and posts on Linear and the Jira fake alike.
-- [ ] `pnpm-lock.yaml` updated in the same commit.
-- [ ] `pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm check:licenses` pass.
-- [ ] Committed as `✨ add panel and tracker notifications`.
+- [x] Tests: the suite passes for both; the tracker one sends one comment per key, edits on `update`, mentions only recipients with a mention, and posts on Linear and the Jira fake alike.
+- [x] `pnpm-lock.yaml` updated in the same commit.
+- [x] `pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm check:licenses` pass.
+- [x] Committed as `✨ add panel and tracker notifications`.
 
 ## Comments

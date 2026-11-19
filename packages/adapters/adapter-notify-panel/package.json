@@ -1,0 +1,23 @@
+{
+  "name": "@ostra/adapter-notify-panel",
+  "version": "0.0.0",
+  "description": "The panel notification channel: the Needs you page and the sidebar count (ADR 0050)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "5.1.1"
+  }
+}

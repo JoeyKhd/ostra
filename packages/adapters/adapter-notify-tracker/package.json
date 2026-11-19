@@ -1,0 +1,25 @@
+{
+  "name": "@ostra/adapter-notify-tracker",
+  "version": "0.0.0",
+  "description": "The ticket notification channel: a comment on the ticket of a task, through any tracker adapter (ADR 0050)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@ostra/adapter-linear": "workspace:*",
+    "vitest": "5.1.1"
+  }
+}
