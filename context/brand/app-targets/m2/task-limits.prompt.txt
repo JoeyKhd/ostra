@@ -1,0 +1,35 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. Match the attached reference screenshots exactly in style: the first reference is the same task page in another state, so keep its sidebar, top bar, header, thread rows and properties panel pixel for pixel in the same positions, fonts, sizes and density; only the content listed below changes. Attached logo: the ostra hinge mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar.
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; deletions red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the one "needs you" block (its 2px rule, hand icon and title), the status dots, and the sidebar needs-you markers. No gradients, no glow, no purple, no blue tint, no cards, no drop shadows, no red on this page.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); task keys, file paths, refs, branch names, commands, money, token counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns, identical to the first reference:
+1) LEFT SIDEBAR 232px, background #0A0B0C, right hairline. Top: hinge logo + "Acme Corp" + up-down chevron. Search field "Search" with "⌘K" and a square off-white "+" button. Rows (26px, 13px, muted): "Home"; "Needs you" with a small amber pill "5"; "My tasks" "7". Section label "Projects". "calculator" expanded with a teal 8px square and an amber dot; under it indented: "Tasks 17" (selected, #1A1B1E), "Inbox 4", "Environment", "Repos", "Settings". Then "billing-platform" (violet square, amber dot), "web-storefront" (orange square), "mobile-app" (blue square), "··· 14 more". Section label "Organization": "Runner pools 238", "Models", "Members", "Settings". Bottom: round avatar "AK" and "Alex Kim".
+
+2) TOP BAR 44px across the main area, bottom hairline. Left breadcrumbs: "calculator  ›  Tasks  ›  CALC-174" (last one bright). Right: a small link icon (ghost) and one outlined button with a pull-request icon "PR #491". NO Stop button.
+
+3) MAIN COLUMN (thread), left padding 40px:
+- Mono faint line: "CALC-174 · from Linear"
+- Title: "Export history as CSV"
+- Status line, 13px, NO amber text: a small 7px amber dot, bright text "Needs you · spend cap", a faint middle dot, muted text "Stopped 6 min ago on", faint mono "build-fleet-07".
+- Directly under the status line, 16px below, the needs-you block, NOT a card: a 2px amber vertical rule on the left with 12px padding. Amber hand icon + amber semibold 13px "Needs you · spend cap". Body text 13px bright: "This task spent $25.00 of its $25.00 cap. The key proxy refused the next model call, and the session stopped cleanly." Then one muted 12px line: "It can't be reopened until the cap is raised. An admin sets OSTRA_TASK_SPEND_CAP_USD on the server; the task keeps what it spent." with "OSTRA_TASK_SPEND_CAP_USD" as a small mono code chip on #131416. NO buttons in this block.
+- One hairline 20px below the header.
+- Thread, each message a 28px round outlined avatar icon in a 40px gutter and content on the right, no bubbles, no boxes:
+  a) Person icon. "Sam Rivera" bold + faint mono "15:10". Text: "Also add a header row, and quote fields that contain commas."
+  b) A muted 28px system row with a small info icon: "Resumed in the same box."
+  c) Small neutral square agent icon (no robot). "OpenCode" bold + faint mono "15:10 · Claude Sonnet 5.5" + faint "stopped". Text: "I'll add the header row and RFC 4180 quoting, then extend the export tests."
+     Tool rows, 28px tall, strict grid: faint 14px icon, muted verb in a fixed 72px column, then the mono path, so every path starts at the same x; the result sits inline right after the path:
+     "Read    src/history/export.ts"
+     "Edited  src/history/export.ts   +31  −4" (green, red)
+     "Edited  src/history/export.test.ts   +22" (green)
+     "Ran     pnpm test export   cancelled" (cancelled in faint grey)
+  d) A muted 28px system row with a small gauge icon: "The task reached its spend cap: $25.00 of $25.00. ostra stopped the session."
+  e) A muted 28px system row with a small info icon: "Saved unfinished work to" + faint mono "refs/ostra/wip/tsk_7Hq2Lm".
+- Empty thread space, then the COMPOSER pinned at the bottom, visibly disabled: one rounded box #131416 with border #1F2023, the placeholder "Reopening waits until the spend cap is raised." in faint grey, and on the bottom row at the right one off-white "Reopen" button with a rotate-ccw icon shown dimmed at 40% opacity (disabled). No other buttons.
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels ("Properties", "Code") small 11px faint grey #64676D, regular weight. Key/value rows 30px tall, keys muted 12.5px in an 84px column, values bright 12.5px, NO icons inside values:
+"Status" amber dot "Needs you · spend cap"; "Driver" small avatar "SR" "Sam Rivera" + teal "Take over"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "build-fleet-07", and below it two small outlined chips "Pool" "docker"; "Box" "Stopped"; "Tokens" mono "7.4M in · 212k out"; "Spend" a thin 80px meter bar filled completely in muted grey #9A9DA3 + mono "$25.00 / $25.00"; "Time" mono "1 h 48 min".
+Hairline. Label "Code": "Repo" mono "acme/calculator-web"; "Branch" mono "calc-174-export-hist…"; "PR" teal "#491" + muted " · open".
+
+Calm, precise, dense like Linear or a pro IDE console. Everything aligned to a strict grid, crisp small text, all copy spelled exactly as given.
