@@ -26,6 +26,9 @@ import { safeHref } from "@/task/renderers";
 import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
+import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
+import { adminNames } from "./no-key-words";
+import type { NoKey } from "./no-key";
 import { AgentGot, LimitBlock, MergedHint, RestoreConflict, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, spendText } from "./task-ticket";
 import { headerActivity, shownInThread, stateTone, taskStateLine } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, TicketClosedBlock, WatcherBar, approvalReceipt } from "./task-answers";
@@ -100,10 +103,13 @@ const CopyLink = () => {
  * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
  * are the only markers. Spend (F-084) and the Changes group (F-027) come later.
  */
-const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort }: {
+const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort, noKey, projectName }: {
   readonly task: Task;
   /** F-137: the Effort row, built by the view (it holds the change's mutation). */
   readonly effort: ReactNode;
+  /** F-135: queued with no key for its model. */
+  readonly noKey: boolean;
+  readonly projectName: string;
   readonly tokens: { readonly inputTokens: number; readonly outputTokens: number; readonly estimated: boolean };
   /** F-137: the reasoning tokens inside `out`, from the turns' usage. */
   readonly reasoningTokens: number;
@@ -122,7 +128,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
       <PropGroup title={t("taskPage.properties")}>
         <PropRow label={t("taskPage.status")}>
           <Status tone={stateTone(task.state)} className="min-w-0">
-            <span className="truncate">{taskStateLine(task.state, task.reason)}</span>
+            <span className="truncate">{noKey ? t("noKey.queued") : taskStateLine(task.state, task.reason)}</span>
           </Status>
         </PropRow>
         <PropRow label={t("taskPage.driver")}>
@@ -148,6 +154,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
             {task.agent.model === null ? null : (
               <PropRow label={t("taskPage.model")}><span className="truncate">{task.agent.model.name}</span></PropRow>
             )}
+            {noKey ? <KeyRow providerName={null} projectName={projectName} /> : null}
           </>
         )}
         {effort}
@@ -341,6 +348,16 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
   const effort: TaskEffort = { level: view.effort ?? data.effort.level, levels: data.effort.levels.map((one) => one.level), runningTurn: view.runningEffort };
   const stateText = stopping && !stopped ? t("taskPage.stopping") : taskStateLine(data.state, data.reason);
+  const organizationAdmin = me.data?.organization?.role === "admin";
+  // F-135: queued because no key on the project's list serves the profile's model.
+  const noKey: NoKey | null =
+    data.waiting?.kind === "no-runner" && data.waiting.reason.code === "no-provider-for-model"
+      ? { model: data.agent?.model?.name ?? data.waiting.reason.modelName, mono: data.agent?.model === null || data.agent === null, projectName: project.data?.name ?? "" }
+      : null;
+  // Who can fix a missing key, by name and role only (no-key-for-model.md, open point 3).
+  const admins = (members.data ?? []).filter((member) => member.role === "admin").map((member) => member.name);
+  // A task that ran before and lost its key holds the member's message (section 3): the marker under it.
+  const heldNoKey = noKey !== null && log.state.events.some(({ event }) => event.kind === "turn.started");
   const activity = idleHeader(data.box, now) ?? headerActivity(view.activity);
   const mode = composerMode(composerInputOf(data));
   const conflict = data.needsYou.find((item) => item.reason === "restore_conflict");
@@ -417,6 +434,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               onTakeOver={takeOverNow}
             />
           }
+          noKey={noKey !== null}
+          projectName={project.data?.name ?? ""}
         />
       }
     >
@@ -425,7 +444,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           <div className="font-mono text-sm text-faint">{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</div>
           <h1 className="page-title my-1.5 break-words">{data.title}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing">
-            <Status tone={stateTone(data.state)}><span className="font-medium text-text">{stateText}</span></Status>
+            <Status tone={stateTone(data.state)}><span className="font-medium text-text">{noKey === null ? stateText : t("noKey.queued")}</span></Status>
             {activity === "" ? null : <><Sep /><span className="text-muted">{activity}</span></>}
             <Sep />
             <span className="text-muted">
@@ -437,6 +456,21 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
           ) : null}
+          {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "provider-not-allowed" ? (
+            <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{t("noKey.providerNotAllowed", { project: project.data?.name ?? "" })}</p>
+          ) : null}
+          {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "installation-not-linked" ? (
+            <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{t("githubOrgs.installationWait", { repo: data.waiting.reason.repo })}</p>
+          ) : null}
+          {noKey === null ? null : (
+            <div className="mt-2.5 border-l-2 border-line-2 pl-3" data-testid="task-no-key">
+              <p className="text-body text-text"><NoKeySentence noKey={noKey} /></p>
+              <p className="text-ui text-muted">
+                <WhoPicks projectId={data.projectId} organizationAdmin={organizationAdmin} suffix={t("noKey.startsItself")} />
+              </p>
+              {organizationAdmin || admins.length === 0 ? null : <p className="mt-0.5 text-sm text-faint">{adminNames(admins)}</p>}
+            </div>
+          )}
           {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
           {data.source === "ticket" ? <AgentGot files={data.contextFiles} /> : null}
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
@@ -500,7 +534,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           approvalCard={approvalCard}
           approvalReceipt={receiptOf}
           questionCard={questionCard}
-          tail={data.plan === null ? null : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
+          tail={heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? null : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
           {...(notDriver === undefined ? {} : { notDriver })}
           hasEarlier={log.state.olderBefore !== null}
           loadEarlier={log.loadEarlier}

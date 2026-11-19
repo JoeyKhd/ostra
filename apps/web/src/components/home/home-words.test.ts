@@ -42,6 +42,10 @@ describe("actionKey", () => {
     expect(actionKey("draft_ready")).toBe("home.action.reviewPr");
     expect(actionKey("crashed")).toBe("home.action.openTask");
   });
+
+  it("F-135: a model with no key is picked in the project's Models and keys, not opened on the task", () => {
+    expect(actionKey("no_provider_for_model")).toBe("home.action.pickKey");
+  });
 });
 
 describe("amberRow", () => {

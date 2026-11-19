@@ -85,9 +85,10 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
     case "restore_conflict":
     case "unstorable_event":
     case "files_outside_repos":
-    case "no_provider_for_model":
     case "runner_awaiting_approval":
       return "home.action.openTask";
+    case "no_provider_for_model":
+      return "home.action.pickKey";
     default:
       return reason satisfies never;
   }

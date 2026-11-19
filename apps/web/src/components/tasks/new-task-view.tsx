@@ -44,11 +44,15 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { KeyRow, NoKeyNext, NoKeyReason } from "./no-key";
+import type { NoKey } from "./no-key";
 import { POOLS, RunOnPicker, Trigger, useRunOn } from "./run-on";
 import { doingText, taskStateText } from "./task-words";
 
 type ProjectSummary = RouterOutputs["projects"]["list"][number];
 type Runner = RouterOutputs["runners"]["mine"][number];
+
+const NO_KEY_ID = "new-task-no-key";
 type TaskSummary = RouterOutputs["tasks"]["list"][number]["tasks"][number];
 
 
@@ -281,8 +285,10 @@ const PanelSkeleton = () => (
   </div>
 );
 
-const Properties = ({ project, profile, runner }: {
+const Properties = ({ project, profile, runner, noKey }: {
   readonly project: ProjectSummary;
+  /** F-135: no key on the project's list serves the profile's model. */
+  readonly noKey: boolean;
   /** The chosen profile; `undefined` while the options load, `null` when none is offered. */
   readonly profile: StartProfile | null | undefined;
   readonly runner: Runner | null;
@@ -314,6 +320,7 @@ const Properties = ({ project, profile, runner }: {
                 <><SparklesIcon aria-hidden /><span className="truncate">{profile.modelName}</span></>
               )}
             </PropRow>
+            {noKey ? <KeyRow providerName={null} projectName={project.name} /> : null}
           </>
         )}
       </PropGroup>
@@ -389,13 +396,28 @@ export const NewTaskView = () => {
     }),
   );
   const starting = create.isPending || create.isSuccess;
+  // F-135: the project's keys and whether one serves the profile's model, re-run on every pick.
+  const check = useQuery(
+    trpc.tasks.startCheck.queryOptions(
+      projectId === undefined || profile === undefined ? skipToken : { projectId, ...(profile === null ? {} : { profileId: profile.profileId }) },
+    ),
+  );
+  const noKey: NoKey | null =
+    check.data?.kind === "wait" && check.data.reason === "no-provider" && project !== undefined
+      ? { model: profile?.modelName ?? check.data.modelName, mono: profile?.modelName === null || profile?.modelName === undefined, projectName: project.name }
+      : null;
+  const checking = check.isFetching;
+  const organizationAdmin = me.data?.organization?.role === "admin";
+  // Who can fix a missing key, by name and role only (no-key-for-model.md, open point 3).
+  const members = useQuery(trpc.organization.members.queryOptions(undefined, { enabled: noKey !== null && !organizationAdmin }));
+  const admins = (members.data ?? []).filter((member) => member.role === "admin").map((member) => member.name);
   // A repo that requires signed commits stops every task in the project (F-055).
   const repos = detail.data?.repos ?? [];
   const blocked = unsupportedRepos(repos).length > 0;
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (projectId === undefined || prompt.trim() === "" || starting || blocked) return;
+    if (projectId === undefined || prompt.trim() === "" || starting || blocked || noKey !== null || checking) return;
     create.mutate({
       projectId,
       prompt: prompt.trim(),
@@ -421,7 +443,7 @@ export const NewTaskView = () => {
     <PageFrame
       crumbs={crumbs}
       wideProperties
-      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} />}
+      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} noKey={noKey !== null} />}
     >
       <div className="max-w-[760px]">
         <PageHeading
@@ -471,17 +493,20 @@ export const NewTaskView = () => {
               <Button
                 type="submit"
                 variant="primary"
-                disabled={loading || starting || prompt.trim() === "" || blocked}
+                disabled={loading || starting || prompt.trim() === "" || blocked || noKey !== null || checking}
                 data-action="start-task"
-                {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : {})}
+                {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : noKey === null ? {} : { "aria-describedby": NO_KEY_ID })}
               >
-                {starting ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : <ArrowUpIcon aria-hidden />}
+                {starting || checking ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : <ArrowUpIcon aria-hidden />}
                 {starting ? t("newTask.starting") : t("newTask.startTask")}
               </Button>
             </span>
           </div>
           {projectId === undefined ? null : <ComposerRepoNotes projectId={projectId} repos={repos} />}
         </form>
+        {noKey === null || projectId === undefined ? null : (
+          <NoKeyReason id={NO_KEY_ID} noKey={noKey} projectId={projectId} organizationAdmin={organizationAdmin} admins={admins} />
+        )}
         {create.error === null ? (
           runner !== null && !runner.isolated ? (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-faint" data-testid="host-help">
@@ -494,7 +519,11 @@ export const NewTaskView = () => {
         )}
         {project === undefined ? null : (
           <>
-            <WhatHappensNext project={project} agentName={agentName} runner={runner} slug={slug} />
+            {noKey === null ? (
+              <WhatHappensNext project={project} agentName={agentName} runner={runner} slug={slug} />
+            ) : (
+              <Section title={t("newTask.nextTitle")} className="mt-8"><NoKeyNext noKey={noKey} /></Section>
+            )}
             <Recent project={project} tasks={recent} agentName={agentName} now={now} />
           </>
         )}

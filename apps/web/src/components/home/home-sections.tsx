@@ -76,10 +76,13 @@ const ProjectSquare = ({ id }: { readonly id: string }) => (
 
 const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly amber: boolean; readonly now: number }) => {
   const reason = reasonParts(row.detail);
+  // F-135: a model with no key is fixed in the project's Models and keys, not on the task.
+  const actionHref = row.detail.reason === "no_provider_for_model" ? `/projects/${row.project.id}/settings/models` : `/tasks/${row.taskId}`;
   return (
     <li
       className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:grid-cols-[76px_minmax(0,1fr)_124px_212px_36px_100px] md:py-0"
       data-testid="needs-you-row"
+      data-task={row.taskId}
     >
       <div className="col-span-2 flex min-w-0 items-center gap-2 md:contents">
         <span className="shrink-0 font-mono text-sm text-faint">{row.key}</span>
@@ -98,7 +101,7 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
         {formatAge(row.since, now)}
       </span>
       <Link
-        href={`/tasks/${row.taskId}`}
+        href={actionHref}
         className={cn(buttonVariants({ variant: amber ? "amber" : "outline", size: "sm" }), "h-7 w-[100px] justify-self-end text-ui", !amber && "font-normal")}
       >
         {t(actionKey(row.detail.reason))}

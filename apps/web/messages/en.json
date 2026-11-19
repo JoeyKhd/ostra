@@ -146,7 +146,7 @@
       "restoreConflict": "Restore conflict",
       "unstorableEvent": "An event couldn't be stored",
       "filesOutsideRepos": "Files left outside the repositories",
-      "noProviderForModel": "No provider serves its model in this project",
+      "noProviderForModel": "No key for its model in this project. Pick a key in Models and keys.",
       "runnerAwaitingApproval": "A runner waits for approval"
     },
     "action": {
@@ -154,7 +154,8 @@
       "reviewPlan": "Review plan",
       "reviewPr": "Review PR",
       "answer": "Answer",
-      "openTask": "Open task"
+      "openTask": "Open task",
+      "pickKey": "Pick a key"
     },
     "table": {
       "project": "Project",
@@ -328,7 +329,7 @@
   },
   "models": {
     "title": "Models",
-    "lede": "Any provider with an API base URL and a token. Names, logos, limits and prices come from the models.dev catalog. Agents reach a provider through ostra's key proxy, so its token never reaches the agent.",
+    "lede": "Each provider is one key: a base URL and a token. A project uses only the keys on its list, so one client's work never runs on another client's key.",
     "add": "Add provider",
     "addTitle": "Add a model provider",
     "addEyebrow": "New provider",
@@ -426,6 +427,55 @@
       "priceNote": "Its catalog prices reasoning apart from output. ostra v1 prices it as output.",
       "empty": "No model yet. Add a provider, and the models its key lists show here.",
       "reasonsNoLevels": "Reasons, with no levels"
+    },
+    "keys": {
+      "defaultList": "Default list",
+      "edit": "Edit",
+      "saveList": "Save list",
+      "emptyDefault": "Empty: a new project has no key until an admin picks one.",
+      "followedByNone": "Followed by no project.",
+      "followedByOne": "Followed by 1 project:",
+      "followedByMany": "Followed by {n} projects:",
+      "andMore": "and {n} more",
+      "joinsNoList": "A new provider joins no list until an admin ticks one.",
+      "firstOnDefault": "Your first provider is on it, so new projects can start tasks.",
+      "title": "Keys",
+      "thisMonth": "this month",
+      "atOnce": "{n} at once",
+      "usedBy": "Used by",
+      "viaDefault": "default list",
+      "viaOwn": "own list",
+      "onNoList": "On no list. Nothing uses it.",
+      "key": "Key",
+      "atOnceLabel": "At once",
+      "sessionsOne": "{n} session",
+      "sessionsMany": "{n} sessions",
+      "personalLabel": "Personal runners",
+      "on": "On",
+      "off": "Off",
+      "projects": "Projects",
+      "noProjects": "No project uses it. Add it to the default list or to a project's list.",
+      "onlyAdmins": "Only an organization admin changes which projects use a key.",
+      "modelsItLists": "Models it lists",
+      "serves": "serves {projects}",
+      "servesNone": "serves no project",
+      "thisMonthLabel": "This month",
+      "spent": "Spent",
+      "tasks": "Tasks",
+      "editProvider": "Edit provider",
+      "addJoinsNoList": "It joins no list. Tick it on the default list or a project's list to use it.",
+      "addFirst": "It joins the default list, so every project can use it."
+    },
+    "confirm": {
+      "title": "To confirm",
+      "onDefault": "{model} on the default list",
+      "onProject": "{model} on {project}'s list",
+      "reasonBefore": "Profiles named it on {n} keys. The upgrade kept ",
+      "reasonAfter": ", from the oldest profile.",
+      "change": "Change",
+      "confirm": "Confirm",
+      "saveChoice": "Save choice",
+      "kept": "Kept on {key}."
     }
   },
   "github": {
@@ -1088,7 +1138,7 @@
       "restoreConflict": "Its saved work conflicts with the branch",
       "unstorableEvent": "An event couldn't be stored",
       "filesOutsideRepos": "Files left outside the repositories",
-      "noProviderForModel": "No provider serves its model in this project",
+      "noProviderForModel": "No key for its model in this project",
       "runnerAwaitingApproval": "A runner waits for approval"
     },
     "stopReason": {
@@ -2509,6 +2559,27 @@
         "unsetCustom": "Nobody has said whether {model} reasons, so tasks run without an effort level.",
         "setInModels": "Set it in Models",
         "agentNone": "{agent} doesn't take an effort level. Tasks run at the model's default."
+      },
+      "modelPicker": {
+        "search": "Search models",
+        "group": "Models any key lists",
+        "empty": "No model matches \"{query}\". A key lists a model once an admin adds it in Models.",
+        "noModelYet": "No model yet",
+        "custom": "Custom model by its endpoint ID",
+        "endpointId": "Endpoint model ID",
+        "endpointHelp": "The ID a key lists it under, such as acme/sql-coder-ft.",
+        "useId": "Use this ID",
+        "noKeyListsId": "No key lists this ID.",
+        "footer": "A profile names a model, not a key. Each project's own key serves it.",
+        "noKeyIn": "No key in {projects}",
+        "noKeyInMany": "No key in {n} projects",
+        "noKeyLists": "No key lists this model now",
+        "noKeyListsNow": "No key lists {model} now. Tasks on this profile wait until one does.",
+        "inEachProject": "{model} in each project",
+        "noKey": "No key",
+        "cantStartOne": "{project}'s tasks on this profile can't start until an organization admin adds a key that lists it.",
+        "cantStartMany": "Tasks on this profile can't start in {n} projects until an organization admin adds a key that lists it.",
+        "savedNoKey": "Saved. No key serves it in {projects} yet."
       }
     },
     "rules": {
@@ -2797,5 +2868,213 @@
       "xhighBesideMax": "Very deep thinking. Slow and costly."
     },
     "and": "{list} and {last}"
+  },
+  "projectModels": {
+    "title": "Models and keys",
+    "crumbSettings": "Settings",
+    "ledeBefore": "Which keys ",
+    "ledeAfter": "'s tasks may use, and which key serves each model.",
+    "readOnly": "Only an organization admin changes this project's keys.",
+    "discard": "Discard",
+    "saveList": "Save list",
+    "tokenLine": "Members and project admins see the key names here. Nobody sees a token.",
+    "tabs": {
+      "label": "Project settings",
+      "ticketTemplate": "Ticket template",
+      "repos": "Repos",
+      "models": "Models and keys"
+    },
+    "keys": {
+      "title": "Keys it may use"
+    },
+    "follow": {
+      "label": "Follow the organization's default",
+      "today": "Today: {names}.",
+      "none": "Today: no key."
+    },
+    "own": {
+      "label": "Use this project's own list",
+      "description": "Only the keys ticked below.",
+      "added": "added",
+      "removed": "removed"
+    },
+    "models": {
+      "title": "Models its profiles use",
+      "model": "Model",
+      "servedBy": "Served by",
+      "profiles": "Profiles",
+      "change": "Change",
+      "changeFor": "Change the key for {model}",
+      "servedByLabel": "The key that serves {model} here",
+      "saveChoice": "Save choice",
+      "noKey": "No key",
+      "onlyKey": "only key",
+      "setInModels": "Set in Models",
+      "none": "No profile usable here names a model yet."
+    },
+    "noKey": {
+      "line": "No key for {model} in {project}.",
+      "member": "Tasks on it wait until an organization admin picks one.",
+      "admin": "Tick a key that lists it, or change the profile's model."
+    },
+    "preview": {
+      "label": "Before you save",
+      "nothing": "Nothing moves",
+      "changesOne": "This save changes {n} model",
+      "changesMany": "This save changes {n} models",
+      "movesTo": "moves to",
+      "staysOn": "stays on",
+      "noKeyHere": "has no key here",
+      "whatHappens": "What happens",
+      "releasedOne": "{n} idle box holding {keys}'s key is released now.",
+      "releasedMany": "{n} idle boxes holding {keys}'s key are released now.",
+      "waitingOne": "{n} task using {model} waits queued until an organization admin picks a key.",
+      "waitingMany": "{n} tasks using {model} wait queued until an organization admin picks a key.",
+      "conflict": "Someone changed the lists since this preview. Check it again."
+    },
+    "saved": {
+      "lead": "Saved.",
+      "movedOne": "{n} model moved",
+      "movedMany": "{n} models moved",
+      "lostOne": "{n} has no key",
+      "lostMany": "{n} have no key"
+    },
+    "summary": {
+      "keys": "Keys",
+      "own": "Own list",
+      "default": "The default list",
+      "changedBy": "Changed by",
+      "lastChange": "Last change",
+      "auditLog": "Audit log"
+    }
+  },
+  "noKey": {
+    "sentence": "No key for {model} in {project}.",
+    "whoPicks": "An organization admin picks one in {place}.",
+    "place": "Models and keys",
+    "startsItself": "The task starts by itself once one does.",
+    "admins": "Organization admins: {names}.",
+    "and": "and",
+    "keyLabel": "Key",
+    "noneIn": "None in {project}",
+    "projectKeys": "{project}'s keys",
+    "noKeyYet": "{project} has no key yet.",
+    "noneLists": "None of them lists {model}.",
+    "queued": "Queued · no key",
+    "waiting": "Waiting · no key for {model}",
+    "next": {
+      "nothing": "Nothing starts until {project} has a key that lists {model}.",
+      "otherProfile": "Or pick a profile whose model has a key here.",
+      "draftStays": "Your text stays here while you wait."
+    },
+    "profileKey": "Key · {key}",
+    "profileNoKey": "No key here",
+    "held": "Held: no key for {model} in {project}. An organization admin picks one in Models and keys.",
+    "freshBox": "Started in a fresh box on {key}.",
+    "startedOn": "Started on {key}.",
+    "needsYouTitle": "No key for {model}",
+    "needsYouReasonOne": "{n} task waits in {project}. Pick a key in Models and keys.",
+    "needsYouReasonMany": "{n} tasks wait in {project}. Pick a key in Models and keys.",
+    "keyPrefix": "Key ·",
+    "providerNotAllowed": "Its key left {project}'s list. It starts again on a key that lists its model."
+  },
+  "githubOrgs": {
+    "lede": "Each App opens pull requests as its own bot. ostra mints a token only for an installation an admin has linked, and never hands it to an agent.",
+    "ownedBy": "owned by",
+    "public": "public",
+    "private": "private",
+    "organization": "organization",
+    "user": "user",
+    "allRepos": "All repositories",
+    "reposOne": "{n} repository",
+    "reposMany": "{n} repositories",
+    "projectsOne": "{n} project",
+    "projectsMany": "{n} projects",
+    "strangers": "A stranger who installs a public App reaches nothing: ostra drops its events and lists none of its repos until you link it.",
+    "webhook": {
+      "receiving": "Webhook receiving",
+      "none": "No events yet",
+      "failing": "Webhook failing"
+    },
+    "state": {
+      "linked": "Linked",
+      "owner": "owner",
+      "waiting": "Waiting to be linked",
+      "suspended": "Suspended on GitHub",
+      "removed": "Removed {date}",
+      "removedNoDate": "Removed"
+    },
+    "actions": {
+      "link": "Link",
+      "unlink": "Unlink",
+      "remove": "Remove"
+    },
+    "status": {
+      "linked": "{account} is linked. Its repos can join projects.",
+      "unlinked": "{account} is unlinked. New tasks on its repos stop with the reason.",
+      "removed": "The App is removed from {account}."
+    },
+    "unlinkDialog": {
+      "title": "Unlink {account}?",
+      "body": "New tasks on its {repos} stop with the reason, in {projects}. Running tasks finish. The App stays installed there."
+    },
+    "removeDialog": {
+      "title": "Remove {app} from {account}?",
+      "body": "This uninstalls the App from {account} on GitHub. To use it again, they install it again and you link it."
+    },
+    "installation": {
+      "label": "Installation",
+      "account": "Account",
+      "app": "App",
+      "installed": "Installed",
+      "by": "by {login}",
+      "repos": "Repos",
+      "andMore": "and {n} more",
+      "waitingBefore": "Someone installed ",
+      "waitingAfter": " on this account. Link it if it's a client's, and its repos can join projects. Remove it to uninstall the App there.",
+      "linked": "Its repos can join projects. Unlinking stops new tasks on them, with the reason; running tasks finish.",
+      "removed": "Removed by {name} on {date}. The App is no longer installed there.",
+      "usedBy": "Used by"
+    },
+    "addOrg": {
+      "label": "Add a GitHub organization",
+      "body": "Send this link to the organization's owner. They pick the repos; the installation waits here until you link it.",
+      "pickApp": "The App to install"
+    },
+    "privateApps": {
+      "label": "Private Apps",
+      "bodyBefore": "GitHub lets only its owner install a private App, so ",
+      "bodyMiddle": " stays on ",
+      "bodyAfter": ". Making an App public is one way: once another account installs it, it can't be made private again.",
+      "settings": "The App's settings on GitHub"
+    },
+    "app": {
+      "owner": "Owner",
+      "visibility": "Visibility",
+      "webhook": "Webhook"
+    },
+    "connectAnother": {
+      "title": "Connect another App",
+      "connect": "Connect the App",
+      "setThese": "Set these in the App's settings on GitHub",
+      "webhookUrl": "Webhook URL",
+      "webhookSecret": "Webhook secret",
+      "once": "The secret is shown once. Copy it now: ostra keeps it in the secret store and never shows it again.",
+      "done": "Done"
+    },
+    "setup": {
+      "question": "Will repos outside this account use the App?",
+      "private": "No, only this account's repos",
+      "public": "Yes, other GitHub organizations install it too",
+      "help": "Private is the default: a public App can't be made private again once another account installs it."
+    },
+    "repoGroup": {
+      "organization": "organization",
+      "user": "user"
+    },
+    "unlinkedRepo": "Its installation on {account} was unlinked",
+    "unlinkedWait": "New tasks here wait until an admin links it again.",
+    "notUsable": "Not usable",
+    "installationWait": "Waiting: the GitHub installation that holds {repo} isn't linked. An organization admin links it on the GitHub page."
   }
 }
