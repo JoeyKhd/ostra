@@ -17,6 +17,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_PUBLIC_URL` | `http://localhost:3000` | The panel's address as browsers reach it. Runners are sent here to approve a device code. |
 | `OSTRA_CORE_PUBLIC_URL` | `http://localhost:8787` | Core's address as runners and webhooks reach it. |
 | `OSTRA_GITHUB_API_URL` | `https://api.github.com` | The GitHub REST API the panel and core talk to. Set it to a GitHub Enterprise Server's API (`https://<host>/api/v3`), or to a fake GitHub in tests. |
+| `OSTRA_GITHUB_LFS_HOSTS` | `github-cloud.githubusercontent.com,github-cloud.s3.amazonaws.com,lfs.github.com` | The hosts a task's git proxy may send Git LFS uploads and downloads to, besides the code host's own address: comma-separated host names, `*.` for a subdomain. A GitHub Enterprise Server install lists its own storage host (below, "Code hosts and Git LFS"). |
 | `OSTRA_DATA_DIR` | `.ostra-dev/server` (development), `/var/lib/ostra` (production) | Where the server keeps its generated keys. Back it up: it holds the secrets key when `OSTRA_SECRETS_KEY` is unset. |
 | `OSTRA_SECRETS_KEY` | generated on first start, kept in `OSTRA_DATA_DIR` | The key the built-in secret store encrypts with (32 bytes, base64). **Back it up**: without it, stored secrets can't be read. At every start core and the panel check it against a value the database stores the first time a key is used, and a key that can't read it stops the start, naming the two fixes: set `OSTRA_SECRETS_KEY`, or restore `secrets-key` in the data folder. |
 | `OSTRA_RUNNER_TOKEN_KEY` | generated on first start, kept in `OSTRA_DATA_DIR` as `runner-token.key` | The key core signs runners' 10-minute access tokens and tasks' MCP tokens with: 32 bytes, base64 or 64 hex characters. Core replicas that don't share a data folder need the same one, or each refuses the tokens the others issued. Changing it makes every runner get a new token, nothing more. |
@@ -39,6 +40,17 @@ Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 **Several server processes.** Core and the panel can run as several processes, on one machine or many (ADR 0034: any replica serves any request). Processes that share one `OSTRA_DATA_DIR` share its keys. Processes that don't, such as replicas in a cluster, must all be given the same three settings: `OSTRA_SECRETS_KEY`, `BETTER_AUTH_SECRET` and `OSTRA_RUNNER_TOKEN_KEY`. Without the first, a process can't read the stored secrets and refuses to start; without the other two, a session or a runner's token made by one process is refused by another. Only the secrets key is checked at start: a new `BETTER_AUTH_SECRET` signs everyone out, and a new runner-token key makes every runner ask for a new token, which are both allowed.
 
 **What core keeps in `OSTRA_DATA_DIR`.** Besides the keys above, core makes these files there at first start, each readable by its owner only: `secrets-key`, the built-in secret store's key when `OSTRA_SECRETS_KEY` is unset (the panel reads the same file, so back it up); `runner-token.key`, the key runners' 10-minute access tokens are signed with when `OSTRA_RUNNER_TOKEN_KEY` is unset (it also signs each task's MCP token; deleting it makes every runner get a new token, nothing more); and `bootstrap-join-token`, the default pool's bootstrap join token for the compose file's pool runner. The bootstrap token is stored hashed in the database and shown nowhere else; core writes it once the first organization exists. Core's daily catalog job also keeps the last good copy of the models.dev catalog in `catalog/models-dev.json` there, and the logos of the providers your models matched in `model-logos/`, which the panel serves (with `OSTRA_CATALOG_FETCH=false`, neither is fetched, and the copy bundled with ostra is used).
+
+## Code hosts and Git LFS
+
+An LFS batch answer names where each object goes, often a storage host other than the code host. A task's git proxy calls only the code host's own address and the hosts listed for its code host, over https, by name; an object sent anywhere else gets an error, and the agent never sees the signed URL or its headers (ADR 0030, Q119). One line per code host:
+
+| Code host | The hosts its LFS actions may call |
+|---|---|
+| GitHub.com | `github-cloud.githubusercontent.com`, `github-cloud.s3.amazonaws.com` and `lfs.github.com`: the default of `OSTRA_GITHUB_LFS_HOSTS`. |
+| GitHub Enterprise Server | Its own storage host, listed in `OSTRA_GITHUB_LFS_HOSTS` (such as `OSTRA_GITHUB_LFS_HOSTS=lfs.ghes.example.com`), with `OSTRA_GITHUB_API_URL` set to its API. Objects stored on the server's own address need no line. |
+
+LFS objects of a cleaned-up task stay in the code host's storage: cleaning up a task deletes its refs, never the LFS objects it pushed, so the code host keeps them and counts them against the repo's storage quota (Q120).
 
 ## The runner
 

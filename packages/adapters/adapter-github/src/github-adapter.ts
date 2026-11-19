@@ -58,7 +58,16 @@ export type GitHubAdapterOptions = {
   readonly webUrl?: string;
   /** Sent with every request: GitHub refuses a request with no `User-Agent`. */
   readonly userAgent?: string;
+  /**
+   * The hosts an LFS batch answer may send the git proxy to, besides the clone URL's own origin
+   * (Q119). Default: GitHub.com's storage hosts. A GitHub Enterprise Server install lists its own
+   * (`OSTRA_GITHUB_LFS_HOSTS`).
+   */
+  readonly lfsActionHosts?: readonly string[];
 };
+
+/** Where GitHub.com's LFS batch answers send uploads and downloads (Q119, spike 4). */
+export const GITHUB_COM_LFS_ACTION_HOSTS = ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"] as const;
 
 const DEFAULT_API_URL = "https://api.github.com";
 const DEFAULT_WEB_URL = "https://github.com";
@@ -108,12 +117,7 @@ const splitRepo = (repo: string): { readonly owner: string; readonly name: strin
 
 export class GitHubAdapter extends CodeHostAdapter {
   readonly name = "github";
-  readonly capabilities: CodeHostCapabilities = {
-    checkRuns: true,
-    prTemplates: true,
-    // Where an LFS batch answer may send the git proxy (Q119, spike 4).
-    lfsActionHosts: ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"],
-  };
+  readonly capabilities: CodeHostCapabilities;
 
   readonly #apiUrl: string;
   readonly #webUrl: string;
@@ -127,6 +131,8 @@ export class GitHubAdapter extends CodeHostAdapter {
     this.#apiUrl = (options.apiUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
     this.#webUrl = (options.webUrl ?? DEFAULT_WEB_URL).replace(/\/+$/, "");
     this.#userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
+    // Where an LFS batch answer may send the git proxy (Q119, spike 4).
+    this.capabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)] };
   }
 
   // ---------- health ----------

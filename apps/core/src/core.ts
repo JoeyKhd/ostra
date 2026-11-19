@@ -48,7 +48,7 @@ export const createServerAdapters = async (db: Db, settings: ServerSettings, log
   // Before anything else: a key that can't read the database's secrets stops the start (Q136).
   const secretStore = await openSecretStore(db, settings, context);
   return {
-    codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}`, apiUrl: settings.githubApiUrl }, context),
+    codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}`, apiUrl: settings.githubApiUrl, lfsActionHosts: settings.githubLfsHosts }, context),
     modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
     secretStore,
   };

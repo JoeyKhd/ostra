@@ -153,7 +153,7 @@ const build = async (): Promise<ApiRuntime> => {
     settings,
     db,
     adapters: {
-      codeHost: new GitHubAdapter({ userAgent: "ostra-panel", apiUrl: settings.githubApiUrl }, context),
+      codeHost: new GitHubAdapter({ userAgent: "ostra-panel", apiUrl: settings.githubApiUrl, lfsActionHosts: settings.githubLfsHosts }, context),
       modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
       secretStore,
     },

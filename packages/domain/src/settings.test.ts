@@ -52,6 +52,17 @@ describe("the server's settings", () => {
     expect(refused.ok).toBe(false);
   });
 
+  it("F-090: takes the LFS storage hosts from OSTRA_GITHUB_LFS_HOSTS, GitHub.com's by default, and refuses what isn't a host name", () => {
+    const fallback = parseServerSettings({});
+    expect(fallback.ok && fallback.settings.githubLfsHosts).toEqual(["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"]);
+    const ghes = parseServerSettings({ OSTRA_GITHUB_LFS_HOSTS: " LFS.ghes.example.com, *.storage.example.com " });
+    expect(ghes.ok && ghes.settings.githubLfsHosts).toEqual(["lfs.ghes.example.com", "*.storage.example.com"]);
+    for (const bad of ["https://lfs.example.com", "127.0.0.1:443", "lfs example.com", ","]) {
+      const refused = parseServerSettings({ OSTRA_GITHUB_LFS_HOSTS: bad });
+      expect(refused.ok, bad).toBe(false);
+    }
+  });
+
   it("refuses an unknown OSTRA_ variable, listing the known ones", () => {
     const result = parseServerSettings({ OSTRA_WEB_PROT: "3001" });
     expect(result.ok).toBe(false);

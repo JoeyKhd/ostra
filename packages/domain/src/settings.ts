@@ -13,6 +13,11 @@ import { defaultFirstAdmin, organizationNameSchema, passwordSchema, usernameSche
 
 const DEV_ONLY = "development only";
 
+/** GitHub.com's LFS storage hosts (Q119, spike 4): the default of OSTRA_GITHUB_LFS_HOSTS. */
+export const GITHUB_COM_LFS_HOSTS = ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"] as const;
+
+const lfsHostPattern = /^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
 /** Every setting's variable. `settingFields` must hold exactly these: the compiler refuses a missing or an extra one. */
 export const settingNames = [
   "NODE_ENV",
@@ -22,6 +27,7 @@ export const settingNames = [
   "OSTRA_PUBLIC_URL",
   "OSTRA_CORE_PUBLIC_URL",
   "OSTRA_GITHUB_API_URL",
+  "OSTRA_GITHUB_LFS_HOSTS",
   "OSTRA_DATA_DIR",
   "OSTRA_SECRETS_KEY",
   "OSTRA_RUNNER_TOKEN_KEY",
@@ -63,6 +69,11 @@ export const settingFields = {
   OSTRA_GITHUB_API_URL: {
     default: "https://api.github.com",
     description: "The GitHub REST API the panel and core talk to: a GitHub Enterprise Server's, or a fake GitHub in tests.",
+  },
+  OSTRA_GITHUB_LFS_HOSTS: {
+    default: GITHUB_COM_LFS_HOSTS.join(","),
+    description:
+      "The hosts a task's git proxy may send Git LFS uploads and downloads to, besides the code host's own address: comma-separated host names, `*.` for a subdomain. A GitHub Enterprise Server install lists its own storage host.",
   },
   OSTRA_DATA_DIR: {
     default: ".ostra-dev/server (development), /var/lib/ostra (production)",
@@ -159,6 +170,12 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_PUBLIC_URL: url.default("http://localhost:3000").describe(describe("OSTRA_PUBLIC_URL")),
   OSTRA_CORE_PUBLIC_URL: url.default("http://localhost:8787").describe(describe("OSTRA_CORE_PUBLIC_URL")),
   OSTRA_GITHUB_API_URL: url.default("https://api.github.com").describe(describe("OSTRA_GITHUB_API_URL")),
+  OSTRA_GITHUB_LFS_HOSTS: z
+    .string()
+    .transform((text) => text.split(",").map((host) => host.trim().toLowerCase()).filter((host) => host !== ""))
+    .pipe(z.array(z.string().regex(lfsHostPattern, "host names, comma-separated")).min(1).max(20))
+    .default([...GITHUB_COM_LFS_HOSTS])
+    .describe(describe("OSTRA_GITHUB_LFS_HOSTS")),
   OSTRA_DATA_DIR: z.string().min(1).optional().describe(describe("OSTRA_DATA_DIR")),
   OSTRA_SECRETS_KEY: z
     .string()
@@ -195,6 +212,8 @@ export type ServerSettings = {
   readonly corePublicUrl: string;
   /** OSTRA_GITHUB_API_URL: the GitHub REST API, without a trailing slash. */
   readonly githubApiUrl: string;
+  /** OSTRA_GITHUB_LFS_HOSTS: where a task's git proxy may send LFS transfers, besides the code host itself. */
+  readonly githubLfsHosts: readonly string[];
   readonly dataDir: string;
   /** `null`: generate one on first start and keep it in `dataDir`. */
   readonly secretsKey: string | null;
@@ -267,6 +286,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       publicUrl: value.OSTRA_PUBLIC_URL,
       corePublicUrl: value.OSTRA_CORE_PUBLIC_URL,
       githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
+      githubLfsHosts: value.OSTRA_GITHUB_LFS_HOSTS,
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),
       secretsKey: value.OSTRA_SECRETS_KEY ?? null,
       runnerTokenKey: value.OSTRA_RUNNER_TOKEN_KEY === undefined ? null : decodeKey32(value.OSTRA_RUNNER_TOKEN_KEY),

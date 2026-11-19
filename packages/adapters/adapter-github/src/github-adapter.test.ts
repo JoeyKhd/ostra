@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { defineCodeHostContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
 import type { CodeHostFixture } from "@ostra/adapter-sdk/testing";
 import { repoFullNameSchema } from "@ostra/protocol";
@@ -5,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createFakeGitHub } from "./fake-github.ts";
 import type { FakeGitHub } from "./fake-github.ts";
-import { GitHubAdapter } from "./github-adapter.ts";
+import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter } from "./github-adapter.ts";
 
 const template = "## What\n\n## Why\n";
 const test1 = repoFullNameSchema.parse("fake-org/test1");
@@ -149,7 +151,7 @@ describe("the GitHub adapter", () => {
   });
 
   describe("tokens", () => {
-    it("mints a token for one repo with only the permissions asked", async () => {
+    it("F-090: mints a token for one repo with only the permissions asked", async () => {
       const minted = await adapter.mintRepoToken(fixture.access, { contents: "write" });
       expect(minted.ok).toBe(true);
       if (!minted.ok) {
@@ -164,7 +166,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.mintRepoToken(fixture.access, {})).toMatchObject({ ok: false, error: { code: "invalid-input" } });
     });
 
-    it("gives a token that can't read another repo of the installation", async () => {
+    it("F-090: gives a token that can't read another repo of the installation", async () => {
       const minted = await adapter.mintRepoToken(fixture.access, { contents: "read", metadata: "read" });
       if (!minted.ok) {
         throw new Error("mint failed");
@@ -174,7 +176,7 @@ describe("the GitHub adapter", () => {
       expect((await fetch(`${fake.apiUrl}/repos/fake-org/test2`, { headers })).status).toBe(404);
     });
 
-    it("asks only for the permissions each step needs", async () => {
+    it("F-090: asks only for the permissions each step needs", async () => {
       const before = fake.tokens.size;
       const { access } = fixture;
       await adapter.listTree(access, "main");
@@ -391,5 +393,21 @@ describe("the GitHub adapter", () => {
         lfsActionHosts: ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"],
       });
     });
+  });
+});
+
+describe("the configuration reference", () => {
+  it("F-090: names the hosts each code host's LFS actions may call, and says a cleaned-up task's LFS objects stay", async () => {
+    const text = await readFile(new URL("../../../../docs/configuration.md", import.meta.url), "utf8");
+    const line = (start: string): string => text.split("\n").find((row) => row.startsWith(start)) ?? "";
+    const hostsIn = (row: string): readonly string[] => [...row.matchAll(/`([a-z0-9.*-]+\.[a-z]{2,})`/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
+    // One line per code host: GitHub.com's lists exactly the adapter's hosts, a GHES install its own.
+    expect(hostsIn(line("| GitHub.com |"))).toEqual([...GITHUB_COM_LFS_ACTION_HOSTS]);
+    expect(line("| GitHub Enterprise Server |")).toContain("`OSTRA_GITHUB_LFS_HOSTS`");
+    expect(line("| `OSTRA_GITHUB_LFS_HOSTS` |")).toContain(`| \`${GITHUB_COM_LFS_ACTION_HOSTS.join(",")}\` |`);
+    expect(text).toContain("LFS objects of a cleaned-up task stay in the code host's storage");
+    // And the adapter calls what the setting lists: GitHub.com's by default, a GHES install's when set.
+    expect(new GitHubAdapter().capabilities.lfsActionHosts).toEqual([...GITHUB_COM_LFS_ACTION_HOSTS]);
+    expect(new GitHubAdapter({ lfsActionHosts: ["lfs.ghes.example.com"] }).capabilities.lfsActionHosts).toEqual(["lfs.ghes.example.com"]);
   });
 });
