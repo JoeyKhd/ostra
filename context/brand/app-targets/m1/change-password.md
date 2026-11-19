@@ -17,7 +17,7 @@ The seeded admin's password is public: it's in the docs, the configuration refer
 2. Take a new password in one step, with the rule in view and both mistakes (too short, not matching) caught before the request.
 3. Hand them to where they were going, with nothing left to do.
 
-The banner is the reminder for as long as the default password stays in use (see "The banner", including the `OSTRA_ALLOW_DEFAULT_PASSWORD` case and an open point about it).
+The banner is the reminder for as long as the default password stays in use (see "The banner", including the `OSTRA_ALLOW_DEFAULT_PASSWORD` case).
 
 ## Route and flow
 
@@ -105,7 +105,7 @@ Copy: `banner.defaultPassword.lead`, `banner.defaultPassword.detail`, `banner.de
 |---|---|---|
 | Default password, `OSTRA_ALLOW_DEFAULT_PASSWORD` unset (`false`) | the forced step | while the default is in use. In practice the forced step comes first, so the banner is the fallback for any panel render the step didn't catch (it costs one check per render, and it's the same signal) |
 | `OSTRA_ADMIN_PASSWORD` set | no forced step | never: the password is the operator's own |
-| Default password, `OSTRA_ALLOW_DEFAULT_PASSWORD=true` | no forced step | **as briefed: off.** See open point 1 |
+| Default password, `OSTRA_ALLOW_DEFAULT_PASSWORD=true` | no forced step | **on**, on every panel page, until the password changes. This is the banner's main case: a demo install that kept `demo` |
 
 The server exposes one boolean on the session, "this account still uses the default password", separate from "the change is forced" (`mustChangePassword`): the banner reads the first, the redirect reads the second, and the flag only affects the second.
 
@@ -173,7 +173,7 @@ As `sign-in.md`: the glimpse column hides under 960px, the form block stays 360p
 - **Home's own errata** carry over unchanged (`home.md`, "Text in the picture that's wrong"): the logo mark, `Spend, November` in mono, the pool names' size.
 - Right as drawn: the fill (`#17181B` exactly), the bottom hairline, the band spanning both the page and the properties panel, `Change it` in teal on the `New task` edge, no amber in the band, and the page moved down intact.
 
-## Open points for the maintainer
+## Settled points
 
-1. **`OSTRA_ALLOW_DEFAULT_PASSWORD` and the banner.** As briefed, the flag turns off both the forced step and the banner. With the flag off, the forced step runs before the panel, so the banner is almost never seen; with the flag on, it's turned off. Under those rules it has nearly no case to show in. The build in progress describes the flag as "no forced change at sign-in, but the panel's warning stays until it changes", which gives the banner its job: the reminder on a demo install that kept `demo`. Recommended: that reading. Decide one, and this file's table follows.
-2. **Other admins.** Should a second instance admin see a banner like `The demo account still uses the default password.`, without an action? Left out of milestone 1 because they couldn't act on it until reset links ship.
+1. **`OSTRA_ALLOW_DEFAULT_PASSWORD` and the banner** (decided 2026-11-19). The flag turns off only the forced step at sign-in. The banner stays until the password changes. Turning both off would leave the banner almost no case to show in: without the flag the forced step comes first, and with it the banner would be off.
+2. **Other admins** don't see a banner in milestone 1: they can't act on it until reset links ship (milestone 4, F-002).
