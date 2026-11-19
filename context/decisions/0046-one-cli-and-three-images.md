@@ -1,6 +1,6 @@
 # One CLI and three images; signed binaries come after v1
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q80 and Q82. **Supersedes ADR 0023.** Ledger: F-013, F-039, F-103, and F-085, which moves after v1. **Amended 2026-11-19 for milestone 5's spec**, on the maintainer's delegation: how the images are built and checked before they're published (Q244; "Milestone 5: building the images" below).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q80 and Q82. **Supersedes ADR 0023.** Ledger: F-013, F-039, F-103, and F-085, which moves after v1. **Amended 2026-11-19 for milestone 5's spec**, on the maintainer's delegation: how the images are built and checked before they're published (Q244; "Milestone 5: building the images" below). **Amended again 2026-11-19 for milestone 7's spec** (Q252, ADR 0062): no published image holds an Anthropic file until the maintainer records that Anthropic's terms allow it; a runner builds a local agent image for Claude Code instead ("Milestone 7: agents ostra doesn't redistribute" below).
 
 ostra ships as one command-line program and three Docker images.
 
@@ -68,3 +68,13 @@ Added 2026-11-19 (Q244), for `specs/m5-the-fleet/spec.md`.
 - **`pnpm images:build`** builds the three images from source on a Linux machine with Docker, tags them with the release version and prints their sizes. It runs in the manual proof job on `ubuntu-24.04` (ADR 0061) and on the maintainer's machine. Nothing is pushed anywhere public before milestone 7.
 - **`pnpm check:images`** runs everywhere, in CI too: every `FROM` pinned by digest, OpenCode's checksum taken from the repo's pin (`pinnedChecksums`) and never from the download, no secret-shaped `ARG`, `ENV` or `RUN`, and the compose file running the images the build tags.
 - **A built image is checked by starting it:** the server's `all` answers its health check, `ostra --version` prints the release in the runner image, and the base image's OpenCode reports the pinned version with the pinned checksum. F-039 stays `building` until the images are published.
+
+## Milestone 7: agents ostra doesn't redistribute
+
+Added 2026-11-19 for milestone 7's spec (Q252, ADR 0062).
+
+- **The published base image pins OpenCode only** until the maintainer answers Q266 and records here that Anthropic's terms allow ostra to redistribute Claude Code. `pnpm check:images` fails when a published image holds a file from an `@anthropic-ai/*` package.
+- **An agent image** is how a `docker` or `kubernetes` runner gets an agent the base image lacks: `FROM` the base image's digest, with the agent's pinned install (`npm install --ignore-scripts` at the exact version) and its checksum checked, built by the runner through the snapshot builder (a Docker build, or BuildKit and the organization's registry on `kubernetes`), once per base digest and agent version. A project's snapshot builds on it. It's never pushed anywhere but the organization's own registry.
+- **On `host`**, the runner installs the agent's pinned package into its data folder on first need (or with `ostra agents install <agent>`), and checks the checksum before every launch.
+- **"Nothing is downloaded when a box starts" still holds:** the download happens when the agent image is built or the `host` install runs, never in a box.
+- **If the terms allow it,** the base image gains the pinned install and the agent image is skipped for that agent. The mechanism stays for agents whose terms don't.

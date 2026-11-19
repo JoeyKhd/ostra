@@ -71,7 +71,7 @@ These are design concepts built in HTML, not screenshots of shipped software.
 | 4 · The organization | Several projects with their own access, two roles at each level, spend and budgets, and project memory | specced: [`context/specs/m4-the-organization/`](context/specs/m4-the-organization/spec.md) |
 | 5 · The fleet | Runner pools on Docker hosts and Kubernetes, plus laptops, joined with a token and load-tested at 1,000 tasks at once | specced: [`context/specs/m5-the-fleet/`](context/specs/m5-the-fleet/spec.md) |
 | 6 · The whole team, and autonomy | Refine, code and review tasks, intake rules and schedules, and review loops for CI and the AI review | |
-| 7 · Launch | Claude Code as the second agent, docs, accessibility and a security review. A new install goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs | |
+| 7 · Launch | Claude Code as the second agent, docs, accessibility and a security review. A new install goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs | specced: [`context/specs/m7-launch/`](context/specs/m7-launch/spec.md) |
 
 Signed runner binaries come after v1. The details, and which feature lands where, are in [`context/build-order.md`](context/build-order.md) and the feature ledger [`context/features.md`](context/features.md).
 

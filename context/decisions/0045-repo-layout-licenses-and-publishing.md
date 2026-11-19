@@ -1,6 +1,6 @@
 # One monorepo, a license per package checked by CI, and one version line
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Amended 2026-11-18: the server packages move from AGPL-3.0 to the Sustainable Use License, and the license check now keeps Apache-2.0 packages from depending on them (ADR 0048, which replaces ADR 0009). Settles Q78, Q79 and Q81. Builds on ADR 0007 (pnpm and Turborepo), ADR 0048 (the license split) and ADR 0016 (two server processes). The CLI and the images are ADR 0046.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Amended 2026-11-18: the server packages move from AGPL-3.0 to the Sustainable Use License, and the license check now keeps Apache-2.0 packages from depending on them (ADR 0048, which replaces ADR 0009). Settles Q78, Q79 and Q81. **Amended 2026-11-19 for milestone 7's spec:** `apps/docs` is Apache-2.0 (ADR 0063); `packages/adapters/adapter-claude-code` joins the adapters (ADR 0062); how a release is published, and what it waits on, is ADR 0064. Builds on ADR 0007 (pnpm and Turborepo), ADR 0048 (the license split) and ADR 0016 (two server processes). The CLI and the images are ADR 0046.
 
 ## The layout
 
@@ -9,7 +9,7 @@
 | `apps/web` | The Next.js panel, better-auth, tRPC | Sustainable Use License 1.0 |
 | `apps/core` | The runner gateway, webhooks, queue workers | Sustainable Use License 1.0 |
 | `apps/runner` | The `ostra` CLI: the pool runner, the sidecar, `login`, `checkout` | Apache-2.0 |
-| `apps/docs` | The docs site. Built with milestone 7, in the same stack as the panel | Declared when it's created |
+| `apps/docs` | The docs site: Fumadocs on Next.js, built static, on GitHub Pages (ADR 0063). Built with milestone 7 | Apache-2.0 (ADR 0063); never published to npm |
 | `packages/db` | The Prisma schema and client | Sustainable Use License 1.0 |
 | `packages/domain` | Lifecycles and use cases | Sustainable Use License 1.0 |
 | `packages/api` | The tRPC routers | Sustainable Use License 1.0 |
@@ -41,7 +41,7 @@ The license split of ADR 0048 only holds if a machine checks it.
 - **What's published to npm:** the `ostra` CLI, `protocol`, `adapter-sdk` and the adapters, so others can write adapters. The server packages are private. The server ships as an image (ADR 0046).
 - **One version line.** Every published package carries ostra's release version. Server and runner versions are tied by ADR 0022, so one line is the simplest truth.
 - **Changesets** manages versions and publishing, and is configured to bump every published package together. `@changesets/cli` is a new dev dependency, and AGENTS.md says to confirm it with the maintainer before it's added.
-- **Publishing starts at the v1 launch,** in milestone 7. Publishing the adapter SDK earlier would promise a stability it doesn't have yet.
+- **Publishing starts at the v1 launch,** in milestone 7. Publishing the adapter SDK earlier would promise a stability it doesn't have yet. The workflow, its dry run and the gates it waits for are ADR 0064: one manual `release.yml`, npm's trusted publishing with provenance and no npm token, the images by digest.
 - **Names.** The maintainer registers the npm scope and the image namespace, and checks the CLI's package name. `ostra` itself is taken on npm (`build-order.md`). ADR 0046 covers that.
 
 ## Considered options

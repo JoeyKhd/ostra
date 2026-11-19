@@ -1,0 +1,23 @@
+# 24: Setup in the panel: the last pieces and its timeline
+
+Status: ready-for-agent
+Builder: api (with web for the checklist's links)
+Blocked by: 05
+Features: F-076
+Packages: `packages/api` (`src/routers/setup.ts`), `apps/web` (the checklist), `scripts/measure-setup.ts` (new), `package.json` (`measure:setup`)
+Spec: `../spec.md`, sections 4 and 10.1; ADR 0064 ("The 30-minute measure")
+
+## What to build
+
+- **The checklist, complete** (F-076's first condition, the parts milestone 1's proof left `partial`): Linear's step live (milestone 2's Connect Linear), optional, skippable with "Skip for now", ticked once connected, never counted against setup being done; each step's link to its page in the docs (`OSTRA_DOCS_URL`).
+- **`setup.timeline`** (instance admin only): each step's completion time for the first organization, from milestone 4's audit entries (the password change, the provider saved, the App installed, the project created, the runner approved, the first task started) and the event of the first PR's opening, through the domain's `setupTimeline`.
+- **`pnpm measure:setup --url <panel> --start <time>`:** signs in as the instance admin (the password from the prompt, never an argument or a log), reads the timeline, prints each step's time since `--start` and the total, and writes `timeline.json` for ticket 25's record. No secret in its output.
+
+## Done when
+
+- [ ] Tests named for `F-076`: setup completes without Linear and ticks Linear when it's connected; the timeline's times equal the seeded audit entries' (break-it: one step's entry dropped); the script's output holds no token, password or address but the panel's.
+- [ ] Milestone 1's F-076 tests still pass.
+- [ ] Typecheck, lint and tests of the touched packages pass.
+- [ ] Committed as `✨ finish setup and add its timeline`.
+
+## Comments

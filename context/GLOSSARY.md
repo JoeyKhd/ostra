@@ -318,6 +318,14 @@ _Avoid_: preset, config, persona
 An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself.
 _Avoid_: vendor, LLM
 
+**Agent image**:
+An image a runner builds itself from the base image, adding an agent the published base image doesn't carry (Claude Code, until its terms allow ostra to ship it), pinned and checked. Built once per base image and agent version, kept by the runner or in the organization's registry, never published.
+_Avoid_: custom image (that's an environment's own image), snapshot (that's a project's, built on top)
+
+**Launch gate**:
+A condition that must hold, with its evidence in the repo, before v1 is published: the ledger, both agents' suite, the 30-minute measure, the load test, the security review, the maintainer's legal items and names, and the maintainer's go (ADR 0064).
+_Avoid_: release criteria, checklist
+
 ### Memory and budgets
 
 **Memory note**:

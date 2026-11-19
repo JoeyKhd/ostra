@@ -1,6 +1,6 @@
 # Proofs on machines the plan isn't built on, and the load test
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 5's spec). Settles Q230 and Q245. Covers how F-014, F-015, F-017, F-039, F-093, F-095, F-116, F-117, F-118 and F-120 get proved, and builds on `AGENTS.md`'s proof rule, `context/proof/README.md`, the maintainer's CI scope of 2026-11-19 (`proof.yml` by hand only, never in `ci.yml`) and ADR 0034 (spike 6's load bars).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 5's spec). Settles Q230 and Q245. **Amended 2026-11-19 for milestone 7's spec** (ADR 0064, Q257): the run that counts is repeated on the release candidate with Claude Code's recorded rates in the mix, and launch waits for it. Covers how F-014, F-015, F-017, F-039, F-093, F-095, F-116, F-117, F-118 and F-120 get proved, and builds on `AGENTS.md`'s proof rule, `context/proof/README.md`, the maintainer's CI scope of 2026-11-19 (`proof.yml` by hand only, never in `ci.yml`) and ADR 0034 (spike 6's load bars).
 
 The plan is built on a Windows machine with no Docker, no Kubernetes, no Linux and no Mac (`build-order.md`). Milestone 5's rows are mostly about those. A row is `done` only when every condition of its "done when" is proved (`context/proof/README.md`), and a test that runs only on another machine is live evidence, cited by its run's log. This ADR says where those runs happen, so a row never waits on "later" with no plan, and is never set `done` on a fake.
 
