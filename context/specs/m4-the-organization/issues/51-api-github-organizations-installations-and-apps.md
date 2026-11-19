@@ -28,3 +28,22 @@ Spec: `../spec.md`, sections 3 (step 15) and 5.5; ADR 0065
 - [ ] Committed as `✨ add GitHub organizations to the API`.
 
 ## Comments
+
+## Added 2026-11-19 (the lead): fields the approved screens need
+
+The web builder (ticket 54) needs these from this ticket:
+- **`github.connections`, per App:**
+  - connectionId, slug, ownerLogin, ownerKind, public and webhookUrl
+  - the webhook's state: receiving, none, or failing with the last error
+  - its installations
+- **Each installation:**
+  - installationId, accountLogin and accountKind
+  - state: linked, waiting, removed or suspended
+  - isOwner and repoSelection, with its repos
+  - installedAt and installedBy, removedAt and removedBy
+  - the projects that use it
+- **The actions:**
+  - `connectExisting` returns `{ webhookUrl, webhookSecret }`, once.
+  - `createApp` and `startManifest` take `public`.
+  - Link, unlink and remove take `{ connectionId, installationId }`.
+  - `github.repos` is grouped by installation account.

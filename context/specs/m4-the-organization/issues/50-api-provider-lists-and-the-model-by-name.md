@@ -28,3 +28,18 @@ Spec: `../spec.md`, sections 3 (steps 16 and 17) and 5.5; ADR 0065
 - [ ] Committed as `✨ add provider lists to the API`.
 
 ## Comments
+
+## Added 2026-11-19 (the lead): fields the approved screens need
+
+The web builder (tickets 53 and 63) found these missing from the API draft. The targets need them:
+1. `agentProfiles.list` and `agentProfiles.get`: each profile's saved model by name, `modelName: ModelName | null`. The profile editor starts its draft from it, and saving by name needs it.
+2. **The upgrade's choices to confirm** (`models-keys.md`, "To confirm"): a read of the `ModelChoice` rows with `needsConfirm`, on the default list and on each project's own list. Each row has:
+   - the project ID and name, or null for the default list
+   - the model name and its display text
+   - the kept provider
+   - the providers on that list that also list the model
+
+   `providers.confirmChoice` already exists.
+3. `tasks.startCheck`, when it answers `open`: the serving provider's name, for New task's "Key · <provider>" row. The `no-provider` wait already has `modelName`.
+4. Nice to have: `providers.list` rows carry `host` (the base URL's host).
+5. The needs-you view for `no_provider_for_model` carries the model name, so the row can read "No key for {model}" as the target shows.
