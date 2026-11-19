@@ -61,8 +61,15 @@ export type TrackerSuiteFixture = {
   /** The tracker's next answer is 429 with `Retry-After`. */
   readonly rateLimitNext: (retryAfterSeconds: number) => Promise<void>;
   /** Milestone 3: adds a user with this email to the board's tracker. Absent: the mention case is skipped. */
-  readonly seedUser?: (email: string) => Promise<{ readonly userId: string }>;
+  readonly seedUser?: (email: string) => Promise<SeededTrackerUser>;
 };
+
+/**
+ * A user a fixture added. `mentionHolds` is the text the user's mention must hold, for a tracker
+ * whose mention names the user by something other than its ID (Linear's is the profile URL);
+ * absent, the mention must hold the user's ID.
+ */
+export type SeededTrackerUser = { readonly userId: string; readonly mentionHolds?: string };
 
 const must = <T>(result: AdapterResult<T>, what: string): T => {
   if (!result.ok) {
@@ -109,7 +116,7 @@ export const defineTrackerFirstCases = <Fixture>(options: ContractSuiteOptions<T
 /** What the mention case needs: a board and a way to add a user to the tracker. */
 export type TrackerMentionFixture = {
   readonly board: BoardRef;
-  readonly seedUser?: (email: string) => Promise<{ readonly userId: string }>;
+  readonly seedUser?: (email: string) => Promise<SeededTrackerUser>;
 };
 
 /** Milestone 3 (F-036): `findUsersByEmail`, for every tracker that has `mentions`. */
@@ -132,7 +139,7 @@ const defineMentionCases = (subject: () => { readonly adapter: TrackerAdapter; r
     const found = must(await adapter.findUsersByEmail(fixture.board, [first]), "findUsersByEmail");
     expect(found.map((user) => ({ email: user.email, userId: user.userId }))).toEqual([{ email: first, userId: one.userId }]);
     expect(found[0]?.mention.length).toBeGreaterThan(0);
-    expect(found[0]?.mention).toContain(one.userId);
+    expect(found[0]?.mention).toContain(one.mentionHolds ?? one.userId);
     expect(must(await adapter.findUsersByEmail(fixture.board, [`nobody-${suffix}@example.com`]), "findUsersByEmail")).toEqual([]);
     const both = must(await adapter.findUsersByEmail(fixture.board, [second.toUpperCase(), first, `nobody-${suffix}@example.com`]), "findUsersByEmail");
     expect(both.map((user) => user.userId).sort()).toEqual([one.userId, two.userId].sort());
