@@ -37,7 +37,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_SESSION_STALL_MINUTES` | `10` | This long with no agent event, and core stops the session as stalled (F-068). |
 | `OSTRA_TASK_SPEND_CAP_USD` | `25` | A task's spend cap in US dollars, counted on the four token kinds at the model's prices (F-068). At the cap the runner's key proxy stops the session and the task needs you. At most `2000`. |
 | `OSTRA_TASK_TOKEN_CAP` | `10000000` | A task's cap in tokens, used instead of the dollar cap when the model has no known price; the panel says so. |
-| `OSTRA_TRACKER_POLL_SECONDS` | `60` | How often a board is polled when its tracker can't reach ostra's webhooks: an install with no public address (F-042). |
+| `OSTRA_TRACKER_POLL_SECONDS` | `60` | How often a board is polled when its tracker can't reach ostra's webhooks: an install with no public address (F-042). Polls run on a schedule of whole minutes, so a value under 60 polls every minute. A connection with webhooks is polled every `OSTRA_RECONCILE_MINUTES` instead, as the drift check (F-044). |
 | `OSTRA_RECONCILE_MINUTES` | `5` | How often core checks the open PRs' states on GitHub, in case a webhook was missed (F-044). |
 | `OSTRA_WEBHOOK_INSERT_DEADLINE_MS` | `2000` | How long saving a webhook may take before core answers `503`, so the sender retries rather than losing it. |
 | `OSTRA_BOX_RELEASE_IDLE_DAYS` | `14` | A stopped box is released after this many idle days, and its task's hidden ref deleted (F-079). |

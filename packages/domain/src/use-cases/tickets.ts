@@ -20,9 +20,9 @@ import { branchSlugFor } from "../branch-name.ts";
 import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
+import { ingestTicketHintBody } from "../tickets/ticket-cache.ts";
 import { ticketWriteKey } from "../tickets/contracts.ts";
 import type { TicketWritePayload, TicketWriteStep } from "../tickets/contracts.ts";
-import { notYet } from "./common.ts";
 import type { UseCaseResult } from "./common.ts";
 import { claimBranchNameInTx } from "./create-prompt-task.ts";
 import type { ConnectionTracker } from "./linear-connection.ts";
@@ -67,7 +67,7 @@ export type IngestTicketHintDeps = Pick<Ports, "notices" | "clock"> & {
  */
 export type IngestTicketHint = (deps: IngestTicketHintDeps, change: TicketChange) => Promise<IngestTicketHintResult>;
 
-export const ingestTicketHint: IngestTicketHint = () => notYet("14");
+export const ingestTicketHint: IngestTicketHint = (deps, change) => ingestTicketHintBody(deps, change);
 
 // ---------- start a task from a ticket (ticket 29) ----------
 

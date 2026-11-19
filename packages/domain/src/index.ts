@@ -28,6 +28,7 @@ export * from "./tickets/ticket-template.ts";
 export * from "./tickets/rebuild-template.ts";
 export * from "./tickets/contracts.ts";
 export * from "./tickets/ticket-writes.ts";
+export * from "./tickets/ticket-cache.ts";
 export * from "./postgres-plumbing.ts";
 
 export * from "./use-cases/common.ts";

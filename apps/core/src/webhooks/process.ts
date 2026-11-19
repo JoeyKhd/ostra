@@ -72,6 +72,8 @@ export const webhookProcessHandler =
       where: { id: connectionId, organizationId, OR: [{ lastEventAt: null }, { lastEventAt: { lt: delivery.receivedAt } }] },
       data: { lastEventAt: delivery.receivedAt },
     });
+    // A webhook arrived: the connection's webhooks aren't silent (ticket 14's flag clears).
+    await deps.db.connection.updateMany({ where: { id: connectionId, organizationId, webhooksSilentSince: { not: null } }, data: { webhooksSilentSince: null } });
     const handler = delivery.connection.kind === "linear" ? deps.handlers.linear : deps.handlers.github;
     let outcome: WebhookOutcome;
     try {

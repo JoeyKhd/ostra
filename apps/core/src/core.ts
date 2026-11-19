@@ -48,6 +48,8 @@ import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
+import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
+import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { recordOnlyHandler, webhookProcessHandler } from "./webhooks/process.ts";
@@ -60,6 +62,9 @@ import type { WebhookHandlers } from "./webhooks/process.ts";
 export const CORE_VERSION = "0.0.0";
 
 export { RUNNER_TOKEN_KEY_FILE };
+
+/** How often board schedules and token refreshes are made from their rows (a board attached in the panel polls within it). */
+const TRACKER_TICK_MS = 30_000;
 
 /** How often the tracker writer's outbox is drained into `ticket.sync` jobs. */
 const TICKET_DRAIN_MS = 2_000;
@@ -248,14 +253,38 @@ export const startCore = async (
     insertDeadlineMs: settings.webhookInsertDeadlineMs,
     blocked: parseBlockedWebhooks(options.devBlockWebhooks, settings.mode),
   });
+  // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
+  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger });
+  const ingestDeps = { db, trackers, notices, clock: systemClock, logger };
   const webhookHandlers: WebhookHandlers = {
-    linear: recordOnlyHandler("ticket ingest is not wired yet"),
+    linear: trackerWebhookHandler(ingestDeps),
     github: recordOnlyHandler("PR states are not wired yet"),
   };
   await jobs.work("webhook.process", webhookProcessHandler({ db, clock: systemClock, handlers: webhookHandlers }));
+  // Polling (ticket 14): a schedule per attached board, made here from the board rows.
+  await jobs.work("tracker.poll-board", pollBoardHandler(ingestDeps), { localConcurrency: 2 });
+  const pollSchedules = createPollSchedules({
+    db,
+    jobs,
+    pollSeconds: settings.trackerPollSeconds,
+    reconcileMinutes: settings.reconcileMinutes,
+    logger,
+  });
+  const refreshDeps = { db, jobs, secretStore: adapters.secretStore, trackers, notices, audit: postgresAuditLog, clock: systemClock, logger };
+  await jobs.work("linear.refresh-token", refreshTokenHandler(refreshDeps), { localConcurrency: 1 });
+  const trackerTick = async (): Promise<void> => {
+    await pollSchedules.ensure().catch((error: unknown) => {
+      logger.warn("tracker.schedules-failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
+    await ensureTokenRefreshes(refreshDeps).catch((error: unknown) => {
+      logger.warn("linear.refresh-schedule-failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
+  };
+  await trackerTick();
+  const trackerTimer = setInterval(() => void trackerTick(), TRACKER_TICK_MS);
+  trackerTimer.unref();
   // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
   // written where no queue was at hand (a task's move), every 2 s.
-  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger });
   await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
   const drain = setInterval(() => {
     drainTicketWrites({ db, jobs, clock: systemClock }).catch((error: unknown) => {
@@ -316,6 +345,7 @@ export const startCore = async (
       clearTimeout(bootstrapTimer);
       clearInterval(requeue);
       clearInterval(drain);
+      clearInterval(trackerTimer);
       clearInterval(scheduleTimer);
       await gateway.stop();
       await server.close();
