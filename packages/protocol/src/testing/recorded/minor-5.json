@@ -1,0 +1,91 @@
+{
+  "build": "a synthetic next minor: minor 4 with one more optional field in hello",
+  "minor": 5,
+  "hello": {
+    "type": "hello",
+    "protocolMajor": 1,
+    "protocolMinor": 5,
+    "runnerVersion": "0.6.0",
+    "peer": {
+      "kind": "runner",
+      "runnerId": "0196f1a0-0000-7000-8000-000000000009"
+    },
+    "carrier": "websocket",
+    "lastCommandSeq": 0,
+    "sessions": [],
+    "executor": "kubernetes",
+    "resources": {
+      "slots": 20,
+      "cpuMillis": 30000,
+      "memoryMiB": 61440
+    },
+    "capabilities": {
+      "isolation": "container",
+      "services": true,
+      "boxSizes": true,
+      "snapshots": "image",
+      "registry": "required",
+      "nodeWait": true
+    },
+    "install": "image",
+    "spoolLimitBytes": 1073741824
+  },
+  "negotiated": 4,
+  "status": {
+    "type": "status",
+    "executor": "kubernetes",
+    "capacity": 20,
+    "freeSlots": 19,
+    "labels": [
+      "tier:fast",
+      "executor:kubernetes",
+      "os:linux",
+      "arch:x64",
+      "gpu"
+    ],
+    "version": "0.6.0",
+    "running": [
+      "0196f1a0-0000-7000-8000-000000000005"
+    ],
+    "spoolBytes": 0,
+    "processContainment": "container",
+    "resources": {
+      "slots": 20,
+      "cpuMillis": 30000,
+      "memoryMiB": 61440
+    },
+    "capabilities": {
+      "isolation": "container",
+      "services": true,
+      "boxSizes": true,
+      "snapshots": "image",
+      "registry": "required",
+      "nodeWait": true
+    },
+    "install": "image"
+  },
+  "dispatch": {
+    "type": "command",
+    "id": "0196f1a0-0000-7000-8000-00000000000f",
+    "notAfter": 1900000000000,
+    "seq": 16,
+    "kind": "dispatch",
+    "body": {
+      "taskId": "0196f1a0-0000-7000-8000-000000000004",
+      "sessionId": "0196f1a0-0000-7000-8000-000000000005",
+      "boxId": "0196f1a0-0000-7000-8000-00000000000a",
+      "leaseEpoch": 1,
+      "box": {
+        "size": {
+          "name": "small",
+          "cpuMillis": 2000,
+          "memoryMiB": 4096
+        },
+        "image": {
+          "ref": "registry.ostra-test.dev/ostra-dev/0196f1a0-0000-7000-8000-000000000002:0196f1a0-0000-7000-8000-000000000017",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    }
+  }
+}

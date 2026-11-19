@@ -107,6 +107,9 @@ const TICKET_DRAIN_MS = 2_000;
 const SNAPSHOT_SWEEP_MS = 15_000;
 
 /** The adapters core holds (ADR 0025): the code host, the model provider and the secret store. */
+/** The fake npm registry `pnpm dev:npm-registry` serves the CLI from, for the pin in development (F-061). */
+export const DEV_RUNNER_NPM = { package: "ostra", registry: "http://127.0.0.1:14873" } as const;
+
 export const createServerAdapters = async (db: Db, settings: ServerSettings, logger: Logger): Promise<ServerAdapters> => {
   const context: AdapterContext = { logger, clock: adapterClock };
   // The App's rate budgets and idempotency keys in Postgres, under the organization whose App it is (F-046).
@@ -230,6 +233,8 @@ export const startCore = async (
     replicaId,
     serverVersion: CORE_VERSION,
     panelUrl: settings.publicUrl,
+    // F-061: before milestone 7 names the published CLI, development pins from `pnpm dev:npm-registry`.
+    runnerNpm: settings.mode === "development" ? DEV_RUNNER_NPM : null,
     signingKey,
     deviceSessions: postgresDeviceSessions(db),
     ports: { notices, audit: postgresAuditLog, clock: systemClock, jobs },

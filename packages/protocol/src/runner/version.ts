@@ -47,6 +47,26 @@ export const minorWindow = (serverMinor: number): MinorWindow => ({
   max: serverMinor + 1,
 });
 
+/**
+ * The words a runner outside the window is refused with (F-061), on either carrier: its minor, the
+ * window, and the version to install. The runner shows them as they are, in its log and in
+ * `ostra runner status`, and the panel lists it as outdated.
+ */
+export const versionRefusalMessage = (input: {
+  readonly peerMajor: number;
+  readonly peerMinor: number;
+  readonly window: MinorWindow;
+  /** The server's release, which the runner installs: `serverVersion` in `GET /runner/v1/info`. */
+  readonly serverVersion: string;
+}): string => {
+  const major = String(PROTOCOL_MAJOR);
+  return (
+    `This runner speaks protocol ${String(input.peerMajor)}.${String(input.peerMinor)}; this server accepts ` +
+    `${major}.${String(input.window.min)} to ${major}.${String(input.window.max)}. Update it to v${input.serverVersion}. ` +
+    `Fix: install the runner version this server names (GET ${RUNNER_PATH_PREFIX}/info), then start the runner again.`
+  );
+};
+
 export type Negotiation =
   | { readonly ok: true; readonly minor: number }
   | { readonly ok: false; readonly reason: "major" | "minor"; readonly window: MinorWindow };

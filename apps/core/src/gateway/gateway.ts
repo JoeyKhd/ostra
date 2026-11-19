@@ -6,7 +6,7 @@ import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import type { Ports } from "@ostra/domain";
 import { PROTOCOL_MINOR } from "@ostra/protocol";
-import type { ReplicaId } from "@ostra/protocol";
+import type { InfoNpm, ReplicaId } from "@ostra/protocol";
 
 import { createAccessTokens } from "./access-token.ts";
 import { createNonceCache } from "./assertion.ts";
@@ -39,6 +39,12 @@ export type GatewayOptions = {
   readonly hooks?: Partial<GatewayHooks>;
   readonly timers?: Partial<GatewayTimers>;
   readonly serverMinor?: number;
+  /**
+   * F-061: where the pin installs this server's version from, which `GET /runner/v1/info` names.
+   * `null` (the default) until milestone 7 names the published package: the runner's own
+   * `OSTRA_RUNNER_NPM_REGISTRY` or npm's public registry applies.
+   */
+  readonly runnerNpm?: InfoNpm | null;
   /** `false`: commands go out on the sweep only (tests). */
   readonly listen?: boolean;
   readonly logger?: Logger;
@@ -61,6 +67,7 @@ export const createGateway = (options: GatewayOptions): Gateway => {
     serverMinor: options.serverMinor ?? PROTOCOL_MINOR,
     serverVersion: options.serverVersion,
     panelUrl: options.panelUrl,
+    runnerNpm: options.runnerNpm ?? null,
     deviceClientId: RUNNER_CLIENT_ID,
     tokens: createAccessTokens(options.signingKey),
     taskTokens: createTaskTokens(options.signingKey),

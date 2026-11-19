@@ -1,0 +1,46 @@
+{
+  "build": "milestone 4",
+  "minor": 3,
+  "hello": {
+    "type": "hello",
+    "protocolMajor": 1,
+    "protocolMinor": 3,
+    "runnerVersion": "0.4.0",
+    "peer": {
+      "kind": "runner",
+      "runnerId": "0196f1a0-0000-7000-8000-000000000009"
+    },
+    "carrier": "websocket",
+    "lastCommandSeq": 0,
+    "sessions": []
+  },
+  "negotiated": 3,
+  "status": {
+    "type": "status",
+    "executor": "docker",
+    "capacity": 20,
+    "freeSlots": 19,
+    "labels": [
+      "gpu"
+    ],
+    "version": "0.4.0",
+    "running": [
+      "0196f1a0-0000-7000-8000-000000000005"
+    ],
+    "spoolBytes": 0,
+    "processContainment": "container"
+  },
+  "dispatch": {
+    "type": "command",
+    "id": "0196f1a0-0000-7000-8000-00000000000f",
+    "notAfter": 1900000000000,
+    "seq": 16,
+    "kind": "dispatch",
+    "body": {
+      "taskId": "0196f1a0-0000-7000-8000-000000000004",
+      "sessionId": "0196f1a0-0000-7000-8000-000000000005",
+      "boxId": "0196f1a0-0000-7000-8000-00000000000a",
+      "leaseEpoch": 1
+    }
+  }
+}

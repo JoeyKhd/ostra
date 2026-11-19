@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 
 import { commandKindFromDb, commandResultToDb, mapCommandToFrame, notifyChannels } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { awaitsApproval, enqueueRunnerAdmissionInTx, notifyRunnerInTx, recordRunnerReport, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
+import { awaitsApproval, enqueueRunnerAdmissionInTx, notifyRunnerInTx, recordRefusedRunner, recordRunnerReport, runnerFromColumns, runnerNotificationSchema, transitionRunner } from "@ostra/domain";
 import type { RunnerInput, RunnerLifecycle, RunnerReportWithContainment } from "@ostra/domain";
 import {
   closeCodes,
@@ -17,6 +17,7 @@ import {
   isReservedLabel,
   PROTOCOL_MAJOR,
   refuseHelloExecutor,
+  versionRefusalMessage,
   runnerLimits,
   organizationIdSchema,
   runnerIdSchema,
@@ -196,16 +197,20 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     const negotiation = negotiate(context.serverMinor, hello.protocolMajor, hello.protocolMinor);
     if (!negotiation.ok) {
       const { window } = negotiation;
+      // F-061 (ticket 16): the refused build is kept on the runner's row, once, so the fleet view
+      // lists it as outdated. On either carrier: both call this.
+      await db.$transaction((tx) =>
+        recordRefusedRunner(
+          { tx, clock: context.ports.clock, notices: context.ports.notices, logger },
+          { runnerId: runner.runnerId, organizationId: runner.organizationId, minor: hello.protocolMinor, version: hello.runnerVersion },
+        ),
+      );
       return {
         ok: false,
         error: {
           type: "error",
           code: "version-unsupported",
-          message:
-            `This runner speaks protocol ${String(hello.protocolMajor)}.${String(hello.protocolMinor)}; this server speaks ` +
-            `${String(PROTOCOL_MAJOR)}.${String(context.serverMinor)} and accepts ${String(PROTOCOL_MAJOR)}.${String(window.min)} ` +
-            `to ${String(PROTOCOL_MAJOR)}.${String(window.max)}. Fix: install the runner version this server names ` +
-            `(GET ${runnerPaths.info}, serverVersion ${context.serverVersion}), then start the runner again.`,
+          message: versionRefusalMessage({ peerMajor: hello.protocolMajor, peerMinor: hello.protocolMinor, window, serverVersion: context.serverVersion }),
           supported: window,
           serverMinor: context.serverMinor,
         },

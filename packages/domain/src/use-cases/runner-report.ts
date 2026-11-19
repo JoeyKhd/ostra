@@ -1,13 +1,15 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { Prisma, processContainmentToDb } from "@ostra/db";
+import type { Tx } from "@ostra/db";
 import { PROTOCOL_MINOR } from "@ostra/protocol";
 import type { ExecutorKind, ProcessContainment } from "@ostra/protocol";
 import { z } from "zod";
 
 import { runnerLabels } from "../fleet/labels.ts";
 import { runnerVersionState } from "../fleet/versions.ts";
-import type { VersionFacts } from "../fleet/versions.ts";
+import type { RunnerVersionState, VersionFacts } from "../fleet/versions.ts";
 import { enqueueRunnerAdmissionInTx } from "./admission.ts";
+import type { Ports } from "../ports.ts";
 import type { RecordRunnerReport, RunnerReport } from "./m5-signatures.ts";
 
 // What a runner reports (F-067, F-069, F-061, ADR 0059; ticket 13): every `hello` and `status`
@@ -136,3 +138,44 @@ export const recordRunnerReport = async (
   await deps.notices.emitInTx(tx, { organizationId: report.organizationId, projectId: null, entity: "runner", entityId: report.runnerId });
   return { ok: true, labels, droppedLabels: dropped, versionState };
 };
+
+/** What a refused `hello` said of the runner (F-061): the build it runs, and the minor it speaks. */
+export type RefusedHello = {
+  readonly runnerId: RunnerReport["runnerId"];
+  readonly organizationId: RunnerReport["organizationId"];
+  readonly minor: number;
+  readonly version: string;
+};
+
+/**
+ * A runner refused at `hello` for its version (F-061, ticket 16): its row keeps the version and
+ * minor it spoke and when (`lastSeenAt`), so the fleet view lists it as outdated (its version
+ * state is `outside`) without a row of its own. Recorded once: a runner that retries with the same
+ * build writes nothing again. `true` when it wrote.
+ */
+export const recordRefusedRunner = async (
+  deps: Pick<Ports, "clock" | "notices"> & { readonly tx: Tx; readonly logger?: Logger },
+  refused: RefusedHello,
+): Promise<boolean> => {
+  const { tx } = deps;
+  const row = await tx.runner.findFirst({ where: { id: refused.runnerId, organizationId: refused.organizationId }, select: { minor: true, version: true } });
+  if (row === null || (row.minor === refused.minor && row.version === refused.version)) {
+    return false;
+  }
+  await tx.runner.update({
+    where: { id: refused.runnerId },
+    data: { minor: refused.minor, version: refused.version, lastSeenAt: new Date(deps.clock.now()) },
+  });
+  await deps.notices.emitInTx(tx, { organizationId: refused.organizationId, projectId: null, entity: "runner", entityId: refused.runnerId });
+  deps.logger?.warn("runner.version-refused", { runnerId: refused.runnerId, minor: refused.minor });
+  return true;
+};
+
+/**
+ * A runner row's version state for the panel (F-061): its last minor and version against the
+ * server's. A runner that has never spoken a minor is read as `current` until it does.
+ */
+export const runnerRowVersionState = (
+  server: VersionFacts,
+  row: { readonly minor: number | null; readonly version: string },
+): RunnerVersionState => (row.minor === null ? "current" : runnerVersionState(server, { minor: row.minor, version: row.version }));

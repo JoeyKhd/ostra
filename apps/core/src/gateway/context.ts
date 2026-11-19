@@ -10,6 +10,7 @@ import type {
   CommandSeq,
   DownFrame,
   EventsFrame,
+  InfoNpm,
   LeaseEpoch,
   LiveText,
   OrganizationId,
@@ -102,6 +103,8 @@ export type GatewayContext = {
   /** The minor this server speaks. A test sets another to check the version window. */
   readonly serverMinor: number;
   readonly serverVersion: string;
+  /** F-061: where the pin installs this server's version from (`npm` in `GET /runner/v1/info`). */
+  readonly runnerNpm: InfoNpm | null;
   /** The panel's address, where a member approves a device code. */
   readonly panelUrl: string;
   readonly deviceClientId: string;
