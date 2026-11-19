@@ -306,9 +306,11 @@ describe("a session that ends without changes", () => {
   it("F-065: opens no PR and puts the task in needs you with the agent's summary", async () => {
     const task = await runningTask();
     const before = codeHost.pulls.length;
+    // The agent speaks twice: the summary of what happened is its last message, not its first.
     await send(
       task,
       task.next,
+      { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s0"), text: "Let me look at how the tests run first." },
       { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "The tests run with pnpm test; nothing needed changing." },
       { kind: "turn.ended", turnId, stopReason: "end_turn" },
       { kind: "session.ended", outcome: "without-changes", repos: [{ repoId: theRepo(), ahead: false }] },
