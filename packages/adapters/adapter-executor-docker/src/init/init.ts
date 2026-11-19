@@ -151,7 +151,7 @@ export const runInit = async (env: InitEnv): Promise<void> => {
   const handle = async (frame: SidecarFrame): Promise<void> => {
     switch (frame.t) {
       case "welcome":
-        welcomed = true;
+        // Marked as it arrives, below: the next frame may be in the same chunk.
         return;
       case "prepare": {
         const error = await runPrepare(frame.dirs, frame.files);
@@ -243,6 +243,10 @@ export const runInit = async (env: InitEnv): Promise<void> => {
         return;
       }
       const frame = parsed.frame;
+      // At once, not in the queue: a request sent right after the welcome can arrive with it.
+      if (frame.t === "welcome") {
+        welcomed = true;
+      }
       // Stdio and control frames are handled in order.
       queue = queue
         .then(() => handle(frame))
