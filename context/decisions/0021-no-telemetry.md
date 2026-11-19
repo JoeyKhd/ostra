@@ -13,6 +13,6 @@ The server fetches the models.dev catalog (model names, limits, prices and logos
 
 ## Consequences
 
-- What we learn about usage comes from the hosted version, from our own team's use, and from people telling us.
+- What we learn about usage comes from our own team's use and from people telling us. *Changed 2026-11-19: this listed a hosted version first, and none is planned (ADR 0001).*
 - Update checks, if any, run only when an admin starts them and send nothing but the version.
 - Apart from the calls an organization sets up itself (its tracker, its code host and its model providers), the catalog fetch is the only outbound request the server makes on its own.

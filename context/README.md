@@ -27,7 +27,7 @@
 | `proof/` | The proof ledger: for each feature, a test that shows each "done when" condition holds (`proof/README.md`) |
 | `decisions/` | ADRs: one file per hard-to-reverse decision |
 | `research/` | Findings on agents, trackers, vendors and similar tools, every claim cited |
-| `history/` | The record of how and why the plan changed. `answers-2026-11-18.md` holds every open question as the maintainer delegated it, with each answer's decision, reason, confidence and what would reopen it. `answers-2026-11-19.md` does the same for the questions milestone 1 raised |
+| `history/` | The record of how and why the plan changed. `answers-2026-11-18.md` holds every open question as the maintainer delegated it, with each answer's decision, reason, confidence and what would reopen it. `answers-2026-11-19.md` does the same for the questions milestone 1 raised. `self-hosted-only-2026-11-19.md` records that ostra is self-hosted only, and what that took out of the plan |
 | `architecture/` | The system overview diagram |
 | `brand/` | The identity, the console layout and the screen concepts |
 

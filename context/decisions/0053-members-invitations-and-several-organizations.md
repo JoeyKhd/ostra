@@ -40,7 +40,7 @@ Q195.
 
 - **The active organization lives in the session** (better-auth's `activeOrganizationId`, which the panel already reads), and the account remembers the last one for its next sign-in. The sidebar's switcher lists the member's organizations and changes it.
 - **Links work across organizations.** IDs are unique per install, so a link to a record in another of the member's organizations switches to it, and the panel says "Switched to <organization>". A link to a record in an organization the member doesn't belong to is "not found", like any other.
-- **The instance admin creates organizations,** and so does any account when open organization sign-up is on (ADR 0026). The creator is its admin. A new organization gets what the first one got at the seed: a default pool and the built-in agent profile. It has no model provider, GitHub App or Linear connection until its admin adds them (each organization has its own, ADR 0026).
+- **The instance admin creates organizations** (ADR 0026). The creator is its admin. *Changed 2026-11-19: open organization sign-up, which let any account create one, is no longer planned (ADR 0026).* A new organization gets what the first one got at the seed: a default pool and the built-in agent profile. It has no model provider, GitHub App or Linear connection until its admin adds them (each organization has its own, ADR 0026).
 - **What is per organization stays per organization:** a member's personal runner, CLI session and notification choices belong to one membership. A person in two organizations registers a runner in each.
 
 ## Proving isolation for every kind of record
@@ -62,7 +62,7 @@ Q208. The demo needs the reviewer user of `GITHUB_TEST_REVIEWER_TOKEN` linked to
 - **Project admins inviting new people.** Rejected for v1: inviting adds someone to the organization, and the organization admin owns who belongs (F-003).
 - **Matching an invitee by address, with email on.** Rejected: the link's ID stays the key (Q118). Verification is added on top, not instead.
 - **Self-service resets without email.** Rejected: nothing would prove the person owns the account (Q116).
-- **The organization in the URL** (`/o/<slug>/…`). Rejected for now: every route and link would change for no gain while IDs are unique. A hosted version with custom domains can add it.
+- **The organization in the URL** (`/o/<slug>/…`). Rejected for now: every route and link would change for no gain while IDs are unique. *Changed 2026-11-19: this added that a hosted version with custom domains could add it, and none is planned (ADR 0001).*
 - **A hand-written isolation test per model.** Rejected: the next table would be forgotten. The generated list fails until it's added.
 
 ## Consequences

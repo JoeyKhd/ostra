@@ -1,6 +1,6 @@
 # ostra
 
-Source-available, self-hostable control panel that connects an organization's tracker (Linear, later Jira) to its coding agents (OpenCode, with more agents later through the same interface). A ticket or a prompt becomes a task, and an agent works it on its own branch on a runner. Members can steer it and reopen it at any time, and it ships a GitHub PR for each repo it changes. The brief: `context/project.md`.
+Source-available, self-hostable control panel that connects an organization's tracker (Linear, later Jira) to its coding agents (OpenCode, with more agents later through the same interface). A ticket or a prompt becomes a task, and an agent works it on its own branch on a runner. Members can steer it and reopen it at any time, and it ships a GitHub PR for each repo it changes. It's an app people host themselves: no hosted version is planned (ADR 0001, amended 2026-11-19). The brief: `context/project.md`.
 
 **Phase: milestone 1, first PR** (`context/build-order.md`). Milestone 0 is done: all ten spikes answered their questions, and their findings are in `context/research/` and folded into the ADRs. Milestone 1 (a prompt becomes a task, and an agent opens a PR from a runner) is being built and verified against `context/specs/m1-first-pr/`; milestone 2 is specced in `context/specs/m2-tickets-in/`. When a question still needs throwaway code, it's a spike in `spikes/<kebab-question>/`, and its finding goes into `context/research/`.
 

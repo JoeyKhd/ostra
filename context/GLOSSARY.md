@@ -363,7 +363,7 @@ A member who manages an organization or a project. An organization admin manages
 _Avoid_: owner, operator
 
 **Instance admin**:
-The account that manages the install itself: its organizations, its email, its accounts' reset links and open sign-up. Separate from any organization's admin: it sees nothing inside an organization it isn't a member of.
+The account that manages the install itself: its organizations, its email and its accounts' reset links. Separate from any organization's admin: it sees nothing inside an organization it isn't a member of.
 _Avoid_: superuser, root, owner
 
 **Invitation**:

@@ -10,8 +10,8 @@ Spec: `../spec.md`, sections 3 (steps 2, 12) and 12; targets `project-access`, `
 ## What to build
 
 - **Project access** to the `project-access` target, in the project's settings: open or restricted, listed members with project roles, "Add member" from the organization's active members, and the line that organization admins always see it. Read-only for project members.
-- **The switcher** to `org-switcher`, at the top of the sidebar: the member's organizations, the active one marked, "New organization" for the instance admin (or everyone with open organization sign-up), the create sheet. A link to a record of another of the member's organizations switches through `organizations.resolve` and shows "Switched to <organization>".
-- **The instance's pages** (`/instance/organizations`, `/instance/accounts`) to `instance-settings`, for the instance admin only: organizations with their counts, accounts with "Create reset link" (shown once) and instance admins, and open sign-up's two switches. The sidebar shows them under "Instance" to the instance admin alone.
+- **The switcher** to `org-switcher`, at the top of the sidebar: the member's organizations, the active one marked, "New organization" for whoever `organizations.create` lets create one (the instance admin), the create sheet. A link to a record of another of the member's organizations switches through `organizations.resolve` and shows "Switched to <organization>".
+- **The instance's pages** (`/instance/organizations`, `/instance/accounts`) to `instance-settings`, for the instance admin only: organizations with their counts, accounts with "Create reset link" (shown once) and instance admins. *Changed 2026-11-19: open sign-up's two switches are out (ADR 0026, amended), and the target's "Creating organizations" and "Sign-up" sections with them.* The sidebar shows them under "Instance" to the instance admin alone.
 - **What a member can't do is absent,** not disabled: admin pages and actions don't render for a member, and a direct URL shows "not found" or "Only admins can open this", as the API answers.
 
 ## Done when

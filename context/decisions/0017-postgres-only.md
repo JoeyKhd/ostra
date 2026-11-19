@@ -9,7 +9,7 @@ Postgres is the only store a fresh install needs, and `docker compose` includes 
 
 ## Considered options
 
-- **SQLite as well, for small installs.** Rejected: it doubles the testing, and the queue, several organizations per install (ADR 0026) and the hosted version all need Postgres.
+- **SQLite as well, for small installs.** Rejected: it doubles the testing, and the queue and several organizations per install (ADR 0026) both need Postgres. *Changed 2026-11-19: this also named the hosted version, and none is planned (ADR 0001).*
 - **A required object store for files.** Rejected: a fresh install must work with only the required settings. The S3-compatible adapter stays optional.
 
 ## Consequences

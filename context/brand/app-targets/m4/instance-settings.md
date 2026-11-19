@@ -4,8 +4,9 @@
 
 - **Prompts:** `instance-settings.prompt.txt` (Organizations, generation 1 of 1) and `instance-settings-accounts.prompt.txt` (Accounts: generation 1 from it, then generation 2, an edit of the first that adds the Instance admins section; its prompt follows the first in the file). GPT Image 2.6 through Higgsfield, 3:2, 2k, high. References: the 2048 original of `app-targets/m2/storage-settings` (the screen the spec starts this one from), `app-concepts/html/home-graphite.png` and the Hinge logo `kit/logo/export/ostra-hinge-single-color-2048.png`; the Accounts generations also took the Organizations picture first, so the two pages match.
 - **Routes (new):** `apps/web/src/app/(panel)/instance/organizations/page.tsx` → `components/instance/organizations-view.tsx`, and `apps/web/src/app/(panel)/instance/accounts/page.tsx` → `components/instance/accounts-view.tsx` (ticket 33 names `src/app/(panel)/instance/`).
-- **Features:** F-049 (several organizations: the instance admin creates them, open organization sign-up), F-002 (the instance admin's reset link), F-003 (the last instance admin). Spec section 12, screen 7. ADR 0053 (members, invitations and several organizations), ADR 0026 (open sign-up), ADR 0003 (the reset link's sink). Ticket 24 (`instance.organizations`, `instance.accounts.search`, `instance.grantAdmin`, `instance.revokeAdmin`, the two switches), ticket 22 (`accounts.createResetLink`), ticket 33 (these pages).
+- **Features:** F-049 (several organizations: the instance admin creates them), F-002 (the instance admin's reset link), F-003 (the last instance admin). Spec section 12, screen 7. ADR 0053 (members, invitations and several organizations), ADR 0026, ADR 0003 (the reset link's sink). Ticket 24 (`instance.organizations`, `instance.accounts.search`, `instance.grantAdmin`, `instance.revokeAdmin`), ticket 22 (`accounts.createResetLink`), ticket 33 (these pages).
 - **Status:** a proposed target, waiting on approval (ticket 31's `## Comments`). Ticket 33 builds its data and tests until then, not its UI.
+- **Changed 2026-11-19: open sign-up is out.** It existed for a hosted version, which isn't planned (ADR 0026, amended). The "Creating organizations" and "Sign-up" sections below, with their switches, their dialogs and their locked states, aren't built. The pictures still show them, and the build leaves them out. The two settings stay as milestone 1 built them, with their lines in the configuration reference.
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with each picture.
 
@@ -213,7 +214,7 @@ Ticket 24's `instance.organizations` returns each organization's name and its co
 
 - **Per organization:** its creation time and creator's name (`Organization.createdByUserId`, spec 5.3), the admin count, pending invitations, pools, and the caller's own role in it.
 - **Per account:** its name, verified flag, active organizations' names, creation time, last sign-in (the latest session's `createdAt`), and whether it's an instance admin with the grant's time.
-- **The switches' state:** each switch's saved value, and whether its setting is set (and so locks it). Ticket 24 names "the two open sign-up switches"; this target reads them as instance settings overridden by the env settings, as email's are.
+- *Out since 2026-11-19 (above).* **The switches' state:** each switch's saved value, and whether its setting is set (and so locks it). Ticket 24 names "the two open sign-up switches"; this target reads them as instance settings overridden by the env settings, as email's are.
 - **Mail on or off,** for the reset link's mail line (`email.status`, milestone 3).
 
 ## Differences from the current code

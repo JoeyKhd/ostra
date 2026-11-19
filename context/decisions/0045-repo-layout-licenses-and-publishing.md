@@ -60,4 +60,4 @@ The license split of ADR 0048 only holds if a machine checks it.
 - If the package count slows the build, `jobs` folds into `domain` behind a lint rule, and `domain` splits only when it hurts.
 - An adapter that needs to release faster than the server would break the single version line. That would reopen this decision.
 - `apps/web` and `apps/core` are the two processes of ADR 0016. Both import the same domain packages, and neither holds logic the other needs.
-- Contributions come under the contributor agreement in `CONTRIBUTING.md`, not the DCO sign-off of ADR 0009. A contributor agrees by a box in their pull request (ADR 0048, amended 2026-11-19). Anything only the hosted version needs stays in separate services.
+- Contributions come under the contributor agreement in `CONTRIBUTING.md`, not the DCO sign-off of ADR 0009. A contributor agrees by a box in their pull request (ADR 0048, amended 2026-11-19). *Changed 2026-11-19: this kept what only a hosted version needed in separate services, and none is planned (ADR 0001).*

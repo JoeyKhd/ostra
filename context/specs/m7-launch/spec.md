@@ -42,7 +42,7 @@ Read from the code on `main` on 2026-11-19, and from milestones 2 to 6's specs f
 - providers that sign each request (Bedrock, Vertex): F-130, after v1
 - other languages than English: v1 ships the message files and the pseudo-locale that proves a new file is enough (F-083)
 - signed runner binaries: F-085, after v1
-- a hosted version: the maintainer's, after v1 (ADR 0048)
+- a hosted version: not planned (2026-11-19). ostra is an app people host themselves (ADR 0001, amended)
 - a lawyer's review of the license, the licensor line or the contributor agreement: the maintainer's choice, and not a gate (ADR 0048, amended 2026-11-19)
 
 ### On this machine

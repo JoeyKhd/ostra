@@ -1,6 +1,6 @@
 # ostra: the brief
 
-**Status:** Signed off 2026-11-17, reworked 2026-11-18 from the maintainer's delegated answers (`history/answers-2026-11-18.md`). Items marked *(proposed)* are not yet agreed. Terms follow `GLOSSARY.md`; what's in v1 and what comes later is in `features.md`.
+**Status:** Signed off 2026-11-17, reworked 2026-11-18 from the maintainer's delegated answers (`history/answers-2026-11-18.md`). Amended 2026-11-19: ostra is self-hosted only, with no hosted version planned (`history/self-hosted-only-2026-11-19.md`). Items marked *(proposed)* are not yet agreed. Terms follow `GLOSSARY.md`; what's in v1 and what comes later is in `features.md`.
 
 ## One-liner
 
@@ -33,13 +33,13 @@ Today the maintainer's team runs several agents by hand in terminals and worktre
 
 ## Who it's for
 
-Software teams of any size, each set up in ostra as an **organization**. They keep their tickets in a tracker (Linear first, later Jira) or work from prompts alone, keep their code on GitHub, and use or want to use coding agents. An organization deploys ostra itself, or shares an install with others, and connects its own tracker and GitHub org (each organization registers its own GitHub App and Linear app), its model providers and its compute (ADR 0001, ADR 0026). A paid hosted version comes later, and it stays the maintainer's alone: the license doesn't let anyone else sell ostra or offer it as a service (ADR 0048).
+Software teams of any size, each set up in ostra as an **organization**. They keep their tickets in a tracker (Linear first, later Jira) or work from prompts alone, keep their code on GitHub, and use or want to use coding agents. An organization deploys ostra itself, or shares an install with other organizations, and connects its own tracker and GitHub org (each organization registers its own GitHub App and Linear app), its model providers and its compute (ADR 0001, ADR 0026). ostra is an app people host themselves, and no hosted version is planned (the maintainer, 2026-11-19: "For now, forget that we will be selling this software as a cloud solution. It will only be an app that people self host themselves for now."). The license doesn't let anyone else sell ostra or offer it as a service (ADR 0048).
 
 **First users:** the maintainer and their team.
 
 | Role | What they do |
 |------|--------------|
-| **Instance admin** | The first account on an install. Creates organizations, and decides whether sign-up for new ones is open (Q102) |
+| **Instance admin** | The first account on an install. Creates organizations, and manages the install's accounts (Q102) |
 | **Organization admin** | Sets up the organization: connects its GitHub App and Linear app, adds model providers, creates runner pools and their join tokens, defines agent profiles and budgets, invites members |
 | **Project admin** | Owns one project: its repos, boards, environment and automations, and its member list when access is restricted (Q35) |
 | **Member** | Picks tickets or types prompts, drives and steers tasks, answers "needs you" items, reopens tasks and reviews PRs, mostly from the panel. Sees every task in the projects they can open. Product people who refine tickets are ordinary members (Q70) |
@@ -138,4 +138,4 @@ Inside one box (ADR 0029, ADR 0030):
 - **Not a compute provider.** Runners are programs you host yourself and join with a key (Q36).
 - **Not an IDE.** You change a task's code by hand in your own editor, on the task's branch. `ostra checkout` puts it on your machine (F-103).
 - **No auto-merge.**
-- **No hosted version in v1.** It comes later (ADR 0001).
+- **No hosted version.** ostra is an app people host themselves (ADR 0001). *Changed 2026-11-19: until then a hosted version came after v1. The maintainer: "For now, forget that we will be selling this software as a cloud solution. It will only be an app that people self host themselves for now."*

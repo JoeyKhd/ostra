@@ -104,7 +104,7 @@ Every integration is an adapter with a shared contract: trackers, code hosts, ag
 
 Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues), and code in pull requests. ostra is still on its way to v1, so open an issue before a big change.
 
-A pull request needs one tick: its author agrees to the short contributor agreement in [`CONTRIBUTING.md`](CONTRIBUTING.md). You keep your copyright, and you let the licensor license your contribution on any terms. That lets the hosted version and commercial licenses include contributed code.
+A pull request needs one tick: its author agrees to the short contributor agreement in [`CONTRIBUTING.md`](CONTRIBUTING.md). You keep your copyright, and you let the licensor license your contribution on any terms. That lets commercial licenses include contributed code.
 
 Coding agents working in this repo follow [`AGENTS.md`](AGENTS.md).
 
@@ -114,7 +114,7 @@ ostra is source-available, not open source. The code is public, and anyone can s
 - **The Sustainable Use License, version 1.0**, for the server, the web app and every package that isn't Apache-2.0: [`LICENSE`](LICENSE)
 - **Apache-2.0** for the runner, the protocol, the adapter SDK and the adapters, so companies can run runners and write adapters freely. Each of those packages carries its own `LICENSE`.
 
-In short, you may self-host ostra for your own team, or use it for personal and non-commercial purposes, for free. Nobody else may sell the server or the panel, or offer them as a paid service; sharing is allowed only free of charge, for non-commercial purposes. The Apache-2.0 packages carry no such limit. The paid hosted version stays the maintainer's alone, and the license is what protects it. Read the license itself for the exact terms.
+In short, you may self-host ostra for your own team, or use it for personal and non-commercial purposes, for free. Nobody else may sell the server or the panel, or offer them as a paid service; sharing is allowed only free of charge, for non-commercial purposes. The Apache-2.0 packages carry no such limit. ostra is an app you host yourself: there is no hosted version, and none is planned. Read the license itself for the exact terms.
 
 A check in CI keeps an Apache-2.0 package from depending on one that isn't. The copyright holder, and the notices that go with the code, are in [`NOTICE`](NOTICE).
 

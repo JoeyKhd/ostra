@@ -35,7 +35,7 @@ Each organization has its own Jira connection, as it has its own GitHub App and 
 ## Considered options
 
 - **A 3LO app that each customer creates.** Rejected: it's the route Atlassian's rule names. It acts as the user, its refresh tokens rotate and expire after 90 days of inactivity, and it needs dynamic webhooks with a 30-day refresh job.
-- **A single 3LO app that ostra publishes.** Rejected for self-hosting: one client secret would ship to every install. A hosted version could do this, and that would be its own decision.
+- **A single 3LO app that ostra publishes.** Rejected: one client secret would ship to every install. *Changed 2026-11-19: this added that a hosted version could do it, and none is planned (ADR 0001).*
 - **Collecting each member's personal API token.** Rejected: it's the other thing the rule names, and ostra would hold a token for every person.
 - **Registering the webhook for the admin through the REST API.** Not part of this decision. It needs an admin's own credentials, and ostra doesn't collect those.
 - **Dynamic webhooks with the service account's OAuth 2LO credentials.** Rejected: whether 2LO can register them is unverified (S-11), and they expire every 30 days.
