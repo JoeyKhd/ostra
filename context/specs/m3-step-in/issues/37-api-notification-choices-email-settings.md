@@ -21,4 +21,11 @@ Spec: `../spec.md`, sections 4 and 5.4; ADR 0050
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
 - [ ] Committed as `✨ add notification and email settings API`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`notifications.preferences.get` adds** (`notification-settings.md`, "Data"): the connected tracker's name or none; the email delay in seconds (the instance setting, or `OSTRA_EMAIL_DELAY_SECONDS`); when the member's choices were last saved (the latest `NotificationPreference.updatedAt`, ticket 06), or never; and whether the viewer is the instance admin.
+- **`email.settings.get` adds** (`email-settings.md`, "Data"): the delay in effect; the values of the non-secret settings that are set (`OSTRA_EMAIL_PROVIDER`, `OSTRA_EMAIL_FROM` and the SMTP host, port, security and user), never a secret's; the last email audit entry (who, what, when); and the admin's own address.
+
 ## Comments

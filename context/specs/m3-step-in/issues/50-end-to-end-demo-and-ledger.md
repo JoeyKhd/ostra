@@ -25,4 +25,11 @@ Spec: `../spec.md`, section 3
 - [ ] All the checks for the whole repo pass.
 - [ ] Committed as `✅ add the milestone 3 end-to-end demo`, and the record and ledger as `📝 set milestone 3's ledger statuses`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Mail without a Resend key** (Q186). Until `email.env` holds the key (ticket 51, step 1), the scripted run sets email to SMTP on a local SMTP server that the script starts in-process (ticket 04's `node:net` server), and reads the mails back from it for steps 3 and 15 and the mail checks. With the key, it uses Resend as section 3 says. The live Resend send and its delivery readback stay a maintainer step, and F-115 stays `building` as section 2 already says.
+- **`@ostra` (step 10)** needs the test App's webhook and events, and a token for the linked member's GitHub user (ticket 51, steps 9 and 10). Without them the scripted run skips step 10, and this ticket's comments say so. The repo checks of milestone 2 still wait for `test1` and `test2` to be public (milestone 2's ticket 40, step 3).
+
 ## Comments

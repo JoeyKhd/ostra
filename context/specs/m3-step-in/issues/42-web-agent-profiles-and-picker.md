@@ -22,4 +22,11 @@ Spec: `../spec.md`, section 12 (`agent-profiles`, `agent-profile`; and `m1/proje
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web`.
 - [ ] Committed as `✨ add the agent profiles screens`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Archive and the built-in profile:** as tickets 07 and 34 decided. The archive dialog says the projects that default to the profile move to the built-in one. An archived profile's page is read-only, with no restore. The built-in profile's "Who may use it" shows `Everyone`, disabled.
+- **An MCP server's `Read-only` switch** saves `readOnly`, and the match picker for `mcp` offers `Any server not marked read-only` and `Any server` (ticket 01).
+
 ## Comments

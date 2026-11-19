@@ -22,4 +22,11 @@ Spec: `../spec.md`, section 4 ("Checks"); ADR 0052
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
 - [ ] Committed as `✨ add checks before the PR`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Checks and repos** (`task-checks.md`, point 1; Q188). A check that names a repo runs only on a turn that changed that repo, in the repo's folder. A check with no repo runs once per turn with changes, at the workspace root, and shows once, without a chip; it isn't run per repo. A repo's PR reads the latest result of every check that applies to it, its own and the repo-less ones. A failing repo-less check makes every PR changed in that turn a draft. A PR that ostra made a draft is marked ready when every check that applies to it passed on its latest run. Tests: a two-repo task where only one repo changed runs that repo's check and the repo-less one, and drafts only that repo's PR.
+- **Turn numbers aren't renumbered** (point 2). A turn without changes runs no checks, so the Checks tab can skip from `Turn 3` to `Turn 1`, and `CheckRun.turnOrdinal` keeps the real number.
+
 ## Comments

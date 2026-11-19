@@ -21,4 +21,10 @@ Spec: `../spec.md`, section 4 ("Checks"); ADR 0052
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ run checks after a turn`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Which checks run** (`task-checks.md`, point 1; Q188). A check that names a repo runs only when the turn changed that repo, in the repo's folder; one that names none runs once, at the workspace root, when the turn changed any repo. The order stays the environment's. A check that doesn't apply to the turn isn't run and emits nothing. Test: a two-repo turn that changed one repo.
+
 ## Comments

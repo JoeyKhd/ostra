@@ -21,4 +21,11 @@ Spec: `../spec.md`, section 12 (`task-checks`, `take-it-local`, `account`; and `
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web`.
 - [ ] Committed as `✨ add checks, take it local and Account`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **A check with no repo** shows once, without a chip (`task-checks.md`, point 1; ticket 23).
+- **Turn numbers** are the real ones, and may skip (point 2).
+
 ## Comments

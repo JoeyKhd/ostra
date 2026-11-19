@@ -21,4 +21,12 @@ Spec: `../spec.md`, section 4; ADR 0049, ADR 0036
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
 - [ ] Committed as `✨ add the approvals, questions and plans API`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`plans.answer` takes the plan as structured steps and a message** on an approve, and core renders `text` with the protocol's prompt. It writes `plan.answered { entries, message, text }` (ticket 01).
+- **`approvals.answer` accepts an expired approval while its item is open** (`task-approval.md`, point 3; ticket 17), so the receipt's "Answer anyway" works. A cancelled one is refused with `CONFLICT`.
+- **`tasks.get` returns a deny's reason** to every member who can open the task (point 1).
+
 ## Comments

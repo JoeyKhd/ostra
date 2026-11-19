@@ -21,4 +21,11 @@ Spec: `../spec.md`, sections 4 ("A notification") and 5.4 (settings); ADR 0050
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
 - [ ] Committed as `✨ deliver notifications by email`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **No `List-Unsubscribe` in milestone 3** (`email-needs-you.md`, open points). A member's own notifications aren't bulk mail, and each kind is turned off in Notifications, which the footer links to. `List-Unsubscribe` and `List-Unsubscribe-Post` come in milestone 4 with F-002's mails, pointing at a signed endpoint per member and kind.
+- **The proof without a Resend key** (Q186). The Resend cases run on ticket 04's fake API, and the SMTP cases on the in-process server of ticket 13. A live send through Resend waits for `email.env` (ticket 51, step 1).
+
 ## Comments

@@ -21,4 +21,11 @@ Spec: `../spec.md`, section 4 ("`@ostra`"); ADR 0052, ADR 0041
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ reopen tasks from @ostra on a PR`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`@ostra` needs the App's webhook** (Q187). Nothing polls PR comments in milestone 3. An App created without a public address has no webhook (`buildAppManifest` leaves `hook_attributes` out), and on such an install a comment never reaches ostra. `docs/configuration.md` says so where it describes the GitHub App. The test App has no webhook and no events today (ticket 51, step 9).
+- **Reactions and the App's permissions.** The App has `pull_requests: write` and `issues: read`. Ticket 09's live case confirms that 👀 on a PR's issue comment and on a review comment works with these. If GitHub refuses it, the manifest asks for `issues: write`, the change goes in ticket 09's comments, and the maintainer accepts the new permission on the test App's installation.
+
 ## Comments

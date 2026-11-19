@@ -24,4 +24,11 @@ Spec: `../spec.md`, sections 4 and 5.1 ("HTTP for the CLI"); ADRs 0051, 0052
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ add checks, local and link API`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`account.cliSessions.list` adds** `expiresAt` per session and the session length (`OSTRA_CLI_SESSION_DAYS`) (`account.md`, "Data").
+- **`account.github.get` adds** the GitHub user ID and `githubLinkedAt`, and whether GitHub is connected to the install, for the not-connected row. The command's address is `OSTRA_PUBLIC_URL`.
+
 ## Comments

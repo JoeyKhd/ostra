@@ -22,4 +22,12 @@ Spec: `../spec.md`, section 12 (`task-changes`; and `m2/task-reopen` growing); A
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web`.
 - [ ] Committed as `✨ add the Changes tab and diff comments`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Expanding unchanged lines** (`task-changes.md`, point 1): not in milestone 3. The gap shows its count only, and expanding it would need each file's contents at the head.
+- **Comments on a merged or done task** (point 2): sending follows the composer's rule for a task with no session going, so it reopens the task. After a merge, that's F-066's fresh branch, and the message carries each comment's head, so the agent knows it refers to the merged work.
+- **Sent comments** (point 3): every member who can open the task sees every sent comment, since the message that carried them is in the thread. Drafts stay their author's (ADR 0051; ticket 38 already returns them so).
+
 ## Comments

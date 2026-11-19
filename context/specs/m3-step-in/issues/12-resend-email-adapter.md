@@ -25,4 +25,10 @@ Resend is the priority (ADR 0007, the maintainer: "resend is priority").
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for the package.
 - [ ] Committed as `✨ add the Resend email adapter`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **The proof without a Resend key** (Q186). No key exists yet (ticket 51, step 1). Every done-when condition but the live case is proved on ticket 04's fake Resend API, whose request and response shapes follow Resend's API reference for `POST /emails` (the `Idempotency-Key` header, a 422 for a bad address, a 429 with `Retry-After`, a 401). The live case stays in the suite, skipped unless `email.env` holds `RESEND_API_KEY`. The ticket's "live" box stays unticked until the maintainer adds the key and runs it once, and `context/proof/F-115.md` names it as a maintainer step.
+
 ## Comments

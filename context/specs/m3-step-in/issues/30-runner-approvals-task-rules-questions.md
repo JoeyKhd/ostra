@@ -24,4 +24,11 @@ Milestone 1 auto-answers every request under `NO_RULES_YET` and rejects `approva
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ hold approvals for a person's answer`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Held requests are checked again when a task rule arrives** (`task-approval.md`, point 2). After an `allow_task` answer adds its rule, the runner matches the session's other held requests against it. Each match is answered "once" and reported `approval.auto_answered { approvalId, ruleId }` with the rule's ID from the command (ticket 01). Core closes their items (ticket 17). Test: two `pnpm add` requests held at once; one "Approve for this task" answers both.
+- **The matcher and the deny's re-prompt come from `@ostra/protocol`** (Q190), not from the domain, which the runner can't import.
+
 ## Comments

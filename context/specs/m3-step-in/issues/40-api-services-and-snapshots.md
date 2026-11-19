@@ -20,4 +20,10 @@ Spec: `../spec.md`, section 4 ("Snapshots", "Services"); ADR 0038 (amended)
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
 - [ ] Committed as `✨ add services and snapshots to the API`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`environments.get` adds** (`environment-services.md`, "Data"): the project's pool names, the count of online runners that can start services, and the executors online, so the runner note and "Where tasks run" stay. Per service, its last box's runner name and time, and a failed service's reason, read from `service.healthy` and `service.failed`. The snapshot's duration from `Snapshot.buildDurationMs` (ticket 06).
+
 ## Comments

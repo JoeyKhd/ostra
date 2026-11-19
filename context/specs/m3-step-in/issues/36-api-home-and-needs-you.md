@@ -23,4 +23,10 @@ Spec: `../spec.md`, sections 1 ("Home exists"), 2 (F-062, F-036) and 4 ("A notif
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api`.
 - [ ] Committed as `✨ add the Home and needs-you API`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`home.board` returns what the cards need** (`home-board.md`, "Data"): per card, the status line's source (the open needs-you item's reason and detail, the queue's pool or runner, the latest activity for running and preparing, the in-review sub-state with the PR numbers, the stop reason); the column totals apart from the page of cards, with a cursor per column; and the 7-day window for `merged`, `done` and `stopped`, by the time the task entered that state. Nothing is dropped from the card.
+
 ## Comments

@@ -24,4 +24,11 @@ Spec: `../spec.md`, section 5.2 ("`AgentAdapter`"); ADR 0049
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ add the agent interface for profiles`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **The matcher comes from `@ostra/protocol`** (ticket 01's decision, Q190). A `runner-only` adapter and the fake agents use `src/agent/rules.ts`; nothing in `adapter-sdk` imports `packages/domain`.
+- **The fake agents' MCP servers** carry `readOnly`, so the suite's plan-turn case proves a read-only server's tool is allowed and another server's is refused.
+
 ## Comments

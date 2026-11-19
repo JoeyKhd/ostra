@@ -25,4 +25,10 @@ SMTP is the second option, for installs with their own mail relay or no internet
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for the package.
 - [ ] Committed as `✨ add the SMTP email adapter`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **SMTP's live proof is in-process, with no new dependency** (Q186). The real adapter on nodemailer sends over loopback to ticket 04's SMTP server on `node:net`, run in the test, with `STARTTLS` accepted (on a throwaway self-signed certificate the test makes with `openssl`, which Git for Windows and CI's Ubuntu both have) and refused, and `AUTH PLAIN`. That proves the adapter's whole send path with no network. A third-party SMTP server package (`smtp-server`, for example) would be a new dependency, so it waits for the maintainer's yes (ticket 51, step 11). The case through Resend's SMTP relay stays gated on `email.env`, and waits for the key (ticket 51, step 1).
+
 ## Comments

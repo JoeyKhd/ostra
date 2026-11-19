@@ -24,4 +24,16 @@ Spec: `../spec.md`, section 12 (`task-approval`, `task-plan`; and `m1/task` grow
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web` and `task-view`.
 - [ ] Committed as `✨ answer approvals and plans on the task page`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **A deny's reason** shows in the receipt to every member who can open the task (`task-approval.md`, point 1).
+- **"Answer anyway"** shows on an expired approval while its item is open (point 3; tickets 17 and 35).
+- **`Take over to answer`** takes over the whole task, as ADR 0049 makes questions the driver's, and the line under it says so (point 4).
+- **"Answered by a task rule"** reads the pattern from the rule `approval.auto_answered.ruleId` names (ticket 01).
+- **The approved plan** (`task-plan.md`, point 1): the receipt shows only the plan as approved, with `edited` on the steps that differ from the proposal (`plan.answered.entries`, ticket 01). No "Show what was proposed" in milestone 3. `plan.proposed` stays in the log, so it can come later with no contract change.
+- **The status during a plan turn** (point 2): `Running · Planning`, from `turn.started.mode`. No new task state.
+- **Reordering steps** (point 3): `Alt+↑` / `Alt+↓` and the remove button ship and are tested. Drag uses the browser's own drag events, with no dependency, as the target draws it. At phone width there's no grip.
+
 ## Comments

@@ -21,4 +21,10 @@ Spec: `../spec.md`, section 4 ("Plan first"); ADR 0049, ADR 0032
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ add plan mode and live steering tests`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **The plan-mode preamble, the approved plan and the revision request come from `@ostra/protocol`'s `src/agent/prompts.ts`** (Q190). The runner can't import `packages/domain`.
+
 ## Comments

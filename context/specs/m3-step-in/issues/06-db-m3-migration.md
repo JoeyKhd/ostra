@@ -27,4 +27,12 @@ One new migration, after milestone 2's, additive only: every change in section 5
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ add the milestone 3 migration`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **`Snapshot.buildDurationMs`** (nullable integer), written from `snapshot.built { durationMs }`, for the environment's snapshot row (`environment-services.md`, "Data").
+- **`NotificationPreference.updatedAt`,** for the notification page's "Last change" (`notification-settings.md`, "Data").
+- **No column for the rest of the targets' data.** `AgentProfile.mcpServers` entries carry `readOnly` and `approvalRules` entries carry `preset` inside their JSON, parsed by ticket 01's schemas. `TaskApprovalRule.id` is the protocol's `TaskRule.ruleId`. A service's health stays an event. Spec section 5.3 says the same.
+
 ## Comments

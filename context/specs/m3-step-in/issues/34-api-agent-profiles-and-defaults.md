@@ -21,4 +21,13 @@ Spec: `../spec.md`, sections 2 (F-021) and 11 (items 2, 6, 7); ADR 0049
 - [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `api` and `domain`.
 - [ ] Committed as `✨ add the agent profiles API`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **Archive** (`agent-profile.md`, points 1 to 3; Q189): as ticket 07 decided. `.archive` is allowed for any profile but the built-in one, and moves the project defaults that pointed at it to the built-in profile. There's no `.restore` in milestone 3. The built-in profile's access is always `everyone`, and `.save` refuses `listed` for it. Tests: the defaults move, and the built-in profile can't be archived or listed.
+- **MCP servers' `readOnly`** is saved and returned, false by default (ticket 01).
+- **`.list` returns what the list's rows need** (`agent-profiles.md`, "Data"): `planFirst`, `access` with the listed members' names and initials, `archivedAt`, the rules (name, tool, `preset` and match: the panel summarizes them), the skills' and MCP servers' names, the defaults (project ID, name, colour and kind, only for projects the viewer can open), and the last audit entry's actor and time. Archived profiles only for admins, behind `includeArchived`.
+- **`.get` adds** `usedBy` (a count of tasks with `agentProfileId` set to it), and who created and archived it, from its audit entries. A skill's description is read from its `SKILL.md` on the client. `.ruleCoverage` returns matched and unmatched samples per rule, and the panel shows the first of each.
+
 ## Comments

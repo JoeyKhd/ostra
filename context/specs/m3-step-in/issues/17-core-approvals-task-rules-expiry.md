@@ -23,4 +23,13 @@ Spec: `../spec.md`, section 4 ("An approval"); ADR 0049, ADR 0036
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ add approvals with task rules`.
 
+## Decided 2026-11-19
+
+Decided on the maintainer's delegation while preparing the build, from the open points of the milestone 3 targets (`context/brand/app-targets/m3/`) and the spec's gaps. If the maintainer disagrees with one, it goes back to `context/open-questions.md` and this section changes.
+
+- **A task rule's ID in the command** (ticket 01). For "Approve for this task", core inserts the `TaskApprovalRule` first and sends its ID as `taskRule.ruleId`.
+- **`approval.auto_answered` for an approval already requested** (`task-approval.md`, point 2). When a new task rule answers a request the runner was holding (ticket 30), the event names a stored, pending approval. Core marks it answered by that rule, closes its needs-you item, and enqueues `notify.fanout` for the item's "answered" change, so its notifications show it answered. An `auto_answered` with no earlier request is stored as before, with no item and no notification. Test: two open requests, one "for this task" answer, both answered, one item left open by neither.
+- **"Answer anyway" on an expired approval** (point 3). `answerApproval` accepts an `expired` approval while its needs-you item is open; the answer reopens the task with the decision, as this ticket already says. A `cancelled` approval stays unanswerable.
+- **Who sees a deny's reason** (point 1). Every member who can open the task, in the receipt: the re-prompt carries it into the thread anyway. It stays out of the audit entry and every log line (ADR 0049).
+
 ## Comments

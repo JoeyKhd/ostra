@@ -295,6 +295,18 @@ Writing `specs/m3-step-in/spec.md` met these questions. The maintainer delegated
 | Q184 Snapshots on `docker` before the registry, and the `host` stand-in | ADR 0038 (amended), F-051: the building runner keeps the image; other runners fall back to the full setup; on `host`, repo mirrors and a dependency cache per project |
 | Q185 A task with services when only `host` runners are online | ADR 0038 (amended), F-094: offered only to runners whose executor declares `services`; it waits with the reason |
 
+#### Settled while preparing milestone 3's build (2026-11-19)
+
+Met while reading the approved milestone 3 targets' open points and the spec against the code, on the same delegation. Each is in the spec's section 11 (items 21 to 25) and in the `## Decided 2026-11-19` section of the tickets that build it. Ticket 51 asks the maintainer to review them with Q165 to Q185.
+
+| Question | Settled in |
+|---|---|
+| Q186 How are F-115's mails proved with no Resend key yet? | Spec section 11, item 21; tickets 12, 13, 21, 50: Resend on a fake of its API; SMTP with the real adapter against an in-process `node:net` SMTP server with `STARTTLS` and `AUTH`, no new dependency; the live Resend send and the SMTP relay case wait for the key (ticket 51) |
+| Q187 Does `@ostra` work on an App without a webhook? | Spec section 11, item 22; ticket 25: no, nothing polls PR comments, and the docs say so |
+| Q188 Where and when does a check run in a task with several repos? | Spec section 11, item 23; tickets 23, 32, 47: a repo's check on turns that changed that repo, in its folder; a check with no repo once, at the workspace root; a PR reads every check that applies to it |
+| Q189 What happens to a project's default when its profile is archived? | Spec section 11, item 24; tickets 07, 34, 42: the default moves to the built-in profile, which is always open to everyone; tasks keep the profile they started with; no restore in milestone 3 |
+| Q190 Where do the approval-rule matcher and the prompts the runner sends live? | Spec sections 5.1, 5.4 and 11, item 25; tickets 01, 02, 07, 30, 31: in `@ostra/protocol`, since the runner and the adapters are Apache-2.0 and can't import `packages/domain` (ADR 0045, ADR 0048) |
+
 ## Open
 
 **Q91 🔬 Prior art for project memory** (F-109 to F-111, ADR 0044). Research before building: how Devin Knowledge, Cursor Memories, GitHub Copilot Memory, Windsurf Memories and Claude Code's memory files capture, approve, retrieve and expire memory. The findings go in `research/project-memory.md`, which doesn't exist yet. Memory's v1 cut (Q92) stands until it lands. If the research changes how notes are found, only the search changes.
