@@ -52,7 +52,8 @@
     "searchEmpty": "Nothing matches.",
     "switchOrganization": "Switch organization",
     "organizations": "Organizations",
-    "current": "Current"
+    "current": "Current",
+    "linear": "Linear"
   },
   "signIn": {
     "title": "Sign in",
@@ -223,9 +224,20 @@
     },
     "linear": {
       "title": "Connect Linear",
-      "body": "Tickets become tasks.",
+      "body": "Tickets become tasks, and ostra keeps their status in step. Skip it to run on prompts alone.",
+      "action": "Connect Linear",
+      "skip": "Skip for now",
+      "skipping": "Skipping…",
+      "skipped": "Skipped. Tasks start from prompts until you connect it.",
+      "pending": "Started: paste the app's values and authorize to finish.",
+      "continue": "Continue",
+      "failed": "Linear refused the token. Authorize the app again.",
+      "authorizeAgain": "Authorize again",
       "later": "milestone 2"
-    }
+    },
+    "skippedStep": "Skipped",
+    "loadFailed": "Couldn't load this.",
+    "retry": "Retry"
   },
   "models": {
     "title": "Models",
@@ -877,5 +889,115 @@
     "on": "on",
     "copyLink": "Copy the link",
     "linkCopied": "Link copied"
+  },
+  "linear": {
+    "title": "Linear",
+    "lede": "The organization's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent.",
+    "openInLinear": "Open in Linear",
+    "connect": {
+      "title": "Connect your Linear app",
+      "started": "Started {at} by {name}.",
+      "startedNoName": "Started {at}.",
+      "startAgain": "Start again",
+      "disconnectedFrom": "Disconnected from {workspace} on {date}. Its boards and tickets stay, read-only.",
+      "step1": {
+        "title": "Create the app in Linear",
+        "body": "ostra fills in the app's name, its callback and its webhook. You press Create in Linear, as a workspace admin.",
+        "action": "Create the app in Linear",
+        "preparing": "Preparing…",
+        "again": "Open in Linear again"
+      },
+      "step2": {
+        "title": "Paste the app's values",
+        "body": "From the app's page in Linear. They go to the secret store and are never shown again.",
+        "bodyPolling": " Polling needs no signing secret.",
+        "clientId": "Client ID",
+        "clientSecret": "Client secret",
+        "webhookSecret": "Webhook signing secret",
+        "saved": "Saved in the secret store.",
+        "replace": "Replace"
+      },
+      "step3": {
+        "title": "Authorize",
+        "body": "Linear asks you to install the app on the workspace, then sends you back here.",
+        "action": "Authorize in Linear",
+        "opening": "Opening Linear…"
+      }
+    },
+    "mode": {
+      "label": "Mode",
+      "webhooks": "Webhooks",
+      "polling": "Polling",
+      "sendsTo": "Linear will send events to",
+      "sendsToServer": "Linear will send events to this server, at",
+      "pollingLine": "This server's address isn't public ({reason}), so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
+      "pollingLineNoReason": "This server's address isn't public, so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
+      "webhooksHelp": "Linear sends each change to this server as it happens."
+    },
+    "connection": {
+      "title": "Connection",
+      "connected": "Connected",
+      "pending": "Pending",
+      "failed": "Failed",
+      "since": "since {date}",
+      "justConnected": "Just connected"
+    },
+    "events": {
+      "title": "Events",
+      "mode": "Mode",
+      "receiving": "Webhooks: receiving",
+      "polling": "Polling every {seconds} s",
+      "silent": "Webhooks: silent since {time}",
+      "silentAfter": " · polling still finds changes",
+      "silentHelp": "Check the app's webhook in Linear: it may be disabled, or its URL may have changed. Tickets still arrive every {minutes} min.",
+      "webhookUrl": "Webhook URL",
+      "webhook": "Webhook",
+      "webhookNone": "None: this server's address isn't public ({reason}).",
+      "webhookNoneNoReason": "None: this server's address isn't public.",
+      "lastEvent": "Last event",
+      "lastPoll": "Last poll",
+      "updated": "updated",
+      "changed": {
+        "one": "{n} ticket changed",
+        "other": "{n} tickets changed"
+      },
+      "noneYet": "None yet",
+      "backstop": "Backstop",
+      "backstopBody": "Every board is also polled every {minutes} min, so a missed delivery is found."
+    },
+    "token": {
+      "title": "Token",
+      "access": "Access token",
+      "healthy": "Healthy",
+      "expiresIn": " · expires in {left}, refreshed an hour before",
+      "noExpiry": " · it doesn't expire",
+      "failed": "Linear refused the refresh. Polling and writes have stopped.",
+      "authorizeAgain": "Authorize again",
+      "memberAuthorize": "An admin authorizes the app again.",
+      "refresh": "Refresh token",
+      "inSecretStore": "In the secret store",
+      "apiKey": "API key",
+      "apiKeyBody": "A personal API key from the server's settings. It never refreshes."
+    },
+    "disconnect": {
+      "title": "Disconnect",
+      "body": "Revokes the token at Linear and stops every board. Boards and their tickets stay, read-only.",
+      "action": "Disconnect",
+      "confirmTitle": "Disconnect Linear?",
+      "confirmBody": "ostra revokes its token at Linear and stops polling and webhooks for every board. Boards, tickets and tasks stay, read-only. To connect again, you authorize the app again.",
+      "running": "Disconnecting…"
+    },
+    "panel": {
+      "app": "App",
+      "appUser": "App user",
+      "personalKey": "Personal API key (development)",
+      "secrets": "Secrets",
+      "asksFor": "The app asks for",
+      "scopes": "Scopes",
+      "webhookEvents": "Webhook events",
+      "eventsHelp": "AgentSessionEvent is asked for now, so agent mode later needs no new app.",
+      "webhook": "Webhook",
+      "webhookOff": "Off: polling every {seconds} s"
+    }
   }
 }
