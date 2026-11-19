@@ -5,12 +5,14 @@ import { connect } from "node:net";
 import type { Socket } from "node:net";
 import type { Readable, Writable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { descendantsOf, isAlive, killTree, listProcesses } from "@ostra/adapter-sdk";
 import type { ProcessInfo } from "@ostra/adapter-sdk";
 import { z } from "zod";
 import { createLineSplitter, encodeFrame, parseFrame, toBase64Chunks } from "../bridge/framing.ts";
 import { BRIDGE_VERSION, bridgeBoxIdSchema, CHUNK_BYTES, sidecarFrameSchema } from "../bridge/protocol.ts";
-import type { InitFrame, ProcId, SidecarFrame } from "../bridge/protocol.ts";
+import type { InitFrame, PrepareJob, ProcId, SidecarFrame } from "../bridge/protocol.ts";
+import { PREPARE_FAILURE_PREFIX } from "./prepare.ts";
 
 // The box's init program (ADR 0046's "small init" of the base image), in the agent's container.
 // `tini` is PID 1 and reaps zombies; this runs under it, as root, with only the capabilities it
@@ -39,18 +41,9 @@ const log = (line: Readonly<Record<string, string | number | boolean | null>>): 
   process.stderr.write(`${JSON.stringify({ at: new Date().toISOString(), component: "box-init", ...line })}\n`);
 };
 
-// The prepare step runs as the agent's user, in a child, so the init's root powers never touch a
-// path the agent controls (no symlink tricks).
-const PREPARE_SCRIPT = `
-const fs = require("node:fs/promises");
-let input = "";
-process.stdin.on("data", (d) => { input += d; });
-process.stdin.on("end", async () => {
-  const job = JSON.parse(input);
-  for (const dir of job.dirs) await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  for (const file of job.files) await fs.writeFile(file.path, Buffer.from(file.content, "base64"), { mode: file.mode, flag: "w" });
-});
-`;
+// The prepare step (`prepare-main.ts`) runs as the agent's user, in a child, so the init's root
+// powers never touch a path the agent controls (no symlink tricks).
+const PREPARE_MAIN = fileURLToPath(new URL("./prepare-main.ts", import.meta.url));
 
 export const runInit = async (env: InitEnv): Promise<void> => {
   const [bridgeHost = "", bridgePortText = "0"] = env.OSTRA_BRIDGE_ADDR.split(":");
@@ -85,15 +78,20 @@ export const runInit = async (env: InitEnv): Promise<void> => {
   const bridge = socket;
   const send = (frame: InitFrame): boolean => bridge.write(encodeFrame(frame));
 
-  const runPrepare = async (dirs: readonly string[], files: readonly { readonly path: string; readonly content: string; readonly mode: number }[]): Promise<string | undefined> => {
-    const child = spawn(process.execPath, ["-e", PREPARE_SCRIPT], { ...asAgent, stdio: ["pipe", "ignore", "pipe"], env: { PATH: process.env["PATH"] ?? "" }, windowsHide: true });
+  const runPrepare = async (job: PrepareJob): Promise<string | undefined> => {
+    const child = spawn(process.execPath, [PREPARE_MAIN], { ...asAgent, stdio: ["pipe", "ignore", "pipe"], env: { PATH: process.env["PATH"] ?? "" }, windowsHide: true });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
       stderr = (stderr + chunk.toString("utf8")).slice(-2000);
     });
-    child.stdin.end(JSON.stringify({ dirs, files }));
+    child.stdin.end(JSON.stringify(job));
     const code = await new Promise<number | null>((resolve) => child.once("exit", resolve));
-    return code === 0 ? undefined : `prepare exited ${String(code)}: ${stderr.split("\n")[0] ?? ""}`;
+    if (code === 0) {
+      return undefined;
+    }
+    // The child's one prefixed line names the bad field or the file system's code, never content.
+    const reason = stderr.split("\n").findLast((line) => line.startsWith(PREPARE_FAILURE_PREFIX));
+    return reason ?? `prepare exited ${String(code)}`;
   };
 
   /** PIDs of every process whose real UID is the agent's (Linux: it reads /proc). */
@@ -154,7 +152,7 @@ export const runInit = async (env: InitEnv): Promise<void> => {
         // Marked as it arrives, below: the next frame may be in the same chunk.
         return;
       case "prepare": {
-        const error = await runPrepare(frame.dirs, frame.files);
+        const error = await runPrepare({ dirs: frame.dirs, files: frame.files });
         send(error === undefined ? { t: "prepared", reqId: frame.reqId } : { t: "prepared", reqId: frame.reqId, error });
         return;
       }

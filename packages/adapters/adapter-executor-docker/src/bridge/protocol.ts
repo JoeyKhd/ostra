@@ -77,6 +77,16 @@ export const preparedFileSchema = z.strictObject({
   mode: z.number().int().min(0).max(0o777),
 });
 
+/**
+ * The prepare step's job: the folders to make, then the files to write, as the agent's user. The
+ * init hands it to its prepare child (`init/prepare.ts`), which checks it again before the first write.
+ */
+export const prepareJobSchema = z.strictObject({
+  dirs: z.array(absolutePath).max(64),
+  files: z.array(preparedFileSchema).max(64),
+});
+export type PrepareJob = z.infer<typeof prepareJobSchema>;
+
 /** Frames from the sidecar to the init. */
 export const sidecarFrameSchema = z.discriminatedUnion("t", [
   z.strictObject({ t: z.literal("welcome"), version: z.literal(BRIDGE_VERSION) }),
@@ -84,8 +94,7 @@ export const sidecarFrameSchema = z.discriminatedUnion("t", [
   z.strictObject({
     t: z.literal("prepare"),
     reqId: reqIdSchema,
-    dirs: z.array(absolutePath).max(64),
-    files: z.array(preparedFileSchema).max(64),
+    ...prepareJobSchema.shape,
   }),
   z.strictObject({
     t: z.literal("spawn"),
