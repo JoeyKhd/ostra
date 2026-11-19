@@ -428,6 +428,72 @@ describe("the task host", () => {
     await fetchOnly("review");
   }, 120_000);
 
+  it("F-089: the agent gets a base URL that points at the key proxy and a fake key valid for its one task, never the real key", async () => {
+    const { dispatch } = await start();
+    const endpointOf = (launch: AgentLaunch | undefined): { readonly baseUrl: string; readonly key: string } => {
+      const baseUrl = launch?.env["FAKE_AGENT_BASE_URL"];
+      const key = launch?.env["FAKE_AGENT_API_KEY"];
+      if (baseUrl === undefined || key === undefined) {
+        throw new Error("the agent's launch has no model endpoint");
+      }
+      return { baseUrl, key };
+    };
+    const callWith = (baseUrl: string, key: string) =>
+      fetch(`${baseUrl}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: "stub-model", max_tokens: 16, messages: [{ role: "user", content: "hi" }] }),
+      });
+
+    // The first task: its agent runs one short turn, then its session ends.
+    launches.length = 0;
+    const first = taskFor("[[fake:say]]");
+    dispatch(first.spec);
+    await waitForKind(first.spec, "turn.started");
+    const one = endpointOf(launches.at(-1));
+    // The proxy on the runner, at the provider's own base path, not the provider itself.
+    const proxied = new URL(one.baseUrl);
+    const provider = new URL(models.baseUrl);
+    expect(proxied.hostname).toBe("127.0.0.1");
+    expect(proxied.origin).not.toBe(provider.origin);
+    expect(proxied.pathname).toBe(provider.pathname);
+    // A fake key: not the real one, and the real one is nowhere in the agent's environment.
+    expect(one.key).toMatch(/^ostra-fake-/);
+    expect(one.key).not.toBe(MODEL_TOKEN);
+    expect(JSON.stringify(launches.at(-1)?.env)).not.toContain(MODEL_TOKEN);
+    // While the task runs, the fake key works: the provider sees the real one.
+    const before = models.calls.length;
+    const answer = await callWith(one.baseUrl, one.key);
+    expect(answer.status).toBe(200);
+    await answer.text();
+    expect(models.calls.slice(before).map((call) => call.authOk)).toEqual([true]);
+    await waitForKind(first.spec, "session.ended");
+    await gateway.waitFor(() => host?.running().length === 0);
+
+    // The second task gets its own key: the first task's is refused there.
+    const second = taskFor("[[fake:silent]]");
+    gateway.sendCommand(
+      makeCommand({
+        seq: counter * 10 + 1,
+        id: `dispatch-${String(counter)}-second`,
+        notAfter: Date.now() + 120_000,
+        kind: "dispatch",
+        body: { taskId: second.spec.taskId, sessionId: second.spec.sessionId, boxId: boxIdSchema.parse(`box-${String(counter)}-second`), leaseEpoch: second.spec.leaseEpoch },
+      }),
+    );
+    await waitForKind(second.spec, "turn.started");
+    const two = endpointOf(launches.at(-1));
+    expect(two.key).not.toBe(one.key);
+    const callsBefore = models.calls.length;
+    const refused = await callWith(two.baseUrl, one.key);
+    expect(refused.status).toBe(401);
+    await refused.text();
+    expect(models.calls.length).toBe(callsBefore);
+    const accepted = await callWith(two.baseUrl, two.key);
+    expect(accepted.status).toBe(200);
+    await accepted.text();
+  }, 120_000);
+
   it("refuses to start an agent whose environment would hold a real credential", async () => {
     const { dispatch } = await start();
     const { spec } = taskFor("[[fake:say]]");
@@ -455,7 +521,7 @@ describe("the task host", () => {
     expect(kinds(leaky)).not.toContain("turn.started");
   }, 120_000);
 
-  it("reports a model provider's rate limit as an event, once for a burst of 429s", async () => {
+  it("F-089: reports a model provider's rate limit as an event with its retry time, once for a burst of 429s", async () => {
     const { dispatch } = await start();
     const limited = await startAnthropicStub({
       realKey: MODEL_TOKEN,

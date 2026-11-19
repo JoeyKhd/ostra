@@ -69,7 +69,7 @@ afterAll(async () => {
 });
 
 describe("a model provider's rate limit", () => {
-  it("holds the next dispatch on that provider, and no other provider", async () => {
+  it("F-089: a rate limit holds new dispatches on that provider until its retry time, and no other provider", async () => {
     const running = await seedQueuedTask(test.db, world, fixture.a.member, ours.runnerId);
     expect(await dispatch(running)).toMatchObject({ ok: true, runnerId: ours.runnerId });
     const waiting = await seedQueuedTask(test.db, world, fixture.a.member, ours.runnerId);

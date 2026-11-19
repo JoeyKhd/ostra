@@ -199,6 +199,33 @@ describe("ingest", () => {
     expect(await test.db.changeNotice.count({ where: { entity: "task", entityId: task.taskId } })).toBeGreaterThan(0);
   });
 
+  it("F-089: stores each call's fresh input, output, cache-read and cache-write tokens apart, and sums each kind on the session", async () => {
+    const task = await newTask("running");
+    const usage = (inputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number, estimated = false): TaskEvent => ({
+      kind: "usage.recorded",
+      providerId: providerIdSchema.parse("provider-1"),
+      modelId: modelIdSchema.parse("model-1"),
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      estimated,
+    });
+    // Two calls of one turn, and a title call with no turn of its own: every call counts.
+    await ingest(ours, frame(runnerEvent(task, 1, { kind: "turn.started", turnId }), runnerEvent(task, 2, usage(21, 9, 4000, 512)), runnerEvent(task, 3, usage(7, 40, 4512, 0))));
+    await ingest(ours, frame(runnerEvent(task, 4, usage(3, 11, 0, 0, true))));
+    const stored = z
+      .array(z.object({ inputTokens: z.number(), outputTokens: z.number(), cacheReadTokens: z.number(), cacheWriteTokens: z.number(), estimated: z.boolean() }))
+      .parse((await test.db.event.findMany({ where: { taskId: task.taskId, kind: "usage.recorded" }, orderBy: { seq: "asc" } })).map((event) => event.payload));
+    expect(stored).toEqual([
+      { inputTokens: 21, outputTokens: 9, cacheReadTokens: 4000, cacheWriteTokens: 512, estimated: false },
+      { inputTokens: 7, outputTokens: 40, cacheReadTokens: 4512, cacheWriteTokens: 0, estimated: false },
+      { inputTokens: 3, outputTokens: 11, cacheReadTokens: 0, cacheWriteTokens: 0, estimated: true },
+    ]);
+    const session = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+    expect(session).toMatchObject({ inputTokens: 31, outputTokens: 60, cacheReadTokens: 8512, cacheWriteTokens: 512 });
+  });
+
   it("a crash puts the task in needs you for its driver, and fails the box", async () => {
     const task = await newTask("running");
     await test.db.session.update({ where: { id: task.sessionId }, data: { state: "running" } });

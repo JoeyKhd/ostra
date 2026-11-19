@@ -207,7 +207,23 @@ const SSE_CHUNKS = [
   "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n",
 ];
 
-const startRawUpstream = async (status = 200, errorBody?: string): Promise<RawUpstream> => {
+/** The same answer in the OpenAI-compatible format: usage in its last chunk, a cached part, then `[DONE]`. */
+const OPENAI_SSE_CHUNKS = [
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"vendor_field":[1,2]}]}\n\n',
+  ": keep-alive\n\n",
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":4,"total_tokens":17,"prompt_tokens_details":{"cached_tokens":3}}}\n\n',
+  "data: [DONE]\n\n",
+];
+
+/** An Anthropic answer that reads from the cache and writes to it: all four kinds of token. */
+const CACHING_SSE_CHUNKS = [
+  'event: message_start\ndata: {"type":"message_start","message":{"model":"m","usage":{"input_tokens":21,"output_tokens":1,"cache_read_input_tokens":4000,"cache_creation_input_tokens":512}}}\n\n',
+  'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}\n\n',
+  'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9}}\n\n',
+];
+
+const startRawUpstream = async (status = 200, errorBody?: string, chunks: readonly string[] = SSE_CHUNKS): Promise<RawUpstream> => {
   const seen: IncomingHttpHeaders[] = [];
   const server: Server = createServer((request, response) => {
     seen.push(request.headers);
@@ -220,7 +236,7 @@ const startRawUpstream = async (status = 200, errorBody?: string): Promise<RawUp
     response.writeHead(status, { "content-type": "text/event-stream", "x-vendor-request-id": "req-123" });
     let index = 0;
     const next = (): void => {
-      const chunk = SSE_CHUNKS[index];
+      const chunk = chunks[index];
       if (chunk === undefined) {
         response.end();
         return;
@@ -247,6 +263,104 @@ const startRawUpstream = async (status = 200, errorBody?: string): Promise<RawUp
   const port = typeof address === "object" && address !== null ? address.port : 0;
   return { baseUrl: `http://127.0.0.1:${String(port)}/v1`, seen };
 };
+
+describe("F-089: the key proxy", () => {
+  const formats = [
+    { format: "openai-compatible", scheme: "bearer", path: "/chat/completions", chunks: OPENAI_SSE_CHUNKS, usage: { inputTokens: 10, outputTokens: 4, cacheReadTokens: 3, cacheWriteTokens: 0 } },
+    { format: "anthropic-messages", scheme: "x-api-key", path: "/messages", chunks: SSE_CHUNKS, usage: { inputTokens: 11, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ] as const;
+
+  it("F-089: swaps in the real key, passes the stream through byte for byte in both API formats, and records each call's tokens", async () => {
+    for (const { format, scheme, path, chunks, usage } of formats) {
+      const upstream = await startRawUpstream(200, undefined, chunks);
+      const harness = await startProxy(upstream.baseUrl, format, scheme);
+      // The agent presents its fake key, as its SDK does for the format.
+      const answer = await call(harness, path, format === "openai-compatible" ? openAiBody(true) : anthropicBody(true), scheme === "x-api-key" ? { "x-api-key": harness.proxy.fakeKey } : {});
+      expect(answer.status).toBe(200);
+      expect(answer.text).toBe(chunks.join(""));
+      expect(answer.headers.get("x-vendor-request-id")).toBe("req-123");
+      // The provider saw the real key in its own scheme's header, and never the fake one.
+      const [seen] = upstream.seen;
+      expect(scheme === "bearer" ? seen?.authorization : seen?.["x-api-key"]).toBe(scheme === "bearer" ? `Bearer ${REAL_TOKEN}` : REAL_TOKEN);
+      expect(JSON.stringify(seen)).not.toContain(harness.proxy.fakeKey);
+      expect(harness.usage).toEqual([{ kind: "usage.recorded", providerId, modelId, ...usage, estimated: false }]);
+    }
+  });
+
+  it("F-089: its count equals what the endpoint reports, in both formats, streamed or not", async () => {
+    for (const { format, scheme, path } of formats) {
+      for (const stream of [true, false]) {
+        const server = await stub(format, () => ({ text: "Counted to the token, in every format and both ways." }));
+        const harness = await startProxy(server.baseUrl, format, scheme);
+        const answer = await call(harness, path, format === "openai-compatible" ? openAiBody(stream) : anthropicBody(stream));
+        expect(answer.status).toBe(200);
+        // What the endpoint billed and wrote into its answer, against the proxy's count: no more than 2% apart.
+        const billed = server.calls[0]?.billed;
+        if (billed === undefined) {
+          throw new Error("the stub billed nothing");
+        }
+        const [counted] = harness.usage;
+        const reported = billed.inputTokens + billed.outputTokens + billed.cacheReadTokens;
+        const proxied = (counted?.inputTokens ?? 0) + (counted?.outputTokens ?? 0) + (counted?.cacheReadTokens ?? 0) + (counted?.cacheWriteTokens ?? 0);
+        expect(reported).toBeGreaterThan(0);
+        expect(Math.abs(proxied - reported)).toBeLessThanOrEqual(reported * 0.02);
+        expect(counted).toMatchObject({ inputTokens: billed.inputTokens, outputTokens: billed.outputTokens, cacheReadTokens: billed.cacheReadTokens, estimated: false });
+      }
+    }
+  });
+
+  it("F-089: counts every call it carries, title calls and other calls with no tools included", async () => {
+    const server = await stub("openai-compatible", () => ({ text: "A short title" }));
+    const harness = await startProxy(server.baseUrl, "openai-compatible", "bearer");
+    // A title call (no tools, not streamed), a tool-less streamed call, and a turn's call with tools.
+    await call(harness, "/chat/completions", openAiBody(false, false));
+    await call(harness, "/chat/completions", openAiBody(true, false));
+    await call(harness, "/chat/completions", openAiBody(true, true));
+    expect(server.calls.map((item) => item.toolNames.length)).toEqual([0, 0, 1]);
+    expect(harness.usage).toHaveLength(3);
+    expect(harness.proxy.totals().calls).toBe(3);
+    expect(harness.usage.map((event) => event.outputTokens)).toEqual(server.calls.map((item) => item.billed?.outputTokens));
+  });
+
+  it("F-089: records fresh input, output, cache-read and cache-write tokens for each call", async () => {
+    const upstream = await startRawUpstream(200, undefined, CACHING_SSE_CHUNKS);
+    const harness = await startProxy(upstream.baseUrl, "anthropic-messages", "x-api-key");
+    await call(harness, "/messages", anthropicBody(true));
+    await call(harness, "/messages", anthropicBody(true));
+    // One event per call, each with the four kinds apart.
+    expect(harness.usage).toEqual([
+      { kind: "usage.recorded", providerId, modelId, inputTokens: 21, outputTokens: 9, cacheReadTokens: 4000, cacheWriteTokens: 512, estimated: false },
+      { kind: "usage.recorded", providerId, modelId, inputTokens: 21, outputTokens: 9, cacheReadTokens: 4000, cacheWriteTokens: 512, estimated: false },
+    ]);
+    expect(harness.proxy.totals().usage).toMatchObject({ input: 42, output: 18, cacheRead: 8000, cacheWrite: 1024 });
+  });
+
+  it("F-089: estimates a call whose endpoint reported no usage, and marks the count as an estimate", async () => {
+    for (const { format, scheme, path } of formats) {
+      const server = await stub(format, () => ({ text: "This answer carries no usage at all, so it is estimated.", reportUsage: false }));
+      const harness = await startProxy(server.baseUrl, format, scheme);
+      const answer = await call(harness, path, format === "openai-compatible" ? openAiBody(true) : anthropicBody(true));
+      expect(answer.status).toBe(200);
+      expect(harness.usage).toHaveLength(1);
+      expect(harness.usage[0]).toMatchObject({ estimated: true });
+      expect(harness.usage[0]?.inputTokens).toBeGreaterThan(0);
+      expect(harness.usage[0]?.outputTokens).toBeGreaterThan(0);
+      expect(harness.proxy.totals().estimatedCalls).toBe(1);
+    }
+  });
+
+  it("F-089: reports a rate-limit answer with the provider's retry time, and passes the answer on", async () => {
+    for (const { format, scheme, path } of formats) {
+      const server = await stub(format, () => ({ error: { status: 429, message: "slow down", retryAfterSeconds: 7 } }));
+      const harness = await startProxy(server.baseUrl, format, scheme);
+      const answer = await call(harness, path, format === "openai-compatible" ? openAiBody(false) : anthropicBody(false));
+      expect(answer.status).toBe(429);
+      expect(harness.rateLimits).toEqual([{ status: 429, retryAfterMs: 7_000 }]);
+      expect(rateLimitHoldSeconds(harness.rateLimits[0]?.retryAfterMs ?? null)).toBe(7);
+      expect(harness.usage).toEqual([]);
+    }
+  });
+});
 
 describe("pass-through", () => {
   it("passes the stream through byte for byte, keep-alives and vendor fields included", async () => {
