@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ServiceHealth } from "@ostra/adapter-sdk";
+import type { BoxImage, BoxSize, ExecutorCapacity, ServiceHealth } from "@ostra/adapter-sdk";
 import type { BoxId, BoxState, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import { emptySchema } from "./engine.ts";
@@ -35,6 +35,18 @@ import type { Engine, EngineResult } from "./engine.ts";
 // A box from a snapshot (F-051, Q153) starts the agent's container from the snapshot image, and makes
 // it before the sidecar: Docker fills a new, empty volume from the first container that mounts it, so
 // the task volume starts with the snapshot's checkouts, and no mount hides them.
+//
+// Milestone 5 (ticket 09, ADR 0059, ADR 0060):
+//
+// - **Sizes** (F-095): the agent's container gets the box's size as `NanoCpus` and `Memory`, with
+//   `MemorySwap` equal to `Memory` (no swap past the limit) and a `PidsLimit`; the sidecar and each
+//   service get their own fixed limits (`OSTRA_SIDECAR_*`, `OSTRA_SERVICE_*`), which the box's
+//   footprint counts beside the size.
+// - **Registry images** (F-120): a box whose dispatch names an image pulls `ref@digest` before
+//   anything of the box is made, with the pull credential in the Engine call's header only, and the
+//   agent's container runs exactly that digest. With no registry, milestone 3's local snapshot.
+// - **Capacity** (ADR 0059): the runner's whole offer, the engine's CPUs and memory less its
+//   reserve, and its slots; core subtracts the boxes it placed, from its own rows.
 
 export const BRIDGE_PORT = 7101;
 export const TASK_ROOT = "/task";
@@ -77,6 +89,73 @@ export type BoxInput = {
   readonly snapshotImage?: string;
   /** Milestone 3 (F-094): the environment's services, each with its variables, secrets included. */
   readonly services?: readonly BoxService[];
+  /** Milestone 5 (F-095): the project's box size, the agent's container's limits. Absent or `null`: none. */
+  readonly size?: BoxSize | null;
+  /**
+   * Milestone 5 (F-120): the registry image the agent's container starts from, pulled by digest with
+   * its pull credential, which goes to the Engine's pull call and nowhere else. Wins over `snapshotImage`.
+   */
+  readonly image?: BoxImage | null;
+};
+
+/** A container's CPU and memory limits. */
+export type Resources = { readonly cpuMillis: number; readonly memoryMiB: number };
+
+/** The fixed limits beside the agent's container (ADR 0059): the runner's settings. */
+export type FixedLimits = {
+  /** `OSTRA_SIDECAR_CPU_MILLIS`, `OSTRA_SIDECAR_MEMORY_MIB`. */
+  readonly sidecar: Resources;
+  /** `OSTRA_SERVICE_CPU_MILLIS`, `OSTRA_SERVICE_MEMORY_MIB`. */
+  readonly service: Resources;
+};
+
+/** ADR 0059's working values, the settings' defaults: the sidecar 1 vCPU and 256 MiB, a service 1 vCPU and 1 GiB. */
+export const DEFAULT_FIXED_LIMITS: FixedLimits = {
+  sidecar: { cpuMillis: 1000, memoryMiB: 256 },
+  service: { cpuMillis: 1000, memoryMiB: 1024 },
+};
+
+/** Every box container's process cap: a fork bomb stays in its container. */
+export const BOX_PIDS_LIMIT = 4096;
+
+const MIB = 1024 * 1024;
+
+/** A limit as the Engine API takes it: nano-CPUs, bytes, and swap equal to memory, so no swap past the limit. */
+export const limitsHostConfig = (resources: Resources): { readonly NanoCpus: number; readonly Memory: number; readonly MemorySwap: number } => ({
+  NanoCpus: resources.cpuMillis * 1_000_000,
+  Memory: resources.memoryMiB * MIB,
+  MemorySwap: resources.memoryMiB * MIB,
+});
+
+/** The settings a `docker` runner's offer comes from (ADR 0059). */
+export type CapacitySettings = {
+  /** `OSTRA_RUNNER_SLOTS`; absent: the host's CPUs / 2, at least 1. */
+  readonly slots?: number;
+  /** `OSTRA_RUNNER_RESERVE_CPU_MILLIS`, 1000 by default. */
+  readonly reserveCpuMillis: number;
+  /** `OSTRA_RUNNER_RESERVE_MEMORY_MIB`, 2048 by default. */
+  readonly reserveMemoryMiB: number;
+};
+
+/** The engine's `info`, the two fields the offer reads. */
+export type EngineInfo = { readonly cpus: number; readonly memoryBytes: number };
+
+/** The runner's whole offer (ADR 0059): its slots, and the engine's CPU and memory less its reserve, never below 0. */
+export const dockerCapacity = (info: EngineInfo, settings: CapacitySettings): ExecutorCapacity => ({
+  slots: settings.slots ?? Math.max(1, Math.floor(info.cpus / 2)),
+  cpuMillis: Math.max(0, info.cpus * 1000 - settings.reserveCpuMillis),
+  memoryMiB: Math.max(0, Math.floor(info.memoryBytes / MIB) - settings.reserveMemoryMiB),
+});
+
+/** A container's limits, as `docker inspect` reads them back: `null` parts are unset. */
+export type InspectedLimits = {
+  readonly role: string;
+  readonly name: string;
+  readonly cpuMillis: number | null;
+  readonly memoryMiB: number | null;
+  /** Memory and swap together, as the Engine keeps it: equal to `memoryMiB` when no swap is allowed. */
+  readonly memorySwapMiB: number | null;
+  readonly pidsLimit: number | null;
 };
 
 /** A service as a box starts it: the spec's, with its secret variables from the credentials. */
@@ -97,6 +176,8 @@ export type BoxOptions = {
   readonly egressNetwork?: string;
   /** An optional container runtime, such as gVisor's `runsc` (ADR 0031). */
   readonly runtime?: string;
+  /** Milestone 5 (F-095): the sidecar's and a service's fixed limits. Default: `DEFAULT_FIXED_LIMITS`. */
+  readonly limits?: FixedLimits;
 };
 
 export type ContainerSpec = {
@@ -143,9 +224,14 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
   const hardening = {
     CapDrop: ["ALL"],
     SecurityOpt: ["no-new-privileges:true"],
-    PidsLimit: 4096,
+    PidsLimit: BOX_PIDS_LIMIT,
     ...(options.runtime === undefined ? {} : { Runtime: options.runtime }),
   };
+  const fixed = options.limits ?? DEFAULT_FIXED_LIMITS;
+  const size = input.size ?? null;
+  const image = input.image ?? null;
+  // The registry's image by its digest, then the host's own snapshot, then the environment's base.
+  const agentImage = image === null ? (input.snapshotImage ?? input.baseImage ?? options.images.base) : `${image.ref}@${image.digest}`;
   const taskMount = { Type: "volume", Source: n.volume, Target: TASK_ROOT };
   const services = (input.services ?? []).map(
     (service): ContainerSpec => ({
@@ -160,7 +246,8 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
         Labels: { ...labels("service"), "ostra.service": service.name },
         HostConfig: {
           SecurityOpt: ["no-new-privileges:true"],
-          PidsLimit: 4096,
+          PidsLimit: BOX_PIDS_LIMIT,
+          ...limitsHostConfig(fixed.service),
           ...(options.runtime === undefined ? {} : { Runtime: options.runtime }),
           // The box's network only, which is internal: the egress baseline holds for services too.
           NetworkMode: n.network,
@@ -184,7 +271,7 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
     agent: {
       name: n.agent,
       body: {
-        Image: input.snapshotImage ?? input.baseImage ?? options.images.base,
+        Image: agentImage,
         Cmd: ["node", "/opt/ostra/init/main.ts"],
         // The init's own: the box, the nonce and where the sidecar is. Never a credential.
         Env: [
@@ -197,9 +284,15 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
         // The init is root to start processes as the agent's user; those are never root.
         User: "0:0",
         WorkingDir: TASK_ROOT,
-        Labels: { ...labels("agent"), ...(input.snapshotImage === undefined ? {} : { "ostra.snapshot-image": input.snapshotImage }) },
+        Labels: {
+          ...labels("agent"),
+          ...(input.snapshotImage === undefined || image !== null ? {} : { "ostra.snapshot-image": input.snapshotImage }),
+          ...(image === null ? {} : { "ostra.image-digest": image.digest }),
+        },
         HostConfig: {
           ...hardening,
+          // The box's size, when it has one (F-095); otherwise only the executor's own caps.
+          ...(size === null ? {} : limitsHostConfig(size)),
           Init: true,
           CapAdd: ["SETUID", "SETGID", "KILL"],
           NetworkMode: n.network,
@@ -231,6 +324,7 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
         Labels: labels("sidecar"),
         HostConfig: {
           ...hardening,
+          ...limitsHostConfig(fixed.sidecar),
           ReadonlyRootfs: true,
           Tmpfs: {
             "/tmp": "rw,noexec,nosuid,size=256m",
@@ -285,7 +379,26 @@ export type DockerBoxes = {
   readonly stopBox: (boxId: BoxId) => Promise<void>;
   /** Removes the box's containers, network and volume. A box is never reused. */
   readonly removeBox: (boxId: BoxId) => Promise<EngineResult<void>>;
+  /** Milestone 5 (F-095): each of the box's containers' limits, read back from the Engine (`docker inspect`). */
+  readonly limitsOf: (boxId: BoxId) => Promise<readonly InspectedLimits[]>;
+  /** Milestone 5 (ADR 0059): the runner's whole offer, from the Engine's `info`; `null` when the Engine doesn't answer. */
+  readonly readCapacity: (settings: CapacitySettings) => Promise<ExecutorCapacity | null>;
 };
+
+const infoSchema = z.looseObject({ NCPU: z.number().int().nonnegative(), MemTotal: z.number().int().nonnegative() });
+const limitsInspectSchema = z.looseObject({
+  Name: z.string().optional(),
+  HostConfig: z
+    .looseObject({
+      NanoCpus: z.number().nullish(),
+      Memory: z.number().nullish(),
+      MemorySwap: z.number().nullish(),
+      PidsLimit: z.number().nullish(),
+    })
+    .nullish(),
+});
+/** A positive number from `docker inspect`, or `null` for unset (0, absent, or -1 for unlimited). */
+const setOrNull = (value: number | null | undefined, unit: number): number | null => (value === null || value === undefined || value <= 0 ? null : value / unit);
 
 const labelFilter = (boxId: BoxId): string => encodeURIComponent(JSON.stringify({ label: [`${LABEL}=${boxId}`] }));
 
@@ -345,6 +458,15 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
       if ((await containersOf(input.boxId)).length > 0 || (await networkExists(resources.network.Name))) {
         return { ok: false, error: { status: 409, message: "the box exists already" } };
       }
+      // Milestone 5 (F-120): the registry's image by digest, before anything of the box is made, so
+      // a refused pull leaves nothing. The credential is the call's header, for this one pull.
+      const image = input.image ?? null;
+      if (image !== null) {
+        const pulled = await engine.pull(image.ref, image.digest, image.pull);
+        if (!pulled.ok) {
+          return { ok: false, error: { status: pulled.error.status, message: `pulling the box's image failed: ${pulled.error.message}` } };
+        }
+      }
       const egress = await ensureEgressNetwork(resources.egressNetwork);
       if (!egress.ok) {
         return fail(egress.error);
@@ -372,7 +494,7 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
       // owned by the agent's user, or, for a box from a snapshot, the snapshot's checkouts (Q153).
       const makeSidecar = () => engine.call("POST", `/containers/create?name=${resources.sidecar.name}`, createdSchema, resources.sidecar.body);
       const makeAgent = () => engine.call("POST", `/containers/create?name=${resources.agent.name}`, createdSchema, resources.agent.body);
-      const fromSnapshot = input.snapshotImage !== undefined;
+      const fromSnapshot = input.snapshotImage !== undefined || (input.image ?? null) !== null;
       const first = await (fromSnapshot ? makeAgent() : makeSidecar());
       if (!first.ok) {
         return fail(first.error);
@@ -501,5 +623,28 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
       }
     },
     removeBox,
+    limitsOf: async (boxId) => {
+      const found: InspectedLimits[] = [];
+      for (const container of await containersOf(boxId)) {
+        const inspected = await engine.call("GET", `/containers/${container.Id}/json`, limitsInspectSchema);
+        if (!inspected.ok) {
+          continue;
+        }
+        const host = inspected.value.HostConfig;
+        found.push({
+          role: roleOf(container) ?? "unknown",
+          name: (inspected.value.Name ?? container.Id).replace(/^\//, ""),
+          cpuMillis: setOrNull(host?.NanoCpus, 1_000_000),
+          memoryMiB: setOrNull(host?.Memory, MIB),
+          memorySwapMiB: setOrNull(host?.MemorySwap, MIB),
+          pidsLimit: setOrNull(host?.PidsLimit, 1),
+        });
+      }
+      return found;
+    },
+    readCapacity: async (settings) => {
+      const info = await engine.call("GET", "/info", infoSchema);
+      return info.ok ? dockerCapacity({ cpus: info.value.NCPU, memoryBytes: info.value.MemTotal }, settings) : null;
+    },
   };
 };

@@ -1,5 +1,7 @@
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
-import { adapterError, ExecutorAdapter } from "@ostra/adapter-sdk";
+import { adapterError, ExecutorAdapter, makeTaskTokenDir, writeTaskTokenDirFile, TASK_TOKEN_FILE } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
@@ -15,6 +17,7 @@ import type {
   CreateBoxInput,
   CreatedBox,
   ExecutorCapabilities,
+  ExecutorCapacity,
   HealthReport,
   KeptSnapshot,
   PrepareInput,
@@ -28,11 +31,13 @@ import type {
   SaveWorkInProgressInput,
   SnapshotBuildResult,
   StopInput,
+  TaskTokenOwner,
 } from "@ostra/adapter-sdk";
 import type { BoxReleaseReason, BoxState, SnapshotId } from "@ostra/protocol";
 import type { Bridge } from "./bridge/bridge-server.ts";
 import { bridgeProcesses } from "./bridge-processes.ts";
 import { SERVICES_HEALTHY_WITHIN_MS } from "./boxes.ts";
+import type { BoxInput, CapacitySettings, DockerBoxes } from "./boxes.ts";
 import { awaitServicesFile, SIDECAR_SERVICES_FILE } from "./services-file.ts";
 import type { DockerSnapshots } from "./snapshot/snapshots.ts";
 
@@ -50,6 +55,14 @@ import type { DockerSnapshots } from "./snapshot/snapshots.ts";
 // incremental. The services are the pool runner's: it starts them with the box and reports their
 // health in a file the sidecar reads before the setup. Snapshots are built and kept by the pool
 // runner too, which holds the Engine (`createDockerSnapshots`); a box's sidecar builds none.
+//
+// Milestone 5 (ticket 09): `boxSizes`, the runner's offer (`capacity()`), registry images and
+// pushes. With `pool`, the pool runner's half on the Engine, `create` first makes the box's
+// containers (`DockerBoxes`) with the size as the agent's limits, the registry image pulled by
+// digest with its pull credential, and the task token written by `writeTaskTokenFile`'s folder
+// rules into a folder only the sidecar's container mounts; `release` removes them and that folder.
+// The executor contract suite drives both halves in one process; a pool runner holds the first and
+// a box's sidecar the second.
 
 export type DockerExecutorOptions = {
   /** The box's task volume, mounted at the same path in both containers. */
@@ -64,6 +77,23 @@ export type DockerExecutorOptions = {
   readonly servicesWaitMs?: number;
   /** The pool runner's snapshots, on the Engine; a box's sidecar has none. */
   readonly snapshots?: DockerSnapshots;
+  /** Milestone 5: the pool runner's half, which makes and removes the boxes on the Engine; a box's sidecar has none. */
+  readonly pool?: DockerPoolHalf;
+};
+
+/** The pool runner's half of the executor (ticket 09): the boxes on the Engine, and where their token folders go. */
+export type DockerPoolHalf = {
+  readonly boxes: DockerBoxes;
+  /** Where each box's token folder is made: `<tokenRoot>/<boxId>`, mounted into its sidecar only. */
+  readonly tokenRoot: string;
+  /** Who reads a token folder besides the runner (`writeTaskTokenFile`'s rules). */
+  readonly tokenOwner: TaskTokenOwner;
+  /** The rest of a box's input, which the dispatch gives: its session, lease, server address and base image. */
+  readonly boxInput: (box: BoxRef) => Pick<BoxInput, "sessionId" | "leaseEpoch" | "serverUrl" | "baseImage">;
+  /** The runner's offer settings (ADR 0059): slots and reserve. */
+  readonly capacity: CapacitySettings;
+  /** Hands a path to another uid, for an `owner` token folder. Defaults to `fs.chown`. */
+  readonly chown?: (target: string, uid: number, gid: number) => Promise<void>;
 };
 
 export class DockerExecutor extends ExecutorAdapter {
@@ -72,7 +102,8 @@ export class DockerExecutor extends ExecutorAdapter {
     isolation: "container",
     // Milestone 3 (ticket 14): the services on the box's network, and the snapshot image.
     services: true,
-    boxSizes: false,
+    // Milestone 5 (F-095): a box's size is the agent's container's limits.
+    boxSizes: true,
     snapshots: "image",
     processContainment: "container",
     // Milestone 5 (ADR 0060): a box can start from the organization's registry, and without one the
@@ -83,12 +114,15 @@ export class DockerExecutor extends ExecutorAdapter {
 
   readonly #inner: HostExecutor;
   readonly #snapshots: DockerSnapshots | undefined;
+  readonly #pool: DockerPoolHalf | undefined;
+  #capacity: ExecutorCapacity | null = null;
 
   constructor(options: DockerExecutorOptions, context?: AdapterContext) {
     super(context);
     const servicesFile = options.servicesFile ?? SIDECAR_SERVICES_FILE;
     const servicesWaitMs = options.servicesWaitMs ?? SERVICES_HEALTHY_WITHIN_MS + 30_000;
     this.#snapshots = options.snapshots;
+    this.#pool = options.pool;
     this.#inner = new HostExecutor(
       {
         dataDir: options.taskRoot,
@@ -107,15 +141,86 @@ export class DockerExecutor extends ExecutorAdapter {
     );
   }
 
-  health(): Promise<HealthReport> {
+  async health(): Promise<HealthReport> {
+    // The pool runner's offer is read with its health, at start and after.
+    await this.refreshCapacity();
     return this.#inner.health();
   }
 
-  create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
+  /**
+   * Milestone 5 (ADR 0059): the pool runner's whole offer, from its last reading of the Engine's
+   * `info` (`refreshCapacity`); `null` before the first reading, and in a box's sidecar.
+   */
+  override capacity(): ExecutorCapacity | null {
+    return this.#capacity;
+  }
+
+  /** Reads the Engine's `info` again for `capacity()`; a reading that fails keeps the last one. */
+  async refreshCapacity(): Promise<void> {
+    if (this.#pool === undefined) {
+      return;
+    }
+    this.#capacity = (await this.#pool.boxes.readCapacity(this.#pool.capacity)) ?? this.#capacity;
+  }
+
+  async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
     const unfit = this.refuseUnfitBox(input);
+    if (unfit !== null) {
+      return unfit;
+    }
+    const pool = this.#pool;
+    if (pool !== undefined) {
+      const made = await this.#makeBox(pool, input);
+      if (!made.ok) {
+        return made;
+      }
+    }
     // Inside the box, the workspace only: the pool runner made the containers, from the image and
     // with the size, and wrote the task token where only this sidecar reads it.
-    return unfit === null ? this.#inner.create({ taskId: input.taskId, boxId: input.boxId, spec: input.spec, proxies: input.proxies }) : Promise.resolve(unfit);
+    const created = await this.#inner.create({ taskId: input.taskId, boxId: input.boxId, spec: input.spec, proxies: input.proxies });
+    if (!created.ok && pool !== undefined) {
+      await this.#removeBox(pool, input);
+    }
+    return created;
+  }
+
+  /** The pool runner's half: the token folder, then the box's containers on the Engine. */
+  async #makeBox(pool: DockerPoolHalf, input: CreateBoxInput): Promise<AdapterResult<void>> {
+    const tokenDir = path.join(pool.tokenRoot, input.boxId);
+    const options = pool.chown === undefined ? {} : { chown: pool.chown };
+    // The folder is made afresh even without a token: the sidecar's mount is there from the start.
+    const folder = await makeTaskTokenDir(tokenDir, pool.tokenOwner, options);
+    if (!folder.ok) {
+      return folder;
+    }
+    const token = input.taskToken ?? null;
+    if (token !== null) {
+      const written = await writeTaskTokenDirFile(tokenDir, pool.tokenOwner, TASK_TOKEN_FILE, token, options);
+      if (!written.ok) {
+        await rm(tokenDir, { recursive: true, force: true });
+        return written;
+      }
+    }
+    const made = await pool.boxes.createBox({
+      ...pool.boxInput(input),
+      taskId: input.taskId,
+      boxId: input.boxId,
+      tokenDir,
+      ...(pool.tokenOwner.kind === "group" ? { tokenGroup: pool.tokenOwner.gid } : {}),
+      size: input.size ?? null,
+      image: input.image ?? null,
+    });
+    if (!made.ok) {
+      await rm(tokenDir, { recursive: true, force: true });
+      return adapterError(made.error.status === 409 ? "conflict" : "unavailable", made.error.message);
+    }
+    return { ok: true, value: undefined };
+  }
+
+  async #removeBox(pool: DockerPoolHalf, box: BoxRef): Promise<AdapterResult<void>> {
+    const removed = await pool.boxes.removeBox(box.boxId);
+    await rm(path.join(pool.tokenRoot, box.boxId), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    return removed.ok ? { ok: true, value: undefined } : adapterError("unavailable", removed.error.message);
   }
 
   prepare(input: PrepareInput): Promise<AdapterResult<PrepareResult>> {
@@ -139,8 +244,13 @@ export class DockerExecutor extends ExecutorAdapter {
     return this.#inner.stop(input);
   }
 
-  release(box: BoxRef, reason: BoxReleaseReason): Promise<AdapterResult<void>> {
-    return this.#inner.release(box, reason);
+  async release(box: BoxRef, reason: BoxReleaseReason): Promise<AdapterResult<void>> {
+    const released = await this.#inner.release(box, reason);
+    if (this.#pool === undefined || !released.ok) {
+      return released;
+    }
+    // The pool runner's half: the containers, the network, the volume and the token folder.
+    return this.#removeBox(this.#pool, box);
   }
 
   /**
@@ -173,11 +283,7 @@ export class DockerExecutor extends ExecutorAdapter {
 
   /** The pool runner's: a box's sidecar has no Engine to build with. */
   override buildSnapshot(input: BuildSnapshotInput): Promise<AdapterResult<SnapshotBuildResult>> {
-    // Milestone 5: the push to a registry comes with ticket 09; until then a build asked to push is
-    // refused rather than kept here unpushed, where no other host could pull it.
-    if ((input.push ?? null) !== null) {
-      return Promise.resolve(adapterError("unsupported", "this runner doesn't push snapshots to a registry yet"));
-    }
+    // Milestone 5 (F-120): with `push`, the scanned image goes to the registry and its digest comes back.
     return this.#snapshots?.buildSnapshot(input) ?? Promise.resolve(adapterError("unsupported", "a box's sidecar builds no snapshots: its pool runner does"));
   }
 

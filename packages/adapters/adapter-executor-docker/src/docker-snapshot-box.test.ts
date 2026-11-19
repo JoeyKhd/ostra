@@ -155,14 +155,14 @@ describe("a docker box from a snapshot (F-051)", () => {
     await executor.release(box, "requested");
   }, 120_000);
 
-  it("F-120: until docker pushes (ticket 09), a build asked to push to a registry is refused, and nothing is built", async () => {
-    const builds: string[] = [];
+  it("F-120: the executor hands a build's push to the runner's snapshots, and without one builds as milestone 3 did", async () => {
+    const pushes: (string | null)[] = [];
     const executor = new DockerExecutor({
       taskRoot: path.join(root, "task-push"),
       bridge,
       snapshots: {
         buildSnapshot: (input) => {
-          builds.push(input.snapshotId);
+          pushes.push(input.push?.ref ?? null);
           return Promise.resolve({ ok: true, value: { outcome: "built", imageRef: "ostra-snapshot/p:s", imageDigest: `sha256:${"a".repeat(64)}`, durationMs: 1 } });
         },
         hasSnapshot: () => Promise.resolve({ ok: true, value: null }),
@@ -170,12 +170,9 @@ describe("a docker box from a snapshot (F-051)", () => {
     });
     const { body } = commandFixtures["snapshot-build"];
     const input = { snapshotId: body.snapshotId, projectId: body.projectId, environment: body.environment, credentials: snapshotCredentialsFixture, onOutput: () => undefined };
-    const pushed = await executor.buildSnapshot({ ...input, push: { ref: "registry.example/ostra/p", credential: { username: "push", token: "push-token" } } });
-    expect(pushed).toMatchObject({ ok: false, error: { code: "unsupported" } });
-    expect(builds).toEqual([]);
-    // Without a push, the build is the runner's own, as milestone 3 made it.
+    expect((await executor.buildSnapshot({ ...input, push: { ref: "registry.example/ostra/p:s", credential: { username: "push", token: "push-token" } } })).ok).toBe(true);
     expect((await executor.buildSnapshot({ ...input, push: null })).ok).toBe(true);
-    expect(builds).toEqual([body.snapshotId]);
+    expect(pushes).toEqual(["registry.example/ostra/p:s", null]);
   });
 });
 

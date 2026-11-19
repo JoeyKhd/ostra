@@ -1,6 +1,7 @@
 import { createWriteStream } from "node:fs";
 import http from "node:http";
 import { pipeline } from "node:stream/promises";
+import type { RegistryCredential } from "@ostra/adapter-sdk";
 import { z } from "zod";
 
 // The Docker Engine API, over its socket with `node:http` (answers section 4.6 allowed this over
@@ -49,7 +50,57 @@ export type Engine = {
   readonly exec: (containerId: string, cmd: readonly string[], user?: string) => Promise<EngineResult<{ readonly exitCode: number; readonly output: string }>>;
   /** Streams a GET's body to a file: an image's archive (`/images/<id>/get`) for the scan. */
   readonly download: (path: string, file: string) => Promise<EngineResult<void>>;
+  /**
+   * Milestone 5 (F-120): pulls `repository@digest`, with the pull credential in the call's
+   * `X-Registry-Auth` header only: never `~/.docker/config.json`, a file or an argument.
+   */
+  readonly pull: (repository: string, digest: string, credential: RegistryCredential | null) => Promise<EngineResult<void>>;
+  /**
+   * Milestone 5 (F-120): pushes `repository:tag`, with the push credential in the call's header
+   * only, and answers the manifest's digest the registry took.
+   */
+  readonly push: (repository: string, tag: string, credential: RegistryCredential) => Promise<EngineResult<{ readonly digest: string }>>;
 };
+
+/**
+ * The registry an image reference names: its first part when that looks like a host (a dot, a
+ * port or `localhost`), Docker Hub otherwise, as Docker reads it.
+ */
+export const registryHostOf = (repository: string): string => {
+  const slash = repository.indexOf("/");
+  const first = slash === -1 ? "" : repository.slice(0, slash);
+  return first !== "" && (first.includes(".") || first.includes(":") || first === "localhost") ? first : "docker.io";
+};
+
+/** `X-Registry-Auth`: one call's credential, base64url JSON as the Engine API reads it. */
+export const registryAuthHeader = (credential: RegistryCredential | null, serverAddress: string): string =>
+  Buffer.from(JSON.stringify(credential === null ? {} : { username: credential.username, password: credential.token, serveraddress: serverAddress })).toString("base64url");
+
+/** A line of a pull's or a push's progress stream: a vendor's format, read loosely. */
+const progressSchema = z.looseObject({
+  error: z.string().optional(),
+  errorDetail: z.looseObject({ message: z.string().optional() }).optional(),
+  aux: z.looseObject({ Digest: z.string().optional() }).optional(),
+});
+
+/** The stream's lines that parse, in order. */
+const progressLines = (raw: Buffer): readonly z.infer<typeof progressSchema>[] =>
+  raw
+    .toString("utf8")
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      if (line.trim() === "") return [];
+      try {
+        const parsed = progressSchema.safeParse(JSON.parse(line));
+        return parsed.success ? [parsed.data] : [];
+      } catch {
+        return [];
+      }
+    });
+
+/** A registry's words, with the credential's token cut out should a registry echo it. */
+const scrub = (message: string, credential: RegistryCredential | null): string =>
+  (credential === null || credential.token === "" ? message : message.replaceAll(credential.token, "[credential]")).slice(0, 500);
 
 /** Docker's multiplexed stream (no TTY): 8-byte headers, then each frame's bytes. */
 export const demultiplex = (raw: Buffer): string => {
@@ -69,7 +120,14 @@ const execInspectSchema = z.looseObject({ ExitCode: z.number().int().nullable() 
 /** What a call that answers nothing (204) parses to. */
 export const emptySchema = z.unknown();
 
-const rawCall = (address: EngineAddress, method: "POST", path: string, body: unknown, timeoutMs: number): Promise<EngineResult<Buffer>> =>
+const rawCall = (
+  address: EngineAddress,
+  method: "POST",
+  path: string,
+  body: unknown,
+  timeoutMs: number,
+  extraHeaders: Readonly<Record<string, string>> = {},
+): Promise<EngineResult<Buffer>> =>
   new Promise((resolve) => {
     const payload = JSON.stringify(body);
     const target = address.kind === "socket" ? { socketPath: address.path } : { host: address.host, port: address.port };
@@ -78,7 +136,7 @@ const rawCall = (address: EngineAddress, method: "POST", path: string, body: unk
         ...target,
         method,
         path: `/${ENGINE_API_VERSION}${path}`,
-        headers: { "user-agent": "ostra-runner", "content-type": "application/json", "content-length": Buffer.byteLength(payload) },
+        headers: { "user-agent": "ostra-runner", "content-type": "application/json", "content-length": Buffer.byteLength(payload), ...extraHeaders },
         timeout: timeoutMs,
       },
       (response) => {
@@ -100,6 +158,35 @@ const rawCall = (address: EngineAddress, method: "POST", path: string, body: unk
   });
 
 export const createEngine = (address: EngineAddress, timeoutMs = 60_000): Engine => ({
+  pull: async (repository, digest, credential) => {
+    const query = `fromImage=${encodeURIComponent(repository)}&tag=${encodeURIComponent(digest)}`;
+    const answered = await rawCall(address, "POST", `/images/create?${query}`, {}, timeoutMs, {
+      "x-registry-auth": registryAuthHeader(credential, registryHostOf(repository)),
+    });
+    if (!answered.ok) {
+      return { ok: false, error: { status: answered.error.status, message: scrub(answered.error.message, credential) } };
+    }
+    // The Engine answers 200 and streams; a refused pull is an error line in the stream.
+    const failed = progressLines(answered.value).find((line) => line.error !== undefined || line.errorDetail?.message !== undefined);
+    return failed === undefined
+      ? { ok: true, value: undefined }
+      : { ok: false, error: { status: 0, message: scrub(failed.errorDetail?.message ?? failed.error ?? "the pull failed", credential) } };
+  },
+  push: async (repository, tag, credential) => {
+    const answered = await rawCall(address, "POST", `/images/${encodeURIComponent(repository)}/push?tag=${encodeURIComponent(tag)}`, {}, timeoutMs, {
+      "x-registry-auth": registryAuthHeader(credential, registryHostOf(repository)),
+    });
+    if (!answered.ok) {
+      return { ok: false, error: { status: answered.error.status, message: scrub(answered.error.message, credential) } };
+    }
+    const lines = progressLines(answered.value);
+    const failed = lines.find((line) => line.error !== undefined || line.errorDetail?.message !== undefined);
+    if (failed !== undefined) {
+      return { ok: false, error: { status: 0, message: scrub(failed.errorDetail?.message ?? failed.error ?? "the push failed", credential) } };
+    }
+    const digest = lines.map((line) => line.aux?.Digest).find((each) => each !== undefined && /^sha256:[0-9a-f]{64}$/.test(each));
+    return digest === undefined ? { ok: false, error: { status: 0, message: "the push answered no digest" } } : { ok: true, value: { digest } };
+  },
   download: (path, file) =>
     new Promise((resolve) => {
       const target = address.kind === "socket" ? { socketPath: address.path } : { host: address.host, port: address.port };

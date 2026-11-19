@@ -281,6 +281,42 @@ describe("a snapshot built and kept on this host (F-051)", () => {
     expect(await snapshots.hasSnapshot(snapshotId)).toEqual({ ok: true, value: null });
   }, 120_000);
 
+  const PUSH_TOKEN = "ostra_push_cred_1f2e3d4c5b6a7980";
+  const push = { ref: `registry.ostra-test.invalid/ostra/${projectId}:${snapshotId}`, credential: { username: "ostra-pusher", token: PUSH_TOKEN } };
+
+  it("F-120: with a push, the scanned image is tagged and pushed with the push credential only after its scan, and the registry's digest comes back", async () => {
+    const { snapshots } = build(fakeBuildKit({}));
+    const built = await snapshots.buildSnapshot({ snapshotId, projectId, environment: environment(upstream.origin), credentials, push, onOutput: () => undefined });
+    if (!built.ok) throw new Error(built.error.message);
+    if (built.value.outcome !== "built") throw new Error(built.value.detail);
+    expect(engine.pushes).toHaveLength(1);
+    expect(engine.pushes[0]).toMatchObject({ ref: push.ref, username: "ostra-pusher", password: PUSH_TOKEN, serverAddress: "registry.ostra-test.invalid" });
+    // The scan's export came first: the push is after it.
+    const scanned = engine.calls.findIndex((call) => call.startsWith("GET /images/") && call.endsWith("/get"));
+    expect(scanned).toBeGreaterThanOrEqual(0);
+    expect(engine.pushes[0]?.atCall).toBeGreaterThan(scanned);
+    // The registry's manifest digest, which boxes pull by, and not the local image's ID.
+    expect(built.value.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(built.value.digest).not.toBe(built.value.imageDigest);
+    // Nothing of the build is left on disk to hold the credential.
+    expect(await readdir(path.join(root, "runner", "snapshots"))).toEqual([]);
+  }, 120_000);
+
+  it("F-120: an image the scan refuses is never pushed, and a refused push fails the build without the credential's value", async () => {
+    const planted = build(fakeBuildKit({}, (secrets) => ({ "task/snapshot/workspace/test1/.env.cache": `API_TOKEN=${secrets["s0_0"] ?? ""}` })));
+    const refused = await planted.snapshots.buildSnapshot({ snapshotId, projectId, environment: environment(upstream.origin), credentials, push, onOutput: () => undefined });
+    expect(refused).toMatchObject({ ok: true, value: { outcome: "failed", reason: "secret-found" } });
+    expect(engine.pushes).toEqual([]);
+    engine.failNext.set("push", 401);
+    const clean = build(fakeBuildKit({}));
+    const failed = await clean.snapshots.buildSnapshot({ snapshotId, projectId, environment: environment(upstream.origin), credentials, push, onOutput: () => undefined });
+    expect(failed).toMatchObject({ ok: true, value: { outcome: "failed", reason: "build-failed" } });
+    if (failed.ok && failed.value.outcome === "failed") {
+      expect(failed.value.detail).toContain("pushing the image to the registry failed");
+      expect(failed.value.detail).not.toContain(PUSH_TOKEN);
+    }
+  }, 120_000);
+
   it("F-051: a failing setup is setup-failed, and a secret the build prints is hidden from its output", async () => {
     const output: string[] = [];
     const { run } = build(fakeBuildKit({}, undefined, 1, `npm ERR! token ${API_TOKEN} refused\n${SETUP_FAILED_MARKER}\n`), output);

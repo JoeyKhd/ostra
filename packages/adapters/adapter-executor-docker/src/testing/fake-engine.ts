@@ -7,6 +7,12 @@ import type { AddressInfo } from "node:net";
 // networks, volumes, containers and images in memory, records every create body, and answers the
 // calls `createDockerBoxes` and `createDockerSnapshots` make, under the API version prefix. No
 // container runs: a test sets a container's health and answers its execs (milestone 3).
+//
+// Milestone 5 (ticket 09): it answers `info` (CPUs and memory a test sets), records each pull by
+// digest and each push with the credential the call's `X-Registry-Auth` header carried, refuses to
+// create a container from a digest it never pulled, tags images, and answers a container's inspect
+// with its `HostConfig` as the Engine keeps it: a `Memory` with no `MemorySwap` gets Docker's own
+// default, swap as large as the memory again, so a missing `MemorySwap` shows.
 
 export type FakeContainer = {
   readonly id: string;
@@ -28,6 +34,18 @@ export type FakeImage = {
   readonly archive: Buffer;
 };
 
+/** A pull or a push, with the credential its header carried (`null` without one). */
+export type FakeRegistryCall = {
+  /** `repository@digest` for a pull, `repository:tag` for a push. */
+  readonly ref: string;
+  readonly username: string | null;
+  readonly password: string | null;
+  /** The registry the header named. */
+  readonly serverAddress: string | null;
+  /** The calls made before this one, by index into `calls`, so a test can order a push after a scan. */
+  readonly atCall: number;
+};
+
 /** How the fake answers an exec: by the container and the command. */
 export type FakeExec = (container: FakeContainer, cmd: readonly string[]) => { readonly exitCode: number; readonly output: string };
 
@@ -44,8 +62,14 @@ export type FakeEngine = {
   /** Answers each exec; by default every command exits 0 with no output. */
   exec: FakeExec;
   readonly calls: string[];
-  /** Fails the next create of this kind with a status. */
-  readonly failNext: Map<"container" | "network" | "volume", number>;
+  /** Fails the next create of this kind with a status; a pull or a push fails in its stream, as the Engine does. */
+  readonly failNext: Map<"container" | "network" | "volume" | "pull" | "push", number>;
+  /** Milestone 5: what `info` answers. */
+  readonly info: { cpus: number; memoryBytes: number };
+  /** Every pull, in order. */
+  readonly pulls: FakeRegistryCall[];
+  /** Every push, in order. */
+  readonly pushes: FakeRegistryCall[];
   readonly close: () => Promise<void>;
 };
 
@@ -76,6 +100,43 @@ const labelsOf = (body: Readonly<Record<string, unknown>>): Record<string, strin
 };
 
 const listOf = (value: unknown): readonly string[] => (Array.isArray(value) ? value.map(String) : []);
+
+/** The credential an `X-Registry-Auth` header carried, decoded as the Engine reads it. */
+const registryAuthOf = (request: IncomingMessage): { readonly username: string | null; readonly password: string | null; readonly serverAddress: string | null } => {
+  const header = request.headers["x-registry-auth"];
+  if (typeof header !== "string" || header === "") {
+    return { username: null, password: null, serverAddress: null };
+  }
+  try {
+    const value: unknown = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
+    const field = (name: string): string | null => {
+      const found: unknown = Reflect.get(Object(value), name);
+      return typeof found === "string" ? found : null;
+    };
+    return { username: field("username"), password: field("password"), serverAddress: field("serveraddress") };
+  } catch {
+    return { username: null, password: null, serverAddress: null };
+  }
+};
+
+/** A container's mounts, as its create body named them. */
+const mountsOf = (body: Readonly<Record<string, unknown>>): readonly unknown[] => {
+  const mounts: unknown = Reflect.get(Object(body["HostConfig"]), "Mounts");
+  return Array.isArray(mounts) ? mounts : [];
+};
+
+/** A container's `HostConfig` as `docker inspect` shows it: Docker's own swap default filled in. */
+const inspectedHostConfig = (body: Readonly<Record<string, unknown>>): Record<string, unknown> => {
+  const host: unknown = body["HostConfig"];
+  const config: Record<string, unknown> = typeof host === "object" && host !== null ? Object.fromEntries(Object.entries(host)) : {};
+  const memory = config["Memory"];
+  const swap = config["MemorySwap"];
+  if (typeof memory === "number" && memory > 0 && (swap === undefined || swap === 0)) {
+    // The Engine's default with a memory limit and no swap limit: as much swap as memory.
+    config["MemorySwap"] = memory * 2;
+  }
+  return config;
+};
 
 /** A tar archive of the entries, as `docker save` and a layer are: ustar headers, 512-byte blocks. */
 export const tarOf = (entries: readonly { readonly name: string; readonly content: Buffer }[]): Buffer => {
@@ -112,7 +173,16 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
   const doneExecs = new Map<string, number>();
   const answerExec: { current: FakeExec } = { current: () => ({ exitCode: 0, output: "" }) };
   const calls: string[] = [];
-  const failNext = new Map<"container" | "network" | "volume", number>();
+  const failNext = new Map<"container" | "network" | "volume" | "pull" | "push", number>();
+  const info = { cpus: 16, memoryBytes: 64 * 1024 * 1024 * 1024 };
+  const pulls: FakeRegistryCall[] = [];
+  const pushes: FakeRegistryCall[] = [];
+  /** What was pulled by digest, so a container can start from it. */
+  const pulled = new Set<string>();
+  /** A pull's or a push's stream: progress lines, then an error line when it fails. */
+  const stream = (response: ServerResponse, lines: readonly unknown[]): void => {
+    response.writeHead(200, { "content-type": "application/json" }).end(lines.map((line) => JSON.stringify(line)).join("\n"));
+  };
   const byIdOrName = (key: string): FakeContainer | undefined => containers.get(key) ?? [...containers.values()].find((item) => item.name === key);
 
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -133,6 +203,60 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
       send(response, status, { message: `fake ${kind} failure` });
       return true;
     };
+    // ---- milestone 5: info, pulls by digest, tags and pushes ----
+    if (method === "GET" && path === "/info") {
+      send(response, 200, { NCPU: info.cpus, MemTotal: info.memoryBytes, ServerVersion: "fake" });
+      return;
+    }
+    if (method === "POST" && path === "/images/create") {
+      await readJson(request);
+      const fromImage = url.searchParams.get("fromImage") ?? "";
+      const tag = url.searchParams.get("tag") ?? "latest";
+      const ref = tag.startsWith("sha256:") ? `${fromImage}@${tag}` : `${fromImage}:${tag}`;
+      pulls.push({ ref, ...registryAuthOf(request), atCall: calls.length - 1 });
+      const status = failNext.get("pull");
+      if (status !== undefined) {
+        failNext.delete("pull");
+        stream(response, [{ status: "Pulling" }, { errorDetail: { message: `fake pull refused (${String(status)})` }, error: `fake pull refused (${String(status)})` }]);
+        return;
+      }
+      pulled.add(ref);
+      stream(response, [{ status: `Pulling from ${fromImage}` }, { status: `Digest: ${tag}` }, { status: `Status: Downloaded newer image for ${ref}` }]);
+      return;
+    }
+    const imageTag = /^\/images\/([^/]+)\/tag$/.exec(path);
+    if (method === "POST" && imageTag?.[1] !== undefined) {
+      const key = decodeURIComponent(imageTag[1]);
+      const image = images.get(key) ?? [...images.values()].find((each) => each.tags.includes(key));
+      if (image === undefined) {
+        send(response, 404, { message: "no such image" });
+        return;
+      }
+      const repo = url.searchParams.get("repo") ?? "";
+      const tag = url.searchParams.get("tag") ?? "latest";
+      images.set(image.id, { ...image, tags: [...image.tags, `${repo}:${tag}`] });
+      send(response, 201);
+      return;
+    }
+    const imagePush = /^\/images\/([^/]+)\/push$/.exec(path);
+    if (method === "POST" && imagePush?.[1] !== undefined) {
+      await readJson(request);
+      const repository = decodeURIComponent(imagePush[1]);
+      const tag = url.searchParams.get("tag") ?? "latest";
+      const ref = `${repository}:${tag}`;
+      pushes.push({ ref, ...registryAuthOf(request), atCall: calls.length - 1 });
+      const image = [...images.values()].find((each) => each.tags.includes(ref));
+      const status = failNext.get("push");
+      if (image === undefined || status !== undefined) {
+        failNext.delete("push");
+        stream(response, [{ status: `The push refers to repository [${repository}]` }, { errorDetail: { message: "fake push refused" }, error: "fake push refused" }]);
+        return;
+      }
+      // The manifest's digest in the registry: not the image's ID, as with a real registry.
+      const digest = `sha256:${createHash("sha256").update(`${image.id} ${ref}`).digest("hex")}`;
+      stream(response, [{ status: `The push refers to repository [${repository}]` }, { status: `${tag}: digest: ${digest} size: 525` }, { progressDetail: {}, aux: { Tag: tag, Digest: digest, Size: 525 } }]);
+      return;
+    }
     // ---- images (milestone 3: snapshots) ----
     if (method === "GET" && path === "/images/json") {
       const filter: unknown = JSON.parse(url.searchParams.get("filters") ?? "{}");
@@ -256,6 +380,12 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
         return;
       }
       const body = await readJson(request);
+      // As the Engine does: an image by digest must be on the host, which only a pull puts there.
+      const image = body["Image"];
+      if (typeof image === "string" && image.includes("@sha256:") && !pulled.has(image)) {
+        send(response, 404, { message: `No such image: ${image}` });
+        return;
+      }
       // As the Engine does: a container's name is unique.
       const wanted = url.searchParams.get("name");
       if (wanted !== null && [...containers.values()].some((container) => container.name === wanted)) {
@@ -304,6 +434,10 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
       }
       send(response, 200, {
         Id: container.id,
+        Name: `/${container.name}`,
+        Config: { Image: container.body["Image"], Env: container.body["Env"], Cmd: container.body["Cmd"], Labels: labelsOf(container.body) },
+        HostConfig: inspectedHostConfig(container.body),
+        Mounts: mountsOf(container.body),
         State: {
           Status: container.status,
           Running: container.status === "running",
@@ -358,6 +492,9 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
     },
     calls,
     failNext,
+    info,
+    pulls,
+    pushes,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

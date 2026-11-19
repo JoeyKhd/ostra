@@ -63,6 +63,15 @@ export type DockerSnapshots = {
   readonly hasSnapshot: (snapshotId: SnapshotId) => Promise<AdapterResult<KeptSnapshot | null>>;
 };
 
+/** `host/path:tag` into its repository and tag; the tag is after the last colon past the last slash. `null` without a tag. */
+export const splitImageRef = (ref: string): { readonly repository: string; readonly tag: string } | null => {
+  const colon = ref.lastIndexOf(":");
+  if (colon <= ref.lastIndexOf("/") || colon === ref.length - 1 || ref.includes("@")) {
+    return null;
+  }
+  return { repository: ref.slice(0, colon), tag: ref.slice(colon + 1) };
+};
+
 const imagesSchema = z.array(z.looseObject({ Id: z.string(), RepoTags: z.array(z.string()).nullish(), Labels: z.record(z.string(), z.string()).nullish() }));
 
 /** Hides every secret value in the build's output: BuildKit prints what a setup script prints. */
@@ -268,6 +277,31 @@ export const createDockerSnapshots = (options: DockerSnapshotsOptions): DockerSn
           // Names only: a secret's value is never in an event, a log line or the panel.
           blog.warn("a setup secret was found in the snapshot image: deleted", { found: scan.found.length });
           return failed("secret-found", `The setup secret${scan.found.length === 1 ? "" : "s"} ${scan.found.join(", ")} ${scan.found.length === 1 ? "was" : "were"} found in the image, so the image was deleted. A setup script must not write a secret's value into a file.`);
+        }
+        // 5. Milestone 5 (F-120): the push, only now that the scan found nothing. The image is tagged
+        // with the registry's name and pushed with the push credential in the Engine call's header,
+        // never `docker login`, so nothing of it lands in a file.
+        const push = input.push ?? null;
+        if (push !== null) {
+          const target = splitImageRef(push.ref);
+          if (target === null) {
+            return failed("build-failed", "the registry's image name isn't name:tag");
+          }
+          const tagged = await options.engine.call(
+            "POST",
+            `/images/${encodeURIComponent(image.Id)}/tag?repo=${encodeURIComponent(target.repository)}&tag=${encodeURIComponent(target.tag)}`,
+            emptySchema,
+          );
+          if (!tagged.ok) {
+            return failed("build-failed", `tagging the image for the registry failed: ${tagged.error.message}`);
+          }
+          const pushed = await options.engine.push(target.repository, target.tag, push.credential);
+          if (!pushed.ok) {
+            blog.warn("pushing the snapshot to the registry failed", { status: pushed.error.status });
+            return failed("build-failed", `pushing the image to the registry failed: ${pushed.error.message}`);
+          }
+          blog.info("snapshot built and pushed", { entries: scan.entries, bytesScanned: scan.bytesScanned, durationMs: now() - started });
+          return ok({ outcome: "built", imageRef: tag, imageDigest: digest.data, durationMs: Math.max(0, now() - started), digest: pushed.value.digest });
         }
         blog.info("snapshot built", { entries: scan.entries, bytesScanned: scan.bytesScanned, durationMs: now() - started });
         return ok({ outcome: "built", imageRef: tag, imageDigest: digest.data, durationMs: Math.max(0, now() - started) });
