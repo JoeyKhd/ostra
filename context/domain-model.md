@@ -220,7 +220,7 @@ Any member who can open the project may answer an approval, whoever its audience
                 └──▶ crashed (the agent, the sidecar or the box died; the branches stay, and the hidden ref and archive are those of the last finished turn)
 ```
 
-Only one session per task is starting, running, waiting or idle at any time.
+Only one session per task is starting, running, waiting or idle at any time. A session that ends, stops or crashes ends the task's lease with it, so its runner's slot is free for the next task (ADR 0034).
 
 **A session records how it began** (Q53, ADR 0006, ADR 0039):
 

@@ -380,6 +380,31 @@ describe("the task host", () => {
     expect(everyEventOnce()).toBe(true);
   }, 120_000);
 
+  it("F-047: a run whose agent crashes frees the runner's one slot, and the next dispatch is accepted and starts", async () => {
+    const { dispatch } = await start();
+    const { spec: crashing } = taskFor("[[fake:crash]]");
+    dispatch(crashing);
+    await waitForKind(crashing, "session.crashed");
+    await gateway.waitFor(() => host?.running().length === 0);
+    expect(host?.status()).toMatchObject({ capacity: 1, freeSlots: 1, running: [] });
+    // A later task on the same runner: accepted, not `no-capacity`, and its turn starts.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const { spec: next } = taskFor("[[fake:silent]]");
+    const id = `dispatch-next-${String(counter)}`;
+    gateway.sendCommand(
+      makeCommand({
+        seq: counter * 10 + 1,
+        id,
+        notAfter: Date.now() + 120_000,
+        kind: "dispatch",
+        body: { taskId: next.taskId, sessionId: next.sessionId, boxId: boxIdSchema.parse(`box-next-${String(counter)}`), leaseEpoch: next.leaseEpoch },
+      }),
+    );
+    await gateway.waitFor(() => gateway.acks.some((ack) => ack.results.some((item) => item.id === id)), 60_000);
+    expect(gateway.acks.flatMap((ack) => ack.results).find((item) => item.id === id)).toMatchObject({ result: "accepted" });
+    await waitForKind(next, "turn.started");
+  }, 120_000);
+
   it("starts the agent with the task's git config as the only one, whatever a repo's variables say", async () => {
     const { dataDir, dispatch } = await start();
     launches.length = 0;

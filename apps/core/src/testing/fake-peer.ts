@@ -122,23 +122,44 @@ export const connectPeer = (
     const next = <T extends DownFrameType>(type: T, timeoutMs = 10_000): Promise<Extract<DownFrame, { type: T }>> =>
       new Promise((resolveNext, rejectNext) => {
         const until = Date.now() + timeoutMs;
+        // One look pending per call, and none once it settled: a call that kept looking after it
+        // resolved would take the frame a later call waits for, and its copies would multiply.
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const wake = (): void => {
+          clearTimeout(timer);
+          timer = setTimeout(look, 0);
+        };
+        const settle = (): void => {
+          settled = true;
+          clearTimeout(timer);
+          const index = waiters.indexOf(wake);
+          if (index !== -1) {
+            waiters.splice(index, 1);
+          }
+        };
         const look = (): void => {
+          if (settled) {
+            return;
+          }
           for (const frame of frames) {
             if (!taken.has(frame) && isType(frame, type)) {
+              settle();
               taken.add(frame);
               resolveNext(frame);
               return;
             }
           }
           if (Date.now() > until || ws.readyState === WebSocket.CLOSED) {
+            settle();
             rejectNext(new Error(`no ${type} frame within ${String(timeoutMs)} ms; got ${frames.map((frame) => frame.type).join(", ")}`));
             return;
           }
-          const timer = setTimeout(look, 50);
-          waiters.push(() => {
-            clearTimeout(timer);
-            setTimeout(look, 0);
-          });
+          clearTimeout(timer);
+          timer = setTimeout(look, 50);
+          if (!waiters.includes(wake)) {
+            waiters.push(wake);
+          }
         };
         look();
       });

@@ -10,6 +10,7 @@ import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import { holdProviderInTx } from "./hold-provider.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
+import { releaseLeaseInTx } from "./record-session-end.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
@@ -267,7 +268,9 @@ const applyEffects = async (
         break;
       case "session.crashed": {
         // Needs you for the driver; the box failed; the branch, the hidden ref and the last archive
-        // stay, and a reopen carries on from them (ticket 27, F-047).
+        // stay, and a reopen carries on from them (ticket 27, F-047). The lease ends with the session,
+        // so the runner's slot is free for its next task: the runner already freed its own, and a
+        // lease left active keeps the server counting it.
         await moveSessionInTx(moveDeps, current, { type: "crash" });
         await reloadSession();
         await endSessionTimersInTx(deps, tx, sessionRef);
@@ -290,6 +293,9 @@ const applyEffects = async (
             data: { state: "failed", failedReason: "the session crashed" },
           });
         }
+        // After the box failed, so the release keeps its reason. The fence already checked that
+        // this event carries the task's current epoch, so the active lease is this session's.
+        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
         break;
       }
       case "workspace.files_outside_repos":

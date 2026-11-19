@@ -234,8 +234,21 @@ describe("ingest", () => {
     const after = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
     expect(after).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
     expect(await test.db.needsYouItem.findFirst({ where: { taskId: task.taskId } })).toMatchObject({ reason: "crashed", audience: "driver", state: "open" });
-    expect(await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).toMatchObject({ state: "failed" });
+    expect(await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).toMatchObject({ state: "failed", failedReason: "the session crashed" });
     expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "crashed" });
+    // The runner's slot is free (F-047): the lease ended with the session.
+    expect(await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "ended", endReason: "released" });
+  });
+
+  it("F-047: a setup that fails ends the lease too, so the slot frees, and the box fails as crashed", async () => {
+    // As the seed leaves it: preparing, the session starting, the box preparing.
+    const task = await newTask("preparing");
+    await ingest(ours, frame(runnerEvent(task, 1, { kind: "session.crashed", error: "the environment's setup failed" })));
+    expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
+    expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "crashed" });
+    expect(await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).toMatchObject({ state: "failed", failedReason: "the session crashed" });
+    expect(await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "ended", endReason: "released" });
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "session.crashed" } })).toBe(1);
   });
 
   it("stores an event whose transition is refused, logs the refusal with IDs only, and acts on nothing", async () => {
