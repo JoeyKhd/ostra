@@ -1,0 +1,26 @@
+{
+  "name": "@ostra/adapter-executor-kubernetes",
+  "version": "0.0.0",
+  "description": "The kubernetes executor: a box per task as a pod, with the sidecar as a native sidecar (ADR 0029, ADR 0060)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=4"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "2.0.2",
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "5.1.1"
+  }
+}

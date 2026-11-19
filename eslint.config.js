@@ -153,6 +153,12 @@ export default defineConfig(
     files: ["packages/adapters/**/*.ts", "packages/adapter-sdk/**/*.ts"],
     rules: { "no-restricted-syntax": ["error", ...serverSyntax] },
   },
+  // `@kubernetes/client-node`'s models (`V1Pod`, `V1Container`, ...) are classes of data fields only,
+  // which its own docs fill from object literals; the rules' prototype worry doesn't apply to them.
+  {
+    files: ["packages/adapters/adapter-executor-kubernetes/**/*.ts"],
+    rules: { "@typescript-eslint/no-unsafe-class-instance-assignment": "off", "@typescript-eslint/no-misused-spread": "off" },
+  },
   // The fake adapters the API's tests run against are adapters, so they are classes too (ADR 0025).
   {
     files: ["packages/api/src/testing/**/*.ts", "apps/core/src/testing/fake-adapters.ts", "apps/core/src/testing/notify.ts"],
