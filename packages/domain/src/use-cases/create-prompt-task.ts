@@ -190,6 +190,8 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
       creatorMemberId: scope.memberId,
       runnerId: input.runnerId ?? null,
       agentProfileId: profile.id,
+      // F-137 (ADR 0066): the profile's level, copied once; a later edit of the profile changes new tasks only.
+      effort: profile.effort,
       ...taskToColumns(lifecycle),
     },
     select: { id: true },

@@ -2,6 +2,7 @@ import type { Db } from "@ostra/db";
 import { apiFormatFromDb, authSchemeFromDb } from "@ostra/db";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CatalogEntry } from "@ostra/adapter-sdk";
+import { reasoningControlsSchema } from "@ostra/protocol";
 import type { OrganizationId, ProviderId } from "@ostra/protocol";
 
 import type { Ports } from "../ports.ts";
@@ -13,7 +14,7 @@ import type { UseCaseResult } from "./common.ts";
 // 28) and `providers.refresh` (the panel's button) both call this, so they can't disagree.
 //
 // What a refresh never does: overwrite what an admin entered for a custom model (its name, limits
-// and prices), or delete a model that agent profiles point at: one the endpoint no longer lists
+// and prices) or an admin's reasoning controls for any model (F-137), or delete a model that agent profiles point at: one the endpoint no longer lists
 // is marked unlisted.
 
 export type SyncProviderModelsDeps = Pick<Ports, "notices" | "clock" | "adapters"> & {
@@ -89,6 +90,9 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
           // Q163: the cache prices when the catalog has them; unknown ones price at the input price.
           cacheReadPricePerMTok: entry.cacheReadPricePerMTok ?? null,
           cacheWritePricePerMTok: entry.cacheWritePricePerMTok ?? null,
+          // F-137 (ADR 0066): the catalog's reasoning controls. An admin's (`adminReasoning`) are
+          // never written here, so a refresh never undoes them.
+          catalogReasoning: reasoningControlsSchema.parse(entry.reasoning),
           listed: true,
         };
         if (row === undefined) {

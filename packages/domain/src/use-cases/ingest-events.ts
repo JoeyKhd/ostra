@@ -1,5 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import { LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
+import { effortLevelToDb, LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
 import type { Session, Tx } from "@ostra/db";
 import { boxIdSchema, modelIdSchema, organizationIdSchema, projectIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
 import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
@@ -200,6 +200,9 @@ const applyEffects = async (
             ordinal,
             startSeq: seq,
             startedAt: new Date(item.at),
+            // F-137 (ADR 0066): the level the turn ran at, and the one asked for when it was clamped.
+            ...(event.effort === undefined ? {} : { effort: effortLevelToDb[event.effort] }),
+            ...(event.adjustedFrom === undefined ? {} : { effortAdjustedFrom: effortLevelToDb[event.adjustedFrom] }),
           },
         });
         if (current.state === "starting" || current.state === "idle") {
@@ -273,6 +276,8 @@ const applyEffects = async (
             outputTokens: { increment: event.outputTokens },
             cacheReadTokens: { increment: event.cacheReadTokens },
             cacheWriteTokens: { increment: event.cacheWriteTokens },
+            // F-137: the reasoning subset, already inside `outputTokens` and priced with it.
+            reasoningTokens: { increment: event.reasoningTokens ?? 0 },
           },
         });
         if (cost > 0) {
@@ -305,6 +310,7 @@ const applyEffects = async (
               outputTokens: { increment: event.outputTokens },
               cacheReadTokens: { increment: event.cacheReadTokens },
               cacheWriteTokens: { increment: event.cacheWriteTokens },
+              reasoningTokens: { increment: event.reasoningTokens ?? 0 },
               ...(event.estimated ? { estimated: true } : {}),
             },
           });

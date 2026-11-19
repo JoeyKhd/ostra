@@ -1,6 +1,6 @@
 # 59: Core: effort and limits at dispatch, and a change for the next turn
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 48, 56, 57, 58
 Features: F-137, F-024, F-084
@@ -29,7 +29,7 @@ Spec: `../spec.md`, sections 4 ("Reasoning effort") and 5.6; ADR 0066
 
 ## Done when
 
-- [ ] Tests named `it("F-137: ...")`:
+- [x] Tests named `it("F-137: ...")`:
   - the spec of a task on a catalog model with a 1,000,000-token window and a 128,000-token output carries both
   - a custom model with no limits carries `null` for each
   - the spec carries the clamped level after the profile's model moved to one without it
@@ -37,7 +37,9 @@ Spec: `../spec.md`, sections 4 ("Reasoning effort") and 5.6; ADR 0066
   - `setTaskEffort`: the driver only; event, audit entry and command in one transaction, and a rollback leaves none; nothing is sent to a runner when the session is idle with no box
   - a reopen in a fresh box and a rebuild-template session start at the task's level
   - a turn stores its level and its reasoning tokens, and the session sums them
-- [ ] The whole-repo checks pass (spec section 9): it changes what goes over the runner protocol.
-- [ ] Committed as `✨ carry reasoning effort to the runner`.
+- [x] The whole-repo checks pass (spec section 9): it changes what goes over the runner protocol.
+- [x] Committed as `✨ carry reasoning effort to the runner`.
 
 ## Comments
+
+- 2026-11-19: built on tickets 48, 56, 58 and 61, with ticket 57 not yet landed. `packages/domain/src/effort/levels.ts` holds `modelEffort` (the row's effective controls, the agent's levels for them, the task's level clamped) and the `AgentEffortLevels` port; core's registry (`apps/core/src/agents/effort-levels.ts`) answers it, for now through the API's `controlsAgentEffort` (levels off the model's controls), until ticket 57's adapters declare their own. The spec carries `agent.effort` (clamped), `agent.reasoning` and `agent.limits` from the session's model row, on every session, so a reopen and the rebuild template start at the task's level. The dispatch holds a task whose clamped level isn't `default` for a minor-3 runner (`needs-protocol`), alone or in a pool. A new task (prompt or ticket) copies its profile's `effort`. `setTaskEffort` refuses a level the session's model doesn't offer with `level-not-offered`, naming the levels (the session's model row, else its profile's; the API maps it to `BAD_REQUEST` and passes its `AgentEffort` port as the levels). The catalog sync writes `catalogReasoning` and never `adminReasoning`. Ingest stores `turn.started`'s `effort` and `adjustedFrom` on the `Turn` and sums `reasoningTokens` on the `Turn` and the `Session`; spend still prices all of `outputTokens` as output. Tests: `apps/core/src/effort/effort-dispatch.test.ts`, eleven cases against a real database, each broken once (limits nulled, the clamp skipped, the minor-3 hold dropped, the level check dropped, the reasoning-token sum dropped, the turn's level dropped, the catalog sync's controls replaced); proof rows in `context/proof/F-137.md`. Commit: `✨ carry reasoning effort to the runner`.

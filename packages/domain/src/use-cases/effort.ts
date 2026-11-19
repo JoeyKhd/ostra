@@ -1,5 +1,5 @@
 import type { Db, Tx } from "@ostra/db";
-import { effortLevelToDb, mapModel, mapTask, Prisma } from "@ostra/db";
+import { apiFormatFromDb, effortLevelToDb, mapModel, mapTask, Prisma } from "@ostra/db";
 import {
   organizationIdSchema,
   PROTOCOL_MINOR,
@@ -13,6 +13,8 @@ import {
 import type { EffortChangeId, EffortLevel, ModelId, ReasoningControls, TaskId } from "@ostra/protocol";
 
 import { canSetTaskEffort, requireOrganizationAdmin, requireProjectAccess } from "../access.ts";
+import { modelEffort } from "../effort/levels.ts";
+import type { AgentEffortLevels } from "../effort/levels.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -20,10 +22,13 @@ import { appendServerEvent } from "./server-events.ts";
 
 // Reasoning effort's use cases (F-137, ADR 0066, milestone 4's ticket 56): an admin's controls for
 // a model, and the driver's level for a running task. Each is one transaction with its audit entry
-// (F-073) and its change notice; a rollback leaves neither. Ticket 59 adds the check that a task's
-// level is one of its model's, and ticket 61 the routers.
+// (F-073) and its change notice; a rollback leaves neither. A task's level must be one its
+// session's model offers (ticket 59); ticket 61 adds the routers.
 
-export type EffortDeps = { readonly db: Db } & Pick<Ports, "outbox" | "notices" | "audit" | "clock">;
+export type EffortDeps = { readonly db: Db } & Pick<Ports, "outbox" | "notices" | "audit" | "clock"> & {
+  /** Core's agent registry: the levels each agent can send for a model (ticket 57's `effortLevels`). */
+  readonly effortLevels: AgentEffortLevels;
+};
 
 // ---------- a model's reasoning controls (Q286) ----------
 
@@ -121,7 +126,7 @@ export type SetTaskEffortResult = UseCaseResult<
     /** Whether a `set-effort` went to the runner holding the session; otherwise the next session starts at it. */
     readonly sentToRunner: boolean;
   },
-  "not-found" | "take-over-to-change"
+  "not-found" | "take-over-to-change" | "level-not-offered"
 >;
 
 /** The session states a running agent holds, which a `set-effort` reaches. */
@@ -138,7 +143,7 @@ const SET_EFFORT_MINOR = 3;
  * going session at minor 3. With none going, the next dispatch carries the level.
  */
 export const setTaskEffortInTx = async (
-  deps: Pick<Ports, "outbox" | "notices" | "audit" | "clock">,
+  deps: Pick<EffortDeps, "outbox" | "notices" | "audit" | "clock" | "effortLevels">,
   tx: Tx,
   scope: MemberScope,
   input: SetTaskEffortInput,
@@ -156,6 +161,31 @@ export const setTaskEffortInTx = async (
   }
   if (!canSetTaskEffort(scope, task)) {
     return { ok: false, error: "take-over-to-change", message: "Take over to change the reasoning level" };
+  }
+  // The level must be one the session's model offers, as its agent can send it (ADR 0066): the
+  // panel offers only those, so another is refused, naming them.
+  // The session's model row (F-135), else its profile's; the profile is the session's, else the
+  // task's, else the project's default code profile before the task has a session.
+  const latest = await tx.session.findFirst({ where: { taskId: task.id }, orderBy: { startedAt: "desc" }, select: { agentProfileId: true, modelId: true } });
+  const profileId =
+    latest?.agentProfileId ??
+    task.agentProfileId ??
+    (await tx.project.findFirst({ where: { id: task.projectId, organizationId }, select: { defaultCodeProfileId: true } }))?.defaultCodeProfileId ??
+    null;
+  const profile = profileId === null ? null : await tx.agentProfile.findFirst({ where: { id: profileId, organizationId }, select: { adapter: true, modelId: true } });
+  const modelId = latest?.modelId ?? profile?.modelId ?? null;
+  const model = modelId === null ? null : await tx.model.findFirst({ where: { id: modelId, organizationId }, include: { provider: true } });
+  const levels =
+    profile === null || model === null
+      ? (["default"] as const)
+      : modelEffort(deps.effortLevels, {
+          adapter: profile.adapter,
+          apiFormat: apiFormatFromDb[model.provider.apiFormat],
+          model: mapModel(model),
+          level: input.level,
+        }).levels;
+  if (!levels.includes(input.level)) {
+    return { ok: false, error: "level-not-offered", message: `This model offers these levels: ${levels.join(", ")}` };
   }
   const from = task.effort;
   if (from === input.level) {

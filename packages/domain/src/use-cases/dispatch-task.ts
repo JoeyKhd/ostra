@@ -1,5 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import { mapTask } from "@ostra/db";
+import { apiFormatFromDb, mapModel, mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { blobIdSchema, boxIdSchema, modelIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, RunnerId, TaskId } from "@ostra/protocol";
@@ -7,6 +7,8 @@ import type { BlobRef, BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, Run
 import type { JobPayload } from "../jobs.ts";
 import type { Ports } from "../ports.ts";
 import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
+import { EFFORT_MINOR, modelEffort } from "../effort/levels.ts";
+import type { AgentEffortLevels } from "../effort/levels.ts";
 import { runnerStartsServices } from "../environment/services.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
 import { budgetWaitOf, checkBudget } from "./budgets.ts";
@@ -51,6 +53,11 @@ export type DispatchTaskDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "cloc
   readonly logger?: Logger;
   /** Milestone 2: without it a reopen never restores an archive, and falls back to the template. */
   readonly reopen?: ReopenDispatchSettings;
+  /**
+   * Milestone 4 (F-137): the levels each agent can send for a model. A task whose level, clamped
+   * to them, isn't `default` goes only to a minor-3 runner. Without it the task's own level decides.
+   */
+  readonly effortLevels?: AgentEffortLevels;
 };
 
 /** How a dispatch starts its session: fresh (the task's first), or by one of ADR 0039's steps. */
@@ -313,10 +320,25 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const needsServices = (await tx.service.count({ where: { projectId: task.projectId, organizationId: task.organizationId } })) > 0;
   // Milestone 3 (F-021, ticket 16): a profile with rules, plan first, skills or MCP servers goes only
   // to a runner at minor 2 or later. When only older runners could take it, the task says so.
-  const minMinor =
+  const profileMinor =
     profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills })
       ? PROFILE_FEATURES_MINOR
       : 0;
+  // Milestone 4 (F-137, ADR 0066): a task that runs at a level other than `default` goes only to a
+  // runner at minor 3, the first that reads `agent.effort`. The level is the one the spec carries,
+  // clamped to the model's levels, so a level the model lacks entirely doesn't hold the task.
+  const effortModel = task.effort === "default" || deps.effortLevels === undefined ? null : await tx.model.findFirst({ where: { id: modelId, organizationId: task.organizationId } });
+  const runsAtLevel =
+    task.effort !== "default" &&
+    (deps.effortLevels === undefined ||
+      effortModel === null ||
+      modelEffort(deps.effortLevels, {
+        adapter: profile.adapter,
+        apiFormat: apiFormatFromDb[provider.apiFormat],
+        model: mapModel(effortModel),
+        level: task.effort,
+      }).effort.level !== "default");
+  const minMinor = runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor;
   let tooOld = false;
   const fitting = async (scope: RunnerScope): Promise<readonly Candidate[]> => {
     const found = await available(tx, task.organizationId, scope, now, needsServices, minMinor);

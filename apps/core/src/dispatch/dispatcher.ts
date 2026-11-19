@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { acceptOffer, dispatchTask, dispatchWaitColumns } from "@ostra/domain";
-import type { ChangeNotices, Clock, CommandOutbox, JobPayload, ReopenDispatchSettings } from "@ostra/domain";
+import type { AgentEffortLevels, ChangeNotices, Clock, CommandOutbox, JobPayload, ReopenDispatchSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, projectIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -24,6 +24,8 @@ export type DispatcherDeps = {
   readonly logger: Logger;
   /** Milestone 2 (ticket 18): what a reopen's dispatch needs to pick its step. */
   readonly reopen?: ReopenDispatchSettings;
+  /** Milestone 4 (F-137): the levels each agent can send for a model, from core's agent registry. */
+  readonly effortLevels?: AgentEffortLevels;
 };
 
 export const dispatchHandler =
@@ -40,6 +42,7 @@ export const dispatchHandler =
             clock: deps.clock,
             logger: context.logger,
             ...(deps.reopen === undefined ? {} : { reopen: deps.reopen }),
+            ...(deps.effortLevels === undefined ? {} : { effortLevels: deps.effortLevels }),
           },
           context.payload,
         ),

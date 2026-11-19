@@ -28,6 +28,7 @@ import { replicaIdSchema } from "@ostra/protocol";
 
 import { createBlobService } from "./blobs/blob-service.ts";
 import type { BlobService } from "./blobs/blob-service.ts";
+import { agentEffortLevels } from "./agents/effort-levels.ts";
 import { handleBlobEndpoint } from "./blobs/endpoints.ts";
 import { handlePanelBlobEndpoint } from "./blobs/panel-endpoints.ts";
 import { blobGcHandler, ensureBlobGcSchedule } from "./blobs/gc.ts";
@@ -195,6 +196,8 @@ export const startCore = async (
     clock: systemClock,
     logger,
     reopen: { agentImportsArchives: (adapter) => archiveAgents.get(adapter) === true, archiveMaxBytes: settings.blobStore.maxBytes },
+    // Milestone 4 (F-137): a task at a level goes only to a minor-3 runner.
+    effortLevels: agentEffortLevels,
   };
   const reactionDeps: ReactionDeps = {
     db,

@@ -742,12 +742,13 @@ export const tasksRouter = router({
     if (!levels.includes(input.level)) {
       throw new TRPCError({ code: "BAD_REQUEST", message: levelRefusal(input.level, levels) });
     }
-    const result = await setTaskEffort({ db, ...ports }, ctx.scope, {
+    // The domain checks the level against the session's model again, inside the task's lock (ticket 59).
+    const result = await setTaskEffort({ db, ...ports, effortLevels: ctx.deps.agentEffort.levelsFor }, ctx.scope, {
       taskId: input.taskId,
       level: input.level,
       changeId: input.changeId ?? effortChangeIdSchema.parse(randomUUID()),
     });
-    const set = unwrap(result, { "not-found": "NOT_FOUND", "take-over-to-change": "FORBIDDEN" });
+    const set = unwrap(result, { "not-found": "NOT_FOUND", "take-over-to-change": "FORBIDDEN", "level-not-offered": "BAD_REQUEST" });
     return { from: set.from, to: set.to, changed: set.changed, sentToRunner: set.sentToRunner };
   }),
 

@@ -21,6 +21,7 @@ import type { EffortLevel, ModelId, ReasoningControls, TaskId } from "@ostra/pro
 import { reasoningControlsFixtures } from "@ostra/protocol/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { agentEffortLevels } from "../agents/effort-levels.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { seedLeasedTask, seedRunner } from "../testing/seed.ts";
 import type { LeasedTask } from "../testing/seed.ts";
@@ -39,6 +40,7 @@ let driver: MemberScope;
 let watcher: MemberScope;
 let admin: MemberScope;
 let outsider: MemberScope;
+let sessionProfileId: string;
 const codeHost = new FakeCodeHost();
 const secretStore = new FakeSecretStore();
 const modelProvider = new FakeModelProvider();
@@ -60,7 +62,17 @@ beforeAll(async () => {
   test = await createTestDatabase();
   fixture = await seedIsolationFixture(test.db);
   world = await seedWorld(test.db, { codeHost, secretStore }, fixture.a.organization.id, fixture.a.openProject.id);
-  deps = { db: test.db, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock };
+  deps = { db: test.db, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, effortLevels: agentEffortLevels };
+  // The tasks' sessions run on a model with every level on the scale (ticket 59 refuses a level the model lacks).
+  const model = await test.db.model.create({
+    data: {
+      organizationId: world.organizationId,
+      providerId: world.providerId,
+      endpointModelId: "every-level",
+      catalogReasoning: { supported: true, effort: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+    },
+  });
+  sessionProfileId = (await test.db.agentProfile.create({ data: { organizationId: world.organizationId, name: "Every level", adapter: "opencode", modelId: model.id } })).id;
   driver = scopeOf(fixture.a.organization.id, fixture.a.member.id);
   watcher = scopeOf(fixture.a.organization.id, fixture.a.insider.id);
   admin = scopeOf(fixture.a.organization.id, fixture.a.admin.id, "admin");
@@ -79,7 +91,9 @@ const leasedTask = async (minor: number | null = null): Promise<LeasedTask> => {
       data: { runnerId: runner.runnerId, organizationId: world.organizationId, replicaId: "test", connectionEpoch: 1, carrier: "websocket", minor },
     });
   }
-  return seedLeasedTask(test.db, runner, world.projectId, { state: "running", creatorMemberId: fixture.a.member.id });
+  const task = await seedLeasedTask(test.db, runner, world.projectId, { state: "running", creatorMemberId: fixture.a.member.id });
+  await test.db.session.update({ where: { id: task.sessionId }, data: { agentProfileId: sessionProfileId } });
+  return task;
 };
 
 /** What a change of the task's level left behind. */
@@ -175,7 +189,7 @@ describe("setTaskEffort", () => {
 
 describe("a model's reasoning controls", () => {
   const modelOf = async (): Promise<ModelId> => {
-    const row = await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId } });
+    const row = await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId, endpointModelId: "dev-model-1" } });
     return modelIdSchema.parse(row.id);
   };
   const reasoningOf = async (modelId: ModelId) => mapModel(await test.db.model.findUniqueOrThrow({ where: { id: modelId } }));
@@ -229,7 +243,7 @@ describe("the profile's level", () => {
     profileId: null,
     name,
     adapter: "opencode",
-    modelId: (await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId } })).id,
+    modelId: (await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId, endpointModelId: "dev-model-1" } })).id,
     instructions: null,
     approvalRules: [],
     planFirst: false,
@@ -269,7 +283,7 @@ describe("the profile's level", () => {
 describe("the audit entries", () => {
   it("F-137: every use case writes its audit entry in its transaction, and a rollback leaves none", async () => {
     const task = await leasedTask();
-    const modelId = modelIdSchema.parse((await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId } })).id);
+    const modelId = modelIdSchema.parse((await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId, endpointModelId: "dev-model-1" } })).id);
     const before = await test.db.model.findUniqueOrThrow({ where: { id: modelId }, select: { adminReasoning: true } });
     const audits = { action: { in: ["task.effort-changed", "model.reasoning-changed"] }, entityId: { in: [task.taskId, modelId] } };
     const auditsBefore = await test.db.auditEntry.count({ where: audits });

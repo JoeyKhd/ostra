@@ -1,11 +1,12 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
-import { apiFormatFromDb } from "@ostra/db";
+import { apiFormatFromDb, effortLevelFromDb, mapModel } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { buildMemoryBlock, githubNoReplyAddress, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
-import type { MemoryLimits, SpendCapSettings } from "@ostra/domain";
+import { buildMemoryBlock, githubNoReplyAddress, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import type { AgentEffortLevels, MemoryLimits, SpendCapSettings } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
+import { agentEffortLevels } from "../agents/effort-levels.ts";
 import type { BlobService } from "../blobs/blob-service.ts";
 import { agentInstructions } from "./agent-instructions.ts";
 import { specChecks, specServices, specSnapshot } from "./environment-spec.ts";
@@ -56,6 +57,8 @@ export type SpecDeps = {
   readonly agentMemory?: (adapter: string) => "mcp" | "index-only" | undefined;
   /** Milestone 4: the index's limits (`OSTRA_MEMORY_*`); the protocol's working values without it. */
   readonly memoryLimits?: MemoryLimits;
+  /** Milestone 4 (F-137): the levels each agent can send for a model. Core's agent registry when unset. */
+  readonly effortLevels?: AgentEffortLevels;
 };
 
 /**
@@ -227,6 +230,11 @@ export const buildTaskSpec = async (
   const tools = minor >= 3 && deps.agentMemory?.(profile.adapter) === "mcp";
   const memory = await buildMemoryBlock(db, { organizationId, projectId: projectIdSchema.parse(task.projectId), tools }, deps.memoryLimits);
   const folded = minor < 3 ? (memory?.block ?? null) : null;
+  // Milestone 4 (F-137, ADR 0066): the task's level clamped to the model's levels, with the
+  // model's controls and real limits. Every session's spec reads the task's level the same way, so
+  // a reopen in a fresh box or on the template starts at it too.
+  const apiFormat = apiFormatFromDb[model.provider.apiFormat];
+  const effort = modelEffort(deps.effortLevels ?? agentEffortLevels, { adapter: profile.adapter, apiFormat, model: mapModel(model), level: effortLevelFromDb[task.effort] });
   const spec = taskSpecSchema.parse({
     taskId: task.id,
     sessionId: session.id,
@@ -247,7 +255,7 @@ export const buildTaskSpec = async (
       providerId: model.providerId,
       modelId: model.id,
       endpointModelId: model.endpointModelId,
-      apiFormat: apiFormatFromDb[model.provider.apiFormat],
+      apiFormat,
       instructions: agentInstructions(
         profile.instructions,
         taskRepos.map(({ repo, branchName: repoBranch }) => ({
@@ -265,6 +273,9 @@ export const buildTaskSpec = async (
       taskRules: parts.taskRules,
       planFirst: parts.planFirst,
       closingTurn: profile.closingTurn,
+      effort: effort.effort.level,
+      reasoning: effort.reasoning,
+      limits: effort.limits,
     },
     firstTurnMode: parts.firstTurnMode,
     environment: {

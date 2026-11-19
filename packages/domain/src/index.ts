@@ -132,4 +132,5 @@ export * from "./use-cases/pr-comments.ts";
 
 // Milestone 4: reasoning effort (F-137, ADR 0066).
 export * from "./effort/reasoning.ts";
+export * from "./effort/levels.ts";
 export * from "./use-cases/effort.ts";
