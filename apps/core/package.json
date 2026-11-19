@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@ostra/api": "workspace:*",
+    "@ostra/runner": "workspace:*",
     "@types/pg": "8.23.1",
     "@types/ws": "8.18.2",
     "vitest": "5.1.1"

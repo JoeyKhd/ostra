@@ -6,7 +6,7 @@ import type { RunnerState } from "./runner-words";
 const states = ["joining", "online", "offline", "draining", "revoked"] as const satisfies readonly RunnerState[];
 
 describe("runner words", () => {
-  it("has a word for every state, never the raw name of an unmapped one", () => {
+  it("F-013: has a word for every state, never the raw name of an unmapped one", () => {
     expect(states.map(runnerStateText)).toEqual(["joining", "online", "offline", "draining", "revoked"]);
   });
 

@@ -75,6 +75,9 @@ importers:
       '@ostra/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@ostra/runner':
+        specifier: workspace:*
+        version: link:../runner
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
