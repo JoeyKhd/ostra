@@ -345,6 +345,10 @@ describe("tasks.stop (F-025)", () => {
     const place = { organizationId: orgA(), projectId: project };
     const runnerId = await seedPersonalRunner(harness, a.admin.id, "stop-runner");
     const task = await seedTask(harness, { ...place, state: "running", driverMemberId: a.admin.id });
+    // An earlier lease of another runner, ended (its offer timed out): the stop isn't for it.
+    const earlier = await seedPersonalRunner(harness, a.admin.id, "earlier-runner");
+    await seedLease(harness, task, orgA(), project, earlier, 2);
+    await harness.test.db.lease.updateMany({ where: { taskId: task.taskId, epoch: 2 }, data: { state: "ended", endReason: "offer-timeout", endedAt: new Date() } });
     await seedLease(harness, task, orgA(), project, runnerId, 3);
     harness.fakes.outbox.clear();
 
