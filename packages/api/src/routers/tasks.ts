@@ -2,12 +2,13 @@ import {
   appendServerEvent,
   createPromptTask,
   createPromptTaskInputSchema,
+  waitingFor,
   stopTask,
   taskFromColumns,
   taskToColumns,
   transitionTask,
 } from "@ostra/domain";
-import type { TaskLifecycle } from "@ostra/domain";
+import type { TaskLifecycle, Waiting } from "@ostra/domain";
 import { mapEventToStored } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import {
@@ -187,7 +188,10 @@ export const tasksRouter = router({
     const live = rows.filter((row) => row.state === "running" || row.state === "preparing" || row.state === "needs_you").map((row) => row.id);
 
     const [leases, pinned, members, latest] = await Promise.all([
-      db.lease.findMany({ where: { organizationId, taskId: { in: ids }, state: "active" }, select: { taskId: true, runnerId: true } }),
+      db.lease.findMany({
+        where: { organizationId, taskId: { in: ids }, state: "active" },
+        select: { taskId: true, runnerId: true, acceptedAt: true, grantedAt: true },
+      }),
       db.runner.findMany({ where: { organizationId, id: { in: rows.flatMap((row) => (row.runnerId === null ? [] : [row.runnerId])) } }, select: { id: true } }),
       db.member.findMany({
         where: { organizationId, id: { in: rows.flatMap((row) => (row.driverMemberId === null ? [] : [row.driverMemberId])) } },
@@ -207,6 +211,7 @@ export const tasksRouter = router({
     });
     const runnerById = new Map(runners.map((runner) => [runner.id, runner] as const));
     const leaseRunner = new Map(leases.map((lease) => [lease.taskId, lease.runnerId] as const));
+    const leaseOf = new Map(leases.map((lease) => [lease.taskId, lease] as const));
     const driverName = new Map(members.map((member) => [member.id, member.user.name] as const));
     const latestRows = z.array(latestDoingRow).parse(latest);
     // An approval asks about a tool call: its command or path is what the row shows.
@@ -245,6 +250,10 @@ export const tasksRouter = router({
         needsYouReason: row.needsYouReason,
         stoppedReason: row.stoppedReason,
         group: groupOf(row.state),
+        waiting: ((): Waiting => {
+          const lease = leaseOf.get(row.id);
+          return waitingFor(row, lease === undefined ? null : { ...lease, runner: runnerById.get(lease.runnerId) });
+        })(),
         doing: doing.get(id) ?? null,
         runner: runner === undefined ? null : { id: runnerIdSchema.parse(runner.id), name: runner.name, kind: runner.kind, executor: runner.executor, isolated: runner.executor !== "host" },
         driver: row.driverMemberId === null ? null : { memberId: memberIdSchema.parse(row.driverMemberId), name: driverName.get(row.driverMemberId) ?? "" },
@@ -302,6 +311,8 @@ export const tasksRouter = router({
       subState: task.subState,
       reason: task.needsYouReason ?? task.stoppedReason,
       group: groupOf(state),
+      /** Why a queued task waits (Q132): data the panel words, never a sentence. */
+      waiting: waitingFor(task, lease),
       branchName: task.branchName,
       /** The newest event's seq: the live tail resumes after what a history page returned. */
       headSeq: task.eventSeq,

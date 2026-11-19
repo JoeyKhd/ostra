@@ -6,6 +6,8 @@ import type { BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, RunnerId } f
 
 import type { JobPayload } from "../jobs.ts";
 import type { Ports } from "../ports.ts";
+import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
+import type { DispatchWait } from "../dispatch-wait.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
@@ -15,8 +17,8 @@ import type { UseCaseResult } from "./common.ts";
 //
 // The task stays `queued` while the offer is out: the domain's lifecycle moves it to `preparing`
 // when the runner accepts (`acceptOffer`), so a rejected or timed-out offer needs no way back.
-// When no runner fits, the task stays queued and `dispatchNote` says why; core's requeue sweep
-// tries again.
+// When no runner fits, the task stays queued and `dispatchWait` says why, as a code the panel
+// words (Q132, milestone 2's ticket 43); core's requeue sweep tries again.
 
 export type DispatchTaskInput = JobPayload<"task.dispatch">;
 
@@ -24,7 +26,7 @@ export type DispatchTaskResult = UseCaseResult<
   { readonly runnerId: RunnerId; readonly boxId: BoxId; readonly leaseEpoch: LeaseEpoch; readonly commandId: CommandId },
   /** The task moved on (stopped, or dispatched by a newer job): nothing to do. */
   | "stale"
-  /** No runner can take it now; the task stays queued. */
+  /** No runner can take it now; the task stays queued, and `dispatchWait` says why. */
   | "no-runner"
 >;
 
@@ -91,9 +93,10 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     return stale("the session isn't waiting to start");
   }
 
-  const noRunner = async (note: string): Promise<DispatchTaskResult> => {
-    if (task.dispatchNote !== note) {
-      await tx.task.update({ where: { id: task.id }, data: { dispatchNote: note } });
+  const noRunner = async (wait: DispatchWait): Promise<DispatchTaskResult> => {
+    // A notice only when the reason changed: the sweep retries every queued task.
+    if (JSON.stringify(dispatchWaitFromDb(task.dispatchWait)) !== JSON.stringify(wait)) {
+      await tx.task.update({ where: { id: task.id }, data: dispatchWaitColumns(wait) });
       await deps.notices.emitInTx(tx, {
         organizationId: organizationIdSchema.parse(task.organizationId),
         projectId: projectIdSchema.parse(task.projectId),
@@ -101,8 +104,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         entityId: task.id,
       });
     }
-    deps.logger?.info("dispatch.no-runner", { taskId: task.id });
-    return { ok: false, error: "no-runner", message: note };
+    deps.logger?.info("dispatch.no-runner", { taskId: task.id, reason: wait.code });
+    return { ok: false, error: "no-runner", message: wait.code };
   };
 
   const profile =
@@ -114,10 +117,10 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         });
   const provider = profile?.model?.provider;
   if (provider === undefined) {
-    return noRunner("The session's agent profile has no model: an admin picks one under Models.");
+    return noRunner({ code: "no-model" });
   }
   if (provider.dispatchHeldUntil !== null && provider.dispatchHeldUntil.getTime() > now) {
-    return noRunner(`The model provider asked to wait (a rate limit) until ${provider.dispatchHeldUntil.toISOString()}.`);
+    return noRunner({ code: "provider-held", until: provider.dispatchHeldUntil.getTime() });
   }
   if (provider.sessionsAtOnce !== null) {
     // Sessions name their profile, not their provider: the provider's profiles first, then one count.
@@ -135,7 +138,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       },
     });
     if (sameProvider >= provider.sessionsAtOnce) {
-      return noRunner(`The model provider is at its cap of ${String(provider.sessionsAtOnce)} sessions at once.`);
+      return noRunner({ code: "provider-cap", cap: provider.sessionsAtOnce });
     }
   }
 
@@ -147,14 +150,14 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       select: { id: true },
     });
     if (chosen === null) {
-      return noRunner("The runner picked for this task isn't one of its creator's personal runners.");
+      return noRunner({ code: "personal-runner-unavailable" });
     }
     if (!provider.allowOnPersonalRunners) {
-      return noRunner("The model provider isn't allowed on personal runners: an admin turns it on under Models.");
+      return noRunner({ code: "personal-runner-not-allowed" });
     }
     candidates = await available(tx, task.organizationId, { ids: [runnerIdSchema.parse(chosen.id)] }, now);
     if (candidates.length === 0) {
-      return noRunner("The picked personal runner is offline or busy.");
+      return noRunner({ code: "personal-runner-unavailable" });
     }
   } else {
     const listed = await tx.projectPool.findMany({ where: { projectId: task.projectId }, select: { poolId: true } });
@@ -166,12 +169,13 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
           );
     candidates = poolIds.length === 0 ? [] : await available(tx, task.organizationId, { poolIds }, now);
     if (candidates.length === 0) {
-      return noRunner("No runner of the project's pools is online with a free slot.");
+      return noRunner({ code: "no-runner-online" });
     }
   }
   const [runner] = candidates;
+  const unavailable: DispatchWait = { code: task.runnerId === null ? "no-runner-online" : "personal-runner-unavailable" };
   if (runner === undefined) {
-    return noRunner("No runner can take the task now.");
+    return noRunner(unavailable);
   }
 
   // The grant, in this one transaction: box, lease (the epoch goes up), the command, the timer.
@@ -186,7 +190,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   await tx.lease.create({
     data: { organizationId, projectId, taskId: task.id, epoch: input.leaseEpoch, runnerId, boxId, state: "active" },
   });
-  await tx.task.update({ where: { id: task.id }, data: { leaseEpoch: input.leaseEpoch, dispatchNote: null } });
+  await tx.task.update({ where: { id: task.id }, data: { leaseEpoch: input.leaseEpoch, ...dispatchWaitColumns(null) } });
   await tx.session.update({ where: { id: session.id }, data: { boxId } });
   const command = await deps.outbox.enqueueInTx(tx, organizationId, runnerId, {
     kind: "dispatch",

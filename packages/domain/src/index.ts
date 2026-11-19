@@ -17,6 +17,7 @@ export * from "./jobs.ts";
 export * from "./access.ts";
 export * from "./accounts.ts";
 export * from "./branch-name.ts";
+export * from "./dispatch-wait.ts";
 export * from "./settings.ts";
 export * from "./postgres-ports.ts";
 export * from "./postgres-outbox.ts";

@@ -998,6 +998,9 @@ model Task {
   progressCommentId String?
   /// Spent so far across the task's sessions, in micro-USD (F-068).
   spentMicroUsd     Int             @default(0)
+  /// Why a queued task waits, as a code with its values (Q132, milestone 2's ticket 43). Parsed by
+  /// `dispatchWaitSchema` in `@ostra/domain`; the panel words it. Replaces `dispatchNote`.
+  dispatchWait      Json?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 

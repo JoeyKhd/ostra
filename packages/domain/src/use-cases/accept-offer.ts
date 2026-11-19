@@ -13,6 +13,7 @@ import {
 } from "@ostra/protocol";
 import { z } from "zod";
 
+import { dispatchWaitColumns } from "../dispatch-wait.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveTaskInTx } from "./moves.ts";
@@ -75,7 +76,7 @@ export const acceptOffer: AcceptOffer = async (deps, input) => {
       // The lease ends and the task goes back to the queue, for the next epoch's dispatch.
       await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: new Date(deps.clock.now()), endReason: "rejected" } });
       await tx.box.updateMany({ where: { id: lease.boxId, state: "creating" }, data: { state: "failed", failedReason: "the runner declined the offer" } });
-      await tx.task.update({ where: { id: task.id }, data: { dispatchNote: "The runner declined the offer; looking for another." } });
+      await tx.task.update({ where: { id: task.id }, data: dispatchWaitColumns({ code: "offer-declined" }) });
       await deps.jobs.enqueueInTx(tx, "task.dispatch", {
         organizationId: organizationIdSchema.parse(task.organizationId),
         taskId: task.id,

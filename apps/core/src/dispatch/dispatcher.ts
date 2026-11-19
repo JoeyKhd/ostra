@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { acceptOffer, dispatchTask } from "@ostra/domain";
+import { acceptOffer, dispatchTask, dispatchWaitColumns } from "@ostra/domain";
 import type { ChangeNotices, Clock, CommandOutbox, JobPayload } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
@@ -48,7 +48,7 @@ export const offerTimeoutHandler = (deps: DispatcherDeps): JobHandler<"task.offe
       }
       await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: new Date(deps.clock.now()), endReason: "offer-timeout" } });
       await tx.box.updateMany({ where: { id: lease.boxId, state: "creating" }, data: { state: "failed", failedReason: "the runner didn't answer the offer" } });
-      await tx.task.update({ where: { id: task.id }, data: { dispatchNote: "The runner didn't answer the offer in time; looking for another." } });
+      await tx.task.update({ where: { id: task.id }, data: dispatchWaitColumns({ code: "offer-timed-out" }) });
       const session = await activeSessionOf(tx, context.payload.taskId);
       if (session !== null) {
         await deps.jobs.enqueueInTx(tx, "task.dispatch", {
