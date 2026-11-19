@@ -1,0 +1,41 @@
+# Prompt for the project-runners target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation, kept as made.
+# Refs: ../m4/project-access (its 2048 original, the approved page this one starts from, spec section 12), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS px rendered at 2x, dark mode. Not a mockup, no device frame, no perspective. It is the "Runners" tab of a project's Settings in ostra, a self-hosted control panel that runs coding agents. A project admin decides here which runner pools the project "calculator" may use, in which order ostra tries them, how many boxes it may hold in each, and the box size its tasks get. It must look like the SAME PRODUCT as the first attached screenshot (the same sidebar, top bar, settings tabs, near-black graphite chrome, hairline rows, small dense type and spacing) and keep that screenshot's scale exactly: body text 13px, nav rows 26px, page title 24px. Copy every word exactly as written below.
+
+FONTS: page title in Manrope Bold. All interface text in IBM Plex Sans. Pool executors, numbers, sizes, counts and ages in IBM Plex Mono. Icons are thin Lucide line icons, 15px, 1.75 stroke.
+
+PALETTE (flat, exact): page background #0D0E10. Sidebar #0A0B0C. Raised controls (inputs, selects) #131416 with 1px border #2A2C30 and 7px radius. Selected row #1A1B1E. Hairlines #1F2023. Text #EDEDEE, secondary #9A9DA3, faint #64676D. Usage bars: track #1F2023, fill pale mist #CFD8D4, 6px tall, 3px radius. Teal #6FB8AA only for the links "Box sizes →" and "Audit log →". Amber #FFB224 appears ONLY as the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No red, no green on this screen. No gradients, no glow, no shadows, no cards, never a box inside a box, no purple, no blue.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px, background #0A0B0C, hairline on its right, exactly like the attached screenshot. From the top: the small white ostra hinge logo (the attached logo, 20px) and "Acme Corp" semibold with an up-down chevron. A search field "Search" with "⌘K", and a small square off-white "+" button. Nav rows: "Home" (house icon); "Needs you" (hand icon) with a small amber pill "2"; "My tasks" (user-circle icon) with faint "3". Faint section label "Projects". "calculator" with an 8px teal-green square, expanded into indented rows: "Tasks" (list-checks icon, faint count "4"), "Inbox" (inbox icon), "Environment" (box icon), "Boards" (square-kanban icon), "Settings" (settings gear icon, SELECTED, background #1A1B1E). Then "web-storefront" with an 8px ochre square, "vault" with an 8px grey square and a tiny faint lock. "New project" with a plus icon, muted. Faint section label "Organization": "Runners" (server icon), "Box sizes" (ruler icon), "Registry" (container icon), "Models" (cpu icon), "GitHub", "Members" (users icon), "Audit log" (scroll icon). At the very bottom: a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px, hairline below: breadcrumbs "calculator  ›  Settings  ›  Runners" ("Runners" brighter). Nothing on the right: every change on this page applies at once.
+
+3) MAIN COLUMN, 40px left padding, content max 760px wide:
+- At the very top of the column, a row of five plain text tabs, 13px, 28px tall, with a 1px hairline under the whole row: "Ticket template", "Repos", "Access", "Runners", "Audit log". "Runners" is the active tab: #EDEDEE text with a 2px #EDEDEE underline; the others are #9A9DA3. No pills, no boxes.
+- 24px below: page title "Runners" (Manrope Bold 24px).
+- Muted lede, 13.5px: "Where calculator's tasks run: the pools ostra tries, in this order, and how much of each it may take."
+- Section title line, 26px below: "Pools" in semibold 13px, faint mono count "3".
+  A header row 30px with faint 11.5px labels: an empty narrow first column, "Pool", "Share", "In use", and an empty last column. Then three body rows, 44px tall, hairlines between them, no boxes. Columns line up in every row.
+  Each row starts with a faint 6-dot grip handle icon (grip-vertical) and a faint mono position number.
+  Row 1: grip · "1" · "build-fleet" in #EDEDEE then a small faint outlined mono chip "docker" | a compact mono number input 56px wide, 28px tall, containing "2", then faint "of 6 boxes" | a 6px usage bar 120px wide, FULL (mist fill across the whole track), then mono "2 / 2" and muted "at share" | at the far right a quiet ghost text button "Remove" in muted grey.
+  Row 2 (this row is being moved with the keyboard: background #1A1B1E with a 6px radius and a 1px #2A2C30 focus outline around the grip handle): grip · "2" · "k8s-east" then a faint outlined mono chip "kubernetes" | input containing "4", then faint "of 20 boxes" | a usage bar a quarter filled, then mono "1 / 4" | "Remove".
+  Row 3: grip · "3" · "Default" then a faint outlined mono chip "docker" | an EMPTY input showing a faint placeholder "–", then faint "no cap" | no bar, just mono "0" and muted "running" | "Remove".
+  Under the rows, one line 12px below the last hairline: a small faint label "Add pool", then a compact select 240px wide, 28px tall, showing "gpu-lab" and a faint mono "docker" and a chevron-down, then a small outlined button "Add".
+  8px below, one faint 12px line: "Drag a pool by its handle, or focus the handle and press ↑ or ↓. A share is the most boxes calculator holds in that pool at once."
+- Section title line, 32px below: "Default box size" in semibold 13px. Under it a muted 12.5px line: "Every task in calculator gets this size. A task can't pick another." Then a radio group of three hairline rows, 36px tall, no boxes, each a round 16px radio, the size name in #EDEDEE 13px weight 500 (90px column), then mono muted "2 vCPU · 4 GB" etc.:
+  Row 1 (CHOSEN: filled off-white radio with a dark centre, row background #1A1B1E with a 6px radius): "small" · "2 vCPU · 4 GB"
+  Row 2: empty radio · "medium" · "4 vCPU · 8 GB"
+  Row 3: empty radio · "large" · "8 vCPU · 16 GB"
+  Under them a faint 12px line: "host pools count slots, not sizes: there a task takes one slot whatever its size." ("host" in mono)
+- 24px below, one quiet line, no box: a small faint laptop icon, then 12.5px muted text: "Members can also send their own tasks to their own machine. Those skip this list and these shares; tasks nobody started go only to these pools."
+Quiet empty near-black space below.
+
+4) RIGHT PROPERTIES PANEL, 300px, hairline on its left, padding 20px. Small faint 11px group labels, key/value rows 30px tall, key muted on the left (104px), value bright on the right, 12.5px regular IBM Plex Sans (only numbers and ages in mono).
+- label "calculator": Pools — "3 allowed" (3 in mono); Running now — "3 boxes" (3 in mono); Waiting — "4 tasks" (4 in mono); Default size — "small".
+- hairline. label "Box sizes": three rows, key "small" value mono "2 vCPU · 4 GB"; "medium" "4 vCPU · 8 GB"; "large" "8 vCPU · 16 GB". Under them a teal link "Box sizes →".
+- hairline. label "Last change": one muted 12.5px line "Alex Kim set calculator's share of build-fleet to 2" wrapping to two lines, and a faint mono "1h ago" at its right. Under it a teal link "Audit log →".
+
+Calm, precise, dense, like Linear's settings pages. Every word spelled exactly as written. No extra text, no charts other than the two thin usage bars, no illustrations, no gradients, no glow.
