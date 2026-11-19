@@ -262,7 +262,7 @@ export type SendDiffComments = (
   deps: M3Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-) => Promise<UseCaseResult<{ readonly sent: number; readonly delivery: "steer" | "reopen" }, "not-found" | "no-drafts" | "take-over-to-send" | "too-many" | ReopenRefusal>>;
+) => Promise<UseCaseResult<{ readonly sent: number; readonly delivery: "steer" | "reopen"; readonly seq: number | null }, "not-found" | "no-drafts" | "take-over-to-send" | "too-many" | ReopenRefusal>>;
 
 // ---------- checks, behind, update branch, @ostra (F-054, F-070, F-053; tickets 23 to 25) ----------
 

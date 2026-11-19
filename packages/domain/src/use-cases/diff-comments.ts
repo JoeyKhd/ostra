@@ -404,7 +404,7 @@ export const sendDiffCommentsWith = (
         entityId: input.taskId,
         data: { count: ids.length, delivery: sent.delivery },
       });
-      return { ok: true, sent: ids.length, delivery: sent.delivery };
+      return { ok: true, sent: ids.length, delivery: sent.delivery, seq: message?.seq ?? null };
     },
     { timeout: 20_000 },
   );
