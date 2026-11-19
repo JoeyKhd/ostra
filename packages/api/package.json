@@ -16,6 +16,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/db": "workspace:*",
@@ -28,7 +29,6 @@
   },
   "devDependencies": {
     "@ostra/adapter-github": "workspace:*",
-    "@ostra/adapter-linear": "workspace:*",
     "@types/pg": "8.23.1",
     "vitest": "5.1.1"
   }

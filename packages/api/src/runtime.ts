@@ -10,6 +10,8 @@ import { ensureFirstAdmin } from "./auth/first-admin.ts";
 import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
+import { createLinearAppKit } from "./services/linear-app.ts";
+import type { LinearEndpoints } from "./services/linear-app.ts";
 import { createTrackerDirectory } from "./services/trackers.ts";
 import type { LinearTrackerAuth } from "./services/trackers.ts";
 import { createStreamHub } from "./stream/hub.ts";
@@ -32,6 +34,8 @@ export type ApiRuntimeInput = {
   readonly catalog: CatalogSource;
   /** The blob store's name and health, for the storage page (ticket 31). */
   readonly blobStore: BlobStoreView;
+  /** Linear's OAuth and API addresses; unset, the real ones. A test points them at the fake Linear server. */
+  readonly linearEndpoints?: LinearEndpoints;
   /** Builds a Linear adapter from a stored credential (tickets 27 to 29). */
   readonly makeLinearTracker: (auth: LinearTrackerAuth) => TrackerAdapter;
   readonly logger: Logger;
@@ -82,6 +86,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     hashPassword,
     catalog: input.catalog,
     blobStore: input.blobStore,
+    linear: createLinearAppKit(input.linearEndpoints === undefined ? {} : { endpoints: input.linearEndpoints }),
     trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),
     stream: hub,
   };

@@ -47,9 +47,9 @@ describe("the first-run checklist, walked (F-076)", () => {
 
     const status = async () => {
       const current = await admin.setup.status();
-      return { order: current.steps.map((step) => step.id), done: current.steps.filter((step) => step.done).map((step) => step.id), next: current.next };
+      return { order: current.steps.map((step) => step.id), done: current.steps.filter((step) => step.state === "done").map((step) => step.id), next: current.next };
     };
-    const order = ["admin", "model-provider", "github", "project", "runner", "first-task"];
+    const order = ["admin", "model-provider", "github", "linear", "project", "runner", "first-task"];
 
     // A new organization: only the admin account is done, and the next step is the model provider.
     expect(await status()).toEqual({ order, done: ["admin"], next: "model-provider" });
@@ -87,6 +87,10 @@ describe("the first-run checklist, walked (F-076)", () => {
     const [model] = await admin.providers.models({ providerId: provider.providerId });
     if (model === undefined) throw new Error("the provider listed no model");
     await admin.agentProfiles.setDefaultModel({ modelId: model.id });
+    // Linear is optional, and open until it is connected or set aside.
+    expect(await status()).toEqual({ order, done: ["admin", "model-provider", "github"], next: "linear" });
+    await admin.setup.skip({ step: "linear" });
+    expect((await admin.setup.status()).steps.find((step) => step.id === "linear")?.state).toBe("skipped");
     expect(await status()).toEqual({ order, done: ["admin", "model-provider", "github"], next: "project" });
 
     // The first project, on a repo of the App's installation: it comes with its repo and its drafted environment.
@@ -121,6 +125,6 @@ describe("the first-run checklist, walked (F-076)", () => {
 
     // The first task, from a prompt: the checklist is done.
     await admin.tasks.create({ projectId: project.projectId, prompt: "Add a short CONTRIBUTING.md", runnerId: runnerIdSchema.parse(runner.id) });
-    expect(await status()).toEqual({ order, done: order, next: null });
+    expect(await status()).toEqual({ order, done: order.filter((id) => id !== "linear"), next: null });
   });
 });

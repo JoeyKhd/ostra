@@ -14,6 +14,8 @@ import { loadMemberContext, loginSessionIdSchema } from "../auth/scope.ts";
 import type { SessionUser } from "../auth/scope.ts";
 import { createCatalogSource } from "../catalog/catalog-source.ts";
 import { appRouter } from "../routers/app-router.ts";
+import { createLinearAppKit } from "../services/linear-app.ts";
+import type { LinearEndpoints } from "../services/linear-app.ts";
 import { createTrackerDirectory } from "../services/trackers.ts";
 import { createStreamHub } from "../stream/hub.ts";
 import type { StreamHub } from "../stream/hub.ts";
@@ -75,6 +77,8 @@ export type BareHarnessOptions = {
   readonly allowDefaultPassword?: boolean;
   /** The model provider adapter the routers use. Default: the fake (`fakes.modelProvider`). */
   readonly modelProvider?: ModelProviderAdapter;
+  /** Linear's OAuth and API addresses: a test points them at the fake Linear server. Default: the real ones. */
+  readonly linearEndpoints?: LinearEndpoints;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -121,6 +125,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       reconcileMinutes: 5,
     },
     blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
+    linear: createLinearAppKit(options.linearEndpoints === undefined ? {} : { endpoints: options.linearEndpoints }),
     trackers: createTrackerDirectory({
       db: test.db,
       secretStore,

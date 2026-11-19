@@ -435,6 +435,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@ostra/adapter-linear':
+        specifier: workspace:*
+        version: link:../adapters/adapter-linear
       '@ostra/adapter-model-endpoint':
         specifier: workspace:*
         version: link:../adapters/adapter-model-endpoint
@@ -466,9 +469,6 @@ importers:
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../adapters/adapter-github
-      '@ostra/adapter-linear':
-        specifier: workspace:*
-        version: link:../adapters/adapter-linear
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1

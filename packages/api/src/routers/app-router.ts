@@ -4,6 +4,7 @@ import { environmentsRouter } from "./environments.ts";
 import { githubRouter } from "./github.ts";
 import { homeRouter } from "./home.ts";
 import { instanceRouter } from "./instance.ts";
+import { linearRouter } from "./linear.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
 import { poolsRouter, runnersRouter } from "./runners.ts";
@@ -22,6 +23,7 @@ export const appRouter = router({
   providers: providersRouter,
   agentProfiles: agentProfilesRouter,
   github: githubRouter,
+  linear: linearRouter,
   projects: projectsRouter,
   boards: boardsRouter,
   environments: environmentsRouter,

@@ -19,17 +19,18 @@ describe("setup.status", () => {
     const caller = await harness.as(a.admin);
     expect(await caller.setup.status()).toEqual({
       steps: [
-        { id: "admin", done: true },
-        { id: "model-provider", done: false },
-        { id: "github", done: false },
-        { id: "project", done: true },
-        { id: "runner", done: false },
-        { id: "first-task", done: false },
+        { id: "admin", state: "done" },
+        { id: "model-provider", state: "open" },
+        { id: "github", state: "open" },
+        { id: "linear", state: "open" },
+        { id: "project", state: "done" },
+        { id: "runner", state: "open" },
+        { id: "first-task", state: "open" },
       ],
       next: "model-provider",
     });
     // Organization B has a project too, and nothing of A's counts for it.
-    expect((await (await harness.as(b.admin)).setup.status()).steps.find((step) => step.id === "project")?.done).toBe(true);
+    expect((await (await harness.as(b.admin)).setup.status()).steps.find((step) => step.id === "project")?.state).toBe("done");
   });
 
   it("ticks a step when its row exists, only for the organization that has it", async () => {
@@ -49,11 +50,11 @@ describe("setup.status", () => {
       },
     });
     const steps = (await (await harness.as(a.admin)).setup.status()).steps;
-    expect(steps.find((step) => step.id === "github")?.done).toBe(true);
-    expect(steps.find((step) => step.id === "runner")?.done).toBe(true);
+    expect(steps.find((step) => step.id === "github")?.state).toBe("done");
+    expect(steps.find((step) => step.id === "runner")?.state).toBe("done");
     const others = (await (await harness.as(b.admin)).setup.status()).steps;
-    expect(others.find((step) => step.id === "github")?.done).toBe(false);
-    expect(others.find((step) => step.id === "runner")?.done).toBe(false);
+    expect(others.find((step) => step.id === "github")?.state).toBe("open");
+    expect(others.find((step) => step.id === "runner")?.state).toBe("open");
   });
 
   it("is for signed-in members", async () => {

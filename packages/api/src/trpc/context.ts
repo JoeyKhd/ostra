@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { MemberScope, Ports, ServerSettings } from "@ostra/domain";
+import type { LinearAppKit, MemberScope, Ports, ServerSettings } from "@ostra/domain";
 
 import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
@@ -42,6 +42,8 @@ export type ApiDeps = {
   readonly blobStore: BlobStoreView;
   /** The organization's tracker connection as an adapter (tickets 27 to 29). */
   readonly trackers: TrackerDirectory;
+  /** The calls the Linear connection flow makes to Linear (ticket 27). */
+  readonly linear: LinearAppKit;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */
