@@ -347,9 +347,11 @@ describe("the editor's helpers (F-026)", () => {
     expect(coverage?.unmatched[0]?.value).toBe("src/config.ts");
   });
 
-  it("F-021: the start picker's options carry each profile's rule count", async () => {
+  it("F-021: the start picker's options carry each profile's rule count, as the editor shows the rules", async () => {
     const a = await admin();
-    const careful = await a.agentProfiles.save(base({ name: "Counted", approvalRules: [rule({ name: "One", tool: "edit", match: { kind: "path-glob", glob: "a/**" } }), rule({ name: "Two", tool: "fetch", match: { kind: "any" } })] }));
+    // A rule's globs are stored one per rule; the editor shows them as one rule, and so does the count.
+    const globs = ["**/migrations/**", "**/*.sql"].map((glob) => rule({ name: "One", tool: "edit", match: { kind: "path-glob", glob } }));
+    const careful = await a.agentProfiles.save(base({ name: "Counted", approvalRules: [...globs, rule({ name: "Two", tool: "fetch", match: { kind: "any" } })] }));
     const offered = await a.agentProfiles.forStart({ projectId, kind: "code" });
     expect(offered.find((profile) => profile.profileId === careful.profileId)).toMatchObject({ ruleCount: 2 });
     expect(offered.find((profile) => profile.builtIn)).toMatchObject({ ruleCount: 0 });

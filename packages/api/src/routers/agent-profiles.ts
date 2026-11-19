@@ -335,6 +335,23 @@ const subjectsFor = (tool: ApprovalTool, context: RuleContext): readonly z.infer
   return servers.map((server) => ({ kind: "tool" as const, value: `${server.name}/call` }));
 };
 
+/**
+ * How many rules the editor shows: one path glob is one stored rule, and consecutive path rules of
+ * one name, tool and preset show as one rule with their globs together (a preset's globs).
+ */
+export const shownRuleCount = (rules: readonly ApprovalRule[]): number =>
+  rules.filter((rule, i) => {
+    const previous = rules[i - 1];
+    return !(
+      previous !== undefined &&
+      rule.match.kind === "path-glob" &&
+      previous.match.kind === "path-glob" &&
+      previous.name === rule.name &&
+      previous.tool === rule.tool &&
+      (previous.preset ?? null) === (rule.preset ?? null)
+    );
+  }).length;
+
 const coverageInput = z.strictObject({
   rules: approvalRulesSchema,
   /** The profile's MCP servers, so "any server not marked read-only" can be tried. */
@@ -449,7 +466,7 @@ export const agentProfilesRouter = router({
           name: z.string(),
           builtIn: z.boolean(),
           planFirst: z.boolean(),
-          /** How many approval rules it has, for the picker's small facts (ticket 42). */
+          /** How many approval rules it has as the editor shows them, for the picker's small facts (ticket 42). */
           ruleCount: z.number().int(),
           isDefault: z.boolean(),
           agentName: z.string(),
@@ -478,7 +495,7 @@ export const agentProfilesRouter = router({
           name: profile.name,
           builtIn: profile.builtIn,
           planFirst: profile.planFirst,
-          ruleCount: z.array(z.unknown()).catch([]).parse(row?.approvalRules ?? []).length,
+          ruleCount: shownRuleCount(approvalRulesSchema.catch([]).parse(row?.approvalRules ?? [])),
           isDefault: profile.profileId === defaultId,
           agentName: agentDisplayName(row?.adapter ?? ""),
           modelName: row?.model === null || row?.model === undefined ? null : (row.model.displayName ?? row.model.endpointModelId),
