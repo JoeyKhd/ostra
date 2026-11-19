@@ -25,7 +25,7 @@ ostra never assumes a model provider. A **model provider** is an API base URL an
 **Keys:**
 - The token is stored encrypted, through the secret store adapter (ADR 0025). It reaches only the box's sidecar. The agent holds a fake key, and the key proxy swaps the real one in and counts every call in both API formats (ADR 0030, F-089).
 - An organization's provider is usable on personal runners only when an admin switches that on for the provider. It's off by default, because a key sent to a member's laptop can be read by that member (Q47).
-- A call is priced from models.dev, from the endpoint's own list where it carries prices, or from a price the admin enters for a custom model. An endpoint that reports no usage in its stream gets an estimate from token counts, and the panel says so (Q105, ADR 0042).
+- A call is priced from models.dev, from the endpoint's own list where it carries prices, or from a price the admin enters for a custom model. A price has four parts: fresh input, output, cache read and cache write (ADR 0042). An endpoint that reports no usage in its stream gets an estimate from token counts, and the panel says so (Q105, ADR 0042).
 
 **v1 covers endpoints that take a static token or key header.** Clouds that sign each request, and short-lived provider credentials, come later as auth strategies of the `ModelProviderAdapter` (F-130).
 

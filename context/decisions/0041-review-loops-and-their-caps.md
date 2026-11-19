@@ -12,6 +12,7 @@ In v1, three signals send a code task back to its coding agent without anyone ty
 
 - **A task gets at most 4 automatic turns** *(working value)*, CI and review rounds together. Then a person has to act: the task goes to "needs you" for its driver.
 - **Every turn stops at the task's spend cap and at the budget** (ADR 0042). At 100% of a budget, automatic rounds wait.
+- **A question in an automatic round gets a fixed neutral reply, never a decline** (Q160). No member is present, and the agent may ask a question (an ACP elicitation). The driver answers with a fixed line, such as "No one is available to answer. Use your best judgment, say what you assumed, and carry on." It records the question and the reply in the task's activity. Declining isn't an answer: spike 10 found that when the driver declined, OpenCode failed the question tool and the turn ended `cancelled`, which would score an agent as dead for asking. The round still ends at its cap.
 - **Every round shows in the task's activity.** While in review, a code task shows where it is: CI running, fixing CI, AI review, fixing findings, or waiting for a reviewer.
 - **Every other comment still needs `@ostra`** (F-053). Only a linked member's review counts (F-119).
 

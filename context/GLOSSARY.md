@@ -50,6 +50,10 @@ _Avoid_: source, workspace
 A project's rule that starts tasks by itself: an intake rule, which acts on matching tickets, or a schedule, which acts at set times.
 _Avoid_: workflow, trigger
 
+**Occurrence**:
+One due time of an automation's schedule. Each occurrence is a row with a unique key on the automation and the time, saved in the same transaction as the job that starts its tasks, so it starts them once. One job a minute, the scheduler tick, finds the occurrences that are due.
+_Avoid_: tick (the tick is the job that finds occurrences), run, fire
+
 **Intake rule**:
 An automation that turns the tickets matching a condition into tasks, with the agent profile that rule names.
 _Avoid_: trigger, workflow
@@ -139,12 +143,16 @@ The server's grant that lets one box work on a task. Each dispatch raises its ep
 _Avoid_: lock
 
 **Hidden ref**:
-The commit at `refs/ostra/wip/<task>` that a box writes to in each repo after every turn. It sits outside the task's branches and holds the working tree, so unfinished work from a cut-short turn survives without landing on a branch. A fresh box restores it.
+The commit at `refs/ostra/wip/<task>` that a box writes to in each repo after every turn, by a forced push. It sits outside the task's branches and holds the working tree as `git add -A` reads it, so unfinished work from a cut-short turn survives without landing on a branch. Ignored files aren't in it. A fresh box restores it.
 _Avoid_: backup branch, stash, wip branch
 
 **Session archive**:
 The agent's own export of a session, uploaded to the server after every turn and kept in the blob store. A fresh box imports it so the agent can carry on the session. It holds the session's content and never a credential.
 _Avoid_: transcript, history (the task's history is ostra's own record), backup
+
+**Rebuild template**:
+The fixed text a task's third way of reopening starts a new session from, when the session archive can't be restored or another agent takes the task over: the ticket, the PR's text, every member message, every agent message, an interrupted turn's text in a section of its own, and the branch's log. ostra assembles it as a string and calls no model. It holds no tool output.
+_Avoid_: summary (nothing summarizes it), recap
 
 **Command**:
 A numbered instruction from the server to a runner or a sidecar: dispatch, steer, interrupt, stop, an approval's answer.

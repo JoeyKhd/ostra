@@ -1,6 +1,6 @@
 # Environments, snapshots and services
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q33, Q39, Q40, Q95 and Q96.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q33, Q39, Q40, Q95 and Q96. **Amended 2026-11-19 after spike 3:** where a snapshot's checkouts live, the scan before the push, the build namespace's egress, and native sidecars (Q153, Q155).
 
 **One environment per project** (Q33). It's the project's recipe for every box: "the computer every task starts from". It holds:
 - a base image: ostra's default (the tools, the pinned agent and a small init program), or the organization's own
@@ -16,7 +16,9 @@ In v1, ostra drafts the environment from the project's repos: lockfiles, tool ve
 - It holds the base image, every repo's checkout and the result of the setup script. It never holds a secret.
 - On `docker` and `kubernetes` it's an OCI image, built by a runner. On the `host` executor there's no image: a worktree and a dependency cache take its place.
 - It's rebuilt when the environment changes, when a lockfile changes on a default branch, and nightly if a default branch moved.
-- A secret marked "available during setup" is mounted for the build only. The build fails if the secret's value is found in the image.
+- A secret marked "available during setup" is mounted for the build only. The build fails if the secret's value is found in the image. **The scan runs before the push** (Q153): the build exports to an OCI tarball or a local store, ostra scans it, and only a scanned image is pushed, so the registry never holds a leaked secret. The scan decompresses every layer whatever its compression (gzip or zstd) and looks for the literal value. A value under 6 characters is skipped, and an encoded form of the value, which a setup script can write to a file, isn't caught. The docs say so.
+- **The snapshot's checkouts live in the image, and no mount hides them** (Q153). A tmpfs over existing files "obscures" them, and a Kubernetes `emptyDir` starts empty, so mounting the writable task root at the workspace's path would give a box started from a snapshot an empty workspace. The checkouts stay in the image's layers at the workspace path, which the container's own writable layer makes writable. Only the home, temporary and run folders are tmpfs or `emptyDir`. If the writable layer's limits turn out wrong (on `kubernetes`, ephemeral storage), the fallback is a volume that a copy fills at box start. Neither shape has run: F-051's "done when" needs a box started from a snapshot to see its repos.
+- **On `kubernetes` the build runs in its own namespace with its own egress policy** (the registry and the package hosts only), because it runs project code with secrets mounted. Its rootless BuildKit settings (`Unconfined` seccomp and AppArmor, and `--oci-worker-no-process-sandbox`, which BuildKit's own page discourages) are not shown to be needed by anything the spike read, and the milestone 7 security review of the box covers them.
 - The server chooses which snapshot a box starts from. A runner never names one, and snapshots are kept apart per project (`research/elastic-sandboxes.md`, isolation rule 3).
 - When a box starts, it fetches the task's branches, runs the incremental install, and receives its secrets from the server after the lease check.
 - Its lifecycle is a discriminated union: queued, building, ready, then replaced, or failed.
@@ -28,8 +30,8 @@ In v1, ostra drafts the environment from the project's repos: lockfiles, tool ve
 
 **Services** (Q40, Q96). The environment has a typed list of services: an image, variables, a port and a health check. They start as sidecar containers of the box.
 - **`docker`:** on the box's private network.
-- **`kubernetes`:** as containers in the task's pod.
-- **`host`:** none. That's one of the executor's two allowed differences (ADR 0029). The scheduler never sends it a task whose environment needs services.
+- **`kubernetes`:** as native sidecar containers in the task's pod (init containers with `restartPolicy: Always`), which need Kubernetes 1.29 or later (ADR 0029).
+- **`host`:** none. That's one of the executor's allowed differences (ADR 0029). The scheduler never sends it a task whose environment needs services.
 
 ## Considered options
 
@@ -46,7 +48,7 @@ In v1, ostra drafts the environment from the project's repos: lockfiles, tool ve
 
 - A repo in two projects has two environments and two sets of secrets. If a repo needs one shared setup, environments gain an "inherit from" link.
 - Snapshots (F-051) and services (F-094) are v1, built in milestone 3.
-- Spike 3 checks that a snapshot builds from a generated Dockerfile on both executors, that a setup secret isn't found in any layer, and that a database service is reachable from the agent's container.
+- Spike 3 checks that a snapshot builds from a generated Dockerfile on both executors, that a box started from it sees its repos, that a setup secret isn't found in any layer and that the scan has a negative control, and that a database service is reachable from the agent's container. It hasn't run these: its Windows rehearsal had no Docker, no BuildKit and no cluster.
 - If v1 runs long, building snapshots inside Kubernetes slips first among the runner work: a `docker` runner builds them for the cluster instead.
 - An environment's variables and secrets are visible to the code under test (ADR 0030, ADR 0031).
 - Importing a compose file (F-132), organization templates and bulk onboarding (F-126) come after v1.

@@ -204,7 +204,7 @@ Any member who can open the project may answer an approval, whoever its audience
                 │
                 ├──▶ ended (the box stopped: with changes | without changes)
                 ├──▶ stopped (by a member, by runaway protection, or at the spend cap)
-                └──▶ crashed (the agent, the sidecar or the box died; the branches, hidden ref and archive stay)
+                └──▶ crashed (the agent, the sidecar or the box died; the branches stay, and the hidden ref and archive are those of the last finished turn)
 ```
 
 Only one session per task is starting, running, waiting or idle at any time.
@@ -216,7 +216,7 @@ Only one session per task is starting, running, waiting or idle at any time.
 | **new** | the task's first session | the ticket or the prompt |
 | **resumed** | the task's stopped box is still kept, on `docker` | the agent's own session, in place |
 | **restored** | a fresh box: the normal case once boxes stop after 15 idle minutes (F-033) | the session archive and the hidden ref |
-| **rebuilt** | the archive can't be restored | a fixed template: the ticket, the PRs' text, every member message, the agent's last message and the branches' log. ostra calls no model to write it |
+| **rebuilt** | the archive can't be restored | a fixed template: the ticket, the PRs' text, every member message, every agent message, an interrupted turn's text in a section of its own, and the branches' log (Q128). ostra calls no model to write it |
 
 ## A box's lifecycle
 

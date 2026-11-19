@@ -21,9 +21,9 @@ ostra stores files: a session's archive, the images a member attaches to a refin
 
 ## Why not Postgres alone
 
-A session archive is uploaded after every turn, because a fresh box is the normal case once boxes stop after 15 idle minutes (Q42, Q53, ADR 0039). At 1,000 tasks at once (Q18), that's several megabytes per task every few minutes, by the answers' own arithmetic. Writing that into the database that also carries the event log is too much. `research/runner-transport.md` already plans a bulk path off the session, and `research/elastic-sandboxes.md` notes that ostra had no blob store.
+A session archive is uploaded after every turn, because a fresh box is the normal case once boxes stop after 15 idle minutes (Q42, Q53, ADR 0039). At 1,000 tasks at once (Q18), the answers' arithmetic was several megabytes per task every few minutes. Spike 2 measured less: a 200-turn archive is 175,891 bytes gzipped (1,088,403 raw) and a 1,000-turn one 875,644 gzipped, but every turn uploads the whole archive again, so the traffic still adds up at 1,000 tasks, and writing it into the database that also carries the event log is too much. `research/runner-transport.md` already plans a bulk path off the session, and `research/elastic-sandboxes.md` notes that ostra had no blob store.
 
-Spike 2 records the real size of an archive. If archives are small, Postgres alone is enough for far longer.
+Spike 2 recorded the real size of an archive, above. Archives are small and gzipped before upload, against a cap of 64 MiB, so Postgres alone is enough for far longer than the answers assumed.
 
 ## Considered options
 

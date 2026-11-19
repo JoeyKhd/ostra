@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q136). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q164). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -72,7 +72,7 @@ Two adjustments the maintainer made afterwards apply to every row below:
 | Q21 copying modules | ADR 0015, amended: small ports of logic with attribution, each listed in ADR 0015's Borrowed code section and in `NOTICE`. The product stays ostra's own |
 | Q22 run the Tier 1 research | Done: `research/durable-execution.md`, `elastic-sandboxes.md`, `live-sync.md`, `integrations-platform.md`, `credential-proxy.md` and `runner-transport.md`. Their findings are in ADRs 0025, 0029, 0030, 0034, 0035 and 0037 |
 | Q23 text deltas and "saved before acted on" | ADR 0035. ADR 0011, amended: partial text is shown, never saved, and nothing acts on it |
-| Q24 the durable queue | ADR 0037: pg-boss behind one package, `packages/jobs`, with DBOS as the fallback. ADR 0017, amended. Spike 8 tests it |
+| Q24 the durable queue | ADR 0037: pg-boss behind one package, `packages/jobs`, with DBOS as the fallback. ADR 0017, amended. Spike 8 tested it and pg-boss stays (ADR 0037, Q156 to Q158) |
 | Q25 integrations | ADR 0025: the official SDKs, each wrapped in an adapter. No integrations platform |
 | Q26 keeping keys from the agent | ADR 0030: the sidecar's key proxy and git proxy. F-089, F-090. F-052 later: network allowlists |
 | Q27 separate OS user | ADR 0030: the boundary is the sidecar container on `docker` and `kubernetes`. ADR 0029: a separate OS user remains only for `host` pools |
@@ -108,15 +108,15 @@ Two adjustments the maintainer made afterwards apply to every row below:
 
 | Question | Settled in |
 |---|---|
-| Q45 default agent | ADR 0032, F-019: OpenCode is the default and the only agent from milestone 1. Claude Code on keys (F-018) is the second agent, in milestone 7. Codex stays later (F-038) |
-| Q46 Omnara bake-off | Replaced by an acceptance run of OpenCode alone: spike 10 in `build-order.md` (ADR 0032) |
+| Q45 default agent | ADR 0032, F-019: OpenCode is the default and the only agent from milestone 1. Spike 10 passed (Q159). Claude Code on keys (F-018) is the second agent, in milestone 7. Codex stays later (F-038) |
+| Q46 Omnara bake-off | Replaced by an acceptance run of OpenCode alone: spike 10 in `build-order.md` (ADR 0032). It passed (Q159) |
 | Q47 keys everywhere | ADR 0030, F-014: no subscription login anywhere, and a provider is usable on personal runners only when an admin allows it. F-128 later: a member's own provider |
 | Q48 pool join tokens | ADR 0029, F-091, F-118: a join token per pool, shown once, hashed, expiring |
 | Q49 onboarding a new project | F-113, in milestone 6, built on F-112. The onboarding task is a code task from a built-in template. ADR 0038 |
 | Q50 the live agent UI | ADR 0036: the AI SDK's message types, rendered with assistant-ui. ADR 0007, amended |
 | Q51 keep Rivet Sandbox Agent | ADR 0032: no. The runner drives agents with the official ACP SDK. ADR 0024 is superseded and ADR 0018 amended |
 | Q52 steering with OpenCode | ADR 0032, F-024: steering mid-turn is a declared agent capability. Send steers where the agent declares it and queues otherwise, and "Interrupt and send" is a separate action. Spike 1 found that OpenCode declares it (Q114) |
-| Q53 reopening on another runner | ADR 0039, F-033: the agent's session archive and the hidden ref, then a fixed rebuild template. ADR 0006, amended |
+| Q53 reopening on another runner | ADR 0039, F-033: the agent's session archive and the hidden ref, then a fixed rebuild template. ADR 0006, amended. Spike 2 tested it (Q128, Q150) |
 
 #### Asked in chat, Q54 to Q59
 
@@ -220,6 +220,28 @@ The maintainer delegated these calls. Each spike's finding (`research/spike-*.md
 | Q124 May the mapper hide usage, mode and tool-progress updates? (spike 7) | ADR 0036: no. Mode and config become `session.config_changed`, in-progress tool updates with content become `tool.progress`, and `usage_update` gets a `session.usage` kind that feeds only the context meter. Spend comes from the key proxy |
 | Q125 Linear: who sends a stop, and the heartbeat's values (spike 5) | ADR 0013, F-012: a stop always comes from a signed-in user, never from an API key. The heartbeat is every 20 minutes of silence, reset by any post, with retries for at most 5 minutes, ephemeral by default and a plain thought if Linear doesn't count it |
 
+#### Settled from the second batch of findings (2026-11-19)
+
+The maintainer delegated these calls too, and each recommendation of the findings of spikes 2, 3, 8 and 10 was applied. Spikes 2 and 10 each proposed a "Q128", and spike 2's keeps the number. Spike 8 left its questions unnumbered. The others start at Q150, because Q129 to Q136 were taken in parallel by questions that milestone 1 raised.
+
+| Question | Settled in |
+|---|---|
+| Q128 What does the rebuild template carry: the last finished reply, or every agent message? (spike 2) | ADR 0039, ADR 0006, F-033: every agent message, oldest first, plus a section for an interrupted turn, with a cap on its size *(working value)*. It scored 5 of 5 in all four runs, against 4 of 5 for the last finished reply and 3 of 5 for the last turn with any text. It holds no tool output, and the one question it misses is about a tool's output |
+| Q150 A moved branch, a lost box, ignored files and a forced ref (spike 2) | ADR 0039, F-033, F-047, F-096: the saved work is restored onto the commit it was saved on and the branch's new commits are merged, and a conflict leaves the ref alone and raises a "needs you" item. A lost box leaves the last finished turn's ref and archive, and the runner replays the member's unanswered message from the event log. Ignored files stay behind. The hidden ref is a forced push, the git proxy accepts a non-delete, non-fast-forward update of it, and F-096's test checks it on GitHub |
+| Q151 Kubernetes egress is per pod, so the agent container has direct internet access (spike 3) | ADR 0029, ADR 0031, F-116: accepted for v1 and recorded as the fourth allowed difference between executors, said plainly in the panel. F-052 stays later and can come forward for `kubernetes`. A pod whose agent has its own network namespace has not been found |
+| Q152 The git proxy's URL: a per-box secret, or none? (spike 3) | ADR 0030: no credential in the URL, and a random path segment per box as a second wall, with the network as the first |
+| Q153 Where a snapshot's checkouts live, and when the scan runs (spike 3) | ADR 0038, F-051: no mount hides the checkouts, the scan runs on the built image before it is pushed, and the build namespace gets its own egress policy. A box started from a snapshot seeing its repos is part of F-051's "done when" |
+| Q154 The `docker` executor and Docker's default address pools, which hold about 31 networks (spike 3) | ADR 0029, F-017: ostra owns the subnets of its boxes. The runner carves each box's networks out of a pool it manages |
+| Q155 The minimum Kubernetes version (spike 3) | ADR 0029, ADR 0038, F-093, F-094: 1.29, for native sidecar containers. The bridge also gets deadlines (ADR 0029, F-017) |
+| Q156 What an automation does for an occurrence that came due while the install was down, and how schedules tick (spike 8) | ADR 0037, F-106: schedules that start work are rows in ostra's tables, ticked by one job a minute, with a unique row and a fixed job key per occurrence. A missed occurrence fires once, for the latest, when it is under 6 hours late *(working value)*, and older ones are skipped. pg-boss's own cron stays only for idempotent passes, behind the heartbeat on its forwarding queue and a singleton slot |
+| Q157 Does the `web` role wait for the core's migration, or retry its start? (spike 8) | ADR 0037: it retries with backoff and reports itself as starting |
+| Q158 Does the server check the database's time zone, or set it on every connection? (spike 8) | ADR 0037: both. It sets `TimeZone=UTC` on every connection and checks `SHOW timezone` at boot, and the configuration reference says the database runs in UTC |
+| Q159 Is spike 10's bar reworded, is a realistic gate added, and does a person rate a sample? (spike 10) | `build-order.md` spike 10, ADR 0032: the bar is reworded to what was measured (the ten spike tickets, on a toy repo, rated blind by two AI reviewers), and "realistic tickets" becomes a gate after milestone 1's end-to-end demo: one ticket of each kind through the real flow on a repo in `ostra-test`, rated blind by two AI reviewers and at least one person. A person rating a sample of the 30 is optional and nothing waits on it. OpenCode stays the default agent |
+| Q160 What answers an agent's question in an automatic round? (spike 10) | ADR 0041, F-101: a fixed neutral reply, recorded in the activity. Never a decline, which ends the turn |
+| Q161 What the event log records, and what contains the agent (spike 10) | ADR 0035, ADR 0031, F-073: every tool call's input is saved in full, a refusal keeps its error text, an approval keeps its command, and the "never content" rule is for log lines, not the log. Only a box contains the agent, and a record is not a box. The contract suites carry a canary file outside the workspace |
+| Q162 Spike-only dependencies: `yaml` (spike 3) and `@dbos-inc/dbos-sdk` (spike 8) | ADR 0007: approved for the spikes, and never for the product |
+| Q163 Which token kinds does the proxy count and price? (spike 10) | ADR 0042, ADR 0033, F-084, F-089: four, fresh input, output, cache reads and cache writes, each priced on its own. Whether models.dev and endpoints carry cache prices is unchecked, and the admin's price form has the two fields if they don't |
+
 #### Chat answers with no question number
 
 | Answer | Settled in |
@@ -242,6 +264,8 @@ The maintainer delegated these calls. Each spike's finding (`research/spike-*.md
 **Q126 👤 Containing a task's processes on the `host` executor** (ADR 0029, `research/spike-how-should-the-runner-drive-opencode.md`, item 6). The decision is made: a Windows job object, a Linux cgroup. Two things aren't. How does a Node runner create a Windows job object (a native addon or a small helper program, either of which is a new dependency)? And what does macOS use, which has neither? Until it is settled, milestone 1's `host` executor on Windows ends the agent's process tree and says so in the panel, and `host` on macOS reaps a process group and walks the tree, recorded as the third allowed difference in ADR 0029. *Recommendation:* a small helper program for Windows, so the runner needs no native addon on a laptop, and for macOS test a process group plus a sweep for orphans against a detached helper, and record the result.
 
 **Q127 👤 Dependencies waiting for a yes** (ADR 0007, "pending the maintainer"). `@tanstack/react-virtual` for the task page's long lists (Q112), `dockerode`, `@kubernetes/client-node`, `nodemailer`, and whatever Q126 picks. Each is added only when the feature that needs it is built, and only after the maintainer confirms it and its license. *Recommendation:* yes to all four named ones, since each has no standard-library or already-listed alternative.
+
+**Q164 👤 `AGENTS.md` says an agent's reach ends at its task's workspace** (spike 10, finding 8, `research/spike-is-opencode-good-enough.md`). That is a goal only a box meets. On `host`, OpenCode's `external_directory` deny bounds its file tools and not its shell, which reaches whatever the member's account does (ADR 0029, ADR 0031). Milestone 1's spec now says so, and `AGENTS.md`'s Boundaries line is the maintainer's to change. *Recommendation:* reword it to "An agent's reach ends at its task's workspace on `docker` and `kubernetes`, enforced by the box. The `host` executor is labelled not isolated, and its agent can reach what the account can." The same file's Phase line still reads "milestone 0, spikes"; it can say that milestone 0 is done and milestone 1 is in progress.
 
 ### Raised by milestone 1 (2026-11-19)
 

@@ -47,6 +47,7 @@ Milestone 1 starts from these and pins exactly (a version less than a day old is
 - **`embedded-postgres`, as a devDependency only.** Milestone 1's development runs Postgres through it, started by a dev script, because the machine has no Docker. `DATABASE_URL` overrides it. It is a beta (18.6.0-beta.19) and four spikes already use it (`auth-foundation`, `durable-queue-choice`, `runner-transport` and `live-stream-and-task-view`), and their findings ask for this approval. It never enters a production dependency list and no image ships it. The self-hosted install uses a real Postgres (ADR 0017).
 - **`vite`** was used by spike 7's throwaway page only. It is not in the product: the panel is Next.js 16.
 - **Vitest and Playwright** were already in the table above.
+- **`yaml`** (ISC), spike 3's dev dependency for reading its deploy files, and **`@dbos-inc/dbos-sdk`** (MIT core only, no Conductor), spike 8's fallback arm. Approved for the spikes only (Q162). Neither is a product dependency: no package outside `spikes/` lists them.
 
 ## Dependencies added in the 2026-11-18 rework, pending the maintainer
 
