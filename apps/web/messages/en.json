@@ -956,7 +956,8 @@
     },
     "ticketFiles": "Ticket files ready",
     "reopenTag": "reopened",
-    "replayedTag": "replayed"
+    "replayedTag": "replayed",
+    "tookOver": "{name} took over"
   },
   "taskState": {
     "queued": "Queued",

@@ -88,7 +88,12 @@ export const loadApprovalsAndPlan = async (deps: ApiDeps, task: TaskRow) => {
       requestOf.set(parsed.data.approvalId, parsed.data);
     }
   }
-  const memberIds = new Set<string>([...approvals.flatMap((row) => (row.answeredByMemberId === null ? [] : [row.answeredByMemberId])), ...taskRules.map((rule) => rule.createdByMemberId)]);
+  // Who answered the plan is named on its receipt too ("Plan approved by Demo").
+  const planAnswerers = planAnswers.flatMap((row) => {
+    const parsed = planAnsweredPayload.safeParse(row.payload);
+    return parsed.success ? [parsed.data.memberId] : [];
+  });
+  const memberIds = new Set<string>([...approvals.flatMap((row) => (row.answeredByMemberId === null ? [] : [row.answeredByMemberId])), ...taskRules.map((rule) => rule.createdByMemberId), ...planAnswerers]);
   const members = memberIds.size === 0 ? [] : await db.member.findMany({ where: { id: { in: [...memberIds] }, organizationId }, select: { id: true, user: { select: { name: true } } } });
   const nameOf = (memberId: string | null): { readonly memberId: ReturnType<typeof memberIdSchema.parse>; readonly name: string } | null =>
     memberId === null ? null : { memberId: memberIdSchema.parse(memberId), name: members.find((member) => member.id === memberId)?.user.name ?? "" };
