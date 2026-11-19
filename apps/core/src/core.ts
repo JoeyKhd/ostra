@@ -13,6 +13,11 @@ import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { replicaIdSchema } from "@ostra/protocol";
 
+import { createBlobService } from "./blobs/blob-service.ts";
+import type { BlobService } from "./blobs/blob-service.ts";
+import { handleBlobEndpoint } from "./blobs/endpoints.ts";
+import { blobGcHandler, ensureBlobGcSchedule } from "./blobs/gc.ts";
+
 import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
 import { applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
 import type { DispatcherDeps } from "./dispatch/dispatcher.ts";
@@ -59,6 +64,8 @@ export type RunningCore = {
   readonly db: Db;
   readonly jobs: Jobs;
   readonly gateway: Gateway;
+  /** The blob service (ticket 12): session archives and ticket files. */
+  readonly blobs: BlobService;
   readonly stop: () => Promise<void>;
 };
 
@@ -146,7 +153,17 @@ export const startCore = async (
     signingKey,
     logger,
   });
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints], upgrade: gateway.handleUpgrade, logger });
+  const blobs = createBlobService({ db, settings: settings.blobStore, context: { logger, clock: adapterClock } });
+  const blobEndpoints = handleBlobEndpoint({
+    db,
+    tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
+    blobs,
+    clock: systemClock,
+    logger,
+  });
+  await jobs.work("blob.gc", blobGcHandler({ db, clock: systemClock, logger }), { localConcurrency: 1 });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, blobEndpoints], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 
@@ -169,6 +186,9 @@ export const startCore = async (
     await ensureSchedules({ db, jobs, catalogFetch: settings.catalogFetch }).catch((error: unknown) => {
       logger.warn("schedules.failed", { error: error instanceof Error ? error.name : "unknown" });
     });
+    await ensureBlobGcSchedule(jobs).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "blob.gc", error: error instanceof Error ? error.name : "unknown" });
+    });
   };
   await schedules();
   const scheduleTimer = setInterval(() => void schedules(), 10 * 60_000);
@@ -188,6 +208,7 @@ export const startCore = async (
     db,
     jobs,
     gateway,
+    blobs,
     stop: async () => {
       clearTimeout(bootstrapTimer);
       clearInterval(requeue);

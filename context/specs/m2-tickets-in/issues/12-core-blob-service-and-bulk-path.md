@@ -1,6 +1,6 @@
 # 12: Core: the blob service and the runner's bulk path
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 02, 05
 Features: F-114, F-096, F-064
@@ -17,9 +17,11 @@ Spec: `../spec.md`, sections 4 ("After every turn") and 5.1 (the bulk path)
 
 ## Done when
 
-- [ ] The blob contract suite (ticket 04) passes against the built-in store on Postgres.
-- [ ] Tests: an upload dropped mid-chunk resumes; a stale epoch is refused; a runner can't download another task's blob or another organization's; a blob over the cap is refused and the session goes on; `blob.gc` removes only stale uploads.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the blob service and bulk path`.
+- [x] The blob contract suite (ticket 04) passes against the built-in store on Postgres.
+- [x] Tests: an upload dropped mid-chunk resumes; a stale epoch is refused; a runner can't download another task's blob or another organization's; a blob over the cap is refused and the session goes on; `blob.gc` removes only stale uploads.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the blob service and bulk path`.
 
 ## Comments
+
+- 2026-11-19, core (m2-core-a): built in `apps/core/src/blobs/`. `postgres-blob-rows.ts` backs the built-in store's `BlobRows` on `Blob`, `BlobUpload` and `BlobChunk` (chunks of at most 1 MiB, one transaction per write; a finished upload's chunks move to its blob rather than being written twice). The rows can be bound to a task, so a resume finds only that task's open upload. `blob-service.ts` is the one place that stores and reads blobs (`RunningCore.blobs`, for tickets 17, 18, 22 and 26): it picks the store, sets the row's project, task, store and content type, refuses over `OSTRA_BLOB_MAX_MIB` with `too-large` (413 on the bulk path, the task untouched), and reads only for the blob's organization and, when asked, its task. `endpoints.ts` serves the four routes of spec 5.1 for a runner's access token or a box's task token, each checking the lease at that epoch (409 `stale-lease` with the current epoch). `gc.ts` is `blob.gc`, daily at 03:17 UTC: unfinished uploads older than 24 h go with their chunks, and finished upload records too (their blobs stay). For the builders: `OSTRA_BLOB_STORE=s3` makes `createBlobService` throw until ticket 11's adapter is passed as `s3`; an S3 adapter that keeps no `BlobUpload` row needs the service's ownership check adjusted then. Known cost: the port hands the whole upload on every chunk, so a 64 MiB archive reads its chunks back once per chunk; fine for M2's archives, worth an additive `appendChunk` on `BlobRows` later. The suite runs in `blobs.test.ts` (24 cases: the contract suite on Postgres, a drop mid-chunk resumed, stale epochs, another task's and another organization's blobs and uploads, the cap, `blob.gc`, logs without bytes).

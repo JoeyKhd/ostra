@@ -16,6 +16,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@ostra/adapter-blob-postgres": "workspace:*",
     "@ostra/adapter-github": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",

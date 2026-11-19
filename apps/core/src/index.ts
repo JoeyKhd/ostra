@@ -4,3 +4,4 @@ export * from "./server.ts";
 export * from "./gateway/gateway.ts";
 export * from "./gateway/context.ts";
 export * from "./gateway/device-sessions.ts";
+export * from "./blobs/blob-service.ts";

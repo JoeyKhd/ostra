@@ -38,6 +38,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@ostra/adapter-blob-postgres':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-blob-postgres
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-github
