@@ -73,6 +73,7 @@ export * from "./use-cases/sessions-m2.ts";
 export * from "./use-cases/spend.ts";
 export * from "./use-cases/budgets.ts";
 export * from "./use-cases/budget-notices.ts";
+export * from "./use-cases/insights.ts";
 export * from "./use-cases/rebuild-history.ts";
 export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";

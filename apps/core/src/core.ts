@@ -53,6 +53,7 @@ import { createEmailChannel, createNotificationChannels, notifyDeliverHandler, n
 import type { NotifyDeps } from "./notifications/index.ts";
 import { accountMailSendHandler } from "./reactions/account-mail.ts";
 import { budgetCheckHandler, budgetNewMonthHandler, budgetReleaseHandler, ensureBudgetNewMonthSchedule } from "./reactions/budgets.ts";
+import { ensureInsightsSchedule, insightsComputeHandler } from "./reactions/insights.ts";
 import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } from "./reactions/session-end.ts";
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
@@ -465,6 +466,9 @@ export const startCore = async (
   await jobs.work("budget.release", budgetReleaseHandler(budgetDeps), { localConcurrency: 1 });
   await jobs.work("budget.new-month", budgetNewMonthHandler(budgetDeps), { localConcurrency: 1 });
   await ensureBudgetNewMonthSchedule(jobs);
+  // Milestone 4 (ticket 14): Insights, recomputed from ostra's own tables on a schedule.
+  await jobs.work("insights.compute", insightsComputeHandler({ db, clock: systemClock }), { localConcurrency: 1 });
+  await ensureInsightsSchedule(jobs, settings.insightsIntervalMinutes);
   // Cleanup and retention (ticket 20): a box's release, its idle days, and the daily retention pass.
   const cleanupDeps: CleanupDeps = {
     db,
