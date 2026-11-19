@@ -10,7 +10,7 @@ import { tarOf } from "./tar.ts";
 
 // A fake OCI registry (ticket 06, spec section 8), speaking the distribution API that Docker
 // Engine, kubelets, BuildKit and ostra's registry check speak: `/v2/`, with Basic or bearer-token
-// auth; blob uploads, monolithic and chunked; manifests by tag and by digest, checked against the
+// auth; blob uploads, monolithic and chunked, and cancelled; manifests by tag and by digest, checked against the
 // blobs they name. It holds a push-only and a pull-only credential, a seeded image, and a record of
 // every request, with the user who made it (never a password or token). Test and dev only.
 
@@ -256,6 +256,12 @@ export const startFakeOciRegistry = async (options: FakeOciRegistryOptions = {})
       const upload = uploads.get(uploadMatch[2]);
       if (upload?.name !== uploadMatch[1]) {
         answer(404, { "content-type": "application/json" }, errorBody("BLOB_UPLOAD_UNKNOWN", "no such upload"));
+        return;
+      }
+      // An upload cancelled (the distribution spec's DELETE): what a registry check does after it started one.
+      if (method === "DELETE") {
+        uploads.delete(uploadMatch[2]);
+        answer(204);
         return;
       }
       const body = await readBody(request);

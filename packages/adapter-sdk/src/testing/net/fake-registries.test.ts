@@ -78,6 +78,23 @@ describe.each(["bearer", "basic"] as const)("the fake OCI registry, %s auth (tic
     const seeded = await ociClient(registry.url, registry.pull).pullManifest(registry.seeded.name, registry.seeded.tag);
     expect(seeded.digest).toBe(registry.seeded.digest);
   });
+
+  it("F-120: an upload started with the push credential can be cancelled, and is gone after", async () => {
+    const registry = await startFakeOciRegistry({ auth });
+    running.push(registry);
+    const basic = `Basic ${Buffer.from(`${registry.push.username}:${registry.push.password}`).toString("base64")}`;
+    let authorization = basic;
+    if (auth === "bearer") {
+      const token = await fetch(`${registry.url}/token?service=fake-registry&scope=repository:ostra/check:push`, { headers: { authorization: basic } });
+      const body: unknown = await token.json();
+      authorization = `Bearer ${String(Reflect.get(Object(body), "token"))}`;
+    }
+    const started = await fetch(`${registry.url}/v2/ostra/check/blobs/uploads/`, { method: "POST", headers: { authorization } });
+    expect(started.status).toBe(202);
+    const location = new URL(started.headers.get("location") ?? "", registry.url);
+    expect((await fetch(location, { method: "DELETE", headers: { authorization } })).status).toBe(204);
+    expect((await fetch(location, { method: "PATCH", headers: { authorization }, body: "x" })).status).toBe(404);
+  });
 });
 
 /** npm's own CLI, run by this Node with no shell: beside `node` on Windows, under `lib/` elsewhere. */
