@@ -287,6 +287,9 @@ export class HostExecutor extends ExecutorAdapter {
       boxSizes: false,
       snapshots: options.boxCapabilities?.snapshots ?? "host-cache",
       processContainment: kind,
+      // Milestone 5: a worktree takes no registry image and never waits for a node.
+      registry: "none",
+      nodeWait: false,
     };
   }
 
@@ -354,7 +357,7 @@ export class HostExecutor extends ExecutorAdapter {
   }
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
-    const unfit = this.refuseUnfitSpec(input.spec);
+    const unfit = this.refuseUnfitBox(input);
     if (unfit !== null) {
       return unfit;
     }

@@ -75,6 +75,10 @@ export class DockerExecutor extends ExecutorAdapter {
     boxSizes: false,
     snapshots: "image",
     processContainment: "container",
+    // Milestone 5 (ADR 0060): a box can start from the organization's registry, and without one the
+    // runner builds and keeps its own snapshot (milestone 3). A Docker host never waits for a node.
+    registry: "optional",
+    nodeWait: false,
   };
 
   readonly #inner: HostExecutor;
@@ -108,8 +112,10 @@ export class DockerExecutor extends ExecutorAdapter {
   }
 
   create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
-    const unfit = this.refuseUnfitSpec(input.spec);
-    return unfit === null ? this.#inner.create(input) : Promise.resolve(unfit);
+    const unfit = this.refuseUnfitBox(input);
+    // Inside the box, the workspace only: the pool runner made the containers, from the image and
+    // with the size, and wrote the task token where only this sidecar reads it.
+    return unfit === null ? this.#inner.create({ taskId: input.taskId, boxId: input.boxId, spec: input.spec, proxies: input.proxies }) : Promise.resolve(unfit);
   }
 
   prepare(input: PrepareInput): Promise<AdapterResult<PrepareResult>> {
@@ -167,6 +173,11 @@ export class DockerExecutor extends ExecutorAdapter {
 
   /** The pool runner's: a box's sidecar has no Engine to build with. */
   override buildSnapshot(input: BuildSnapshotInput): Promise<AdapterResult<SnapshotBuildResult>> {
+    // Milestone 5: the push to a registry comes with ticket 09; until then a build asked to push is
+    // refused rather than kept here unpushed, where no other host could pull it.
+    if ((input.push ?? null) !== null) {
+      return Promise.resolve(adapterError("unsupported", "this runner doesn't push snapshots to a registry yet"));
+    }
     return this.#snapshots?.buildSnapshot(input) ?? Promise.resolve(adapterError("unsupported", "a box's sidecar builds no snapshots: its pool runner does"));
   }
 

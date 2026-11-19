@@ -157,6 +157,8 @@ describe("a missing operation", () => {
         boxSizes: false,
         snapshots: "none",
         processContainment: "process-tree",
+        registry: "none",
+        nodeWait: false,
       } as const;
       health(): Promise<HealthReport> {
         return ok();

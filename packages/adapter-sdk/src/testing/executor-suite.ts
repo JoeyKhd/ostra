@@ -8,7 +8,7 @@ import type { TaskSpec, TaskSpecCheck } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import type { AgentLaunch } from "../agent/base.ts";
-import type { BoxRef, BuildSnapshotInput, CreatedBox, ExecutorAdapter, PrepareCacheInput, TaskProxies } from "../executor/base.ts";
+import type { BoxImage, BoxRef, BoxSize, BoxWaitChange, BuildSnapshotInput, CreatedBox, ExecutorAdapter, PrepareCacheInput, TaskProxies } from "../executor/base.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
@@ -69,6 +69,36 @@ export type ExecutorFixture = {
   readonly snapshot?: Omit<BuildSnapshotInput, "onOutput" | "signal">;
   /** Milestone 3 (F-051): the host cache's inputs for a project, for a `host-cache` executor; absent, the case is skipped. */
   readonly cache?: (projectId: string) => PrepareCacheInput;
+  /**
+   * Milestone 5 (ticket 02): how the suite reads a box back for the fleet's cases. Absent, the cases
+   * that need it are skipped and only the refusals run. Present, every part the executor's
+   * capabilities call for must be there, or its case fails: `limitsOf` with `boxSizes`; `image`,
+   * `pulls` and `surface` with a `registry`; `tokenAtSidecar` and `surface` with container isolation;
+   * `holdNextBox` with `nodeWait`.
+   */
+  readonly fleet?: FleetFixture;
+};
+
+/** Milestone 5: what the suite reads of a box, through the executor's own inspection. */
+export type FleetFixture = {
+  /** The agent container's limits as the executor's inspection reads them (`docker inspect`, the pod's spec), or `null` for none. */
+  readonly limitsOf?: (box: BoxRef) => Promise<BoxSize | null>;
+  /** An image in the fixture's registry a box can start from, with its pull credential. */
+  readonly image?: BoxImage;
+  /** Every pull the engine or the kubelet made so far, by reference, with the credential's user (never its token). */
+  readonly pulls?: () => Promise<readonly { readonly ref: string; readonly digest: string; readonly username: string | null }[]>;
+  /**
+   * Everywhere a credential could reach in the box, as text: each container's environment and
+   * arguments, its files, and its process list, the agent's included; only the sidecar's token mount
+   * is left out. `where` names the place, for the failure's words.
+   */
+  readonly surface?: (box: BoxRef) => Promise<readonly { readonly where: string; readonly text: string }[]>;
+  /** The task token as the sidecar's container reads it at its mount, or `null` when it isn't there. */
+  readonly tokenAtSidecar?: (box: BoxRef) => Promise<string | null>;
+  /** Holds the next box unschedulable for this long, as a cluster adding a node does. */
+  readonly holdNextBox?: (ms: number) => void;
+  /** Every object the box made (containers, pods, secrets, volumes, folders), by name, while it exists. Absent: the release case is skipped. */
+  readonly objectsOf?: (box: BoxRef) => Promise<readonly string[]>;
 };
 
 /** A checkout's files, as a person in the box would touch them. Paths are relative to the checkout. */
@@ -137,6 +167,15 @@ const newBox = (): BoxRef => {
   };
 };
 
+/** After a refused `create`: the executor knows no box by that ref (not found, or only as released) and lists no workspace for it. */
+const noBoxOf = async (adapter: ExecutorAdapter, box: BoxRef): Promise<boolean> => {
+  const state = await adapter.state(box);
+  if (state.ok && state.value !== "released") {
+    return false;
+  }
+  return !(await adapter.listWorkspaceRoot(box)).ok;
+};
+
 const waitFor = async (check: () => Promise<boolean>, timeoutMs: number): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -191,6 +230,8 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       boxSizes: "boolean",
       snapshots: "string",
       processContainment: "string",
+      registry: "string",
+      nodeWait: "boolean",
     });
 
     /** A box, prepared. With `sameTaskAs`, a fresh box of that box's task, as a reopen gets. */
@@ -649,6 +690,179 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         expect(again.value.dependencyCacheDir).not.toBe(other.value.dependencyCacheDir);
       }
     }, 5 * CASE_TIMEOUT_MS);
+
+    // ---------- milestone 5 (ticket 02): sizes, capacity, registry images, the task token, the node wait ----------
+
+    /** A part of the fleet fixture a capability calls for: present, or the case fails with the reason. */
+    const needed = <T,>(part: T | undefined, what: string): T => {
+      if (part === undefined) throw new Error(`the executor declares ${what}, so its fleet fixture must give it`);
+      return part;
+    };
+
+    const SIZE: BoxSize = { cpuMillis: 1500, memoryMiB: 3072 };
+    const PLANTED_TOKEN = "ostra_tt_suite_8c1f2e7d9b4a6053";
+
+    it("F-095: capacity() answers at once: null, or whole slots with the CPU and memory left", () => {
+      const { adapter } = subject();
+      const capacity = adapter.capacity();
+      if (capacity === null) {
+        return;
+      }
+      expect(Number.isInteger(capacity.slots) && capacity.slots >= 0).toBe(true);
+      expect(Number.isInteger(capacity.cpuMillis) && capacity.cpuMillis >= 0).toBe(true);
+      expect(Number.isInteger(capacity.memoryMiB) && capacity.memoryMiB >= 0).toBe(true);
+    });
+
+    it("F-095: a box with a size gets exactly its limits, read back through the executor's own inspection; without box sizes a size is refused and no box is made", async (context) => {
+      const { adapter, fixture } = subject();
+      const box = newBox();
+      if (!adapter.capabilities.boxSizes) {
+        expect(await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, size: SIZE })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await noBoxOf(adapter, box), "no box was made").toBe(true);
+        return;
+      }
+      if (fixture.fleet === undefined) {
+        context.skip();
+        return;
+      }
+      const limitsOf = needed(fixture.fleet.limitsOf, "box sizes");
+      const created = await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, size: SIZE });
+      try {
+        if (!created.ok) throw new Error(created.error.message);
+        expect(await limitsOf(box)).toEqual(SIZE);
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-120: a box from a registry image is pulled by digest with its credential, which is in no container's environment, files or process list; with no registry an image is refused", async (context) => {
+      const { adapter, fixture } = subject();
+      if (adapter.capabilities.registry === "none") {
+        const box = newBox();
+        const image: BoxImage = { ref: "registry.example/ostra/snapshots/suite", digest: `sha256:${"d".repeat(64)}`, pull: { username: "pull", token: "pull-secret" } };
+        expect(await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, image })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await noBoxOf(adapter, box), "no box was made").toBe(true);
+        return;
+      }
+      if (fixture.fleet === undefined) {
+        context.skip();
+        return;
+      }
+      const image = needed(fixture.fleet.image, "a registry");
+      const pulls = needed(fixture.fleet.pulls, "a registry");
+      const surface = needed(fixture.fleet.surface, "a registry");
+      const credential = image.pull;
+      const box = newBox();
+      const created = await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, image });
+      try {
+        if (!created.ok) throw new Error(created.error.message);
+        const prepared = await adapter.prepare({ box, spec: fixture.spec, secrets: [], onSetupOutput: () => undefined });
+        if (!prepared.ok) throw new Error(prepared.error.message);
+        const agent = await adapter.startAgent(box, fixture.echoLaunch(created.value));
+        if (!agent.ok) throw new Error(agent.error.message);
+        const pulled = (await pulls()).filter((pull) => pull.digest === image.digest);
+        expect(pulled.length, "the image was pulled by its digest").toBeGreaterThan(0);
+        expect(pulled.every((pull) => pull.ref.endsWith(`@${image.digest}`)), "every pull names the digest, never a tag").toBe(true);
+        expect(pulled.every((pull) => pull.username === (credential?.username ?? null)), "the pull used the lease's credential").toBe(true);
+        if (credential !== null) {
+          for (const place of await surface(box)) {
+            expect(place.text.includes(credential.token), `the pull credential reached ${place.where}`).toBe(false);
+          }
+        }
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-015: the task token is readable at the sidecar's mount only, never in an environment, an argument or another file; an executor with no sidecar refuses one", async (context) => {
+      const { adapter, fixture } = subject();
+      const box = newBox();
+      if (adapter.capabilities.isolation === "none") {
+        expect(await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, taskToken: PLANTED_TOKEN })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await noBoxOf(adapter, box), "no box was made").toBe(true);
+        return;
+      }
+      if (fixture.fleet === undefined) {
+        context.skip();
+        return;
+      }
+      const tokenAtSidecar = needed(fixture.fleet.tokenAtSidecar, "container isolation");
+      const surface = needed(fixture.fleet.surface, "container isolation");
+      const created = await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, taskToken: PLANTED_TOKEN });
+      try {
+        if (!created.ok) throw new Error(created.error.message);
+        const prepared = await adapter.prepare({ box, spec: fixture.spec, secrets: [], onSetupOutput: () => undefined });
+        if (!prepared.ok) throw new Error(prepared.error.message);
+        const agent = await adapter.startAgent(box, fixture.echoLaunch(created.value));
+        if (!agent.ok) throw new Error(agent.error.message);
+        expect(await tokenAtSidecar(box)).toBe(PLANTED_TOKEN);
+        for (const place of await surface(box)) {
+          expect(place.text.includes(PLANTED_TOKEN), `the task token reached ${place.where}`).toBe(false);
+        }
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-093: a box that waits for a node says so, then that it was scheduled, before it's ready; an executor that never waits says nothing", async (context) => {
+      const { adapter, fixture } = subject();
+      const heard: BoxWaitChange[] = [];
+      const onWaiting = (change: BoxWaitChange): void => {
+        heard.push(change);
+      };
+      const box = newBox();
+      if (!adapter.capabilities.nodeWait) {
+        const created = await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, onWaiting });
+        if (!created.ok) throw new Error(created.error.message);
+        await adapter.prepare({ box, spec: fixture.spec, secrets: [], onSetupOutput: () => undefined });
+        await adapter.release(box, "requested");
+        expect(heard).toEqual([]);
+        return;
+      }
+      if (fixture.fleet === undefined) {
+        context.skip();
+        return;
+      }
+      const hold = needed(fixture.fleet.holdNextBox, "a node wait");
+      const HOLD_MS = 400;
+      hold(HOLD_MS);
+      const created = await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, onWaiting });
+      try {
+        if (!created.ok) throw new Error(created.error.message);
+        const prepared = await adapter.prepare({ box, spec: fixture.spec, secrets: [], onSetupOutput: () => undefined });
+        if (!prepared.ok) throw new Error(prepared.error.message);
+        expect(heard.map((change) => (change.kind === "waiting" ? `waiting:${change.reason}` : change.kind))).toEqual(["waiting:node", "scheduled"]);
+        const scheduled = heard[1];
+        expect(scheduled?.kind === "scheduled" && scheduled.afterMs >= HOLD_MS - 50).toBe(true);
+        expect(await adapter.state(box)).toEqual({ ok: true, value: "ready" });
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-015: release removes every object the box made, its token and pull secrets included", async (context) => {
+      const { adapter, fixture } = subject();
+      const objectsOf = fixture.fleet?.objectsOf;
+      if (objectsOf === undefined) {
+        context.skip();
+        return;
+      }
+      const box = newBox();
+      const input = {
+        ...box,
+        spec: fixture.spec,
+        proxies: fixture.proxies,
+        ...(adapter.capabilities.isolation === "none" ? {} : { taskToken: PLANTED_TOKEN }),
+        ...(adapter.capabilities.registry === "none" || fixture.fleet?.image === undefined ? {} : { image: fixture.fleet.image }),
+        ...(adapter.capabilities.boxSizes ? { size: SIZE } : {}),
+      };
+      const created = await adapter.create(input);
+      if (!created.ok) throw new Error(created.error.message);
+      await adapter.prepare({ box, spec: fixture.spec, secrets: [], onSetupOutput: () => undefined });
+      expect((await objectsOf(box)).length, "the box made objects of its own").toBeGreaterThan(0);
+      expect(await adapter.release(box, "requested")).toEqual({ ok: true, value: undefined });
+      expect(await objectsOf(box)).toEqual([]);
+    }, CASE_TIMEOUT_MS);
 
     it("stops every process of the task, a detached helper included (ADR 0029)", async (context) => {
       await withGap(subject().fixture.knownGaps?.detachedHelper, (text) => context.annotate(text), () => helperCase((fixture) => fixture.detachedHelper));

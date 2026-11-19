@@ -24,4 +24,15 @@ export type ExecutorCapabilities = {
    * that detached itself).
    */
   readonly processContainment: ProcessContainment;
+  /**
+   * Milestone 5 (ADR 0060, F-120): whether a box needs its image from the organization's registry
+   * (`required`, `kubernetes`, whose kubelets pull), can take one (`optional`, `docker`, which also
+   * builds and keeps its own snapshot without one), or never does (`none`, `host`).
+   */
+  readonly registry: "required" | "optional" | "none";
+  /**
+   * Milestone 5 (F-093): a box can wait for the cluster to grow a node before it's scheduled, and
+   * says so through `create`'s `onWaiting` (`kubernetes`).
+   */
+  readonly nodeWait: boolean;
 };

@@ -117,7 +117,25 @@ afterAll(async () => {
 
 describe("the host executor", () => {
   it("declares ADR 0029's allowed differences", () => {
-    expect(executor.capabilities).toEqual({ isolation: "none", services: false, boxSizes: false, snapshots: "host-cache", processContainment: "process-tree" });
+    expect(executor.capabilities).toEqual({
+      isolation: "none",
+      services: false,
+      boxSizes: false,
+      snapshots: "host-cache",
+      processContainment: "process-tree",
+      registry: "none",
+      nodeWait: false,
+    });
+  });
+
+  it("F-095: the host executor counts slots only: it offers no CPU or memory, refuses a box size, and makes no box for it", async () => {
+    expect(executor.capacity()).toBeNull();
+    const box = newBox();
+    const refused = await executor.create({ ...box, spec: twoRepoSpec(box, null), proxies, size: { cpuMillis: 2000, memoryMiB: 4096 } });
+    expect(refused).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    // The host executor knows a box it never made only as released.
+    expect(await executor.state(box)).toEqual({ ok: true, value: "released" });
+    expect(await exists(path.join(root, "runner", "tasks", String(box.taskId)))).toBe(false);
   });
 
   it("checks out two repos side by side, streams setup, commits with the trailer, pushes, keeps unfinished work, and releases", async () => {

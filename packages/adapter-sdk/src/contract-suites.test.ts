@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -9,7 +9,10 @@ import { fixtureIds, taskSpecFixture } from "@ostra/protocol/testing";
 import { memoryAdapterContext, memorySecretRowStore } from "./testing/memory.ts";
 import { defineAgentContractSuite } from "./testing/agent-suite.ts";
 import { defineCodeHostContractSuite } from "./testing/code-host-suite.ts";
+import type { BoxRef } from "./executor/base.ts";
+import { TASK_TOKEN_FILE } from "./executor/task-token.ts";
 import { defineExecutorContractSuite } from "./testing/executor-suite.ts";
+import type { ExecutorFixture, FleetFixture } from "./testing/executor-suite.ts";
 import { defineBlobStoreFirstCases } from "./testing/blob-store-suite.ts";
 import { defineNotificationContractSuite, suiteRecipient } from "./testing/notification-suite.ts";
 import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
@@ -383,82 +386,153 @@ const isAlive = (pid: number): Promise<boolean> => {
   }
 };
 
+/** The tiny executor's fixture, shared by its plain run and its fleet run. */
+const tinyExecutorFixture = (fleet?: FleetFixture): ExecutorFixture => ({
+  spec: { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, setupScript: "console.log('set up')" } },
+  failingSetupSpec: {
+    ...taskSpecFixture,
+    environment: { ...taskSpecFixture.environment, setupScript: "process.exit(3)" },
+  },
+  proxies: { gitBaseUrl: "http://127.0.0.1:9/git", modelBaseUrl: "http://127.0.0.1:9/model", mcpUrl: "http://127.0.0.1:9/mcp" },
+  echoLaunch: (box) => nodeLaunch(box.workspaceDir, "process.stdin.pipe(process.stdout)"),
+  // Milestone 3: the tiny executor's checks are JavaScript, as its setup script is.
+  checks: {
+    passing: "process.exit(0)",
+    failing: "process.exit(3)",
+    slow: "setTimeout(() => {}, 60000)",
+    printsEnv: "console.log(JSON.stringify(process.env))",
+    noisy: "console.log('first line'); for (let i = 0; i < 400; i++) console.log('x'.repeat(60) + ' ' + i); console.log('the last line')",
+  },
+  detachedHelper: {
+    // The agent starts a helper in its own session or console, writes its PID, and exits: the
+    // helper is an orphan that walking the agent's tree can't reach.
+    launch: (box) =>
+      nodeLaunch(
+        box.workspaceDir,
+        [
+          "const { spawn } = require('node:child_process');",
+          "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });",
+          "helper.unref();",
+          "require('node:fs').writeFileSync('helper.pid', String(helper.pid));",
+          "process.exit(0);",
+        ].join("\n"),
+      ),
+    readPid: async (box) => {
+      try {
+        const pid = Number.parseInt(await readFile(path.join(box.workspaceDir, "helper.pid"), "utf8"), 10);
+        return Number.isInteger(pid) && pid > 0 ? pid : null;
+      } catch {
+        return null;
+      }
+    },
+    isAlive,
+    kill: killTree,
+  },
+  cleanEnvHelper: {
+    launch: (box) =>
+      nodeLaunch(
+        box.workspaceDir,
+        [
+          "const { spawn } = require('node:child_process');",
+          "const env = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {};",
+          "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', env });",
+          "helper.unref();",
+          "require('node:fs').writeFileSync('helper.pid', String(helper.pid));",
+          "process.exit(0);",
+        ].join("\n"),
+      ),
+    readPid: async (box) => {
+      try {
+        const pid = Number.parseInt(await readFile(path.join(box.workspaceDir, "helper.pid"), "utf8"), 10);
+        return Number.isInteger(pid) && pid > 0 ? pid : null;
+      } catch {
+        return null;
+      }
+    },
+    isAlive,
+    kill: killTree,
+  },
+  knownGaps: {
+    detachedHelper: "the tiny executor only ends the agent's own process tree",
+    cleanEnvHelper: "the tiny executor only ends the agent's own process tree",
+  },
+  ...(fleet === undefined ? {} : { fleet }),
+});
+
 defineExecutorContractSuite({
   name: "tiny executor",
-  create: () =>
-    Promise.resolve({
-      adapter: new TinyExecutor(),
-      fixture: {
-        spec: { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, setupScript: "console.log('set up')" } },
-        failingSetupSpec: {
-          ...taskSpecFixture,
-          environment: { ...taskSpecFixture.environment, setupScript: "process.exit(3)" },
-        },
-        proxies: { gitBaseUrl: "http://127.0.0.1:9/git", modelBaseUrl: "http://127.0.0.1:9/model", mcpUrl: "http://127.0.0.1:9/mcp" },
-        echoLaunch: (box) => nodeLaunch(box.workspaceDir, "process.stdin.pipe(process.stdout)"),
-        // Milestone 3: the tiny executor's checks are JavaScript, as its setup script is.
-        checks: {
-          passing: "process.exit(0)",
-          failing: "process.exit(3)",
-          slow: "setTimeout(() => {}, 60000)",
-          printsEnv: "console.log(JSON.stringify(process.env))",
-          noisy: "console.log('first line'); for (let i = 0; i < 400; i++) console.log('x'.repeat(60) + ' ' + i); console.log('the last line')",
-        },
-        detachedHelper: {
-          // The agent starts a helper in its own session or console, writes its PID, and exits: the
-          // helper is an orphan that walking the agent's tree can't reach.
-          launch: (box) =>
-            nodeLaunch(
-              box.workspaceDir,
-              [
-                "const { spawn } = require('node:child_process');",
-                "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });",
-                "helper.unref();",
-                "require('node:fs').writeFileSync('helper.pid', String(helper.pid));",
-                "process.exit(0);",
-              ].join("\n"),
-            ),
-          readPid: async (box) => {
-            try {
-              const pid = Number.parseInt(await readFile(path.join(box.workspaceDir, "helper.pid"), "utf8"), 10);
-              return Number.isInteger(pid) && pid > 0 ? pid : null;
-            } catch {
-              return null;
-            }
-          },
-          isAlive,
-          kill: killTree,
-        },
-        cleanEnvHelper: {
-          launch: (box) =>
-            nodeLaunch(
-              box.workspaceDir,
-              [
-                "const { spawn } = require('node:child_process');",
-                "const env = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {};",
-                "const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', env });",
-                "helper.unref();",
-                "require('node:fs').writeFileSync('helper.pid', String(helper.pid));",
-                "process.exit(0);",
-              ].join("\n"),
-            ),
-          readPid: async (box) => {
-            try {
-              const pid = Number.parseInt(await readFile(path.join(box.workspaceDir, "helper.pid"), "utf8"), 10);
-              return Number.isInteger(pid) && pid > 0 ? pid : null;
-            } catch {
-              return null;
-            }
-          },
-          isAlive,
-          kill: killTree,
-        },
-        knownGaps: {
-          detachedHelper: "the tiny executor only ends the agent's own process tree",
-          cleanEnvHelper: "the tiny executor only ends the agent's own process tree",
-        },
+  create: () => Promise.resolve({ adapter: new TinyExecutor(), fixture: tinyExecutorFixture() }),
+});
+
+/** Every file under a folder, but the one left out, as `[path, text]`. */
+const filesUnder = async (dir: string, leaveOut: string | null): Promise<readonly (readonly [string, string])[]> => {
+  const found: (readonly [string, string])[] = [];
+  const walk = async (at: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(at, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(at, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (full !== leaveOut) {
+        found.push([full, await readFile(full, "utf8")]);
+      }
+    }
+  };
+  await walk(dir);
+  return found;
+};
+
+// Milestone 5 (ticket 02): the tiny executor's fleet variant, which takes sizes, registry images, the
+// task token and a node wait, so the fleet's cases run on one executor of each kind of answer before
+// `docker` (ticket 09) and `kubernetes` (ticket 07) give their own fixtures.
+defineExecutorContractSuite({
+  name: "tiny executor, fleet variant",
+  create: () => {
+    const adapter = new TinyExecutor({ fleet: true });
+    const tokenFile = (box: BoxRef): string | null => {
+      const dir = adapter.inspect(box)?.sidecarDir ?? null;
+      return dir === null ? null : path.join(dir, TASK_TOKEN_FILE);
+    };
+    const fleet: FleetFixture = {
+      limitsOf: (box) => Promise.resolve(adapter.inspect(box)?.limits ?? null),
+      image: {
+        ref: "registry.example/ostra/snapshots/suite",
+        digest: `sha256:${"e".repeat(64)}`,
+        pull: { username: "ostra-pull-suite", token: "pull-token-suite-5d7c9e1b3a" },
       },
-    }),
+      pulls: () => Promise.resolve(adapter.pulls()),
+      surface: async (box) => {
+        const record = adapter.inspect(box);
+        if (record === undefined) return [];
+        const processes = record.launches.map((launch, index) => ({ where: `the agent's process ${String(index)}`, text: JSON.stringify(launch) }));
+        const files = (await filesUnder(record.root, tokenFile(box))).map(([file, text]) => ({ where: file, text }));
+        return [...processes, ...files];
+      },
+      tokenAtSidecar: async (box) => {
+        const file = tokenFile(box);
+        if (file === null) return null;
+        try {
+          return await readFile(file, "utf8");
+        } catch {
+          return null;
+        }
+      },
+      holdNextBox: (ms) => {
+        adapter.holdNextBox(ms);
+      },
+      objectsOf: async (box) => {
+        const root = adapter.inspect(box)?.root;
+        if (root === undefined) return [];
+        return (await filesUnder(root, null)).map(([file]) => file).concat(await stat(root).then(() => [root], () => []));
+      },
+    };
+    return Promise.resolve({ adapter, fixture: tinyExecutorFixture(fleet) });
+  },
 });
 
 defineModelProviderContractSuite({

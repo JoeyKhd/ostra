@@ -66,14 +66,17 @@ import { ExecutorAdapter } from "../executor/base.ts";
 import type {
   AgentProcess,
   BoxRef,
+  BoxSize,
   CreateBoxInput,
   CreatedBox,
+  ExecutorCapacity,
   PrepareInput,
   PrepareResult,
   RepoPushResult,
   StopInput,
 } from "../executor/base.ts";
 import type { ExecutorCapabilities } from "../executor/capabilities.ts";
+import { writeTaskTokenFile } from "../executor/task-token.ts";
 import { runChecksWith } from "../executor/checks.ts";
 import type { CheckRunResult, RunChecksInput } from "../executor/checks.ts";
 import { ModelProviderAdapter } from "../model-provider/base.ts";
@@ -1152,6 +1155,36 @@ type TinyBox = {
   readonly root: string;
   readonly created: CreatedBox;
   child: ReturnType<typeof spawn> | undefined;
+  /** Milestone 5: what the fleet variant was asked for, which `inspect` reads back. */
+  readonly record: TinyBoxRecord;
+  /** Resolves once the box is scheduled: at once, or after a held node wait. */
+  readonly scheduled: Promise<void>;
+};
+
+/** Milestone 5 (ticket 02): what the tiny executor's fleet variant knows of a box, as an engine's inspection would say it. */
+export type TinyBoxRecord = {
+  /** The box's own folder: its workspace, its agent's folder and its sidecar's folder. */
+  readonly root: string;
+  readonly limits: BoxSize | null;
+  /** The image the box started from, by digest. */
+  readonly image: { readonly ref: string; readonly digest: string } | null;
+  /** The sidecar's token folder, when the box was given a task token. */
+  readonly sidecarDir: string | null;
+  /** Every agent launch's command, arguments and environment: the box's process list. */
+  readonly launches: AgentLaunch[];
+};
+
+/** A pull the fleet variant made: by digest, with the credential's user (never its token). */
+export type TinyPull = { readonly ref: string; readonly digest: string; readonly username: string | null };
+
+export type TinyExecutorOptions = {
+  /**
+   * Milestone 5 (ticket 02): a test double of a pool executor for the suite's fleet cases. It takes
+   * box sizes and records them as its limits, "pulls" a registry image by digest, writes the task
+   * token to a sidecar folder of the box's own, and can hold a box waiting for a node. It isolates
+   * nothing and enforces no limit: it only says what it was asked, as an engine's inspection would.
+   */
+  readonly fleet?: boolean;
 };
 
 export const killTree = (pid: number): Promise<void> =>
@@ -1179,15 +1212,49 @@ export const killTree = (pid: number): Promise<void> =>
   });
 
 export class TinyExecutor extends ExecutorAdapter {
-  readonly name = "tiny-executor";
-  readonly capabilities: ExecutorCapabilities = {
-    isolation: "none",
-    services: false,
-    boxSizes: false,
-    snapshots: "none",
-    processContainment: "process-tree",
-  };
+  readonly name: string;
+  readonly capabilities: ExecutorCapabilities;
   readonly #boxes = new Map<string, TinyBox>();
+  readonly #fleet: boolean;
+  readonly #pulls: TinyPull[] = [];
+  #holdNextMs = 0;
+
+  constructor(options: TinyExecutorOptions = {}) {
+    super();
+    this.#fleet = options.fleet ?? false;
+    this.name = this.#fleet ? "tiny-fleet-executor" : "tiny-executor";
+    this.capabilities = this.#fleet
+      ? {
+          isolation: "container",
+          services: false,
+          boxSizes: true,
+          snapshots: "none",
+          processContainment: "process-tree",
+          registry: "optional",
+          nodeWait: true,
+        }
+      : { isolation: "none", services: false, boxSizes: false, snapshots: "none", processContainment: "process-tree", registry: "none", nodeWait: false };
+  }
+
+  /** Milestone 5: the fleet variant offers two slots, 4 CPUs and 8 GiB; the plain one counts slots only. */
+  override capacity(): ExecutorCapacity | null {
+    return this.#fleet ? { slots: 2, cpuMillis: 4000, memoryMiB: 8192 } : null;
+  }
+
+  /** The fleet variant's next box waits this long for a node before it's scheduled. */
+  holdNextBox(ms: number): void {
+    this.#holdNextMs = ms;
+  }
+
+  /** What the executor knows of a box, as an engine's inspection would say it. */
+  inspect(ref: BoxRef): TinyBoxRecord | undefined {
+    return this.#boxes.get(String(ref.boxId))?.record;
+  }
+
+  /** Every pull so far. */
+  pulls(): readonly TinyPull[] {
+    return [...this.#pulls];
+  }
 
   /**
    * Milestone 3: the turn's checks, each a JavaScript program run by Node, as the tiny setup script
@@ -1233,7 +1300,7 @@ export class TinyExecutor extends ExecutorAdapter {
   }
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
-    const unfit = this.refuseUnfitSpec(input.spec);
+    const unfit = this.refuseUnfitBox(input);
     if (unfit !== null) {
       return unfit;
     }
@@ -1241,7 +1308,42 @@ export class TinyExecutor extends ExecutorAdapter {
     const created = { workspaceDir: path.join(root, "workspace"), agentDir: path.join(root, "agent"), gitConfig: path.join(root, "git", "config") };
     await mkdir(created.workspaceDir, { recursive: true });
     await mkdir(created.agentDir, { recursive: true });
-    this.#boxes.set(String(input.boxId), { state: "creating", root, created, child: undefined });
+    const image = input.image ?? null;
+    if (image !== null) {
+      // By digest, with the credential handed to the pull only: nothing in the box holds it.
+      this.#pulls.push({ ref: `${image.ref}@${image.digest}`, digest: image.digest, username: image.pull?.username ?? null });
+    }
+    let sidecarDir: string | null = null;
+    const token = input.taskToken ?? null;
+    if (token !== null) {
+      sidecarDir = path.join(root, "sidecar");
+      const written = await writeTaskTokenFile(sidecarDir, { kind: "group", gid: process.getgid?.() ?? 0 }, token);
+      if (!written.ok) {
+        await rm(root, { recursive: true, force: true });
+        return written;
+      }
+    }
+    const holdMs = this.#holdNextMs;
+    this.#holdNextMs = 0;
+    let scheduled = Promise.resolve();
+    if (holdMs > 0) {
+      const since = new Date();
+      input.onWaiting?.({ kind: "waiting", reason: "node", since });
+      scheduled = new Promise((resolve) => {
+        setTimeout(() => {
+          input.onWaiting?.({ kind: "scheduled", afterMs: Date.now() - since.getTime() });
+          resolve();
+        }, holdMs);
+      });
+    }
+    const record: TinyBoxRecord = {
+      root,
+      limits: input.size === undefined || input.size === null ? null : { cpuMillis: input.size.cpuMillis, memoryMiB: input.size.memoryMiB },
+      image: image === null ? null : { ref: image.ref, digest: image.digest },
+      sidecarDir,
+      launches: [],
+    };
+    this.#boxes.set(String(input.boxId), { state: "creating", root, created, child: undefined, record, scheduled });
     return ok(created);
   }
 
@@ -1250,6 +1352,8 @@ export class TinyExecutor extends ExecutorAdapter {
     if (box === undefined) {
       return adapterError("not-found", "no such box");
     }
+    // A box waiting for a node prepares once it's scheduled.
+    await box.scheduled;
     box.state = "preparing";
     const script = input.spec.environment.setupScript;
     if (script === null) {
@@ -1289,6 +1393,7 @@ export class TinyExecutor extends ExecutorAdapter {
       windowsHide: true,
     });
     box.child = child;
+    box.record.launches.push(launch);
     const exited = new Promise<{ readonly code: number | null; readonly signal: string | null }>((resolve) => {
       child.on("exit", (code, signal) => {
         resolve({ code, signal });

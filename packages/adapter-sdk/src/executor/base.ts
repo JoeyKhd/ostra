@@ -43,9 +43,51 @@ export type TaskProxies = {
   readonly mcpUrl: string;
 };
 
+/** Milestone 5 (F-095): a box size's limits, which the agent's container gets as its own. */
+export type BoxSize = { readonly cpuMillis: number; readonly memoryMiB: number };
+
+/** Milestone 5 (F-120): a registry credential, fetched for one lease or one build. Never logged, never in a box's environment, files or arguments. */
+export type RegistryCredential = { readonly username: string; readonly token: string };
+
+/** Milestone 5 (F-120): the image a box starts from, pulled by its digest, with its pull credential when the registry needs one. */
+export type BoxImage = {
+  /** The image's name in the registry, without a tag: `registry.example/ostra/snapshots/acme-web`. */
+  readonly ref: string;
+  /** `sha256:...`: the box runs exactly this. */
+  readonly digest: string;
+  readonly pull: RegistryCredential | null;
+};
+
+/** Why a box waits before it runs (F-093): a node the cluster is adding, or its image's pull. */
+export type BoxWaitReason = "node" | "image-pull";
+
+/** What `onWaiting` hears: the box waits, then it's scheduled. The runner sends them as `box.waiting` and `box.scheduled`. */
+export type BoxWaitChange =
+  | { readonly kind: "waiting"; readonly reason: BoxWaitReason; readonly since: Date }
+  | { readonly kind: "scheduled"; readonly afterMs: number };
+
+/**
+ * Milestone 5 (ADR 0059): what an executor offers now. `slots` is how many boxes; `cpuMillis` and
+ * `memoryMiB` are the room left for their sizes.
+ */
+export type ExecutorCapacity = { readonly slots: number; readonly cpuMillis: number; readonly memoryMiB: number };
+
 export type CreateBoxInput = BoxRef & {
   readonly spec: TaskSpec;
   readonly proxies: TaskProxies;
+  /** Milestone 5 (F-095): the project's box size. An executor without `boxSizes` refuses one. Absent or `null`: no limits but the executor's own. */
+  readonly size?: BoxSize | null;
+  /** Milestone 5 (F-120): the registry image the box starts from. An executor whose `registry` is `none` refuses one. */
+  readonly image?: BoxImage | null;
+  /**
+   * Milestone 5 (ADR 0034): the lease's task token, for the box's sidecar. On `docker` and
+   * `kubernetes` it's written where only the sidecar reads it (`writeTaskTokenFile`, a Secret),
+   * never into an environment variable or an argument. An executor with no sidecar (`isolation:
+   * "none"`) refuses one. Never logged.
+   */
+  readonly taskToken?: string | null;
+  /** Milestone 5 (F-093): told when the box waits before it runs, and when it's scheduled. Only an executor with `nodeWait` waits for a node. */
+  readonly onWaiting?: (change: BoxWaitChange) => void;
 };
 
 /** Where the box's workspace is, as the agent sees it. */
@@ -234,6 +276,11 @@ export type BuildSnapshotInput = {
   readonly environment: SnapshotBuildEnvironment;
   /** The setup secrets and the repos' tokens, mounted for the build only. Never logged. */
   readonly credentials: SnapshotCredentials;
+  /**
+   * Milestone 5 (F-120): where to push the scanned image, with the push credential fetched for this
+   * build. The scan runs before any push (ADR 0038). Absent or `null`: the runner keeps the image.
+   */
+  readonly push?: { readonly ref: string; readonly credential: RegistryCredential } | null;
   /** The build's output, as it comes: words for the panel, never logged with a secret's value. */
   readonly onOutput: (stream: "stdout" | "stderr", text: string) => void;
   readonly signal?: AbortSignal;
@@ -241,7 +288,14 @@ export type BuildSnapshotInput = {
 
 /** A built snapshot, or why it wasn't: `snapshot.built` or `snapshot.failed`. */
 export type SnapshotBuildResult =
-  | { readonly outcome: "built"; readonly imageRef: string; readonly imageDigest: string; readonly durationMs: number }
+  | {
+      readonly outcome: "built";
+      readonly imageRef: string;
+      readonly imageDigest: string;
+      readonly durationMs: number;
+      /** Milestone 5 (F-120): the pushed manifest's digest in the registry, which boxes pull by; absent or `null` without a push. */
+      readonly digest?: string | null;
+    }
   | { readonly outcome: "failed"; readonly reason: SnapshotFailureReason; readonly detail: string };
 
 /** A snapshot image this runner keeps. */
@@ -286,6 +340,16 @@ export abstract class ExecutorAdapter {
 
   /** Whether the executor can run boxes here (Docker answers; the shell is on PATH). */
   abstract health(): Promise<HealthReport>;
+
+  /**
+   * Milestone 5 (ADR 0059): what this executor offers now, for the runner's `hello` and every
+   * `status`. It's read at every `status`, so it answers at once from what the executor already
+   * knows (a reading it refreshes on its own) and never waits on the engine or the cluster.
+   * `null`: the runner counts its `capacity` setting as slots, with no CPU or memory (`host`).
+   */
+  capacity(): ExecutorCapacity | null {
+    return null;
+  }
 
   /** Creates the box (`creating`): containers, or a worktree root. */
   abstract create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>>;
@@ -386,6 +450,24 @@ export abstract class ExecutorAdapter {
       }
     }
     return null;
+  }
+
+  /**
+   * Milestone 5: a box this executor can't make as asked, refused before anything is made: a size
+   * without `boxSizes`, a registry image when `registry` is `none`, a task token with no sidecar to
+   * hold it, then the spec (`refuseUnfitSpec`). `create` calls it first; `null` when the box fits.
+   */
+  protected refuseUnfitBox(input: CreateBoxInput): AdapterResult<never> | null {
+    if ((input.size ?? null) !== null && !this.capabilities.boxSizes) {
+      return adapterError("unsupported", `${this.name} doesn't take box sizes: it counts slots only`);
+    }
+    if ((input.image ?? null) !== null && this.capabilities.registry === "none") {
+      return adapterError("unsupported", `${this.name} doesn't start a box from a registry image`);
+    }
+    if ((input.taskToken ?? null) !== null && this.capabilities.isolation === "none") {
+      return adapterError("unsupported", `${this.name} has no sidecar to hold a task token`);
+    }
+    return this.refuseUnfitSpec(input.spec);
   }
 
   /**
