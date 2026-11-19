@@ -1,0 +1,42 @@
+# Milestone 3, tickets 23 to 25: core's PR flow, live on ostra-test/test1 with the test App, 2026-11-19
+# Run (from apps/core): set -a; . ~/.config/ostra-dev/github.env; . ~/.config/ostra-dev/github-test.env; set +a
+#                       npx vitest run src/reactions/m3-pr.live.test.ts --reporter=verbose
+# Core's real code paths with the real GitHub adapter: the PR opener (task.open-pull-requests), the
+# push webhook's handler, task.reconcile-behind, github.reconcile-prs, the reopen, and the
+# github.comment job. The runner's commits and pushes are made by the App's token through REST.
+# What it checked:
+# - F-054 (ticket 23): a turn whose lint check failed opened the PR as a draft against the task's base, with
+#   one Checks section holding the output (with markup) in a code block. A person's line added to the
+#   description on GitHub; the next turn's passing check marked the PR ready, edited the section in place
+#   (one section, the failure gone) and kept the person's line. This run found that GitHub's getPullRequest
+#   didn't return the description or the draft state; it does now (commit "read a PR's body and draft state").
+# - F-070 (ticket 24): a commit on the base and its push webhook made the task's branch behind by 1 (GitHub's
+#   compare); Update branch sent one message naming the repo and its base (merge, never rebase) and reopened
+#   the task; the next turn merged the base in and task.reconcile-behind read behind 0.
+# - F-066 (ticket 24): the PR merged on GitHub, github.reconcile-prs moved the task to merged; the reopen gave
+#   the repo `<branch>-2` (generation 2, no branch yet, the hidden ref cleared); its first push, from the base's
+#   head, opened a second PR against the same base, and TaskPullRequest keeps both (merged, open).
+# - F-053 (ticket 25): an `@ostra` comment on the new PR, by the App's own bot account, was dropped as unlinked
+#   with no reaction on GitHub and no message. Linked to a member (standing in for a person: no second GitHub
+#   user's token yet, ticket 51 step 10), the edited comment was heard once: one eyes reaction on GitHub, one
+#   member message with the text in a marked block and the comment's URL; a replay changed nothing. A line
+#   comment while the reopened task waited for its runner failed its job to run again, and once the session's
+#   turn started it was queued for the turn's end, with its path and line, and one eyes reaction.
+# GitHub delivers no webhook to this install (the test App has none: ticket 51, step 9), so each webhook was
+# built from GitHub's own REST objects (the comment, the repo) in the shape GitHub sends and read by the real
+# adapter's parseWebhook from milestone 2's inbox. The test deleted every branch it made; its PRs stay closed
+# or merged on test1. No token, key or secret is printed.
+
+[m3-live] repo ostra-test/test1, base branch ostra-live/m3-base-bcb82dbb
+[m3-live] ticket 23: PR #58 opened as a draft: https://github.com/ostra-test/test1/pull/58
+[m3-live] ticket 23: after a passing turn, PR #58 is ready: draft=false
+[m3-live] ticket 24: a push to ostra-live/m3-base-bcb82dbb made the task's branch behind by 1 (GitHub's compare)
+[m3-live] ticket 24: after the update-branch turn merged the base in, the reconcile reads behind 0
+[m3-live] ticket 24: PR #58 merged on GitHub; the reconcile moved the task to merged
+[m3-live] ticket 24: the reopen's first push opened PR #59 from ostra-live/m3-task-3d475ca8-2: https://github.com/ostra-test/test1/pull/59
+[m3-live] ticket 25: comment 7010977493 by ostra-sandbox-036d7c[bot] (unlinked) dropped, 0 reactions on GitHub
+[m3-live] ticket 25: once linked, comment 7010977493 was heard: one message, one eyes reaction on GitHub (https://github.com/ostra-test/test1/pull/59#issuecomment-7010977493)
+[m3-live] ticket 25: line comment 4629610778 on ostra-live-m3-task-3d475ca8-2.md, line 1 waited while the task started, then was queued for the turn's end with its path and line; one eyes reaction (https://github.com/ostra-test/test1/pull/59#discussion_r4629610778)
+ ✓ src/reactions/m3-pr.live.test.ts > milestone 3's PR flow, live on the test org (F-054, F-070, F-066, F-053) > F-054, F-070, F-066, F-053: checks draft and ready the PR, a moved base is behind, a merge reopens on -2, and @ostra is heard 29111ms
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
