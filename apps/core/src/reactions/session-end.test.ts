@@ -131,7 +131,7 @@ const openPrs = async (task: QueuedTask): Promise<void> => {
 const theRepo = (): RepoId => repoIdSchema.parse(world.repoId);
 
 describe("a session that ends with changes", () => {
-  it("opens one PR per changed repo, once, even when the job runs twice, and the task goes to review", async () => {
+  it("F-030: opens one PR per changed repo, once, even when the job runs twice, and the task goes to review", async () => {
     const task = await runningTask();
     await send(
       task,
@@ -178,7 +178,7 @@ describe("a session that ends with changes", () => {
 });
 
 describe("a session that ends without changes", () => {
-  it("opens no PR and puts the task in needs you with the agent's summary", async () => {
+  it("F-065: opens no PR and puts the task in needs you with the agent's summary", async () => {
     const task = await runningTask();
     const before = codeHost.pulls.length;
     await send(

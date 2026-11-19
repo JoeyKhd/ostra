@@ -251,7 +251,7 @@ describe("the task host", () => {
     expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("docs/numbers.md");
   }, 120_000);
 
-  it("ends a session with no changes as without-changes, pushing nothing", async () => {
+  it("F-065: ends a session with no changes as without-changes, pushing nothing", async () => {
     const { dispatch } = await start();
     const { spec } = taskFor("[[fake:say]]");
     dispatch(spec);
