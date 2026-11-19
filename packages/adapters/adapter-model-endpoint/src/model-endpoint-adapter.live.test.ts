@@ -20,7 +20,7 @@ describe.skipIf(!env.success)("the model endpoint adapter, live", () => {
     if (!env.success) {
       return;
     }
-    const adapter = new ModelEndpointAdapter();
+    const adapter = new ModelEndpointAdapter({ allowPrivateNetwork: true });
     const tested = await adapter.testConnection({ baseUrl: env.data.OSTRA_DEV_MODEL_BASE_URL, token: env.data.OSTRA_DEV_MODEL_API_KEY });
     expect(tested.ok, tested.ok ? "" : `testConnection failed: ${tested.error.code}`).toBe(true);
     if (!tested.ok) {

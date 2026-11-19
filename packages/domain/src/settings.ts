@@ -22,6 +22,7 @@ export const settingNames = [
   "OSTRA_DATA_DIR",
   "OSTRA_SECRETS_KEY",
   "OSTRA_CATALOG_FETCH",
+  "OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE",
   "OSTRA_OPEN_SIGNUP_ACCOUNTS",
   "OSTRA_OPEN_SIGNUP_ORGANIZATIONS",
   "BETTER_AUTH_SECRET",
@@ -62,6 +63,11 @@ export const settingFields = {
   OSTRA_CATALOG_FETCH: {
     default: "true",
     description: "Fetch the models.dev catalog daily. false: use the copy bundled with ostra only.",
+  },
+  OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: {
+    default: "false",
+    description:
+      "Let a model provider's base URL point at a private, loopback or link-local address, such as a model server on your own network. Off: those addresses and cloud metadata hosts are refused.",
   },
   OSTRA_OPEN_SIGNUP_ACCOUNTS: {
     default: "false",
@@ -121,6 +127,7 @@ const rawSettingsSchema = z.strictObject({
     .optional()
     .describe(describe("OSTRA_SECRETS_KEY")),
   OSTRA_CATALOG_FETCH: flag.default(true).describe(describe("OSTRA_CATALOG_FETCH")),
+  OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: flag.default(false).describe(describe("OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE")),
   OSTRA_OPEN_SIGNUP_ACCOUNTS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ACCOUNTS")),
   OSTRA_OPEN_SIGNUP_ORGANIZATIONS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ORGANIZATIONS")),
   BETTER_AUTH_SECRET: z.string().min(32).optional().describe(describe("BETTER_AUTH_SECRET")),
@@ -141,6 +148,8 @@ export type ServerSettings = {
   /** `null`: generate one on first start and keep it in `dataDir`. */
   readonly secretsKey: string | null;
   readonly catalogFetch: boolean;
+  /** OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: model provider URLs may point at private networks. */
+  readonly modelEndpointAllowPrivate: boolean;
   readonly openSignupAccounts: boolean;
   readonly openSignupOrganizations: boolean;
   /** `null`: generate one on first start and keep it in `dataDir`. */
@@ -197,6 +206,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),
       secretsKey: value.OSTRA_SECRETS_KEY ?? null,
       catalogFetch: value.OSTRA_CATALOG_FETCH,
+      modelEndpointAllowPrivate: value.OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE,
       openSignupAccounts: value.OSTRA_OPEN_SIGNUP_ACCOUNTS,
       openSignupOrganizations: value.OSTRA_OPEN_SIGNUP_ORGANIZATIONS,
       betterAuthSecret: value.BETTER_AUTH_SECRET ?? null,

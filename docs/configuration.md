@@ -19,6 +19,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_DATA_DIR` | `.ostra-dev/server` (development), `/var/lib/ostra` (production) | Where the server keeps its generated keys. Back it up: it holds the secrets key when `OSTRA_SECRETS_KEY` is unset. |
 | `OSTRA_SECRETS_KEY` | generated on first start, kept in `OSTRA_DATA_DIR` | The key the built-in secret store encrypts with (32 bytes, base64). **Back it up**: without it, stored secrets can't be read. |
 | `OSTRA_CATALOG_FETCH` | `true` | Fetch the models.dev catalog daily. `false`: use the copy bundled with ostra only. |
+| `OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE` | `false` | Let a model provider's base URL point at a private, loopback or link-local address, such as a model server on your own network. Off: those addresses and cloud metadata hosts are refused. |
 | `OSTRA_OPEN_SIGNUP_ACCOUNTS` | `false` | Let anyone create an account. Off: after the first admin, accounts come by invitation. |
 | `OSTRA_OPEN_SIGNUP_ORGANIZATIONS` | `false` | Let any account create an organization. Off: only the instance admin can. |
 | `BETTER_AUTH_SECRET` | generated on first start, kept in `OSTRA_DATA_DIR` | Signs sessions and tokens (at least 32 characters). Changing it signs everyone out. |

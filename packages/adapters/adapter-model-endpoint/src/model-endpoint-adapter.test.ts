@@ -37,7 +37,7 @@ defineModelProviderContractSuite({
     const openai = await startStubModelServer({ format: "openai-compatible", realKey: REAL_KEY, models, brain: () => ({ text: "hi" }) });
     const anthropic = await startStubModelServer({ format: "anthropic-messages", realKey: REAL_KEY, models, brain: () => ({ text: "hi" }) });
     return {
-      adapter: new ModelEndpointAdapter(),
+      adapter: new ModelEndpointAdapter({ allowPrivateNetwork: true }),
       fixture: {
         endpoints: [
           { baseUrl: openai.baseUrl, token: REAL_KEY, apiFormat: "openai-compatible", authScheme: "bearer", models },
@@ -84,7 +84,7 @@ const json = (response: http.ServerResponse, status: number, body: unknown, head
 
 describe("the model endpoint adapter", () => {
   const context = memoryAdapterContext();
-  const adapter = new ModelEndpointAdapter({ timeoutMs: 2000 }, context);
+  const adapter = new ModelEndpointAdapter({ timeoutMs: 2000, allowPrivateNetwork: true }, context);
 
   describe("testing a connection", () => {
     it("tries a bearer token, then Anthropic's header, and says which worked", async () => {
@@ -137,7 +137,7 @@ describe("the model endpoint adapter", () => {
       });
       const slow = await serve(() => undefined);
       try {
-        const quick = new ModelEndpointAdapter({ timeoutMs: 150 });
+        const quick = new ModelEndpointAdapter({ timeoutMs: 150, allowPrivateNetwork: true });
         expect(await quick.testConnection({ baseUrl: slow.url, token: "t" })).toMatchObject({ ok: false, error: { code: "unavailable" } });
       } finally {
         await slow.close();

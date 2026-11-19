@@ -15,6 +15,9 @@ import type { ApiFormat, AuthScheme } from "@ostra/protocol";
 import { z } from "zod";
 
 import { matchModelsToCatalog } from "./catalog.ts";
+import { assertPublicEndpoint } from "./endpoint-guard.ts";
+import type { Resolver } from "./endpoint-guard.ts";
+import { BodyTooLargeError, requestPinned } from "./pinned-request.ts";
 
 // The model provider adapter (ADR 0033, F-088): any base URL and token, in one of two API formats.
 // "Test connection" calls `GET <base URL>/models`, finds the format from the answer's shape and
@@ -24,10 +27,19 @@ import { matchModelsToCatalog } from "./catalog.ts";
 //
 // The token goes in one request header and nowhere else: never in a log line, an error message or
 // a URL. Redirects aren't followed, so a token can't be sent on to another host.
+//
+// The base URL is admin-supplied, so every call resolves its host first and refuses private,
+// loopback, link-local and metadata addresses (endpoint-guard.ts), then connects to the address it
+// vetted. `allowPrivateNetwork` (OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE) opts in, for a model server on
+// the same network.
 
 export type ModelEndpointAdapterOptions = {
   /** How long one call to the endpoint may take. Default 15 s. */
   readonly timeoutMs?: number;
+  /** Let a base URL point at a private, loopback or link-local address. Default false. */
+  readonly allowPrivateNetwork?: boolean;
+  /** Replaces the DNS lookup; for tests. */
+  readonly resolve?: Resolver;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -101,10 +113,14 @@ export class ModelEndpointAdapter extends ModelProviderAdapter {
   };
 
   readonly #timeoutMs: number;
+  readonly #allowPrivate: boolean;
+  readonly #resolve: Resolver | undefined;
 
   constructor(options: ModelEndpointAdapterOptions = {}, context?: AdapterContext) {
     super(context);
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.#allowPrivate = options.allowPrivateNetwork ?? false;
+    this.#resolve = options.resolve;
   }
 
   health(): Promise<HealthReport> {
@@ -251,35 +267,27 @@ export class ModelEndpointAdapter extends ModelProviderAdapter {
   }
 
   async #get(url: URL, scheme: AuthScheme, token: string): Promise<Probe> {
+    // Resolve and vet the host, then connect to that very address: a second lookup could answer differently.
+    const vetted = await assertPublicEndpoint(url, { allowPrivate: this.#allowPrivate, ...(this.#resolve === undefined ? {} : { resolve: this.#resolve }) });
+    if (!vetted.ok) {
+      this.plumbing.logger.warn("model-provider.refused", { code: vetted.error.code });
+      return { kind: "failed", error: vetted.error };
+    }
     try {
-      const response = await fetch(url, {
-        method: "GET",
+      return await requestPinned(url, vetted.value, {
         headers: { accept: "application/json", "user-agent": "ostra-model-endpoint", ...modelAuthHeaders(scheme, token) },
-        redirect: "manual",
-        signal: AbortSignal.timeout(this.#timeoutMs),
+        timeoutMs: this.#timeoutMs,
+        maxBytes: MAX_BODY_BYTES,
       });
-      const length = Number(response.headers.get("content-length"));
-      if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
-        await response.body?.cancel();
-        return { kind: "failed", error: { code: "invalid-response", message: "the endpoint's answer is too large to be a model list" } };
-      }
-      const text = await response.text();
-      let json: unknown;
-      try {
-        json = text === "" ? undefined : JSON.parse(text);
-      } catch {
-        json = undefined;
-      }
-      return { kind: "answer", status: response.status, headers: response.headers, json };
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-      this.plumbing.logger.warn("model-provider.unreachable", { timedOut });
+      const tooLarge = error instanceof BodyTooLargeError;
+      this.plumbing.logger.warn("model-provider.unreachable", { timedOut, tooLarge });
       return {
         kind: "failed",
-        error: {
-          code: "unavailable",
-          message: timedOut ? "the endpoint did not answer in time" : "the endpoint could not be reached",
-        },
+        error: tooLarge
+          ? { code: "invalid-response", message: "the endpoint's answer is too large to be a model list" }
+          : { code: "unavailable", message: timedOut ? "the endpoint did not answer in time" : "the endpoint could not be reached" },
       };
     }
   }

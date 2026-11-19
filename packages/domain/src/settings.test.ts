@@ -27,12 +27,20 @@ describe("the server's settings", () => {
       corePublicUrl: "http://localhost:8787",
       secretsKey: null,
       catalogFetch: true,
+      modelEndpointAllowPrivate: false,
       openSignupAccounts: false,
       openSignupOrganizations: false,
       betterAuthSecret: null,
       setupToken: null,
     });
     expect(result.settings.dataDir).toBe(path.join(repoRoot, ".ostra-dev", "server"));
+  });
+
+  it("keeps model provider URLs off private networks unless OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE says otherwise", () => {
+    const on = parseServerSettings({ OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true" });
+    expect(on.ok && on.settings.modelEndpointAllowPrivate).toBe(true);
+    const off = parseServerSettings({});
+    expect(off.ok && off.settings.modelEndpointAllowPrivate).toBe(false);
   });
 
   it("refuses an unknown OSTRA_ variable, listing the known ones", () => {

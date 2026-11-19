@@ -53,7 +53,7 @@ export const createServerAdapters = async (db: Db, settings: ServerSettings, log
   }
   return {
     codeHost: new GitHubAdapter({ userAgent: `ostra-core/${CORE_VERSION}` }, context),
-    modelProvider: new ModelEndpointAdapter({}, context),
+    modelProvider: new ModelEndpointAdapter({ allowPrivateNetwork: settings.modelEndpointAllowPrivate }, context),
     secretStore: new BuiltinSecretStore({ rows: postgresSecretRows(db), key: key.value }, context),
   };
 };
