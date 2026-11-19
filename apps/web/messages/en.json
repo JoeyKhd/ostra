@@ -353,7 +353,11 @@
     "envSaved": "Saved",
     "envDraft": "Draft: review it",
     "pools": "Pools",
-    "agent": "Agent"
+    "agent": "Agent",
+    "created": "Created",
+    "repository": "Repository",
+    "repoKey": "Repo",
+    "branch": "Default branch"
   },
   "environment": {
     "title": "Environment",
@@ -563,7 +567,55 @@
     "pushing": "Pushing the branch"
   },
   "tasks": {
-    "none": "No tasks yet. Type a prompt above."
+    "none": "No tasks yet. Type a prompt above.",
+    "loadFailed": "The tasks didn't load.",
+    "row": {
+      "approval": "Approval:",
+      "question": "Question:",
+      "running": "Running",
+      "editing": "Editing",
+      "reading": "Reading",
+      "preparing": "Preparing · running the setup script",
+      "queued": "Waiting for a runner",
+      "awaitingStart": "Waiting for approval to start",
+      "pr": "PR",
+      "stopped": "Stopped: {reason}",
+      "merged": "Merged",
+      "done": "Done"
+    },
+    "prState": {
+      "noBranch": "no branch",
+      "branchPushed": "branch pushed",
+      "open": "open",
+      "merged": "merged",
+      "closed": "closed"
+    },
+    "needsYouReason": {
+      "question": "Waiting for an answer",
+      "approval": "Waiting for an approval",
+      "plan": "A plan to review",
+      "noChanges": "Ended without changes",
+      "stalled": "Stalled",
+      "spendCap": "Reached its spend cap",
+      "crashed": "The session crashed",
+      "setupFailed": "The setup script failed",
+      "ticketClosed": "Its ticket was closed",
+      "draftReady": "A draft is ready",
+      "roundCap": "Reached its round cap",
+      "waitingForReviewer": "Waiting for a reviewer",
+      "environmentProposal": "A change to the environment to review"
+    },
+    "stopReason": {
+      "requested": "asked to stop",
+      "rejected": "its start was rejected",
+      "prsClosed": "its pull requests were closed",
+      "runnerLost": "its runner was lost",
+      "spendCap": "its spend cap",
+      "runaway": "it ran away"
+    },
+    "waitingOnYou": "{n} waiting on you",
+    "runningCount": "{n} running",
+    "group": "{group}, {n}"
   },
   "newTask": {
     "title": "New task",
@@ -576,7 +628,9 @@
     "personalRunner": "{name} (yours, {state})",
     "pools": "The project's pools",
     "start": "Start the task",
-    "starting": "Starting…"
+    "starting": "Starting…",
+    "yours": "· yours, {state}",
+    "kbd": "⌘↵"
   },
   "taskPage": {
     "properties": "Properties",

@@ -1,6 +1,6 @@
 "use client";
 
-import { BoxIcon, GitBranchIcon, ServerIcon, SlidersHorizontalIcon } from "lucide-react";
+import { BotIcon, BoxIcon, GitBranchIcon, ServerIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
@@ -9,34 +9,43 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 type Project = RouterOutputs["projects"]["get"];
 
-/** A project's properties panel: its repo, environment, pools and default agent profile (F-086). */
+/** "3 Nov 2026". */
+const dayOf = (epochMs: number): string => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(epochMs);
+
+/** A project's properties panel (project.md): its access, its repo, and where and how its tasks run (F-086). */
 export const ProjectProperties = ({ project }: { readonly project: Project }) => (
   <div data-testid="project-properties">
     <PropGroup title={t("projects.title")}>
       <PropRow label={t("projects.access")}>{project.access === "open" ? t("projects.open") : t("projects.restricted")}</PropRow>
       <PropRow label={t("projects.yourRole")}>{project.role === "admin" ? t("projects.admin") : t("projects.member")}</PropRow>
+      <PropRow label={t("projects.created")}>
+        <span className="font-mono">{dayOf(project.createdAt)}</span>
+      </PropRow>
     </PropGroup>
-    <PropGroup title={t("projects.repos")}>
-      {project.repos.map((repo) => (
-        <PropRow key={repo.repoId} label={repo.defaultBranch}>
-          <GitBranchIcon />
-          <span className="truncate font-mono text-sm">{repo.fullName}</span>
+    {project.repos.map((repo) => (
+      <PropGroup key={repo.repoId} title={t("projects.repository")}>
+        <PropRow label={t("projects.repoKey")}>
+          <GitBranchIcon aria-hidden />
+          <span className="truncate font-mono">{repo.fullName}</span>
         </PropRow>
-      ))}
-    </PropGroup>
+        <PropRow label={t("projects.branch")}>
+          <span className="truncate font-mono">{repo.defaultBranch}</span>
+        </PropRow>
+      </PropGroup>
+    ))}
     <PropGroup title={t("projects.runs")}>
       <PropRow label={t("shell.environment")}>
-        <BoxIcon />
+        <BoxIcon aria-hidden />
         <Link href={`/projects/${project.id}/environment`} className="text-teal hover:underline">
           {project.environmentStatus === "saved" ? t("projects.envSaved") : t("projects.envDraft")}
         </Link>
       </PropRow>
       <PropRow label={t("projects.pools")}>
-        <ServerIcon />
-        <span className="truncate">{project.pools.map((pool) => pool.name).join(", ") || "–"}</span>
+        <ServerIcon aria-hidden />
+        <span className="truncate font-mono">{project.pools.map((pool) => pool.name).join(", ") || "–"}</span>
       </PropRow>
       <PropRow label={t("projects.agent")}>
-        <SlidersHorizontalIcon />
+        <BotIcon aria-hidden />
         <span className="truncate">{project.defaultCodeProfile?.name ?? "–"}</span>
       </PropRow>
     </PropGroup>

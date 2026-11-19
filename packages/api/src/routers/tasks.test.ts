@@ -1,5 +1,5 @@
 import { jobKey } from "@ostra/domain";
-import { approvalIdSchema, clientMessageIdSchema, memberIdSchema, optionIdSchema, segmentIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, clientMessageIdSchema, memberIdSchema, optionIdSchema, questionIdSchema, segmentIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -157,7 +157,7 @@ describe("tasks.list and tasks.get", () => {
     });
     const runningRow = groups.find((group) => group.group === "running")?.tasks[0];
     expect(runningRow).toMatchObject({
-      key: running.taskId.slice(0, 8),
+      key: running.taskId.replaceAll("-", "").slice(-8),
       state: "running",
       // The newest of the events the list words: the agent's thought, after the tool call.
       doing: { kind: "agent.thought", detail: null },
@@ -183,6 +183,45 @@ describe("tasks.list and tasks.get", () => {
     const row = (await (await harness.as(harness.fixture.a.member)).tasks.list({ projectId: project })).flatMap((group) => group.tasks)[0];
     expect(row?.doing?.kind).toBe("tool.called");
     expect(row?.doing?.detail?.length).toBe(160);
+  });
+
+  it("names the path an edit works on, the command an approval asks about, and the question asked", async () => {
+    const project = (await seedProject(harness, world, "detail")).projectId;
+    const place = { organizationId: orgA(), projectId: project };
+    const turnId = turnIdSchema.parse("turn-1");
+    const editing = await seedTask(harness, { ...place, title: "editing", state: "running" });
+    await appendEvent(harness, editing, place, {
+      kind: "tool.called",
+      turnId,
+      toolCallId: toolCallIdSchema.parse("tool-edit"),
+      toolKind: "edit",
+      title: "edit",
+      input: { paths: ["src/display/format.ts"] },
+    });
+    const approving = await seedTask(harness, { ...place, title: "approving", state: "needs_you", sessionState: "waiting" });
+    await appendEvent(harness, approving, place, {
+      kind: "tool.called",
+      turnId,
+      toolCallId: toolCallIdSchema.parse("tool-migrate"),
+      toolKind: "execute",
+      title: "pnpm db:migrate",
+      input: {},
+    });
+    await appendEvent(harness, approving, place, {
+      kind: "approval.requested",
+      turnId,
+      approvalId: approvalIdSchema.parse("approval-1"),
+      toolCallId: toolCallIdSchema.parse("tool-migrate"),
+      options: [{ optionId: optionIdSchema.parse("allow"), label: "Allow once", kind: "allow-once", decision: "allow_once" }],
+    });
+    const asking = await seedTask(harness, { ...place, title: "asking", state: "needs_you", sessionState: "waiting" });
+    await appendEvent(harness, asking, place, { kind: "question.asked", turnId, questionId: questionIdSchema.parse("q-1"), message: "Keep the old retry header?", fields: [] });
+
+    const rows = (await (await harness.as(harness.fixture.a.member)).tasks.list({ projectId: project })).flatMap((group) => group.tasks);
+    const doingOf = (title: string) => rows.find((row) => row.title === title)?.doing;
+    expect(doingOf("editing")).toEqual({ kind: "tool.called", detail: "src/display/format.ts", toolKind: "edit" });
+    expect(doingOf("approving")).toEqual({ kind: "approval.requested", detail: "pnpm db:migrate", toolKind: "execute" });
+    expect(doingOf("asking")).toEqual({ kind: "question.asked", detail: "Keep the old retry header?", toolKind: null });
   });
 
   it("is visible to another member of the project and invisible to another organization", async () => {

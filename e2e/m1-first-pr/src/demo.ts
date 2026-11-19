@@ -238,12 +238,9 @@ const startTask = async (page: Page, settings: DemoSettings, projectHref: string
   await page.goto(projectHref);
   const form = page.getByTestId("new-task");
   await form.locator("textarea").fill(prompt);
-  const select = form.locator("select");
   // "Run on" lists the member's personal runners once they load; the demo's is the only runner.
-  await select.locator("option", { hasText: settings.runnerName }).waitFor({ state: "attached", timeout: 30_000 });
-  const options = await select.locator("option").allTextContents();
-  const mine = options.findIndex((text) => text.includes(settings.runnerName));
-  await select.selectOption({ index: mine });
+  await form.getByRole("combobox", { name: "Run on" }).click();
+  await page.getByRole("option", { name: new RegExp(settings.runnerName) }).click({ timeout: 30_000 });
   await screenshot(page, settings, "prompt");
   await form.getByRole("button", { name: /Start/ }).click();
   await page.waitForURL(/\/tasks\/[^/]+$/, { timeout: 30_000 });

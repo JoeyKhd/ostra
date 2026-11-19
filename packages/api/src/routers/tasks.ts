@@ -22,8 +22,9 @@ import {
   runnerLimits,
   sessionIdSchema,
   taskIdSchema,
+  toolKindSchema,
 } from "@ostra/protocol";
-import type { OrganizationId, StoredEvent, TaskId } from "@ostra/protocol";
+import type { OrganizationId, StoredEvent, TaskId, ToolKind } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -72,17 +73,57 @@ const doingKinds = [
 
 export type DoingKind = (typeof doingKinds)[number];
 
-/** What the agent is doing now, for the list: a kind the panel words, and for a tool its title. */
-export type Doing = { readonly kind: DoingKind; readonly detail: string | null };
+/**
+ * What the agent is doing now, for the list: a kind the panel words, and its detail. For a tool
+ * call or an approval, `detail` is the command (`execute`) or the path (`edit`, `read`), and
+ * `toolKind` says which; for another tool it's the tool's title, with `toolKind` null. For a
+ * question it's the question.
+ */
+export type Doing = { readonly kind: DoingKind; readonly detail: string | null; readonly toolKind: ToolKind | null };
 
 const DETAIL_MAX = 160;
 
-const doingOf = (kind: DoingKind, payload: unknown): Doing => {
-  const title: unknown = typeof payload === "object" && payload !== null ? Reflect.get(payload, "title") : undefined;
-  return {
-    kind,
-    detail: kind === "tool.called" && typeof title === "string" ? title.slice(0, DETAIL_MAX) : null,
-  };
+const toolCallPayload = z.looseObject({ toolKind: toolKindSchema, title: z.string(), input: z.unknown() });
+const pathInput = z.union([
+  z.looseObject({ path: z.string().min(1) }).transform((input) => input.path),
+  z.looseObject({ paths: z.tuple([z.string().min(1)], z.string()) }).transform((input) => input.paths[0]),
+]);
+const toolCallIdPayload = z.looseObject({ toolCallId: z.string() });
+const questionPayload = z.looseObject({ message: z.string() });
+
+/** A tool call's command or path, or its title when it names neither. */
+const toolDetailOf = (payload: unknown): Pick<Doing, "detail" | "toolKind"> => {
+  const call = toolCallPayload.safeParse(payload);
+  if (!call.success) return { detail: null, toolKind: null };
+  const { toolKind, title, input } = call.data;
+  if (toolKind === "execute") return { detail: title.slice(0, DETAIL_MAX), toolKind };
+  if (toolKind === "edit" || toolKind === "read") {
+    const path = pathInput.safeParse(input);
+    if (path.success) return { detail: path.data.slice(0, DETAIL_MAX), toolKind };
+  }
+  return { detail: title.slice(0, DETAIL_MAX), toolKind: null };
+};
+
+/** `toolCall`: the tool call an approval asks about, when there is one. */
+const doingOf = (kind: DoingKind, payload: unknown, toolCall: unknown): Doing => {
+  switch (kind) {
+    case "tool.called":
+      return { kind, ...toolDetailOf(payload) };
+    case "approval.requested":
+      return toolCall === undefined ? { kind, detail: null, toolKind: null } : { kind, ...toolDetailOf(toolCall) };
+    case "question.asked": {
+      const question = questionPayload.safeParse(payload);
+      return { kind, detail: question.success && question.data.message !== "" ? question.data.message.slice(0, DETAIL_MAX) : null, toolKind: null };
+    }
+    case "agent.message":
+    case "agent.thought":
+    case "environment.setup_started":
+    case "environment.setup_output":
+    case "git.pushed":
+      return { kind, detail: null, toolKind: null };
+    default:
+      return kind satisfies never;
+  }
 };
 
 const latestDoingRow = z.object({ taskId: taskIdSchema, kind: z.enum(doingKinds), payload: z.unknown() });
@@ -106,6 +147,12 @@ const lifecycleOf = (task: Parameters<typeof taskFromColumns>[0]): TaskLifecycle
   }
   return decoded.value;
 };
+
+/**
+ * A prompt task's short ID: the last 8 hex digits, as in its branch name (`branchNameFor`). A
+ * UUIDv7's first 8 are its timestamp, the same for every task made within about a minute.
+ */
+const shortKeyOf = (id: string): string => id.replaceAll("-", "").slice(-8);
 
 const notFoundTask = () => new TRPCError({ code: "NOT_FOUND", message: "No such task" });
 
@@ -160,20 +207,42 @@ export const tasksRouter = router({
     const runnerById = new Map(runners.map((runner) => [runner.id, runner] as const));
     const leaseRunner = new Map(leases.map((lease) => [lease.taskId, lease.runnerId] as const));
     const driverName = new Map(members.map((member) => [member.id, member.user.name] as const));
-    const doing = new Map(z.array(latestDoingRow).parse(latest).map((row) => [row.taskId, doingOf(row.kind, row.payload)] as const));
+    const latestRows = z.array(latestDoingRow).parse(latest);
+    // An approval asks about a tool call: its command or path is what the row shows.
+    const asked = latestRows.flatMap((row) => {
+      const call = row.kind === "approval.requested" ? toolCallIdPayload.safeParse(row.payload) : null;
+      return call?.success === true ? [{ taskId: row.taskId, toolCallId: call.data.toolCallId }] : [];
+    });
+    const calls =
+      asked.length === 0
+        ? []
+        : z.array(z.object({ taskId: taskIdSchema, payload: z.unknown() })).parse(
+            await db.$queryRaw`
+              SELECT "taskId", "payload" FROM "event"
+              WHERE "taskId" = ANY(${asked.map((row) => row.taskId)}::text[]) AND "kind" = 'tool.called'
+                AND "payload"->>'toolCallId' = ANY(${asked.map((row) => row.toolCallId)}::text[])`,
+          );
+    const toolCallOf = (taskId: TaskId, payload: unknown): unknown => {
+      const id = toolCallIdPayload.safeParse(payload);
+      if (!id.success) return undefined;
+      return calls.find((call) => call.taskId === taskId && toolCallIdPayload.safeParse(call.payload).data?.toolCallId === id.data.toolCallId)?.payload;
+    };
+    const doing = new Map(latestRows.map((row) => [row.taskId, doingOf(row.kind, row.payload, toolCallOf(row.taskId, row.payload))] as const));
 
     const summaries = rows.map((row) => {
       const runner = runnerById.get(leaseRunner.get(row.id) ?? row.runnerId ?? "");
       const id = taskIdSchema.parse(row.id);
       return {
         id,
-        key: row.ticketKey ?? row.id.slice(0, 8),
+        key: row.ticketKey ?? shortKeyOf(row.id),
         title: row.title,
         kind: row.kind,
         state: row.state,
         subState: row.subState,
         /** Why it needs a person, or why it stopped. */
         reason: row.needsYouReason ?? row.stoppedReason,
+        needsYouReason: row.needsYouReason,
+        stoppedReason: row.stoppedReason,
         group: groupOf(row.state),
         doing: doing.get(id) ?? null,
         runner: runner === undefined ? null : { id: runnerIdSchema.parse(runner.id), name: runner.name, kind: runner.kind, executor: runner.executor, isolated: runner.executor !== "host" },
@@ -218,7 +287,7 @@ export const tasksRouter = router({
     return {
       id: taskIdSchema.parse(task.id),
       projectId: projectIdSchema.parse(task.projectId),
-      key: task.ticketKey ?? task.id.slice(0, 8),
+      key: task.ticketKey ?? shortKeyOf(task.id),
       title: task.title,
       kind: task.kind,
       source: task.source,
