@@ -1,6 +1,6 @@
 # 34: Milestone 1 screen targets
 
-Status: ready-for-agent
+Status: in-progress
 Builder: web
 Blocked by: none
 Features: F-076, F-088, F-006, F-086, F-050, F-023, F-025 (their screens)
@@ -29,3 +29,4 @@ Screens:
 - [ ] Committed as `🎨 add milestone 1 screen targets`.
 
 ## Comments
+- 2026-11-19 (web): checked, and nothing here is done. The maintainer has not approved any screen, and none of the three boxes is ticked. Tickets 35, 37 and 38 were built against the concept screens (`app-concepts/html/`), as this ticket allows, and the restyle to approved targets has not been done or scheduled; milestone 1's panel has not been checked against an approved target. A first set of pictures is being made on another session's working tree under `context/brand/app-targets/m1/`: a render and a spec per screen, not the HTML on `graphite.css` that "What to build" asks for, and not committed, so it is not counted here. To close this ticket, either those pictures (and the HTML, if still wanted) are approved and the panel restyled to them, or the maintainer says here, with the date, that the concept screens are the targets for milestone 1, and the ticket is set to resolved or dropped. Neither is the builder's call.
