@@ -6,6 +6,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { loadGitHubConnection } from "../services/github-connection.ts";
+import { checksRouter, servicesRouter, snapshotRouter, whereTasksRun, whereTasksRunSchema } from "./environment-services.ts";
 import { projectProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-050, F-112, ticket 32: a project's one environment, and the draft detection makes. Reading is
@@ -50,6 +51,8 @@ const environmentViewSchema = z.object({
   savedAt: z.number().int().nullable(),
   repos: z.array(z.object({ repoId: repoIdSchema, fullName: z.string(), checkoutDir: z.string(), envFile: z.string() })),
   entries: z.array(entryViewSchema),
+  /** Milestone 3 (ticket 40): the project's pools, who is online in them, and whether its services can start. */
+  whereTasksRun: whereTasksRunSchema,
 });
 
 type EntryView = z.infer<typeof entryViewSchema>;
@@ -94,6 +97,7 @@ export const environmentsRouter = router({
         savedAt: environment.savedAt === null ? null : environment.savedAt.getTime(),
         repos: repos.map((repo) => ({ repoId: repoIdSchema.parse(repo.id), fullName: repo.fullName, checkoutDir: repo.checkoutDir, envFile: repo.envFile })),
         entries: environment.entries.flatMap(viewOf),
+        whereTasksRun: await whereTasksRun(db, ctx.scope, input.projectId, ctx.deps.ports.clock.now()),
       };
     }),
 
@@ -116,6 +120,13 @@ export const environmentsRouter = router({
       return out;
     }),
 
+  /** Milestone 3 (ticket 40): the services beside each box on `docker` runners (F-094). */
+  services: servicesRouter,
+  /** The checks that run after every turn with changes, before the push (F-054). */
+  checks: checksRouter,
+  /** The snapshot a box starts from on `docker` (F-051). */
+  snapshot: snapshotRouter,
+
   /**
    * Saves the environment: the setup script, and each repo's variables, secrets and files. Secret
    * values go to the secret store. The result carries warnings that don't stop the save.
@@ -124,7 +135,17 @@ export const environmentsRouter = router({
     .output(z.object({ environmentId: environmentIdSchema, warnings: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
       const { db, ports } = ctx.deps;
-      const result = await db.$transaction((tx) => saveEnvironment({ tx, scope: ctx.scope, ...ports }, input), { timeout: 30_000 });
+      const result = await db.$transaction(
+        async (tx) => {
+          const outcome = await saveEnvironment({ tx, scope: ctx.scope, ...ports }, input);
+          // The environment changed: its snapshot rebuilds (F-051, ticket 26), one a minute at most.
+          if (outcome.ok) {
+            await ports.jobs.enqueueInTx(tx, "snapshot.schedule", { organizationId: ctx.scope.organizationId, projectId: input.projectId, reason: "environment-changed" });
+          }
+          return outcome;
+        },
+        { timeout: 30_000 },
+      );
       const saved = unwrap(result, {
         "not-found": "NOT_FOUND",
         forbidden: "FORBIDDEN",
