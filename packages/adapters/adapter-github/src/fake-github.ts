@@ -426,6 +426,7 @@ export const createFakeGitHub = async (options: {
           name: "ostra fake",
           permissions: { contents: "write", checks: "write", actions: "read", metadata: "read", pull_requests: "write" },
           events: ["pull_request"],
+          client_id: oauthClient.clientId,
         });
         return;
       }

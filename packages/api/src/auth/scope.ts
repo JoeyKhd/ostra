@@ -78,6 +78,15 @@ export const loadMemberContext = async (db: Db, user: SessionUser): Promise<Memb
   if (member === null) {
     return null;
   }
+  return memberContextOf(db, user.userId, member);
+};
+
+/** A membership of an account as the scope every query takes, with its project roles. */
+export const memberContextOf = async (
+  db: Db,
+  userId: UserId,
+  member: { readonly id: string; readonly organizationId: string; readonly role: string },
+): Promise<MemberContext> => {
   const organizationId: OrganizationId = organizationIdSchema.parse(member.organizationId);
   const memberId: MemberId = memberIdSchema.parse(member.id);
   const listed = await db.projectMember.findMany({
@@ -88,7 +97,7 @@ export const loadMemberContext = async (db: Db, user: SessionUser): Promise<Memb
     listed.map((row) => [projectIdSchema.parse(row.projectId), row.role] as const),
   );
   return {
-    userId: user.userId,
+    userId,
     scope: { organizationId, memberId, role: highestRole(member.role), projectRoles },
   };
 };

@@ -19,6 +19,7 @@ import type { LinearEndpoints } from "../services/linear-app.ts";
 import { createTrackerDirectory } from "../services/trackers.ts";
 import { noEmailDirectory } from "../services/email.ts";
 import type { EmailDirectory } from "../services/email.ts";
+import { postgresBlobReader } from "../services/blob-store-view.ts";
 import { createStreamHub } from "../stream/hub.ts";
 import type { StreamHub } from "../stream/hub.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
@@ -135,7 +136,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       emailDelaySeconds: 120,
       cliSessionDays: 30,
     },
-    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
+    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }), read: postgresBlobReader(test.db) },
     linear: createLinearAppKit(options.linearEndpoints === undefined ? {} : { endpoints: options.linearEndpoints }),
     trackers: createTrackerDirectory({
       db: test.db,

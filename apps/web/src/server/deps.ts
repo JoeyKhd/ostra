@@ -9,7 +9,7 @@ import { GitHubAdapter } from "@ostra/adapter-github";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
 import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
-import { createApiRuntime, createCatalogSource } from "@ostra/api";
+import { createApiRuntime, createCatalogSource, postgresBlobReader } from "@ostra/api";
 import type { ApiDeps, ApiRuntime } from "@ostra/api";
 import { createDb } from "@ostra/db";
 import { repoRoot } from "@ostra/db/dev";
@@ -186,6 +186,8 @@ const build = async (): Promise<ApiRuntime> => {
           return { status: "down", reason: "The database did not answer." };
         }
       },
+      // A check's full output (F-054) is read from the built-in store's tables; a blob kept in S3 is core's to serve.
+      read: postgresBlobReader(db),
     },
     logger,
   });

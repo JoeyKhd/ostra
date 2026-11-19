@@ -1,6 +1,6 @@
 # 39: API: checks, update branch, take it local, CLI sessions, the GitHub link and usage
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 23, 24, 25, 28
 Features: F-054, F-070, F-028, F-103, F-119, F-084, F-066
@@ -20,9 +20,9 @@ Spec: `../spec.md`, sections 4 and 5.1 ("HTTP for the CLI"); ADRs 0051, 0052
 
 ## Done when
 
-- [ ] Tests: the check output is served only to members of the project; `ostra checkout`'s endpoint resolves all three refs and refuses other organizations' tasks; a revoked CLI session gets 401 and can't call tRPC; the link stores the login and ID, refuses a GitHub account linked elsewhere, and unlinks; a task with a link credits the no-reply address; usage matches ticket 28's figures.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add checks, local and link API`.
+- [x] Tests: the check output is served only to members of the project; `ostra checkout`'s endpoint resolves all three refs and refuses other organizations' tasks; a revoked CLI session gets 401 and can't call tRPC; the link stores the login and ID, refuses a GitHub account linked elsewhere, and unlinks; a task with a link credits the no-reply address; usage matches ticket 28's figures.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add checks, local and link API`.
 
 ## Decided 2026-11-19
 
@@ -32,3 +32,5 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 - **`account.github.get` adds** the GitHub user ID and `githubLinkedAt`, and whether GitHub is connected to the install, for the not-connected row. The command's address is `OSTRA_PUBLIC_URL`.
 
 ## Comments
+
+- 2026-11-19: done in COMMIT. **API (`packages/api`):** `tasks.checks` (`routers/task-checks.ts`: each turn's runs with the output's end from the `check.finished` event, the commit from `session.saved`, counts, the PRs and whether ostra drafted them, `fix` for the newest turn), `tasks.fixChecks` (ticket 23's `askAgentToFixChecks`), `tasks.updateBranch` and `tasks.keepWorking` (ticket 24's `requestUpdateBranchWith` and `keepWorking`; the other answer to a closed ticket is `tasks.stop`), `tasks.local` (`routers/task-local.ts`: the `ostra checkout` line by key or ID, the login line, the plain git commands with a shell-safe quote, `hasCliSession`), and in `tasks.get` each repo's `behindBy` and `pullRequests` from `TaskPullRequest`, and `usage` (`task-usage.ts`, ticket 28's `readTaskUsage`, estimates marked). `account.cliSessions.list` (with `expiresAt`, `days` and `serverUrl`) and `.revoke`, `account.github.get` (`connected`, and the link with its ID and time) and `.unlink`, and `account.deviceRequest` (the purpose and the machine's name of a code the member opened, for the device page). **HTTP:** `services/cli-http.ts` answers `/api/cli/v1/` (the web app's one catch-all route calls it): the device grant is its own `DeviceCode` row (purpose `cli`, client `ostra-cli`, which better-auth's token endpoint refuses, so the grant is never a login), approved on the milestone 1 `/device` page and traded here for a `CliSession` whose token is shown once and stored as a hash; `GET /tasks/:ref/branches` resolves a key, an ID or a URL within the account's organizations and the member's projects; `DELETE /session`. Every tRPC procedure refuses a CLI token in words (`trpc/init.ts`). `services/github-link.ts` is `/api/github/link/start` and `/callback` (`OAuthState` bound to the member's panel session for ten minutes and one use; the App's client ID comes from `GET /app` (`AppInfo.clientId`, additive) and its secret from the secret store; a connection made without a manifest has no client secret, so it cannot link). `services/check-output.ts` serves a check's full output as `text/plain`, an attachment, after the access check, from `/api/tasks/<task>/checks/<run>/output`; the panel reads the built-in store's tables itself (`BlobStoreView.read`), so **a check output kept in an S3-compatible store answers 503 until the panel is given that store: the follow-up is to read it through core's blob service**. **Domain:** `startCliSession`, `revokeCliSession`, `resolveCliSession`, `linkGitHubUser`, `unlinkGitHubUser` (`StartCliSession`'s input gained an optional `sessionDays`). **Core:** the task spec credits a linked member by `<id>+<login>@users.noreply.github.com` (`dispatch/task-spec.ts`), read at dispatch so a link made after the task began counts from the next commit. **Open:** the device page does not name the purpose yet (ticket 47 reads `account.deviceRequest` or the grant's `client_id`); ticket 33's "against the dev server" box can now use these routes. Proof rows in F-103, F-119, F-054, F-084, F-070, F-066 and F-028; 21 break-it checks, all caught (`context/proof/`).

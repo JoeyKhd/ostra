@@ -285,6 +285,7 @@ export class GitHubAdapter extends CodeHostAdapter {
         name: parsed.value.name,
         permissions: parsed.value.permissions,
         events: parsed.value.events,
+        ...(parsed.value.client_id === undefined ? {} : { clientId: parsed.value.client_id }),
       });
     });
   }

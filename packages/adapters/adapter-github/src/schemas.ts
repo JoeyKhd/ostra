@@ -11,6 +11,7 @@ export const appSchema = z.looseObject({
   name: z.string(),
   permissions: permissionLevels.default({}),
   events: z.array(z.string()).default([]),
+  client_id: z.string().min(1).optional(),
 });
 
 /** `POST /app-manifests/{code}/conversions`. */

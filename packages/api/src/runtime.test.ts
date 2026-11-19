@@ -61,7 +61,7 @@ const start = async (install: { readonly test: TestDatabase; readonly dataDir: s
       clock: { now: () => Date.now() },
       logger: createLogger(() => undefined),
     }),
-    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }) },
+    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }), read: () => Promise.resolve({ kind: "not-found" }) },
     makeLinearTracker: () => new JiraFakeAdapter({ site: createJiraSite() }),
     logger: createLogger((record) => {
       logs.push(record);

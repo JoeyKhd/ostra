@@ -54,6 +54,8 @@ export type AppInfo = {
   /** Permission name to level, as the host reports them (`checks: write`, `actions: read`). */
   readonly permissions: Readonly<Record<string, string>>;
   readonly events: readonly string[];
+  /** The App's OAuth client ID, for the verified link (F-119); absent when the host does not say. */
+  readonly clientId?: string;
 };
 
 export type Installation = {

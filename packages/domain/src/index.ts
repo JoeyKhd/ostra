@@ -93,3 +93,5 @@ export * from "./use-cases/notification-settings.ts";
 export * from "./use-cases/snapshots.ts";
 export * from "./use-cases/behind.ts";
 export * from "./use-cases/after-merge.ts";
+export * from "./use-cases/cli-sessions.ts";
+export * from "./use-cases/github-link.ts";

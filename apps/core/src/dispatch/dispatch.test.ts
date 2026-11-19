@@ -269,6 +269,19 @@ describe("the spec and the credentials", () => {
     expect(stale.status).toBe(409);
   });
 
+  it("F-119: a member with a verified GitHub link is credited by their no-reply address, and by their ostra name and email again once unlinked", async () => {
+    const token = await accessToken(harness, runner);
+    const coAuthors = async () => taskSpecSchema.parse(JSON.parse(await (await fetch(specUrl(1), { headers: { authorization: `Bearer ${token.accessToken}` } })).text())).coAuthors;
+    const user = { where: { id: fixture.a.member.userId } };
+    try {
+      await test.db.user.update({ ...user, data: { githubUserId: "4411", githubLogin: "adakim", githubLinkedAt: new Date() } });
+      expect(await coAuthors()).toEqual([{ name: "Ada Admin", email: "4411+adakim@users.noreply.github.com" }]);
+    } finally {
+      await test.db.user.update({ ...user, data: { githubUserId: null, githubLogin: null, githubLinkedAt: null } });
+    }
+    expect(await coAuthors()).toEqual([{ name: "Ada Admin", email: "ada@example.com" }]);
+  });
+
   it("F-090: issues the credentials after the lease check, with a token narrowed to the one repo, and logs none of them", async () => {
     records.length = 0;
     const token = await accessToken(harness, runner);

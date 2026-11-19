@@ -1,6 +1,9 @@
 import {
   agentSteersMidTurn,
   answerApproval,
+  askAgentToFixChecks,
+  keepWorking,
+  requestUpdateBranchWith,
   appendServerEvent,
   checkProjectRepos,
   createPromptTask,
@@ -44,8 +47,12 @@ import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
 import { loadDoingByTask } from "./task-doing.ts";
+import { loadChecksView } from "./task-checks.ts";
+import { loadLocalView } from "./task-local.ts";
+import { loadApprovalsAndPlan, previewApproval } from "./task-m3.ts";
+import { loadUsageView } from "./task-usage.ts";
 import { loadTaskExtras, prStateOf } from "./task-extras.ts";
-import { memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
+import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
 // F-097, F-023, F-025, F-014 (picking the runner), ticket 33: tasks. A task is visible to every
 // member who can open its project and to nobody else (ADR 0026). Reading, stopping and answering an
@@ -253,7 +260,7 @@ export const tasksRouter = router({
     const task = await db.task.findFirst({
       where: { id: input.taskId, organizationId },
       include: {
-        repos: { include: { repo: { select: { fullName: true } } }, orderBy: { createdAt: "asc" } },
+        repos: { include: { repo: { select: { fullName: true } }, pullRequests: { orderBy: { openedAt: "asc" } } }, orderBy: { createdAt: "asc" } },
         sessions: { orderBy: { startedAt: "desc" }, take: 1 },
         needsYouItems: { where: { state: "open" }, orderBy: { createdAt: "asc" } },
       },
@@ -276,6 +283,8 @@ export const tasksRouter = router({
     const pinnedRunner = lease === null && task.runnerId !== null ? await db.runner.findFirst({ where: { id: task.runnerId, organizationId }, select: { id: true, name: true, kind: true, executor: true } }) : null;
     const runner = lease === null ? pinnedRunner : lease.runner;
     const extras = await loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null);
+    // Milestone 3 (ticket 35): the approvals, questions and plan the page answers from, and the task's rules.
+    const answerable = await loadApprovalsAndPlan(ctx.deps, task);
     const isDriver = task.driverMemberId === ctx.scope.memberId;
     const state = task.state;
     // The composer reads these and never works out which from the state (ADR 0036): a limit or a crash
@@ -332,6 +341,11 @@ export const tasksRouter = router({
         state: repo.state,
         headSha: repo.headSha,
         pr: repo.prNumber === null || repo.prUrl === null ? null : { number: repo.prNumber, url: repo.prUrl, state: prStateOf(repo.state) },
+        /** Milestone 3 (ticket 39, F-070): how many commits the base is ahead of the branch, as of `behindCheckedAt`; `null` before it is read. */
+        behindBy: repo.behindBy,
+        behindCheckedAt: repo.behindCheckedAt?.getTime() ?? null,
+        /** Every PR the repo has had, oldest first (F-066): a merged one stays when a reopen opens another. */
+        pullRequests: repo.pullRequests.map((pr) => ({ number: pr.number, url: pr.url, branchName: pr.branchName, state: pr.state, draft: pr.draft, draftByOstra: pr.draftByOstra, openedAt: pr.openedAt.getTime(), closedAt: pr.closedAt?.getTime() ?? null })),
       })),
       session:
         session === undefined
@@ -350,6 +364,10 @@ export const tasksRouter = router({
       // Ticket 36: the item's ID, so the page can answer it (`tasks.dismissNeedsYou`).
       needsYou: task.needsYouItems.map((item) => ({ id: needsYouItemIdSchema.parse(item.id), reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
       ...extras,
+      /** F-084 (ticket 39): the task's tokens in four kinds, spend and agent time, in total and per turn; estimates are marked. */
+      usage: await loadUsageView(ctx.deps, organizationId, taskIdSchema.parse(task.id)),
+      /** What the page answers: open approvals with their rule, subject and options, open questions, the plan, and the task's rules. */
+      ...answerable,
       capabilities: {
         send: isDriver && sessionGoing && (state === "running" || state === "needs_you"),
         interrupt: isDriver && sessionGoing && state === "running",
@@ -370,6 +388,9 @@ export const tasksRouter = router({
           isOneOf(CARRY_ON_REASONS, task.needsYouReason),
         /** Retry the ticket writes that failed. */
         retrySync: extras.sync.some((write) => write.state === "failed"),
+        /** Milestone 3 (ticket 35): the driver answers the agent's questions and the plan; anyone else is told to take over. */
+        answerQuestions: isDriver && answerable.questions.length > 0,
+        answerPlan: isDriver && answerable.plan !== null && answerable.plan.itemId !== null,
       },
     };
   }),
@@ -433,6 +454,100 @@ export const tasksRouter = router({
       "profile-not-allowed": "FORBIDDEN",
     });
     return { sessionId: reopened.sessionId };
+  }),
+
+  /**
+   * The Checks tab (F-054, ticket 39): the environment's checks, and each turn's runs with the end
+   * of their output, the commit they ran on, and a link to the full output (served by the web app
+   * after the access check). Any member who can open the project reads it.
+   */
+  checks: taskProcedure("read", taskInput).query(async ({ ctx, input }) => {
+    const task = await ctx.deps.db.task.findFirst({ where: { id: input.taskId, organizationId: ctx.scope.organizationId }, select: { id: true, organizationId: true, projectId: true } });
+    if (task === null) {
+      throw notFoundTask();
+    }
+    return loadChecksView(ctx.deps, { id: input.taskId, organizationId: ctx.scope.organizationId, projectId: task.projectId });
+  }),
+
+  /**
+   * "Ask the agent to fix" (F-054): every failing check's command and output as one message
+   * (`intent: "fix-checks"`), sent as the composer sends: the driver to a session that is going, a
+   * reopen with none. Anyone else is told "Take over to send".
+   */
+  fixChecks: taskProcedure("read", taskInput).mutation(async ({ ctx, input }) => {
+    const { db, ports, settings } = ctx.deps;
+    const result = await askAgentToFixChecks({ db, ...ports }, { spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap } }, ctx.scope, { taskId: input.taskId });
+    const asked = unwrap(result, {
+      "not-found": "NOT_FOUND",
+      "nothing-failing": "PRECONDITION_FAILED",
+      "take-over-to-send": "FORBIDDEN",
+      forbidden: "FORBIDDEN",
+      merged_reopen_later: "PRECONDITION_FAILED",
+      "ticket-has-task": "CONFLICT",
+      "not-reopenable": "CONFLICT",
+      "text-required": "BAD_REQUEST",
+      "spend-cap-reached": "PRECONDITION_FAILED",
+      "profile-not-allowed": "FORBIDDEN",
+    });
+    return { checks: asked.checks, delivery: asked.delivery };
+  }),
+
+  /**
+   * "Update branch" (F-070, ADR 0052): one message (`intent: "update-branch"`) naming each repo that is
+   * behind its base, sent as the composer sends. A task with nothing behind refuses it.
+   */
+  updateBranch: taskProcedure("read", taskInput).mutation(async ({ ctx, input }) => {
+    const { db, ports, settings } = ctx.deps;
+    const result = await requestUpdateBranchWith({ db, ...ports }, { spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap } }, ctx.scope, { taskId: input.taskId });
+    const asked = unwrap(result, {
+      "not-found": "NOT_FOUND",
+      "nothing-behind": "PRECONDITION_FAILED",
+      "take-over-to-send": "FORBIDDEN",
+      forbidden: "FORBIDDEN",
+      merged_reopen_later: "PRECONDITION_FAILED",
+      "ticket-has-task": "CONFLICT",
+      "not-reopenable": "CONFLICT",
+      "text-required": "BAD_REQUEST",
+      "spend-cap-reached": "PRECONDITION_FAILED",
+      "profile-not-allowed": "FORBIDDEN",
+    });
+    return { repos: asked.repos, delivery: asked.delivery };
+  }),
+
+  /**
+   * "Keep working" (F-066, Q181): the answer to a ticket closed while the task ran that lets it carry
+   * on. The item is dismissed and "Carry on where you stopped." goes to the agent. The other answer is
+   * `tasks.stop`.
+   */
+  keepWorking: taskProcedure("read", taskInput).mutation(async ({ ctx, input }) => {
+    const { db, ports, settings } = ctx.deps;
+    const result = await keepWorking({ db, ...ports }, { spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap } }, ctx.scope, { taskId: input.taskId });
+    const kept = unwrap(result, {
+      "not-found": "NOT_FOUND",
+      "not-waiting": "CONFLICT",
+      "take-over-to-send": "FORBIDDEN",
+      forbidden: "FORBIDDEN",
+      merged_reopen_later: "PRECONDITION_FAILED",
+      "ticket-has-task": "CONFLICT",
+      "not-reopenable": "CONFLICT",
+      "text-required": "BAD_REQUEST",
+      "spend-cap-reached": "PRECONDITION_FAILED",
+      "profile-not-allowed": "FORBIDDEN",
+    });
+    return { delivery: kept.delivery };
+  }),
+
+  /**
+   * "Take it local" (F-028, F-103): the `ostra checkout` line with the task's key (or ID), the
+   * login line for a machine that has never signed in, whether the member has a CLI session, and the
+   * plain git commands per repo.
+   */
+  local: taskProcedure("read", taskInput).query(async ({ ctx, input }) => {
+    const task = await ctx.deps.db.task.findFirst({ where: { id: input.taskId, organizationId: ctx.scope.organizationId }, select: { id: true, ticketKey: true } });
+    if (task === null) {
+      throw notFoundTask();
+    }
+    return loadLocalView(ctx.deps, { id: input.taskId, organizationId: ctx.scope.organizationId, ticketKey: task.ticketKey, shortKey: shortKeyOf(task.id) }, { userId: ctx.user.userId });
   }),
 
   /** "Carry on without it": the driver or a project admin closes a needs-you item that doesn't hold the task, such as a restore conflict. */
@@ -663,4 +778,21 @@ export const approvalsRouter = router({
       });
       return { approvalId: input.approvalId, decision: input.decision, taskRule: answered.taskRule, reopened: answered.reopened };
     }),
+
+  /**
+   * What the card shows before the member decides (ticket 35): the rule that asked, the subject, and
+   * the pattern "Approve for this task" would add (`null` when the subject gives none, and the card
+   * then offers no such button). For any member who can open the project; read only.
+   */
+  preview: memberProcedure.input(z.strictObject({ approvalId: approvalIdSchema })).query(async ({ ctx, input }) => {
+    const { db } = ctx.deps;
+    const found = await db.approval.findFirst({ where: { id: input.approvalId, organizationId: ctx.scope.organizationId }, select: { projectId: true } });
+    if (found === null) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "No such approval" });
+    }
+    await loadProjectAccess(db, ctx.scope, projectIdSchema.parse(found.projectId), "read").catch(() => {
+      throw new TRPCError({ code: "NOT_FOUND", message: "No such approval" });
+    });
+    return previewApproval(ctx.deps, ctx.scope.organizationId, input.approvalId);
+  }),
 });

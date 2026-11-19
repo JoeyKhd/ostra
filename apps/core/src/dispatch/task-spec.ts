@@ -2,7 +2,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import { githubNoReplyAddress, modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
 import type { SpendCapSettings } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
@@ -164,8 +164,22 @@ export const buildTaskSpec = async (
     return { ok: false, error: "not-found", message: "the task has no repo" };
   }
 
-  const coAuthors = (await db.taskCoAuthor.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "asc" } }))
-    .map((row) => gitPersonSchema.safeParse({ name: row.name, email: row.email }))
+  // A member with a verified GitHub link (F-119, ADR 0052) is credited by their no-reply address; one
+  // without, by the name and email they had when the task started. Read now, so a link made after the
+  // task began is used from the next commit on.
+  const coAuthorRows = await db.taskCoAuthor.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "asc" } });
+  const linked = await db.member.findMany({
+    where: { id: { in: coAuthorRows.flatMap((row) => (row.memberId === null ? [] : [row.memberId])) }, organizationId },
+    select: { id: true, user: { select: { githubUserId: true, githubLogin: true } } },
+  });
+  const coAuthors = coAuthorRows
+    .map((row) => {
+      const user = linked.find((member) => member.id === row.memberId)?.user;
+      return user?.githubUserId !== undefined && user.githubUserId !== null && user.githubLogin !== null
+        ? { name: row.name, email: githubNoReplyAddress(user.githubUserId, user.githubLogin) }
+        : { name: row.name, email: row.email };
+    })
+    .map((person) => gitPersonSchema.safeParse(person))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
 
   // Milestone 3 (ticket 16): the profile's skills, MCP servers and rules, the task's rules, plan first.

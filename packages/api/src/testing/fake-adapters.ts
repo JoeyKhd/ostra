@@ -11,12 +11,14 @@ import type {
   CatalogMatch,
   CodeHostAppCredentials,
   CodeHostCapabilities,
+  CodeHostOAuthClient,
   ConnectionTest,
   CreatedApp,
   EndpointModel,
   HealthReport,
   HostRepo,
   Installation,
+  LinkedUser,
   ModelEndpoint,
   Notification,
   PullRequest,
@@ -148,7 +150,7 @@ export type FakeApp = {
 /** A code host with a few Apps, their installations, repos and files. */
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: true };
   /** By App ID. */
   readonly apps = new Map<string, FakeApp>();
   /** File contents by `owner/name`, then path. */
@@ -165,6 +167,10 @@ export class FakeCodeHost extends CodeHostAdapter {
   branchRulesFailure: "unsupported" | "down" | null = null;
   /** How many times `readBranchRules` was called. */
   branchRulesReads = 0;
+  /** What `exchangeUserCode` answers for a code (F-119): the account, or a token that could not be revoked. */
+  readonly linkCodes = new Map<string, LinkedUser | "revoke-failed">();
+  /** The sign-in URLs `userAuthorizeUrl` made, with their states. */
+  readonly linkStarts: { readonly clientId: string; readonly state: string; readonly redirectUri: string }[] = [];
 
   health(): Promise<HealthReport> {
     return healthy;
@@ -212,6 +218,20 @@ export class FakeCodeHost extends CodeHostAdapter {
     }
     const repos = found.repos.get(installationId);
     return Promise.resolve(repos === undefined ? adapterError("not-found", "no such installation") : ok(repos));
+  }
+
+  override userAuthorizeUrl(client: CodeHostOAuthClient, state: string, redirectUri: string): AdapterResult<string> {
+    this.linkStarts.push({ clientId: client.clientId, state, redirectUri });
+    return ok(`https://github.example/login/oauth/authorize?client_id=${encodeURIComponent(client.clientId)}&state=${encodeURIComponent(state)}`);
+  }
+
+  override exchangeUserCode(_client: CodeHostOAuthClient, code: string): Promise<AdapterResult<LinkedUser>> {
+    const answer = this.linkCodes.get(code);
+    if (answer === undefined) {
+      return Promise.resolve(adapterError("unauthorized", "GitHub refused the sign-in's code: it may have expired or been used"));
+    }
+    this.linkCodes.delete(code);
+    return Promise.resolve(answer === "revoke-failed" ? adapterError("unavailable", "revoking the sign-in's token failed (HTTP 500): nothing was linked") : ok(answer));
   }
 
   mintRepoToken(): Promise<AdapterResult<RepoToken>> {

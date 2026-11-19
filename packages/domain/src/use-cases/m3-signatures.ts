@@ -349,7 +349,7 @@ export type RecordSnapshotResult = (
 /** A device code approved with purpose `cli`: a session whose token is shown once and stored hashed. */
 export type StartCliSession = (
   deps: M3Deps,
-  input: { readonly userId: UserId; readonly memberId: MemberId; readonly machineName: string },
+  input: { readonly userId: UserId; readonly memberId: MemberId; readonly machineName: string; /** `OSTRA_CLI_SESSION_DAYS`; 30 when absent. */ readonly sessionDays?: number },
 ) => Promise<UseCaseResult<{ readonly sessionId: CliSessionId; readonly token: string; readonly expiresAt: number }, never>>;
 
 export type RevokeCliSession = (

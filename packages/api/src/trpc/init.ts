@@ -36,7 +36,19 @@ export const router = t.router;
 export const createCallerFactory = t.createCallerFactory;
 export const publicProcedure = t.procedure;
 
+/**
+ * A CLI session (F-103) is its own credential: it reads branch names for `ostra checkout` at
+ * `/api/cli/v1/` and nothing else. It is no login session, so better-auth never accepts it; this
+ * says so in words instead of "Sign in first", and so no procedure can ever be reached with one.
+ */
+const refuseCliSession = (ctx: Context): void => {
+  if (/^Bearer +ostra_cli_/i.test(ctx.headers.get("authorization") ?? "")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A CLI session can only fetch a task's branches for `ostra checkout`" });
+  }
+};
+
 const requireSignedIn = t.middleware(({ ctx, next }) => {
+  refuseCliSession(ctx);
   if (ctx.user === null) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in first" });
   }
@@ -49,6 +61,7 @@ export const authedProcedure = publicProcedure.use(requireSignedIn);
 export const PASSWORD_CHANGE_REQUIRED = "Choose a new password first: this account still has the default one";
 
 const requireMember = t.middleware(({ ctx, next }) => {
+  refuseCliSession(ctx);
   if (ctx.user === null) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in first" });
   }
