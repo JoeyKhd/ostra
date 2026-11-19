@@ -165,6 +165,8 @@ Checked against `apps/web`, `packages/api` and `packages/db` on `main` (2026-11-
 
 ## Open points (recommendations; ticket 38 records the answer)
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in ticket 38.
+
 1. **Changing a saved note's scope.** Recommended: not allowed; a member writes a new note in the other scope and archives this one. `MemoryNoteVersion` has no scope column, so a moved note's history couldn't say where it was, and moving a project note to the organization widens who sees it.
 2. **Delete as well as archive.** F-109 says members "delete" notes; ADR 0044 (amended) says "archiving or deleting". Recommended: archive only in milestone 4, since an archived note keeps the sources and versions the audit log points at.
 3. **Restoring an archived note.** Recommended: none in milestone 4 (`memory.archive` has no reverse); a member writes it again.

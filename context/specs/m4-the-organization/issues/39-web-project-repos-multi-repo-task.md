@@ -21,4 +21,11 @@ Spec: `../spec.md`, sections 3 (steps 3 to 5) and 12; target `project-repos`
 - [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
 - [ ] Committed as `✨ add several repos to the panel`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **One repos page, under Settings** (`project-repos.md`): `/projects/[id]/settings/repos`; `/projects/[id]/repos` redirects to it, and the project sidebar's `Repos` row is dropped.
+- **Project admins add repos** (`project-repos.md`): adding grants nothing the App doesn't already reach, and `projects.availableRepos` lists what the installation grants.
+
 ## Comments

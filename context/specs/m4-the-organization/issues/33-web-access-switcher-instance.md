@@ -22,6 +22,14 @@ Spec: `../spec.md`, sections 3 (steps 2, 12) and 12; targets `project-access`, `
 - [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
 - [ ] Committed as `✨ add project access and the instance's accounts`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **Removing someone from a restricted project while they drive a task there** (`project-access.md`, open point 1): a `driver.changed` to nobody on each such task, in the same transaction, as ADR 0053 does for a removed member.
+- **The audit actions** (open point 2): `project.access-changed`, `project.member-set` and `project.member-removed`, in ticket 10's closed union.
+- **What a project admin who isn't an organization admin reads about members** (open point 3): names and roles, never addresses.
+
 ## Comments
 
 - 2026-11-19, lead: trimmed. The switcher, the Organizations page and the `F-049` Playwright cases for switching moved to ticket 44 (`wontfix`, F-134 after v1). Before that, this ticket's tests were: "a member of two organizations switches and every page follows; a link into the other organization switches with the notice".

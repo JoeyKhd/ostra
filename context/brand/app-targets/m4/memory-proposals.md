@@ -157,6 +157,8 @@ Checked against `apps/web`, `packages/api` and `packages/db` on `main` (2026-11-
 
 ## Open points (recommendations; ticket 38 records the answer)
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in ticket 38.
+
 1. **Which notes rank as related for a project proposal.** Ticket 16 says "the scope's active notes". Recommended: the project's notes and the organization's, since a project note can contradict an organization note (and wins over it, ADR 0044), and the member should see both. An organization proposal ranks only organization notes.
 2. **Editing a proposal before approving it as a new note.** Recommended: no; approve as it stands and edit the note (one version more, with the member as its editor). It keeps the proposal's text as the agent or member wrote it, for the audit.
 3. **A reason on Reject.** `MemoryProposal` has no field for one. Recommended: none in milestone 4; the agent never sees the decision anyway.

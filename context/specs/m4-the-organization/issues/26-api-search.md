@@ -18,4 +18,10 @@ Spec: `../spec.md`, section 4 ("Search"); ADR 0054
 - [ ] Tests named `it("F-080: ...")`: each filter token; text with a prefix match; results only from visible projects of the active organization, for a member, a project member of a restricted project and an organization admin; a hidden task's text never appears in a snippet or a count.
 - [ ] Committed as `✨ add search`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **`status:` values** (`search-palette.md`, open point 2): the parser accepts the task list's words hyphenated (`in-review`, `needs-you`) and in snake case (`in_review`, `needs_you`) alike; the panel writes the hyphenated form.
+
 ## Comments

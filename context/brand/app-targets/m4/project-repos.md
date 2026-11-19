@@ -187,5 +187,7 @@ All other visible copy is spelled right.
 
 ## Open points for the maintainer
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in ticket 39.
+
 - **Milestone 2's `Repos` row in the project's sidebar.** `m2/repo-checks` and `app-design.md` give the project both a `Repos` row and a `Settings` row; ticket 39 puts repos under `settings/repos`. Recommended: one page, under Settings (this target), with `/projects/[id]/repos` redirecting to it and the sidebar's `Repos` row dropped, so the project nav doesn't hold two ways to one page. The alternative keeps the `Repos` row pointing at this route and selects `Settings` while it's open.
 - **Who adds a repo.** ADR 0027 and ticket 30 say project admins. A repo the App can reach is visible to the organization; a project admin who isn't an organization admin would see every repo the installation grants in the sheet. Recommended: allowed (adding grants nothing the App doesn't already have), with `projects.availableRepos` as above. The alternative is organization admins only.

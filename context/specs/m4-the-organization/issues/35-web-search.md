@@ -19,4 +19,11 @@ Spec: `../spec.md`, sections 3 (step 11) and 12; targets `search-palette`, `sear
 - [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
 - [ ] Committed as `✨ add search to the panel`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **Search stays in the sidebar** (`search-palette.md`, open point 1): the sidebar's search box, as `app-design.md` and every approved picture draw it, opens the palette; the top bar's field of this ticket is a second way in to the same palette.
+- **`status:` values** (open point 2): hyphenated and snake case alike (ticket 26).
+
 ## Comments

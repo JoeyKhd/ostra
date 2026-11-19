@@ -20,4 +20,11 @@ Spec: `../spec.md`, sections 3 (step 10) and 12; targets `audit-log`, `task-even
 - [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
 - [ ] Committed as `✨ add the audit log and the event log`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **One row per tool call** (`task-event-log.md`, open point 1): the completion folds into its `tool.called` row, with its status; the row's details show both events' `seq`, so an audit can cite either.
+- **No export of the event log** in milestone 4 (open point 2): ADR 0054 exports only the audit log, as CSV.
+
 ## Comments

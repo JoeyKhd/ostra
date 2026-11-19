@@ -20,4 +20,10 @@ Spec: `../spec.md`, section 4 ("Spend and the gate"); ADR 0055, ADR 0050
 - [ ] Tests named `it("F-115: ...")`: the budget mails render and go through Resend's and SMTP's fakes.
 - [ ] Committed as `✨ add budget notices and their release`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **The budget mails' button** (`email-account.md`): `Raise the budget`, since ticket 13's audiences are the admins of the budget's scope. A later audience that can't raise it gets `Open Spend` instead.
+
 ## Comments

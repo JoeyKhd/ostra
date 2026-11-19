@@ -204,5 +204,7 @@ Build from this file, not these:
 
 ## Open points for the maintainer
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in tickets 22 and 32.
+
 1. **"Address in use" says the address has an account.** Only someone holding the invitation's link sees it, and the address is on the invitation, so it tells them nothing about any other address. The alternative is a generic refusal, which leaves a real invitee stuck. This spec picks the helpful line.
 2. **No confirm field** on sign-up, with a show toggle instead (above). Change-password and the reset page keep their confirm field, since there the password replaces one that worked.

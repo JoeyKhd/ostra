@@ -31,3 +31,15 @@ Each step needs an account, a click or a yes that an agent doesn't have. The tes
 - [ ] Each step is done or answered, with the date, under `## Comments`.
 
 ## Comments
+
+- 2026-11-19, the agent's pass (commit `📝 prepare the milestone 4 build`). None of these steps can be done by an agent: each needs a GitHub account, an organization's owner, a one-way click, or a provider's key. What an agent could do:
+  - `docs/development.md` names every setting these steps add, never the values: `GITHUB_TEST_ORG_B`, `GITHUB_TEST_REPO_B` and `GITHUB_TEST_ORG_B_TOKEN` in `github-test.env`; `GITHUB_B_APP_ID` and `GITHUB_B_APP_PRIVATE_KEY_PATH` in `github-b.env` (step 3's names, chosen here); `OSTRA_DEV_MODEL_B_BASE_URL` and `OSTRA_DEV_MODEL_B_API_KEY` in `model-b.env`. It says that without them the tests use the fake GitHub's second account and two stub model endpoints.
+  - Checked: `~/.config/ostra-dev/` holds no `model-b.env` or `github-b.env`, and `github-test.env` no second org. The test App (`ostra-sandbox-036d7c`) is owned by `ostra-test`, with one installation, and is private: an unauthenticated `GET /apps/ostra-sandbox-036d7c` answers 404.
+  - **F-135 and F-136 are proved on fakes and stubs** until these exist: the fake GitHub's second account (ticket 47) and two stub model endpoints with their own tokens (spec section 11, "Two model keys"). Their live two-client run (spec section 3, steps 15 to 17) is this ticket's, and `demo.md` (ticket 41) says it's waiting.
+- **Left for the maintainer:**
+  1. Create a second test GitHub organization (`ostra-test-b`) with the repo `testb1` and a README, and put its names and a token with contents write on `testb1` only in `github-test.env`.
+  2. Make the test App public (one-way while another account has it installed) and install it on `ostra-test-b`, choosing `testb1`.
+  3. Optionally, an App owned by `ostra-test-b` with F-006's permissions, installed on `testb1`, in `github-b.env`.
+  4. A second model key in `model-b.env` serving `model.env`'s model under the same models.dev ID (a second key on the same endpoint is enough).
+  5. Look at ticket 52's targets once they're made, and record the approval there.
+  6. Review Q270 to Q284, in particular the eight the lead listed above.

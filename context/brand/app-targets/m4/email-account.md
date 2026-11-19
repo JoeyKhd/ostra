@@ -185,5 +185,7 @@ All visible copy is spelled right; the demo invitation ID reads the same in both
 
 ## Open points for the maintainer
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in tickets 13 and 22.
+
 - **How long a verification link works.** ADR 0053 sets the invitation (7 days) and the reset link (24 hours) but not the verification. better-auth's default is one hour, which is short for someone who signed up and walked away. Recommended: 24 hours, as `OSTRA_RESET_LINK_HOURS`'s value, through better-auth's `emailVerification.expiresIn`, and a "Send it again" on the "Check your inbox" page (`accept-invite`). The alternative keeps one hour.
 - **The budget mails' button.** `Raise the budget` assumes the reader can, which holds for the audiences of ticket 13 (admins of the budget's scope). If milestone 6's audiences add non-admins, their mail says `Open Spend` instead.

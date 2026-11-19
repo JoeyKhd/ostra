@@ -164,5 +164,7 @@ Build from this file, not these:
 
 ## Open points for the maintainer
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in ticket 32.
+
 1. **No sign-in after a reset.** The member types the new password once more on `/sign-in`. Signing them in straight away would save a step but makes the link (a bearer secret in a mailbox) worth a session on its own; this spec keeps the step.
 2. **"Sent" names the address it was given** (`If sam@acme.dev belongs to an account here…`). It repeats only what the visitor typed, so it reveals nothing, and it catches a typo.

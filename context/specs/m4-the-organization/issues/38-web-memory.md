@@ -23,4 +23,15 @@ Spec: `../spec.md`, sections 3 (steps 7 to 9) and 12; targets `memory`, `memory-
 - [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
 - [ ] Committed as `✨ add Memory to the panel`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **A saved note keeps its scope** (`memory-note.md`, open point 1): a member writes a new note in the other scope and archives this one.
+- **Archive only, no delete** (open point 2): an archived note keeps the sources and versions the audit log points at.
+- **No restore of an archived note** (open point 3): a member writes it again.
+- **Related notes for a project proposal** (`memory-proposals.md`, open point 1): the project's notes and the organization's; an organization proposal ranks only the organization's.
+- **No editing a proposal before approving it** (open point 2): approve it as it stands, then edit the note (one version more, the member its editor).
+- **No reason on Reject** (open point 3).
+
 ## Comments

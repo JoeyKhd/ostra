@@ -138,6 +138,8 @@ New files under `components/tasks/task-event-log/` (ticket 34).
 
 ## Open points for the build
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in ticket 34.
+
 Settle each with the maintainer; don't guess in code.
 
 1. **Rows per event or per call.** The target folds a call's completion into its `tool.called` row (one row per call, its status on it). Say if an audit needs the completion as a row of its own, with its `seq`.

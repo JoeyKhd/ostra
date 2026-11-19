@@ -22,4 +22,10 @@ Spec: `../spec.md`, section 4 ("The audit log"); ADR 0054
 - [ ] No entry's `data` holds content: a test scans the fixture run's entries for prompts, note text and tokens by value.
 - [ ] Committed as `✨ record every action in the audit log`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **The project access actions** (`project-access.md`, open point 2): `project.access-changed` (open or restricted), `project.member-set` (a grant added or its role changed) and `project.member-removed`, in the closed union.
+
 ## Comments

@@ -22,4 +22,14 @@ Spec: `../spec.md`, sections 3 (steps 1, 14) and 12; targets `members`, `member-
 - [ ] Each screen checked by eye against its target at 1440 px and at phone width, dark and light; differences fixed or listed under `## Comments`.
 - [ ] Committed as `✨ add members and invitations to the panel`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **Sign-up on an invitation** (`accept-invite.md`): "Address in use" says the address has an account (open point 1); no confirm field, a show toggle instead (open point 2). Change-password and the reset page keep theirs.
+- **The invitation's link is shown once** (`members.md`): `Copy link` lives only on an invitation made in this tab, as ADR 0053 and ticket 22 say; no stored readable link.
+- **No "Leave" action** in milestone 4 (`members.md`). If one comes, it goes in the profile menu.
+- **No sign-in after a reset** (`reset-password.md`, open point 1): the member signs in with the new password, so the link alone is never worth a session.
+- **"Sent" names the address it was given** (`reset-password.md`, open point 2), to catch a typo; it reveals nothing the visitor didn't type.
+
 ## Comments

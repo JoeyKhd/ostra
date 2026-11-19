@@ -152,6 +152,8 @@ Checked against `apps/web` and `packages/api` on `main` (2026-11-19):
 
 ## Open points for the lead
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in ticket 32.
+
 - **`Copy link` on older invitations.** Spec section 12 lists "Copy link" on pending invitations; ticket 22 and ADR 0053 show the link once and never return it again. This target keeps the link once: `Copy link` lives only on an invitation made in this tab. If the maintainer wants it on every pending row, the API must store a readable link, which ADR 0053 would need to say.
 - **Leaving an organization.** ADR 0053 says the last admin can't leave, but no ticket builds a "Leave" action. This page offers none; if one comes, it goes in the profile menu, not on this list.
 

@@ -137,6 +137,8 @@ No green on this page: an access change isn't a success to celebrate, it's a fac
 
 ## Open points (the build takes the recommendation and records it in ticket 33's `## Comments`)
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in tickets 10 and 33.
+
 1. **Removing someone from a restricted project while they drive a task there.** Ticket 23 doesn't say. Recommended: what ADR 0053 does for a removed member, a `driver.changed` to nobody on each such task, in the same transaction, so nobody drives a task they can no longer open.
 2. **The audit actions' names** for access changes. Ticket 10 owns the list; this file's names are a proposal.
 3. **What a project admin who isn't an organization admin may read about the organization's members.** Recommended: names and roles, never addresses (the Members page keeps those to organization admins), enough for the admins line and the Add select.

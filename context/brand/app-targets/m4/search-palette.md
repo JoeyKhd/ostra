@@ -119,6 +119,8 @@ Tokens: `app-concepts/html/graphite.css` at the pictures' scale (`../m1/README.m
 
 ## Open points for the build
 
+**Decided 2026-11-19** by the recommendation, under `## Decided 2026-11-19` in tickets 26 and 35.
+
 Settle each with the maintainer; don't guess in code.
 
 1. **Search in the top bar and the sidebar.** The spec (section 12) puts search in the top bar; `app-design.md` and every approved picture keep it in the sidebar. The target keeps the sidebar's box; ticket 35's top-bar field is a second way in. Say whether the sidebar box stays.

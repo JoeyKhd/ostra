@@ -24,4 +24,11 @@ Spec: `../spec.md`, section 4 ("An invitation", "A reset"); ADR 0053, ADR 0003
 - [ ] The whole-repo checks pass (spec section 9).
 - [ ] Committed as `✨ add invitations and resets`.
 
+## Decided 2026-11-19
+
+Settled by the target's recommendation, on the maintainer's delegation (ticket 42, step 5); the maintainer may reopen any.
+
+- **How long a verification link works** (`email-account.md`): 24 hours, the reset link's value in ADR 0053, through better-auth's `emailVerification.expiresIn`; no new setting. "Send it again" on the "Check your inbox" page (`accept-invite.md`) asks for a fresh one.
+- **"Address in use" on an invitation's sign-up** (`accept-invite.md`, open point 1): it says the address has an account, since only the link's holder sees it and the address is the invitation's.
+
 ## Comments

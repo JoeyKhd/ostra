@@ -12,20 +12,31 @@ This repo is public, so secrets never go in it, nor in its folder on disk. Keep 
 │                    LINEAR_APP_TOKEN only if the app's client-credentials grant is switched on
 ├── email.env        RESEND_API_KEY; EMAIL_FROM (an address on a domain verified in Resend, or
 │                    Resend's onboarding sender, which mails only the account's own address); and
-│                    EMAIL_TO, the maintainer's own address for milestone 3's manual demo. Without
-│                    this file, mail is proved on a fake Resend API and a local SMTP server
+│                    EMAIL_TO, the maintainer's own address for milestone 3's manual demo; and
+│                    EMAIL_TO_SAM and EMAIL_TO_RAE, two more addresses that reach the maintainer
+│                    (plus addresses work), for milestone 4's manual run. Without this file, mail is
+│                    proved on a fake Resend API and a local SMTP server, and milestone 4's scripted
+│                    run sends its mail to the local mail sink (ticket 40)
 ├── github.env       the test GitHub App's ID, slug, client ID and secret, private key path, and
 │                    GITHUB_APP_WEBHOOK_SECRET once the App's webhook is on
 ├── github-test.env  the test org and repos, the App's installation ID, GITHUB_TEST_ADMIN_TOKEN
 │                    (administration on test2 only, for the demo's signed-commit ruleset),
 │                    GITHUB_TEST_MEMBER_TOKEN (the linked member's own GitHub user, for milestone 3's
-│                    `@ostra` comments) and GITHUB_TEST_REVIEWER_TOKEN (a second user, linked to no
-│                    member)
+│                    `@ostra` comments), GITHUB_TEST_REVIEWER_TOKEN (a second user, linked to no
+│                    member, a collaborator on test1 and test2 who can approve) and, for milestone
+│                    4's two clients, GITHUB_TEST_ORG_B and GITHUB_TEST_REPO_B (a second test org
+│                    and its one repo) and GITHUB_TEST_ORG_B_TOKEN (contents write on that repo only)
+├── github-b.env     optional: GITHUB_B_APP_ID and GITHUB_B_APP_PRIVATE_KEY_PATH, an App the second
+│                    test org owns, for milestone 4's "Connect another App"
 ├── model.env        OSTRA_DEV_MODEL_BASE_URL, OSTRA_DEV_MODEL_API_KEY and OSTRA_DEV_MODEL_ID
+├── model-b.env      OSTRA_DEV_MODEL_B_BASE_URL and OSTRA_DEV_MODEL_B_API_KEY, a second key serving
+│                    model.env's model under the same models.dev ID (milestone 4's second client)
 └── tunnel.env       whatever the chosen tunnel needs to give the dev server a public address
 ```
 
 `model.env` points at any model endpoint: an API base URL, a bearer token and a model ID. ostra never assumes a particular provider, and neither does its development setup.
+
+Milestone 4's second GitHub organization, `github-b.env` and `model-b.env` are optional. Without them, its tests use the fake GitHub's second account and two stub model endpoints, which prove F-135 and F-136 on their own; only the live run with two clients needs them (ticket 55).
 
 The code reads secrets only from the environment. Load a file into your shell when you need it, for example `set -a; . ~/.config/ostra-dev/linear.env; set +a`.
 
