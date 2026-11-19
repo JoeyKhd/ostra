@@ -3,57 +3,67 @@
 import { useQuery } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
-import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
-import { projectColour } from "@/components/shell/project-colour";
+import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { buttonVariants } from "@/components/ui/button";
-import { Status } from "@/components/ui/status";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
+import type { RouterOutputs } from "@/lib/trpc";
 
+import { HomePanel } from "./home-panel";
+import { ActivitySection, NeedsYouSection, ProjectsSection } from "./home-sections";
+import type { Load } from "./home-sections";
+import { summaryText } from "./home-words";
 import { SetupChecklist } from "./setup-checklist";
 
-const today = (): string =>
-  new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+type Overview = RouterOutputs["home"]["overview"];
 
-/** The organization's Home: the checklist while setup isn't done, then its projects. */
+const today = (now: Date): string => new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(now);
+
+/** Home refreshes its counts and ages every half minute while it's open. */
+const REFRESH_MS = 30_000;
+
+/**
+ * The organization's Home (home.md, F-062): Needs you, Projects and Recent activity, with PRs,
+ * spend and runners in the right panel. While setup isn't done (F-076), the checklist takes Needs
+ * you's place and the panel is left out.
+ */
 export const HomeView = () => {
   const trpc = useTRPC();
   const me = useQuery(trpc.me.get.queryOptions());
-  const projects = useQuery(trpc.projects.list.queryOptions());
+  const setup = useQuery(trpc.setup.status.queryOptions());
+  const overview = useQuery({ ...trpc.home.overview.queryOptions(), refetchInterval: REFRESH_MS });
+  const [now] = useState(() => new Date());
   const organization = me.data?.organization;
   const admin = organization?.role === "admin";
+  const setupDone = setup.data?.next === null;
+  const firstRun = setup.data !== undefined && setup.data.next !== null;
+
+  const load = <T,>(pick: (data: Overview) => T): Load<T> =>
+    overview.data !== undefined
+      ? { kind: "ready", data: pick(overview.data) }
+      : overview.isError
+        ? { kind: "error", retry: () => void overview.refetch() }
+        : { kind: "loading" };
+  const at = overview.dataUpdatedAt === 0 ? now.getTime() : overview.dataUpdatedAt;
+  const lede = overview.data === undefined || overview.data.summary.projects === 0 ? t("home.lede") : summaryText(overview.data.summary);
 
   return (
     <PageFrame
       crumbs={[{ label: organization?.name ?? "" }, { label: t("home.title") }]}
       actions={
-        <Link href="/tasks/new" className={buttonVariants()}>
+        // Until setup is done, the checklist's next step is the page's one primary button.
+        <Link href="/tasks/new" className={buttonVariants({ variant: setupDone ? "primary" : "outline" })}>
           <PlusIcon /> {t("shell.newTask")}
         </Link>
       }
+      {...(setupDone ? { properties: <HomePanel overview={overview.data} now={now} /> } : {})}
     >
-      <PageHeading eyebrow={<span suppressHydrationWarning>{today()}</span>} title={organization?.name ?? t("home.title")} lede={t("home.lede")} />
-      <SetupChecklist admin={admin} />
-      <Section title={t("home.projects")} count={projects.data?.length ?? 0}>
-        {projects.data?.length === 0 ? (
-          <p className="border-t border-line py-3 text-muted">{admin ? t("home.noProjectsAdmin") : t("home.noProjects")}</p>
-        ) : (
-          <ul className="rows">
-            {projects.data?.map((project) => (
-              <li key={project.id}>
-                <Link href={`/projects/${project.id}`} className="flex min-h-10 items-center gap-3 hover:bg-raise">
-                  <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(project.id) }} />
-                  <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                  <span className="hidden font-mono text-sm text-faint md:inline">{project.repos.map((repo) => repo.fullName).join(", ")}</span>
-                  {project.needsYouCount > 0 ? <Status tone="amber">{t("home.needsYou", { n: project.needsYouCount })}</Status> : null}
-                  <span className="w-20 text-right font-mono text-sm text-muted">{t("home.running", { n: project.runningCount })}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <PageHeading eyebrow={<span suppressHydrationWarning>{today(now)}</span>} title={organization?.name ?? t("home.title")} lede={lede} />
+      {firstRun ? <SetupChecklist admin={admin} /> : <NeedsYouSection load={load((data) => data.needsYou)} now={at} />}
+      <ProjectsSection load={load((data) => data.projects)} admin={admin} now={now} />
+      <ActivitySection load={load((data) => data.activity)} now={at} />
     </PageFrame>
   );
 };

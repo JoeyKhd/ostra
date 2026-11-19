@@ -193,7 +193,7 @@ Every feature we've decided on, with a checkable "done when". It is the source o
 
 | ID | Feature | Done when | Priority | Status |
 |---|---|---|---|---|
-| F-062 | Home | A member's first screen covers every project they can open in the organization. It leads with "needs you" (questions, approvals, plans, drafts and PRs to review, in amber), then what's running, then what's recent. A board grouped by status is the second view. *Changed 2026-11-18: Home covers the whole organization (Q30).* | v1 | planned |
+| F-062 | Home | A member's first screen covers every project they can open in the organization. It leads with "needs you" (questions, approvals, plans, drafts and PRs to review, in amber), then what's running, then what's recent. A board grouped by status is the second view. *Changed 2026-11-18: Home covers the whole organization (Q30).* *Building 2026-11-19: milestone 1's Home is built to its target (`context/brand/app-targets/m1/home.md`): needs you, projects, recent activity, and PRs, spend and runners beside them; the board view comes later.* | v1 | building |
 | F-075 | Responsive panel | Every screen works at phone width, and the "needs you" moments (approve, answer, reopen) are fully usable on a phone. There's no mobile app. The panel is built with shadcn/ui (ADR 0007) and is designed desktop first. | v1 | planned |
 | F-080 | Search | Members find tasks by ticket, repo, member, status, or text anywhere in a task's conversation. | v1 | planned |
 | F-081 | Keyboard and accessibility | A command palette (⌘K) and shortcuts cover the core actions: jump to "needs you", approve, answer, take over and reopen. Every screen is usable by keyboard and meets WCAG AA contrast. | v1 | planned |

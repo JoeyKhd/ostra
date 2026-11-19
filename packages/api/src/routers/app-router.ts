@@ -1,6 +1,7 @@
 import { router } from "../trpc/init.ts";
 import { environmentsRouter } from "./environments.ts";
 import { githubRouter } from "./github.ts";
+import { homeRouter } from "./home.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
 import { poolsRouter, runnersRouter } from "./runners.ts";
@@ -13,6 +14,7 @@ import { setupRouter } from "./setup.ts";
 export const appRouter = router({
   setup: setupRouter,
   me: meRouter,
+  home: homeRouter,
   organization: organizationRouter,
   providers: providersRouter,
   agentProfiles: agentProfilesRouter,

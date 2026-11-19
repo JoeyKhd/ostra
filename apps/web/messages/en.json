@@ -90,11 +90,87 @@
   "home": {
     "title": "Home",
     "lede": "Your organization's projects and what waits on you.",
+    "summary": "{running} across {projects}, {queued} queued. {prs}",
+    "summaryRunning": { "one": "{n} task running", "other": "{n} tasks running" },
+    "summaryProjects": { "one": "{n} project", "other": "{n} projects" },
+    "summaryPrs": { "one": "{n} pull request opened today.", "other": "{n} pull requests opened today." },
     "projects": "Projects",
     "noProjects": "No projects yet. An admin creates the first one.",
     "noProjectsAdmin": "No projects yet. Create one from the checklist.",
-    "needsYou": "{n} need you",
-    "running": "{n} running"
+    "loadFailed": "Couldn't load this.",
+    "retry": "Retry",
+    "needsYou": {
+      "title": "Needs you",
+      "empty": "Nothing waits on you."
+    },
+    "reason": {
+      "approval": "Approval: ",
+      "approvalNoCommand": "Approval requested",
+      "plan": "Plan ready for review",
+      "draftReady": "Draft PR #{n} ready",
+      "draftReadyNoNumber": "Draft PR ready",
+      "question": "Question: {question}",
+      "questionNoText": "The agent asked a question",
+      "noChanges": "Finished without changes",
+      "stalled": "No progress for {n} min",
+      "spendCap": "Spend cap reached",
+      "crashed": "The agent crashed",
+      "setupFailed": "Setup failed: exited {code}",
+      "setupFailedNoCode": "Setup failed",
+      "ticketClosed": "The ticket was closed",
+      "roundCap": "Review rounds used up",
+      "waitingForReviewer": "Waiting for a reviewer",
+      "environmentProposal": "Environment change proposed"
+    },
+    "action": {
+      "approve": "Approve",
+      "reviewPlan": "Review plan",
+      "reviewPr": "Review PR",
+      "answer": "Answer",
+      "openTask": "Open task"
+    },
+    "table": {
+      "project": "Project",
+      "repo": "Repo",
+      "running": "Running",
+      "queued": "Queued",
+      "needsYou": "Needs you",
+      "prs": "PRs this week",
+      "spend": "Spend, {month}"
+    },
+    "activity": {
+      "title": "Recent activity",
+      "empty": "Nothing has happened yet.",
+      "organization": "Organization",
+      "prOpened": "PR #{n} {title} opened",
+      "taskStopped": "{key} stopped",
+      "stoppedReason": {
+        "requested": "{key} stopped by a member",
+        "rejected": "{key} stopped: rejected",
+        "prs_closed": "{key} stopped: its PRs were closed",
+        "runner_lost": "{key} stopped: runner lost",
+        "spend_cap": "{key} stopped: spend cap reached",
+        "runaway": "{key} stopped: runaway"
+      },
+      "runnerJoined": "Runner {runner} joined {pool}",
+      "runnerJoinedPersonal": "Runner {runner} joined as a personal runner",
+      "projectCreated": "Project {project} created",
+      "providerAdded": "Model provider {provider} added",
+      "githubConnected": "GitHub connected"
+    },
+    "panel": {
+      "prsOpened": "Pull requests opened, last 7 days",
+      "prsToday": { "one": "{n} opened today", "other": "{n} opened today" },
+      "today": "today",
+      "chart": "Pull requests opened per day, the last 7 days: {counts}",
+      "spend": "Spend, {month}",
+      "noSpend": "No priced usage yet",
+      "runners": "Runners",
+      "runnersFigure": "{busy} busy · {queued} queued",
+      "noRunners": "No runner yet.",
+      "online": "online",
+      "offline": "offline"
+    }
   },
   "checklist": {
     "title": "Set up ostra",
