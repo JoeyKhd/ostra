@@ -19,6 +19,7 @@ import {
   postgresRateBudgetStore,
   syncEmailSettingsRow,
   systemClock,
+  warnIgnoredSettings,
 } from "@ostra/domain";
 import type { ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
@@ -137,6 +138,8 @@ export const startCore = async (
     readonly jobIntervals?: { readonly pollingIntervalSeconds: number; readonly superviseIntervalSeconds: number };
   } = {},
 ): Promise<RunningCore> => {
+  // An upgraded install may still set a retired setting: core starts, and says it ignores it.
+  warnIgnoredSettings(logger, settings);
   const db = createDb(settings.databaseUrl);
   const adapters = options.adapters ?? (await createServerAdapters(db, settings, logger));
   const jobs = createJobs({

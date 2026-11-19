@@ -1,6 +1,6 @@
 import type { Logger, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { postgresAuditLog, postgresChangeNotices, systemClock, warnIgnoredSettings } from "@ostra/domain";
 import type { CommandOutbox, JobQueue, ServerAdapters, ServerSettings } from "@ostra/domain";
 import { hashPassword } from "better-auth/crypto";
 
@@ -56,16 +56,14 @@ export type ApiRuntime = {
 
 export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRuntime> => {
   const { settings, db } = input;
+  // An upgraded install may still set a retired setting: it starts, and says it ignores it.
+  warnIgnoredSettings(input.logger, settings);
   const secrets = await loadServerSecrets(settings);
   const auth = createAuth({
     db,
     baseUrl: settings.publicUrl,
     secret: secrets.betterAuthSecret,
-    settings: {
-      openAccountSignup: settings.openSignupAccounts,
-      openOrganizationSignup: settings.openSignupOrganizations,
-      allowDefaultPassword: settings.allowDefaultPassword,
-    },
+    settings: { allowDefaultPassword: settings.allowDefaultPassword },
     logLevel: settings.mode === "production" ? "error" : "warn",
   });
   // F-001: a server that starts with no account seeds the first admin and organization. Every

@@ -95,7 +95,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     db: test.db,
     baseUrl,
     secret: randomBytes(32).toString("hex"),
-    settings: { openAccountSignup: false, openOrganizationSignup: false, allowDefaultPassword },
+    settings: { allowDefaultPassword },
     logLevel: "error",
   });
 
@@ -122,8 +122,6 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       publicUrl: baseUrl,
       corePublicUrl: "http://localhost:8787",
       catalogFetch: false,
-      openSignupAccounts: false,
-      openSignupOrganizations: false,
       allowDefaultPassword,
       retentionDays: null,
       blobStore: { kind: "postgres", maxBytes: 64 * 1024 * 1024 },

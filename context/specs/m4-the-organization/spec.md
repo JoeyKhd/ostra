@@ -255,6 +255,8 @@ One new migration, after milestone 3's, additive only. Every row carries `organi
 
 The generated `tsvector` columns and their GIN indexes are raw SQL in the migration, declared to Prisma as `Unsupported("tsvector")`. The migration backfills nothing; `search.backfill` fills `SearchEntry` for existing tasks.
 
+**Two deprecated columns stay: drop them in a later release.** `InstanceSetting.openSignupAccounts` and `InstanceSetting.openSignupOrganizations` are unused since 2026-11-19, when the open sign-up settings were removed (`schema.prisma` marks them). This migration is additive only, so it keeps them. The first migration of the release after the one that stopped reading them drops them (`AGENTS.md`: add first, drop in a later release), and the spec that writes that migration carries this line on until one does.
+
 ### 5.4 `packages/domain` (ticket 06)
 
 - **Lifecycles,** new, each with exhaustive tests: the membership (`pending_verification` → `active` → `removed`), the invitation (`pending` → `accepted` | `revoked` | `expired`), the proposal (`domain-model.md`'s, with "approve and archive" as an approve), a budget's month (`under` → `warned` → `reached`, reset on a new month or a raise), and the review check (`pending` ⇄ `passed`, per head).
@@ -280,7 +282,7 @@ The generated `tsvector` columns and their GIN indexes are raw SQL in the migrat
 | `OSTRA_PROJECT_MAX_REPOS` | `10` |
 | `OSTRA_SEARCH_ENTRY_MAX_KIB` | `8` |
 
-`OSTRA_OPEN_SIGNUP_ACCOUNTS` and `OSTRA_OPEN_SIGNUP_ORGANIZATIONS` exist from milestone 1 and keep their defaults (off). *Changed 2026-11-19: open sign-up is no longer planned, since it existed for a hosted version (ADR 0026, amended). The two settings stay as built, and milestone 4 builds no switch for them.*
+`OSTRA_OPEN_SIGNUP_ACCOUNTS` and `OSTRA_OPEN_SIGNUP_ORGANIZATIONS` exist from milestone 1 and keep their defaults (off). *Changed 2026-11-19: open sign-up is no longer planned, since it existed for a hosted version (ADR 0026, amended). The two settings stay as built, and milestone 4 builds no switch for them. Changed again 2026-11-19 (the maintainer: "the user can currently just invite team members. Yep."): both settings are removed from the code. A server that still finds one starts, ignores it and logs a warning (`docs/configuration.md`, "Removed settings"); their columns stay until a later release (section 5.3).*
 
 ### 5.5 Keys per project and linked installations (tickets 45 to 47)
 

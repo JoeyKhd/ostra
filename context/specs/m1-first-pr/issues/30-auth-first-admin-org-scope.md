@@ -11,7 +11,7 @@ Spec: `../spec.md`, sections 2, 3 (step 2) and 4
 
 - **better-auth** 1.7.25 (exact pin) on Prisma, configured in `packages/api/src/auth/` so `apps/web` serves it and `apps/core` can validate a session with the same code. Plugins: username, organization (roles `admin` and `member` only), device authorization (client ID `ostra-runner`), admin, bearer (ADR 0003 as amended).
 - **ostra's own pieces** (ADR 0003, "What better-auth lacks"):
-  - **Invite-only sign-up:** a `before` hook on the sign-up path lets through the first account (with the setup token) or anyone when `OSTRA_OPEN_SIGNUP_ACCOUNTS` is on. Invitees come in milestone 4 (F-002); the hook refuses them for now with a clear message.
+  - **Invite-only sign-up:** a `before` hook on the sign-up path lets through the first account (with the setup token) or anyone when `OSTRA_OPEN_SIGNUP_ACCOUNTS` is on. Invitees come in milestone 4 (F-002); the hook refuses them for now with a clear message. *Changed 2026-11-19: the server seeds the first account (F-001), and `OSTRA_OPEN_SIGNUP_ACCOUNTS` is removed (ADR 0026, amended), so the hook refuses every sign-up until invitees come.*
   - **The setup token** (F-001, Q117): `OSTRA_SETUP_TOKEN`, or one generated at first start and printed in the web server's log with the panel's address. Compared in constant time. It stops working once the first account exists.
   - **The first account** becomes the instance admin and the admin of the first organization, which ostra creates with it, under a Postgres advisory lock so only one account ever gets it (`createFirstAdmin`).
   - **The `owner` role block:** organization hooks refuse any role that isn't exactly `admin` or `member`.

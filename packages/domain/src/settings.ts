@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import type { Logger } from "@ostra/adapter-sdk";
 import { devDatabaseUrl, devDataDir, devPgPort, DEV_PG_PORT_DEFAULT } from "@ostra/db/dev";
 import { describeIssues, runnerEnvNames } from "@ostra/protocol";
 import { z } from "zod";
@@ -33,8 +34,6 @@ export const settingNames = [
   "OSTRA_RUNNER_TOKEN_KEY",
   "OSTRA_CATALOG_FETCH",
   "OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE",
-  "OSTRA_OPEN_SIGNUP_ACCOUNTS",
-  "OSTRA_OPEN_SIGNUP_ORGANIZATIONS",
   "BETTER_AUTH_SECRET",
   "OSTRA_ADMIN_EMAIL",
   "OSTRA_ADMIN_USERNAME",
@@ -133,14 +132,6 @@ export const settingFields = {
     default: "false",
     description:
       "Let a model provider's base URL point at a private, loopback or link-local address, such as a model server on your own network. Off: those addresses and cloud metadata hosts are refused.",
-  },
-  OSTRA_OPEN_SIGNUP_ACCOUNTS: {
-    default: "false",
-    description: "Let anyone create an account. Off: after the first admin, accounts come by invitation.",
-  },
-  OSTRA_OPEN_SIGNUP_ORGANIZATIONS: {
-    default: "false",
-    description: "Let any account create an organization. Off: only the instance admin can.",
   },
   BETTER_AUTH_SECRET: {
     default: "generated on first start, kept in OSTRA_DATA_DIR",
@@ -309,6 +300,28 @@ export const settingFields = {
   },
 } as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
+/**
+ * Settings ostra no longer reads (docs/configuration.md, "Removed settings"). An install upgraded
+ * with one still in its environment starts anyway: the variable is ignored, and core and the panel
+ * each log one warning for it at start (`warnIgnoredSettings`), so an old env file never stops an
+ * upgrade. Unlike an unknown `OSTRA_*` name, which is refused as a typo.
+ */
+export const retiredSettingNames = ["OSTRA_OPEN_SIGNUP_ACCOUNTS", "OSTRA_OPEN_SIGNUP_ORGANIZATIONS"] as const;
+
+export type RetiredSettingName = (typeof retiredSettingNames)[number];
+
+/** When each retired setting was removed, and why: what its warning says. */
+export const retiredSettingFields = {
+  OSTRA_OPEN_SIGNUP_ACCOUNTS: {
+    removedOn: "2026-11-19",
+    reason: "ostra is self-hosted only: sign-up is closed, and accounts join by an admin's invitation (F-002). Remove the variable.",
+  },
+  OSTRA_OPEN_SIGNUP_ORGANIZATIONS: {
+    removedOn: "2026-11-19",
+    reason: "ostra is self-hosted only: only the instance admin creates organizations (ADR 0026). Remove the variable.",
+  },
+} as const satisfies Record<RetiredSettingName, { readonly removedOn: string; readonly reason: string }>;
+
 /** Variables ostra's development setup reads, which the settings don't refuse (docs/development.md). */
 export const devOnlyEnvNames = [
   "OSTRA_DEV_MODEL_BASE_URL",
@@ -370,8 +383,6 @@ const rawSettingsSchema = z.strictObject({
     .describe(describe("OSTRA_RUNNER_TOKEN_KEY")),
   OSTRA_CATALOG_FETCH: flag.default(true).describe(describe("OSTRA_CATALOG_FETCH")),
   OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: flag.default(false).describe(describe("OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE")),
-  OSTRA_OPEN_SIGNUP_ACCOUNTS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ACCOUNTS")),
-  OSTRA_OPEN_SIGNUP_ORGANIZATIONS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ORGANIZATIONS")),
   BETTER_AUTH_SECRET: z.string().min(32).optional().describe(describe("BETTER_AUTH_SECRET")),
   OSTRA_ADMIN_EMAIL: z.email().max(320).default(defaultFirstAdmin.email).describe(describe("OSTRA_ADMIN_EMAIL")),
   OSTRA_ADMIN_USERNAME: usernameSchema.default(defaultFirstAdmin.username).describe(describe("OSTRA_ADMIN_USERNAME")),
@@ -424,6 +435,8 @@ const rawSettingsSchema = z.strictObject({
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
 export type ServerSettings = {
   readonly mode: "development" | "production" | "test";
+  /** The retired settings the environment still sets: ignored, and logged once at start (`warnIgnoredSettings`). */
+  readonly ignoredSettings: readonly RetiredSettingName[];
   /** Holds credentials: never log it. */
   readonly databaseUrl: string;
   readonly webPort: number;
@@ -442,8 +455,6 @@ export type ServerSettings = {
   readonly catalogFetch: boolean;
   /** OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: model provider URLs may point at private networks. */
   readonly modelEndpointAllowPrivate: boolean;
-  readonly openSignupAccounts: boolean;
-  readonly openSignupOrganizations: boolean;
   /** `null`: generate one on first start and keep it in `dataDir`. */
   readonly betterAuthSecret: string | null;
   /** The account a server that starts with no account seeds (F-001). Holds a password: never logged. */
@@ -555,9 +566,13 @@ const knownOstraNames: ReadonlySet<string> = new Set<string>([
   ...taskEnvNames,
 ]);
 
+const retiredOstraNames: ReadonlySet<string> = new Set<string>(retiredSettingNames);
+
 /** Reads the server's settings from the environment. Never throws; the errors name variables, never values. */
 export const parseServerSettings = (env: Readonly<Record<string, string | undefined>>): SettingsResult => {
-  const unknown = Object.keys(env).filter((name) => name.startsWith("OSTRA_") && !name.startsWith(SPIKE_PREFIX) && !knownOstraNames.has(name));
+  const unknown = Object.keys(env).filter(
+    (name) => name.startsWith("OSTRA_") && !name.startsWith(SPIKE_PREFIX) && !knownOstraNames.has(name) && !retiredOstraNames.has(name),
+  );
   if (unknown.length > 0) {
     const known = [...knownOstraNames].filter((name) => name.startsWith("OSTRA_")).sort();
     return {
@@ -613,6 +628,11 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
     ok: true,
     settings: {
       mode: value.NODE_ENV,
+      // Set as any other setting is: present and not empty. Never read past this.
+      ignoredSettings: retiredSettingNames.filter((name) => {
+        const set = env[name];
+        return set !== undefined && set !== "";
+      }),
       databaseUrl: value.DATABASE_URL ?? devDatabaseUrl(devPgPort(env)),
       webPort: value.OSTRA_WEB_PORT,
       corePort: value.OSTRA_CORE_PORT,
@@ -625,8 +645,6 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       runnerTokenKey: value.OSTRA_RUNNER_TOKEN_KEY === undefined ? null : decodeKey32(value.OSTRA_RUNNER_TOKEN_KEY),
       catalogFetch: value.OSTRA_CATALOG_FETCH,
       modelEndpointAllowPrivate: value.OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE,
-      openSignupAccounts: value.OSTRA_OPEN_SIGNUP_ACCOUNTS,
-      openSignupOrganizations: value.OSTRA_OPEN_SIGNUP_ORGANIZATIONS,
       betterAuthSecret: value.BETTER_AUTH_SECRET ?? null,
       firstAdmin: {
         email: value.OSTRA_ADMIN_EMAIL.toLowerCase(),
@@ -657,6 +675,17 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       diffMaxPatchBytes: value.OSTRA_DIFF_MAX_PATCH_KIB * 1024,
     },
   };
+};
+
+/**
+ * One warning per retired setting the environment still sets: its name, when it was removed and
+ * why, never its value. Core (`startCore`) and the panel (`createApiRuntime`) call it once at start.
+ */
+export const warnIgnoredSettings = (logger: Logger, settings: Pick<ServerSettings, "ignoredSettings">): void => {
+  for (const name of settings.ignoredSettings) {
+    const { removedOn, reason } = retiredSettingFields[name];
+    logger.warn("settings.retired_ignored", { setting: name, removedOn, reason });
+  }
 };
 
 /** The email settings, checked: a locked provider needs what it sends with. The errors name variables, never values. */

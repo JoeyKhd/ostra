@@ -19,11 +19,10 @@ import { usernamePluginOptions } from "./username.ts";
 /** The OAuth client ID a personal runner presents. Any other ID is refused (ADR 0029). */
 export const RUNNER_CLIENT_ID = "ostra-runner";
 
+// ostra is self-hosted only (ADR 0026, amended 2026-11-19): sign-up is never open, and only the
+// instance admin creates organizations. No setting changes either; the two that once did,
+// OSTRA_OPEN_SIGNUP_*, are retired and ignored (`retiredSettingFields` in @ostra/domain).
 export type AuthSettings = {
-  /** Open sign-up for new organizations (Q102): off by default. */
-  readonly openOrganizationSignup: boolean;
-  /** Anyone may create an account, not only invitees (the hosted version). Off by default. */
-  readonly openAccountSignup: boolean;
   /**
    * The seeded admin may keep the default password (`OSTRA_ALLOW_DEFAULT_PASSWORD`, for demos). Off:
    * an account flagged `mustChangePassword` can do nothing but change it (F-001).
@@ -32,8 +31,6 @@ export type AuthSettings = {
 };
 
 export const defaultAuthSettings: AuthSettings = {
-  openOrganizationSignup: false,
-  openAccountSignup: false,
   allowDefaultPassword: false,
 };
 
@@ -169,12 +166,11 @@ export const createAuth = (input: CreateAuthInput) => {
 
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        // Sign-up is closed to strangers. The first account is seeded by the server at start
+        // Sign-up is closed, on every install. The first account is seeded by the server at start
         // (`seedFirstAdmin`: one transaction, the account, its organization and the admin role),
-        // never by this route, so it can't end up with no organization. This lets through only
-        // what an install turned on: open sign-up. Invitees come in milestone 4 (F-002) with
-        // their own check, which refuses them for now with a clear message.
-        if (ctx.path === "/sign-up/email" && !settings.openAccountSignup) {
+        // never by this route, so it can't end up with no organization. Invitees come in
+        // milestone 4 (F-002) with their own check, which refuses them for now with a clear message.
+        if (ctx.path === "/sign-up/email") {
           throw new APIError("FORBIDDEN", {
             code: "SIGN_UP_CLOSED",
             message: "Sign-up is closed: the server creates the first admin, and invitations come in a later release",
@@ -221,10 +217,8 @@ export const createAuth = (input: CreateAuthInput) => {
         invitationExpiresIn: SEVEN_DAYS_SECONDS,
         cancelPendingInvitationsOnReInvite: true,
         requireEmailVerificationOnInvitation: false,
-        allowUserToCreateOrganization: (user) => {
-          const role: unknown = Reflect.get(user, "role");
-          return settings.openOrganizationSignup || role === "admin";
-        },
+        // Only the instance admin creates organizations (ADR 0026); an organization's own admin can't.
+        allowUserToCreateOrganization: (user) => Reflect.get(user, "role") === "admin",
         // ADR 0026: exactly two roles, one per member. better-auth would also accept "owner".
         organizationHooks: {
           // Every organization has its built-in OpenCode profile and its default runner pool (F-086),

@@ -2,7 +2,7 @@
 
 Every setting ostra reads, with its default and what it does. A fresh install needs none of them: each has a working default (the self-hosting rule in `AGENTS.md`).
 
-**Every new setting adds its line here, in the same commit.** A test (`packages/domain/src/settings.test.ts`) reads this file and the settings schema, and fails when one lists a name the other doesn't. The server refuses an `OSTRA_*` variable it doesn't know, and names the ones it does, so a typo is caught at start.
+**Every new setting adds its line here, in the same commit.** A test (`packages/domain/src/settings.test.ts`) reads this file and the settings schema, and fails when one lists a name the other doesn't. The server refuses an `OSTRA_*` variable it doesn't know, and names the ones it does, so a typo is caught at start. A setting ostra no longer reads is the exception: it is ignored with a warning, so an upgrade never fails on it (below, "Removed settings").
 
 ## The server
 
@@ -23,8 +23,6 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_RUNNER_TOKEN_KEY` | generated on first start, kept in `OSTRA_DATA_DIR` as `runner-token.key` | The key core signs runners' 10-minute access tokens and tasks' MCP tokens with: 32 bytes, base64 or 64 hex characters. Core replicas that don't share a data folder need the same one, or each refuses the tokens the others issued. Changing it makes every runner get a new token, nothing more. |
 | `OSTRA_CATALOG_FETCH` | `true` | Fetch the models.dev catalog daily. `false`: use the copy bundled with ostra only. |
 | `OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE` | `false` | Let a model provider's base URL point at a private, loopback or link-local address, such as a model server on your own network. Off: those addresses and cloud metadata hosts are refused. |
-| `OSTRA_OPEN_SIGNUP_ACCOUNTS` | `false` | Let anyone create an account. Off: after the first admin, accounts come by invitation. |
-| `OSTRA_OPEN_SIGNUP_ORGANIZATIONS` | `false` | Let any account create an organization. Off: only the instance admin can. |
 | `BETTER_AUTH_SECRET` | generated on first start, kept in `OSTRA_DATA_DIR` | Signs sessions and tokens (at least 32 characters). Changing it signs everyone out. |
 | `OSTRA_ADMIN_EMAIL` | `demo@demo.com` | The first admin's email. When the server starts with no account, it creates the first admin, the instance admin and the admin of the first organization (F-001). Read only then: changing it later changes nothing. |
 | `OSTRA_ADMIN_USERNAME` | `demo` | The first admin's username: lowercase letters, digits and inner hyphens. Read only when the first admin is created. |
@@ -131,3 +129,12 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 | `OSTRA_DEV_BLOCK_WEBHOOKS` | (none) | `linear`, `github` or both, comma-separated: core answers those webhook routes with 503 and stores nothing, so a test sees the polling and the reconcile catch up (milestone 2's demo and failure suite). Ignored when `NODE_ENV=production`. |
 
 Variables named `OSTRA_SPIKE_*` belong to the spikes in `spikes/`. The server neither reads nor refuses them, so the dev env files can be loaded before `pnpm dev`.
+
+## Removed settings
+
+Settings ostra no longer reads. A server that still finds one in its environment starts anyway and ignores it: core and the panel each log one `settings.retired_ignored` warning for it at start, with its name, the date it was removed and why, never its value. Remove it from your environment to quiet the warning.
+
+| Setting | Removed | Why |
+|---|---|---|
+| `OSTRA_OPEN_SIGNUP_ACCOUNTS` | 2026-11-19 | ostra is self-hosted only, so sign-up is always closed: after the first admin, accounts join only by an admin's invitation (F-002). Set to `true`, it no longer opens sign-up. |
+| `OSTRA_OPEN_SIGNUP_ORGANIZATIONS` | 2026-11-19 | Only the instance admin creates organizations (ADR 0026). Set to `true`, it no longer lets other accounts create one. |

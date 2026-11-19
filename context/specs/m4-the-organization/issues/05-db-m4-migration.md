@@ -19,6 +19,7 @@ One new migration, after milestone 3's, additive only: every change in section 5
 - `MemoryNote` and `MemoryProposal` with their generated vectors over title and body, `MemoryNoteVersion`, `MemoryUse`, `AgentProfile.closingTurn`.
 - `Repo.position` (existing rows numbered by creation), `ReviewCheck`.
 - The new enums and enum values. `src/enums.ts` and the mappers export them, and the branded `NoteId`, `ProposalId`, `BudgetId`, `InvitationId` and `SearchEntryId` exist in `packages/protocol/src/ids.ts` (with ticket 01).
+- Not `InstanceSetting.openSignupAccounts` or `openSignupOrganizations`: deprecated and unused since 2026-11-19, they stay, and a later release's migration drops them (spec section 5.3).
 
 ## Done when
 

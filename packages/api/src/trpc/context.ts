@@ -18,8 +18,6 @@ export type ApiSettings = Pick<
   | "publicUrl"
   | "corePublicUrl"
   | "catalogFetch"
-  | "openSignupAccounts"
-  | "openSignupOrganizations"
   | "allowDefaultPassword"
   // Milestone 2: the storage page and the Linear page read these (tickets 27 and 31).
   | "retentionDays"

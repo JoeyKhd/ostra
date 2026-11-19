@@ -236,9 +236,13 @@ model DeviceCode {
 /// The install's settings: one row, `id = 'instance'`.
 model InstanceSetting {
   id                      String    @id @default("instance")
-  /// Open sign-up for new accounts. Off: after the first admin, accounts come by invitation (F-002).
+  // Deprecated 2026-11-19: open sign-up is gone (ostra is self-hosted only, ADR 0026 amended), and
+  // no code reads or writes these two columns. They stay because installs upgrade on their own
+  // schedule (AGENTS.md: add first, drop in a later release); a later release's migration drops
+  // them (milestone 4 spec, section 5.3). Don't use them.
+  /// Deprecated 2026-11-19, unused: dropped in a later release. Was open account sign-up.
   openSignupAccounts      Boolean   @default(false)
-  /// Open creation of new organizations by any account. Off (Q102).
+  /// Deprecated 2026-11-19, unused: dropped in a later release. Was open organization sign-up.
   openSignupOrganizations Boolean   @default(false)
   /// Set when the first admin exists: the server never seeds another (F-001).
   firstAdminCreatedAt     DateTime?

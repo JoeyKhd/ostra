@@ -7,7 +7,8 @@ import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase } from "@ostra/db/testing";
 import type { TestDatabase } from "@ostra/db/testing";
-import { parseServerSettings } from "@ostra/domain";
+import { parseServerSettings, seedMember } from "@ostra/domain";
+import { isAPIError } from "better-auth/api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createCatalogSource } from "./catalog/catalog-source.ts";
@@ -173,5 +174,85 @@ describe("a fresh install with OSTRA_ADMIN_* set", () => {
     expect(anonymous.user).toBeNull();
     expect(await anonymous.revalidate()).toBeNull();
     expect((await next.revalidate())?.scope.organizationId).toBe(next.member?.scope.organizationId);
+  });
+});
+
+describe("an install upgraded with the retired OSTRA_OPEN_SIGNUP_* settings still set", () => {
+  // Both settings were removed on 2026-11-19 (docs/configuration.md, "Removed settings"): an old env
+  // file that turns them on must neither stop the server nor open anything.
+  const retired = { OSTRA_OPEN_SIGNUP_ACCOUNTS: "true", OSTRA_OPEN_SIGNUP_ORGANIZATIONS: "true" } as const;
+  const admin = { OSTRA_ADMIN_EMAIL: "ada@example.com", OSTRA_ADMIN_USERNAME: "ada", OSTRA_ADMIN_PASSWORD: TEST_PASSWORD, OSTRA_ORGANIZATION_NAME: "Calculator Co" };
+  let install: { readonly test: TestDatabase; readonly dataDir: string };
+  let started: Awaited<ReturnType<typeof start>>;
+
+  const refusedWith = async (call: () => Promise<unknown>): Promise<{ readonly code: string | undefined; readonly status: number }> => {
+    try {
+      await call();
+    } catch (error) {
+      if (isAPIError(error)) {
+        const code: unknown = Reflect.get(error.body ?? {}, "code");
+        return { code: typeof code === "string" ? code : undefined, status: error.statusCode };
+      }
+      throw error;
+    }
+    throw new Error("expected the call to be refused");
+  };
+
+  const signIn = async (username: string): Promise<Headers> => {
+    const { headers } = await started.runtime.auth.api.signInUsername({ body: { username, password: TEST_PASSWORD }, returnHeaders: true });
+    return cookieHeaderFrom(headers);
+  };
+
+  beforeAll(async () => {
+    install = await freshInstall();
+    started = await start(install, { ...retired, ...admin });
+  });
+
+  it("F-002: starts with them set, warns once for each that it ignores it, and still refuses sign-up to anyone", async () => {
+    const { runtime, logs } = started;
+    expect(logs.filter((record) => record.message === "settings.retired_ignored").map((record) => [record.level, record.fields["setting"]])).toEqual([
+      ["warn", "OSTRA_OPEN_SIGNUP_ACCOUNTS"],
+      ["warn", "OSTRA_OPEN_SIGNUP_ORGANIZATIONS"],
+    ]);
+    // The install works: the first admin is seeded and signs in.
+    expect(await install.test.db.user.count()).toBe(1);
+    await signIn("ada");
+
+    // A stranger's sign-up is refused, through better-auth's API and over HTTP as a browser sends it.
+    const stranger = { name: "mallory", email: "mallory@example.com", password: TEST_PASSWORD, username: "mallory" };
+    expect(await refusedWith(() => runtime.auth.api.signUpEmail({ body: stranger }))).toEqual({ code: "SIGN_UP_CLOSED", status: 403 });
+    const overHttp = await runtime.auth.handler(
+      new Request("http://localhost:3000/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+        body: JSON.stringify(stranger),
+      }),
+    );
+    expect(overHttp.status).toBe(403);
+    expect(await install.test.db.user.count()).toBe(1);
+  });
+
+  it("only the instance admin creates an organization; an organization's admin and a member are refused", async () => {
+    const { runtime } = started;
+    for (const [username, role] of [
+      ["grace", "admin"],
+      ["linus", "member"],
+    ] as const) {
+      const seeded = await seedMember(
+        { db: install.test.db, hashPassword: runtime.deps.hashPassword, env: { NODE_ENV: "test" } },
+        { username, email: `${username}@example.com`, password: TEST_PASSWORD, role },
+      );
+      expect(seeded.ok, username).toBe(true);
+      const headers = await signIn(username);
+      expect(await refusedWith(() => runtime.auth.api.createOrganization({ body: { name: `${username}'s org`, slug: username }, headers }))).toEqual({
+        code: "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION",
+        status: 403,
+      });
+    }
+    expect(await install.test.db.organization.count()).toBe(1);
+
+    const created = await runtime.auth.api.createOrganization({ body: { name: "Second Org", slug: "second-org" }, headers: await signIn("ada") });
+    expect(created.name).toBe("Second Org");
+    expect(await install.test.db.organization.count()).toBe(2);
   });
 });

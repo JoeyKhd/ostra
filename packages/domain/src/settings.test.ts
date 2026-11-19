@@ -1,15 +1,29 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { createLogger } from "@ostra/adapter-sdk";
+import type { LogRecord } from "@ostra/adapter-sdk";
 import { devDatabaseUrl, DEV_PG_PORT_DEFAULT, repoRoot } from "@ostra/db/dev";
 import { runnerEnvNames } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { devOnlyEnvNames, parseServerSettings, settingFields, settingNames } from "./settings.ts";
+import {
+  devOnlyEnvNames,
+  parseServerSettings,
+  retiredSettingFields,
+  retiredSettingNames,
+  settingFields,
+  settingNames,
+  warnIgnoredSettings,
+} from "./settings.ts";
 
 describe("the server's settings", () => {
   it("list exactly the names their fields hold", () => {
     expect([...settingNames].sort()).toEqual(Object.keys(settingFields).sort());
+    expect([...retiredSettingNames].sort()).toEqual(Object.keys(retiredSettingFields).sort());
+    // A retired name is never read again under the same name.
+    const live = new Set<string>([...settingNames, ...runnerEnvNames, ...devOnlyEnvNames]);
+    expect(retiredSettingNames.filter((name) => live.has(name))).toEqual([]);
   });
 
   it("parse an empty environment in development, with every default", () => {
@@ -29,8 +43,7 @@ describe("the server's settings", () => {
       secretsKey: null,
       catalogFetch: true,
       modelEndpointAllowPrivate: false,
-      openSignupAccounts: false,
-      openSignupOrganizations: false,
+      ignoredSettings: [],
       betterAuthSecret: null,
       firstAdmin: { email: "demo@demo.com", username: "demo", password: null, organizationName: "Demo" },
       allowDefaultPassword: false,
@@ -98,8 +111,8 @@ describe("the server's settings", () => {
   });
 
   it("reads booleans, ports and URLs, and names a bad one without its value", () => {
-    const result = parseServerSettings({ OSTRA_CATALOG_FETCH: "off", OSTRA_CORE_PORT: "9000", OSTRA_OPEN_SIGNUP_ACCOUNTS: "yes" });
-    expect(result.ok && [result.settings.catalogFetch, result.settings.corePort, result.settings.openSignupAccounts]).toEqual([
+    const result = parseServerSettings({ OSTRA_CATALOG_FETCH: "off", OSTRA_CORE_PORT: "9000", OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "yes" });
+    expect(result.ok && [result.settings.catalogFetch, result.settings.corePort, result.settings.modelEndpointAllowPrivate]).toEqual([
       false,
       9000,
       true,
@@ -110,6 +123,82 @@ describe("the server's settings", () => {
     expect(errors).toContain("BETTER_AUTH_SECRET");
     expect(errors).toContain("OSTRA_WEB_PORT");
     expect(errors).not.toContain("too-short-secret-value");
+  });
+});
+
+describe("the retired open sign-up settings (removed 2026-11-19)", () => {
+  const retired = { OSTRA_OPEN_SIGNUP_ACCOUNTS: "true", OSTRA_OPEN_SIGNUP_ORGANIZATIONS: "yes" } as const;
+
+  it("F-002: an install upgraded with OSTRA_OPEN_SIGNUP_* still set starts, and the settings it gets are the defaults: nothing opens sign-up", () => {
+    const fresh = parseServerSettings({});
+    expect(fresh.ok).toBe(true);
+    // Whatever an old env file says, also a value no boolean takes, the server starts.
+    for (const value of ["true", "1", "on", "false", "not-a-flag"]) {
+      const upgraded = parseServerSettings({ OSTRA_OPEN_SIGNUP_ACCOUNTS: value, OSTRA_OPEN_SIGNUP_ORGANIZATIONS: value });
+      expect(upgraded.ok, value).toBe(true);
+      if (!upgraded.ok || !fresh.ok) {
+        return;
+      }
+      expect(upgraded.settings.ignoredSettings).toEqual(["OSTRA_OPEN_SIGNUP_ACCOUNTS", "OSTRA_OPEN_SIGNUP_ORGANIZATIONS"]);
+      // Apart from naming them, the settings are a fresh install's, and none of them is about sign-up.
+      expect({ ...upgraded.settings, ignoredSettings: [] }).toEqual(fresh.settings);
+      expect(Object.keys(upgraded.settings).filter((key) => /sign-?up/i.test(key))).toEqual([]);
+    }
+    // Empty is unset, as for every other setting.
+    const empty = parseServerSettings({ OSTRA_OPEN_SIGNUP_ACCOUNTS: "" });
+    expect(empty.ok && empty.settings.ignoredSettings).toEqual([]);
+  });
+
+  it("still refuses a misspelt name, and doesn't offer a retired one among the known", () => {
+    const typo = parseServerSettings({ OSTRA_OPEN_SIGNUP_ACCOUNT: "true" });
+    expect(typo.ok).toBe(false);
+    const errors = typo.ok ? "" : typo.errors.join("\n");
+    expect(errors).toContain("unknown setting OSTRA_OPEN_SIGNUP_ACCOUNT;");
+    expect(errors).not.toContain("OSTRA_OPEN_SIGNUP_ACCOUNTS");
+  });
+
+  it("logs one warning per retired setting still set, with its name, when it went and why, never its value", () => {
+    const records: LogRecord[] = [];
+    const logger = createLogger((record) => {
+      records.push(record);
+    });
+    const parsed = parseServerSettings({ ...retired, OSTRA_OPEN_SIGNUP_ACCOUNTS: "on-for-strangers" });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    warnIgnoredSettings(logger, parsed.settings);
+    expect(records).toEqual([
+      {
+        level: "warn",
+        message: "settings.retired_ignored",
+        fields: { setting: "OSTRA_OPEN_SIGNUP_ACCOUNTS", removedOn: "2026-11-19", reason: retiredSettingFields.OSTRA_OPEN_SIGNUP_ACCOUNTS.reason },
+      },
+      {
+        level: "warn",
+        message: "settings.retired_ignored",
+        fields: {
+          setting: "OSTRA_OPEN_SIGNUP_ORGANIZATIONS",
+          removedOn: "2026-11-19",
+          reason: retiredSettingFields.OSTRA_OPEN_SIGNUP_ORGANIZATIONS.reason,
+        },
+      },
+    ]);
+    expect(retiredSettingFields.OSTRA_OPEN_SIGNUP_ACCOUNTS.reason).toContain("sign-up is closed");
+    expect(JSON.stringify(records)).not.toContain("on-for-strangers");
+
+    // An install that sets neither hears nothing.
+    const quiet: LogRecord[] = [];
+    const fresh = parseServerSettings({});
+    if (fresh.ok) {
+      warnIgnoredSettings(
+        createLogger((record) => {
+          quiet.push(record);
+        }),
+        fresh.settings,
+      );
+    }
+    expect(quiet).toEqual([]);
   });
 });
 
@@ -160,10 +249,20 @@ describe("the first admin's settings (F-001)", () => {
 });
 
 describe("docs/configuration.md", () => {
-  const documented = async (): Promise<ReadonlySet<string>> => {
-    const text = await readFile(path.join(repoRoot, "docs", "configuration.md"), "utf8");
-    return new Set([...text.matchAll(/^\| `([A-Z][A-Z0-9_]+)` \|/gm)].flatMap((match) => (match[1] === undefined ? [] : [match[1]])));
+  const REMOVED_HEADING = "\n## Removed settings\n";
+  const namesIn = (text: string): ReadonlySet<string> =>
+    new Set([...text.matchAll(/^\| `([A-Z][A-Z0-9_]+)` \|/gm)].flatMap((match) => (match[1] === undefined ? [] : [match[1]])));
+  /** The settings' tables, then the "Removed settings" section's, which comes last. */
+  const sections = async (): Promise<{ readonly read: string; readonly removed: string }> => {
+    const text = (await readFile(path.join(repoRoot, "docs", "configuration.md"), "utf8")).replace(/\r\n/g, "\n");
+    const at = text.indexOf(REMOVED_HEADING);
+    return at === -1 ? { read: text, removed: "" } : { read: text.slice(0, at), removed: text.slice(at) };
   };
+  const documented = async (): Promise<ReadonlySet<string>> => namesIn((await sections()).read);
+
+  it("lists every retired setting under Removed settings, and nothing else there", async () => {
+    expect([...namesIn((await sections()).removed)].sort()).toEqual([...retiredSettingNames].sort());
+  });
 
   it("lists every setting the server, the runner and the dev setup know", async () => {
     const names = await documented();
