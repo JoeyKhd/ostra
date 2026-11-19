@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, ok, toApprovalOptions } from "@ostra/adapter-sdk";
+import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, toApprovalOptions } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
   AgentAdapter,
   AgentIo,
   AgentLaunch,
   AgentProcess,
+  HiddenRepoConfig,
+  LaunchMcpServer,
+  LaunchSkill,
   AgentSession,
   BoxRef,
   ExecutorAdapter,
@@ -59,16 +62,20 @@ import type { GitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import { hiddenRefFor } from "../sidecar/git-proxy/policy.ts";
 import { rateLimitHoldSeconds, startKeyProxy } from "../sidecar/key-proxy.ts";
 import type { KeyProxy, SpendCapReached, UpstreamRefusal } from "../sidecar/key-proxy.ts";
+import { startMcpProxy } from "../sidecar/mcp-proxy.ts";
+import type { McpProxy } from "../sidecar/mcp-proxy.ts";
 import { startMcpTools } from "../sidecar/mcp-tools.ts";
 import type { McpTools } from "../sidecar/mcp-tools.ts";
 import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
-import { checkLaunchEnvironment } from "./environment-check.ts";
+import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
 import type { ServerLink } from "./server-link.ts";
 import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
 import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
 import { writeTicketFiles } from "./ticket-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
+import { writeSkills } from "./skills.ts";
+import { commandInBox } from "./stdio-command.ts";
 import { runTurnChecks } from "./turn-checks.ts";
 import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 
@@ -301,6 +308,12 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   /** When the last rate-limit event's hold ends, in ms since the epoch: later 429s inside it say nothing new. */
   let rateLimitedUntil = 0;
   let mcp: McpTools | undefined;
+  /** Ticket 29 (ADR 0030): the profile's HTTP MCP servers, behind the sidecar's proxy. */
+  let mcpProxy: McpProxy | undefined;
+  /** Ticket 29 (F-021): the profile's skills as written into the agent folder, once per session. */
+  let launchSkills: readonly LaunchSkill[] | undefined;
+  /** Ticket 29 (ADR 0049, Q171): the repo's own agent config, moved aside while the agent runs. */
+  let hiddenConfig: HiddenRepoConfig | undefined;
   let spec: TaskSpec | undefined;
   /** The task's credentials: in this closure only, never in a variable, argument or file of the runner. */
   let credentials: TaskCredentials | undefined;
@@ -750,7 +763,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    */
   const finishPlanTurn = async (currentSpec: TaskSpec, turnId: TurnId, outsideBefore: ReadonlySet<string>): Promise<boolean> => {
     unsaved = false;
-    const changed = await planTurnChanges(currentSpec, outsideBefore);
+    const changed = await withRepoConfig(currentSpec, () => planTurnChanges(currentSpec, outsideBefore));
     if (changed.length > 0) {
       log.warn("a plan turn changed the working tree: plan mode failed", { changed: changed.length });
       const listed = changed.slice(0, 20).join(", ");
@@ -976,7 +989,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * from milestone 3 the commit and the turn's checks come before the branch's push (ADR 0052).
    * Only the branch's push can fail the session; its error comes back for the caller.
    */
-  const saveWork = async (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> => {
+  const saveWork = (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> =>
+    // Ticket 29: the repo's own agent config is back in the tree for the commit, the checks and the hidden ref.
+    withRepoConfig(currentSpec, () => saveTurnWork(currentSpec, message));
+
+  const saveTurnWork = async (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> => {
     unsaved = false;
     const startedAt = now();
     const ordinal = Math.max(1, turnOrdinal);
@@ -1232,11 +1249,14 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (boxCreated) {
       await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
     }
+    // The repo's own agent config is back before anything is committed or the box is kept.
+    await restoreRepoConfig();
   };
 
   const cleanUp = async (keepWorkspace: boolean): Promise<void> => {
     keyProxy?.revoke();
-    await Promise.allSettled([keyProxy?.close(), gitProxy?.close(), mcp?.close()]);
+    await restoreRepoConfig();
+    await Promise.allSettled([keyProxy?.close(), gitProxy?.close(), mcp?.close(), mcpProxy?.close()]);
     credentials = undefined;
     if (boxCreated && !keepWorkspace) {
       // Milestone 1's one-turn session: the workspace goes when the session ends. Ticket 23 keeps it.
@@ -1355,6 +1375,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         void emit(event);
       },
     });
+    // Ticket 29: the profile's HTTP MCP servers, each with its URL and headers from the credentials.
+    const httpServers = (taskSpec.agent.mcpServers ?? []).flatMap((server) => (server.transport === "http" ? [server] : []));
+    if (httpServers.length > 0) {
+      const reachable = new Map((held.mcpServers ?? []).map((server) => [server.name, server] as const));
+      const routes = httpServers.flatMap((server) => {
+        const found = reachable.get(server.name);
+        return found === undefined ? [] : [{ name: server.name, proxyPath: server.proxyPath, url: found.url, headers: found.headers }];
+      });
+      if (routes.length < httpServers.length) {
+        return { ok: false, error: "an MCP server of the profile has no credentials for the task" };
+      }
+      mcpProxy = await startMcpProxy({ taskId: taskSpec.taskId, routes, ...listen, logger: log });
+    }
     const proxies = { gitBaseUrl: gitProxy.baseUrl, modelBaseUrl: keyProxy.baseUrl, mcpUrl: mcp.url };
     const step = acrossTurns ? (taskSpec.restore?.origin ?? "new") : "new";
     if (step !== "new") {
@@ -1617,6 +1650,88 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return launched.ok ? ok(launched.io) : adapterError("unavailable", launched.error);
   };
 
+  /**
+   * Ticket 29: the profile's MCP servers as the agent reaches them. An HTTP server is its path on the
+   * sidecar's proxy, which holds its URL and headers; a stdio server is its command, with the spec's
+   * variables, none of them a secret.
+   */
+  const launchMcpServers = (taskSpec: TaskSpec): readonly LaunchMcpServer[] =>
+    (taskSpec.agent.mcpServers ?? []).flatMap((server): LaunchMcpServer[] => {
+      switch (server.transport) {
+        case "http":
+          return mcpProxy === undefined ? [] : [{ name: server.name, transport: "http", url: mcpProxy.urlFor(server.proxyPath), readOnly: server.readOnly }];
+        case "stdio":
+          return [{ name: server.name, transport: "stdio", command: server.command, args: [...server.args], env: { ...server.env }, readOnly: server.readOnly }];
+        default:
+          return server satisfies never;
+      }
+    });
+
+  /** Ticket 29 (F-021): the profile's skills, fetched and written into the agent folder before the agent first starts. */
+  const placeSkills = async (taskSpec: TaskSpec): Promise<void> => {
+    if (launchSkills !== undefined) {
+      return;
+    }
+    const skills = taskSpec.agent.skills ?? [];
+    if (skills.length === 0) {
+      launchSkills = [];
+      return;
+    }
+    const written = await writeSkills({ link: deps.link, taskId: taskSpec.taskId, leaseEpoch: taskSpec.leaseEpoch, skills, agentDir: workspaceOf().agentDir, logger: log });
+    launchSkills = written.skills;
+  };
+
+  /**
+   * Ticket 29 (ADR 0049, Q171): an agent whose own config can't win over the repo's
+   * (`projectConfigOverride: false`) runs with the repo's agent config files, by its adapter's list,
+   * moved aside. They're put back before anything is committed (`restoreRepoConfig`).
+   */
+  const hideRepoConfig = async (taskSpec: TaskSpec): Promise<void> => {
+    const running = agent;
+    const dirs = dirsCache;
+    if (running === undefined || dirs === undefined || running.capabilities.projectConfigOverride || running.repoConfigPaths.length === 0 || hiddenConfig !== undefined) {
+      return;
+    }
+    const hidden = await hideRepoAgentConfig(
+      taskSpec.repos.map((repo) => path.join(dirs.workspaceDir, repo.checkoutDir)),
+      running.repoConfigPaths,
+    );
+    if (!hidden.ok) {
+      log.warn("the repo's agent config couldn't be hidden", { code: hidden.error.code });
+      return;
+    }
+    hiddenConfig = hidden.value;
+    if (hidden.value.hidden.length > 0) {
+      log.info("the repo's own agent config is hidden for the task", { files: hidden.value.hidden.length });
+    }
+  };
+
+  /** Puts the repo's own agent config back, before a commit, a look at the tree, or the session's end. */
+  const restoreRepoConfig = async (): Promise<void> => {
+    const hidden = hiddenConfig;
+    hiddenConfig = undefined;
+    if (hidden === undefined) {
+      return;
+    }
+    const restored = await hidden.restore();
+    if (!restored.ok) {
+      log.warn("the repo's agent config couldn't be put back", { code: restored.error.code });
+    }
+  };
+
+  /** Runs `work` with the repo's own config in place, and hides it again after when the session goes on. */
+  const withRepoConfig = async <T,>(taskSpec: TaskSpec, work: () => Promise<T>): Promise<T> => {
+    const wasHidden = hiddenConfig !== undefined;
+    await restoreRepoConfig();
+    try {
+      return await work();
+    } finally {
+      if (wasHidden && ending === undefined && session !== undefined) {
+        await hideRepoConfig(taskSpec);
+      }
+    }
+  };
+
   /** The agent's process, started in the box with the launch for the session's mode, checked for credentials. */
   const launchAgentProcess = async (
     taskSpec: TaskSpec,
@@ -1642,6 +1757,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       mode,
       // F-021: an agent that keeps the repo's own config out still reads each repo's own skills.
       repoDirs: taskSpec.repos.map((repo) => repo.checkoutDir),
+      // Ticket 29 (F-021): the profile's skills, as written into the agent folder, and its MCP servers.
+      skills: launchSkills ?? [],
+      mcpServers: launchMcpServers(taskSpec),
     });
     if (!launch.ok) {
       return { ok: false, error: `the agent couldn't be launched: ${launch.error.message}` };
@@ -1658,6 +1776,19 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (!checked.ok) {
       log.error("the agent's environment held a credential: refusing to start it", { variable: checked.variable });
       return { ok: false, error: `the agent's environment held ${checked.holds} (in ${checked.variable}): refused to start it` };
+    }
+    // Ticket 29 (ADR 0030): the files the launch writes hold no credential either.
+    const inFiles = checkLaunchFiles(guarded.files, held);
+    if (!inFiles.ok) {
+      log.error("the agent's files held a credential: refusing to start it", { file: inFiles.variable });
+      return { ok: false, error: `the agent's files held ${inFiles.holds}: refused to start it` };
+    }
+    // Ticket 29 (Q170): a stdio MCP server is the agent's own child, so its command must be in the box.
+    for (const server of taskSpec.agent.mcpServers ?? []) {
+      if (server.transport === "stdio" && !(await commandInBox({ executor: deps.executor, box, command: server.command, env: guarded.env, cwd }))) {
+        log.warn("an MCP server's command isn't on the box's PATH", { server: server.name });
+        return { ok: false, error: `the MCP server "${server.name}" can't start: its command isn't on the box's PATH` };
+      }
     }
     const started = await deps.executor.startAgent(box, guarded);
     if (!started.ok) {
@@ -1680,6 +1811,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (!state.ok || state.value !== "ready") {
       return failed("the workspace isn't ready");
     }
+    // Ticket 29: the skills in the agent folder, and the repo's own agent config out of the way, before it starts.
+    await placeSkills(taskSpec);
+    await hideRepoConfig(taskSpec);
     const launched = await launchAgentProcess(taskSpec);
     if (!launched.ok) {
       return failed(launched.error);

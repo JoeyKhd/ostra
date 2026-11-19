@@ -1,6 +1,6 @@
 # 29: Runner: the profile at launch, and the sidecar's MCP proxy
 
-Status: ready-for-agent
+Status: done
 Builder: runner
 Blocked by: 01, 08
 Features: F-021
@@ -17,8 +17,10 @@ Spec: `../spec.md`, section 4 ("A task starts with its profile"); ADR 0049, ADR 
 
 ## Done when
 
-- [ ] Tests: the fake MCP server refuses a call without its token and accepts one through the proxy; the token is absent from the agent's environment, files and the event log; a stdio server starts and stops with the agent; a skill reaches the agent; a hidden repo config is back in the working tree before the commit.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ launch agents with their profile`.
+- [x] Tests: the fake MCP server refuses a call without its token and accepts one through the proxy; the token is absent from the agent's environment, files and the event log; a stdio server starts and stops with the agent; a skill reaches the agent; a hidden repo config is back in the working tree before the commit.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ launch agents with their profile`.
 
 ## Comments
+
+- 2026-11-19: done in `✨ launch agents with their profile`. The runner writes the profile's skills into `<agentDir>/skills/<name>/` from the bulk path, each file checked against the digest core sent (`apps/runner/src/task-host/skills.ts`); a skill that can't come down whole is left out and logged by name. The sidecar's MCP proxy (`apps/runner/src/sidecar/mcp-proxy.ts`) answers `/<random>/mcp/<name>` only, forwards POST, the SSE GET and DELETE with the credentials' headers, streams the replies, and logs the server, the status and the bytes. A stdio server's command must be on the box's PATH (`stdio-command.ts`: searched here on `host`, `command -v` in the agent's container elsewhere), or the session crashes naming the server before the agent starts. Without `projectConfigOverride`, the repo's agent config (the adapter's `repoConfigPaths`) is moved aside before the launch and put back before every commit, check of the tree and the session's end. The launch's files are now checked for credentials as its environment is, MCP headers included. Proved on both fake agents (`profile-launch.test.ts`), on the pinned OpenCode with the stub models (`profile-launch.opencode.test.ts`: the token server, a stdio server's PID gone after the stop, the profile's skill beside the repo's), and the proxy on its own (`mcp-proxy.test.ts`); break-it checks in `context/proof/F-021.md`. On `host` the proxy runs in the runner's process, as the key proxy does.

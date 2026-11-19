@@ -15,6 +15,8 @@ export const credentialValues = (credentials: TaskCredentials): readonly { reado
   { label: "the model provider's token", value: credentials.model.token },
   { label: "the runner's MCP token", value: credentials.mcpToken },
   ...credentials.repos.map((repo) => ({ label: "a repo's git token", value: repo.gitToken })),
+  // Ticket 29: an MCP server's headers stay in the sidecar's proxy.
+  ...(credentials.mcpServers ?? []).flatMap((server) => Object.values(server.headers).map((value) => ({ label: "an MCP server's header", value }))),
   ...credentials.secrets.flatMap((repo) =>
     repo.entries.flatMap((entry) =>
       entry.kind === "variable" ? [{ label: "an environment secret", value: entry.value }] : [{ label: "an environment secret file", value: entry.content }],
@@ -28,6 +30,19 @@ export const checkLaunchEnvironment = (env: Readonly<Record<string, string>>, cr
     for (const secret of secrets) {
       if (value === secret.value || value.includes(secret.value)) {
         return { ok: false, variable: name, holds: secret.label };
+      }
+    }
+  }
+  return { ok: true };
+};
+
+/** The same check over the files the launch writes (the agent's config): none may hold a credential (ADR 0030). */
+export const checkLaunchFiles = (files: readonly { readonly path: string; readonly content: string }[], credentials: TaskCredentials): EnvironmentCheck => {
+  const secrets = credentialValues(credentials).filter((secret) => secret.value.length >= MIN_SEARCHED_LENGTH);
+  for (const file of files) {
+    for (const secret of secrets) {
+      if (file.content.includes(secret.value)) {
+        return { ok: false, variable: file.path, holds: secret.label };
       }
     }
   }
