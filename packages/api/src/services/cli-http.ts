@@ -156,7 +156,7 @@ const pollDevice = async (deps: ApiDeps, request: Request): Promise<Response> =>
   const user = await db.user.findUnique({ where: { id: grant.userId }, select: { id: true, name: true } });
   // The member of the organization the approver was signed into; a grant approved before that was recorded falls back to the oldest membership.
   const member = await db.member.findFirst({
-    where: grant.organizationId === null ? { userId: grant.userId } : { userId: grant.userId, organizationId: grant.organizationId },
+    where: grant.organizationId === null ? { userId: grant.userId, state: "active" } : { userId: grant.userId, organizationId: grant.organizationId, state: "active" },
     orderBy: { createdAt: "asc" },
     select: { id: true },
   });
@@ -196,7 +196,8 @@ const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string)
     return notFound();
   }
   // A session belongs to one member of one organization (ADR 0051): it reads the tasks of the projects that member can open, never another organization's the same account is in.
-  const member = await db.member.findFirst({ where: { id: caller.memberId, organizationId: caller.organizationId, userId: caller.userId } });
+  // An active membership only: a removed or pending one makes no scope (ADR 0053).
+  const member = await db.member.findFirst({ where: { id: caller.memberId, organizationId: caller.organizationId, userId: caller.userId, state: "active" } });
   if (member === null) {
     return notFound();
   }

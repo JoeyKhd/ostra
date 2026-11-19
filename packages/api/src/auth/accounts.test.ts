@@ -110,8 +110,9 @@ describe("an account", () => {
     expect(await harness.test.db.user.findUniqueOrThrow({ where: { username: "bob" }, select: { emailVerified: true } })).toEqual({ emailVerified: false });
     const session = await harness.auth.api.getSession({ headers: await signIn("bob") });
     expect(session?.user).toMatchObject({ email: "bob@example.com", emailVerified: false });
-    // There is no mail to send: better-auth has no sender for it.
-    await expect(harness.auth.api.sendVerificationEmail({ body: { email: "bob@example.com" } })).rejects.toThrow();
+    // There is no mail to send: ostra's sender enqueues nothing while email is off (ticket 22).
+    await harness.auth.api.sendVerificationEmail({ body: { email: "bob@example.com" } });
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "account-mail.send")).toEqual([]);
   });
 
   it("F-002: the password is the only way in: no social, magic-link or anonymous sign-in is on", async () => {
@@ -186,9 +187,10 @@ describe("organization roles", () => {
     ).toMatchObject({ code: "ROLE_NOT_FOUND" });
     const member = await harness.auth.api.addMember({ body: { userId: dave.user.id, role: "member", organizationId } });
     expect(member.role).toBe("member");
+    // better-auth's role route is refused outright since milestone 4: `members.setRole` is the one way, with its lock.
     expect(
       await refusalOf(() => harness.auth.api.updateMemberRole({ body: { memberId: member.id, role: "owner", organizationId }, headers: admin })),
-    ).toMatchObject({ code: "ROLE_NOT_FOUND" });
+    ).toMatchObject({ code: "USE_OSTRA" });
     expect((await harness.test.db.member.findMany({ select: { role: true }, orderBy: { createdAt: "asc" } })).map((row) => row.role)).toEqual(["admin", "member"]);
 
     for (const role of ["admin", "member"] as const) {

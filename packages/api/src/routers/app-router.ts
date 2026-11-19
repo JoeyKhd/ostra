@@ -16,8 +16,11 @@ import { poolsRouter, runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
 import { accountRouter } from "./account.ts";
+import { accountsRouter } from "./accounts.ts";
 import { auditRouter } from "./audit.ts";
 import { searchRouter } from "./search.ts";
+import { invitationsRouter } from "./invitations.ts";
+import { membersRouter } from "./members.ts";
 import { agentProfilesRouter } from "./agent-profiles.ts";
 import { insightsRouter } from "./insights.ts";
 import { budgetsRouter, spendRouter } from "./spend.ts";
@@ -33,6 +36,9 @@ export const appRouter = router({
   notifications: notificationsRouter,
   email: emailRouter,
   organization: organizationRouter,
+  members: membersRouter,
+  invitations: invitationsRouter,
+  accounts: accountsRouter,
   audit: auditRouter,
   search: searchRouter,
   instance: instanceRouter,

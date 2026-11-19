@@ -276,3 +276,10 @@ export const sendTestMail = async (input: {
   }
   return { ok: true, words: "Sent. Check the inbox." };
 };
+
+/**
+ * Whether the install's email is set up and ready (F-002, ADR 0053): invitations then verify the
+ * address, and "Forgot your password?" mails a reset link. Read at each use, so saving the email page
+ * takes effect at once.
+ */
+export const accountMailIsOn = async (db: Db, settings: EmailFromSettings): Promise<boolean> => viewEmail(settings, await loadEmailRow(db)).ready;

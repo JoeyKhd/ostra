@@ -67,14 +67,18 @@ export const resolveSession = async (auth: OstraAuth, headers: Headers): Promise
  * The member this account is in the session's organization (or, when the session names none, its
  * oldest organization), with their project roles. `null` when the account belongs to no
  * organization. The organization ID is read from the member row, never from the caller.
+ *
+ * Only an active membership makes a scope (ADR 0053): a removed one, or one still waiting on its
+ * address's verification, is as if the account weren't a member, so every procedure and the live
+ * stream refuse it at once.
  */
 export const loadMemberContext = async (db: Db, user: SessionUser): Promise<MemberContext | null> => {
   const member =
     (user.sessionOrganizationId === null
       ? null
-      : await db.member.findUnique({
-          where: { organizationId_userId: { organizationId: user.sessionOrganizationId, userId: user.userId } },
-        })) ?? (await db.member.findFirst({ where: { userId: user.userId }, orderBy: { createdAt: "asc" } }));
+      : await db.member.findFirst({
+          where: { organizationId: user.sessionOrganizationId, userId: user.userId, state: "active" },
+        })) ?? (await db.member.findFirst({ where: { userId: user.userId, state: "active" }, orderBy: { createdAt: "asc" } }));
   if (member === null) {
     return null;
   }

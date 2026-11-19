@@ -39,6 +39,9 @@ export type ApiSettings = Pick<
   | "projectMaxRepos"
   // Milestone 4: Insights say when they're stale (F-108, ticket 37).
   | "insightsIntervalMinutes"
+  // Milestone 4: how long an invitation and a reset link work (ticket 22).
+  | "invitationDays"
+  | "resetLinkHours"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
@@ -62,6 +65,11 @@ export type ApiDeps = {
   readonly linear: LinearAppKit;
   /** The adapters that send mail for the install's email, by provider (ticket 37); the test mail goes through one. */
   readonly email: EmailDirectory;
+  /**
+   * Whether the install's email is set up (F-002, ticket 22): an invitation is then mailed and its
+   * address verified. Production reads the email settings each time; a test flips it.
+   */
+  readonly emailOn: () => Promise<boolean>;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */

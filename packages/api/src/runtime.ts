@@ -12,7 +12,7 @@ import type { CatalogSource } from "./catalog/catalog-source.ts";
 import { controlsAgentEffort } from "./services/agent-effort.ts";
 import type { AgentEffort } from "./services/agent-effort.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
-import { noEmailDirectory } from "./services/email.ts";
+import { accountMailIsOn, noEmailDirectory } from "./services/email.ts";
 import type { EmailDirectory } from "./services/email.ts";
 import { createLinearAppKit } from "./services/linear-app.ts";
 import type { LinearEndpoints } from "./services/linear-app.ts";
@@ -63,16 +63,18 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
   // An upgraded install may still set a retired setting: it starts, and says it ignores it.
   warnIgnoredSettings(input.logger, settings);
   const secrets = await loadServerSecrets(settings);
+  const ports = { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock };
+  const emailOn = (): Promise<boolean> => accountMailIsOn(db, settings.email);
   const auth = createAuth({
     db,
     baseUrl: settings.publicUrl,
     secret: secrets.betterAuthSecret,
-    settings: { allowDefaultPassword: settings.allowDefaultPassword },
+    settings: { allowDefaultPassword: settings.allowDefaultPassword, invitationDays: settings.invitationDays, resetLinkHours: settings.resetLinkHours },
     logLevel: settings.mode === "production" ? "error" : "warn",
+    accounts: { emailOn, jobs: input.jobs, ...ports },
   });
   // F-001: a server that starts with no account seeds the first admin and organization. Every
   // replica runs this; the seed's advisory lock lets exactly one create them.
-  const ports = { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock };
   await ensureFirstAdmin({ db, settings, hashPassword, ports, logger: input.logger });
 
   const hub = createStreamHub({ db, databaseUrl: settings.databaseUrl, logger: input.logger });
@@ -96,6 +98,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     linear: createLinearAppKit(input.linearEndpoints === undefined ? {} : { endpoints: input.linearEndpoints }),
     trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),
     email: input.email ?? noEmailDirectory,
+    emailOn,
     stream: hub,
   };
 

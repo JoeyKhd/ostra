@@ -51,7 +51,15 @@ export type ProjectGrant = { readonly projectId: ProjectId; readonly role: Proje
 export type InviteMember = (
   deps: M4Deps,
   scope: MemberScope,
-  input: { readonly email: string; readonly role: OrganizationRole; readonly projectGrants: readonly ProjectGrant[] },
+  input: {
+    readonly email: string;
+    readonly role: OrganizationRole;
+    readonly projectGrants: readonly ProjectGrant[];
+    /** The install's email is set up: the invitation is also mailed (`account-mail.send`). */
+    readonly emailOn: boolean;
+    /** How long it works (`OSTRA_INVITATION_DAYS`). */
+    readonly days: number;
+  },
 ) => Promise<
   UseCaseResult<
     { readonly invitationId: InvitationId; readonly expiresAt: number },

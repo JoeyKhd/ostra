@@ -234,6 +234,14 @@ const cases: readonly Case[] = [
     setup: async () => ({ profileId: (await (await harness.as(admin())).agentProfiles.save(profileInput(unique("Profile")))).profileId }),
     act: (caller, made) => caller.agentProfiles.archive({ profileId: need(made, "profileId") }),
   },
+  // ---- milestone 4: invitations (ticket 22) ----
+  { action: "invitation.created", actor: admin, setup: () => Promise.resolve({ email: `${unique("invitee")}@example.com` }), act: (caller, made) => caller.members.invite({ email: need(made, "email"), role: "member", projectGrants: [] }) },
+  {
+    action: "invitation.revoked",
+    actor: admin,
+    setup: async () => ({ handle: (await (await harness.as(admin())).members.invite({ email: `${unique("invitee")}@example.com`, role: "member", projectGrants: [] })).handle }),
+    act: (caller, made) => caller.members.revokeInvitation({ handle: need(made, "handle") }),
+  },
 ];
 
 /** The newest entry of an action in organization A, made after `since`. */

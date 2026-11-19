@@ -1,12 +1,32 @@
-import type { Db } from "@ostra/db";
-import { ensureBuiltInAgentProfile, ensureDefaultPool, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@ostra/domain";
-import { organizationIdSchema } from "@ostra/protocol";
+import type { Db, DbOrTx, Tx } from "@ostra/db";
+import {
+  acceptInvitation,
+  activateVerifiedMemberships,
+  ensureBuiltInAgentProfile,
+  ensureDefaultPool,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  postgresAuditLog,
+  postgresChangeNotices,
+  systemClock,
+} from "@ostra/domain";
+import { invitationIdSchema, organizationIdSchema, userIdSchema } from "@ostra/protocol";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { admin, bearer, deviceAuthorization, organization, username } from "better-auth/plugins";
 import { z } from "zod";
 
+import {
+  capturingTransactions,
+  currentResetLinkSink,
+  INVITATION_HEADER,
+  recordResetLinkInTx,
+  recordResetUsedInTx,
+  refusingJobQueue,
+  transactionStorage,
+} from "./account-hooks.ts";
+import type { AccountPorts } from "./account-hooks.ts";
 import { isOrganizationRole, organizationAccessControl, organizationRoles } from "./roles.ts";
 import { usernamePluginOptions } from "./username.ts";
 
@@ -28,6 +48,10 @@ export type AuthSettings = {
    * an account flagged `mustChangePassword` can do nothing but change it (F-001).
    */
   readonly allowDefaultPassword: boolean;
+  /** How long an invitation works (`OSTRA_INVITATION_DAYS`). Default 7. */
+  readonly invitationDays?: number;
+  /** How long a reset link works (`OSTRA_RESET_LINK_HOURS`). Default 24. */
+  readonly resetLinkHours?: number;
 };
 
 export const defaultAuthSettings: AuthSettings = {
@@ -45,10 +69,23 @@ export type CreateAuthInput = {
   readonly deviceInterval?: "1s" | "5s";
   /** better-auth logs refused sign-ins as warnings; a test that provokes dozens asks for errors only. */
   readonly logLevel?: "warn" | "error";
+  /**
+   * What the account hooks write through (milestone 4, ticket 22): the job queue for account mails,
+   * the audit log, and whether the install's email is set up. Unset: no email, and no queue.
+   */
+  readonly accounts?: AccountPorts;
 };
 
-const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60;
+/** better-auth's routes ostra replaces with its own use cases, so their rules and audit entries hold (ADR 0053). */
+const REPLACED_ORGANIZATION_PATHS: ReadonlyMap<string, string> = new Map([
+  ["/organization/accept-invitation", "Accept an invitation from its link"],
+  ["/organization/remove-member", "An organization admin removes members on the Members page"],
+  ["/organization/leave", "Ask an organization admin to remove you"],
+  ["/organization/update-member-role", "An organization admin changes roles on the Members page"],
+]);
+
 const ONE_DAY_SECONDS = 24 * 60 * 60;
+const ONE_HOUR_SECONDS = 60 * 60;
 
 /**
  * What an account that must change its default password may still reach (F-001): reading and ending
@@ -92,18 +129,55 @@ const assertOrganizationRole = (role: string): void => {
  * second organization is a later milestone: the panel then switches it with better-auth's
  * `setActive`.) `null` when the account belongs to none.
  */
-const firstOrganizationOf = async (db: Db, userId: string): Promise<string | null> => {
+const firstOrganizationOf = async (db: DbOrTx, userId: string): Promise<string | null> => {
   const member = await db.member.findFirst({
-    where: { userId },
+    // A removed membership, or one waiting on its address, makes no scope (ADR 0053).
+    where: { userId, state: "active" },
     orderBy: { createdAt: "asc" },
     select: { organizationId: true },
   });
   return member === null ? null : member.organizationId;
 };
 
+/** A refusal of a sign-up, with its code for the page. */
+const signUpRefused = (code: string, message: string): APIError => new APIError("FORBIDDEN", { code, message });
+
+/** What the sign-up page reads from each refusal of an invitation's acceptance. */
+const invitationRefusalCode = {
+  "not-found": "INVITATION_NOT_USABLE",
+  expired: "INVITATION_NOT_USABLE",
+  revoked: "INVITATION_NOT_USABLE",
+  used: "INVITATION_NOT_USABLE",
+  "address-mismatch": "ADDRESS_MISMATCH",
+  "already-member": "ALREADY_MEMBER",
+} as const;
+
+const tokenOf = (body: unknown): string | null => {
+  const token: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "token") : undefined;
+  return typeof token === "string" && token !== "" ? token : null;
+};
+
 export const createAuth = (input: CreateAuthInput) => {
   const settings = input.settings ?? defaultAuthSettings;
   const { db } = input;
+  const accounts: AccountPorts = input.accounts ?? {
+    emailOn: () => Promise.resolve(false),
+    jobs: refusingJobQueue,
+    audit: postgresAuditLog,
+    notices: postgresChangeNotices,
+    clock: systemClock,
+  };
+  const invitationDays = settings.invitationDays ?? 7;
+  const resetLinkSeconds = (settings.resetLinkHours ?? 24) * ONE_HOUR_SECONDS;
+  // The transaction better-auth is running now, if any: a hook inside it writes ostra's rows there.
+  const transactions = transactionStorage();
+  const inTransaction = (): Tx => {
+    const tx = transactions.getStore();
+    if (tx === undefined) {
+      throw new APIError("INTERNAL_SERVER_ERROR", { code: "NO_TRANSACTION", message: "That didn't work. Try again." });
+    }
+    return tx;
+  };
   // The before hook reads the caller's session through the finished instance, set just below.
   const finished: { sessionOf?: (headers: Headers) => Promise<{ readonly user: object; readonly session: object } | null> } = {};
 
@@ -114,7 +188,7 @@ export const createAuth = (input: CreateAuthInput) => {
     // ADR 0021: no telemetry.
     telemetry: { enabled: false },
     logger: { level: input.logLevel ?? "warn" },
-    database: prismaAdapter(db, {
+    database: prismaAdapter(capturingTransactions(db, transactions), {
       provider: "postgresql",
       // A multi-row write (an organization and its first member) is one transaction.
       transaction: true,
@@ -122,17 +196,62 @@ export const createAuth = (input: CreateAuthInput) => {
     // ostra's own table for a login session, so "Session" stays the agent's (schema.prisma).
     session: { modelName: "authSession" },
 
-    // Q54: a username or an email, plus a password. No mail server is assumed: nothing is
-    // verified by mail, and a reset link is handed to the admin.
+    // Q54: a username or an email, plus a password. No mail server is assumed: with none, nothing
+    // is verified by mail, and a reset link is handed to the instance admin (ADR 0053).
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
       autoSignIn: true,
       minPasswordLength: MIN_PASSWORD_LENGTH,
       maxPasswordLength: MAX_PASSWORD_LENGTH,
-      // A link an admin copies into a chat has to outlive an hour.
-      resetPasswordTokenExpiresIn: ONE_DAY_SECONDS,
+      // A link an admin copies into a chat has to outlive an hour (`OSTRA_RESET_LINK_HOURS`).
+      resetPasswordTokenExpiresIn: resetLinkSeconds,
       revokeSessionsOnPasswordReset: true,
+      // A link better-auth made: into the asking instance admin's sink, or, with email set up and the
+      // address verified, an account mail. Anything else is dropped, and the answer stays the same.
+      sendResetPassword: async ({ user, url, token }) => {
+        const userId = userIdSchema.parse(user.id);
+        const expiresAt = accounts.clock.now() + resetLinkSeconds * 1000;
+        const sink = currentResetLinkSink();
+        if (sink !== undefined) {
+          await db.$transaction((tx) => recordResetLinkInTx(accounts, tx, { userId, token, kind: "admin_link", createdByUserId: sink.createdBy, expiresAt }));
+          sink.link = { url, token };
+          return;
+        }
+        if (!user.emailVerified || !(await accounts.emailOn())) {
+          return;
+        }
+        await db.$transaction((tx) => recordResetLinkInTx(accounts, tx, { userId, token, kind: "self_service", createdByUserId: null, expiresAt }));
+      },
+    },
+
+    // With email set up, an invitee's address is proven by a link (ADR 0053): 24 hours, the reset
+    // link's value. ostra enqueues the mail itself, in the sign-up's transaction (the job carries the
+    // membership's ID, never the link), so better-auth sends none on sign-up.
+    emailVerification: {
+      sendOnSignUp: false,
+      expiresIn: ONE_DAY_SECONDS,
+      autoSignInAfterVerification: true,
+      // "Send it again": one account mail per membership still waiting on this address.
+      sendVerificationEmail: async ({ user }) => {
+        if (!(await accounts.emailOn())) {
+          return;
+        }
+        await db.$transaction(async (tx) => {
+          const waiting = await tx.member.findMany({ where: { userId: user.id, state: "pending_verification" }, select: { id: true, organizationId: true } });
+          for (const member of waiting) {
+            await accounts.jobs.enqueueInTx(tx, "account-mail.send", {
+              organizationId: organizationIdSchema.parse(member.organizationId),
+              purpose: "email_verification",
+              recordId: member.id,
+            });
+          }
+        });
+      },
+      // The address is proven: the memberships waiting on it become active, each with `member.verified`.
+      afterEmailVerification: async (user) => {
+        await db.$transaction((tx) => activateVerifiedMemberships(accounts, tx, userIdSchema.parse(user.id)));
+      },
     },
 
     user: {
@@ -160,12 +279,50 @@ export const createAuth = (input: CreateAuthInput) => {
           },
         },
       },
+      account: {
+        create: {
+          // F-002: a sign-up through an invitation's link joins its organization in the sign-up's own
+          // transaction: the account, the membership, its project grants and the acceptance commit
+          // together, or none does. The before hook below has checked the invitation already.
+          before: async (account, context) => {
+            if (context?.path !== "/sign-up/email") {
+              return;
+            }
+            const invitationId = invitationIdSchema.safeParse(context.headers?.get(INVITATION_HEADER));
+            if (!invitationId.success) {
+              throw signUpRefused("SIGN_UP_CLOSED", "Sign-up needs an invitation");
+            }
+            const tx = inTransaction();
+            const userId = userIdSchema.parse(account.userId);
+            const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+            const accepted = await acceptInvitation(
+              { jobs: accounts.jobs, audit: accounts.audit, notices: accounts.notices, clock: accounts.clock },
+              tx,
+              { invitationId: invitationId.data, userId, email: user.email, emailOn: await accounts.emailOn() },
+            );
+            if (!accepted.ok) {
+              throw signUpRefused(invitationRefusalCode[accepted.error], accepted.message);
+            }
+          },
+        },
+        update: {
+          // A reset link used: its grant, the account's CLI sessions and the audit entries, in the
+          // reset's transaction (better-auth ends the login sessions in it).
+          before: async (_account, context) => {
+            const token = context?.path === "/reset-password" ? tokenOf(context.body) : null;
+            if (token !== null) {
+              await recordResetUsedInTx(accounts, inTransaction(), token);
+            }
+          },
+        },
+      },
       session: {
         create: {
           // A new session starts in the member's organization, so the panel, and a personal
-          // runner's device session, know where they are (ticket 30: the device approval).
+          // runner's device session, know where they are (ticket 30: the device approval). Inside a
+          // sign-up, the membership it just made is read in its transaction.
           before: async (session) => {
-            const activeOrganizationId = await firstOrganizationOf(db, session.userId);
+            const activeOrganizationId = await firstOrganizationOf(transactions.getStore() ?? db, session.userId);
             return activeOrganizationId === null ? undefined : { data: { ...session, activeOrganizationId } };
           },
         },
@@ -178,11 +335,33 @@ export const createAuth = (input: CreateAuthInput) => {
         // (`seedFirstAdmin`: one transaction, the account, its organization and the admin role),
         // never by this route, so it can't end up with no organization. Invitees come in
         // milestone 4 (F-002) with their own check, which refuses them for now with a clear message.
+        //
+        // F-002 (ADR 0053): an invitee signs up with the invitation's ID, which is the secret in its
+        // link, sent on `x-ostra-invitation`. Knowing the invited address is not enough. With email
+        // set up the address must be the invitation's; without, it's taken as written. The account
+        // hook above accepts it in the sign-up's transaction.
         if (ctx.path === "/sign-up/email") {
-          throw new APIError("FORBIDDEN", {
-            code: "SIGN_UP_CLOSED",
-            message: "Sign-up is closed: the server creates the first admin, and invitations come in a later release",
+          const invitationId = invitationIdSchema.safeParse(ctx.headers?.get(INVITATION_HEADER));
+          if (!invitationId.success) {
+            throw signUpRefused("SIGN_UP_CLOSED", "Sign-up needs an invitation");
+          }
+          const now = new Date(accounts.clock.now());
+          const invitation = await db.invitation.findFirst({
+            where: { id: invitationId.data, status: "pending", acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
+            select: { email: true },
           });
+          if (invitation === null) {
+            throw signUpRefused("INVITATION_NOT_USABLE", "This invitation can't be used: it expired, was revoked or was used");
+          }
+          const email: unknown = Reflect.get(ctx.body ?? {}, "email");
+          if ((await accounts.emailOn()) && (typeof email !== "string" || email.trim().toLowerCase() !== invitation.email.toLowerCase())) {
+            throw signUpRefused("ADDRESS_MISMATCH", "Sign up with the address the invitation was sent to");
+          }
+          return;
+        }
+        const replaced = REPLACED_ORGANIZATION_PATHS.get(ctx.path);
+        if (replaced !== undefined) {
+          throw new APIError("FORBIDDEN", { code: "USE_OSTRA", message: replaced });
         }
         // F-001: the seeded admin with the default password changes it before anything else.
         const { sessionOf } = finished;
@@ -243,7 +422,7 @@ export const createAuth = (input: CreateAuthInput) => {
         ac: organizationAccessControl,
         roles: organizationRoles,
         creatorRole: "admin",
-        invitationExpiresIn: SEVEN_DAYS_SECONDS,
+        invitationExpiresIn: invitationDays * ONE_DAY_SECONDS,
         cancelPendingInvitationsOnReInvite: true,
         requireEmailVerificationOnInvitation: false,
         // Only the instance admin creates organizations (ADR 0026); an organization's own admin can't.

@@ -10,6 +10,7 @@ import type {
   CommandSeq,
   ConnectionId,
   EnvironmentId,
+  InvitationId,
   JoinTokenId,
   MemberId,
   ModelId,
@@ -20,9 +21,11 @@ import type {
   ProposalId,
   ProviderId,
   RepoId,
+  ResetLinkGrantId,
   RunnerId,
   TaskId,
   TaskRepoId,
+  UserId,
 } from "@ostra/protocol";
 
 import type { AuditAction } from "./audit/actions.ts";
@@ -80,6 +83,7 @@ export type EntityId =
   | ApprovalId
   | ConnectionId
   | EnvironmentId
+  | InvitationId
   | JoinTokenId
   | MemberId
   | ModelId
@@ -87,13 +91,16 @@ export type EntityId =
   | PoolId
   | ProjectId
   | ProviderId
+  | ResetLinkGrantId
   | RunnerId
   | TaskId
   // Milestone 4 (tickets 15 to 18): memory, a project's repos and a task's repo.
   | NoteId
   | ProposalId
   | RepoId
-  | TaskRepoId;
+  | TaskRepoId
+  // An account, for what happens to it at the install's level (a reset link, the instance admin role).
+  | UserId;
 
 /** A change to tell the panel's live views about: IDs only (ADR 0035). */
 export type ChangeNoticeInput = {

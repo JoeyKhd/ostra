@@ -61,6 +61,8 @@ export type BareHarness = {
     /** The tokens the tracker directory built an adapter with, to search an output for them. */
     readonly trackerTokens: string[];
   };
+  /** Whether the install's email counts as set up (F-002): off by default, as on a fresh install. A test flips it. */
+  readonly emailSwitch: { on: boolean };
   /** Every line the API logged, to check that nothing sensitive reached one. */
   readonly logs: readonly LogRecord[];
   /** The files the panel handed to the blob store, in order. */
@@ -92,6 +94,9 @@ export type BareHarnessOptions = {
   readonly email?: EmailDirectory;
   /** F-137: each agent's reasoning levels. Default: the one the runtime uses. */
   readonly agentEffort?: AgentEffort;
+  /** `OSTRA_INVITATION_DAYS` and `OSTRA_RESET_LINK_HOURS`. Default 7 and 24. */
+  readonly invitationDays?: number;
+  readonly resetLinkHours?: number;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -99,12 +104,18 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const test = await createTestDatabase();
   const baseUrl = "http://localhost:3000";
   const allowDefaultPassword = options.allowDefaultPassword ?? false;
+  const invitationDays = options.invitationDays ?? 7;
+  const resetLinkHours = options.resetLinkHours ?? 24;
+  const emailSwitch = { on: false };
+  const emailOn = (): Promise<boolean> => Promise.resolve(emailSwitch.on);
+  const jobs = memoryJobQueue();
   const auth = createAuth({
     db: test.db,
     baseUrl,
     secret: randomBytes(32).toString("hex"),
-    settings: { allowDefaultPassword },
+    settings: { allowDefaultPassword, invitationDays, resetLinkHours },
     logLevel: "error",
+    accounts: { emailOn, jobs, audit: postgresAuditLog, notices: postgresChangeNotices, clock: systemClock },
   });
 
   const logs: LogRecord[] = [];
@@ -114,7 +125,6 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const secretStore = new FakeSecretStore();
   const modelProvider = new FakeModelProvider();
   const codeHost = new FakeCodeHost();
-  const jobs = memoryJobQueue();
   const outbox = memoryOutbox();
   const tracker: { adapter: TrackerAdapter } = { adapter: new JiraFakeAdapter({ site: createJiraSite() }) };
   const trackerTokens: string[] = [];
@@ -145,6 +155,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       budgetWarnPercent: 80,
       projectMaxRepos: 10,
       insightsIntervalMinutes: 5,
+      invitationDays,
+      resetLinkHours,
     },
     blobStore: {
       name: "postgres",
@@ -199,6 +211,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     }),
     email: emailDirectory,
     agentEffort: options.agentEffort ?? controlsAgentEffort,
+    emailOn,
     stream: hub,
   };
 
@@ -231,6 +244,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     auth,
     hub,
     fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens },
+    emailSwitch,
     logs,
     uploads,
     catalogEntries,

@@ -91,6 +91,7 @@ export * from "./prompts/index.ts";
 export * from "./use-cases/m3-signatures.ts";
 export * from "./use-cases/m4-signatures.ts";
 export * from "./use-cases/m5-signatures.ts";
+export * from "./use-cases/invitations.ts";
 
 // Milestone 4.
 export * from "./budget/gate.ts";
