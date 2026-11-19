@@ -11,7 +11,7 @@ import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
-import { slugify } from "./create-first-admin.ts";
+import { slugify } from "./seed-first-admin.ts";
 import { appendServerEvent } from "./server-events.ts";
 
 // F-097: a member starts a code task in a project by typing a prompt. In one transaction: the task

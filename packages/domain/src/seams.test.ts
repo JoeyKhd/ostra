@@ -93,7 +93,7 @@ describe("the job catalogue (ADR 0037)", () => {
 describe("the use-case seams", () => {
   // Every use case the spec lists (section 5.4), each in its own file. All are written now.
   const useCases = [
-    "createFirstAdmin",
+    "seedFirstAdmin",
     "addModelProvider",
     "connectGitHubApp",
     "createProject",
@@ -123,7 +123,7 @@ describe("the use-case seams", () => {
 
   it("gives every use case that takes a request an input schema", () => {
     for (const name of [
-      "createFirstAdmin",
+      "seedFirstAdmin",
       "addModelProvider",
       "connectGitHubApp",
       "createProject",

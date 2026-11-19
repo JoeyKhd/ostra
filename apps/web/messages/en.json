@@ -56,20 +56,22 @@
     "failed": "That username or email and password don't match.",
     "tooMany": "Too many sign-in attempts. Wait a minute and try again."
   },
-  "firstAdmin": {
-    "title": "Create the first admin",
-    "lede": "This install has no account yet. The first one becomes the admin of the instance and of your organization.",
-    "setupToken": "Setup token",
-    "setupTokenHelp": "Printed in the server's log at its first start. It works once.",
-    "organizationName": "Organization name",
-    "username": "Username",
-    "usernameHelp": "Lowercase letters, digits and hyphens.",
-    "email": "Email",
-    "password": "Password",
-    "passwordHelp": "At least {n} characters.",
-    "submit": "Create the admin",
-    "busy": "Creating…",
-    "wrongToken": "That setup token isn't right. Copy it again from the server's log."
+  "changePassword": {
+    "title": "Choose a new password",
+    "lede": "This account still has the default password it was created with. Choose your own before you go on.",
+    "current": "Current password",
+    "next": "New password",
+    "nextHelp": "At least {n} characters.",
+    "confirm": "New password, again",
+    "mismatch": "The two new passwords don't match.",
+    "tooShort": "A password has at least {n} characters.",
+    "wrongCurrent": "That isn't the current password.",
+    "submit": "Change the password",
+    "busy": "Changing…"
+  },
+  "defaultPassword": {
+    "banner": "This account still has the default password. Anyone who knows it can sign in as the admin.",
+    "action": "Change it"
   },
   "home": {
     "title": "Home",

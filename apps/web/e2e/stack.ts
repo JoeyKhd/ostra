@@ -16,7 +16,7 @@ import { createJobs } from "@ostra/jobs";
 import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
-import { e2eCorePort, e2eModelToken, e2ePort, e2eRepo, e2eStubModels, e2eStubPort, e2eSetupToken } from "./settings.ts";
+import { e2eCorePort, e2eModelToken, e2ePort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 const webDir = path.resolve(import.meta.dirname, "..");
@@ -135,7 +135,7 @@ const main = async (): Promise<void> => {
       DATABASE_URL: databaseUrl,
       OSTRA_DATA_DIR: dataDir,
       OSTRA_PUBLIC_URL: panelUrl,
-      OSTRA_SETUP_TOKEN: e2eSetupToken,
+      // No OSTRA_ADMIN_*: the panel seeds demo@demo.com / demo, as a fresh install does (F-001).
       OSTRA_CORE_PUBLIC_URL: coreUrl,
       OSTRA_CATALOG_FETCH: "false",
       OSTRA_GITHUB_API_URL: github.apiUrl,

@@ -49,6 +49,10 @@ model User {
   banned          Boolean?      @default(false)
   banReason       String?
   banExpires      DateTime?
+  /// ostra: the account still has the default password it was seeded with (F-001): its first
+  /// sign-in must choose a new one, unless OSTRA_ALLOW_DEFAULT_PASSWORD is on. A better-auth
+  /// additional field (`input: false`), so no sign-up or profile update can set it.
+  mustChangePassword Boolean    @default(false)
   sessions        AuthSession[]
   accounts        Account[]
   members         Member[]
@@ -209,7 +213,7 @@ model InstanceSetting {
   openSignupAccounts      Boolean   @default(false)
   /// Open creation of new organizations by any account. Off (Q102).
   openSignupOrganizations Boolean   @default(false)
-  /// Set when the first admin exists: the setup token stops working (F-001, Q117).
+  /// Set when the first admin exists: the server never seeds another (F-001).
   firstAdminCreatedAt     DateTime?
   updatedAt               DateTime  @updatedAt
 

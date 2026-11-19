@@ -4,6 +4,8 @@ import { devDatabaseUrl, devDataDir, devPgPort, DEV_PG_PORT_DEFAULT } from "@ost
 import { describeIssues, runnerEnvNames } from "@ostra/protocol";
 import { z } from "zod";
 
+import { defaultFirstAdmin, organizationNameSchema, passwordSchema, usernameSchema } from "./accounts.ts";
+
 // The server's settings (ticket 08): one strict schema over the environment, with a working
 // default for every setting, so a fresh install needs none (the self-hosting rule, AGENTS.md).
 // `docs/configuration.md` lists every one, and a test keeps the two in step: a new setting adds
@@ -27,7 +29,11 @@ export const settingNames = [
   "OSTRA_OPEN_SIGNUP_ACCOUNTS",
   "OSTRA_OPEN_SIGNUP_ORGANIZATIONS",
   "BETTER_AUTH_SECRET",
-  "OSTRA_SETUP_TOKEN",
+  "OSTRA_ADMIN_EMAIL",
+  "OSTRA_ADMIN_USERNAME",
+  "OSTRA_ADMIN_PASSWORD",
+  "OSTRA_ORGANIZATION_NAME",
+  "OSTRA_ALLOW_DEFAULT_PASSWORD",
   "OSTRA_DEV_PG_PORT",
 ] as const;
 
@@ -86,9 +92,25 @@ export const settingFields = {
     default: "generated on first start, kept in OSTRA_DATA_DIR",
     description: "Signs sessions and tokens (at least 32 characters). Changing it signs everyone out.",
   },
-  OSTRA_SETUP_TOKEN: {
-    default: "generated and printed in the server's log at first start",
-    description: "Needed to create the first admin. It stops working once the first account exists (F-001, Q117).",
+  OSTRA_ADMIN_EMAIL: {
+    default: defaultFirstAdmin.email,
+    description: "The first admin's email. Read once: when the server starts with no account, it creates the first admin and the first organization (F-001).",
+  },
+  OSTRA_ADMIN_USERNAME: {
+    default: defaultFirstAdmin.username,
+    description: "The first admin's username (lowercase letters, digits and inner hyphens). Read once, like OSTRA_ADMIN_EMAIL.",
+  },
+  OSTRA_ADMIN_PASSWORD: {
+    default: defaultFirstAdmin.password,
+    description: "The first admin's password, 12 characters or more. Unset: the default password, which the admin must change at the first sign-in. Read once, like OSTRA_ADMIN_EMAIL.",
+  },
+  OSTRA_ORGANIZATION_NAME: {
+    default: defaultFirstAdmin.organizationName,
+    description: "The first organization's name. Read once, like OSTRA_ADMIN_EMAIL.",
+  },
+  OSTRA_ALLOW_DEFAULT_PASSWORD: {
+    default: "false",
+    description: "Let the seeded admin keep the default password (for demos): no forced change at sign-in, but the panel's warning stays until it changes.",
   },
   OSTRA_DEV_PG_PORT: {
     default: String(DEV_PG_PORT_DEFAULT),
@@ -137,7 +159,12 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_OPEN_SIGNUP_ACCOUNTS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ACCOUNTS")),
   OSTRA_OPEN_SIGNUP_ORGANIZATIONS: flag.default(false).describe(describe("OSTRA_OPEN_SIGNUP_ORGANIZATIONS")),
   BETTER_AUTH_SECRET: z.string().min(32).optional().describe(describe("BETTER_AUTH_SECRET")),
-  OSTRA_SETUP_TOKEN: z.string().min(16).optional().describe(describe("OSTRA_SETUP_TOKEN")),
+  OSTRA_ADMIN_EMAIL: z.email().max(320).default(defaultFirstAdmin.email).describe(describe("OSTRA_ADMIN_EMAIL")),
+  OSTRA_ADMIN_USERNAME: usernameSchema.default(defaultFirstAdmin.username).describe(describe("OSTRA_ADMIN_USERNAME")),
+  // An operator's own password meets the policy; only the default may be shorter (accounts.ts).
+  OSTRA_ADMIN_PASSWORD: passwordSchema.optional().describe(describe("OSTRA_ADMIN_PASSWORD")),
+  OSTRA_ORGANIZATION_NAME: organizationNameSchema.default(defaultFirstAdmin.organizationName).describe(describe("OSTRA_ORGANIZATION_NAME")),
+  OSTRA_ALLOW_DEFAULT_PASSWORD: flag.default(false).describe(describe("OSTRA_ALLOW_DEFAULT_PASSWORD")),
   OSTRA_DEV_PG_PORT: port.default(DEV_PG_PORT_DEFAULT).describe(describe("OSTRA_DEV_PG_PORT")),
 });
 
@@ -162,8 +189,18 @@ export type ServerSettings = {
   readonly openSignupOrganizations: boolean;
   /** `null`: generate one on first start and keep it in `dataDir`. */
   readonly betterAuthSecret: string | null;
-  /** `null`: generate one at first start and print it in the log. */
-  readonly setupToken: string | null;
+  /** The account a server that starts with no account seeds (F-001). Holds a password: never logged. */
+  readonly firstAdmin: FirstAdminSettings;
+  /** The seeded admin may keep the default password: no forced change (the warning stays). */
+  readonly allowDefaultPassword: boolean;
+};
+
+export type FirstAdminSettings = {
+  readonly email: string;
+  readonly username: string;
+  /** `null`: the default password (`defaultFirstAdmin.password`), which must be changed at first sign-in. */
+  readonly password: string | null;
+  readonly organizationName: string;
 };
 
 export type SettingsResult =
@@ -219,7 +256,13 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       openSignupAccounts: value.OSTRA_OPEN_SIGNUP_ACCOUNTS,
       openSignupOrganizations: value.OSTRA_OPEN_SIGNUP_ORGANIZATIONS,
       betterAuthSecret: value.BETTER_AUTH_SECRET ?? null,
-      setupToken: value.OSTRA_SETUP_TOKEN ?? null,
+      firstAdmin: {
+        email: value.OSTRA_ADMIN_EMAIL.toLowerCase(),
+        username: value.OSTRA_ADMIN_USERNAME,
+        password: value.OSTRA_ADMIN_PASSWORD ?? null,
+        organizationName: value.OSTRA_ORGANIZATION_NAME,
+      },
+      allowDefaultPassword: value.OSTRA_ALLOW_DEFAULT_PASSWORD,
     },
   };
 };

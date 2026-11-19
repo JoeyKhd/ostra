@@ -8,7 +8,8 @@ import {
   devApps,
   hasDevScript,
   isDatabaseUrlLine,
-  isSetupTokenLine,
+  firstAdminSignIn,
+  isFirstAdminSeededLine,
   pnpmEntry,
   prefixLine,
   usesExternalDatabase,
@@ -48,13 +49,22 @@ describe("pnpm dev's pieces", () => {
     expect(web?.address({ OSTRA_WEB_PORT: "not a port" })).toBe("http://localhost:3000");
   });
 
-  it("prefixes each piece's lines, and picks out the setup token and the database URL", () => {
+  it("prefixes each piece's lines, and picks out the seeded first admin and the database URL", () => {
     expect(prefixLine("db", "ready")).toBe("[db  ] ready");
     expect(prefixLine("core", "listening")).toBe("[core] listening");
-    expect(isSetupTokenLine("First start: the setup token is abc")).toBe(true);
-    expect(isSetupTokenLine("listening on 8787")).toBe(false);
+    expect(isFirstAdminSeededLine('{"at":"2026-11-19T00:00:00.000Z","level":"info","msg":"setup.first_admin_seeded","userId":"u1"}')).toBe(true);
+    expect(isFirstAdminSeededLine("listening on 8787")).toBe(false);
     expect(isDatabaseUrlLine("DATABASE_URL=postgresql://...")).toBe(true);
     expect(isDatabaseUrlLine("Dev database running")).toBe(false);
+  });
+
+  it("says how to sign in as the seeded admin, and never prints an operator's own password", () => {
+    expect(firstAdminSignIn({}).join(" ")).toContain("demo@demo.com with the password demo");
+    const own = firstAdminSignIn({ OSTRA_ADMIN_EMAIL: "ada@example.com", OSTRA_ADMIN_PASSWORD: "a-secret-password", OSTRA_PUBLIC_URL: "http://panel.test" }).join(" ");
+    expect(own).toContain("ada@example.com");
+    expect(own).toContain("http://panel.test");
+    expect(own).toContain("OSTRA_ADMIN_PASSWORD");
+    expect(own).not.toContain("a-secret-password");
   });
 
   it("uses DATABASE_URL when it's set, and pnpm's own entry when pnpm started it", () => {

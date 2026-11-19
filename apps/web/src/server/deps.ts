@@ -18,7 +18,7 @@ import { errnoCode, organizationIdSchema } from "@ostra/protocol";
 
 // The panel's composition root (ADR 0016): one per web process. It builds what only the web app
 // makes (the database client, the adapters, the enqueue-only job queue and the outbox) and hands
-// them to `createApiRuntime`, which prints the setup token while no account exists.
+// them to `createApiRuntime`, which seeds the first admin when the install has no account (F-001).
 
 const sink = (record: LogRecord): void => {
   // One JSON line per record: IDs and fields only, never content (AGENTS.md, Code).

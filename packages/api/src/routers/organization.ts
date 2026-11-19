@@ -30,6 +30,14 @@ const memberViewSchema = z.object({
   joinedAt: z.number().int(),
 });
 
+/** Whether the signed-in account must, may or needn't change a seeded default password (F-001). */
+export type PasswordChange = "required" | "suggested" | "none";
+
+const passwordChangeOf = (mustChangePassword: boolean, allowDefaultPassword: boolean): PasswordChange => {
+  if (!mustChangePassword) return "none";
+  return allowDefaultPassword ? "suggested" : "required";
+};
+
 export const meRouter = router({
   /** The signed-in account, and the organization it is acting in (null before it has one). */
   get: authedProcedure.query(async ({ ctx }) => {
@@ -47,6 +55,12 @@ export const meRouter = router({
       username: user.username,
       email: user.email,
       instanceAdmin: user.instanceAdmin,
+      /**
+       * F-001: the account still has the default password it was seeded with. `required`: the
+       * panel's only step is choosing a new one. `suggested` (OSTRA_ALLOW_DEFAULT_PASSWORD): the
+       * panel works, with a warning until it changes. `none`: its own password.
+       */
+      passwordChange: passwordChangeOf(user.mustChangePassword, ctx.deps.settings.allowDefaultPassword),
       memberId: member === null ? null : member.scope.memberId,
       organization:
         member === null || organization === null

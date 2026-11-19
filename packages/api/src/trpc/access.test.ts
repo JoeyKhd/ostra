@@ -57,6 +57,7 @@ const withoutOrganization = async () => {
       email: account.email,
       instanceAdmin: false,
       sessionOrganizationId: null,
+      mustChangePassword: false,
     },
     member: null,
     revalidate: () => Promise.resolve(null),

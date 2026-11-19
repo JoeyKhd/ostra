@@ -3,6 +3,7 @@ import type { Db } from "@ostra/db";
 import { memberIdSchema, organizationIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
 
+import { mustChangePasswordOf } from "./create-auth.ts";
 import type { OstraAuth } from "./create-auth.ts";
 import { highestRole } from "./roles.ts";
 
@@ -25,6 +26,8 @@ export type SessionUser = {
   readonly instanceAdmin: boolean;
   /** The organization the session says it is in, if any. Untrusted until `loadMemberScope`. */
   readonly sessionOrganizationId: string | null;
+  /** The account still has the default password it was seeded with (F-001). */
+  readonly mustChangePassword: boolean;
 };
 
 /** A signed-in account's membership of one organization, with the scope every query takes. */
@@ -51,6 +54,7 @@ export const resolveSession = async (auth: OstraAuth, headers: Headers): Promise
     email: user.email,
     instanceAdmin: role === "admin",
     sessionOrganizationId: typeof active === "string" && active !== "" ? active : null,
+    mustChangePassword: mustChangePasswordOf(user),
   };
 };
 

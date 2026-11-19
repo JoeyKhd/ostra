@@ -1,14 +1,19 @@
-// Fixed values for the end-to-end stack. The token is a test value that works only against the
-// throwaway database `stack.ts` starts.
+// Fixed values for the end-to-end stack, which work only against the throwaway database `stack.ts`
+// starts.
 export const e2ePort = 3100;
-export const e2eSetupToken = "ostra-setup-e2e-0123456789abcdef0123456789abcdef";
 export const e2eBaseUrl = `http://localhost:${String(e2ePort)}`;
 
+/**
+ * The admin a fresh install seeds with no OSTRA_ADMIN_* set (F-001): demo@demo.com / demo, in an
+ * organization named Demo. The first test signs in with the default password and chooses
+ * `password`, which every later test signs in with.
+ */
 export const e2eAdmin = {
-  username: "admin",
-  email: "admin@example.com",
+  username: "demo",
+  email: "demo@demo.com",
+  defaultPassword: "demo",
   password: "correct horse battery staple",
-  organizationName: "ostra-test",
+  organizationName: "Demo",
 } as const;
 
 /** The stub model endpoint (Anthropic's format) and the token it accepts: a test value. */

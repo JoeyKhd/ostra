@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createBareHarness, cookieHeaderFrom, TEST_PASSWORD } from "../testing/index.ts";
 import type { BareHarness } from "../testing/index.ts";
 import { RUNNER_CLIENT_ID } from "./create-auth.ts";
+import { ensureFirstAdmin } from "./first-admin.ts";
 import { resolveSession } from "./scope.ts";
 
 // The contract between ostra and better-auth (ADR 0003): what the server relies on, written as
@@ -62,61 +63,43 @@ describe("the pinned version", () => {
 });
 
 describe("the first account", () => {
-  it("is asked for by an install with no account", async () => {
-    expect(await harness.anonymous().setup.state()).toEqual({ needsFirstAdmin: true, openSignup: false });
-  });
-
-  it("is refused without the right setup token, and creates nothing", async () => {
-    const caller = harness.anonymous();
-    await expect(
-      caller.setup.createFirstAdmin({ ...firstAdmin, setupToken: "ostra-setup-not-the-token-at-all" }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(await harness.test.db.user.count()).toBe(0);
-    expect(await harness.test.db.organization.count()).toBe(0);
-  });
-
-  it("refuses a short password and a bad username before anything happens", async () => {
-    const caller = harness.anonymous();
-    const base = { ...firstAdmin, setupToken: harness.setupToken };
-    await expect(caller.setup.createFirstAdmin({ ...base, password: "short" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(caller.setup.createFirstAdmin({ ...base, username: "Not Valid!" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(await harness.test.db.user.count()).toBe(0);
-  });
-
-  it("closes sign-up at the better-auth route, before and after the first admin", async () => {
+  it("can't be made through better-auth's sign-up route: it is closed before any account exists", async () => {
     const refusal = await refusedWith(() =>
-      harness.auth.api.signUpEmail({
-        body: { name: "mallory", email: "mallory@example.com", password: TEST_PASSWORD, username: "mallory" },
-        // Even holding the setup token: the first admin comes from the first-run page, whole.
-        headers: new Headers({ "x-ostra-setup-token": harness.setupToken }),
-      }),
+      harness.auth.api.signUpEmail({ body: { name: "mallory", email: "mallory@example.com", password: TEST_PASSWORD, username: "mallory" } }),
     );
     expect(refusal).toMatchObject({ code: "SIGN_UP_CLOSED", status: 403 });
     expect(await harness.test.db.user.count()).toBe(0);
   });
 
-  it("creates the instance admin and the first organization, and signs the admin in", async () => {
-    const resHeaders = new Headers();
-    const created = await harness.anonymous(resHeaders).setup.createFirstAdmin({ ...firstAdmin, setupToken: harness.setupToken });
+  it("is seeded by the server: the instance admin of the first organization, created with it", async () => {
+    const seeded = await ensureFirstAdmin({
+      db: harness.test.db,
+      settings: { firstAdmin: { ...firstAdmin, password: firstAdmin.password } },
+      hashPassword: harness.deps.hashPassword,
+      ports: harness.deps.ports,
+      logger: harness.deps.logger,
+    });
+    expect(seeded).not.toBeNull();
+    if (seeded === null) return;
 
-    const cookie = cookieHeaderFrom(resHeaders);
-    expect(cookie.get("cookie")).toContain("better-auth.session_token=");
-    const session = await resolveSession(harness.auth, cookie);
-    expect(session).toMatchObject({ userId: created.userId, username: "ada", instanceAdmin: true, sessionOrganizationId: created.organizationId });
-
-    const organization = await harness.test.db.organization.findUniqueOrThrow({ where: { id: created.organizationId } });
+    const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
+    const session = await resolveSession(harness.auth, cookieHeaderFrom(headers));
+    expect(session).toMatchObject({
+      userId: seeded.userId,
+      username: "ada",
+      instanceAdmin: true,
+      sessionOrganizationId: seeded.organizationId,
+      mustChangePassword: false,
+    });
+    const organization = await harness.test.db.organization.findUniqueOrThrow({ where: { id: seeded.organizationId } });
     expect(organization.name).toBe("Calculator Co");
-    const member = await harness.test.db.member.findFirstOrThrow({ where: { userId: created.userId } });
-    expect(member).toMatchObject({ organizationId: created.organizationId, role: "admin" });
-    const setting = await harness.test.db.instanceSetting.findUniqueOrThrow({ where: { id: "instance" } });
-    expect(setting.firstAdminCreatedAt).not.toBeNull();
+    const member = await harness.test.db.member.findFirstOrThrow({ where: { userId: seeded.userId } });
+    expect(member).toMatchObject({ organizationId: seeded.organizationId, role: "admin" });
     // The organization has its default runner pool, and its built-in OpenCode profile with no model until the admin picks one.
-    expect(await harness.test.db.runnerPool.findMany({ where: { organizationId: created.organizationId } })).toMatchObject([{ isDefault: true }]);
-    expect(await harness.test.db.agentProfile.findMany({ where: { organizationId: created.organizationId } })).toMatchObject([
+    expect(await harness.test.db.runnerPool.findMany({ where: { organizationId: seeded.organizationId } })).toMatchObject([{ isDefault: true }]);
+    expect(await harness.test.db.agentProfile.findMany({ where: { organizationId: seeded.organizationId } })).toMatchObject([
       { name: "OpenCode", adapter: "opencode", builtIn: true, modelId: null },
     ]);
-    const audit = await harness.test.db.auditEntry.findFirst({ where: { organizationId: created.organizationId, action: "instance.first-admin-created" } });
-    expect(audit).not.toBeNull();
   });
 
   it("signs in by username and by email, and the session has the role", async () => {
@@ -131,23 +114,14 @@ describe("the first account", () => {
     }
   });
 
-  it("is refused a second time, and the token is dead after use", async () => {
-    await expect(
-      harness.anonymous().setup.createFirstAdmin({
-        ...firstAdmin,
-        username: "grace",
-        email: "grace@example.com",
-        setupToken: harness.setupToken,
-      }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(await harness.test.db.user.count()).toBe(1);
-    expect(await harness.anonymous().setup.state()).toEqual({ needsFirstAdmin: false, openSignup: false });
+  it("keeps sign-up closed once it exists", async () => {
     const refusal = await refusedWith(() =>
       harness.auth.api.signUpEmail({
         body: { name: "latecomer", email: "late@example.com", password: TEST_PASSWORD, username: "latecomer" },
       }),
     );
     expect(refusal.code).toBe("SIGN_UP_CLOSED");
+    expect(await harness.test.db.user.count()).toBe(1);
   });
 });
 

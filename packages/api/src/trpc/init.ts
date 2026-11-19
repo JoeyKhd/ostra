@@ -13,7 +13,9 @@ import type { Context } from "./context.ts";
 //
 // - `publicProcedure`: no session.
 // - `memberProcedure`: a signed-in member of an organization. `ctx.scope` is their scope: every
-//   query takes it, and no query takes an organization ID from the caller (ADR 0026).
+//   query takes it, and no query takes an organization ID from the caller (ADR 0026). An account
+//   that still has its seeded default password gets `FORBIDDEN` until it changes it (F-001),
+//   unless the install allows the default password.
 // - `adminProcedure`: an organization admin.
 // - `projectProcedure(need, input)`: a member who may read or administer one project. Another
 //   organization's project, and a restricted one the member isn't on, are `NOT_FOUND`: their
@@ -43,12 +45,18 @@ const requireSignedIn = t.middleware(({ ctx, next }) => {
 
 export const authedProcedure = publicProcedure.use(requireSignedIn);
 
+/** The refusal an account with the default password gets from every member procedure (F-001). */
+export const PASSWORD_CHANGE_REQUIRED = "Choose a new password first: this account still has the default one";
+
 const requireMember = t.middleware(({ ctx, next }) => {
   if (ctx.user === null) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in first" });
   }
   if (ctx.member === null) {
     throw new TRPCError({ code: "FORBIDDEN", message: "This account belongs to no organization" });
+  }
+  if (ctx.user.mustChangePassword && !ctx.deps.settings.allowDefaultPassword) {
+    throw new TRPCError({ code: "FORBIDDEN", message: PASSWORD_CHANGE_REQUIRED });
   }
   return next({ ctx: { ...ctx, user: ctx.user, scope: ctx.member.scope } });
 });

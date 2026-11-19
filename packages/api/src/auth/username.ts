@@ -1,11 +1,9 @@
-import { createFirstAdminInputSchema } from "@ostra/domain";
+import { usernameSchema } from "@ostra/domain";
 
-// One username rule for the first-admin form (the domain's schema) and the username plugin, so a
-// name one accepts the other accepts too: lowercase letters, digits and inner hyphens, 2 to 39.
+// One username rule for the seeded admin's settings (the domain's schema) and the username plugin,
+// so a name one accepts the other accepts too: lowercase letters, digits and inner hyphens, 2 to 39.
 
-const usernameRule = createFirstAdminInputSchema.shape.username;
-
-export const isValidUsername = (candidate: string): boolean => usernameRule.safeParse(candidate).success;
+export const isValidUsername = (candidate: string): boolean => usernameSchema.safeParse(candidate).success;
 
 export const usernamePluginOptions = {
   minUsernameLength: 2,

@@ -45,7 +45,6 @@ export type BareHarness = {
   };
   /** Every line the API logged, to check that nothing sensitive reached one. */
   readonly logs: readonly LogRecord[];
-  readonly setupToken: string;
   /** The models.dev catalog the routers see: a test pushes entries into it. */
   readonly catalogEntries: CatalogEntry[];
   /** A caller for a context a test built (other settings, another session). */
@@ -62,11 +61,23 @@ export type BareHarness = {
 /** The harness with the two organizations of `seedIsolationFixture` seeded. */
 export type ApiHarness = BareHarness & { readonly fixture: IsolationFixture };
 
+export type BareHarnessOptions = {
+  /** `OSTRA_ALLOW_DEFAULT_PASSWORD`: off by default, as on an install. */
+  readonly allowDefaultPassword?: boolean;
+};
+
 /** A harness on an empty install: no account, no organization (the first-run tests). */
-export const createBareHarness = async (): Promise<BareHarness> => {
+export const createBareHarness = async (options: BareHarnessOptions = {}): Promise<BareHarness> => {
   const test = await createTestDatabase();
   const baseUrl = "http://localhost:3000";
-  const auth = createAuth({ db: test.db, baseUrl, secret: randomBytes(32).toString("hex"), logLevel: "error" });
+  const allowDefaultPassword = options.allowDefaultPassword ?? false;
+  const auth = createAuth({
+    db: test.db,
+    baseUrl,
+    secret: randomBytes(32).toString("hex"),
+    settings: { openAccountSignup: false, openOrganizationSignup: false, allowDefaultPassword },
+    logLevel: "error",
+  });
 
   const logs: LogRecord[] = [];
   const logger = createLogger((record) => {
@@ -79,7 +90,6 @@ export const createBareHarness = async (): Promise<BareHarness> => {
   const outbox = memoryOutbox();
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
   const catalogEntries: CatalogEntry[] = [];
-  const setupToken = `ostra-setup-${randomBytes(24).toString("hex")}`;
 
   const deps: ApiDeps = {
     db: test.db,
@@ -91,6 +101,7 @@ export const createBareHarness = async (): Promise<BareHarness> => {
       catalogFetch: false,
       openSignupAccounts: false,
       openSignupOrganizations: false,
+      allowDefaultPassword,
     },
     ports: {
       jobs,
@@ -101,7 +112,6 @@ export const createBareHarness = async (): Promise<BareHarness> => {
       adapters: { codeHost, modelProvider, secretStore },
     },
     logger,
-    setupToken,
     hashPassword,
     catalog: createCatalogSource({
       fetchEnabled: false,
@@ -123,6 +133,7 @@ export const createBareHarness = async (): Promise<BareHarness> => {
       email: account.email,
       instanceAdmin: account.role === "admin",
       sessionOrganizationId: member.organizationId,
+      mustChangePassword: account.mustChangePassword,
     };
     // A revoked membership shows here as it does in production: the member row is read again.
     return {
@@ -142,7 +153,6 @@ export const createBareHarness = async (): Promise<BareHarness> => {
     hub,
     fakes: { secretStore, modelProvider, codeHost, jobs, outbox },
     logs,
-    setupToken,
     catalogEntries,
     callerFor: (context) => callerFactory(context),
     anonymous: (resHeaders = new Headers()) => callerFactory({ deps, headers: new Headers(), resHeaders, user: null, member: null, revalidate: () => Promise.resolve(null) }),

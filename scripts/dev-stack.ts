@@ -54,10 +54,26 @@ export const hasDevScript = async (packageDir: string): Promise<boolean> => {
 export const prefixLine = (label: string, line: string): string => `[${label.padEnd(4)}] ${line}`;
 
 /**
- * Whether a log line is the first-admin setup token line (F-001, Q117): the server prints it at
- * first start while there's no account, and `pnpm dev` repeats it where it can't be missed.
+ * Whether a log line is the panel's "first admin seeded" record (F-001): a fresh install's first
+ * start, which `pnpm dev` follows with how to sign in, where it can't be missed.
  */
-export const isSetupTokenLine = (line: string): boolean => /setup token/i.test(line);
+export const isFirstAdminSeededLine = (line: string): boolean => line.includes('"msg":"setup.first_admin_seeded"');
+
+/**
+ * How to sign in as the seeded admin: demo@demo.com / demo unless OSTRA_ADMIN_* says otherwise
+ * (F-001). An operator's own password is never printed, only where it comes from.
+ */
+export const firstAdminSignIn = (env: Readonly<Record<string, string | undefined>>): readonly string[] => {
+  const set = (name: string): string | undefined => {
+    const value = env[name];
+    return value === undefined || value === "" ? undefined : value;
+  };
+  const email = set("OSTRA_ADMIN_EMAIL") ?? "demo@demo.com";
+  const url = set("OSTRA_PUBLIC_URL") ?? "http://localhost:3000";
+  return set("OSTRA_ADMIN_PASSWORD") === undefined
+    ? [`The first admin is ready. Sign in at ${url}`, `as ${email} with the password demo, then choose your own.`]
+    : [`The first admin is ready. Sign in at ${url}`, `as ${email} with the password in OSTRA_ADMIN_PASSWORD.`];
+};
 
 /** The dev database's own line with its URL: `pnpm dev` says it's ready instead of echoing it. */
 export const isDatabaseUrlLine = (line: string): boolean => line.startsWith("DATABASE_URL=");

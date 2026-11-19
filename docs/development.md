@@ -45,7 +45,7 @@ pnpm dev                 # the whole dev stack: the dev database, the migrations
 pnpm dev:reset           # says what it would delete; `pnpm dev:reset --yes` deletes .ostra-dev/
 ```
 
-`pnpm dev` starts the dev database (below) unless `DATABASE_URL` is set, generates Prisma's client (a fresh clone has none), applies the migrations, then starts `apps/core` and `apps/web` in watch mode. Each line of output carries its piece's label (`[db  ]`, `[core]`, `[web ]`), and the terminal shows the panel's address (`http://localhost:3000`, `OSTRA_WEB_PORT`) and core's (`http://localhost:8787`, `OSTRA_CORE_PORT`). While there's no account yet, the server prints the setup token for the first admin, and `pnpm dev` repeats that line in a box. A server whose package has no `dev` script yet isn't started, and `pnpm dev` says so.
+`pnpm dev` starts the dev database (below) unless `DATABASE_URL` is set, generates Prisma's client (a fresh clone has none), applies the migrations, then starts `apps/core` and `apps/web` in watch mode. Each line of output carries its piece's label (`[db  ]`, `[core]`, `[web ]`), and the terminal shows the panel's address (`http://localhost:3000`, `OSTRA_WEB_PORT`) and core's (`http://localhost:8787`, `OSTRA_CORE_PORT`). On an empty database the panel creates the first admin at start (F-001), and `pnpm dev` says in a box how to sign in: `demo@demo.com` (or `demo`) with the password `demo`, which the panel then asks you to change. `OSTRA_ADMIN_EMAIL`, `OSTRA_ADMIN_USERNAME`, `OSTRA_ADMIN_PASSWORD` and `OSTRA_ORGANIZATION_NAME` seed another account instead (`docs/configuration.md`). A server whose package has no `dev` script yet isn't started, and `pnpm dev` says so.
 
 Ctrl-C stops everything: the servers' process trees first, then the dev database, which stops Postgres. No `node` or `postgres` process of the stack is left. If one is (after a crash of the terminal, say), `pnpm dev:reset --yes` stops the dev cluster.
 
@@ -59,7 +59,7 @@ pnpm ostra runner --server http://localhost:8787
 
 It prints a code and the panel's `/device` address. Approve the code in the panel, and the runner shows up online. Once `ostra` is published, `ostra runner` does the same (ADR 0046).
 
-**Milestone 1's demo** (`e2e/m1-first-pr/`, ticket 39). With `pnpm dev` running on an empty data folder, and the dev secrets loaded, it drives the panel in Chromium from the first admin to a PR on the test repo, runs the checks after the run, and closes everything but the final PR:
+**Milestone 1's demo** (`e2e/m1-first-pr/`, ticket 39). With `pnpm dev` running on an empty data folder, and the dev secrets loaded, it drives the panel in Chromium from the first admin to a PR on the test repo, runs the checks after the run, and closes everything but the final PR. It signs in as the admin the stack seeded, with the same `OSTRA_ADMIN_*` variables and defaults as the server, and on a fresh stack changes the default password to one it keeps in `.ostra-dev/e2e-m1/`. For the PR's `Co-authored-by` to link to the test member's GitHub account, start the stack with `OSTRA_ADMIN_EMAIL=<GITHUB_TEST_MEMBER_LOGIN>@users.noreply.github.com`:
 
 ```
 set -a; . ~/.config/ostra-dev/model.env; . ~/.config/ostra-dev/github.env; . ~/.config/ostra-dev/github-test.env; set +a

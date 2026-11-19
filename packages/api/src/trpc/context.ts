@@ -11,7 +11,7 @@ import type { StreamHub } from "../stream/hub.ts";
 /** The settings the routers read: a subset of the server's, so a test names only what it needs. */
 export type ApiSettings = Pick<
   ServerSettings,
-  "mode" | "publicUrl" | "corePublicUrl" | "catalogFetch" | "openSignupAccounts" | "openSignupOrganizations"
+  "mode" | "publicUrl" | "corePublicUrl" | "catalogFetch" | "openSignupAccounts" | "openSignupOrganizations" | "allowDefaultPassword"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
@@ -22,8 +22,6 @@ export type ApiDeps = {
   /** The jobs, outbox, notices, audit, clock and adapters. Tests give in-memory ones. */
   readonly ports: Ports;
   readonly logger: Logger;
-  /** Compared in constant time, and dead once the first account exists. Never logged. */
-  readonly setupToken: string;
   /** better-auth's `hashPassword`, handed to the domain so it doesn't import the auth library. */
   readonly hashPassword: (password: string) => Promise<string>;
   readonly catalog: CatalogSource;

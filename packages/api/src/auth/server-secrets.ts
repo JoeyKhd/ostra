@@ -4,24 +4,20 @@ import path from "node:path";
 
 import type { ServerSettings } from "@ostra/domain";
 
-// The two secrets a fresh install needs and is never asked for (the self-hosting rule): the key
-// that signs sessions (`BETTER_AUTH_SECRET`) and the setup token (`OSTRA_SETUP_TOKEN`, F-001,
-// Q117). A setting wins. Without one, the server generates a value on first start and keeps it in
-// `OSTRA_DATA_DIR` (mode 0600), so a restart finds the same value and a second web process reading
-// the same folder agrees. Neither value is ever logged, except the one setup line below.
+// The secret a fresh install needs and is never asked for (the self-hosting rule): the key that
+// signs sessions (`BETTER_AUTH_SECRET`). A setting wins. Without one, the server generates a value
+// on first start and keeps it in `OSTRA_DATA_DIR` (mode 0600), so a restart finds the same value
+// and a second web process reading the same folder agrees. It is never logged.
+//
+// (Until 2026-11-19 a setup token lived here too, Q117. The server now seeds the first admin
+// itself, F-001, so there is no token; a `setup-token` file an older install left is ignored.)
 
 export type ServerSecrets = {
   /** Signs sessions and tokens. Never logged. */
   readonly betterAuthSecret: string;
-  /** Needed once, to create the first admin. Printed by `announceSetupToken` only. */
-  readonly setupToken: string;
 };
 
 const SECRET_FILE = "better-auth-secret";
-const SETUP_TOKEN_FILE = "setup-token";
-
-/** `ostra-setup-` marks the token for the log guard (adapter-sdk's `redactTokens` knows the prefix). */
-export const generateSetupToken = (): string => `ostra-setup-${randomBytes(24).toString("hex")}`;
 
 const generateSecret = (): string => randomBytes(48).toString("base64url");
 
@@ -67,25 +63,6 @@ const keptOrNew = async (file: string, make: () => string): Promise<string> => {
   return written;
 };
 
-export const loadServerSecrets = async (
-  settings: Pick<ServerSettings, "dataDir" | "betterAuthSecret" | "setupToken">,
-): Promise<ServerSecrets> => ({
+export const loadServerSecrets = async (settings: Pick<ServerSettings, "dataDir" | "betterAuthSecret">): Promise<ServerSecrets> => ({
   betterAuthSecret: settings.betterAuthSecret ?? (await keptOrNew(path.join(settings.dataDir, SECRET_FILE), generateSecret)),
-  setupToken: settings.setupToken ?? (await keptOrNew(path.join(settings.dataDir, SETUP_TOKEN_FILE), generateSetupToken)),
 });
-
-/**
- * The one line that prints the setup token, with the panel's address, at start while no account
- * exists. It writes through `write`, not the structured logger, whose guard would (rightly)
- * redact a token. Nothing else ever logs the token.
- */
-export const announceSetupToken = (write: (text: string) => void, input: { readonly panelUrl: string; readonly setupToken: string }): void => {
-  write(
-    [
-      "",
-      `ostra: this install has no account yet. Open ${input.panelUrl} and create the first admin.`,
-      `ostra: setup token (needed once, stops working after the first account): ${input.setupToken}`,
-      "",
-    ].join("\n"),
-  );
-};

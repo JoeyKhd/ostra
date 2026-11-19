@@ -1,45 +1,51 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { Db } from "@ostra/db";
 import { memberIdSchema, organizationIdSchema, userIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, UserId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, organizationNameSchema, usernameSchema } from "../accounts.ts";
 import type { AuditLog, ChangeNotices, Clock } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import { ensureDefaultPool } from "./pools.ts";
 import type { UseCaseResult } from "./common.ts";
 
-// F-001, F-002, Q117: the first account becomes the instance admin and the admin of the first
-// organization, created with it, under a Postgres advisory lock so only one account ever gets it.
-// It needs the setup token from the server's log; once an account exists, the token stops working
-// and sign-up closes. Written by ticket 30.
+// F-001, F-002 (the maintainer, 2026-11-19, which supersedes Q117's setup token): a server that
+// starts with no account seeds the first one from its settings (`OSTRA_ADMIN_*`, default
+// demo@demo.com / demo), the instance admin and the admin of the first organization, created with
+// it. Every replica calls this at start; a Postgres advisory lock makes exactly one of them create
+// anything, and the others find the account there.
 
-export const createFirstAdminInputSchema = z.strictObject({
-  /** The setup token. Never logged. */
-  setupToken: z.string().min(16).max(512),
-  username: z
-    .string()
-    .min(2)
-    .max(39)
-    .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, "lowercase letters, digits and inner hyphens"),
+export const seedFirstAdminInputSchema = z.strictObject({
+  username: usernameSchema,
   email: z.email().max(320),
-  /** Hashed by better-auth; never stored or logged as given. */
-  password: z.string().min(12).max(256),
-  organizationName: z.string().trim().min(1).max(128),
+  /**
+   * Hashed here; never stored or logged as given. Only the seed may store one under the policy's
+   * length, and only flagged `mustChangePassword` (the default password).
+   */
+  password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
+  organizationName: organizationNameSchema,
+  /** The account must choose a new password at its first sign-in: it was seeded with the default. */
+  mustChangePassword: z.boolean(),
 });
-export type CreateFirstAdminInput = z.infer<typeof createFirstAdminInputSchema>;
+export type SeedFirstAdminInput = z.infer<typeof seedFirstAdminInputSchema>;
 
-export type CreateFirstAdminResult = UseCaseResult<
-  { readonly userId: UserId; readonly memberId: MemberId; readonly organizationId: OrganizationId },
-  "wrong-setup-token" | "already-set-up" | "username-taken" | "email-taken"
+export type SeededFirstAdmin = {
+  readonly userId: UserId;
+  readonly memberId: MemberId;
+  readonly organizationId: OrganizationId;
+};
+
+export type SeedFirstAdminResult = UseCaseResult<
+  /** `seeded` is `null` when the install already had an account: nothing was created. */
+  { readonly seeded: SeededFirstAdmin | null },
+  "password-too-short"
 >;
 
-export type CreateFirstAdminDeps = {
+export type SeedFirstAdminDeps = {
   /** The use case takes the advisory lock in its own transaction. */
   readonly db: Db;
-  /** The token the server generated or read from OSTRA_SETUP_TOKEN. */
-  readonly expectedSetupToken: string;
   /**
    * Hashes a password the way the sign-in side checks it (better-auth's `hashPassword`), so the
    * domain package doesn't depend on the auth library. The result is stored; the password never is.
@@ -50,14 +56,10 @@ export type CreateFirstAdminDeps = {
   readonly clock: Clock;
 };
 
-export type CreateFirstAdmin = (deps: CreateFirstAdminDeps, input: CreateFirstAdminInput) => Promise<CreateFirstAdminResult>;
+export type SeedFirstAdmin = (deps: SeedFirstAdminDeps, input: SeedFirstAdminInput) => Promise<SeedFirstAdminResult>;
 
 /** A fixed key for the advisory lock that serialises "who is the first account". */
 export const FIRST_ACCOUNT_LOCK_KEY = 4_270_901;
-
-/** Compares two secrets in constant time, whatever their lengths (it compares their digests). */
-export const secretsMatch = (expected: string, given: string): boolean =>
-  timingSafeEqual(createHash("sha256").update(expected).digest(), createHash("sha256").update(given).digest());
 
 /** A URL-safe slug of an organization's name, never empty. */
 export const slugify = (name: string, fallback: string): string => {
@@ -72,33 +74,29 @@ export const slugify = (name: string, fallback: string): string => {
   return slug === "" ? fallback : slug;
 };
 
-const refuse = (error: Exclude<CreateFirstAdminResult, { readonly ok: true }>["error"], message: string): CreateFirstAdminResult => ({
-  ok: false,
-  error,
-  message,
-});
+const hasAccount = async (db: Pick<Db, "user" | "instanceSetting">): Promise<boolean> => {
+  const setting = await db.instanceSetting.findUnique({ where: { id: "instance" }, select: { firstAdminCreatedAt: true } });
+  return (setting !== null && setting.firstAdminCreatedAt !== null) || (await db.user.count()) > 0;
+};
 
-export const createFirstAdmin: CreateFirstAdmin = async (deps, input) => {
-  if (!secretsMatch(deps.expectedSetupToken, input.setupToken)) {
-    return refuse("wrong-setup-token", "The setup token is wrong");
+export const seedFirstAdmin: SeedFirstAdmin = async (deps, input) => {
+  if (input.password.length < MIN_PASSWORD_LENGTH && !input.mustChangePassword) {
+    return { ok: false, error: "password-too-short", message: `A password has ${String(MIN_PASSWORD_LENGTH)} characters or more` };
+  }
+  // A restart of a set-up install is the common case: it hashes nothing and takes no lock.
+  if (await hasAccount(deps.db)) {
+    return { ok: true, seeded: null };
   }
   const passwordHash = await deps.hashPassword(input.password);
   const email = input.email.toLowerCase();
   const now = new Date(deps.clock.now());
 
-  return deps.db.$transaction(async (tx): Promise<CreateFirstAdminResult> => {
+  return deps.db.$transaction(async (tx): Promise<SeedFirstAdminResult> => {
     // $executeRaw, not $queryRaw: Prisma 7 with the pg driver adapter can't read the `void` column
-    // this function returns (spike 9).
+    // this function returns (spike 9). Replicas starting together wait here, one at a time.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_ACCOUNT_LOCK_KEY})`;
-    const setting = await tx.instanceSetting.findUnique({ where: { id: "instance" }, select: { firstAdminCreatedAt: true } });
-    if ((setting !== null && setting.firstAdminCreatedAt !== null) || (await tx.user.count()) > 0) {
-      return refuse("already-set-up", "This install already has its first account");
-    }
-    if ((await tx.user.count({ where: { username: input.username } })) > 0) {
-      return refuse("username-taken", "That username is taken");
-    }
-    if ((await tx.user.count({ where: { email } })) > 0) {
-      return refuse("email-taken", "That email is taken");
+    if (await hasAccount(tx)) {
+      return { ok: true, seeded: null };
     }
 
     const userId = userIdSchema.parse(randomUUID());
@@ -112,6 +110,7 @@ export const createFirstAdmin: CreateFirstAdmin = async (deps, input) => {
         username: input.username,
         displayUsername: input.username,
         role: "admin",
+        mustChangePassword: input.mustChangePassword,
         createdAt: now,
         updatedAt: now,
         accounts: {
@@ -144,12 +143,12 @@ export const createFirstAdmin: CreateFirstAdmin = async (deps, input) => {
     await deps.audit.recordInTx(tx, {
       organizationId,
       projectId: null,
-      actor: { kind: "member", id: memberId },
+      actor: { kind: "system", id: null },
       action: "instance.first-admin-created",
       entity: "member",
       entityId: memberId,
     });
     await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "member", entityId: memberId });
-    return { ok: true, userId, memberId, organizationId };
+    return { ok: true, seeded: { userId, memberId, organizationId } };
   });
 };

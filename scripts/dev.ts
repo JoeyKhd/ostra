@@ -18,7 +18,8 @@ import {
   devApps,
   hasDevScript,
   isDatabaseUrlLine,
-  isSetupTokenLine,
+  firstAdminSignIn,
+  isFirstAdminSeededLine,
   pnpmEntry,
   prefixLine,
   usesExternalDatabase,
@@ -58,8 +59,8 @@ const pipeLines = (piece: Piece, onLine?: (line: string) => void): void => {
         return;
       }
       process.stdout.write(`${prefixLine(piece.label, line)}\n`);
-      if (isSetupTokenLine(line)) {
-        banner(["Create the first admin with the setup token:", line.trim()]);
+      if (isFirstAdminSeededLine(line)) {
+        banner(firstAdminSignIn(process.env));
       }
     });
   }

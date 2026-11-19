@@ -1,10 +1,11 @@
 import type { Db } from "@ostra/db";
-import { ensureBuiltInAgentProfile, ensureDefaultPool } from "@ostra/domain";
+import { ensureBuiltInAgentProfile, ensureDefaultPool, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@ostra/domain";
 import { organizationIdSchema } from "@ostra/protocol";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { admin, bearer, deviceAuthorization, organization, username } from "better-auth/plugins";
+import { z } from "zod";
 
 import { isOrganizationRole, organizationAccessControl, organizationRoles } from "./roles.ts";
 import { usernamePluginOptions } from "./username.ts";
@@ -13,7 +14,7 @@ import { usernamePluginOptions } from "./username.ts";
 //
 // better-auth, configured once here so `apps/web` serves it (`/api/auth/*`) and `apps/core` can
 // check a device session with the same code. The pieces ostra adds are in this file and in
-// `setup-token.ts` and `scope.ts`, each with its own test (`auth.contract.test.ts`).
+// `scope.ts`, each with its own test (`auth.contract.test.ts`, `default-password.test.ts`).
 
 /** The OAuth client ID a personal runner presents. Any other ID is refused (ADR 0029). */
 export const RUNNER_CLIENT_ID = "ostra-runner";
@@ -23,11 +24,17 @@ export type AuthSettings = {
   readonly openOrganizationSignup: boolean;
   /** Anyone may create an account, not only invitees (the hosted version). Off by default. */
   readonly openAccountSignup: boolean;
+  /**
+   * The seeded admin may keep the default password (`OSTRA_ALLOW_DEFAULT_PASSWORD`, for demos). Off:
+   * an account flagged `mustChangePassword` can do nothing but change it (F-001).
+   */
+  readonly allowDefaultPassword: boolean;
 };
 
 export const defaultAuthSettings: AuthSettings = {
   openOrganizationSignup: false,
   openAccountSignup: false,
+  allowDefaultPassword: false,
 };
 
 export type CreateAuthInput = {
@@ -46,8 +53,25 @@ export type CreateAuthInput = {
 const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60;
 const ONE_DAY_SECONDS = 24 * 60 * 60;
 
-/** The password length the first-admin form and sign-in both enforce (the domain's schema says 12). */
-export const MIN_PASSWORD_LENGTH = 12;
+/**
+ * What an account that must change its default password may still reach (F-001): reading and ending
+ * its session, signing in, and changing the password. Everything else better-auth serves (the
+ * organization, admin and device-approval routes) is refused until it has.
+ */
+const PATHS_BEFORE_PASSWORD_CHANGE: ReadonlySet<string> = new Set([
+  "/get-session",
+  "/sign-out",
+  "/sign-in/email",
+  "/sign-in/username",
+  "/change-password",
+  "/ok",
+  "/error",
+]);
+
+const changedPasswordSchema = z.looseObject({ user: z.looseObject({ id: z.string().min(1) }) });
+
+/** Whether better-auth's user (or session user) still has to change its default password. */
+export const mustChangePasswordOf = (user: object): boolean => Reflect.get(user, "mustChangePassword") === true;
 
 const assertOrganizationRole = (role: string): void => {
   if (!isOrganizationRole(role)) {
@@ -75,8 +99,10 @@ const firstOrganizationOf = async (db: Db, userId: string): Promise<string | nul
 export const createAuth = (input: CreateAuthInput) => {
   const settings = input.settings ?? defaultAuthSettings;
   const { db } = input;
+  // The before hook reads the caller's session through the finished instance, set just below.
+  const finished: { sessionOf?: (headers: Headers) => Promise<{ readonly user: object } | null> } = {};
 
-  return betterAuth({
+  const auth = betterAuth({
     baseURL: input.baseUrl,
     secret: input.secret,
     trustedOrigins: [input.baseUrl],
@@ -98,9 +124,18 @@ export const createAuth = (input: CreateAuthInput) => {
       requireEmailVerification: false,
       autoSignIn: true,
       minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
       // A link an admin copies into a chat has to outlive an hour.
       resetPasswordTokenExpiresIn: ONE_DAY_SECONDS,
       revokeSessionsOnPasswordReset: true,
+    },
+
+    user: {
+      additionalFields: {
+        // F-001: set only by the seed, for the default password; cleared by a password change.
+        // `input: false`: no sign-up or profile update can set it.
+        mustChangePassword: { type: "boolean", required: false, defaultValue: false, input: false },
+      },
     },
 
     databaseHooks: {
@@ -133,19 +168,41 @@ export const createAuth = (input: CreateAuthInput) => {
     },
 
     hooks: {
-      // Sign-up is closed to strangers. The first account is created by `setup.createFirstAdmin`
-      // (the setup token, then one transaction: the account, its organization and the admin
-      // role), never by this route, so it can't end up with no organization. This hook lets
-      // through only what an install turned on: open sign-up. Invitees come in milestone 4
-      // (F-002) with their own check, which refuses them for now with a clear message.
-      before: createAuthMiddleware((ctx) => {
-        if (ctx.path !== "/sign-up/email" || settings.openAccountSignup) {
-          return Promise.resolve();
+      before: createAuthMiddleware(async (ctx) => {
+        // Sign-up is closed to strangers. The first account is seeded by the server at start
+        // (`seedFirstAdmin`: one transaction, the account, its organization and the admin role),
+        // never by this route, so it can't end up with no organization. This lets through only
+        // what an install turned on: open sign-up. Invitees come in milestone 4 (F-002) with
+        // their own check, which refuses them for now with a clear message.
+        if (ctx.path === "/sign-up/email" && !settings.openAccountSignup) {
+          throw new APIError("FORBIDDEN", {
+            code: "SIGN_UP_CLOSED",
+            message: "Sign-up is closed: the server creates the first admin, and invitations come in a later release",
+          });
         }
-        throw new APIError("FORBIDDEN", {
-          code: "SIGN_UP_CLOSED",
-          message: "Sign-up is closed: the first admin is created on the panel's first-run page, and invitations come in a later release",
-        });
+        // F-001: the seeded admin with the default password changes it before anything else.
+        const { sessionOf } = finished;
+        if (settings.allowDefaultPassword || PATHS_BEFORE_PASSWORD_CHANGE.has(ctx.path) || ctx.headers === undefined || sessionOf === undefined) {
+          return;
+        }
+        const found = await sessionOf(ctx.headers);
+        if (found !== null && mustChangePasswordOf(found.user)) {
+          throw new APIError("FORBIDDEN", {
+            code: "PASSWORD_CHANGE_REQUIRED",
+            message: "Choose a new password first: this account still has the default one",
+          });
+        }
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        // A changed password ends the default one: the flag goes, and with it the forced step and
+        // the panel's warning (F-001).
+        if (ctx.path !== "/change-password" || isAPIError(ctx.context.returned)) {
+          return;
+        }
+        const changed = changedPasswordSchema.safeParse(ctx.context.returned);
+        if (changed.success) {
+          await db.user.updateMany({ where: { id: changed.data.user.id, mustChangePassword: true }, data: { mustChangePassword: false } });
+        }
       }),
     },
 
@@ -172,7 +229,7 @@ export const createAuth = (input: CreateAuthInput) => {
         organizationHooks: {
           // Every organization has its built-in OpenCode profile and its default runner pool (F-086),
           // also one an instance admin makes later. The first organization gets its own in
-          // `createFirstAdmin`.
+          // `seedFirstAdmin`.
           afterCreateOrganization: async ({ organization: created }) => {
             const organizationId = organizationIdSchema.parse(created.id);
             await db.$transaction(async (tx) => {
@@ -207,6 +264,8 @@ export const createAuth = (input: CreateAuthInput) => {
       }),
     ],
   });
+  finished.sessionOf = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } });
+  return auth;
 };
 
 export type OstraAuth = ReturnType<typeof createAuth>;

@@ -60,27 +60,3 @@ describe("setup.status", () => {
     await expect(harness.anonymous().setup.status()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
-
-describe("setup.state", () => {
-  it("is public, and says an install with an account needs no first admin", async () => {
-    expect(await harness.anonymous().setup.state()).toEqual({ needsFirstAdmin: false, openSignup: false });
-  });
-});
-
-describe("the first admin and the log", () => {
-  it("never let the setup token or a password into a log line", async () => {
-    const password = "a-password-that-must-never-be-logged";
-    await expect(
-      harness.anonymous().setup.createFirstAdmin({
-        setupToken: harness.setupToken,
-        username: "late",
-        email: "late@example.com",
-        password,
-        organizationName: "Late",
-      }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    const lines = JSON.stringify(harness.logs);
-    expect(lines).not.toContain(harness.setupToken);
-    expect(lines).not.toContain(password);
-  });
-});

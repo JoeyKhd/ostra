@@ -1,22 +1,15 @@
 import { redirect } from "next/navigation";
 
-import { AuthCard } from "@/components/auth/auth-card";
-import { FirstAdminForm } from "@/components/auth/first-admin-form";
-import { t } from "@/lib/messages";
 import { getServerApi } from "@/server/api";
 
-export const metadata = { title: t("firstAdmin.title") };
-
-/** "Create the first admin": shown only while no account exists (F-001, F-002). */
+/**
+ * The old first-run page. The server seeds the first admin at start now (F-001, which supersedes
+ * Q117's setup token), so nobody creates one here: signed in, the first-run checklist is on Home;
+ * signed out, sign in (demo@demo.com / demo on a fresh install).
+ */
 const SetupPage = async () => {
-  const { caller, signedIn } = await getServerApi();
-  const state = await caller.setup.state();
-  if (!state.needsFirstAdmin) redirect(signedIn ? "/" : "/sign-in");
-  return (
-    <AuthCard title={t("firstAdmin.title")} lede={t("firstAdmin.lede")}>
-      <FirstAdminForm />
-    </AuthCard>
-  );
+  const { signedIn } = await getServerApi();
+  redirect(signedIn ? "/" : "/sign-in");
 };
 
 export default SetupPage;

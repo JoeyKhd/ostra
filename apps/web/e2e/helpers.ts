@@ -48,6 +48,25 @@ export const signIn = async (page: Page, identifier: string = e2eAdmin.username)
   throw new Error("signing in kept being rate limited");
 };
 
+/** A sign-in that must be refused in words, waiting out the rate limit like `signIn` does. */
+export const expectSignInRefused = async (page: Page, identifier: string, password: string): Promise<void> => {
+  const refused = "That username or email and password don't match.";
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.goto("/sign-in");
+    await page.getByLabel("Username or email").fill(identifier);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    const alert = page.getByRole("alert").filter({ hasText: /./ });
+    await alert.waitFor();
+    if ((await alert.textContent())?.includes("Too many sign-in attempts") !== true) {
+      await expect(alert).toHaveText(refused);
+      return;
+    }
+    await page.waitForTimeout(11_000);
+  }
+  throw new Error("signing in kept being rate limited");
+};
+
 // The stack file the e2e stack writes, and the line seed-task.ts prints: both are read through a schema.
 const stackSchema = z.object({
   databaseUrl: z.string(),

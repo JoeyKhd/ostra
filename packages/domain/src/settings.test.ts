@@ -32,7 +32,8 @@ describe("the server's settings", () => {
       openSignupAccounts: false,
       openSignupOrganizations: false,
       betterAuthSecret: null,
-      setupToken: null,
+      firstAdmin: { email: "demo@demo.com", username: "demo", password: null, organizationName: "Demo" },
+      allowDefaultPassword: false,
     });
     expect(result.settings.dataDir).toBe(path.join(repoRoot, ".ostra-dev", "server"));
   });
@@ -96,6 +97,52 @@ describe("the server's settings", () => {
     expect(errors).toContain("BETTER_AUTH_SECRET");
     expect(errors).toContain("OSTRA_WEB_PORT");
     expect(errors).not.toContain("too-short-secret-value");
+  });
+});
+
+describe("the first admin's settings (F-001)", () => {
+  it("default to demo@demo.com, demo, the default password and Demo", () => {
+    const result = parseServerSettings({});
+    expect(result.ok && result.settings.firstAdmin).toEqual({ email: "demo@demo.com", username: "demo", password: null, organizationName: "Demo" });
+    expect(result.ok && result.settings.allowDefaultPassword).toBe(false);
+  });
+
+  it("take each variable over its default", () => {
+    const result = parseServerSettings({
+      OSTRA_ADMIN_EMAIL: "Ada@Example.com",
+      OSTRA_ADMIN_USERNAME: "ada",
+      OSTRA_ADMIN_PASSWORD: "a-long-enough-password",
+      OSTRA_ORGANIZATION_NAME: "  Calculator Co  ",
+      OSTRA_ALLOW_DEFAULT_PASSWORD: "true",
+    });
+    expect(result.ok && result.settings.firstAdmin).toEqual({
+      email: "ada@example.com",
+      username: "ada",
+      password: "a-long-enough-password",
+      organizationName: "Calculator Co",
+    });
+    expect(result.ok && result.settings.allowDefaultPassword).toBe(true);
+  });
+
+  it("refuse a bad email, username or short password, naming the variable but never the value", () => {
+    for (const [name, value] of [
+      ["OSTRA_ADMIN_EMAIL", "not-an-email"],
+      ["OSTRA_ADMIN_USERNAME", "Not Valid!"],
+      ["OSTRA_ADMIN_PASSWORD", "short-pass1"],
+      ["OSTRA_ORGANIZATION_NAME", "   "],
+    ] as const) {
+      const result = parseServerSettings({ [name]: value });
+      expect(result.ok, name).toBe(false);
+      const errors = result.ok ? "" : result.errors.join("\n");
+      expect(errors).toContain(name);
+      if (value.trim() !== "") {
+        expect(errors).not.toContain(value);
+      }
+    }
+  });
+
+  it("refuse the old setup token: Q117 is superseded", () => {
+    expect(parseServerSettings({ OSTRA_SETUP_TOKEN: "ostra-setup-0123456789abcdef" }).ok).toBe(false);
   });
 });
 

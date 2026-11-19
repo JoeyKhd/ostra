@@ -24,10 +24,16 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_OPEN_SIGNUP_ACCOUNTS` | `false` | Let anyone create an account. Off: after the first admin, accounts come by invitation. |
 | `OSTRA_OPEN_SIGNUP_ORGANIZATIONS` | `false` | Let any account create an organization. Off: only the instance admin can. |
 | `BETTER_AUTH_SECRET` | generated on first start, kept in `OSTRA_DATA_DIR` | Signs sessions and tokens (at least 32 characters). Changing it signs everyone out. |
-| `OSTRA_SETUP_TOKEN` | generated and printed in the server's log at first start | Needed to create the first admin. It stops working once the first account exists (F-001, Q117). |
+| `OSTRA_ADMIN_EMAIL` | `demo@demo.com` | The first admin's email. When the server starts with no account, it creates the first admin, the instance admin and the admin of the first organization (F-001). Read only then: changing it later changes nothing. |
+| `OSTRA_ADMIN_USERNAME` | `demo` | The first admin's username: lowercase letters, digits and inner hyphens. Read only when the first admin is created. |
+| `OSTRA_ADMIN_PASSWORD` | `demo`, which must be changed at the first sign-in | The first admin's password, 12 characters or more. **Unset, the admin gets the default password `demo`**: its first sign-in leads to "Choose a new password", and the panel does nothing else until it has one. Read only when the first admin is created. |
+| `OSTRA_ORGANIZATION_NAME` | `Demo` | The first organization's name. Read only when the first admin is created. |
+| `OSTRA_ALLOW_DEFAULT_PASSWORD` | `false` | `true` lets the seeded admin keep the default password, for a demo: no forced change at sign-in, but a warning across the panel until it changes. Never on an install others can reach. |
 | `OSTRA_DEV_PG_PORT` | `54329` | The embedded dev database's port (development only). |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
+
+**The first admin.** A fresh install has an account from its first start: sign in at `OSTRA_PUBLIC_URL` as `demo@demo.com` (or `demo`) with the password `demo`, and choose a new password when asked. To start with your own account instead, set `OSTRA_ADMIN_EMAIL`, `OSTRA_ADMIN_USERNAME`, `OSTRA_ADMIN_PASSWORD` and `OSTRA_ORGANIZATION_NAME` before the first start. Several server processes starting at once still create one admin. The server logs `setup.first_admin_seeded` with the new IDs, never the email or the password.
 
 **What core keeps in `OSTRA_DATA_DIR`.** Besides the keys above, core makes these files there at first start, each readable by its owner only: `secrets-key`, the built-in secret store's key when `OSTRA_SECRETS_KEY` is unset (the panel reads the same file, so back it up); `runner-token.key`, the key runners' 10-minute access tokens are signed with (it also signs each task's MCP token; deleting it makes every runner get a new token, nothing more); and `bootstrap-join-token`, the default pool's bootstrap join token for the compose file's pool runner. The bootstrap token is stored hashed in the database and shown nowhere else; core writes it once the first organization exists. Core's daily catalog job also keeps the last good copy of the models.dev catalog in `catalog/models-dev.json` there, and the logos of the providers your models matched in `model-logos/`, which the panel serves (with `OSTRA_CATALOG_FETCH=false`, neither is fetched, and the copy bundled with ostra is used).
 

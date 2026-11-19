@@ -6,7 +6,8 @@
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./accounts": "./src/accounts.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

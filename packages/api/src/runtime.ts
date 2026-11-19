@@ -6,7 +6,8 @@ import { hashPassword } from "better-auth/crypto";
 
 import { createAuth } from "./auth/create-auth.ts";
 import type { OstraAuth } from "./auth/create-auth.ts";
-import { announceSetupToken, loadServerSecrets } from "./auth/server-secrets.ts";
+import { ensureFirstAdmin } from "./auth/first-admin.ts";
+import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
 import { createStreamHub } from "./stream/hub.ts";
 import type { ApiDeps, Context } from "./trpc/context.ts";
@@ -27,8 +28,6 @@ export type ApiRuntimeInput = {
   readonly outbox: CommandOutbox;
   readonly catalog: CatalogSource;
   readonly logger: Logger;
-  /** Where the setup line goes. Default: the process's standard error. */
-  readonly announce?: (text: string) => void;
 };
 
 export type ApiRuntime = {
@@ -50,9 +49,15 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     settings: {
       openAccountSignup: settings.openSignupAccounts,
       openOrganizationSignup: settings.openSignupOrganizations,
+      allowDefaultPassword: settings.allowDefaultPassword,
     },
     logLevel: settings.mode === "production" ? "error" : "warn",
   });
+  // F-001: a server that starts with no account seeds the first admin and organization. Every
+  // replica runs this; the seed's advisory lock lets exactly one create them.
+  const ports = { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock };
+  await ensureFirstAdmin({ db, settings, hashPassword, ports, logger: input.logger });
+
   const hub = createStreamHub({ db, databaseUrl: settings.databaseUrl, logger: input.logger });
   await hub.start();
 
@@ -63,26 +68,14 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     ports: {
       jobs: input.jobs,
       outbox: input.outbox,
-      notices: postgresChangeNotices,
-      audit: postgresAuditLog,
-      clock: systemClock,
+      ...ports,
       adapters: input.adapters,
     },
     logger: input.logger,
-    setupToken: secrets.setupToken,
     hashPassword,
     catalog: input.catalog,
     stream: hub,
   };
-
-  // F-001, Q117: while no account exists, the log says how to make the first one.
-  const accounts = await db.user.count();
-  if (accounts === 0) {
-    announceSetupToken(input.announce ?? ((text) => process.stderr.write(`${text}\n`)), {
-      panelUrl: settings.publicUrl,
-      setupToken: secrets.setupToken,
-    });
-  }
 
   return {
     deps,

@@ -9,9 +9,7 @@ import { getServerApi } from "@/server/api";
 export const metadata = { title: t("signIn.title") };
 
 const SignInPage = async () => {
-  const { caller, signedIn } = await getServerApi();
-  const state = await caller.setup.state();
-  if (state.needsFirstAdmin) redirect("/setup");
+  const { signedIn } = await getServerApi();
   if (signedIn) redirect("/");
   return (
     <AuthCard title={t("signIn.title")} lede={t("signIn.lede")}>

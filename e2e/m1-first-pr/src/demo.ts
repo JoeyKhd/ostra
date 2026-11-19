@@ -63,7 +63,7 @@ const screenshot = async (page: Page, settings: DemoSettings, name: string): Pro
   const file = path.join(settings.screenshotDir, `${String(shot).padStart(2, "0")}-${name}.png`);
   // The screenshots are committed: the dev endpoint's address and this machine's folders are masked.
   const mask = [
-    page.locator("#setupToken"),
+    page.locator("#identifier"),
     page.locator("#email"),
     page.getByLabel("API base URL"),
     page.getByText(settings.modelBaseUrl),
@@ -73,31 +73,49 @@ const screenshot = async (page: Page, settings: DemoSettings, name: string): Pro
   say(`screenshot ${path.relative(repoRoot, file)}`);
 };
 
-const signInOrCreateAdmin = async (page: Page, settings: DemoSettings, state: DemoState): Promise<void> => {
+/** Signs in with one password; whether the panel let the browser past the sign-in page. */
+const trySignIn = async (page: Page, settings: DemoSettings, password: string): Promise<boolean> => {
+  await page.goto("/sign-in");
+  await page.getByLabel("Username or email").fill(settings.adminUsername);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  return page.waitForURL((url) => url.pathname !== "/sign-in", { timeout: 15_000 }).then(
+    () => true,
+    () => false,
+  );
+};
+
+/**
+ * Step 2: the first admin, which the server seeded at its first start (F-001). With
+ * OSTRA_ADMIN_PASSWORD set, it signs in with that. Otherwise a fresh stack's admin still has the
+ * default password, demo: it signs in with it and chooses the demo's own password, kept in the
+ * state file for the next run.
+ */
+const signInAsAdmin = async (page: Page, settings: DemoSettings, state: DemoState): Promise<void> => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  if (new URL(page.url()).pathname === "/setup") {
-    say("step 2: create the first admin");
-    const setupToken = (await readFile(path.join(settings.dataDir, "server", "setup-token"), "utf8")).trim();
-    await page.locator("#setupToken").fill(setupToken);
-    await page.locator("#organizationName").fill(settings.organizationName);
-    await page.locator("#username").fill(settings.adminUsername);
-    await page.locator("#email").fill(settings.adminEmail);
-    await page.locator("#password").fill(state.password);
-    await screenshot(page, settings, "first-admin");
-    await page.getByRole("button", { name: "Create" }).click();
+  if (new URL(page.url()).pathname !== "/sign-in") return;
+  if (settings.adminPassword !== null) {
+    say("signing in");
+    if (!(await trySignIn(page, settings, settings.adminPassword))) throw new Error("the admin's sign-in failed: check OSTRA_ADMIN_USERNAME and OSTRA_ADMIN_PASSWORD");
+    return;
+  }
+  if (await trySignIn(page, settings, "demo")) {
+    say("step 2: the seeded admin chooses its own password");
+    // The panel sends it there itself; going there directly also covers OSTRA_ALLOW_DEFAULT_PASSWORD.
+    await page.goto("/change-password");
+    await page.getByLabel("Current password").fill("demo");
+    await page.getByLabel("New password", { exact: true }).fill(state.password);
+    await page.getByLabel("New password, again").fill(state.password);
+    await screenshot(page, settings, "change-password");
+    await page.getByRole("button", { name: "Change the password" }).click();
     await page.waitForURL((url) => url.pathname === "/");
     // A fresh stack: a runner identity from an earlier one would be refused.
     await rm(settings.runnerDataDir, { recursive: true, force: true });
     return;
   }
-  if (new URL(page.url()).pathname === "/sign-in") {
-    say("signing in");
-    await page.getByLabel("Username or email").fill(settings.adminUsername);
-    await page.getByLabel("Password").fill(state.password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL((url) => url.pathname === "/");
-  }
+  say("signing in");
+  if (!(await trySignIn(page, settings, state.password))) throw new Error("the admin's sign-in failed: the stack's admin isn't the one this demo set up");
 };
 
 const stepDone = async (page: Page, step: string): Promise<boolean> => {
@@ -340,7 +358,7 @@ const main = async (): Promise<void> => {
     browser = await chromium.launch();
     const context = await browser.newContext({ baseURL: settings.panelUrl, viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
-    await signInOrCreateAdmin(page, settings, state);
+    await signInAsAdmin(page, settings, state);
     await screenshot(page, settings, "checklist");
     await addModelProvider(page, settings);
     await connectGitHub(page, settings);

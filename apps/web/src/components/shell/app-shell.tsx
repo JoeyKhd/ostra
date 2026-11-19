@@ -8,6 +8,7 @@ import { StreamProvider } from "@/task/stream-provider";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { DefaultPasswordBanner } from "./default-password-banner";
 import { Sidebar } from "./sidebar";
 
 type ShellContext = { readonly openNavigation: () => void };
@@ -35,7 +36,10 @@ export const AppShell = ({ me, children }: { readonly me: RouterOutputs["me"]["g
             <Sidebar me={me} onNavigate={() => { setOpen(false); }} />
           </SheetContent>
         </Sheet>
-        <div className="flex min-h-dvh min-w-0 flex-col lg:min-h-0">{children}</div>
+        <div className="flex min-h-dvh min-w-0 flex-col lg:min-h-0">
+          <DefaultPasswordBanner passwordChange={me.passwordChange} />
+          {children}
+        </div>
       </div>
     </ShellContextValue.Provider>
     </StreamProvider>

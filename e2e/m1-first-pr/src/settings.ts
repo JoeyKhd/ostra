@@ -25,6 +25,11 @@ const envSchema = z.object({
   OSTRA_E2E_CORE_URL: z.url().default("http://localhost:8787"),
   OSTRA_E2E_STACK_LOG: z.string().min(1).optional(),
   OSTRA_E2E_PROMPT: z.string().min(1).default("Add a CONTRIBUTING.md with a short section on how to run the tests"),
+  // The admin the dev stack seeded (F-001): the same variables, and defaults, as the server's.
+  OSTRA_ADMIN_EMAIL: z.email().default("demo@demo.com"),
+  OSTRA_ADMIN_USERNAME: z.string().min(1).default("demo"),
+  OSTRA_ADMIN_PASSWORD: z.string().min(1).optional(),
+  OSTRA_ORGANIZATION_NAME: z.string().min(1).default("Demo"),
 });
 
 export type DemoSettings = {
@@ -44,6 +49,8 @@ export type DemoSettings = {
   readonly organizationName: string;
   readonly adminUsername: string;
   readonly adminEmail: string;
+  /** OSTRA_ADMIN_PASSWORD, a secret typed into the sign-in form only. `null`: the seeded default, which the demo changes. */
+  readonly adminPassword: string | null;
   readonly modelBaseUrl: string;
   /** A secret: typed into the form only. */
   readonly modelApiKey: string;
@@ -76,10 +83,12 @@ export const demoSettings = (env: Readonly<Record<string, string | undefined>>):
     runnerDataDir: path.join(os.tmpdir(), "ostra-e2e-m1", "runner"),
     logFiles: [path.join(dataDir, "e2e-m1", "runner.log"), ...(value.OSTRA_E2E_STACK_LOG === undefined ? [] : [value.OSTRA_E2E_STACK_LOG])],
     screenshotDir: path.join(repoRoot, "context", "specs", "m1-first-pr", "demo"),
-    organizationName: "ostra-test",
-    adminUsername: "admin",
-    // GitHub links a co-author by a noreply address of the account.
-    adminEmail: value.GITHUB_TEST_MEMBER_LOGIN === undefined ? "admin@example.com" : `${value.GITHUB_TEST_MEMBER_LOGIN}@users.noreply.github.com`,
+    organizationName: value.OSTRA_ORGANIZATION_NAME,
+    adminUsername: value.OSTRA_ADMIN_USERNAME,
+    adminPassword: value.OSTRA_ADMIN_PASSWORD ?? null,
+    // GitHub links a co-author by a noreply address of the account: start the dev stack with
+    // OSTRA_ADMIN_EMAIL=<GITHUB_TEST_MEMBER_LOGIN>@users.noreply.github.com for that (docs/development.md).
+    adminEmail: value.OSTRA_ADMIN_EMAIL,
     modelBaseUrl: value.OSTRA_DEV_MODEL_BASE_URL,
     modelApiKey: value.OSTRA_DEV_MODEL_API_KEY,
     modelId: value.OSTRA_DEV_MODEL_ID,
