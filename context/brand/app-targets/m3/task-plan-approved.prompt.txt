@@ -1,0 +1,34 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same task page a few minutes earlier, while its plan waited for an answer: keep its sidebar, top bar, header, ticket strip, context row, tabs, thread row language, composer and properties panel exactly in the same positions, fonts, sizes and density, and show the later state described below, after the driver approved an edited plan. The second reference is the approved task page of the app: use its plan list style (green check, teal ring with a dot, faint empty circle) and its tool-row grid. The third is the ostra hinge logo mark, drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; primary button filled #F3F0E8 with dark #0C1D21 text. NO AMBER on this page except the small amber dots next to other projects in the sidebar and the amber "4" pill: nothing on this task waits on the viewer now. No gradients, no glow, no purple, no blue tint, no cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, branch and runner names, money, token counts and times in IBM Plex Mono. Thin Lucide icons, 15px, 1.75 stroke.
+
+LAYOUT, identical frame to the first reference:
+1) LEFT SIDEBAR as in the first reference, but "Needs you" shows the amber pill "4" and the calculator project row has no amber dot.
+2) TOP BAR: breadcrumbs "calculator  ›  Tasks  ›  CALC-196"; right: ghost link icon, outlined "Stop" with a square icon.
+3) MAIN COLUMN:
+- Mono faint "CALC-196 · from Linear"; title "Export the history as CSV"; status line: small 7px TEAL dot + bright "Running", faint middle dot, muted "Editing src/history/panel.tsx", faint middle dot, muted "Started 11 min ago on" + faint mono "alex-desktop".
+- Ticket strip and collapsed context row exactly as in the first reference; underline tabs "Activity" (selected), "Changes" with faint "1", "Checks". Hairline.
+- Thread:
+  a) The message-level row as in the first reference: muted list-checks icon in the gutter (no circle), muted "Plan first: OpenCode reads the code and proposes a plan. It can't edit files or run commands in this turn." + faint mono "profile Careful".
+  b) Square terminal agent icon in a 28px round outlined circle. "OpenCode" bold + faint mono "09:41 · Claude Sonnet 5.5" + faint "proposed a plan". Under it, NOT a block and NOT amber: one muted 12px line with a small muted check icon: "Plan approved by Alex Kim, with edits" + faint mono " 09:46", then a teal 12px "Show the plan" with no underline.
+  c) A message-level row, 28px: a small muted play icon in the gutter (no circle), muted 13px "OpenCode works from the approved plan. Plan mode is off."
+  d) Square terminal agent icon in a 28px round outlined circle. "OpenCode" bold + faint mono "09:46 · Claude Sonnet 5.5" + small teal "working". Text: "Starting with the CSV builder, then the button."
+     A compact "Plan" block exactly in the second reference's style (label "Plan" small faint 12px), six 24px rows with tiny 12px glyphs:
+     green check + muted "Add toCsv(results) in src/history/csv.ts, with quoting"
+     teal ring with a dot + bright "Add an Export button to the panel's header"
+     faint empty circle + muted "Download the file as calculator-history-YYYY-MM-DD.csv"
+     faint empty circle + muted "Unit tests for toCsv: commas, quotes, an empty history"
+     faint empty circle + muted "A line in CHANGELOG.md, with today's date"
+     faint empty circle + muted "Export only the results the panel shows"
+     Then tool rows in the strict grid of the second reference:
+     pencil icon, "Edited", mono "src/history/csv.ts", green "+38"
+     pencil icon, "Editing", mono "src/history/panel.tsx"
+- Then the COMPOSER pinned at the bottom: rounded box #131416, border #2A2C30, placeholder "Message the agent…", bottom row: faint info icon + "Send reaches OpenCode at its next step. Interrupt and send stops the turn first." and right: outlined "Interrupt and send" with a pause icon, off-white filled "Send" with an arrow-up icon.
+4) RIGHT PROPERTIES PANEL as in the first reference, with these values: "Status" teal dot "Running"; "Driver" avatar "AK" "Alex Kim"; "Profile" "Careful"; "Plan" "Approved · edited"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "alex-desktop" with muted chips "Personal" "host" on the next line; "Box" "Running"; "Tokens" mono "71k in · 9k out"; "Spend" mono "$0.46" + muted " of $25.00".
+Hairline. "Ticket": "Key" teal mono "CALC-196"; "Status" "In Progress"; "Board" "Calculator"; "Synced" muted mono "5 s ago".
+Hairline. "On Linear": "Moved to In Progress" green "done"; "Linked the task" green "done"; "Needs you comment" muted "edited 2 min ago".
+Hairline. "Code": "Branch" mono "ostra/calc-196-export-h…"; mono "calculator-web" with right-aligned faint "No PR yet".
+
+Calm, precise, dense like Linear or a pro IDE console. Strict grid, crisp small text, all copy spelled exactly as given.

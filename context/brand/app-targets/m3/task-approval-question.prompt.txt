@@ -1,0 +1,34 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same task page a few minutes earlier, with two approvals open: keep its sidebar, top bar, header, tabs, thread row language, tool-row grid, the amber-ruled needs-you block style, the "Sam Rivera is driving" bar at the bottom and the properties panel exactly, in the same positions, fonts, sizes and density, and show the later state described below. The second reference is the approved task page of the app. The third is the ostra hinge logo mark, drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, text fields) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; errors and denials red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the one question block (its 2px rule, its icon and its title), this task's status dots, and the sidebar needs-you markers. The receipts of the answered approvals are NOT amber. No gradients, no glow, no purple, no blue tint, no cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, commands, branch and runner names, money, token counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns, identical frame to the first reference:
+1) LEFT SIDEBAR 232px as in the first reference, Needs you pill "6", calculator › Tasks 17 selected, bottom "AK" "Alex Kim".
+
+2) TOP BAR 44px: breadcrumbs "calculator  ›  Tasks  ›  CALC-188". Right: ghost link icon, outlined "Stop" with a square icon.
+
+3) MAIN COLUMN, left padding 40px:
+- Mono faint "CALC-188 · from a prompt"; title "Keep the history across reloads"; status line: 7px AMBER dot + bright "Needs you · question", faint middle dot, muted "Started 21 min ago on" + faint mono "build-fleet-07".
+- Underline tabs: "Activity" selected with a 2px off-white underline, muted "Changes" faint "4", muted "Checks". Hairline.
+- Thread, rows only, no cards:
+  a) Tool rows in the grid of the first reference, under the earlier agent message (its header scrolled out of view):
+     pencil icon, "Edited", mono "prisma/migrations/20261119_history/migration.sql", green "+18"
+     under it, aligned with the paths, muted 12px: "Approved once by Sam Rivera"
+     terminal icon, "Ran", mono "pnpm prisma migrate dev --name history", red 12px "denied"
+     under it, aligned with the paths, muted 12px: "Denied by Alex Kim, with a reason:" and below that an indented quote with a 1px #2A2C30 left line, muted 12px: "Don't migrate the dev database. Write the SQL and stop."
+     terminal icon, "Ran", mono "pnpm prisma generate", faint 12px "cancelled"
+     under it, aligned with the paths, muted 12px: "Cancelled: Alex Kim denied another request in this turn"
+  b) A message-level system row, 28px, muted 13px with a small muted corner-down-right icon in the gutter (no circle): "The turn ended on the deny. OpenCode got Alex Kim's reason and carries on."
+  c) Square terminal agent icon in a 28px round outlined circle. "OpenCode" bold + faint mono "14:19 · Claude Sonnet 5.5" + faint "waiting". Text: "I wrote the migration's SQL without running it. One choice before I wire the store:"
+     One tool row: pencil icon, "Edited", mono "src/history/store.ts", green "+64".
+  d) THE QUESTION, not a card: a 2px amber vertical rule on the left, indented to the content column, 12px left padding. Amber message-circle-question icon + amber semibold "Needs you · question". Bright 13px text: "Where should the history file live?" Then a radio group, three 26px rows, DIMMED because this viewer can't answer (controls at 50% opacity, muted text): filled radio "data/history.sqlite, next to the app's other data"; empty radio "The user's config folder"; empty radio "In memory only (the history resets on reload)". Then a faint 12px label "Anything else OpenCode should know (optional)" and a dimmed single-line text field #131416 with a #2A2C30 border, empty. Then a row: an outlined 28px button "Take over to answer" and, after 12px, faint 12px text "Sam Rivera answers questions while driving."
+- Then pinned at the bottom, exactly as in the first reference: one box #131416 with a #2A2C30 border, radius 8px, 48px tall: small round avatar "SR" + bright "Sam Rivera is driving." + faint " Any member can answer approvals. Take over to send messages." and on the right an outlined 28px "Take over".
+
+4) RIGHT PROPERTIES PANEL 300px as in the first reference, with these values:
+"Properties": "Status" amber dot "Needs you · question"; "Driver" avatar "SR" "Sam Rivera" + teal "Take over"; "Profile" "Careful"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "build-fleet-07" with muted chips "Pool" "docker" on the next line; "Tokens" mono "246k in · 44k out"; "Cache" mono "2.1M read · 61k write"; "Spend" mono "$2.47" + muted " of $25.00"; "Agent time" mono "14 min".
+Hairline. "Approval rules": "Adding a dependency" faint "profile"; "Writing a migration" faint "profile"; "Commands outside an allowlist" faint "profile"; mono "pnpm add" faint "this task · Sam Rivera".
+Hairline. "Code": "Repo" mono "acme/calculator-web"; "Branch" mono "calc-188-keep-history…"; "PR" faint "None yet".
+
+Calm, precise, dense like Linear or a pro IDE console. Strict grid, crisp small text, all copy spelled exactly as given.

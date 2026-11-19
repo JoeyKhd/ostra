@@ -1,0 +1,40 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same app's task page for a ticket task: keep its sidebar, top bar, header, ticket strip, context row, thread row language, composer and properties panel exactly, in the same positions, fonts, sizes and density, and show the state described below. The second reference is the approved task page with its amber approval block and its plan list: use exactly that block's style (a 2px amber left rule, no card) for the plan, and that plan list's row style. The third is the app's Home screen. The fourth is the ostra hinge logo mark, drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, composer) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; errors red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the plan block (its 2px rule, its icon, its title and its one filled "Approve plan" button), this task's status dots, and the sidebar needs-you markers. No gradients, no glow, no purple, no blue tint, no cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, branch and runner names, money, token counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, identical to the first reference ("Acme Corp", Search ⌘K, Home, Needs you amber "5", My tasks 7, Projects: calculator expanded with an amber dot, Tasks 17 selected, Inbox 4, Environment, Automations, Memory 2, Repos, Settings; billing-platform, web-storefront, mobile-app, data-pipeline, ··· 13 more; Organization: Runner pools 238, Models, Agent profiles, Insights, Memory, Members, Audit log, Background work, Settings; bottom avatar "AK" "Alex Kim").
+
+2) TOP BAR 44px: breadcrumbs "calculator  ›  Tasks  ›  CALC-196". Right: ghost link icon, outlined "Stop" with a square icon. No PR button.
+
+3) MAIN COLUMN, left padding 40px:
+- Mono faint "CALC-196 · from Linear"
+- Title "Export the history as CSV"
+- Status line, NO amber text: 7px AMBER dot + bright "Needs you · plan", faint middle dot, muted "Started 4 min ago on" + faint mono "alex-desktop".
+- Ticket strip as in the first reference: muted outlined chips "In Progress", "history", "export", faint "· Medium priority", teal "Open in Linear" with arrow-up-right.
+- Context row as in the first reference, collapsed: chevron-right, "What the agent got", faint "title, description, 2 labels · rendered with the project's template".
+- UNDERLINE TABS, 36px: "Activity" bright with a 2px off-white underline (selected), muted "Changes", muted "Checks". The tab row's bottom edge is the header's hairline.
+- Thread (rows, no bubbles):
+  a) A message-level system row, 28px: a small muted list-checks icon in the 40px gutter (no circle), muted 13px "Plan first: OpenCode reads the code and proposes a plan. It can't edit files or run commands in this turn." + faint mono "profile Careful".
+  b) Square terminal agent icon in a 28px round outlined circle (never a robot). "OpenCode" bold + faint mono "09:41 · Claude Sonnet 5.5" + faint "proposed a plan". Three tool rows in the strict grid of the first reference (faint icon, muted verb in a fixed column, mono path):
+     file-text icon, "Read", mono "src/history/store.ts"
+     file-text icon, "Read", mono "src/history/panel.tsx"
+     search icon, "Searched", mono "download in src/", faint "3 files"
+  c) THE PLAN, not a card: a 2px amber vertical rule on the left, indented to the content column, 12px left padding. Amber list-checks icon + amber semibold "Needs you · plan". Bright 13px text, two lines: "I'll add an Export button to the history panel that downloads the results as a CSV file. No new dependency: the CSV is built by hand, quoting commas and quotes." Then a faint 12px label "Plan" and five 24px rows, each a faint mono number then bright text:
+     "1" "Add toCsv(results) in src/history/csv.ts, with quoting"
+     "2" "Add an Export button to the panel's header"
+     "3" "Download the file as calculator-history-YYYY-MM-DD.csv"
+     "4" "Unit tests for toCsv: commas, quotes, an empty history"
+     "5" "A line in CHANGELOG.md"
+     Then a row of three 28px buttons, 8px apart: amber filled "Approve plan" with dark text, outlined "Edit and approve" with a small pencil icon, outlined "Ask for changes". Then faint 12px: "Nothing in the repo has changed. OpenCode starts the work from the plan you approve."
+- Then the COMPOSER pinned at the bottom, as in the first reference: rounded box #131416, border #2A2C30, placeholder "Ask for changes to the plan…", bottom row: faint info icon + "Send asks OpenCode for another plan. To start the work, approve the plan." and right: off-white filled "Send" with an arrow-up icon. No "Interrupt and send".
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels 11px faint regular. Rows 28px, keys muted 12.5px in an 84px column, values bright 12.5px, no icons inside values:
+"Properties": "Status" amber dot "Needs you · plan"; "Driver" avatar "AK" "Alex Kim"; "Profile" "Careful"; "Plan" "Proposed · turn 1"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "alex-desktop" with muted outlined chips "Personal" "host" on the next line aligned with the values; "Box" "Running"; "Tokens" mono "38k in · 3k out"; "Spend" mono "$0.21" + muted " of $25.00".
+Hairline. "Ticket": "Key" teal mono "CALC-196"; "Status" "In Progress"; "Board" "Calculator"; "Synced" muted mono "8 s ago".
+Hairline. "On Linear", 26px rows, step text left, state right-aligned: "Moved to In Progress" green "done"; "Linked the task" green "done"; "Needs you comment" muted "posted 1 min ago".
+Hairline. "Code": "Branch" mono "ostra/calc-196-export-h…"; mono "calculator-web" with right-aligned faint "No PR yet".
+
+Calm, precise, dense like Linear or a pro IDE console. Strict grid, crisp small text, all copy spelled exactly as given.

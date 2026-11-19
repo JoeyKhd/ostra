@@ -1,0 +1,21 @@
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is this same task page a moment earlier, with the plan waiting for an answer: keep EVERYTHING in it identical (sidebar, top bar, header, ticket strip, context row, tabs, the plan-first row, the agent message and its three tool rows, the composer and the properties panel, all text and positions), and change ONLY the plan block, which is now in its "Edit and approve" state, as described below. The second reference is the approved task page of the app, for the row and button style. The third is the ostra hinge logo mark, drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (text fields, composer) #131416; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the plan block's 2px rule, its icon, its title and its one filled button, this task's status dots and the sidebar needs-you markers. No gradients, no glow, no purple, no blue tint, no cards, no drop shadows.
+
+TYPE: IBM Plex Sans 13px (secondary 12px), mono for paths and numbers, Manrope Bold 24px for the title. Thin Lucide icons, 1.75 stroke.
+
+THE PLAN BLOCK, EDITING (still not a card: the 2px amber vertical rule on the left, indented to the content column, 12px left padding):
+- Amber list-checks icon + amber semibold "Needs you · plan" + faint 12px " · editing".
+- A faint 12px label "Message", then a text field #131416 with a 1px #2A2C30 border, radius 8px, full width of the block, three lines tall, holding the bright 13px text: "I'll add an Export button to the history panel that downloads the results as a CSV file. No new dependency: the CSV is built by hand, quoting commas and quotes."
+- A faint 12px label "Plan", then six 32px rows, each: a faint 14px grip-vertical icon, a faint mono number, then a single-line text field (#131416, 1px #2A2C30 border, radius 6px, 28px tall, full remaining width) holding bright 13px text, then a faint 14px x icon at the right end:
+  "1" "Add toCsv(results) in src/history/csv.ts, with quoting"
+  "2" "Add an Export button to the panel's header"
+  "3" "Download the file as calculator-history-YYYY-MM-DD.csv"
+  "4" "Unit tests for toCsv: commas, quotes, an empty history"
+  "5" "A line in CHANGELOG.md, with today's date" (this field has a 1px #9A9DA3 focus border and a thin text cursor after "date")
+  "6" "Export only the results the panel shows"
+- Under the rows, a teal 12.5px "+ Add a step" with a small plus icon, aligned with the fields.
+- A row of two 28px buttons, 8px apart: amber filled "Approve edited plan" with dark text, ghost muted "Cancel".
+- Faint 12px: "OpenCode starts the work from the plan as you leave it."
+
+Everything outside the plan block stays exactly as in the first reference; the composer may sit lower only if the block needs the room, and the thread may scroll up a little so the block's buttons stay above the composer. All copy spelled exactly as given. Calm, precise, dense like Linear or a pro IDE console.

@@ -1,0 +1,45 @@
+EDIT the first reference image (the ostra task page with two open approvals). Keep its layout, data, spacing, palette and type exactly, and change ONLY these things:
+1. The first approval's mono code chip must read exactly "prisma/migrations/20261119_history/migration.sql" (the word "migrations" with its "n"), the same path as on the "Editing" tool row above it.
+2. In the tool rows, every mono path and command starts at the same x position: "pnpm add better-sqlite3", "pnpm add -D @types/better-sqlite3", "prisma/migrations/20261119_history/migration.sql" and "pnpm prisma migrate dev --name history" are left-aligned to one column, and the muted verbs "Ran", "Ran", "Editing", "Running" sit in one fixed column before them. The two muted receipt lines under the Ran rows start at that same path column.
+3. The reason text field in the second approval is a clean rounded rectangle (#131416 fill, 1px #2A2C30 border, radius 8px) holding only the text "Don't migrate the dev database. Write the SQL and stop.", with no stray line or mark inside it.
+4. Everything else stays identical, including all text, which must be spelled exactly as in the first reference image. Amber only where it already is. No gradients, no glow, no purple, no shadows, no cards. Flat straight-on screenshot, crisp text.
+
+References for this edit: the first generation (made by the prompt below), the approved m1 task original, and the Hinge logo.
+
+For reference, the full prompt of the first generation (references: the approved m1 task original, home-graphite.png, the Hinge logo):
+
+A straight-on, pixel-crisp desktop web app screenshot, 1440x960 viewport, of "ostra", a dark developer console. NOT a mockup, no device frame, no perspective, no shadows on the page. The FIRST attached reference is the approved task page of this same app with one amber approval block: keep its sidebar, top bar, header, thread row language, tool-row grid, approval block style (a 2px amber left rule, no card) and properties panel exactly, in the same positions, fonts, sizes and density, and show the state described below. The second reference is the app's Home screen, for the shared sidebar. The third is the ostra hinge logo mark (a rounded square split by one diagonal channel), drawn small in off-white #F3F0E8 at the top-left of the sidebar next to "Acme Corp" (never the word "ostra").
+
+PALETTE (flat, exact): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code chips, composer, text fields) #131416; selected row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D; links teal #6FB8AA; success green #4FB286; errors red #E5675C; primary button filled #F3F0E8 with dark #0C1D21 text. Buoy Amber #FFB224 is used ONLY for the two approval blocks (their 2px rules, hand icons, titles and the one amber filled "Approve once" button), the amber "needs approval" words on two tool rows, this task's status dots, and the sidebar needs-you markers. No gradients, no glow, no purple, no blue tint, no cards, no drop shadows.
+
+TYPE: page title in Manrope Bold 24px; everything else IBM Plex Sans 13px (secondary 12px); keys, paths, commands, branch and runner names, money, token counts and times in IBM Plex Mono. Icons: thin Lucide line icons, 15px, 1.75 stroke.
+
+LAYOUT, three columns:
+1) LEFT SIDEBAR 232px, identical to the first reference ("Acme Corp" with up-down chevron, Search ⌘K and an off-white "+", Home, Needs you with an amber pill "6", My tasks 7, Projects: calculator expanded with an amber dot, under it Tasks 17 selected, Inbox 4, Environment, Automations, Memory 2, Repos, Settings; billing-platform, web-storefront, mobile-app, data-pipeline, ··· 13 more; Organization: Runner pools 238, Models, Agent profiles, Insights, Memory, Members, Audit log, Background work, Settings; bottom avatar "AK" "Alex Kim").
+
+2) TOP BAR 44px: breadcrumbs "calculator  ›  Tasks  ›  CALC-188" (last one bright). Right: a small ghost link icon, then an outlined "Stop" button with a square icon. No PR button.
+
+3) MAIN COLUMN, left padding 40px:
+- Mono faint "CALC-188 · from a prompt"
+- Title "Keep the history across reloads"
+- Status line 13px, NO amber text: a small 7px AMBER dot + bright "Needs you · 2 approvals", a faint middle dot, muted "Started 9 min ago on" + faint mono "build-fleet-07".
+- UNDERLINE TABS, 36px row: "Activity" bright with a 2px off-white underline (selected), then muted "Changes" with a faint "3", then muted "Checks". The tab row's bottom edge is the header's hairline across the column.
+- Thread (rows, no bubbles, a 28px round outlined icon in a 40px gutter):
+  a) Square terminal agent icon (never a robot). "OpenCode" bold + faint mono "14:06 · Claude Sonnet 5.5". Text: "I'll keep the history in a SQLite file: the driver package, a store module and a migration for its table."
+     Tool rows in the exact grid of the first reference (faint 14px icon, muted verb in a fixed column, mono path, result inline right after the path):
+     terminal icon, "Ran", mono "pnpm add better-sqlite3", green "✓ exit 0"
+     and under it, aligned with the paths, one muted 12px line: "Approved for this task by Sam Rivera" + faint " · rule Adding a dependency"
+     terminal icon, "Ran", mono "pnpm add -D @types/better-sqlite3", green "✓ exit 0"
+     and under it, aligned with the paths, one muted 12px line: "Approved by this task's rule" + faint mono " pnpm add"
+     pencil icon, "Editing", mono "prisma/migrations/20261119_history/migration.sql", amber 12px "needs approval"
+  b) THE FIRST APPROVAL, not a card: a 2px amber vertical rule on the left, indented to the content column, 12px left padding. Amber hand icon + amber semibold "Needs you · approval". Text, bright 13px: semibold "Writing a migration" + regular " asks before OpenCode edits this file:". A small mono code chip on #131416 with a #1F2023 border: "prisma/migrations/20261119_history/migration.sql". A row of three 28px buttons, 8px apart: outlined "Deny", amber filled "Approve once" with dark text, outlined "Approve for this task". Under the buttons, muted 12px: "Approve for this task also approves later edits of this file." Then faint 12px: "Any member of calculator can answer. The first answer wins."
+  c) One more tool row in the same grid: terminal icon, "Running", mono "pnpm prisma migrate dev --name history", amber 12px "needs approval".
+  d) THE SECOND APPROVAL, same block style (2px amber rule). Amber hand icon + amber semibold "Needs you · approval". Text: semibold "Commands outside an allowlist" + " asks before OpenCode runs this command:". Mono code chip: "pnpm prisma migrate dev --name history". THIS ONE IS IN ITS DENY STATE: under the chip, a text field #131416 with a #2A2C30 border, radius 8px, two lines tall, full width of the block, holding the typed text "Don't migrate the dev database. Write the SQL and stop." with a faint label above it "Reason for OpenCode (optional)". Under the field, a row of two 28px buttons: outlined "Deny and send the reason", ghost muted "Cancel". Then faint 12px: "Denying ends OpenCode's turn. The other open approval closes as cancelled."
+- Then pinned at the bottom, where the composer was: ONE box #131416 with a #2A2C30 border, radius 8px, 48px tall: on the left a small round avatar "SR" + bright 13px "Sam Rivera is driving." + faint 12px " Any member can answer approvals. Take over to send messages." and on the right an outlined 28px button "Take over". No text field, no Send button.
+
+4) RIGHT PROPERTIES PANEL 300px, left hairline, padding 20px. Group labels 11px faint regular, not bold. Rows 28px, keys muted 12.5px in an 84px column, values bright 12.5px, no icons inside values:
+"Properties": "Status" amber dot + "Needs you · 2 approvals"; "Driver" small avatar "SR" "Sam Rivera" + teal "Take over"; "Profile" "Careful"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "build-fleet-07" with two small muted outlined chips "Pool" "docker" on the next line aligned with the values; "Tokens" mono "182k in · 31k out"; "Cache" mono "1.4M read · 52k write"; "Spend" mono "$1.82" + muted " of $25.00"; "Agent time" mono "9 min".
+Hairline. "Approval rules", rows of 26px with the name left and a faint source right-aligned: "Adding a dependency" faint "profile"; "Writing a migration" faint "profile"; "Commands outside an allowlist" faint "profile"; mono "pnpm add" faint "this task · Sam Rivera".
+Hairline. "Code": "Repo" mono "acme/calculator-web"; "Branch" mono "calc-188-keep-history…"; "PR" faint "None yet".
+
+Calm, precise, dense like Linear or a pro IDE console. Strict grid, crisp small text, all copy spelled exactly as given.
