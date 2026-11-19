@@ -687,6 +687,11 @@ describe("the GitHub adapter", () => {
         prTemplates: true,
         lfsActionHosts: ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"],
         branchRules: true,
+        // Milestone 3's ticket 09 builds these and turns them on.
+        compare: false,
+        draftPullRequests: false,
+        prComments: false,
+        userLink: false,
       });
     });
   });

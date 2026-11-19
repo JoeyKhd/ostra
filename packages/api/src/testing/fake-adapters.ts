@@ -146,7 +146,7 @@ export type FakeApp = {
 /** A code host with a few Apps, their installations, repos and files. */
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: false };
   /** By App ID. */
   readonly apps = new Map<string, FakeApp>();
   /** File contents by `owner/name`, then path. */

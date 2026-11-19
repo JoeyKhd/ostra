@@ -29,9 +29,16 @@ import type {
   AppManifestInput,
   BranchRules,
   CodeHostAppCredentials,
+  CodeHostOAuthClient,
   CodeHostWebhookEvent,
+  CommentRef,
+  CompareFile,
+  CompareResult,
   CreatedApp,
   DeleteRefResult,
+  LinkedUser,
+  PullRequestComment,
+  Reaction,
   HostRepo,
   Installation,
   OpenPullRequestInput,
@@ -204,22 +211,70 @@ export type MemoryRepo = {
   readonly rules?: Readonly<Record<string, BranchRules>>;
   /** Milestone 2: refs outside the branches, such as hidden refs, which `deleteRef` removes. */
   readonly refs?: readonly string[];
+  /**
+   * Milestone 3: what `compare` answers, by `"<base>...<head>"`, before the host's limits are
+   * applied. A pair not listed is `not-found`.
+   */
+  readonly compares?: Readonly<Record<string, MemoryCompare>>;
+};
+
+/** A compare as the memory host keeps it: every file, whole. */
+export type MemoryCompare = {
+  readonly aheadBy: number;
+  readonly behindBy: number;
+  readonly mergeBase: string | null;
+  readonly files: readonly Omit<CompareFile, "truncated">[];
 };
 
 export type MemoryHostWorld = {
   readonly app: CodeHostAppCredentials & { readonly slug: string; readonly name: string };
   readonly installationId: string;
   readonly repos: readonly MemoryRepo[];
+  /** Milestone 3: the host's limits on a compare (GitHub's: 300 files, about 1 MiB a patch). */
+  readonly compareLimits?: { readonly maxFiles: number; readonly maxPatchBytes: number };
+  /** Milestone 3: the App's OAuth client, and the accounts a sign-in's code stands for (F-119). */
+  readonly oauth?: {
+    readonly client: CodeHostOAuthClient;
+    readonly users: readonly { readonly code: string; readonly user: LinkedUser }[];
+  };
 };
+
+/** The memory host's limits when the world names none: GitHub's. */
+const DEFAULT_COMPARE_LIMITS = { maxFiles: 300, maxPatchBytes: 1024 * 1024 } as const;
 
 const TEMPLATE_PATHS = [".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md", "pull_request_template.md"];
 
 export class TinyCodeHost extends CodeHostAdapter {
   readonly name = "tiny-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: false, prTemplates: true, lfsActionHosts: [], branchRules: true };
+  readonly capabilities: CodeHostCapabilities = {
+    checkRuns: false,
+    prTemplates: true,
+    lfsActionHosts: [],
+    branchRules: true,
+    compare: true,
+    draftPullRequests: true,
+    prComments: true,
+    userLink: true,
+  };
   readonly #world: MemoryHostWorld;
-  readonly #prs: (PullRequest & { readonly repo: RepoFullName; updatedAt: number; mergedAt: number | null; closedAt: number | null })[] = [];
+  readonly #prs: (PullRequest & {
+    readonly repo: RepoFullName;
+    updatedAt: number;
+    mergedAt: number | null;
+    closedAt: number | null;
+    draft: boolean;
+  })[] = [];
   readonly #refs = new Map<string, Set<string>>();
+  readonly #reactions = new Set<string>();
+  /** Milestone 3, for tests: the user tokens a sign-in got, and how many were revoked (F-119). */
+  readonly userTokens = { issued: 0, revoked: 0 };
+  /** Milestone 3, for tests: the next revocation fails, as a host that's down would. */
+  failNextRevocation = false;
+
+  /** How many reactions the App made, on any comment: for tests. */
+  get reactionCount(): number {
+    return this.#reactions.size;
+  }
 
   constructor(world: MemoryHostWorld) {
     super();
@@ -395,6 +450,7 @@ export class TinyCodeHost extends CodeHostAdapter {
       updatedAt: Date.now(),
       mergedAt: null,
       closedAt: null,
+      draft: input.draft,
     };
     this.#prs.push(pr);
     return Promise.resolve(ok(withoutRepo(pr)));
@@ -434,7 +490,7 @@ export class TinyCodeHost extends CodeHostAdapter {
 
   override parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
     const event = input.headers["x-github-event"] ?? "unknown";
-    if (event !== "pull_request") {
+    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push") {
       return ok({ kind: "other", event });
     }
     let body: unknown;
@@ -442,6 +498,9 @@ export class TinyCodeHost extends CodeHostAdapter {
       body = JSON.parse(input.body);
     } catch {
       return adapterError("invalid-response", "the webhook's body isn't JSON");
+    }
+    if (event !== "pull_request") {
+      return parseCommentOrPush(event, body);
     }
     const parsed = tinyPullRequestEventSchema.safeParse(body);
     if (!parsed.success) {
@@ -474,7 +533,219 @@ export class TinyCodeHost extends CodeHostAdapter {
     const refs = this.#refs.get(access.repo);
     return Promise.resolve(ok({ deleted: refs?.delete(ref) === true }));
   }
+
+  // ---------- milestone 3 ----------
+
+  override compare(access: RepoAccess, base: string, head: string): Promise<AdapterResult<CompareResult>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const kept = repo.value.compares?.[`${base}...${head}`];
+    if (kept === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such base and head"));
+    }
+    const limits = this.#world.compareLimits ?? DEFAULT_COMPARE_LIMITS;
+    const files = kept.files.slice(0, limits.maxFiles).map((file): CompareFile => {
+      const tooLarge = file.patch !== null && Buffer.byteLength(file.patch, "utf8") > limits.maxPatchBytes;
+      return { ...file, patch: tooLarge ? null : file.patch, truncated: tooLarge };
+    });
+    return Promise.resolve(
+      ok({
+        aheadBy: kept.aheadBy,
+        behindBy: kept.behindBy,
+        mergeBase: kept.mergeBase,
+        files,
+        filesTruncated: kept.files.length > limits.maxFiles,
+        limits: { maxFiles: limits.maxFiles, maxPatchBytes: limits.maxPatchBytes },
+      }),
+    );
+  }
+
+  override setPullRequestDraft(access: RepoAccess, number: number, draft: boolean): Promise<AdapterResult<PullRequest>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const index = this.#prs.findIndex((candidate) => candidate.repo === access.repo && candidate.number === number);
+    const pr = this.#prs[index];
+    if (pr === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    if (pr.state !== "open") {
+      return Promise.resolve(adapterError("conflict", "only an open PR can change between draft and ready"));
+    }
+    const changed = { ...pr, draft, updatedAt: Date.now() };
+    this.#prs[index] = changed;
+    return Promise.resolve(ok(withoutRepo(changed)));
+  }
+
+  override addReaction(access: RepoAccess, comment: CommentRef, reaction: Reaction): Promise<AdapterResult<{ readonly created: boolean }>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const key = `${access.repo}:${comment.kind}:${comment.commentId}:${reaction}`;
+    const created = !this.#reactions.has(key);
+    this.#reactions.add(key);
+    return Promise.resolve(ok({ created }));
+  }
+
+  override userAuthorizeUrl(client: CodeHostOAuthClient, state: string, redirectUri: string): AdapterResult<string> {
+    const url = new URL("https://code-host.invalid/login/oauth/authorize");
+    url.searchParams.set("client_id", client.clientId);
+    url.searchParams.set("state", state);
+    url.searchParams.set("redirect_uri", redirectUri);
+    return ok(url.toString());
+  }
+
+  override exchangeUserCode(client: CodeHostOAuthClient, code: string, redirectUri: string): Promise<AdapterResult<LinkedUser>> {
+    const oauth = this.#world.oauth;
+    if (client.clientId !== oauth?.client.clientId || client.clientSecret !== oauth.client.clientSecret) {
+      return Promise.resolve(adapterError("unauthorized", "the App's OAuth client was refused"));
+    }
+    if (redirectUri.length === 0) {
+      return Promise.resolve(adapterError("invalid-input", "a sign-in needs its redirect address"));
+    }
+    const found = oauth.users.find((candidate) => candidate.code === code);
+    if (found === undefined) {
+      return Promise.resolve(adapterError("unauthorized", "the sign-in's code was refused"));
+    }
+    // A token was issued for the code; it's revoked before the account is handed back.
+    this.userTokens.issued += 1;
+    if (this.failNextRevocation) {
+      this.failNextRevocation = false;
+      return Promise.resolve(adapterError("unavailable", "the host didn't revoke the sign-in's token"));
+    }
+    this.userTokens.revoked += 1;
+    return Promise.resolve(ok(found.user));
+  }
 }
+
+// ---------- milestone 3: the comment and push webhooks, in GitHub's shape, read loosely ----------
+
+const webhookRepoSchema = z.looseObject({ id: z.number(), full_name: z.string() });
+const webhookInstallationSchema = z.looseObject({ id: z.number() }).optional();
+const webhookCommentSchema = z.looseObject({
+  id: z.number(),
+  body: z.string(),
+  html_url: z.string(),
+  user: z.looseObject({ id: z.number(), login: z.string() }),
+});
+
+const issueCommentEventSchema = z.looseObject({
+  action: z.string(),
+  installation: webhookInstallationSchema,
+  repository: webhookRepoSchema,
+  issue: z.looseObject({ number: z.number().int().positive(), pull_request: z.looseObject({}).optional() }),
+  comment: webhookCommentSchema,
+});
+
+const reviewCommentEventSchema = z.looseObject({
+  action: z.string(),
+  installation: webhookInstallationSchema,
+  repository: webhookRepoSchema,
+  pull_request: z.looseObject({ number: z.number().int().positive() }),
+  comment: webhookCommentSchema.extend({
+    path: z.string(),
+    side: z.enum(["LEFT", "RIGHT"]).nullish(),
+    line: z.number().int().positive().nullish(),
+  }),
+});
+
+const pushEventSchema = z.looseObject({
+  ref: z.string(),
+  before: z.string(),
+  after: z.string(),
+  installation: webhookInstallationSchema,
+  repository: webhookRepoSchema,
+  commits: z
+    .array(
+      z.looseObject({
+        added: z.array(z.string()).optional(),
+        removed: z.array(z.string()).optional(),
+        modified: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+});
+
+const commentOf = (comment: z.infer<typeof webhookCommentSchema>): PullRequestComment => ({
+  commentId: String(comment.id),
+  authorId: String(comment.user.id),
+  authorLogin: comment.user.login,
+  body: comment.body,
+  url: comment.html_url,
+});
+
+const parseCommentOrPush = (
+  event: "issue_comment" | "pull_request_review_comment" | "push",
+  body: unknown,
+): AdapterResult<CodeHostWebhookEvent> => {
+  const repoOf = (repository: z.infer<typeof webhookRepoSchema>) => repoFullNameSchema.safeParse(repository.full_name);
+  switch (event) {
+    case "issue_comment": {
+      const parsed = issueCommentEventSchema.safeParse(body);
+      const repo = parsed.success ? repoOf(parsed.data.repository) : undefined;
+      if (!parsed.success || repo?.success !== true) {
+        return adapterError("invalid-response", "the issue_comment event couldn't be read");
+      }
+      return ok({
+        kind: "issue_comment",
+        action: parsed.data.action,
+        installationId: parsed.data.installation === undefined ? null : String(parsed.data.installation.id),
+        hostRepoId: String(parsed.data.repository.id),
+        repo: repo.data,
+        number: parsed.data.issue.number,
+        onPullRequest: parsed.data.issue.pull_request !== undefined,
+        comment: commentOf(parsed.data.comment),
+      });
+    }
+    case "pull_request_review_comment": {
+      const parsed = reviewCommentEventSchema.safeParse(body);
+      const repo = parsed.success ? repoOf(parsed.data.repository) : undefined;
+      if (!parsed.success || repo?.success !== true) {
+        return adapterError("invalid-response", "the pull_request_review_comment event couldn't be read");
+      }
+      return ok({
+        kind: "pull_request_review_comment",
+        action: parsed.data.action,
+        installationId: parsed.data.installation === undefined ? null : String(parsed.data.installation.id),
+        hostRepoId: String(parsed.data.repository.id),
+        repo: repo.data,
+        number: parsed.data.pull_request.number,
+        comment: commentOf(parsed.data.comment),
+        path: parsed.data.comment.path,
+        side: parsed.data.comment.side === "LEFT" ? "old" : "new",
+        line: parsed.data.comment.line ?? null,
+      });
+    }
+    case "push": {
+      const parsed = pushEventSchema.safeParse(body);
+      const repo = parsed.success ? repoOf(parsed.data.repository) : undefined;
+      if (!parsed.success || repo?.success !== true) {
+        return adapterError("invalid-response", "the push event couldn't be read");
+      }
+      const commits = parsed.data.commits;
+      const changedPaths =
+        commits === undefined
+          ? null
+          : [...new Set(commits.flatMap((commit) => [...(commit.added ?? []), ...(commit.removed ?? []), ...(commit.modified ?? [])]))];
+      return ok({
+        kind: "push",
+        installationId: parsed.data.installation === undefined ? null : String(parsed.data.installation.id),
+        hostRepoId: String(parsed.data.repository.id),
+        repo: repo.data,
+        ref: parsed.data.ref,
+        before: parsed.data.before,
+        after: parsed.data.after,
+        changedPaths,
+      });
+    }
+    default:
+      return event satisfies never;
+  }
+};
 
 const tinyPullRequestEventSchema = z.looseObject({
   action: z.string(),
@@ -489,13 +760,14 @@ const tinyPullRequestEventSchema = z.looseObject({
   }),
 });
 
-const withoutRepo = (pr: PullRequest & { readonly repo: RepoFullName }): PullRequest => ({
+const withoutRepo = (pr: PullRequest & { readonly repo: RepoFullName; readonly draft: boolean }): PullRequest => ({
   number: pr.number,
   url: pr.url,
   state: pr.state,
   headBranch: pr.headBranch,
   baseBranch: pr.baseBranch,
   title: pr.title,
+  draft: pr.draft,
 });
 
 export const signWebhook = (secret: string, body: string): string =>

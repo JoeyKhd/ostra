@@ -1,6 +1,6 @@
 # 03: Adapter SDK: code host additions
 
-Status: ready-for-agent
+Status: done
 Builder: adapters (contracts, first)
 Blocked by: none
 Features: F-027, F-054, F-070, F-053, F-119
@@ -20,9 +20,10 @@ Spec: `../spec.md`, section 5.2 ("`CodeHostAdapter`")
 
 ## Done when
 
-- [ ] Tests: the suite passes against the fake code host and the tiny adapter.
-- [ ] Every caller compiles; no existing operation changed shape.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `adapter-sdk` and its dependents.
-- [ ] Committed as `✨ add code host compare, drafts, comments`.
+- [x] Tests: the suite passes against the fake code host and the tiny adapter.
+- [x] Every caller compiles; no existing operation changed shape.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `adapter-sdk` and its dependents.
+- [x] Committed as `✨ add code host compare, drafts, comments`.
 
 ## Comments
+- 2026-11-19, adapters (contracts): done in `✨ add code host compare, drafts, comments`. **Capabilities:** `compare`, `draftPullRequests`, `prComments`, `userLink`; the tiny host declares all four, GitHub and the test fakes in `packages/api` and `apps/core` declare them false until ticket 09 builds GitHub's, and each answers `unsupported` from the base class meanwhile. **Base class** (all additive, defaulting to `unsupported`): `compare(access, base, head)` -> `CompareResult` (`aheadBy`, `behindBy`, `mergeBase`, `files` with `previousPath`, `status`, counts, `patch` and `truncated`, plus `filesTruncated` and the host's `limits`); `setPullRequestDraft(access, number, draft)` -> the PR; `addReaction(access, { kind: "issue" | "review", commentId }, "eyes")` -> `{ created }`; `userAuthorizeUrl(client, state, redirectUri)` and `exchangeUserCode(client, code, redirectUri)` -> `{ userId, login }` with the App's OAuth client (`CodeHostOAuthClient`); `PullRequest` gains optional `draft`; `CodeHostWebhookEvent` gains `issue_comment` (`onPullRequest` and a `PullRequestComment`: ID, author ID and login, body, URL), `pull_request_review_comment` (plus `path`, `side` `old`/`new`, `line`) and `push` (`ref`, `before`, `after`, `changedPaths` or `null`). **The fake** is the tiny host (`src/test-adapters/tiny-adapters.ts`, the memory host world): compares by `"<base>...<head>"` with configurable `compareLimits`, drafts, the three webhooks read loosely in GitHub's shape, reactions with `reactionCount`, and the OAuth exchange with `userTokens` counters and `failNextRevocation`. GitHub's own fake server grows with ticket 09. **The suite** gains six cases: compare's counts for ahead, behind and diverged; the limits (a file over the patch limit truncated, the list cut and said so); a draft and back; the three webhooks' parse with a bad signature refused and a body that isn't its event refused; a reaction twice is one; the link's token revoked, a failed revocation an error. The existing pull_request case's "other" event is now `star`, since `push` is read. Break-it checks: eleven (the patch limit, the cut list, ahead and behind swapped, the draft, the reaction, the line comment's side, the push's paths, the revocation, a failed revocation, the state, the base class's `unsupported`), each failing its case.

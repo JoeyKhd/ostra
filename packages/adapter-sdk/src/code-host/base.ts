@@ -101,6 +101,8 @@ export type PullRequest = {
   readonly headBranch: string;
   readonly baseBranch: string;
   readonly title: string;
+  /** Milestone 3: whether it's a draft, when the host says (F-054). */
+  readonly draft?: boolean;
 };
 
 export type OpenPullRequestInput = {
@@ -163,8 +165,110 @@ export type CodeHostWebhookEvent =
       /** When the PR last changed, in ms since the epoch: an older report changes nothing. */
       readonly changedAt: number;
     }
+    // ---- milestone 3 (F-053, F-070, ADR 0052): the hints `@ostra` and "behind" read ----
+  /** A comment on a PR's conversation (or an issue's: `onPullRequest` says which). */
+  | {
+      readonly kind: "issue_comment";
+      /** `created`, `edited`, `deleted`. */
+      readonly action: string;
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      /** The PR's (or the issue's) number. */
+      readonly number: number;
+      readonly onPullRequest: boolean;
+      readonly comment: PullRequestComment;
+    }
+  /** A comment on a line of a PR's diff. */
+  | {
+      readonly kind: "pull_request_review_comment";
+      readonly action: string;
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      readonly number: number;
+      readonly comment: PullRequestComment;
+      readonly path: string;
+      readonly side: "old" | "new";
+      /** The line in the side's file, or `null` for a comment on a whole file. */
+      readonly line: number | null;
+    }
+  /** A push to a branch. */
+  | {
+      readonly kind: "push";
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      /** The full ref, `refs/heads/<branch>`. */
+      readonly ref: string;
+      readonly before: string;
+      readonly after: string;
+      /** The paths the push's commits touched, when the payload lists them; `null` when it doesn't. */
+      readonly changedPaths: readonly string[] | null;
+    }
   /** Every other event: recorded and not acted on. */
   | { readonly kind: "other"; readonly event: string };
+
+/** A PR comment as a webhook carries it. Its body is untrusted text: data, never logged. */
+export type PullRequestComment = {
+  /** The host's ID of the comment, which a reaction names. */
+  readonly commentId: string;
+  /** The commenter's host account ID, which the verified link matches (F-119). */
+  readonly authorId: string;
+  readonly authorLogin: string;
+  readonly body: string;
+  readonly url: string;
+};
+
+// ---------- milestone 3 (ADR 0051, ADR 0052) ----------
+
+/** How a file changed between a base and a head, as the host names it. */
+export type CompareFileStatus = "added" | "removed" | "modified" | "renamed" | "copied" | "changed" | "unchanged";
+
+/** One file of a compare. */
+export type CompareFile = {
+  readonly path: string;
+  /** The path before a rename or a copy, else `null`. */
+  readonly previousPath: string | null;
+  readonly status: CompareFileStatus;
+  readonly additions: number;
+  readonly deletions: number;
+  /** The unified diff, or `null` for a binary file or one the host didn't send. Holds the repo's code: never logged. */
+  readonly patch: string | null;
+  /** The host cut the patch, or left it out for its size: the panel then links to the host. */
+  readonly truncated: boolean;
+};
+
+/**
+ * A compare of a base and a head (F-027, F-070, ADR 0051). The host's own limits are reported,
+ * never hidden: `filesTruncated` when it listed fewer files than changed, and each file's
+ * `truncated`.
+ */
+export type CompareResult = {
+  /** Commits on the head the base lacks. */
+  readonly aheadBy: number;
+  /** Commits on the base the head lacks: the branch is "behind" when this is above 0. */
+  readonly behindBy: number;
+  /** The commit both grew from, or `null` when the host doesn't say. */
+  readonly mergeBase: string | null;
+  readonly files: readonly CompareFile[];
+  /** The host listed fewer files than changed. */
+  readonly filesTruncated: boolean;
+  /** The host's limits, as it applied them: the most files it lists and the largest patch it sends. */
+  readonly limits: { readonly maxFiles: number; readonly maxPatchBytes: number };
+};
+
+/** A PR comment a reaction is for: one on the conversation, or one on a line. */
+export type CommentRef = { readonly kind: "issue" | "review"; readonly commentId: string };
+
+/** The reactions ostra makes: 👀, "seen" (F-053). */
+export type Reaction = "eyes";
+
+/** The App's OAuth client, for the verified link (F-119). Never logged. */
+export type CodeHostOAuthClient = { readonly clientId: string; readonly clientSecret: string };
+
+/** A member's account on the host, as the verified link reads it. */
+export type LinkedUser = { readonly userId: string; readonly login: string };
 
 /** A ref on the host, full, such as `refs/ostra/wip/<taskId>`. */
 export type DeleteRefResult = {
@@ -283,5 +387,47 @@ export abstract class CodeHostAdapter {
   deleteRef(access: RepoAccess, ref: string): Promise<AdapterResult<DeleteRefResult>> {
     this.plumbing.logger.debug("deleteRef is not supported", { repo: access.repo, refLength: ref.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't delete refs`));
+  }
+
+  // ---------- milestone 3: additive, so each answers `unsupported` until an adapter has it ----------
+
+  /**
+   * The files and counts between `base` and `head` (F-027, F-070, ADR 0051), with the host's limits
+   * reported (`CompareResult`). Needs the capability `compare`.
+   */
+  compare(access: RepoAccess, base: string, head: string): Promise<AdapterResult<CompareResult>> {
+    this.plumbing.logger.debug("compare is not supported", { repo: access.repo, baseLength: base.length, headLength: head.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't compare branches`));
+  }
+
+  /** Makes a PR a draft, or ready for review (F-054, ADR 0052). Needs `draftPullRequests`. */
+  setPullRequestDraft(access: RepoAccess, number: number, draft: boolean): Promise<AdapterResult<PullRequest>> {
+    this.plumbing.logger.debug("setPullRequestDraft is not supported", { repo: access.repo, number, draft });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't make a PR a draft`));
+  }
+
+  /**
+   * Reacts to a PR comment, as the App (F-053): idempotent by the comment, so reacting again makes
+   * no second reaction (`created: false`). Needs `prComments`.
+   */
+  addReaction(access: RepoAccess, comment: CommentRef, reaction: Reaction): Promise<AdapterResult<{ readonly created: boolean }>> {
+    this.plumbing.logger.debug("addReaction is not supported", { repo: access.repo, kind: comment.kind, reaction });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't react to a comment`));
+  }
+
+  /** Where a member signs in to the host to link their account (F-119). Needs `userLink`. */
+  userAuthorizeUrl(client: CodeHostOAuthClient, state: string, redirectUri: string): AdapterResult<string> {
+    this.plumbing.logger.debug("userAuthorizeUrl is not supported", { stateLength: state.length, redirectLength: redirectUri.length, clientLength: client.clientId.length });
+    return adapterError("unsupported", `${this.name} can't link a member's account`);
+  }
+
+  /**
+   * Trades the sign-in's code for the member's account, and revokes the token it got before it
+   * returns: ostra keeps the verified ID and login, never a token (F-119, ADR 0052). A revocation
+   * that fails is an error, never a silent success. Needs `userLink`.
+   */
+  exchangeUserCode(client: CodeHostOAuthClient, code: string, redirectUri: string): Promise<AdapterResult<LinkedUser>> {
+    this.plumbing.logger.debug("exchangeUserCode is not supported", { codeLength: code.length, redirectLength: redirectUri.length, clientLength: client.clientId.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't link a member's account`));
   }
 }

@@ -14,4 +14,13 @@ export type CodeHostCapabilities = {
    * signed commits. Without it, `readBranchRules` answers `unsupported`, and the panel shows both checks as unknown.
    */
   readonly branchRules: boolean;
+  // ---- milestone 3 (ADR 0051, ADR 0052) ----
+  /** `compare` reads a base and a head's files and counts (F-027, F-070). */
+  readonly compare: boolean;
+  /** `setPullRequestDraft` makes a PR a draft and back (F-054). */
+  readonly draftPullRequests: boolean;
+  /** The webhooks carry PR comments, and `addReaction` reacts to one (F-053). */
+  readonly prComments: boolean;
+  /** `userAuthorizeUrl` and `exchangeUserCode` verify a member's own account (F-119). */
+  readonly userLink: boolean;
 };

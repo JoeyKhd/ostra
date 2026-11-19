@@ -60,28 +60,79 @@ const pullRequestBody = JSON.stringify({
   pull_request: { number: 3, state: "closed", merged: true, updated_at: "2026-11-19T10:00:00Z", head: { ref: "ostra/contract", sha: "a".repeat(40) } },
 });
 
+// Milestone 3: the three new webhooks, in GitHub's shape, and a compare's files.
+const issueCommentBody = JSON.stringify({
+  action: "created",
+  installation: { id: 7 },
+  repository: { id: 1001, full_name: "test-org/test1" },
+  issue: { number: 3, pull_request: { url: "https://code-host.invalid/pulls/3" } },
+  comment: { id: 5001, body: "@ostra add a test", html_url: "https://code-host.invalid/test-org/test1/pull/3#c5001", user: { id: 777, login: "member" } },
+});
+const reviewCommentBody = JSON.stringify({
+  action: "created",
+  installation: { id: 7 },
+  repository: { id: 1001, full_name: "test-org/test1" },
+  pull_request: { number: 3 },
+  comment: { id: 5002, body: "@ostra rename this", html_url: "https://code-host.invalid/r/5002", user: { id: 777, login: "member" }, path: "src/a.ts", side: "RIGHT", line: 12 },
+});
+const pushBody = JSON.stringify({
+  ref: "refs/heads/main",
+  before: "1".repeat(40),
+  after: "2".repeat(40),
+  installation: { id: 7 },
+  repository: { id: 1001, full_name: "test-org/test1" },
+  commits: [{ added: ["pnpm-lock.yaml"], modified: ["package.json"], removed: [] }, { modified: ["package.json"] }],
+});
+const signed = (event: string, body: string) => ({
+  headers: { "x-hub-signature-256": signWebhook("hook-secret", body), "x-github-event": event },
+  body,
+  secret: "hook-secret",
+});
+const smallFile = { path: "src/a.ts", previousPath: null, status: "modified" as const, additions: 2, deletions: 1, patch: "@@ -1 +1,2 @@\n-a\n+b\n+c\n" };
+const oauthClient = { clientId: "Iv1.tiny", clientSecret: "tiny-client-secret" };
+const linkedUser = { userId: "777", login: "member" };
+
 defineCodeHostContractSuite({
   name: "tiny code host",
-  create: () =>
-    Promise.resolve({
-      adapter: new TinyCodeHost({
-        app,
-        installationId: "7",
-        repos: [
-          {
-            hostRepoId: "1001",
-            fullName: repo,
-            defaultBranch: "main",
-            files: { "package.json": "{}", ".github/pull_request_template.md": "## What\n" },
-            branches: ["main", "ostra/contract", "signed"],
-            rules: {
-              main: { protected: true, requiresSignedCommits: false, reasons: [] },
-              signed: { protected: true, requiresSignedCommits: true, reasons: [] },
-            },
-            refs: ["refs/ostra/wip/contract-task"],
+  create: () => {
+    const host = new TinyCodeHost({
+      app,
+      installationId: "7",
+      repos: [
+        {
+          hostRepoId: "1001",
+          fullName: repo,
+          defaultBranch: "main",
+          files: { "package.json": "{}", ".github/pull_request_template.md": "## What\n" },
+          branches: ["main", "ostra/contract", "signed"],
+          rules: {
+            main: { protected: true, requiresSignedCommits: false, reasons: [] },
+            signed: { protected: true, requiresSignedCommits: true, reasons: [] },
           },
-        ],
-      }),
+          refs: ["refs/ostra/wip/contract-task"],
+          compares: {
+            "main...ostra/ahead": { aheadBy: 2, behindBy: 0, mergeBase: "3".repeat(40), files: [smallFile] },
+            "main...ostra/behind": { aheadBy: 0, behindBy: 4, mergeBase: "3".repeat(40), files: [] },
+            "main...ostra/diverged": { aheadBy: 1, behindBy: 3, mergeBase: "3".repeat(40), files: [smallFile] },
+            "main...ostra/huge": {
+              aheadBy: 1,
+              behindBy: 0,
+              mergeBase: "3".repeat(40),
+              files: [
+                { path: "big.json", previousPath: null, status: "added", additions: 50_000, deletions: 0, patch: "+x\n".repeat(400) },
+                smallFile,
+                { path: "src/b.ts", previousPath: "src/old-b.ts", status: "renamed", additions: 0, deletions: 0, patch: null },
+              ],
+            },
+          },
+        },
+      ],
+      // Small limits, so the suite can see them applied.
+      compareLimits: { maxFiles: 2, maxPatchBytes: 1024 },
+      oauth: { client: oauthClient, users: [{ code: "sign-in-code", user: linkedUser }] },
+    });
+    return Promise.resolve({
+      adapter: host,
       fixture: {
         app: { appId: app.appId, privateKey: app.privateKey },
         wrongApp: { appId: app.appId, privateKey: "wrong" },
@@ -112,8 +163,31 @@ defineCodeHostContractSuite({
           state: "merged",
         },
         deletableRef: "refs/ostra/wip/contract-task",
+        compare: {
+          ahead: { base: "main", head: "ostra/ahead", aheadBy: 2, behindBy: 0 },
+          behind: { base: "main", head: "ostra/behind", aheadBy: 0, behindBy: 4 },
+          diverged: { base: "main", head: "ostra/diverged", aheadBy: 1, behindBy: 3 },
+          truncated: { base: "main", head: "ostra/huge", path: "big.json" },
+        },
+        commentWebhooks: {
+          issueComment: { input: signed("issue_comment", issueCommentBody), number: 3, commentId: "5001", authorId: "777", body: "@ostra add a test" },
+          reviewComment: { input: signed("pull_request_review_comment", reviewCommentBody), number: 3, commentId: "5002", path: "src/a.ts", line: 12, side: "new" },
+          push: { input: signed("push", pushBody), ref: "refs/heads/main", after: "2".repeat(40), changedPaths: ["pnpm-lock.yaml", "package.json"] },
+        },
+        comment: { kind: "issue", commentId: "5001" },
+        userLink: {
+          client: oauthClient,
+          code: "sign-in-code",
+          redirectUri: "http://localhost:3000/api/github/link/callback",
+          user: linkedUser,
+          revokedTokens: () => host.userTokens.revoked,
+          failNextRevocation: () => {
+            host.failNextRevocation = true;
+          },
+        },
       },
-    }),
+    });
+  },
 });
 
 defineAgentContractSuite({

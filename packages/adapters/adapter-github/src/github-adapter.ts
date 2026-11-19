@@ -150,7 +150,15 @@ export class GitHubAdapter extends CodeHostAdapter {
     this.#webUrl = (options.webUrl ?? DEFAULT_WEB_URL).replace(/\/+$/, "");
     this.#userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     // Where an LFS batch answer may send the git proxy (Q119, spike 4).
-    this.capabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)], branchRules: true };
+    // Milestone 3's compare, drafts, PR comments and the verified link come with its ticket 09:
+    // until then each answers `unsupported`, as the base class does.
+    this.capabilities = {
+      checkRuns: true,
+      prTemplates: true,
+      lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)],
+      branchRules: true,
+      compare: false, draftPullRequests: false, prComments: false, userLink: false,
+    };
   }
 
   // ---------- health ----------
