@@ -46,6 +46,14 @@ _Avoid_: log entry, activity, message (a message is one kind of event)
 The part of a tracker that is attached to a project: a Linear team or Linear project, or a Jira project or board. Each board belongs to one project.
 _Avoid_: source, workspace
 
+**Status mapping**:
+A board's choice of which tracker statuses count as open, and which ones ostra moves a ticket to when its task starts, when its first PR opens and when it merges. Drafted from the tracker's own status types, and changed by a project admin.
+_Avoid_: workflow, state map
+
+**Inbox**:
+A project's list of the open tickets on its boards, from ostra's cached copy, where a member turns a ticket into a task.
+_Avoid_: backlog, queue (the queue holds tasks waiting for a runner), triage
+
 **Automation**:
 A project's rule that starts tasks by itself: an intake rule, which acts on matching tickets, or a schedule, which acts at set times.
 _Avoid_: workflow, trigger
