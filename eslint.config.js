@@ -112,11 +112,11 @@ export default defineConfig(
       "no-restricted-syntax": ["error", ...baseSyntax],
       // Named exports, except where a framework requires a default export (see below).
       "no-restricted-exports": ["error", { restrictDefaultExports: { direct: true } }],
-      // Only packages/jobs imports pg-boss (ADR 0045).
+      // Only packages/jobs imports pg-boss (ADR 0037).
       "no-restricted-imports": [
         "error",
         {
-          paths: [{ name: "pg-boss", message: "Only packages/jobs imports pg-boss (ADR 0045)." }],
+          paths: [{ name: "pg-boss", message: "Only packages/jobs imports pg-boss (ADR 0037)." }],
           patterns: [srcPathPattern],
         },
       ],
