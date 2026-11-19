@@ -54,3 +54,8 @@ The web builder (tickets 53 and 63) found these missing from the API draft. The 
 9. Optional: for each model a provider lists, the projects it serves (`serves: string[]`, for "Models it lists").
 
 The web builder falls back where any of these are missing (catalog ID text, no "What happens", no task count), so none of them blocks it.
+
+10. `agentProfiles.modelOptions`: for each project, which provider serves the model there, as `projects: [{ projectId, name, providerName: string | null }]`, not only `projectsWithout`. The profile editor's "{model} in each project" lists every project with its key.
+11. A `logoPath` beside the display name in item 6, where the catalog has one.
+
+(2026-11-19, 23:55, from the web builder's e2e run against the draft: items 3 and 6 are still the open ones, besides 10.)
