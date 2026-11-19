@@ -11,7 +11,7 @@ import type { AdapterContext } from "@ostra/adapter-sdk";
 import { generateSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { SECRETS_KEY_MISMATCH, SECRETS_KEY_MISMATCH_MESSAGE } from "@ostra/domain";
+import { FIRST_ACCOUNT_LOCK_KEY, SECRETS_KEY_MISMATCH, SECRETS_KEY_MISMATCH_MESSAGE } from "@ostra/domain";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -189,6 +189,54 @@ describe("the secrets key's check at start (Q136)", () => {
           child.process.exitCode === null ? new Promise((resolve) => child.process.once("exit", resolve)) : Promise.resolve(),
         ),
       );
+    }
+  });
+
+  it("F-001: two processes with different keys racing on an empty database: the one that stores the check starts, and the other reads it and refuses", async () => {
+    // The race, made certain: this test holds the lock the check takes, so both processes find no
+    // value on their first read and queue on the lock; then it lets go.
+    const locked = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
+    const holder = test.db.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${FIRST_ACCOUNT_LOCK_KEY})`;
+        locked.resolve(undefined);
+        await release.promise;
+      },
+      { timeout: 60_000 },
+    );
+    await locked.promise;
+    const otherDir = await mkdtemp(path.join(tmpdir(), "ostra-secrets-race-"));
+    try {
+      const outcome = (start: Promise<unknown>): Promise<string> =>
+        start.then(
+          () => "started",
+          (error: unknown) => (error instanceof Error ? error.name : "failed"),
+        );
+      const starts = [
+        outcome(openSecretStore(test.db, { secretsKey: generateSecretsKey(), dataDir }, context)),
+        outcome(openSecretStore(test.db, { secretsKey: generateSecretsKey(), dataDir: otherDir }, context)),
+      ];
+      const waiting = async (): Promise<number> => {
+        const rows = await test.db.$queryRaw<readonly { readonly waiting: number }[]>`
+          SELECT count(*)::int AS "waiting" FROM pg_locks
+          WHERE locktype = 'advisory' AND NOT granted AND objid = ${FIRST_ACCOUNT_LOCK_KEY}
+            AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`;
+        return rows[0]?.waiting ?? 0;
+      };
+      for (let attempt = 0; attempt < 200 && (await waiting()) < 2; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(await waiting()).toBe(2);
+      expect(await checkRows()).toHaveLength(0);
+      release.resolve(undefined);
+      await holder;
+      expect((await Promise.all(starts)).sort()).toEqual([SECRETS_KEY_MISMATCH, "started"]);
+      expect(await checkRows()).toHaveLength(1);
+    } finally {
+      release.resolve(undefined);
+      await holder.catch(() => undefined);
+      await rm(otherDir, { recursive: true, force: true });
     }
   });
 });

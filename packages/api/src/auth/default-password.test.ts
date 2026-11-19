@@ -74,6 +74,16 @@ describe("the seeded admin with the default password", () => {
     expect(await refusalOf(() => harness.auth.api.deviceApprove({ body: { userCode: "ABCDEFGH" }, headers: cookie }))).toMatchObject({
       code: "PASSWORD_CHANGE_REQUIRED",
     });
+    // Nor its own account: no new name or username, and no ending its other sessions.
+    expect(await refusalOf(() => harness.auth.api.updateUser({ body: { name: "Someone else" }, headers: cookie }))).toEqual({
+      code: "PASSWORD_CHANGE_REQUIRED",
+      status: 403,
+    });
+    expect(await refusalOf(() => harness.auth.api.updateUser({ body: { username: "someone-else" }, headers: cookie }))).toMatchObject({
+      code: "PASSWORD_CHANGE_REQUIRED",
+    });
+    expect(await refusalOf(() => harness.auth.api.revokeOtherSessions({ headers: cookie }))).toMatchObject({ code: "PASSWORD_CHANGE_REQUIRED" });
+    expect(await harness.test.db.user.findFirstOrThrow()).toMatchObject({ username: "demo", mustChangePassword: true });
     // Reading its own session still works: that's how the panel knows to ask.
     expect((await harness.auth.api.getSession({ headers: cookie }))?.user.mustChangePassword).toBe(true);
   });
