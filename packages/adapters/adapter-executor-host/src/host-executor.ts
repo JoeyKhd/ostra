@@ -20,6 +20,7 @@ import type {
   BoxRef,
   CheckRunResult,
   CommitAndPushInput,
+  CommittedRepoWork,
   CommitWorkInput,
   CreateBoxInput,
   CreatedBox,
@@ -146,6 +147,8 @@ type BoxRecord = {
   /** Every process of the task, as one unit (ticket 42). Made with the folder. */
   unit: ContainmentUnit | undefined;
   agent: RunningAgent | undefined;
+  /** Each repo's head when the box got ready or at the last `commitWork`: a turn changed a repo when it moved (Q188). */
+  readonly turnBase: Map<RepoId, string>;
 };
 
 /** A project's cache folder: its ID, with anything odd replaced. */
@@ -345,6 +348,7 @@ export class HostExecutor extends ExecutorAdapter {
       proxies: input.proxies,
       unit: undefined,
       agent: undefined,
+      turnBase: new Map(),
     };
     this.#boxes.set(key, record);
     try {
@@ -406,6 +410,7 @@ export class HostExecutor extends ExecutorAdapter {
       record.state = "failed";
       return setup;
     }
+    await this.#recordHeads(record);
     record.state = "ready";
     log.info("box ready", { setupExitCode: setup.value?.exitCode ?? null, dependencyCache: cache === null ? null : cache.prepared.reused ? "warm" : "cold" });
     return ok({
@@ -484,6 +489,32 @@ export class HostExecutor extends ExecutorAdapter {
       results.push({ repoId: repo.repoId, headSha: head.data, ahead: true });
     }
     this.plumbing.logger.info("pushed", { taskId: record.ref.taskId, ahead: results.filter((item) => item.ahead).length });
+    return ok(results);
+  }
+
+  /**
+   * Milestone 3 (F-054): what the turn left committed in every repo, as `commitAndPush` does, with
+   * no push; then which repos the turn changed, by each head against where it was (Q188).
+   */
+  override async commitWork(input: CommitWorkInput): Promise<AdapterResult<readonly CommittedRepoWork[]>> {
+    const record = this.#boxes.get(boxKey(input.box));
+    if (record === undefined || record.state === "released" || record.state === "creating") {
+      return adapterError("conflict", `nothing to commit in a box that is ${record?.state ?? "released"}`);
+    }
+    const commit = await this.#commitMessage(record, input);
+    const results: CommittedRepoWork[] = [];
+    for (const repo of record.spec.repos) {
+      const committed = await this.#commitLeft(record, repo, commit);
+      if (!committed.ok) {
+        return committed;
+      }
+      const head = await this.#headOf(record, repo);
+      results.push({ repoId: repo.repoId, headSha: head, changed: head === null || head !== record.turnBase.get(repo.repoId) });
+      if (head !== null) {
+        record.turnBase.set(repo.repoId, head);
+      }
+    }
+    this.plumbing.logger.info("work committed", { taskId: record.ref.taskId, changed: results.filter((item) => item.changed).length });
     return ok(results);
   }
 
@@ -585,6 +616,8 @@ export class HostExecutor extends ExecutorAdapter {
       }
       restored.push({ repoId: repo.repoId, outcome: result.value.outcome });
     }
+    // The restored work is uncommitted: the next `commitWork` commits it, and that turn changed the repo.
+    await this.#recordHeads(record);
     this.plumbing.logger.info("hidden ref restored", {
       taskId: record.ref.taskId,
       applied: restored.filter((item) => item.outcome === "applied").length,
@@ -671,6 +704,7 @@ export class HostExecutor extends ExecutorAdapter {
     } catch (error) {
       return adapterError("unavailable", `couldn't resume the box (${error instanceof Error ? error.name : "unknown"})`);
     }
+    await this.#recordHeads(record);
     record.state = "ready";
     this.plumbing.logger.info("box resumed", { taskId: input.taskId, boxId: input.boxId });
     return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
@@ -997,6 +1031,25 @@ export class HostExecutor extends ExecutorAdapter {
       }
     }
     return ok(undefined);
+  }
+
+  /** A checkout's head, or `null` when it has none or can't be read. */
+  async #headOf(record: BoxRecord, repo: TaskSpec["repos"][number]): Promise<string | null> {
+    const head = await this.#git(record, ["rev-parse", "--verify", "--quiet", "HEAD"], path.join(record.workspaceDir, repo.checkoutDir));
+    const sha = gitShaSchema.safeParse(head.stdout.trim());
+    return head.code === 0 && sha.success ? sha.data : null;
+  }
+
+  /** Each repo's head now: where the next turn's changes are measured from. */
+  async #recordHeads(record: BoxRecord): Promise<void> {
+    for (const repo of record.spec.repos) {
+      const head = await this.#headOf(record, repo);
+      if (head === null) {
+        record.turnBase.delete(repo.repoId);
+      } else {
+        record.turnBase.set(repo.repoId, head);
+      }
+    }
   }
 
   async #endAgent(record: BoxRecord, graceMs: number): Promise<void> {

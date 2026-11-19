@@ -398,6 +398,40 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
     }, CASE_TIMEOUT_MS);
 
 
+    it("F-054: commitWork commits a turn's work without a push and says which repos changed; a push-only push leaves what came after", async (context) => {
+      await wipCase(async () => {
+        const { adapter, fixture } = subject();
+        const wip = fixture.workInProgress;
+        if (wip === undefined) return;
+        const { box, created } = await createAndPrepare(fixture.spec);
+        const person = fixture.spec.gitIdentity;
+        const commit = { box, message: "a turn", author: person, coAuthors: [] };
+        try {
+          const untouched = await adapter.commitWork(commit);
+          if (!untouched.ok) throw new Error(`commitWork: ${untouched.error.message}`);
+          expect(untouched.value.map((repo) => repo.changed)).toEqual(fixture.spec.repos.map(() => false));
+          const files = wip.checkout(created);
+          await files.write("turn.txt", "the turn's work");
+          const changed = await adapter.commitWork(commit);
+          if (!changed.ok) throw new Error(`commitWork: ${changed.error.message}`);
+          expect(changed.value[0]).toMatchObject({ repoId: fixture.spec.repos[0]?.repoId, changed: true });
+          expect(changed.value[0]?.headSha).toMatch(/^[0-9a-f]{40}$/);
+          // Committed: the checkout is clean, and nothing new is a change.
+          expect(await files.status()).toEqual([]);
+          const again = await adapter.commitWork(commit);
+          expect(again.ok && again.value[0]?.changed).toBe(false);
+          // A check's leftover after the commit stays out of the push.
+          await files.write("check-output.log", "left by a check");
+          const pushed = await adapter.commitAndPush({ ...commit, branchName: fixture.spec.branchName, hiddenRef: `refs/ostra/wip/${box.taskId}`, pushOnly: true });
+          if (!pushed.ok) throw new Error(`commitAndPush: ${pushed.error.message}`);
+          expect(pushed.value[0]).toMatchObject({ ahead: true, headSha: changed.value[0]?.headSha });
+          expect(await files.status()).toEqual(["?? check-output.log"]);
+        } finally {
+          await adapter.release(box, "requested");
+        }
+      }, context);
+    }, CASE_TIMEOUT_MS);
+
     /** A case that is a known gap must fail, so the gap is noticed when it closes. */
     const withGap = async (reason: string | undefined, annotate: (text: string) => Promise<unknown>, run: () => Promise<void>): Promise<void> => {
       if (reason === undefined) {

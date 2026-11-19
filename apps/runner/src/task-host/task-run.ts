@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { GIT_GUARD_ENV_NAMES, gitGuardEnv, toApprovalOptions } from "@ostra/adapter-sdk";
 import type {
   AgentAdapter,
@@ -16,6 +17,8 @@ import type {
 } from "@ostra/adapter-sdk";
 import { approvalIdSchema, questionIdSchema, runnerLimits, turnIdSchema } from "@ostra/protocol";
 import type {
+  CheckId,
+  CheckStatus,
   CommandBody,
   HiddenRefOutcome,
   RestoreOrigin,
@@ -41,6 +44,7 @@ import type { ServerLink } from "./server-link.ts";
 import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
 import { writeTicketFiles } from "./ticket-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
+import { runTurnChecks } from "./turn-checks.ts";
 import { filesOutsideRepos, outsideKey } from "./workspace-scan.ts";
 
 // One task, from its dispatch to its last event (ticket 21, ADR 0029): the same code on every
@@ -454,7 +458,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   const pushWork = async (
     currentSpec: TaskSpec,
     message: string,
-    options: { readonly hiddenRefEvent: boolean } = { hiddenRefEvent: true },
+    options: { readonly hiddenRefEvent: boolean; readonly pushOnly?: boolean } = { hiddenRefEvent: true },
   ): Promise<{ readonly ok: true; readonly repos: readonly RepoPushResult[] } | { readonly ok: false; readonly error: string }> => {
     const hiddenRef = hiddenRefFor(currentSpec.taskId);
     const pushed = await deps.executor.commitAndPush({
@@ -464,6 +468,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       coAuthors: currentSpec.coAuthors,
       branchName: currentSpec.branchName,
       hiddenRef,
+      // Committed before the checks (milestone 3): what a check left in the tree stays out of the push.
+      ...(options.pushOnly === true ? { pushOnly: true } : {}),
     });
     if (!pushed.ok) {
       return { ok: false, error: `pushing the task's work failed: ${pushed.error.message}`.slice(0, ERROR_MAX) };
@@ -506,15 +512,57 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   };
 
   /**
-   * ADR 0039's order after a turn: the branch, the hidden ref, the archive, then `session.saved`.
+   * Milestone 3 (F-054, ADR 0052): the turn's work committed, then the environment's checks that
+   * apply to the repos the turn changed (Q188). `undefined` when the spec has none, the peer is older
+   * than minor 2, or the session is being stopped; then `commitAndPush` commits as before. A turn that
+   * changed nothing runs none. Nothing here fails the turn or holds the push.
+   */
+  const commitAndCheck = async (
+    currentSpec: TaskSpec,
+    message: string,
+    ordinal: number,
+  ): Promise<{ readonly committed: boolean; readonly checks: readonly { readonly checkId: CheckId; readonly status: CheckStatus }[] | undefined }> => {
+    const how = endingNow()?.kind;
+    const settled = how === undefined || how === "finished" || how === "idle";
+    if ((currentSpec.checks?.length ?? 0) === 0 || channel?.supports("check.started") !== true || !settled || dirsCache === undefined) {
+      return { committed: false, checks: undefined };
+    }
+    const committed = await deps.executor.commitWork({ box, message, author: currentSpec.gitIdentity, coAuthors: currentSpec.coAuthors });
+    if (!committed.ok) {
+      log.warn("committing the turn before its checks failed: no checks", { turnOrdinal: ordinal, code: committed.error.code });
+      return { committed: false, checks: undefined };
+    }
+    const changedRepoIds = committed.value.filter((repo) => repo.changed).map((repo) => repo.repoId);
+    if (changedRepoIds.length === 0) {
+      return { committed: true, checks: undefined };
+    }
+    const checks = await runTurnChecks(
+      { executor: deps.executor, link: deps.link, emit, logger: log, now },
+      {
+        box,
+        spec: currentSpec,
+        changedRepoIds,
+        // Beside the task's agent folder, in the box's own root: removed once the outputs are up.
+        outputDir: path.join(path.dirname(dirsCache.agentDir), "checks", `turn-${String(ordinal)}`),
+        signal: endingSignal.signal,
+      },
+    );
+    return { committed: true, checks: checks.length === 0 ? undefined : checks };
+  };
+
+  /**
+   * ADR 0039's order after a turn: the branch, the hidden ref, the archive, then `session.saved`;
+   * from milestone 3 the commit and the turn's checks come before the branch's push (ADR 0052).
    * Only the branch's push can fail the session; its error comes back for the caller.
    */
   const saveWork = async (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> => {
     unsaved = false;
     const startedAt = now();
     const ordinal = Math.max(1, turnOrdinal);
+    // 0. The commit, then the checks, whatever they find: a failing check never holds the push.
+    const checked = await commitAndCheck(currentSpec, message, ordinal);
     // 1. The task's branch in every repo: what the PR is made of.
-    const pushed = await pushWork(currentSpec, message, { hiddenRefEvent: false });
+    const pushed = await pushWork(currentSpec, message, { hiddenRefEvent: false, pushOnly: checked.committed });
     if (pushed.ok) {
       lastPushed = pushed.repos;
     } else {
@@ -554,6 +602,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         hiddenRefSha: savedRepos.get(repo.repoId)?.sha ?? null,
       })),
       archive: archived.ok ? archived.archive : null,
+      ...(checked.checks === undefined ? {} : { checks: [...checked.checks] }),
     });
     // The working figures (spike 2, gotcha 13): one line per turn, numbers only.
     log.info("work saved after the turn", {
@@ -562,6 +611,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       archiveBytes: archived.ok ? archived.archive.size : null,
       hiddenRefs: [...savedRepos.values()].filter((repo) => repo.sha !== null).length,
       branchPushed: pushed.ok,
+      checks: checked.checks?.length ?? 0,
     });
     return { pushError: pushed.ok ? null : pushed.error };
   };

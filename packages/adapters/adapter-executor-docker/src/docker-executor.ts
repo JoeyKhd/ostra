@@ -8,6 +8,8 @@ import type {
   AgentProcess,
   BoxRef,
   CommitAndPushInput,
+  CommittedRepoWork,
+  CommitWorkInput,
   CreateBoxInput,
   CreatedBox,
   ExecutorCapabilities,
@@ -83,6 +85,11 @@ export class DockerExecutor extends ExecutorAdapter {
 
   commitAndPush(input: CommitAndPushInput): Promise<AdapterResult<readonly RepoPushResult[]>> {
     return this.#inner.commitAndPush(input);
+  }
+
+  /** Milestone 3: the turn's work committed before its checks, as the host executor does it, on the task volume. */
+  override commitWork(input: CommitWorkInput): Promise<AdapterResult<readonly CommittedRepoWork[]>> {
+    return this.#inner.commitWork(input);
   }
 
   stop(input: StopInput): Promise<AdapterResult<void>> {
