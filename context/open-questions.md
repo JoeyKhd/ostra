@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q164). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q185). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -250,6 +250,34 @@ The maintainer delegated these calls too, and each recommendation of the finding
 |---|---|
 | Models are listed from the provider's own endpoint, then matched against models.dev. Unmatched IDs are custom models | ADR 0033, F-088 |
 | Local secrets live outside the repo, in `~/.config/ostra-dev/` | `docs/development.md` |
+
+#### Settled for milestone 3's spec (2026-11-19)
+
+Writing `specs/m3-step-in/spec.md` met these questions. The maintainer delegated every decision that night ("continue working on everything throughout the night, would be nice to wake up to the finished product"), so each was settled by its recommendation, and the spec's section 11 restates them. Ticket 51 of that spec asks the maintainer to review them; any the maintainer disagrees with moves back to the open list.
+
+| Question | Settled in |
+|---|---|
+| Q165 How do milestone 3's demo and tests get a second member before invites (F-002, milestone 4)? | `specs/m3-step-in/spec.md`, section 11, item 1: `pnpm dev:seed-member`, a development-only seed through the first admin's account code, refused outside `development` and `test` and left out of production builds. A test tool, like milestone 2's ticket-creating script |
+| Q166 What is an approval rule, and how is it enforced? | ADR 0049, F-026: a tool (`edit`, `execute`, `fetch`, `mcp`) and a match (path glob, command prefixes, outside an allowlist, anything), always "ask". Four editable presets. Mapped to the agent's own "ask" settings and checked by the runner too. A guard with a person in it, not a wall: the box contains the agent (ADR 0031) |
+| Q167 What does "Approve for this task" approve? | ADR 0049: a task rule of the request's tool and its subject narrowed to a pattern (the exact path, a command's program and first argument, a URL's host, an MCP tool's name), shown on the card before it's pressed |
+| Q168 Who answers an agent's question? | ADR 0049: the driver, as with a message; a watcher takes over to answer. Approvals stay any project member's (F-026) |
+| Q169 How does plan first work with an agent that has no plan mode? | ADR 0049, F-063: the first turn only, in a read-only mode the adapter makes (an ACP session mode, or a relaunch with read-only permissions and `session/load`); the plan is the agent's plan entries and last message; "Approve plan", "Edit and approve", "Ask for changes", the driver's |
+| Q170 How do a profile's MCP servers get their secrets without one entering the box? | ADR 0049, ADR 0030: HTTP servers through the sidecar's MCP proxy, which adds the headers; stdio servers only as commands in the image, with no secret. Skills are a `SKILL.md` and up to 20 files, written in the task's config folder |
+| Q171 What if a repo's own agent config loosens the profile? | ADR 0049, F-021: the profile's permissions and MCP list win, proven by a contract case; an agent that can't guarantee it gets the repo's agent config hidden for the task |
+| Q172 Which channels and audiences does milestone 3 notify, before reviewers exist? | ADR 0050, F-036: the panel, the ticket (a comment with mentions, coalesced in a 10-minute window) and email; "a PR ready for review" goes to the driver until F-102 |
+| Q173 How is email set up, when is a mail sent, and what may it carry? | ADR 0050, F-115: per install by the instance admin, Resend first or SMTP; after a 2-minute delay unless read or closed; the task's title and key, the moment, one line and a link, never task content; no answer buttons |
+| Q174 Email templates: a library, or ostra's own? | ADR 0050: ostra's own pure renderers, HTML with inline styles and a text part. No new dependency |
+| Q175 Where does the diff come from, and is it highlighted? | ADR 0051, F-027: the code host's compare of the pushed branch, cached by head, "as of the last turn"; ostra's own unified view, with no syntax highlighting until a highlighter is approved |
+| Q176 How are diff comments anchored, and who sends them? | ADR 0051, F-072: drafts per member, anchored by repo, path, side, line and head, outdated rather than moved; sending follows the composer's rule |
+| Q177 What credential does `ostra login` make, and how does `ostra checkout` fetch? | ADR 0051, F-103: a CLI session of its own by device code, 30 days, listed and revocable, able only to read a task's branches; `ostra checkout` uses the member's own git access and no token from ostra |
+| Q178 When do checks run now that a session spans turns, and what does a failure do? | ADR 0052, F-054: after every turn with changes, before the push; a failure makes the PR a draft and offers "Ask the agent to fix"; passing again marks ostra's draft ready |
+| Q179 Update branch: merge or rebase? | ADR 0052, F-070: merge, so nothing is forced |
+| Q180 After a merge, what is the fresh branch called, and what happens to the old PR? | ADR 0052, F-066: the old name with `-2`, `-3`; every PR is kept on the task repo |
+| Q181 What does "the task pauses" mean when its ticket closes while it runs? | ADR 0052, F-066: the turn is interrupted (the work is saved), and the driver chooses "Stop the task" or "Keep working" |
+| Q182 `@ostra` while a session runs, and from someone not linked | ADR 0052, F-053: it waits for the turn's end; anyone not linked or without access is dropped with no reply |
+| Q183 Where does the verified GitHub link live, and how is co-author credit given? | ADR 0052, F-119: on the account, unique per install; the token revoked before the callback returns; trailers use the no-reply address |
+| Q184 Snapshots on `docker` before the registry, and the `host` stand-in | ADR 0038 (amended), F-051: the building runner keeps the image; other runners fall back to the full setup; on `host`, repo mirrors and a dependency cache per project |
+| Q185 A task with services when only `host` runners are online | ADR 0038 (amended), F-094: offered only to runners whose executor declares `services`; it waits with the reason |
 
 ## Open
 

@@ -1,6 +1,6 @@
 # Environments, snapshots and services
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q33, Q39, Q40, Q95 and Q96. **Amended 2026-11-19 after spike 3:** where a snapshot's checkouts live, the scan before the push, the build namespace's egress, and native sidecars (Q153, Q155).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q33, Q39, Q40, Q95 and Q96. **Amended 2026-11-19 after spike 3:** where a snapshot's checkouts live, the scan before the push, the build namespace's egress, and native sidecars (Q153, Q155). **Amended again 2026-11-19 for milestone 3's spec,** on the maintainer's delegation: a `docker` snapshot without a registry, the `host` executor's dependency cache, and a task with services when only `host` runners are online (Q184, Q185; the section "Milestone 3: without a registry, and on `host`").
 
 **One environment per project** (Q33). It's the project's recipe for every box: "the computer every task starts from". It holds:
 - a base image: ostra's default (the tools, the pinned agent and a small init program), or the organization's own
@@ -32,6 +32,15 @@ In v1, ostra drafts the environment from the project's repos: lockfiles, tool ve
 - **`docker`:** on the box's private network.
 - **`kubernetes`:** as native sidecar containers in the task's pod (init containers with `restartPolicy: Always`), which need Kubernetes 1.29 or later (ADR 0029).
 - **`host`:** none. That's one of the executor's allowed differences (ADR 0029). The scheduler never sends it a task whose environment needs services.
+
+## Milestone 3: without a registry, and on `host`
+
+Added 2026-11-19 (Q184, Q185). The registry (F-120) and `kubernetes` (F-093) are milestone 5, so milestone 3 builds snapshots on `docker` without a registry, and `host` gets its stand-in.
+
+- **On `docker` without a registry, the runner that builds a snapshot keeps it** in its own Docker, tagged by project and snapshot. The server sends the build to a `docker` runner of the project's pools, the one that ran the project's last task first. A box on that runner starts from it; a box on another runner starts with milestone 1's full setup, and that runner builds its own copy at the next trigger. The server never passes a runner over because it lacks the snapshot, so a task never waits for a build.
+- **The scan runs before the image is used,** since there's no push for it to precede: a hit deletes the image and fails the build, and the previous ready snapshot stays in use.
+- **On `host`, a per-project mirror of each repo and a dependency cache folder stand in for the image.** The worktree is cloned from the mirror, and the package managers' caches point into the project's folder, so the setup script's install runs warm. The setup still runs on every new worktree: the cache makes it fast and doesn't skip it. Another project's tasks never see the folder.
+- **A task whose environment has services is offered only to a runner whose executor declares `services`.** With none online, the task stays queued, and its page says it needs a runner that can start services and which runners are online. It never runs on `host` without its services.
 
 ## Considered options
 

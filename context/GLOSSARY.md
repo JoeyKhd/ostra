@@ -77,6 +77,22 @@ The agent's request to do something its profile's rules hold back, such as addin
 _Avoid_: permission, confirmation
 _Not_: a reviewer's approval of a PR, which is given on the code host
 
+**Approval rule**:
+A line in an agent profile that says what needs a person: a tool (edit, run a command, fetch, an MCP tool) and what it matches, such as a path glob or the commands outside an allowlist. Its effect is always to ask. It keeps a person in the loop and doesn't contain the agent: the box does that (ADR 0049).
+_Avoid_: policy, permission (the agent's own settings are its permissions, which ostra writes from the rules)
+
+**Task rule**:
+What "Approve for this task" adds: an approval rule on one task, with a narrow pattern (the exact path, a command's program and first argument), that answers later matching requests without a person.
+_Avoid_: exception, allowlist
+
+**Plan first**:
+An agent profile's switch: the task's first turn only proposes a plan, reading and never writing, and the driver approves or edits it before the work starts.
+_Avoid_: plan mode (that's how the agent is made read-only for that turn), dry run
+
+**Notification**:
+A needs-you moment delivered to one member on one channel: the panel's "Needs you" page, a comment on the task's ticket, or an email. Each member chooses which moments reach them on which channel.
+_Avoid_: alert, inbox (the Inbox is a project's tickets), message (members send messages to the agent)
+
 **Dispatch**:
 Choosing where a task runs, on a runner in one of its project's pools or on its member's personal runner, and starting its box and its session.
 _Avoid_: schedule (a schedule is a kind of automation), assign (assigning is something done in the tracker)
@@ -103,6 +119,10 @@ _Avoid_: comment (people write those), issue
 A member asked to review a task's PR, taken from the PR's requested reviewers or CODEOWNERS.
 _Avoid_: approver
 _Not_: an agent's review, which is a review task
+
+**Diff comment**:
+A member's comment on a line of a task's diff in the panel. It stays a draft until its member sends their drafts to the agent together, as one prompt, and it shows as outdated when a later turn changes its line.
+_Avoid_: review comment (those are written on the code host), finding (an AI review writes those)
 
 ### Execution
 
@@ -186,7 +206,7 @@ A program the environment starts beside the agent for its tests, such as a datab
 _Avoid_: dependency
 
 **Check**:
-A command the environment names that ostra runs before it opens a PR. The code host's own pipeline is "CI".
+A command the environment names that ostra runs after every turn with changes, before it pushes and opens or updates a PR. A failing one makes the PR a draft. The code host's own pipeline is "CI".
 _Avoid_: test, CI (for ostra's checks)
 
 ### Agents and models
@@ -234,6 +254,10 @@ _Avoid_: install key, license key
 **Admin**:
 A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is also its instance admin, who can create more organizations.
 _Avoid_: owner, operator
+
+**CLI session**:
+What `ostra login` makes: a member's own credential for the `ostra` CLI, made by a device code the member approves in the browser, listed and revocable in their Account. It can read a task's branches for `ostra checkout`, and nothing else.
+_Avoid_: CLI token, API key, runner key (a runner's credential is a different one)
 
 ### Integrations
 
