@@ -42,7 +42,7 @@ const source: InboxSource = {
 
 const detail: InboxDetail = { ...ticket, description: "Typing **+** should work. See [the spec](https://example.com/spec).\n\n![shot](https://x/y.png)", parentKey: "CALC-100", imageCount: 1, driver: null, source };
 
-const start: StartFormProps = { detail, repos: [], profile: "OpenCode · Claude Sonnet 5.5", runOn: "alex-mbp", onStart: () => undefined, starting: false, error: null };
+const start: StartFormProps = { detail, repos: [], profile: "OpenCode", runOn: "alex-mbp", onStart: () => undefined, starting: false, error: null };
 const panel = (data: InboxDetail, form: Partial<StartFormProps> = {}) => renderToStaticMarkup(<TicketPanel detail={data} several={false} now={now} start={{ ...start, ...form }} />);
 
 describe("the rows", () => {

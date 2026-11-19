@@ -20,6 +20,8 @@ const facts = {
   ticketId: task.ticketId,
   projectSlug: task.project.slug,
   sessions: task.sessions.length,
+  /** The agent profile it started with (F-021). */
+  profileName: task.agentProfileId === null ? null : ((await db.agentProfile.findUnique({ where: { id: task.agentProfileId }, select: { name: true } }))?.name ?? null),
   projectBoards: await db.board.count({ where: { projectId: task.projectId } }),
   tickets: await db.ticket.count({ where: { organizationId: task.organizationId } }),
   ticketWrites: await db.ticketWrite.count({ where: { organizationId: task.organizationId } }),

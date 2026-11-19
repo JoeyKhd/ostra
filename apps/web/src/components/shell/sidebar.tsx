@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, TicketIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -132,6 +132,9 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           {t("shell.storage")}
         </NavLink>
       ) : null}
+      <NavLink href="/organization/agent-profiles" icon={<SlidersHorizontalIcon />} onNavigate={onNavigate}>
+        {t("shell.agentProfiles")}
+      </NavLink>
 
       <div className="mt-auto pt-3">
         <UserMenu me={me} />

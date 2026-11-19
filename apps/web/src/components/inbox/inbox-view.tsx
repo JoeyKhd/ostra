@@ -13,6 +13,7 @@ import type { ProjectId } from "@ostra/protocol";
 import { unprotectedRepos, unsupportedRepos } from "@/components/projects/repo-checks-words";
 import type { RepoDetail } from "@/components/projects/repo-checks-words";
 import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
+import { ProfilePicker, useStartProfile } from "@/components/agent-profiles/profile-picker";
 import { POOLS, RunOnPicker, useRunOn } from "@/components/tasks/run-on";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -197,7 +198,8 @@ const Sep = () => <div className="my-3.5 h-px bg-line" />;
 export type StartFormProps = {
   readonly detail: InboxDetail;
   readonly repos: readonly RepoDetail[];
-  readonly profile: string | null;
+  /** The profile picker (F-021), or `null` when no profile is offered: the task can't start. */
+  readonly profile: ReactNode | null;
   readonly runOn: ReactNode;
   readonly onStart: () => void;
   readonly starting: boolean;
@@ -252,10 +254,12 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
           <h3 className="mb-2 text-xs font-medium text-faint">{t("inbox.panel.start")}</h3>
           <PropRow label={t("inbox.panel.kind")}>{t("inbox.panel.code")}</PropRow>
           <PropRow label={t("inbox.panel.profile")}>
-            <BotIcon aria-hidden />
-            <span className="truncate" title={t("inbox.panel.profileReadOnly")}>
-              {start.profile ?? t("inbox.panel.noProfile")}
-            </span>
+            {start.profile ?? (
+              <>
+                <BotIcon aria-hidden />
+                <span className="truncate">{t("inbox.panel.noProfile")}</span>
+              </>
+            )}
           </PropRow>
           <PropRow label={t("inbox.panel.runOn")}>{start.runOn}</PropRow>
           <p className="mt-2 flex items-start gap-2 text-xs text-faint">
@@ -353,6 +357,8 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const options = useQuery(trpc.inbox.filters.queryOptions({ projectId }));
   const runners = useQuery(trpc.runners.mine.queryOptions());
   const { chosen, runner, setRunOn } = useRunOn(runners.data);
+  // The member's profiles for this project, its default first (F-021).
+  const profiles = useStartProfile(projectId);
   // Paged by cursor. `inbox.list`'s input is strict, so the pages are fetched with the plain client
   // rather than tRPC's infinite options, which add a `direction` to the input.
   const client = useTRPCClient();
@@ -436,11 +442,21 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
         start={{
           detail: detail.data,
           repos: project.data?.repos ?? [],
-          profile: project.data?.defaultCodeProfile === undefined || project.data.defaultCodeProfile === null ? null : project.data.defaultCodeProfile.name,
+          profile:
+            profiles.options !== undefined && profiles.chosen === null ? null : (
+              <ProfilePicker options={profiles.options} chosen={profiles.chosen} onPick={profiles.pick} disabled={start.isPending} className="-ml-2" />
+            ),
           runOn: <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={start.isPending} />,
           starting: start.isPending,
           error: errorText(start.error),
-          onStart: () => { start.mutate({ projectId, ticketId: detail.data.id, ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }) }); },
+          onStart: () => {
+            start.mutate({
+              projectId,
+              ticketId: detail.data.id,
+              ...(profiles.chosen === null ? {} : { agentProfileId: profiles.chosen.profileId }),
+              ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }),
+            });
+          },
         }}
       />
     );

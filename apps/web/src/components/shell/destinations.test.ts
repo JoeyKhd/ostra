@@ -25,6 +25,7 @@ describe("search ⌘K's destinations", () => {
       "/organization/runners",
       "/organization/models",
       "/organization/github",
+      "/organization/agent-profiles",
     ]);
   });
 
@@ -34,6 +35,8 @@ describe("search ⌘K's destinations", () => {
     expect(hrefs).not.toContain("/organization/models");
     expect(hrefs).not.toContain("/organization/github");
     expect(hrefs).toContain("/organization/runners");
+    // F-021: every member sees the profiles they may use.
+    expect(hrefs).toContain("/organization/agent-profiles");
   });
 
   it("matches every word of the query against the label and the project", () => {

@@ -3,7 +3,7 @@ import { t } from "@/lib/messages";
 // The places search ⌘K can open (milestone 1: the sidebar's own pages, nothing else). Pure, so the
 // list and its filter are tested without a browser.
 
-export type DestinationIcon = "home" | "new-task" | "project" | "tasks" | "environment" | "new-project" | "runners" | "models" | "github";
+export type DestinationIcon = "home" | "new-task" | "project" | "tasks" | "environment" | "new-project" | "runners" | "models" | "github" | "agent-profiles";
 
 export type Destination = {
   readonly href: string;
@@ -33,6 +33,7 @@ export const destinations = (projects: readonly DestinationProject[], admin: boo
         { href: "/organization/github", label: t("shell.github"), icon: "github" } satisfies Destination,
       ]
     : []),
+  { href: "/organization/agent-profiles", label: t("shell.agentProfiles"), icon: "agent-profiles" },
 ];
 
 /**

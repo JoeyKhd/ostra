@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Popover, Tooltip } from "radix-ui";
+import { Popover } from "radix-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, SubmitEvent } from "react";
 
@@ -26,6 +26,8 @@ import { branchSlugFor, titleFromPrompt } from "@ostra/domain/branch-name";
 import { runnerIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 
+import { ProfilePicker, useStartProfile } from "@/components/agent-profiles/profile-picker";
+import type { StartProfile } from "@/components/agent-profiles/profile-picker";
 import { runnerStateText } from "@/components/runners/runner-words";
 import { PageFrame, PageHeading, PropGroup, PropRow, Section, SectionLink } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
@@ -46,7 +48,6 @@ import { POOLS, RunOnPicker, Trigger, useRunOn } from "./run-on";
 import { doingText, taskStateText } from "./task-words";
 
 type ProjectSummary = RouterOutputs["projects"]["list"][number];
-type ProjectDetail = RouterOutputs["projects"]["get"];
 type Runner = RouterOutputs["runners"]["mine"][number];
 type TaskSummary = RouterOutputs["tasks"]["list"][number]["tasks"][number];
 
@@ -148,30 +149,6 @@ const ProjectPicker = ({ projects, project, onPick, disabled }: {
     </Popover.Root>
   );
 };
-
-/** Read-only in milestone 1: the project's default code profile always applies (F-021 makes it a picker). */
-const ProfileTrigger = ({ profile }: { readonly profile: ProjectDetail["defaultCodeProfile"] | undefined }) => (
-  <Tooltip.Provider delayDuration={300}>
-    <Tooltip.Root>
-      <Tooltip.Trigger asChild>
-        <Trigger chevron={false} className="cursor-default enabled:hover:bg-transparent" data-testid="agent-profile">
-          <SlidersHorizontalIcon aria-hidden />
-          {profile === undefined ? <Skeleton className="w-[150px]" /> : (
-            <span className="truncate">
-              {profile === null ? t("newTask.noModel") : `${profile.agentName} · ${profile.model?.name ?? t("newTask.noModel")}`}
-            </span>
-          )}
-        </Trigger>
-      </Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Content side="bottom" sideOffset={6} className="z-50 max-w-[260px] rounded-md border border-line-2 bg-surface px-2 py-1 text-sm text-text shadow-lg">
-          {t("newTask.profileReadOnly")}
-        </Tooltip.Content>
-      </Tooltip.Portal>
-    </Tooltip.Root>
-  </Tooltip.Provider>
-);
-
 
 // ---------- below the composer ----------
 
@@ -304,13 +281,13 @@ const PanelSkeleton = () => (
   </div>
 );
 
-const Properties = ({ project, detail, runner }: {
+const Properties = ({ project, profile, runner }: {
   readonly project: ProjectSummary;
-  readonly detail: ProjectDetail | undefined;
+  /** The chosen profile; `undefined` while the options load, `null` when none is offered. */
+  readonly profile: StartProfile | null | undefined;
   readonly runner: Runner | null;
 }) => {
   const repo = project.repos[0];
-  const profile = detail?.defaultCodeProfile;
   return (
     <div data-testid="new-task-properties">
       <PropGroup title={t("newTask.thisTask")}>
@@ -324,17 +301,17 @@ const Properties = ({ project, detail, runner }: {
         <PropRow label={t("newTask.keyBranch")}><span className="text-muted">{t("newTask.branchLater")}</span></PropRow>
       </PropGroup>
       <PropGroup title={t("newTask.agentProfile")}>
-        {detail === undefined ? (
+        {profile === undefined ? (
           <div className="flex h-[30px] items-center"><Skeleton className="w-[160px]" /></div>
         ) : (
           <>
-            <PropRow label={t("newTask.keyProfile")}><span className="truncate">{profile?.name ?? "–"}</span></PropRow>
-            {profile === null || profile === undefined ? null : (
+            <PropRow label={t("newTask.keyProfile")}><SlidersHorizontalIcon aria-hidden /><span className="truncate" data-testid="chosen-profile">{profile?.name ?? "–"}</span></PropRow>
+            {profile === null ? null : (
               <PropRow label={t("newTask.keyAgent")}><SquareTerminalIcon aria-hidden /><span className="truncate">{profile.agentName}</span></PropRow>
             )}
             <PropRow label={t("newTask.keyModel")}>
-              {profile?.model === null || profile?.model === undefined ? <span className="text-red" data-testid="no-model">{t("newTask.noModel")}</span> : (
-                <><SparklesIcon aria-hidden /><span className="truncate">{profile.model.name}</span></>
+              {profile?.modelName === null || profile?.modelName === undefined ? <span className="text-red" data-testid="no-model">{t("newTask.noModel")}</span> : (
+                <><SparklesIcon aria-hidden /><span className="truncate">{profile.modelName}</span></>
               )}
             </PropRow>
           </>
@@ -393,7 +370,10 @@ export const NewTaskView = () => {
   const recent = useMemo(() => (tasks.data ?? []).flatMap((group) => group.tasks), [tasks.data]);
 
   const { chosen, runner, setRunOn } = useRunOn(runners.data);
-  const agentName = detail.data?.defaultCodeProfile?.agentName ?? t("task.agent");
+  // The member's profiles for this project, its default first (F-021).
+  const profiles = useStartProfile(projectId);
+  const profile = profiles.options === undefined ? undefined : profiles.chosen;
+  const agentName = profile?.agentName ?? t("task.agent");
   const slug = prompt.trim() === "" ? null : branchSlugFor(titleFromPrompt(prompt.trim()));
 
   const create = useMutation(
@@ -416,7 +396,12 @@ export const NewTaskView = () => {
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     if (projectId === undefined || prompt.trim() === "" || starting || blocked) return;
-    create.mutate({ projectId, prompt: prompt.trim(), ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }) });
+    create.mutate({
+      projectId,
+      prompt: prompt.trim(),
+      ...(profile === undefined || profile === null ? {} : { agentProfileId: profile.profileId }),
+      ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }),
+    });
   };
 
   const crumbs = [{ label: me.data?.organization?.name ?? "" }, { label: t("newTask.title") }];
@@ -436,7 +421,7 @@ export const NewTaskView = () => {
     <PageFrame
       crumbs={crumbs}
       wideProperties
-      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} detail={detail.data} runner={runner} />}
+      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} />}
     >
       <div className="max-w-[760px]">
         <PageHeading
@@ -477,7 +462,7 @@ export const NewTaskView = () => {
             ) : (
               <>
                 <ProjectPicker projects={projects.data} project={project} onPick={setPicked} disabled={starting} />
-                <ProfileTrigger profile={detail.data?.defaultCodeProfile} />
+                <ProfilePicker options={profiles.options} chosen={profiles.chosen} onPick={profiles.pick} disabled={starting} />
                 <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={starting} />
               </>
             )}

@@ -11,6 +11,7 @@ import {
   PlusIcon,
   SearchIcon,
   ServerIcon,
+  SlidersHorizontalIcon,
   SquarePenIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -35,6 +36,7 @@ const icons: Record<Exclude<DestinationIcon, "project">, ReactNode> = {
   runners: <ServerIcon />,
   models: <CpuIcon />,
   github: <GitPullRequestIcon />,
+  "agent-profiles": <SlidersHorizontalIcon />,
 };
 
 const DestinationMark = ({ destination }: { readonly destination: Destination }) =>

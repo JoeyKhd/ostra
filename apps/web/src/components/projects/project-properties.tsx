@@ -1,8 +1,9 @@
 "use client";
 
-import { BanIcon, BotIcon, BoxIcon, GitBranchIcon, ServerIcon, SquareKanbanIcon, TriangleAlertIcon } from "lucide-react";
+import { BanIcon, BoxIcon, GitBranchIcon, ServerIcon, SquareKanbanIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 
+import { ProjectDefaults } from "@/components/agent-profiles/project-defaults";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -61,10 +62,7 @@ export const ProjectProperties = ({ project, boardKeys }: { readonly project: Pr
         <ServerIcon aria-hidden />
         <span className="truncate font-mono">{project.pools.map((pool) => pool.name).join(", ") || "–"}</span>
       </PropRow>
-      <PropRow label={t("projects.agent")}>
-        <BotIcon aria-hidden />
-        <span className="truncate">{project.defaultCodeProfile?.name ?? "–"}</span>
-      </PropRow>
     </PropGroup>
+    <ProjectDefaults projectId={project.id} defaults={project.defaultProfiles} admin={project.role === "admin"} />
   </div>
 );
