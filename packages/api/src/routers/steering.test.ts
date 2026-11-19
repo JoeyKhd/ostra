@@ -130,6 +130,21 @@ describe("the driver race (ADR 0036)", () => {
     // The driver's own send goes through.
     await expect((await harness.as(harness.fixture.a.member)).tasks.send({ taskId: task.taskId, clientMessageId: newMessageId(), text: "mine" })).resolves.toMatchObject({ duplicate: false });
   });
+
+  it("F-024: only a member who can open the project takes over: a restricted project's outsider and another organization are not found, and the driver stays", async () => {
+    const { a, b } = harness.fixture;
+    // A task in the restricted project, driven by the insider, who is on it.
+    const task = await seedTask(harness, { organizationId: orgA(), projectId: a.restrictedProject.id, state: "running", driverMemberId: a.insider.id, sessionState: "running" });
+    await seedLease(harness, task, orgA(), a.restrictedProject.id, runnerId);
+    const before = (await logOf(task)).length;
+    await expect((await harness.as(a.member)).tasks.takeOver({ taskId: task.taskId })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect((await harness.as(b.admin)).tasks.takeOver({ taskId: task.taskId })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // Refused means untouched: the same driver, no `driver.changed`.
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).driverMemberId).toBe(a.insider.id);
+    expect((await logOf(task)).length).toBe(before);
+    // An admin of the organization can open it, and takes over in one action.
+    await expect((await harness.as(a.admin)).tasks.takeOver({ taskId: task.taskId })).resolves.toMatchObject({ driver: a.admin.id, changed: true });
+  });
 });
 
 describe("queued messages and intents", () => {
