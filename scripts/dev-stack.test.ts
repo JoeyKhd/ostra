@@ -47,6 +47,10 @@ describe("pnpm dev's pieces", () => {
     expect(web?.address({})).toBe("http://localhost:3000");
     expect(core?.address({ OSTRA_CORE_PORT: "9999" })).toBe("http://localhost:9999");
     expect(web?.address({ OSTRA_WEB_PORT: "not a port" })).toBe("http://localhost:3000");
+    // The panel's `next dev` listens on PORT, set from OSTRA_WEB_PORT.
+    expect(web?.extraEnv({ OSTRA_WEB_PORT: "3401" })).toEqual({ PORT: "3401" });
+    expect(web?.extraEnv({})).toEqual({ PORT: "3000" });
+    expect(core?.extraEnv({ OSTRA_WEB_PORT: "3401" })).toEqual({});
   });
 
   it("prefixes each piece's lines, and picks out the seeded first admin and the database URL", () => {

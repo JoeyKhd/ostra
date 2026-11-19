@@ -99,12 +99,13 @@ const start = (label: string, command: string, args: readonly string[], options:
 const runNode = (label: string, script: string, options: { readonly oneShot?: boolean; readonly ipc?: boolean } = {}): Piece =>
   start(label, process.execPath, [script], { cwd: repoRoot, env: process.env, ...options });
 
-const runPnpmDev = (label: string, dir: string): Piece => {
+const runPnpmDev = (label: string, dir: string, extraEnv: Readonly<Record<string, string>>): Piece => {
   const entry = pnpmEntry(process.env);
+  const env = { ...process.env, ...extraEnv };
   return entry === null
     ? // Fixed arguments only: nothing here comes from outside the repo.
-      start(label, windows ? "pnpm run dev" : "pnpm", windows ? [] : ["run", "dev"], { cwd: dir, env: process.env, shell: windows })
-    : start(label, process.execPath, [entry, "run", "dev"], { cwd: dir, env: process.env });
+      start(label, windows ? "pnpm run dev" : "pnpm", windows ? [] : ["run", "dev"], { cwd: dir, env, shell: windows })
+    : start(label, process.execPath, [entry, "run", "dev"], { cwd: dir, env });
 };
 
 const waitForExit = (piece: Piece, timeoutMs: number): Promise<boolean> =>
@@ -261,7 +262,7 @@ const main = async (): Promise<void> => {
   const addresses: string[] = [];
   for (const app of devApps(repoRoot)) {
     if (await hasDevScript(app.dir)) {
-      const piece = runPnpmDev(app.label, app.dir);
+      const piece = runPnpmDev(app.label, app.dir, app.extraEnv(process.env));
       pipeLines(piece);
       addresses.push(`${app.label === "web" ? "The panel" : "Core     "}  ${app.address(process.env)}`);
     } else {
@@ -271,7 +272,7 @@ const main = async (): Promise<void> => {
   banner([
     "ostra's dev stack is running.",
     ...addresses,
-    "Runner (from source): pnpm ostra runner --server http://localhost:8787",
+    `Runner (from source): pnpm ostra runner --server ${devApps(repoRoot).find((app) => app.label === "core")?.address(process.env) ?? "http://localhost:8787"}`,
     "Ctrl-C stops everything.",
   ]);
   process.send?.({ type: "ready", pids: pieces.map((piece) => piece.child.pid ?? null) });

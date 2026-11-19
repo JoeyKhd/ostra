@@ -6,7 +6,7 @@
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",

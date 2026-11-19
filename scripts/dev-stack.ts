@@ -10,6 +10,8 @@ export type DevApp = {
   readonly dir: string;
   /** What the terminal shows when it runs. */
   readonly address: (env: Readonly<Record<string, string | undefined>>) => string;
+  /** What its `dev` script gets besides the stack's own environment: the panel's port, as Next reads it. */
+  readonly extraEnv: (env: Readonly<Record<string, string | undefined>>) => Readonly<Record<string, string>>;
 };
 
 const port = (env: Readonly<Record<string, string | undefined>>, name: string, fallback: number): number => {
@@ -23,11 +25,14 @@ export const devApps = (repoRoot: string): readonly DevApp[] => [
     label: "core",
     dir: path.join(repoRoot, "apps", "core"),
     address: (env) => `http://localhost:${String(port(env, "OSTRA_CORE_PORT", 8787))}`,
+    extraEnv: () => ({}),
   },
   {
     label: "web",
     dir: path.join(repoRoot, "apps", "web"),
     address: (env) => `http://localhost:${String(port(env, "OSTRA_WEB_PORT", 3000))}`,
+    // `next dev` listens on PORT: OSTRA_WEB_PORT moves the panel, so two checkouts can run at once.
+    extraEnv: (env) => ({ PORT: String(port(env, "OSTRA_WEB_PORT", 3000)) }),
   },
 ];
 
