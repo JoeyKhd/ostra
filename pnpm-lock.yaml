@@ -359,6 +359,22 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
 
+  packages/adapters/adapter-email-smtp:
+    dependencies:
+      '@ostra/adapter-sdk':
+        specifier: workspace:*
+        version: link:../../adapter-sdk
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      nodemailer:
+        specifier: 10.3.1
+        version: 10.3.1
+    devDependencies:
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))
+
   packages/adapters/adapter-executor-docker:
     dependencies:
       '@ostra/adapter-executor-host':
@@ -4082,6 +4098,10 @@ packages:
   node-releases@2.0.65:
     resolution: {integrity: sha512-PfvofsGQ+MiOQIPkX9fU8ELUWmy5zL74CdQaph/ismKszfFkfwXaw0cGiwbwym2hT9k5+mdyl8O5WQ1MD8EHmA==}
     engines: {node: '>=18'}
+
+  nodemailer@10.3.1:
+    resolution: {integrity: sha512-uF0AFsJC07Y1vdW7p580DKAnh7rAO+4UPSSB3mDCPNDufoiaOebV6JmrzpxB14OjEEEiBsNdYoM2Y+fN8M7BBA==}
+    engines: {node: '>=20.0.0'}
 
   non-error@0.1.0:
     resolution: {integrity: sha512-TMB1uHiGsHRGv1uYclfhivcnf0/PdFp2pNqRxXjncaAsjYMoisaQJI+SSZCqRq+VliwRTC8tsMQfmrWjDMhkPQ==}
@@ -8421,6 +8441,8 @@ snapshots:
       - babel-plugin-macros
 
   node-releases@2.0.65: {}
+
+  nodemailer@10.3.1: {}
 
   non-error@0.1.0: {}
 
