@@ -374,6 +374,7 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
                 <span className={setup.state === "succeeded" ? "text-green" : "text-red"}>
                   {setup.state === "succeeded" ? t("task.setup.ok") : setup.exitCode === null || setup.exitCode === undefined ? t("task.tool.killed") : t("task.tool.exit", { code: setup.exitCode })}
                   {setup.durationMs === undefined ? "" : ` · ${formatDuration(setup.durationMs)}`}
+                  {setup.dependencyCache === undefined ? null : <span className="text-faint" data-dependency-cache={setup.dependencyCache}> · {t(`task.setup.cache.${setup.dependencyCache}`)}</span>}
                 </span>
               )
             }

@@ -102,6 +102,8 @@ export type SetupData = {
   readonly output: readonly SetupOutputLine[];
   readonly exitCode?: number | null;
   readonly durationMs?: number;
+  /** Milestone 3 (F-051): on `host`, whether the project's dependency cache was warm or cold for this box. */
+  readonly dependencyCache?: "warm" | "cold";
 };
 
 export type PushedData = {

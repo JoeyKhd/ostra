@@ -645,6 +645,30 @@ describe("a recorded OpenCode session", () => {
   });
 });
 
+describe("milestone 3's marks in the thread", () => {
+  it("F-051: the setup line says whether the host's dependency cache was warm", () => {
+    const setupOf = (messages: readonly TaskUIMessage[]) => partsOf(messages).find((part) => part.type === "data-setup");
+    const warm = foldTaskEvents(storeEvents([f["environment.setup_started"], { ...f["environment.setup_finished"], dependencyCache: "warm" }]), []);
+    const cold = foldTaskEvents(storeEvents([f["environment.setup_started"], { ...f["environment.setup_finished"], dependencyCache: "cold" }]), []);
+    const none = foldTaskEvents(storeEvents([f["environment.setup_started"], f["environment.setup_finished"]]), []);
+    expect(setupOf(warm)).toMatchObject({ data: { dependencyCache: "warm" } });
+    expect(setupOf(cold)).toMatchObject({ data: { dependencyCache: "cold" } });
+    expect(setupOf(none)?.type === "data-setup" ? setupOf(none)?.data : null).not.toHaveProperty("dependencyCache");
+  });
+
+  it("F-063, F-072: a plan turn is marked, and a message ostra sent for the member carries why", () => {
+    const planTurn = { ...f["turn.started"], mode: "plan" as const };
+    const planned = foldTaskEvents(storeEvents([planTurn]), []);
+    expect(planned.find((message) => message.role === "assistant")?.metadata?.turnMode).toBe("plan");
+    const built = foldTaskEvents(storeEvents([f["turn.started"]]), []);
+    expect(built.find((message) => message.role === "assistant")?.metadata?.turnMode).toBeUndefined();
+    const comments = foldTaskEvents(storeEvents([{ ...f["user.message"], intent: "diff-comments" as const }]), []);
+    expect(comments.find((message) => message.role === "user")?.metadata?.author?.intent).toBe("diff-comments");
+    const typed = foldTaskEvents(storeEvents([f["user.message"]]), []);
+    expect(typed.find((message) => message.role === "user")?.metadata?.author?.intent).toBeUndefined();
+  });
+});
+
 describe("deriveTaskState", () => {
   it("is idle with no events, setting up during setup, and waits on an approval", () => {
     expect(deriveTaskState([]).activity).toEqual({ kind: "idle" });

@@ -87,6 +87,7 @@ type SetupRecord = {
   output: SetupOutputLine[];
   exitCode?: number | null;
   durationMs?: number;
+  dependencyCache?: "warm" | "cold";
 };
 
 type Slot =
@@ -284,6 +285,7 @@ const setupPart = (id: string, rec: SetupRecord): TaskUIPart => ({
     output: [...rec.output],
     ...(rec.exitCode === undefined ? {} : { exitCode: rec.exitCode }),
     ...(rec.durationMs === undefined ? {} : { durationMs: rec.durationMs }),
+    ...(rec.dependencyCache === undefined ? {} : { dependencyCache: rec.dependencyCache }),
   },
 });
 
@@ -683,6 +685,7 @@ export const foldTaskEvents = (
         rec.state = event.exitCode === 0 ? "succeeded" : "failed";
         rec.exitCode = event.exitCode;
         rec.durationMs = event.durationMs;
+        if (event.dependencyCache !== undefined) rec.dependencyCache = event.dependencyCache;
         break;
       }
       case "git.pushed": {

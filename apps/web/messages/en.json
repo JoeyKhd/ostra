@@ -898,7 +898,11 @@
       "title": "Setup script",
       "ok": "done",
       "show": "Show the setup log",
-      "hide": "Hide the setup log"
+      "hide": "Hide the setup log",
+      "cache": {
+        "warm": "dependency cache: warm",
+        "cold": "dependency cache: cold"
+      }
     },
     "approval": {
       "title": "Needs you · approval",
