@@ -1,6 +1,6 @@
 # Environments, snapshots and services
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q33, Q39, Q40, Q95 and Q96. **Amended 2026-11-19 after spike 3:** where a snapshot's checkouts live, the scan before the push, the build namespace's egress, and native sidecars (Q153, Q155). **Amended again 2026-11-19 for milestone 3's spec,** on the maintainer's delegation: a `docker` snapshot without a registry, the `host` executor's dependency cache, and a task with services when only `host` runners are online (Q184, Q185; the section "Milestone 3: without a registry, and on `host`").
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q33, Q39, Q40, Q95 and Q96. **Amended 2026-11-19 after spike 3:** where a snapshot's checkouts live, the scan before the push, the build namespace's egress, and native sidecars (Q153, Q155). **Amended again 2026-11-19 for milestone 3's spec,** on the maintainer's delegation: a `docker` snapshot without a registry, the `host` executor's dependency cache, and a task with services when only `host` runners are online (Q184, Q185; the section "Milestone 3: without a registry, and on `host`"). **Amended again 2026-11-19 for milestone 6's spec:** the onboarding task's start, its proposal and what it may push (Q228; the section "Milestone 6: the onboarding task in practice").
 
 **One environment per project** (Q33). It's the project's recipe for every box: "the computer every task starts from". It holds:
 - a base image: ostra's default (the tools, the pinned agent and a small init program), or the organization's own
@@ -62,3 +62,12 @@ Added 2026-11-19 (Q184, Q185). The registry (F-120) and `kubernetes` (F-093) are
 - An environment's variables and secrets are visible to the code under test (ADR 0030, ADR 0031).
 - Importing a compose file (F-132), organization templates and bulk onboarding (F-126) come after v1.
 - Ledger rows: F-050, F-051, F-054, F-094, F-112 and F-120.
+
+## Milestone 6: the onboarding task in practice
+
+Added 2026-11-19 (Q228), for milestone 6's spec, which ships F-113.
+
+- **What starts it.** A project admin presses "Test this environment". It's a code task from a built-in template (Q49), on the saved environment or the detected draft when none is saved, with the snapshot left out, so the box starts from the base image and every step of the setup runs. One onboarding task per project is open at a time.
+- **What it hands in.** `propose_environment`, an ostra MCP tool in the sidecar, takes the setup script, the checks and the variable names per repo, the services and notes. It never takes a secret's value: a proposal is scanned for the environment's own secret values and for credential shapes (milestone 4's scan), and refused on a hit. A project admin accepts, edits and accepts, or rejects it; accepting saves the environment's next version and keeps its secrets as they were.
+- **What it may push.** Only `AGENTS.md`, and only in a repo that has none. The runner commits nothing else, whatever the agent changed or committed while it made the setup work, and says what it left out. So the task's only PR is the `AGENTS.md` one, and a repo that already has one gets no PR.
+- **On `host`.** There's no box and no services (ADR 0029, ADR 0038's milestone 3 section): the task runs the setup and the checks in its worktree, and says the services weren't tested. F-113's box from the base image and its services are proved on a `docker` runner.

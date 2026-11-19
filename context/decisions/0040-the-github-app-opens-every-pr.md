@@ -1,6 +1,6 @@
 # The GitHub App opens every PR
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122). **Amended again 2026-11-19 for milestone 4's spec** (Q207): whose approval counts, and how the check is kept current ("Milestone 4: the check in practice" below).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122). **Amended again 2026-11-19 for milestone 4's spec** (Q207): whose approval counts, and how the check is kept current ("Milestone 4: the check in practice" below). **Amended again 2026-11-19 for milestone 6's spec** (Q227): a "changes requested" reviewer gets no trailer for it ("Milestone 6: a "changes requested" reviewer stays independent" below).
 
 The organization's GitHub App opens every PR and authors every commit.
 
@@ -37,3 +37,9 @@ Added 2026-11-19 (Q207), for milestone 4's spec, which ships F-104.
 - **On every PR of every task,** in every project. A repo's branch protection decides whether it blocks a merge; ostra never changes branch protection.
 - **`in_progress` or `action_required`.** The check reports `in_progress` ("Waiting for an independent reviewer") until milestone 4's live test on `test1`, with branch protection requiring the check, shows whether that blocks a merge. If it doesn't, the adapter reports `action_required` instead, the test records which, and this ADR is amended with the answer.
 
+
+## Milestone 6: a "changes requested" reviewer stays independent
+
+Added 2026-11-19 (Q227), for milestone 6's spec, which ships F-105.
+
+- **A review that requests changes reopens the task with its comments as one prompt (F-105), and gives its reviewer no co-author trailer.** The driver rule (Q121) makes everyone with a trailer a driver, and a driver's approval doesn't count for `ostra/independent-review`. A reviewer who asked for changes and then approves the fix is the independent reviewer the check is for. `@ostra` comments and the panel's messages still credit their member, as they always did.

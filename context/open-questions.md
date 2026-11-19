@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q209). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q229). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -333,6 +333,33 @@ Writing `specs/m4-the-organization/spec.md` met these questions. The maintainer 
 | Q207 Whose approval counts for the independent-review check, and when is it evaluated? | ADR 0040 (amended), F-104: GitHub users linked to an active non-driver member; on reviews, new heads, links, trailers and the reconcile; `in_progress` until the live test shows it doesn't block, then `action_required` |
 | Q208 How does the scripted demo link a GitHub user it can't sign in as? | ADR 0053: `pnpm dev:link-github`, refused outside development and test and left out of production builds, like `pnpm dev:seed-member` |
 | Q209 What does a runner on protocol minor 2 get in milestone 4? | `specs/m4-the-organization/spec.md`, section 5.1: the memory block appended to its instructions and no tools; everything else works unchanged |
+
+#### Settled for milestone 6's spec (2026-11-19)
+
+Writing `specs/m6-whole-team/spec.md` met these questions. The maintainer delegated the night's decisions, so each was settled by its recommendation, and the spec's section 11 restates them. Ticket 40 of that spec asks the maintainer to review them; any the maintainer disagrees with moves back to the open list.
+
+| Question | Settled in |
+|---|---|
+| Q210 What does an intake rule match, and when does it act? | ADR 0056, F-011: labels, status, assignee, board and the tracker's project; it acts when a ticket starts to match after the rule exists, once per ticket per rule, ever; existing matches start only from the dry run's "Start all"; 20 starts an hour, then the rule pauses itself |
+| Q211 How is a schedule written and run? | ADR 0056, F-106: five-field cron in an IANA time zone, evaluated by ostra's own code on `Intl` with no new dependency; occurrences at least an hour apart; a schedule checks a rule's filter or starts one prompt task; "skip while the last one is open" on by default; ADR 0037's tick, occurrence rows and 6-hour rule |
+| Q212 How many tickets start at once, and how is a bulk start reported? | ADR 0056, F-107: up to 50; each ticket in its own transaction, idempotent per request and ticket; a result per ticket; a task that can't run yet is queued with its reason, not refused |
+| Q213 What starts for a ticket with sub-issues, and what does the parent show? | ADR 0056, F-077: a code start runs the open leaves on the project's boards, three levels deep and 50 at most, all at once; the parent never runs code and lists its children in ostra and in its progress comment; a refine start refines the parent itself |
+| Q214 Who is a member when a task starts in Linear? | ADR 0057, F-040, F-012: a Linear user whose address matches an active member's account address, case-folded, who can open the project; anyone else is outside |
+| Q215 Which project does a delegation go to, and what kind of task is it? | ADR 0057, F-012: the one board with "Start from Linear" on for the ticket's team, at most one per team per organization; a code task on the project's default code profile |
+| Q216 What does ostra post in a Linear agent session? | ADR 0057, F-012: ostra's own words, counts and links (received, waiting, working, a PR, needs you, the end); never agent output, tool input, a plan, a draft or check output |
+| Q217 Who may send a follow-up or a stop from Linear? | ADR 0057, F-012: a stop from anyone, always honoured and audited; a follow-up from a matched member becomes their message after the running turn; anyone else's reaches no agent |
+| Q218 What does an outside task get, who approves it, and does it expire? | ADR 0057, F-040: the project's default profile for its kind, on a pool only; any project member approves or rejects, first answer wins; on by default, switched off only by an organization admin; no expiry; an automation's task isn't outside |
+| Q219 Does agent mode add `@linear/sdk`? | ADR 0057: no; GraphQL over `fetch` with ostra's own schemas, as milestone 2's adapter |
+| Q220 How does the demo get a Linear app token? | `specs/m6-whole-team/spec.md`, section 3: the maintainer's Authorize click once, the refresh token kept in `linear.env` and rotated by each scripted run; without it agent mode runs on the fake only and F-012 stays `building` |
+| Q221 How does a refine draft reach the tracker, where is "ready", and is a prototype kept? | ADR 0028 (amended), F-099: fields as description sections where the tracker has no field; images as attachments; sub-tickets as sub-issues; "ready" drafted as the first `unstarted` status; refine and review push nothing, not even the hidden ref |
+| Q222 When is a PR ready for the AI review, and what is CI? | ADR 0058, F-035, F-100: the head's check runs and statuses with ostra's own left out; nothing within 2 minutes is no CI; 60 minutes pending is timed out; the App gains `check_run`, `check_suite` and `status` |
+| Q223 How does one review cover several PRs, and how are findings posted? | ADR 0058, F-100: one review task per code task, reopened per round on every open PR's head; one `COMMENT` review per PR, findings off the diff in its body; 30 findings at most |
+| Q224 What counts as an automatic turn, and when do the counts reset? | ADR 0058, F-101: the coding agent's CI and findings turns, counted since a person last acted; the review task's own turns don't count |
+| Q225 How do CI logs reach the agent? | ADR 0058, F-035: tails of at most 5 failing checks, 64 KiB each, as files under `ci/` in the task's config folder; Actions logs through `actions: read`, other checks' output text |
+| Q226 Who are a task's reviewers? | ADR 0058, F-102: the PR's requested users and the `CODEOWNERS` users for the changed paths, matched by the verified link; teams shown, not expanded; ostra requests nobody; the driver when nobody matches |
+| Q227 Does a "changes requested" reviewer become a co-author? | ADR 0040 (amended), ADR 0058, F-105: no, so their approval still counts for the independent-review check |
+| Q228 What may the onboarding task push, and how is its proposal accepted? | ADR 0038 (amended), F-113: only `AGENTS.md`, where a repo has none; the proposal holds variable names and never values, is scanned for secrets, and becomes the environment's next version on a project admin's "Accept" |
+| Q229 What does a runner one minor older get in milestone 6? | `specs/m6-whole-team/spec.md`, section 5.1: no refine, review or onboarding task and no automatic round; everything else works unchanged |
 
 ## Open
 

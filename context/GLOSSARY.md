@@ -71,8 +71,17 @@ One due time of an automation's schedule. Each occurrence is a row with a unique
 _Avoid_: tick (the tick is the job that finds occurrences), run, fire
 
 **Intake rule**:
-An automation that turns the tickets matching a condition into tasks, with the agent profile that rule names.
+An automation that turns the tickets matching a condition into tasks, with the agent profile that rule names. It starts one task per ticket, once, when the ticket starts to match after the rule exists.
 _Avoid_: trigger, workflow
+
+**Dry run**:
+An intake rule's list of the tickets it matches right now, with what starting each would do. Its "Start all" is how a rule's existing matches start.
+_Avoid_: preview, test run
+_Not_: plan first, which is a code task's first turn
+
+**Parent ticket**:
+A ticket with sub-issues. A code start on it starts one task per open sub-issue at the bottom of its tree, and the parent itself never runs code; its page follows its children.
+_Avoid_: epic (that's one tracker's word), umbrella
 
 ### Acting on a task
 
@@ -117,6 +126,11 @@ _Avoid_: intervene, nudge, interrupt (interrupting is only one way to steer)
 Continuing a task after it has stopped, with a new turn or session on the same branches and PRs. It usually lands on a fresh box.
 _Avoid_: restart, retry, rerun (each suggests starting over)
 
+**Outside task**:
+A task started by someone in the tracker whom ostra can't match to a member who can open the project. It waits in "Needs approval" until a member of the project approves it, and runs on the project's default profile, on a pool.
+_Avoid_: external task, guest task
+_Not_: a task an automation started, which a project admin's rule stands behind
+
 ### Review
 
 **Finding**:
@@ -131,6 +145,14 @@ _Not_: an agent's review, which is a review task
 **Diff comment**:
 A member's comment on a line of a task's diff in the panel. It stays a draft until its member sends their drafts to the agent together, as one prompt, and it shows as outdated when a later turn changes its line.
 _Avoid_: review comment (those are written on the code host), finding (an AI review writes those)
+
+**Round**:
+One time a code task goes back to its coding agent because of its PRs: a CI round (failing checks and their logs), a findings round (an AI review's blocking findings) or a "changes requested" round (a member's GitHub review). CI and findings rounds are capped at 2 each.
+_Avoid_: iteration, retry, loop (the loop is all the rounds together)
+
+**Automatic turn**:
+A turn of the coding agent that no person asked for: a CI round's or a findings round's. A task gets at most 4, counted since a person last acted on it, before a person has to act. A question the agent asks in one gets a fixed neutral reply.
+_Avoid_: auto-fix, background turn
 
 ### Execution
 
@@ -238,6 +260,10 @@ _Avoid_: dependency
 A command the environment names that ostra runs after every turn with changes, before it pushes and opens or updates a PR. A failing one makes the PR a draft. The code host's own pipeline is "CI".
 _Avoid_: test, CI (for ostra's checks)
 
+**Environment proposal**:
+The corrected environment an onboarding task hands in after running the setup, the services and the checks: scripts, checks and variable names per repo, never a secret's value. A project admin accepts, edits or rejects it.
+_Avoid_: suggestion, draft (a refine task hands in drafts), proposal (alone, that's memory)
+
 ### Agents and models
 
 **Agent**:
@@ -321,6 +347,10 @@ _Avoid_: VCS, forge, git provider
 **Adapter**:
 ostra's connection to one specific tracker, code host, agent, model provider, executor, notification channel, secret store or blob store, behind the interface all of its kind share.
 _Avoid_: plugin, connector, driver
+
+**Agent session**:
+Linear's own view of a ticket handed to ostra: a live thread on the ticket where ostra posts, in its own words, that it received the task, is working, opened a PR, needs someone, or finished, and where people in Linear send a follow-up or a stop.
+_Avoid_: session (alone, that's the agent's conversation in ostra), agent mode (that's the connection's switch)
 
 **Heartbeat**:
 A small post to a Linear agent session during a long silent turn, so Linear doesn't mark the session stale. ostra sends one after 20 minutes without a post to that session. It is an ephemeral thought, and a plain thought if Linear doesn't count an ephemeral one as activity.
