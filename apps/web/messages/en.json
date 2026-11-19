@@ -196,6 +196,70 @@
       "noRunners": "No runner yet.",
       "online": "online",
       "offline": "offline"
+    },
+    "board": {
+      "viewLabel": "Home view",
+      "overview": "Overview",
+      "board": "Board",
+      "filterLabel": "Project",
+      "allProjects": "All projects",
+      "window": "Finished: last 7 days",
+      "pickState": "State",
+      "column": {
+        "needsYou": "Needs you",
+        "queued": "Queued",
+        "running": "Running",
+        "inReview": "In review",
+        "finished": "Finished"
+      },
+      "empty": {
+        "needsYou": "Nothing needs you.",
+        "queued": "Nothing queued.",
+        "running": "Nothing running.",
+        "inReview": "Nothing in review.",
+        "finished": "Nothing finished this week."
+      },
+      "noTasks": "No tasks yet. Start one with New task, or from a ticket.",
+      "noTasksIn": "No tasks in {project} yet.",
+      "more": "{n} more",
+      "prompt": "Prompt",
+      "waitingFor": "Waiting for a box on ",
+      "waitingForRunner": "Waiting for your runner",
+      "preparing": "Preparing",
+      "preparingStep": "Preparing · {step}",
+      "prepare": {
+        "restoringSnapshot": "restoring snapshot",
+        "startingServices": "starting services",
+        "checkingOut": "checking out branches"
+      },
+      "working": "Working",
+      "activity": {
+        "running": "Running ",
+        "editing": "Editing ",
+        "reading": "Reading "
+      },
+      "inReview": "In review",
+      "pr": "PR #{n}",
+      "prs": {
+        "one": "{n} PR",
+        "other": "{n} PRs"
+      },
+      "review": {
+        "ciRunning": "CI running",
+        "fixingCi": "fixing CI",
+        "aiReview": "AI review",
+        "fixingFindings": "fixing findings",
+        "waitingForReviewer": "waiting for a reviewer"
+      },
+      "merged": "Merged",
+      "done": "Done",
+      "stopped": "Stopped",
+      "stoppedWhy": "Stopped: {why}",
+      "stopReason": {
+        "spendCap": "spend cap reached",
+        "ticketClosed": "ticket closed",
+        "by": "by {name}"
+      }
     }
   },
   "checklist": {
@@ -1942,5 +2006,71 @@
     "open": "open",
     "closed": "closed",
     "draft": "draft"
+  },
+  "needsYouPage": {
+    "heading": "Needs you",
+    "lede": "What waits on you across your projects. {n} unread.",
+    "ledeNone": "What waits on you across your projects.",
+    "tabsLabel": "Notifications",
+    "open": "Open",
+    "done": "Done",
+    "markAll": "Mark all as read",
+    "unread": "Unread",
+    "collapse": "Collapse",
+    "empty": "Nothing waits on you",
+    "emptyBody": "Approvals, questions and plans show here first, and on Home.",
+    "doneEmpty": "Nothing answered yet.",
+    "loadMore": "Load more",
+    "reach": "Where these reach you",
+    "panel": "Panel",
+    "always": "Always",
+    "ticket": "Ticket",
+    "ticketComment": "A comment on {tracker}",
+    "email": "Email",
+    "emailDelay": "after {n} min, if unread",
+    "mailOff": "Mail is off on this install",
+    "off": "Off",
+    "mailNote": "A mail waits {n} minutes and isn't sent once you've read it here.",
+    "choices": "Notification choices →",
+    "deliveryFailedMail": "The mail didn't send: {error}. ostra retries.",
+    "deliveryFailedTicket": "The ticket comment didn't post: {error}. ostra retries.",
+    "driving": "{name} is driving. Open the task to take over.",
+    "openTask": "Open the task",
+    "moreOnTask": "{n} more on the task",
+    "title": {
+      "approval": "Needs you · approval",
+      "plan": "Needs you · plan",
+      "question": "Needs you · question"
+    },
+    "wants": "{agent} wants to {summary}.",
+    "rule": "Rule:",
+    "customRule": "custom rule",
+    "deny": "Deny",
+    "approveOnce": "Approve once",
+    "approveTask": "Approve for this task",
+    "denyReason": "Why, for the agent (optional)",
+    "forThisTaskAdds": "For this task adds {pattern} to the task's rules. Any member of {project} can answer.",
+    "anyMember": "Any member of {project} can answer.",
+    "askChanges": "Ask for changes",
+    "approvePlan": "Approve plan",
+    "editOnTask": "Edit on the task",
+    "whatChange": "What should change?",
+    "send": "Send",
+    "yourAnswer": "Your answer",
+    "sendAnswer": "Send answer",
+    "showMore": "Show more",
+    "lostRace": "Someone answered this first.",
+    "you": "you",
+    "outcome": {
+      "approvedOnce": "Approved once by {who}",
+      "approvedTask": "Approved for this task by {who}",
+      "denied": "Denied by {who}",
+      "byRule": "Approved by rule",
+      "planApproved": "Plan approved by {who}",
+      "answered": "Answered by {who}",
+      "expired": "Expired",
+      "cancelled": "Cancelled",
+      "closed": "Closed"
+    }
   }
 }
