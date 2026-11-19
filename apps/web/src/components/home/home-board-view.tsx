@@ -37,10 +37,12 @@ export const bareDetail = (reason: Reason): NeedsYouDetail => {
       return { reason, minutes: 0 };
     case "ticket_closed":
       return { reason, status: null };
+    case "no_provider_for_model":
+      // The board's status carries no model name; the needs-you list has it.
+      return { reason, modelName: null };
     case "crashed":
     case "environment_proposal":
     case "files_outside_repos":
-    case "no_provider_for_model":
     case "runner_awaiting_approval":
     case "no_changes":
     case "restore_conflict":
