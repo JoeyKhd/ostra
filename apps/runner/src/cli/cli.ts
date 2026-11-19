@@ -7,11 +7,15 @@ import { signIn } from "../sign-in.ts";
 import type { SignInInput, SignedIn } from "../sign-in.ts";
 import { RUNNER_VERSION } from "../version.ts";
 import { parseArgv } from "./argv.ts";
+import { runCheckout } from "./checkout.ts";
 import { helpText } from "./help.ts";
+import { runLogin, runLogout } from "./login.ts";
+import type { CliOutcome } from "./login.ts";
 import type { Terminal } from "./terminal.ts";
 
-// The `ostra` CLI (ADR 0046): one program that is the runner, the sidecar, and later `login` and
-// `checkout`. `runCli` returns the exit code; `main.ts` wires it to the process.
+// The `ostra` CLI (ADR 0046): one program that is the runner, the sidecar, and a member's `login`,
+// `checkout` and `logout` (F-103, ADR 0051). `runCli` returns the exit code; `main.ts` wires it to
+// the process.
 
 export const exitCodes = {
   ok: 0,
@@ -51,6 +55,19 @@ export type CliDeps = {
   /** For tests: the device flow's waits. */
   readonly deviceFlow?: SignInInput["deviceFlow"];
   readonly now?: () => number;
+  /** For tests: `login`'s waits, the machine's name, and where `checkout` looks without `--dir`. */
+  readonly local?: {
+    readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+    readonly machineName?: string;
+    readonly cwd?: string;
+  };
+};
+
+const exitOf = (outcome: CliOutcome): number => {
+  if (outcome.ok) {
+    return exitCodes.ok;
+  }
+  return outcome.usage === true ? exitCodes.usage : exitCodes.failed;
 };
 
 const dataDirOf = (flags: Readonly<Record<string, string>>, env: CliDeps["env"]): string =>
@@ -173,9 +190,30 @@ export const runCli = async (args: readonly string[], deps: CliDeps): Promise<nu
     case "sidecar":
       return deps.runSidecar({ env: deps.env, terminal: deps.terminal, signal: deps.signal });
     case "login":
-    case "checkout":
-      deps.terminal.warn(`ostra ${command} isn't available yet: it comes with local checkout (F-103).`);
-      return exitCodes.usage;
+    case "logout":
+    case "checkout": {
+      const local = {
+        env: deps.env,
+        terminal: deps.terminal,
+        signal: deps.signal,
+        ...(deps.local?.sleep === undefined ? {} : { sleep: deps.local.sleep }),
+        ...(deps.now === undefined ? {} : { now: deps.now }),
+        ...(deps.local?.machineName === undefined ? {} : { machineName: deps.local.machineName }),
+        ...(deps.local?.cwd === undefined ? {} : { cwd: deps.local.cwd }),
+      };
+      if (command === "checkout") {
+        if (rest.length > 0) {
+          deps.terminal.warn("ostra checkout: one task at a time: `ostra checkout <task> [--dir <folder>]`.");
+          return exitCodes.usage;
+        }
+        return exitOf(await runCheckout(sub, flags, local));
+      }
+      if (sub !== undefined) {
+        deps.terminal.warn(`ostra ${command}: unexpected "${sub}". Try \`ostra --help\`.`);
+        return exitCodes.usage;
+      }
+      return exitOf(command === "login" ? await runLogin(flags, local) : await runLogout(local));
+    }
     default:
       deps.terminal.warn(`ostra: unknown command "${command}". Try \`ostra --help\`.`);
       return exitCodes.usage;

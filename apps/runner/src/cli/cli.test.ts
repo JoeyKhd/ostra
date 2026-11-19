@@ -265,9 +265,12 @@ describe("the CLI's commands", () => {
     expect(result.lines.join("").trim()).toBe(RUNNER_VERSION);
   });
 
-  it("says login and checkout come later, and refuses unknown commands and flags", async () => {
-    expect((await run(["login"])).lines.join("")).toContain("F-103");
-    expect((await run(["checkout", "t1"])).code).toBe(exitCodes.usage);
+  it("refuses a login with no server, a checkout with no task, and unknown commands and flags", async () => {
+    const login = await run(["login"], { APPDATA: dataDir, XDG_CONFIG_HOME: dataDir });
+    expect(login.code).toBe(exitCodes.usage);
+    expect(login.lines.join("")).toContain("--server <url>");
+    expect((await run(["checkout"], { APPDATA: dataDir, XDG_CONFIG_HOME: dataDir })).code).toBe(exitCodes.usage);
+    expect((await run(["checkout", "t1", "t2"], { APPDATA: dataDir, XDG_CONFIG_HOME: dataDir })).code).toBe(exitCodes.usage);
     expect((await run(["fly"])).code).toBe(exitCodes.usage);
     const unknownFlag = await run(["runner", "--server", "http://127.0.0.1:1", "--turbo", "1"]);
     expect(unknownFlag.code).toBe(exitCodes.usage);
