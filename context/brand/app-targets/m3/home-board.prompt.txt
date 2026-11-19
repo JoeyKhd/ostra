@@ -1,0 +1,62 @@
+# Generation 2 of 2 (kept), an edit of generation 1. Generation 1 used the full spec below alone, with references app-targets/m1/home.png, app-concepts/html/home-graphite.png and kit/logo/export/ostra-hinge-single-color-2048.png.
+# Generation 2 references: generation 1's picture, app-targets/m1/home.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+EDIT the first reference image (the ostra Home screen in its Board view). Keep its layout, data, spacing, palette, sidebar, top bar, heading, toolbar, column headers and cards exactly, and change ONLY these things:
+1. The third line of every card (the muted status line, for example "Approval: pnpm add p-retry", "Plan ready for review", "Waiting for a box on build-fleet", "PR #481 · CI running", "Merged · PR #2207") is set in IBM Plex Sans 12px, muted #9A9DA3, NOT in a monospace font. Only commands, file paths and box names inside it stay in IBM Plex Mono: "pnpm add p-retry", "pnpm install", "pnpm test percent", "src/settings/theme.ts", "src/tax/rates.ts", "build-fleet", "k8s-autoscale". Words like "Waiting for a box on", "Plan ready for review", "Draft PR #2213 ready, checks passed", "Question: keep the old share API?", "Preparing · restoring snapshot", "waiting for a reviewer", "Stopped: spend cap reached" and "Merged" are sans.
+2. The board's left edge lines up exactly with the left edge of the title "Acme Corp" and the "Overview" toggle above it; the board's right edge lines up with the right edge of "Finished: last 7 days".
+3. The project name on the last line of each card is faint #64676D, 12px.
+4. Everything else stays identical, including all text, which must be spelled exactly as in the first reference image. No gradients, no glow, no shadows. Flat straight-on screenshot, crisp text.
+
+For reference, the full spec of the screen follows.
+
+A flat, straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Home" screen of ostra, a self-hosted control panel for coding agents, switched to its BOARD view: the organization's tasks as a kanban board grouped by state. It must look like the same product as the first attached screenshot (the approved Home): the same sidebar, the same top bar, the same heading, the same graphite near-black chrome, the same small dense 13px type and hairlines. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; cards and inputs #131416 with a 1px #1F2023 border and 8px radius; column header bands #131416; selected nav row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D. Amber #FFB224 appears ONLY on the small "5" count pill next to "Needs you" in the sidebar and on the small dot in the "Needs you" column header, nowhere else. Green #4FB286 only for the small dot in the "Running" header and the small merged icons. Teal #6FB8AA only for the "N more" text links. Primary button filled off-white #F3F0E8 with dark text #0C1D21. Project colour squares (8px, 2px radius): calculator teal #6FB8AA, billing-platform violet #8C7CF0, web-storefront ochre #E0A458, mobile-app blue #5FA8E8, data-pipeline rose #C27BA0. No gradients, no glow, no shadows, no charts, no illustrations.
+
+FONTS: page title in Manrope Bold 24px. UI text IBM Plex Sans 13px (secondary 12px, column titles semibold 13px). IBM Plex Mono for task keys, ages, counts, commands and file paths. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT: two columns only (NO right properties panel in this view; the board uses the full width of the main area).
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small off-white ostra hinge logo (the attached logo, tiny, 20px) then "Acme Corp" semibold and a small up-down chevron. A search field "Search" with "⌘K", and a small off-white square "+" button. Nav rows 26px with icons: "Home" (house icon, SELECTED, background #1A1B1E, white text); "Needs you" (hand icon) with a small amber pill "5"; "My tasks" (user-circle icon) faint "7". Small faint label "Projects": "calculator" teal square; "billing-platform" violet square; "web-storefront" ochre square; "mobile-app" blue square; "data-pipeline" rose square; "··· 13 more". Small faint label "Organization": "Runners" (server icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub", "Linear", "Storage" (hard-drive icon). At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 44px tall, a hairline under it. Left: breadcrumb "Acme Corp  ›  Home" ("Home" white medium, "Acme Corp" muted). Right: the one primary off-white button "+ New task".
+
+3) MAIN AREA, padding 28px top, 40px left and right, full width to the window's right edge:
+- Eyebrow in faint mono: "Thursday 19 November"
+- Title "Acme Corp" (Manrope Bold 24px)
+- Muted lede, one line: "238 tasks running across 18 projects, 41 queued. 37 pull requests merged today."
+- A toolbar row 20px below: on the left a small segmented control, two segments 28px tall with a #2A2C30 border and 7px radius: "Overview" (list icon, unselected, muted) and "Board" (columns icon, SELECTED, #1A1B1E fill, white text). Then 12px to the right a small select button with a #2A2C30 border: "All projects" with a chevron-down. On the far right of the row, faint text "Finished: last 7 days".
+
+- THE BOARD, 16px below: FIVE equal columns side by side, 12px gaps, each about 214px wide, no box around a column. Each column starts with a 32px header band (#131416 fill, 7px radius) holding an icon or dot, the column title in semibold 13px white, and a faint mono count. Under the header, cards stacked with 8px gaps.
+  Each CARD: #131416 fill, 1px #1F2023 border, 8px radius, 12px padding, no shadow. Line 1: an 8px project colour square, the task key in faint mono 12px, and at the far right the age in faint mono 12px. Line 2: the task title in 13px white, up to two lines. Line 3: one muted 12px line saying what the task is waiting on or doing, with commands, paths and PR numbers in mono. Line 4: the project name in faint 12px on the left, and a tiny 18px grey round avatar with initials on the right.
+
+  Column 1 header: small AMBER dot, "Needs you", faint "5". Cards:
+   - calculator square, "CALC-142", "4m" | "Retry webhook delivery on 5xx" | "Approval: pnpm add p-retry" | calculator, avatar "AK"
+   - billing-platform square, "BIL-88", "11m" | "Prorate seat changes" | "Plan ready for review" | billing-platform, avatar "SR"
+   - web-storefront square, "WEB-311", "18m" | "Fix cart badge count" | "Draft PR #2213 ready, checks passed" | web-storefront, avatar "PS"
+   - mobile-app square, "MOB-57", "26m" | "Crash in the Android share sheet" | "Question: keep the old share API?" | mobile-app, avatar "JL"
+   - calculator square, "CALC-150", "41m" | "Export history as CSV" | "Setup failed: pnpm install exited 1" | calculator, avatar "AK"
+  Column 2 header: dashed grey circle icon, "Queued", faint "41". Cards:
+   - data-pipeline square, "PIPE-31", "2m" | "Backfill November events" | "Waiting for a box on build-fleet" | data-pipeline, avatar "SR"
+   - web-storefront square, "WEB-318", "3m" | "Lazy-load product images" | "Waiting for a box on build-fleet" | web-storefront, avatar "PS"
+   - billing-platform square, "BIL-91", "6m" | "Retry failed invoice emails" | "Waiting for a box on k8s-autoscale" | billing-platform, avatar "AK"
+   - then a teal text link "38 more"
+  Column 3 header: small GREEN dot, "Running", faint "238". Cards:
+   - calculator square, "CALC-158", "27m" | "Fix rounding in percent mode" | "Running pnpm test percent" | calculator, avatar "PS"
+   - mobile-app square, "MOB-60", "9m" | "Dark mode for settings" | "Editing src/settings/theme.ts" | mobile-app, avatar "JL"
+   - billing-platform square, "BIL-90", "14m" | "Tax rate per region" | "Reading src/tax/rates.ts" | billing-platform, avatar "SR"
+   - web-storefront square, "Prompt" in faint mono instead of a key, "1m" | "Add a /health endpoint to the API" | "Preparing · restoring snapshot" | web-storefront, avatar "AK"
+   - then a teal text link "234 more"
+  Column 4 header: git-pull-request icon in grey, "In review", faint "63". Cards:
+   - calculator square, "CALC-155", "2h" | "Upgrade Prisma to 7.2" | "PR #481 · CI running" | calculator, avatar "PS"
+   - web-storefront square, "WEB-305", "3h" | "Gift card balance on checkout" | "PR #2210 · fixing CI" | web-storefront, avatar "AK"
+   - data-pipeline square, "PIPE-28", "5h" | "Partition the events table" | "PR #96 · waiting for a reviewer" | data-pipeline, avatar "SR"
+   - then a teal text link "60 more"
+  Column 5 header: git-merge icon in grey, "Finished", faint "912". Cards:
+   - web-storefront square, "WEB-307", "3m" | "Add gift card balance check" | small green git-merge icon then "Merged · PR #2207" | web-storefront, avatar "PS"
+   - calculator square, "CALC-139", "34m" | "Memory recall button" | small grey circle-stop icon then "Stopped: spend cap reached" | calculator, avatar "JL"
+   - mobile-app square, "MOB-55", "1h" | "Fix push token refresh" | small green git-merge icon then "Merged · PR #318" | mobile-app, avatar "AK"
+   - then a teal text link "909 more"
+
+The columns end at different heights, with quiet empty near-black space below the shorter ones. Everything aligned on clean edges, calm and dense like Linear's app, crisp small legible text, every word spelled exactly as written.

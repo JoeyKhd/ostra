@@ -1,0 +1,66 @@
+# Generation 2 of 2 (kept), an edit of generation 1. Generation 1 used the full spec below alone, with references app-targets/m1/models.png, app-concepts/html/home-graphite.png and kit/logo/export/ostra-hinge-single-color-2048.png.
+# Generation 2 references: generation 1's picture, app-targets/m1/models.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+EDIT the first reference image (the ostra Notifications page). Keep its layout, data, spacing, palette, sidebar, top bar, notice line, table and checkboxes exactly, and change ONLY these things:
+1. The right properties panel is narrower: 300px wide, so its left edge line moves right and the main column's table ends a little further right. Everything inside the panel keeps its order.
+2. In the right panel, the group labels "Your address", "Channels", "Mail" and "Last change" are small faint labels: IBM Plex Sans 11px medium in #64676D, like "New provider" in the second reference image. Not white.
+3. In the right panel, the keys "Panel", "Ticket", "Email", "Delay" and "Skipped when" are IBM Plex Sans 12.5px in muted #9A9DA3, NOT monospace. The values "Always on", "Linear", "Off on this install" and "read in the panel" are IBM Plex Sans 12.5px white, NOT monospace. Only "2 min" and the address "alex.kim@acme.dev" stay in IBM Plex Mono.
+4. The section title "Moments" is IBM Plex Sans semibold 13px, the same size as body text. The moment names ("Approvals", "Questions", ...) are IBM Plex Sans 13px medium white, not bold.
+5. The column head "Email off": "Email" stays faint 11.5px and "off" after it is drawn in a fainter grey with a small gap.
+6. Everything else stays identical, including all text, which must be spelled exactly as in the first reference image. No gradients, no glow, no shadows. Flat straight-on screenshot, crisp text.
+
+For reference, the full spec of the screen follows.
+
+A flat, straight-on, pixel-crisp screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Notifications" page of a member's account in ostra, a self-hosted control panel for coding agents: which moments reach the member on which channel. It must look like the same product as the first attached screenshot (the approved Models page): the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense 13px type, hairline rows, few boxes. Render at the exact scale and density of the first attached screenshot: small crisp text, nothing oversized. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs #131416 with a 1px #2A2C30 border; selected nav row #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #EDEDEE; secondary text #9A9DA3; faint text #64676D. Checkboxes are 16px squares with a 4px radius: checked = filled off-white #EDEDEE with a dark #0D0E10 check mark; unchecked = #131416 fill with a #2A2C30 border; disabled = drawn at 40% opacity. Amber #FFB224 appears ONLY on the small "5" count pill next to "Needs you" in the sidebar, nowhere else. Teal #6FB8AA only for inline text links. Primary button filled off-white #F3F0E8 with dark text #0C1D21. No gradients, no glow, no purple, no blue, no shadows, no charts, no illustrations.
+
+FONTS: page title in Manrope Bold 24px. UI text IBM Plex Sans 13px (section titles semibold 13px, column heads 11.5px medium faint, descriptions 12px). IBM Plex Mono for the email address and numbers. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, 232px wide, background #0A0B0C, a 1px #1F2023 line on its right. Top: the small off-white ostra hinge logo (the attached logo, tiny, 20px) then "Acme Corp" semibold and a small up-down chevron. A search field "Search" with "⌘K", and a small off-white square "+" button. Nav rows 26px with icons: "Home" (house icon); "Needs you" (hand icon) with a small amber pill "5"; "My tasks" (user-circle icon) faint "7". Small faint label "Projects": "calculator" with a tiny teal 8px square; "billing-platform" with a tiny violet square; "web-storefront" with a tiny ochre square; "+ New project". Small faint label "Organization": "Runners" (server icon), "Models" (cpu icon), "Agent profiles" (sliders icon), "GitHub", "Linear". No organization row is selected. At the very bottom the member row is SELECTED (background #1A1B1E): a round grey avatar "AK" and "Alex Kim" in white.
+
+2) TOP BAR, 44px tall, a hairline under it. Left: breadcrumb "Account  ›  Notifications" ("Notifications" white medium, "Account" muted). Right: the one primary off-white button "Save choices".
+
+3) MAIN PAGE COLUMN, padding 28px top, 40px left, content max 760px wide, left-aligned:
+- Page title "Notifications" (Manrope Bold 24px)
+- A muted lede, one line: "When a task needs you, ostra tells you here, on the ticket and by mail. Choose which moments reach you where."
+
+- A notice line 18px below, NOT a card, no fill: a 2px #2A2C30 left rule, 12px left padding, a muted mail-x icon, then white 13px "Mail is off on this install." and muted 13px "Your email choices are kept, and apply once an instance admin sets up mail."
+
+- Section title "Moments" (semibold 13px) 26px below. Under it a borderless table. Header row 30px with faint 11.5px labels: "Moment" on the left, then three narrow centred columns, each 88px wide, at the right of the table: "Panel", "Ticket", "Email". Body rows 44px tall, split by 1px #1F2023 hairlines. Each row: the moment name in white 13px, and under it a muted 12px description; then a centred checkbox in each of the three columns.
+  The Panel column: every checkbox checked but disabled (dim). The Ticket column: every checkbox checked and enabled. The Email column: enabled checkboxes, checked or unchecked as listed (the member can choose ahead; the choices apply once mail is on). The "Email" column head is followed by a faint "off".
+  Rows (name | description | Email):
+   "Approvals" | "The agent wants to do something its rules hold back" | checked
+   "Questions" | "The agent asks the driver something" | checked
+   "Plans" | "A plan is ready to approve" | UNCHECKED
+   "Pull requests ready" | "A draft pull request waits for review" | checked
+   "Crashed" | "The agent stopped with an error" | checked
+   "Spend cap reached" | "The task used its whole spend cap" | checked
+   "Stalled" | "No progress for a while" | unchecked
+   "Finished without changes" | "The agent ended and changed nothing" | unchecked
+   "Setup failed" | "A setup command failed on the box" | unchecked
+   "Ticket closed" | "The ticket closed while the task ran" | unchecked
+- Under the table, 10px down, a faint 12px line: "The panel always shows every moment. Ticket comments go only to tasks with a ticket." Then a teal link "Reset to defaults".
+
+4) RIGHT PROPERTIES PANEL, 300px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no box. Key/value rows 30px, key muted 12.5px, value white 12.5px:
+- small faint label "Your address"
+  a white mono line "alex.kim@acme.dev"
+  a muted 12px line under it: "Your sign-in address. Linear mentions use it too."
+- hairline
+- small faint label "Channels"
+  Panel  |  Always on
+  Ticket  |  Linear
+  Email  |  a small grey dot then "Off on this install"
+- hairline
+- small faint label "Mail"
+  Delay  |  2 min (mono)
+  Skipped when  |  read in the panel
+  A muted 12px paragraph, three lines: "A mail carries the task's title and key, the moment, one line about it and a link. Never ticket text, agent output or code."
+- hairline
+- small faint label "Last change"
+  a muted line "Never changed. These are the defaults."
+
+Everything aligned on clean left edges, calm and dense like Linear's app, lots of quiet empty near-black space below the content, crisp small legible text, every word spelled exactly as written.
