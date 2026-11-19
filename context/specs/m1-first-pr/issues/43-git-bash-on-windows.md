@@ -1,6 +1,6 @@
 # 43: The `host` executor finds Git for Windows' bash
 
-Status: ready-for-agent
+Status: in-progress
 Builder: runner
 Blocked by: none (19 is in)
 Features: F-050, F-014
@@ -22,10 +22,12 @@ Settled as Q136, item 9, on 2026-11-19 (`context/open-questions.md`, Settled). T
 
 ## Done when
 
-- [ ] Tests with a faked `PATH` and a faked `git --exec-path`: the bare name resolves to Git's `bin\bash.exe`; with only `System32\bash.exe` to find and no Git bash, the health check is down, with the fix; a full path is used as given; on Linux and macOS nothing changes.
+- [x] Tests with a faked `PATH` and a faked `git --exec-path`: the bare name resolves to Git's `bin\bash.exe`; with only `System32\bash.exe` to find and no Git bash, the health check is down, with the fix; a full path is used as given; on Linux and macOS nothing changes.
 - [ ] On this machine, `pnpm ostra runner` started from PowerShell with no `OSTRA_RUNNER_SHELL` passes its health check and runs a setup script, recorded under `## Comments`.
-- [ ] The settings test still matches `docs/configuration.md`.
-- [ ] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
-- [ ] Committed as `🐛 find Git for Windows' bash for setup`.
+- [x] The settings test still matches `docs/configuration.md`.
+- [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
+- [x] Committed as `🐛 find Git for Windows' bash for setup`.
 
 ## Comments
+
+**2026-11-19:** `resolveSetupShell` (`packages/adapters/adapter-executor-host/src/setup-shell.ts`) finds Git for Windows' `binash.exe` from `git --exec-path` for the bare name, never the WSL launcher, and falls back to a non-WSL `bash` on `PATH`; the health check says what it looked for and the fix. Five tests on a faked Windows machine, each broken on purpose and restored (`context/proof/F-050.md`). The live run from PowerShell follows.

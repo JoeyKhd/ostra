@@ -81,7 +81,7 @@ export const runnerConfigFields = {
     flag: "shell",
     env: "OSTRA_RUNNER_SHELL",
     default: "bash",
-    description: "The shell the host executor runs setup scripts with, from PATH (Git Bash on Windows).",
+    description: "The shell the host executor runs setup scripts with. On Linux and macOS, bash from PATH. On Windows, the bare name bash means Git for Windows' own bin\\bash.exe, found from the git on PATH, never WSL's System32\\bash.exe; without Git for Windows, set it to a shell's full path. A full path is used as given.",
   },
   joinTokenFile: {
     flag: "join-token-file",

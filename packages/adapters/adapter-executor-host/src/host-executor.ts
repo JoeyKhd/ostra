@@ -27,6 +27,8 @@ import type { TaskProcesses } from "./task-processes.ts";
 import type { Containment, ContainmentUnit } from "./containment.ts";
 import { excludeFromGit, insideCheckout, renderEnvFile, writeCheckoutFile } from "./env-file.ts";
 import { baseEnv, ostraLines, runProgram } from "./process.ts";
+import { localShellProbe, missingShellReason, resolveSetupShell } from "./setup-shell.ts";
+import type { SetupShell, ShellProbe } from "./setup-shell.ts";
 import type { RunResult } from "./process.ts";
 
 // The `host` executor (ADR 0029, F-016, F-014): a task runs in a folder of the runner's machine,
@@ -50,8 +52,13 @@ import type { RunResult } from "./process.ts";
 export type HostExecutorOptions = {
   /** The runner's data folder: task roots go in `tasks/`. */
   readonly dataDir: string;
-  /** The shell setup scripts run with, from PATH (`OSTRA_RUNNER_SHELL`, default `bash`). */
+  /**
+   * The shell setup scripts run with (`OSTRA_RUNNER_SHELL`, default `bash`): from PATH on Linux and
+   * macOS, and for the bare name on Windows, Git for Windows' own bash (`setup-shell.ts`).
+   */
   readonly shell?: string;
+  /** How the bare name `bash` is found. Default: this machine, unless `processes` is another one. */
+  readonly shellProbe?: ShellProbe;
   /** How a task's processes end together. Default: detected (a cgroup on Linux when allowed). */
   readonly containment?: Containment;
   /** Where the agent and the setup script run (spike 3's `AgentHost` seam). Default: this machine. */
@@ -129,6 +136,8 @@ export class HostExecutor extends ExecutorAdapter {
 
   readonly #dataDir: string;
   readonly #shell: string;
+  readonly #shellProbe: ShellProbe | undefined;
+  #setupShell: Promise<SetupShell> | undefined;
   readonly #env: NodeJS.ProcessEnv;
   readonly #boxes = new Map<string, BoxRecord>();
   #containment: Containment | undefined;
@@ -141,6 +150,8 @@ export class HostExecutor extends ExecutorAdapter {
     this.#dataDir = options.dataDir;
     this.#shell = options.shell ?? "bash";
     this.#env = options.env ?? process.env;
+    this.#shellProbe =
+      options.shellProbe ?? (options.processes === undefined ? localShellProbe(baseEnv(this.#env), this.#dataDir) : undefined);
     this.#containment = options.containment;
     this.#processes =
       options.processes ??
@@ -164,11 +175,23 @@ export class HostExecutor extends ExecutorAdapter {
     if (git.code !== 0) {
       return { status: "down", reason: "git isn't on PATH" };
     }
-    const shell = await runProgram(this.#shell, ["--version"], { cwd: this.#dataDir, env });
+    const setupShell = await this.#resolveShell();
+    if (setupShell.kind === "missing") {
+      return { status: "down", reason: setupShell.reason };
+    }
+    const shell = await runProgram(setupShell.command, ["--version"], { cwd: this.#dataDir, env });
     if (shell.code !== 0) {
-      return { status: "down", reason: `the setup shell (${this.#shell}) isn't on PATH; set OSTRA_RUNNER_SHELL` };
+      return { status: "down", reason: missingShellReason(setupShell.command) };
     }
     return { status: "ok" };
+  }
+
+  /** The program that runs setup scripts, found once (Q136, item 9). */
+  #resolveShell(): Promise<SetupShell> {
+    const probe = this.#shellProbe;
+    this.#setupShell ??=
+      probe === undefined ? Promise.resolve({ kind: "found", command: this.#shell }) : resolveSetupShell(this.#shell, probe);
+    return this.#setupShell;
   }
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
@@ -534,6 +557,10 @@ export class HostExecutor extends ExecutorAdapter {
     const file = path.join(record.root, "setup", "setup.sh");
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, script.replace(/\r\n/g, "\n"));
+    const setupShell = await this.#resolveShell();
+    if (setupShell.kind === "missing") {
+      return adapterError("unavailable", setupShell.reason);
+    }
     const started = Date.now();
     let exitCode: number | null = 0;
     for (const repo of record.spec.repos) {
@@ -551,7 +578,7 @@ export class HostExecutor extends ExecutorAdapter {
         }
       }
       // The script as a file, run by the shell with an argument array: never a command string.
-      const result = await this.#processes.run(this.#shell, [file.split(path.sep).join("/")], {
+      const result = await this.#processes.run(setupShell.command, [file.split(path.sep).join("/")], {
         cwd: path.join(record.workspaceDir, repo.checkoutDir),
         env,
         ...(input.signal === undefined ? {} : { signal: input.signal }),

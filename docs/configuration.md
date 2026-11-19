@@ -51,7 +51,7 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 | `OSTRA_RUNNER_LABELS` | `--labels` | (none) | Comma-separated labels that tasks can ask for, such as `gpu,macos`. |
 | `OSTRA_RUNNER_NAME` | `--name` | the machine's host name | The runner's name in the panel. |
 | `OSTRA_JOIN_TOKEN` | `--join-token` | (none) | A pool runner's join token, used once to register. A personal runner signs in with a device code instead. |
-| `OSTRA_RUNNER_SHELL` | `--shell` | `bash` | The shell the `host` executor runs setup scripts with, from `PATH` (Git Bash on Windows). |
+| `OSTRA_RUNNER_SHELL` | `--shell` | `bash` | The shell the `host` executor runs setup scripts with. On Linux and macOS, `bash` from `PATH`. On Windows, the bare name `bash` means Git for Windows' own `bin\bash.exe`, found from the `git` on `PATH`, never WSL's `System32\bash.exe`; without Git for Windows, set it to a shell's full path. A full path is used as given. |
 | `OSTRA_JOIN_TOKEN_FILE` | `--join-token-file` | (none) | A file holding a pool runner's join token, such as the bootstrap token core writes to `OSTRA_DATA_DIR` at first start (the compose file's runner reads it). `--join-token` wins. |
 | `OSTRA_BOX_BASE_IMAGE` | `--box-base-image` | `ostra/base:<the runner's version>` | The `docker` executor's base image, for an environment that names none. |
 | `OSTRA_BOX_RUNNER_IMAGE` | `--box-runner-image` | `ostra/runner:<the runner's version>` | The image each `docker` box's sidecar runs: the `ostra` CLI. |
