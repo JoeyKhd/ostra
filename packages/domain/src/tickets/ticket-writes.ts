@@ -267,6 +267,16 @@ const prWords = (state: DbEnum.TaskRepoState): string => {
 
 const ACTIVE: ReadonlySet<DbEnum.TaskState> = new Set(["awaiting_approval", "queued", "preparing", "running", "needs_you", "in_review"]);
 
+/** The progress comment's last line starts with this, then the task's URL: how ostra knows its own comment. */
+export const PROGRESS_COMMENT_MARKER = "<sub>ostra edits this comment as the task moves:";
+
+/**
+ * Whether a comment is an ostra task's progress comment, by its marker line. It's ostra's own
+ * words, never the ticket's: a task's prompt leaves it out, as it would a comment by ostra's app
+ * user (an API-key connection has none to filter by).
+ */
+export const isProgressComment = (body: string): boolean => body.includes(PROGRESS_COMMENT_MARKER);
+
 /**
  * The progress comment's markdown: the task's state, its PRs and its link. It holds no ticket
  * text, no prompt and no agent output. The task's URL is its marker (F-046): a retry looks for a
@@ -282,6 +292,6 @@ export const renderProgressComment = (input: ProgressCommentInput): string => {
   if (prs.length > 0) {
     lines.push("", ...prs.map((pr) => `- ${pr.repo}: ${pr.url} (${prWords(pr.state)})`));
   }
-  lines.push("", `<sub>ostra edits this comment as the task moves: ${input.taskUrl}</sub>`);
+  lines.push("", `${PROGRESS_COMMENT_MARKER} ${input.taskUrl}</sub>`);
   return lines.join("\n");
 };

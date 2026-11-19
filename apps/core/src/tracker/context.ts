@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Logger, TicketContext, TicketImage } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { appendServerEvent, markTicketInline, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
+import { appendServerEvent, isProgressComment, markTicketInline, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
 import type { ChangeNotices, Clock, JobQueue, TicketPromptContext } from "@ostra/domain";
 import type { JobHandler } from "@ostra/jobs";
 import {
@@ -113,7 +113,7 @@ const copyImages = async (
 export const promptContextOf = (
   context: TicketContext,
   images: readonly CopiedImage[],
-  extra: { readonly instructions: string | null; readonly branch: string },
+  extra: { readonly instructions: string | null; readonly branch: string; readonly ownUserId?: string | null },
 ): TicketPromptContext => ({
   ticket: {
     key: context.ticket.key,
@@ -124,7 +124,11 @@ export const promptContextOf = (
     description: context.ticket.description,
   },
   labels: context.ticket.labels.map((name) => ({ name })),
-  comments: context.comments.map((comment) => ({
+  // ostra's own comments aren't the ticket's: its progress comment (by its marker), and anything its
+  // app user wrote.
+  comments: context.comments
+    .filter((comment) => !isProgressComment(comment.body) && ((extra.ownUserId ?? null) === null || comment.author?.id !== extra.ownUserId))
+    .map((comment) => ({
     author: comment.author?.name ?? "Someone",
     body: comment.body,
     date: new Date(comment.createdAt).toISOString().slice(0, 10),
@@ -252,7 +256,11 @@ export const fetchContextHandler =
     const project = await deps.db.project.findUniqueOrThrow({ where: { id: task.projectId }, select: { ticketTemplate: true } });
     const rendered = renderTicketPrompt(
       ticketTemplateFor(project.ticketTemplate).template,
-      promptContextOf(ticketContext, images.copied, { instructions: profile?.instructions ?? null, branch: task.branchName }),
+      promptContextOf(ticketContext, images.copied, {
+        instructions: profile?.instructions ?? null,
+        branch: task.branchName,
+        ownUserId: lookup.ok ? lookup.value.ownUserId : null,
+      }),
     );
     const failedLine =
       images.failed.length === 0

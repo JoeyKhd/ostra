@@ -5,7 +5,7 @@ import type { LogRecord } from "@ostra/adapter-sdk";
 import { JiraFakeAdapter, createJiraSite } from "@ostra/adapter-sdk/testing";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { markTicketBlock, postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { markTicketBlock, postgresAuditLog, postgresChangeNotices, PROGRESS_COMMENT_MARKER, systemClock } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { leaseEpochSchema, organizationIdSchema, sessionIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
@@ -80,7 +80,10 @@ const ticketTask = async (): Promise<{ readonly taskId: TaskId; readonly session
     summary: "Add a heron page",
     description: `The page should show a heron.\n\n${INJECTION}\n\n![missing](https://jira-fake.invalid/secure/attachment/gone/missing.png)`,
     labels: ["docs"],
-    comments: ["Please keep it short."],
+    // ostra's own progress comment, which a start writes as the context is read: never ticket text.
+    comments: ["Please keep it short.", `**ostra is working on this.** [Open the task](http://localhost/tasks/x)
+
+${PROGRESS_COMMENT_MARKER} http://localhost/tasks/x</sub>`],
     imageUrl,
   });
   const organizationId = fixture.a.organization.id;
@@ -151,6 +154,7 @@ describe("ticket.fetch-context (F-064)", () => {
     expect(prompt).toContain("````ticket-text\nThe page should show a heron.");
     expect(prompt.indexOf("rm -rf /")).toBeGreaterThan(prompt.indexOf("````ticket-text"));
     expect(prompt).toContain("Please keep it short.");
+    expect(prompt).not.toContain("ostra is working on this");
     expect(prompt).toContain("Labels: ` docs `");
     // The image is a blob of the task, named from its ID and type, and the prompt names its path.
     const images = await test.db.blob.findMany({ where: { taskId: task.taskId, purpose: "ticket-file" } });
