@@ -14,6 +14,7 @@ import {
   parseUpFrame,
   PROTOCOL_MAJOR,
   runnerLimits,
+  organizationIdSchema,
   runnerIdSchema,
   runnerPaths,
   sessionIdSchema,
@@ -391,13 +392,24 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
 
   // ---------- a connection ----------
 
-  const markDisconnected = async (peer: Peer): Promise<void> => {
-    const { runner } = peer;
+  const markDisconnected = (peer: Peer): Promise<void> => closePresence(peer.runner, peer.connectionEpoch, new Date(peer.lastFrameAt), null);
+
+  /**
+   * Marks a connection of the runner gone, and starts what a disconnect starts (its tasks' grace).
+   * Only the runner's newest connection marks it gone: a replaced one leaves presence alone.
+   * `staleBefore`: only if no replica refreshed it since then (a dead replica's row, ticket 21).
+   */
+  const closePresence = async (runner: RunnerRef, connectionEpoch: number, at: Date, staleBefore: Date | null): Promise<void> => {
     await db.$transaction(async (tx) => {
-      // Only the runner's newest connection marks it gone: a replaced one leaves presence alone.
-      const closed = await tx.$executeRaw`
-        UPDATE "runner_presence" SET "disconnectedAt" = ${new Date(peer.lastFrameAt)}, "lastSeenAt" = ${new Date(peer.lastFrameAt)}
-        WHERE "runnerId" = ${runner.runnerId} AND "connectionEpoch" = ${peer.connectionEpoch} AND "disconnectedAt" IS NULL`;
+      const closed =
+        staleBefore === null
+          ? await tx.$executeRaw`
+              UPDATE "runner_presence" SET "disconnectedAt" = ${at}, "lastSeenAt" = ${at}
+              WHERE "runnerId" = ${runner.runnerId} AND "connectionEpoch" = ${connectionEpoch} AND "disconnectedAt" IS NULL`
+          : await tx.$executeRaw`
+              UPDATE "runner_presence" SET "disconnectedAt" = ${at}
+              WHERE "runnerId" = ${runner.runnerId} AND "connectionEpoch" = ${connectionEpoch} AND "disconnectedAt" IS NULL
+                AND "lastSeenAt" < ${staleBefore}`;
       if (closed === 0) {
         return;
       }
@@ -746,8 +758,31 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     }
   };
 
+  /**
+   * A replica killed with `kill -9` never closes its runners' presence, so no grace would start for
+   * a runner that doesn't come back (ticket 21, F-043). Any replica's presence pass closes a row no
+   * replica refreshed within the dead time, as that replica's disconnect would have.
+   */
+  const closeOrphanedPresences = async (): Promise<void> => {
+    const staleBefore = new Date(now() - timers.deadMs);
+    const stale = await db.runnerPresence.findMany({
+      where: { disconnectedAt: null, lastSeenAt: { lt: staleBefore } },
+      select: { runnerId: true, organizationId: true, connectionEpoch: true, lastSeenAt: true },
+      take: 200,
+    });
+    for (const row of stale) {
+      const runnerId = runnerIdSchema.parse(row.runnerId);
+      if (peers.has(runnerId)) {
+        continue;
+      }
+      logger.info("gateway.presence-orphaned", { runnerId, connectionEpoch: row.connectionEpoch });
+      await closePresence({ runnerId, organizationId: organizationIdSchema.parse(row.organizationId) }, row.connectionEpoch, row.lastSeenAt, staleBefore);
+    }
+  };
+
   const writePresence = async (): Promise<void> => {
     await sidecars.writePresence();
+    await closeOrphanedPresences();
     const held = [...peers.values()].filter((peer) => !peer.closed);
     for (const peer of held) {
       await db.$executeRaw`
