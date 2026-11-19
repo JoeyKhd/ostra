@@ -60,6 +60,12 @@ export const runnerHeaders = {
   minor: "x-ostra-minor",
   /** The connection epoch from `welcome`; a newer connection answers `409`. */
   connectionEpoch: "x-ostra-connection-epoch",
+  /**
+   * Minor 1, on the bulk path's download (`GET .../blobs/:blobId`): the blob's SHA-256 in lower-case
+   * hex, so the runner checks what it read. A ticket file's spec entry names no digest, so this is
+   * where the runner gets it (ticket 26); an archive's is in the spec's restore section too.
+   */
+  blobSha256: "x-ostra-sha256",
 } as const;
 
 /** The minor a runner's HTTP request speaks: its `x-ostra-minor` header, or 0 when it's missing or bad. */
