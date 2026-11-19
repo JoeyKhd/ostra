@@ -22,12 +22,22 @@ export type PrCommentDeps = M3Deps & {
 
 const ACTIONS: ReadonlySet<string> = new Set(["created", "edited"]);
 
+/**
+ * An edit made by someone other than the comment's author. On GitHub anyone with write access can
+ * edit another's comment, so such a comment's text isn't the member's: it is never heard as them
+ * (F-053, F-119).
+ */
+const editedByAnother = (event: PrCommentEvent): boolean => event.action === "edited" && event.senderId !== event.comment.authorId;
+
 /** `githubWebhookHandler`'s comment hook: an `@ostra` comment on a PR is queued as its `github.comment`. */
 export const prCommentHook =
   (deps: Pick<M3Deps, "db" | "jobs">) =>
   async (context: WebhookDeliveryContext, event: PrCommentEvent): Promise<WebhookOutcome> => {
     if (!ACTIONS.has(event.action)) {
       return { outcome: "ignored", reason: `a comment ${event.action.slice(0, 32)}` };
+    }
+    if (editedByAnother(event)) {
+      return { outcome: "ignored", reason: "a comment edited by someone other than its author" };
     }
     if (event.kind === "issue_comment" && !event.onPullRequest) {
       return { outcome: "ignored", reason: "a comment on an issue, not a PR" };
@@ -45,7 +55,10 @@ export const prCommentHook =
     return { outcome: "processed" };
   };
 
-/** The newest stored delivery of a comment on the connection, read by the code host's adapter. */
+/**
+ * The newest stored delivery of a comment on the connection, read by the code host's adapter. A
+ * delivery that is another account's edit is passed over: the job may run after one has arrived.
+ */
 const commentFromInbox = async (
   db: Db,
   deps: Pick<M3Deps, "adapters">,
@@ -59,18 +72,17 @@ const commentFromInbox = async (
       payload: { path: ["comment", "id"], equals: Number(input.commentId) },
     },
     orderBy: { receivedAt: "desc" },
-    take: 1,
+    take: 50,
     select: { deliveryId: true, event: true, payload: true },
   });
-  const [row] = rows;
-  if (row === undefined) {
-    return null;
+  for (const row of rows) {
+    const parsed = deps.adapters.codeHost.parseWebhook({ headers: { "x-github-event": row.event }, body: JSON.stringify(row.payload), secret: "" });
+    if (!parsed.ok || (parsed.value.kind !== "issue_comment" && parsed.value.kind !== "pull_request_review_comment") || editedByAnother(parsed.value)) {
+      continue;
+    }
+    return { event: parsed.value, deliveryId: row.deliveryId };
   }
-  const parsed = deps.adapters.codeHost.parseWebhook({ headers: { "x-github-event": row.event }, body: JSON.stringify(row.payload), secret: "" });
-  if (!parsed.ok || (parsed.value.kind !== "issue_comment" && parsed.value.kind !== "pull_request_review_comment")) {
-    return null;
-  }
-  return { event: parsed.value, deliveryId: row.deliveryId };
+  return null;
 };
 
 /** `github.comment`: the comment's newest delivery, matched to a task and a linked member, or dropped by IDs. */

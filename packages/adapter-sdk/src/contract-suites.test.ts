@@ -104,6 +104,7 @@ const issueCommentBody = JSON.stringify({
   repository: { id: 1001, full_name: "test-org/test1" },
   issue: { number: 3, pull_request: { url: "https://code-host.invalid/pulls/3" } },
   comment: { id: 5001, body: "@ostra add a test", html_url: "https://code-host.invalid/test-org/test1/pull/3#c5001", user: { id: 777, login: "member" } },
+  sender: { id: 777, login: "member" },
 });
 const reviewCommentBody = JSON.stringify({
   action: "created",
@@ -111,6 +112,7 @@ const reviewCommentBody = JSON.stringify({
   repository: { id: 1001, full_name: "test-org/test1" },
   pull_request: { number: 3 },
   comment: { id: 5002, body: "@ostra rename this", html_url: "https://code-host.invalid/r/5002", user: { id: 777, login: "member" }, path: "src/a.ts", side: "RIGHT", line: 12 },
+  sender: { id: 777, login: "member" },
 });
 const pushBody = JSON.stringify({
   ref: "refs/heads/main",

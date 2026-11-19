@@ -1322,7 +1322,7 @@ const parseIssueCommentWebhook = (payload: unknown): AdapterResult<CodeHostWebho
   if (!parsed.ok) {
     return parsed;
   }
-  const { action, installation, repository, issue, comment } = parsed.value;
+  const { action, installation, repository, issue, comment, sender } = parsed.value;
   const fullName = repoFullNameSchema.safeParse(repository.full_name);
   if (!fullName.success) {
     return adapterError("invalid-response", "the issue_comment webhook names a repo that could not be read");
@@ -1337,6 +1337,7 @@ const parseIssueCommentWebhook = (payload: unknown): AdapterResult<CodeHostWebho
     // GitHub sends PR conversation comments as issue comments: `issue.pull_request` says which.
     onPullRequest: issue.pull_request !== null && issue.pull_request !== undefined,
     comment: toComment(comment),
+    senderId: String(sender.id),
   });
 };
 
@@ -1345,7 +1346,7 @@ const parseReviewCommentWebhook = (payload: unknown): AdapterResult<CodeHostWebh
   if (!parsed.ok) {
     return parsed;
   }
-  const { action, installation, repository, pull_request: pr, comment } = parsed.value;
+  const { action, installation, repository, pull_request: pr, comment, sender } = parsed.value;
   const fullName = repoFullNameSchema.safeParse(repository.full_name);
   if (!fullName.success) {
     return adapterError("invalid-response", "the pull_request_review_comment webhook names a repo that could not be read");
@@ -1360,6 +1361,7 @@ const parseReviewCommentWebhook = (payload: unknown): AdapterResult<CodeHostWebh
     repo: fullName.data,
     number: pr.number,
     comment: toComment(comment),
+    senderId: String(sender.id),
     path: comment.path,
     side: comment.side === "LEFT" ? "old" : "new",
     line: onFile ? null : (comment.line ?? comment.original_line ?? null),

@@ -83,6 +83,7 @@ const reviewCommentPayload = (input: { readonly commentId: string; readonly side
       subject_type: input.subjectType ?? "line",
       diff_hunk: "@@ -1 +1 @@",
     },
+    sender: { id: 583231, login: "octocat" },
   });
 
 const pushPayload = (commits: unknown): string =>
@@ -1037,6 +1038,19 @@ describe("the GitHub adapter", () => {
       expect(left).toMatchObject({ ok: true, value: { side: "old", line: 3, comment: { authorLogin: "octocat", url: "https://github.example/fake-org/test1/pull/5#discussion_r78" } } });
       const onFile = adapter.parseWebhook(signed(fake, "pull_request_review_comment", reviewCommentPayload({ commentId: "79", side: "RIGHT", line: null, subjectType: "file" })));
       expect(onFile).toMatchObject({ ok: true, value: { path: "src/index.ts", line: null, side: "new" } });
+    });
+
+    it("F-053: reads who caused a comment's delivery apart from who wrote the comment", () => {
+      const edited = (payload: string, sender: { readonly id: number; readonly login: string }): string => JSON.stringify({ ...JSON.parse(payload), action: "edited", sender });
+      const stranger = { id: 900_001, login: "collaborator" };
+      const issue = adapter.parseWebhook(signed(fake, "issue_comment", edited(issueCommentPayload({ commentId: "81", onPullRequest: true, body: "@ostra hi" }), stranger)));
+      expect(issue).toMatchObject({ ok: true, value: { kind: "issue_comment", action: "edited", senderId: "900001", comment: { authorId: "583231" } } });
+      const review = adapter.parseWebhook(signed(fake, "pull_request_review_comment", edited(reviewCommentPayload({ commentId: "82", side: "RIGHT", line: 3 }), stranger)));
+      expect(review).toMatchObject({ ok: true, value: { kind: "pull_request_review_comment", action: "edited", senderId: "900001", comment: { authorId: "583231" } } });
+      // A delivery that doesn't say who sent it is refused, not read as the author's.
+      const noSender = issueCommentPayload({ commentId: "83", onPullRequest: true, body: "@ostra hi" }).replace(/,"sender":{[^}]*}/, "");
+      expect(noSender).not.toContain("sender");
+      expect(adapter.parseWebhook(signed(fake, "issue_comment", noSender))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
     });
 
     it("F-053: keeps a comment's body as data, exactly", () => {

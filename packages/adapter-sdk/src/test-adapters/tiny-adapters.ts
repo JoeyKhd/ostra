@@ -863,6 +863,7 @@ const issueCommentEventSchema = z.looseObject({
   repository: webhookRepoSchema,
   issue: z.looseObject({ number: z.number().int().positive(), pull_request: z.looseObject({}).optional() }),
   comment: webhookCommentSchema,
+  sender: z.looseObject({ id: z.number() }),
 });
 
 const reviewCommentEventSchema = z.looseObject({
@@ -870,6 +871,7 @@ const reviewCommentEventSchema = z.looseObject({
   installation: webhookInstallationSchema,
   repository: webhookRepoSchema,
   pull_request: z.looseObject({ number: z.number().int().positive() }),
+  sender: z.looseObject({ id: z.number() }),
   comment: webhookCommentSchema.extend({
     path: z.string(),
     side: z.enum(["LEFT", "RIGHT"]).nullish(),
@@ -923,6 +925,7 @@ const parseCommentOrPush = (
         number: parsed.data.issue.number,
         onPullRequest: parsed.data.issue.pull_request !== undefined,
         comment: commentOf(parsed.data.comment),
+        senderId: String(parsed.data.sender.id),
       });
     }
     case "pull_request_review_comment": {
@@ -939,6 +942,7 @@ const parseCommentOrPush = (
         repo: repo.data,
         number: parsed.data.pull_request.number,
         comment: commentOf(parsed.data.comment),
+        senderId: String(parsed.data.sender.id),
         path: parsed.data.comment.path,
         side: parsed.data.comment.side === "LEFT" ? "old" : "new",
         line: parsed.data.comment.line ?? null,

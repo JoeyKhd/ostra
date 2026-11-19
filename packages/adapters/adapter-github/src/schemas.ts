@@ -136,6 +136,9 @@ export const graphqlAnswerSchema = z.looseObject({
 });
 
 const commentUserSchema = z.looseObject({ id: z.number().int(), login: z.string().min(1) });
+
+/** The account that caused the delivery: for an `edited` comment, who edited it, which isn't always the author. */
+const webhookSenderSchema = commentUserSchema;
 const webhookRepositorySchema = z.looseObject({ id: z.number().int(), full_name: z.string().min(1) });
 const webhookInstallationSchema = z.looseObject({ id: z.number().int() }).nullish();
 
@@ -146,6 +149,7 @@ export const issueCommentWebhookSchema = z.looseObject({
   repository: webhookRepositorySchema,
   issue: z.looseObject({ number: z.number().int().positive(), pull_request: z.looseObject({}).nullish() }),
   comment: z.looseObject({ id: z.number().int(), body: z.string().nullish(), html_url: z.string().min(1), user: commentUserSchema }),
+  sender: webhookSenderSchema,
 });
 
 /** A `pull_request_review_comment` webhook: a comment on a line (or a file) of a PR's diff. */
@@ -165,6 +169,7 @@ export const reviewCommentWebhookSchema = z.looseObject({
     side: z.string().nullish(),
     subject_type: z.string().nullish(),
   }),
+  sender: webhookSenderSchema,
 });
 
 /** A `push` webhook. Each commit lists the paths it added, removed and changed. */

@@ -226,6 +226,8 @@ export type CodeHostWebhookEvent =
       readonly number: number;
       readonly onPullRequest: boolean;
       readonly comment: PullRequestComment;
+      /** The host account that caused the delivery: for an `edited` comment, its editor, who may not be its author. */
+      readonly senderId: string;
     }
   /** A comment on a line of a PR's diff. */
   | {
@@ -236,6 +238,8 @@ export type CodeHostWebhookEvent =
       readonly repo: RepoFullName;
       readonly number: number;
       readonly comment: PullRequestComment;
+      /** The host account that caused the delivery: for an `edited` comment, its editor, who may not be its author. */
+      readonly senderId: string;
       readonly path: string;
       readonly side: "old" | "new";
       /** The line in the side's file, or `null` for a comment on a whole file. */

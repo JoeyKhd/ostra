@@ -372,6 +372,8 @@ export class FakeCodeHost extends CodeHostAdapter {
       readonly body: string;
       readonly authorId: number;
       readonly authorLogin: string;
+      /** Who caused the delivery, when it isn't the author: an `edited` comment's editor. */
+      readonly senderId?: number;
       readonly action?: string;
       readonly line?: { readonly path: string; readonly line: number; readonly side?: "LEFT" | "RIGHT" };
       readonly onPullRequest?: boolean;
@@ -396,6 +398,7 @@ export class FakeCodeHost extends CodeHostAdapter {
       installation: { id: 777 },
       repository: { id: this.hostRepoIdOf(repo), full_name: repo },
       comment,
+      sender: { id: input.senderId ?? input.authorId },
       ...where,
     });
     return { body, headers: this.sign(body, event, input.deliveryId), event };
@@ -506,7 +509,9 @@ export class FakeCodeHost extends CodeHostAdapter {
     const body = read("comment", "body");
     const url = read("comment", "html_url");
     const action = read("action");
+    const sender = read("sender", "id");
     if (
+      typeof sender !== "number" ||
       typeof commentId !== "number" ||
       typeof authorId !== "number" ||
       typeof authorLogin !== "string" ||
@@ -522,7 +527,7 @@ export class FakeCodeHost extends CodeHostAdapter {
       if (typeof number !== "number") {
         return adapterError("invalid-response", "not an issue_comment event");
       }
-      return ok({ kind: "issue_comment", action, ...common, number, onPullRequest: read("issue", "pull_request") !== undefined, comment });
+      return ok({ kind: "issue_comment", action, ...common, number, onPullRequest: read("issue", "pull_request") !== undefined, comment, senderId: String(sender) });
     }
     const number = read("pull_request", "number");
     const path = read("comment", "path");
@@ -536,6 +541,7 @@ export class FakeCodeHost extends CodeHostAdapter {
       ...common,
       number,
       comment,
+      senderId: String(sender),
       path,
       side: read("comment", "side") === "LEFT" ? "old" : "new",
       line: typeof line === "number" ? line : null,
