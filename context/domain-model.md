@@ -30,8 +30,8 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 
 | Thing | Belongs to | Notes |
 |---|---|---|
-| **Organization** | the install | An install holds many. A self-hosted install starts with one, and the first account is the instance admin (Q102, F-049). Every other record belongs to exactly one organization (ADR 0026). |
-| **Member** | an organization | An account with a unique username, an email address and a password (Q54, F-002). One account can be a member of several organizations. Is an admin or a member of the organization (Q35, F-003). Links a GitHub account once, for identity only: co-author credit, `@ostra` and matching reviewers (Q55, F-119, F-053). |
+| **Organization** | the install | The data model holds many. An install starts with one, and the first account is the instance admin (Q102, F-049). In v1 an install runs that one organization, with a team's clients as projects inside it; installs with several come after v1 (F-134, 2026-11-19). Every other record belongs to exactly one organization (ADR 0026). |
+| **Member** | an organization | An account with a unique username, an email address and a password (Q54, F-002). One account can be a member of several organizations in the data model, and in the product after v1 (F-134). Is an admin or a member of the organization (Q35, F-003). Links a GitHub account once, for identity only: co-author credit, `@ostra` and matching reviewers (Q55, F-119, F-053). |
 | **Connection** | an organization | The organization's own GitHub App and Linear app. Webhooks are routed by connection, not by one install-wide address (Q102, F-005, F-006). |
 | **Model provider** | an organization | An API base URL and a token, in one of the two API formats that "Test connection" detects (Q34, F-088). Usable on personal runners only when an admin allows it for that provider; off by default (Q47). |
 | **Model** | a model provider | Listed from the endpoint itself. Names, limits and prices come from the models.dev catalog, the endpoint's own list, or a price an admin enters (Q34, Q105). |

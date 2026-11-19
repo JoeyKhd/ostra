@@ -14,7 +14,7 @@ Spec: `../spec.md`, sections 3 (steps 1, 14) and 12; targets `members`, `member-
 - **The invitation page** (`/invite/[invitation-id]`) to `accept-invite`: from `invitations.preview`; sign-up with the locked address, or "Sign in to accept" for an existing account; "Check your inbox" while verification is pending; the expired, revoked and used states. Outside the panel's shell, like sign-in.
 - **Resets** to `reset-password`: "Forgot your password?" on the sign-in page when email is set up (hidden otherwise), and the page a reset link opens, with the password policy's checks.
 - **The sidebar** gains Members under Organization for every member.
-- **Growing:** `app-targets/m3/account` lists the account's organizations; write the changes against it under `## Comments`.
+- *Changed 2026-11-19:* this ticket also grew `app-targets/m3/account` to list the account's organizations. With one organization per install in v1 there's nothing to list, so that moved to ticket 44 (`wontfix`, F-134 after v1).
 
 ## Done when
 

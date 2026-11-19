@@ -12,6 +12,7 @@
 - **Where:** the shared sidebar (`components/shell/sidebar.tsx`, its `OrganizationSwitcher`), on every panel page. The sheet and the notice belong to the shell too, not to a route.
 - **Features:** F-049 (several organizations). Spec section 12, screen 6; section 3, step 12; section 4, "Switching organizations". Ticket 24 (`organizations.mine`, `.switch`, `.create`, `.resolve`), ticket 33 (this screen). ADR 0053, ADR 0026.
 - **Status:** a proposed target, waiting on approval (ticket 31's `## Comments`). Ticket 33 builds its data and tests until then, not its UI.
+- **Postponed 2026-11-19, with several organizations (F-134), after v1.** One team runs each install, with its clients as projects inside one organization, so v1 ships one organization per install (the lead's proposal, to which the maintainer answered "sure"). Milestone 4 doesn't build this target (ticket 44, `wontfix`): the sidebar's organization row shows the organization's name as milestone 1 built it, with no menu. This file and its three pictures stay, as approved, for F-134.
 - **Changed 2026-11-19: open organization sign-up is out.** It existed for a hosted version, which isn't planned (ADR 0026, amended). `New organization` is the instance admin's, and the "Open organization sign-up on" state below matters only on an install that sets `OSTRA_OPEN_SIGNUP_ORGANIZATIONS`, which stays as milestone 1 built it, off by default.
 
 > Build it in real HTML/React (app-design.md, rule 5), then screenshot the build at 1440×956 and compare it with each picture.

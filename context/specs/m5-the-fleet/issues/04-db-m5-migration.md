@@ -13,7 +13,7 @@ One new migration, after milestone 4's, additive only: every change in section 5
 
 - `RunnerPool.joinTokenDays` and `updatedByMemberId`; `JoinToken.revokedByMemberId` and `useCount`.
 - `Runner`'s new columns, each only where milestones 2 to 4 haven't added it. Check the schema first, and say in `## Comments` which were already there.
-- `BoxSize`, with the three defaults inserted for every organization by the migration.
+- `BoxSize`, with the three defaults inserted for every organization by the migration, and by the first admin's seed (`seedFirstAdmin`) for an install that first starts after it. *Changed 2026-11-19: `createOrganization` was to seed them for new organizations, and it moved after v1 with several organizations (F-134).*
 - `ProjectPool.position` (existing rows numbered by creation) and `AgentProfile.runnerLabels`.
 - `Task.queuePriority`, `queuedAt`, `requiredLabels` and `cancelledByMemberId`, backfilled for queued tasks: `queuedAt` from `createdAt`, and `queuePriority` from the ticket's priority, 3 when there is none.
 - `Box`'s size, image and waiting columns; `Registry`; `Snapshot`'s registry and builder columns.

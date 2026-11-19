@@ -1,6 +1,6 @@
 # Members, invitations and several organizations
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 4's spec). Settles Q191 to Q196 and Q208. Covers F-002, F-003, F-087 and F-049, and builds on ADR 0003 (better-auth, and what ostra builds on top of it), ADR 0026 (organizations, projects and the access matrix) and ADR 0050 (the email channel).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 4's spec). Settles Q191 to Q196 and Q208. Covers F-002, F-003, F-087 and F-049, and builds on ADR 0003 (better-auth, and what ostra builds on top of it), ADR 0026 (organizations, projects and the access matrix) and ADR 0050 (the email channel). **Amended 2026-11-19** (the lead proposed it, and the maintainer answered "sure"): one team runs each install, so v1 ships one organization per install (ADR 0026, amended). "Several organizations" below waits for F-134, after v1, as written. Isolation stays in v1 (F-049), and its test makes the second organization from fixtures.
 
 Milestone 4 is where a second person arrives. ADR 0026 fixed who sees what, and ADR 0003 how an invitation and a reset link work inside better-auth. This ADR settles what neither said: what removing a member does, who may invite to what, how an address is verified, how a member moves between organizations, and how isolation is proved for every kind of record.
 
@@ -36,7 +36,7 @@ The matrix stays ADR 0026's: an organization admin is an admin of every project;
 
 ## Several organizations
 
-Q195.
+Q195. *Postponed 2026-11-19 with F-134, after v1: v1 ships one organization per install (ADR 0026, amended), so the switcher, links across organizations and the instance admin's creation of organizations aren't built in milestone 4 (its tickets 24 and 44 are `wontfix`). This section stays as written for then. The last bullet, "What is per organization stays per organization", is a rule of the data model and holds in v1.*
 
 - **The active organization lives in the session** (better-auth's `activeOrganizationId`, which the panel already reads), and the account remembers the last one for its next sign-in. The sidebar's switcher lists the member's organizations and changes it.
 - **Links work across organizations.** IDs are unique per install, so a link to a record in another of the member's organizations switches to it, and the panel says "Switched to <organization>". A link to a record in an organization the member doesn't belong to is "not found", like any other.
@@ -51,6 +51,7 @@ Q196. F-049 asks for a test per kind of record. **The test is generated from the
 - For each listed model, the test seeds a row in organization A and one in organization B, then calls every tRPC procedure that lists or reads that kind as a member of A, and asserts B's row appears in none of them, by ID. The same run does it as a member of A who can't open a restricted project, for every project record (F-087).
 - Search, the audit log, Insights, memory and the live stream are in the list, since each reads across many tables.
 - Spike 9's `isolation` scenario (`spikes/auth-foundation/src/scenarios/isolation.ts`) is the template.
+- *Amended 2026-11-19:* organization B is made by the test's fixtures (`seedOrganization`), since v1's panel makes no second organization (F-049). The test is the same whether or not an install ever holds two.
 
 ## For development only
 
@@ -67,7 +68,7 @@ Q208. The demo needs the reviewer user of `GITHUB_TEST_REVIEWER_TOKEN` linked to
 
 ## Consequences
 
-- `Member` gains `removedAt` and `removedByMemberId`; `Invitation` gains its project grants and the state it's in; the account remembers its last organization (milestone 4's spec, section 5.3).
+- `Member` gains `removedAt` and `removedByMemberId`; `Invitation` gains its project grants and the state it's in; the account remembers its last organization (milestone 4's spec, section 5.3; after v1 with F-134 since 2026-11-19).
 - Every query on members filters out removed ones, except the ones that show history.
 - Mail for invitations, verification and resets goes through ADR 0050's email channel as account mails: sent at once, with no delay and no choice to turn them off, since the person can't sign in to choose.
 - The glossary gains Invitation, Reset link and Instance admin.

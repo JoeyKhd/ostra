@@ -113,7 +113,7 @@ Sections are `Section`s, 26px apart: a title line (Plex Sans 600 14.5px), an opt
 | Archived | eyebrow `Archived 12 Nov`; every field read-only; no `Save note`; versions still viewable, without `Use this text`; the Archive group reads `Archived 12 Nov by Sam Rivera.` in `--muted` |
 | A member who can open the project but may not write | (none in milestone 4: every member who can open the project writes its notes, ADR 0044 amended.) Kept for later roles: read-only, as Archived without its eyebrow |
 | A note in a project the member can't open, or an unknown ID | `NotFound`-style body: `No such note.` and a teal `All of {scope}'s memory` (the API answers `NOT_FOUND`, never saying it exists) |
-| A link to another organization's note | the panel switches organization and says so (spec section 3, step 12; `org-switcher`'s notice), then shows the note |
+| A link to another organization's note | the panel switches organization and says so (`org-switcher`'s notice), then shows the note. *After v1 since 2026-11-19, with several organizations (F-134): v1 has one organization per install, so the state isn't built in milestone 4* |
 | Load failed | the error alert in place of the sections, with a teal `Retry` |
 | Narrow (below 1280px) | the panel drops under the main column (`PageFrame`); the three fields wrap to one per line below 900px; the version rows lose the Who column (it moves under What in 12px `--faint`) |
 | Phone (F-075) | one column; version rows two lines (`v2 · Merged from a proposal`, then who, source and when); `View` blocks full width |

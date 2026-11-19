@@ -11,7 +11,7 @@ Spec: `../spec.md`, section 5.3
 
 One new migration, after milestone 3's, additive only: every change in section 5.3's table. New tables carry `organizationId`, and every project record `projectId` with the composite foreign key to the project (ADR 0026). A nullable `projectId` (an organization note, the organization's budget) keeps the composite key, which Postgres skips when the column is null.
 
-- `Member`'s state and removal columns, `Invitation`'s new columns, `ResetLinkGrant`, `User.lastOrganizationId`, `Organization.createdByUserId`.
+- `Member`'s state and removal columns, `Invitation`'s new columns, `ResetLinkGrant`. *Changed 2026-11-19: `User.lastOrganizationId` and `Organization.createdByUserId` are out of this migration. They serve the switcher and the instance's Organizations page, which moved after v1 with several organizations (F-134).*
 - `AuditEntry.actorName` and its three indexes.
 - `SearchEntry`, with its generated `tsvector` column (`to_tsvector('simple', text)`) and GIN index in raw SQL, declared as `Unsupported("tsvector")`.
 - `Model`'s price columns where milestone 2 hasn't added them, `SpendDaily`, `Budget` (with the partial unique index for the organization's own), `BudgetNotice`, `HeldTurn`.

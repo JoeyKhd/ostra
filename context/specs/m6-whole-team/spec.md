@@ -269,7 +269,7 @@ One new migration, after milestone 5's, additive only. Every row carries `organi
 | `AgentProfile` | + `builtInKind` (`refine`, `review`, null), so the two built-in profiles are found and can't be deleted, only edited |
 | Enums | `NeedsYouReason` + `awaiting_approval`. The notification kinds + `draft_ready`, `review_requested`, `task_approval`, `round_cap`, `automation_paused`. `ProposalSourceKind` and `MemorySourceKind` + `ai_finding`. New `TaskOrigin`, `AutomationRunKind`, `AutomationRunState`, `AutomationSkipReason`, `AutomationPauseReason`, `BulkStartSource`, `BulkStartItemState`, `AgentSessionState`, `AgentActivityKind`, `AgentActivityState`, `DraftSource`, `CiRunState`, `RoundKind`, `RoundState`, `ReviewRunState`, `FindingSeverity`, `FindingPostedAs`, `FindingState`, `ReviewerSource`, `EnvironmentProposalState` |
 
-The migration backfills nothing. It seeds no profile: ticket 06's organization seeding (milestone 4's, for new organizations) and a one-time job for existing ones create the built-in Refine and Review profiles.
+The migration backfills nothing. It seeds no profile: ticket 06's organization seeding (the first admin's seed, for a fresh install) and a one-time job for existing ones create the built-in Refine and Review profiles. *Changed 2026-11-19: the seeding said "milestone 4's, for new organizations", whose creation moved after v1 with several organizations (F-134); `createOrganization` will seed them then.*
 
 ### 5.4 `packages/domain` (ticket 06)
 

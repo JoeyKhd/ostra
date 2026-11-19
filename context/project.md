@@ -1,6 +1,6 @@
 # ostra: the brief
 
-**Status:** Signed off 2026-11-17, reworked 2026-11-18 from the maintainer's delegated answers (`history/answers-2026-11-18.md`). Amended 2026-11-19: ostra is self-hosted only, with no hosted version planned (`history/self-hosted-only-2026-11-19.md`). Items marked *(proposed)* are not yet agreed. Terms follow `GLOSSARY.md`; what's in v1 and what comes later is in `features.md`.
+**Status:** Signed off 2026-11-17, reworked 2026-11-18 from the maintainer's delegated answers (`history/answers-2026-11-18.md`). Amended 2026-11-19: ostra is self-hosted only, with no hosted version planned (`history/self-hosted-only-2026-11-19.md`). Amended again 2026-11-19: one team runs each install, so v1 ships one organization per install, and several organizations come after v1 (ADR 0026, F-049, F-134). Items marked *(proposed)* are not yet agreed. Terms follow `GLOSSARY.md`; what's in v1 and what comes later is in `features.md`.
 
 ## One-liner
 
@@ -33,13 +33,13 @@ Today the maintainer's team runs several agents by hand in terminals and worktre
 
 ## Who it's for
 
-Software teams of any size, each set up in ostra as an **organization**. They keep their tickets in a tracker (Linear first, later Jira) or work from prompts alone, keep their code on GitHub, and use or want to use coding agents. An organization deploys ostra itself, or shares an install with other organizations, and connects its own tracker and GitHub org (each organization registers its own GitHub App and Linear app), its model providers and its compute (ADR 0001, ADR 0026). ostra is an app people host themselves, and no hosted version is planned (the maintainer, 2026-11-19: "For now, forget that we will be selling this software as a cloud solution. It will only be an app that people self host themselves for now."). The license doesn't let anyone else sell ostra or offer it as a service (ADR 0048).
+Software teams of any size, each set up in ostra as an **organization**. They keep their tickets in a tracker (Linear first, later Jira) or work from prompts alone, keep their code on GitHub, and use or want to use coding agents. An organization deploys ostra itself, one install per team, with its clients as projects inside it (an install shared by several organizations comes after v1, F-134), and connects its own tracker and GitHub org (each organization registers its own GitHub App and Linear app), its model providers and its compute (ADR 0001, ADR 0026). ostra is an app people host themselves, and no hosted version is planned (the maintainer, 2026-11-19: "For now, forget that we will be selling this software as a cloud solution. It will only be an app that people self host themselves for now."). The license doesn't let anyone else sell ostra or offer it as a service (ADR 0048).
 
 **First users:** the maintainer and their team.
 
 | Role | What they do |
 |------|--------------|
-| **Instance admin** | The first account on an install. Creates organizations, and manages the install's accounts (Q102) |
+| **Instance admin** | The first account on an install. Manages the install's accounts and settings, and creates more organizations after v1 (Q102, F-134) |
 | **Organization admin** | Sets up the organization: connects its GitHub App and Linear app, adds model providers, creates runner pools and their join tokens, defines agent profiles and budgets, invites members |
 | **Project admin** | Owns one project: its repos, boards, environment and automations, and its member list when access is restricted (Q35) |
 | **Member** | Picks tickets or types prompts, drives and steers tasks, answers "needs you" items, reopens tasks and reviews PRs, mostly from the panel. Sees every task in the projects they can open. Product people who refine tickets are ordinary members (Q70) |
@@ -49,7 +49,7 @@ Two more roles live on a task, not in the organization. The **driver** is the on
 
 ## How work is organized (ADR 0026, ADR 0027)
 
-- An **install** holds many organizations. A self-hosted install starts with one.
+- An **install** runs one organization in v1, the one it starts with: one team runs each install, and its clients are projects. The data model holds many and keeps them apart from the first migration, and installs with several come after v1 (F-049, F-134).
 - An **organization** holds its members, its GitHub App and Linear app, its model providers, its runner pools, its agent profiles, its memory notes and its budgets.
 - A **project** is a product the organization works on: one or more repos, boards (or none), one environment, automations, memory and tasks. It is open to the whole organization, or restricted to listed members.
 - A **task** belongs to one project. It starts from a ticket or from a prompt, and it may change any of the project's repos. It uses one branch name across them and opens one PR per repo it changed (Q29).

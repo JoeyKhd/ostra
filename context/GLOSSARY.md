@@ -351,19 +351,19 @@ _Avoid_: analytics, metrics, dashboard
 ### Who
 
 **Organization**:
-The people and settings that share one space in an ostra install: its members, projects, runner pools and model providers. An install holds one or more, and every record belongs to one.
+The people and settings that share one space in an ostra install: its members, projects, runner pools and model providers. Every record belongs to one. In v1 an install runs one organization, the one it starts with, and a team's clients are projects inside it; the data model holds several, and installs with several come after v1 (F-134).
 _Avoid_: team (a Linear team is something else), tenant, workspace
 
 **Member**:
-A person who belongs to an organization, and may belong to several. A restricted project lists the members who can open it.
+A person who belongs to an organization (to several, after v1: F-134). A restricted project lists the members who can open it.
 _Avoid_: user, seat
 
 **Admin**:
-A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is seeded by the server when it starts with no account, and is also its instance admin, who can create more organizations.
+A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is seeded by the server when it starts with no account, and is also its instance admin and the admin of its one organization.
 _Avoid_: owner, operator
 
 **Instance admin**:
-The account that manages the install itself: its organizations, its email and its accounts' reset links. Separate from any organization's admin: it sees nothing inside an organization it isn't a member of.
+The account that manages the install itself: its email, its storage, its accounts' reset links and who else is an instance admin (creating more organizations comes after v1, F-134). Separate from any organization's admin: it sees nothing inside an organization it isn't a member of.
 _Avoid_: superuser, root, owner
 
 **Invitation**:

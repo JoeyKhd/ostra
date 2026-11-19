@@ -195,7 +195,7 @@ Answered "yes" on 2026-11-18.
 |---|---|
 | Q100 defaults for the rest | Replaced by `context/history/answers-2026-11-18.md`: every question there has its own answer |
 | Q101 the first users | The maintainer's own team uses ostra first, and v1 is done when that team runs its daily work through ostra. From milestone 3, ostra's own tickets run through ostra (`build-order.md`) |
-| Q102 organizations per install | ADR 0026, F-049: many organizations in the data model from the first migration |
+| Q102 organizations per install | ADR 0026, F-049: many organizations in the data model from the first migration. Amended 2026-11-19 on the maintainer's word: v1 ships one organization per install, and several are F-134, after v1 |
 | Q103 Rivet | ADR 0032: dropped |
 | Q104 Jira | F-008, ADR 0047: the first tracker after v1. From milestone 2, the tracker contract suite also runs against a Jira fake |
 | Q105 spend limits | ADR 0042, F-037, F-068: a monthly budget per organization and per project, counted at the key proxy, and a spend cap per task |
@@ -318,7 +318,7 @@ Writing `specs/m4-the-organization/spec.md` met these questions. The maintainer 
 | Q192 Who may invite, and to what? | ADR 0053, F-002, F-087: organization admins, with a role and optional restricted projects; project admins add existing members only; an address with an account joins by signing in |
 | Q193 How is an invitee's address verified, and can members reset their own password? | ADR 0053, F-002: with email set up, the address is locked to the invitation and verified by a mailed link before the membership is active, and "Forgot your password?" mails a verified address; without email, the link alone, and only the instance admin's reset links |
 | Q194 Can an organization or an install lose its last admin? | ADR 0053, F-003: no; the last admin and the last instance admin are kept under a lock. The instance admin role grants nothing inside an organization the account isn't in |
-| Q195 How does a member move between organizations, and what do links do? | ADR 0053, F-049: the active organization in the session, the last one remembered; a link into another of the member's organizations switches with a notice; new organizations get a pool and the built-in profile |
+| Q195 How does a member move between organizations, and what do links do? | ADR 0053, F-134 (F-049 until 2026-11-19, after v1 since then): the active organization in the session, the last one remembered; a link into another of the member's organizations switches with a notice; new organizations get a pool and the built-in profile |
 | Q196 How is "a test for every kind of record" kept true as tables are added? | ADR 0053, F-049, F-087: a test generated from the schema's model list, with a fixture per model and a reviewed allowlist, that fails on a model on neither list |
 | Q197 What does the audit log record, and who reads it? | ADR 0054, F-073: people's and the system's actions in `AuditEntry`, the agent's in the event log, linked; a credential's use is one entry per issuance; append-only, kept while the organization exists; organization admins read all and export CSV, project admins their project's |
 | Q198 How does search work, and over what? | ADR 0054, F-080: Postgres full-text (`simple`), a search table written at ingest over titles, prompts, tickets, messages and tool inputs, never thoughts or output; filters as columns, access in the query; a palette and a page |
