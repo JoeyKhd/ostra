@@ -263,7 +263,7 @@ A memory note suggested by an agent or a review, waiting for a member to approve
 _Avoid_: draft (that's refine)
 
 **Memory index**:
-What an agent receives about memory at a session's start: each note's title and one line, within a size limit, beside the notes marked "always" in full. The agent searches and reads the rest through ostra's memory tools.
+What an agent receives about memory at a session's start: each note's title and one line, within a size limit, beside the notes marked "always" in full. The agent searches and reads the rest through ostra's memory tools. A note's place in the index isn't a use: a note's last use is the last time a session read it, through a read or a search result it then read, and the index lists the most recently read notes first.
 _Avoid_: memory dump, context file
 
 **Budget**:

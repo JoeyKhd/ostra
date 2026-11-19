@@ -57,7 +57,7 @@ Sections are `Section`s, 26px apart: a title line (Plex Sans 600 14.5px), an opt
 - **The secret refusal** (the picture). When `memory.save` answers `BAD_REQUEST` with `found`:
   - the body's border turns `--red`, and the body gets `aria-invalid="true"` and `aria-describedby` the refusal
   - under the counter, `role="alert"`, 13px: a `circle-alert` 15px and `This note holds {found}. Memory never holds credentials.` in `--red`; on the next line, 13px `--muted`, aligned with the text after the icon: `Nothing was saved. A token belongs in {project}'s environment secrets.` with `{project}'s environment secrets` a teal link to the project's environment (`/projects/{id}/environment#secrets`). An organization note: `Nothing was saved.` alone
-  - `{found}` comes from the scan's kind: `a GitHub token`, `a GitLab token`, `a Slack token`, `an AWS access key`, `a Google Cloud key`, `an Azure key`, `a private key`, `an Authorization header with a value`, `a URL with a password in it`, `the value of one of the organization's secrets`. The value is never shown or logged, and the page doesn't mark where in the body it is (the API doesn't say)
+  - `{found}` comes from the scan's kind: `a GitHub token`, `a GitLab token`, `a Slack token`, `an AWS access key`, `a Google Cloud key`, `an Azure key`, `a private key`, `an Authorization header with a value`, `a URL with a password in it`, `the value of one of the organization's secrets`, `a model-control token` (ADR 0044, Q91; its first line ends `Memory never holds text that poses as a model's instructions.` instead, and the second is `Nothing was saved.` alone). The value is never shown or logged, and the page doesn't mark where in the body it is (the API doesn't say)
   - the refusal stays until the body changes, then clears
 - The title is scanned too (ticket 16 scans the whole note); a hit there shows the same alert with the Title input's border `--red`.
 
@@ -148,9 +148,9 @@ Type: Manrope 700 26px (title); IBM Plex Sans 14.5px body, 14px fields and panel
 
 ## Data this screen needs beyond ticket 29
 
-- **`memory.save` takes the version the member started from** (`expectedVersion`) and answers `CONFLICT` with who saved and which version, so two members editing at once don't overwrite each other silently. Ticket 16 already takes the note's lock for gap-free versions; this is the check under that lock.
+- **`memory.save` takes the version the member started from** (`expectedVersion`) and answers `CONFLICT` with who saved and which version, so two members editing at once don't overwrite each other silently. Ticket 16 already takes the note's lock for gap-free versions; this is the check under that lock. ADR 0044's Q91 section made it a rule, and tickets 16 and 29 carry it.
 - **The refusal's kinds as words.** `found` is a closed union in `packages/domain`'s scan; `messages/en.json` holds one phrase per kind (`memory.found.*`), with `satisfies never` over the union.
-- **Last used and Used:** `lastUsedAt` and `useCount` are on the note; the task of the last use and the count of distinct tasks come from `MemoryUse` (`memory.note` returns `lastUsedTaskId` and `usedInTasks`).
+- **Last used and Used:** `lastUsedAt` and `useCount` are on the note; the task of the last use and the count of distinct tasks come from the `MemoryUse` rows with `via` `read` or `search`, since a note's place in the index isn't a use (ADR 0044, Q91; `memory.note` returns `lastUsedTaskId` and `usedInTasks`).
 - **The always budget:** the size of the scope's active always notes, for the switch's help (`memory.note` returns `alwaysUsedBytes`; the limit is `OSTRA_MEMORY_ALWAYS_MAX_KIB`).
 - **The source's comment text** for diff and PR comments, from `sourceRef`, so the Source group can quote its first line.
 - **`canArchiveNote`** in `memory.note`'s answer, so the page shows the button or the line about who can.

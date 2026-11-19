@@ -17,7 +17,7 @@ Each step needs an account, a click or a yes that an agent doesn't have.
 4. **Addresses for the manual run:** three addresses that reach the maintainer (plus addresses work) for Demo, Sam and Rae, kept in `~/.config/ostra-dev/email.env` as `EMAIL_TO_SAM` and `EMAIL_TO_RAE`; `docs/development.md` gets the names, never the values.
 5. **Approve the milestone 4 screen targets** (ticket 31), recorded there with the date.
 6. **Review spec section 11's nineteen choices** (Q191 to Q209 in `context/open-questions.md`), all settled on the delegation of 2026-11-19, and move back to the open list any you disagree with.
-7. **Q91:** say whether the memory research (`research/project-memory.md`) should land before ticket 15 starts, or after, as the spec assumes.
+7. **Review Q91's answer:** settled on the delegation of 2026-11-19 from `research/project-memory.md` (ADR 0044, "Q91: what the prior art changed"; spec section 11, item 13). Move it back to the open list if you disagree with any of its five changes.
 
 ## Done when
 

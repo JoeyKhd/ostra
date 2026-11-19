@@ -160,7 +160,7 @@ Two adjustments the maintainer made afterwards apply to every row below:
 
 #### Round 13: project memory
 
-Answered "yes" on 2026-11-18, and Q91's research is the one question that stays open (below).
+Answered "yes" on 2026-11-18. Q91, the prior-art research, was settled on 2026-11-19 from `research/project-memory.md`, on the maintainer's delegation.
 
 | Question | Settled in |
 |---|---|
@@ -172,6 +172,7 @@ Answered "yes" on 2026-11-18, and Q91's research is the one question that stays 
 | Q88 keeping it true | ADR 0044, F-109: the secret scan is v1. F-129 later: staleness checks |
 | Q89 memory, repo files and the environment | ADR 0044: `AGENTS.md` stays the repo's own. F-129 later: "Promote to repo" |
 | Q90 where it shows | ADR 0044, F-109, F-073: a Memory page per project and per organization, and the audit log |
+| Q91 prior art | ADR 0044 ("Q91: what the prior art changed"), F-109, F-110, F-129, from `research/project-memory.md`: the design confirmed. Only a read counts as a note's use, so the index is ordered by last read; the secret scan refuses model-control tokens; edits and merges check the version; each agent's own memory stays off; the block names its notes as approved. F-129 later: unread notes flagged, citations, consolidation as a task that proposes |
 | Q92 what ships in v1 | ADR 0044: F-109 to F-111 in v1. F-129 later: staleness checks, "Promote to repo", vector search, personal notes |
 
 #### Round 14: runners without a sandbox vendor
@@ -323,8 +324,8 @@ Writing `specs/m4-the-organization/spec.md` met these questions. The maintainer 
 | Q198 How does search work, and over what? | ADR 0054, F-080: Postgres full-text (`simple`), a search table written at ingest over titles, prompts, tickets, messages and tool inputs, never thoughts or output; filters as columns, access in the query; a palette and a page |
 | Q199 What exactly does a budget stop, and when? | ADR 0055, F-037: calendar months in UTC; notices at 80% and 100% once per budget and month; at 100% no new task or turn starts, held in order and released on a raise; running turns finish; one gate for every origin; unpriced models wait where a budget applies |
 | Q200 What do the Insights figures mean? | ADR 0055, F-108: six fixed definitions, computed every 5 minutes into daily rows and per-task metrics; a hidden project's share shows as "Other projects" |
-| Q201 What does memory's secret scan look for, and who may write and approve notes? | ADR 0044 (amended), F-109, F-111: the organization's own secret values and a fixed list of credential shapes; members write and approve in what they can open, and archiving another's note needs an admin of its scope |
-| Q202 How large are the index and the "always" notes, and in what order? | ADR 0044 (amended), F-110: 100 notes and 8 KiB, plus 8 KiB of "always" notes, project before organization, then by last use, with the rest left to search |
+| Q201 What does memory's secret scan look for, and who may write and approve notes? | ADR 0044 (amended), F-109, F-111: the organization's own secret values and a fixed list of credential shapes, plus model-control tokens since Q91; members write and approve in what they can open, and archiving another's note needs an admin of its scope |
+| Q202 How large are the index and the "always" notes, and in what order? | ADR 0044 (amended), F-110: 100 notes and 8 KiB, plus 8 KiB of "always" notes, project before organization, then by last read (Q91: a note's place in the index isn't a use), then by last edit, with the rest left to search |
 | Q203 What are the memory tools, and how do they reach ostra without a credential in the box? | ADR 0044 (amended), F-110, F-111: `memory_search`, `memory_read` and `memory_propose` on the sidecar's ostra MCP server, forwarded to core with the task's token; 20 proposals a task |
 | Q204 How is a contradicting proposal found without a model call? | ADR 0044 (amended), F-111: the agent declares a relation, and ostra shows the three highest-ranking notes beside every proposal; the member decides |
 | Q205 Where is "Remember this" before the AI review exists? | ADR 0044 (amended), F-111: on diff comments and accepted `@ostra` comments; AI findings in milestone 6, so F-111 stays `building` |
@@ -334,8 +335,6 @@ Writing `specs/m4-the-organization/spec.md` met these questions. The maintainer 
 | Q209 What does a runner on protocol minor 2 get in milestone 4? | `specs/m4-the-organization/spec.md`, section 5.1: the memory block appended to its instructions and no tools; everything else works unchanged |
 
 ## Open
-
-**Q91 🔬 Prior art for project memory** (F-109 to F-111, ADR 0044). Research before building: how Devin Knowledge, Cursor Memories, GitHub Copilot Memory, Windsurf Memories and Claude Code's memory files capture, approve, retrieve and expire memory. The findings are in `research/project-memory.md` (2026-11-19). They confirm ADR 0044 and recommend one change to the index's order (only a read counts as a note's use) and four smaller refinements: model-control tokens in the secret scan, a version check on edits and merges, each agent's own memory kept off, and the block framed as approved notes. Q91 closes when the maintainer accepts or rejects them. Memory's v1 cut (Q92) stands either way.
 
 **Q109 👤 Which CLA, and how contributors sign it** (ADR 0048). Due before a contribution from anyone but the licensor is accepted. That includes the maintainer's own team and any contractor, not only strangers: without an agreement, or a contract that assigns the work, their code can't go into the hosted version or a commercial license either. Until it is chosen, the project takes no outside code. It names the licensor, so Q110 comes first. *Recommendation (sharpened 2026-11-19, `history/answers-2026-11-19.md`, section 3; not settled, and a lawyer's call):*
 - **A license grant, not a copyright assignment.** The contributor keeps their copyright and gives the licensor a lasting copyright and patent license, with the right to license the contribution on any terms. That is all the hosted version and commercial licenses need. n8n, whose license ostra uses, asks for it in one sentence.

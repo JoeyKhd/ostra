@@ -16,9 +16,10 @@ Pure code first, each piece with exhaustive tests; use-case signatures with thei
 - **The budget gate:** `budgetGate(budgets, spend, origin)` over the closed union of origins in section 5.4, the month and threshold arithmetic in UTC, and the overshoot.
 - **Insights:** the six figures of ADR 0055 as functions over rows: the reference that ticket 14's job and its test both use.
 - **Memory:**
-  - the secret scan: the organization's secret values matched exactly, and the fixed shapes of ADR 0044's amendment, each with a negative control that must pass
-  - the index builder: project first, then organization, then by last use, cut at the limits, with the "N more notes" line
-  - the memory block's renderer (the "always" notes, the index and the standing instruction), which core puts in the spec and appends to the instructions for a minor-2 runner
+  - the secret scan: the organization's secret values matched exactly, the fixed credential shapes of ADR 0044's amendment, and the model-control tokens of its Q91 section (chat-template and role markers such as `<|im_start|>`, `<|endoftext|>`, `<|start_header_id|>` and `</system>`, found as `a model-control token`), each with a negative control that must pass (a note that talks about system prompts in plain words is saved)
+  - the index builder: project first, then organization, then by last read (`lastUsedAt`, which only a read moves, ADR 0044, Q91), newest first, then by last edit for notes never read, cut at the limits, with the "N more notes" line
+  - the memory block's renderer (the "always" notes, the index and the standing instruction), which core puts in the spec and appends to the instructions for a minor-2 runner. The block says these are the organization's and the project's approved notes and gives each note's source. Its standing instruction tells the agent to search memory before it guesses a convention, to propose a note when it learns something the next task should know, and, when the code disagrees with a note, to propose with `relation: "contradicts"` instead of following it (ADR 0044, Q91)
+  - the version check that `saveNote` and a merge share: an expected version that isn't the note's current one is a conflict, carrying who saved and which version (ADR 0044, Q91)
   - "Remember this" from a diff comment or a PR comment
 - **Several repos:** the project's repo limit, the "in use" rule, the folder name rule, the renderer of the repos list that core appends to the agent's instructions, and of a PR's "Related" section.
 - **The evaluator:** ported from `spikes/github-app-and-git-proxy/src/github/independent-review.ts` with its cases, taking drivers as members and approvers through verified links (ADR 0040, amended).
@@ -28,7 +29,7 @@ Pure code first, each piece with exhaustive tests; use-case signatures with thei
 
 ## Done when
 
-- [ ] Tests: every lifecycle's transitions, legal and illegal; the gate for every origin at 79%, 80%, 99% and 100%, and across a month's end; each Insights figure on a fixture with its expected value; each secret shape refused and its negative control saved; the index's order and cut; the evaluator's cases (approved, stale, dismissed, bot, driver, unlinked, changes requested after an approval); each mail renders with its link in both parts.
+- [ ] Tests: every lifecycle's transitions, legal and illegal; the gate for every origin at 79%, 80%, 99% and 100%, and across a month's end; each Insights figure on a fixture with its expected value; each secret shape and each model-control token refused, and their negative controls saved; the index's order and cut, with a note that sessions only saw in the index ranked by its last edit, below a note a session read; the block's framing, with each note's source; a stale expected version refused; the evaluator's cases (approved, stale, dismissed, bot, driver, unlinked, changes requested after an approval); each mail renders with its link in both parts.
 - [ ] Each test that proves a row's condition is named for the row, with its break-it check.
 - [ ] Every new setting is in `docs/configuration.md`.
 - [ ] Committed as `✨ add the milestone 4 domain`.
