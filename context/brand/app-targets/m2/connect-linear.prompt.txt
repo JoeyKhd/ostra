@@ -1,0 +1,41 @@
+# Final prompts for the connect-linear target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high).
+# Generation 1: refs ../m1/github.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960, no device frame, no perspective. Product: "ostra", a dark developer control panel. The FIRST attached image is an approved page of this product (Organization > GitHub, connected): copy its sidebar, top bar, title and lede style, section titles, hairline rows, column widths and its 300px right properties panel EXACTLY. This is the sibling page, Organization > Linear, in its connected state. It must look like another page of the same product.
+
+SCREEN: Organization > Linear, connected. An admin sees that the organization's own Linear app is connected: which workspace, which app user, whether Linear's webhooks reach ostra, when the last event came in, and whether the token is healthy.
+
+PALETTE (neutral graphite, no hue in the chrome): page background #0D0E10, sidebar #0A0B0C, raised surfaces #131416, selected nav #1A1B1E, hairlines #1F2023, control borders #2A2C30, text #EDEDEE, secondary text #9A9DA3, faint text #64676D, success green #4FB286 (only the Connected dot and the word Connected, and the small healthy dots), link teal #6FB8AA (inline links only), amber #FFB224 ONLY on the sidebar "Needs you" count badge and the small project dots. No other colour anywhere. No gradients, no glow, no shadows, no purple, no blue, no cards, no boxes inside boxes.
+
+FONTS: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles weight 600 13px); IBM Plex Mono 12.5px for the workspace key, user names, IDs, URLs, scopes, event type names and times. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px, identical to the reference: small white hinge-shell logo (attached logo) + "Acme Corp" + up-down chevron. Search field "Search" with "⌘K" and a small off-white square "+" button. Nav rows 26px: "Home", "Needs you" with amber pill count "5", "My tasks" 7. Label "Projects": colour squares + "calculator", "billing-platform", "web-storefront", "mobile-app", "data-pipeline", "13 more". Label "Organization": "Runner pools" 238, "Models", "GitHub" (git-pull-request icon), "Linear" (SELECTED: #1A1B1E background, white text, a ticket icon), "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: avatar "AK" + "Alex Kim".
+2) TOP BAR 44px with bottom hairline: breadcrumbs "Acme Corp  >  Linear" (Linear in white). Right side: one secondary button with an external-link icon FIRST then "Open in Linear" (dark #131416 fill, #2A2C30 border, 28px tall). No primary button on this page.
+3) MAIN COLUMN, left padding 40px, top padding 28px, max width like the reference:
+ - Title "Linear".
+ - Grey lede, 2 lines: "The organization's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent."
+ - Section title "Connection". One 40px row between hairlines: green dot + "Connected" in green, then mono white "acme", then grey "Acme", right-aligned faint "since 12 Nov".
+ - Section title "Events". Key/value rows, 40px each, hairlines between, key column 160px in grey, value in white:
+   "Mode"          a small grey radio-tower icon, then "Webhooks: receiving"
+   "Webhook URL"   mono faint "https://ostra.acme.dev/webhooks/linear/c7f3a9e2" and at the far right a small teal "Copy"
+   "Last event"    mono "Issue" then grey " CALC-161 updated", right-aligned faint mono "2 min ago"
+   "Backstop"      grey "Every board is also polled every 5 min, so a missed delivery is found."
+ - Section title "Token". Key/value rows, same style:
+   "Access token"   small green dot + "Healthy", then grey " · expires in 21 h, refreshed an hour before"
+   "Refresh token"  small grey lock icon + grey "In the secret store"
+ - Section title "Disconnect". One row: grey text "Revokes the token at Linear and stops every board. Boards and their tickets stay, read-only." and at the far right a secondary outline button "Disconnect" (dark fill, #2A2C30 border, white text).
+ - Calm empty dark space below.
+4) PROPERTIES PANEL 300px on the right, left hairline, padding 20px 18px. Small faint label "App". Key/value rows 30px, key in grey 84px column, value in white mono: "App user" ostra; "Client ID" 3b9f…41ac; "Workspace" acme; "Secrets" with a small lock icon and grey sans "In the secret store". Hairline. Small faint label "Scopes" with faint "4" on the right. Rows, mono grey name on the left only: read, write, issues:create, comments:create. Hairline. Small faint label "Webhook events" with faint "6" on the right. Rows, mono grey: Issue, Comment, Attachment, IssueLabel, OAuthAuthorization, AgentSessionEvent. Under the list one faint 12px line: "AgentSessionEvent is asked for now, so agent mode later needs no new app."
+
+All rows start at the same left edge as their labels; no indents, no check icons. Text must be sharp, correctly spelled and exactly as given. No illustrations, no marketing, no octopus, no sparkles, no Linear logo.
+
+# Generation 2 (the target): an edit of generation 1. Refs: generation 1, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+
+EDIT the first reference image (the ostra Organization > Linear screen). Keep its layout, data, spacing, palette and type exactly, and change ONLY these things:
+1. Section titles "Connection", "Events", "Token" and "Disconnect" are small: IBM Plex Sans semibold 13px, the same size as the body text, not larger. The space above each section stays.
+2. In the right properties panel, the rows under "Scopes" (read, write, issues:create, comments:create) and under "Webhook events" (Issue, Comment, Attachment, IssueLabel, OAuthAuthorization, AgentSessionEvent) start at exactly the same left edge as their labels "Scopes" and "Webhook events". No indent. They are mono 12.5px in grey #9A9DA3, not white.
+3. Events section, "Mode" row: the value "Webhooks: receiving" is IBM Plex Sans 13px (not mono), white, after the small grey radio-tower icon.
+4. Events section, "Webhook URL" row: the URL stays mono but in faint grey #64676D, not white. "Copy" stays teal at the far right.
+5. Sidebar: the selected "Linear" row uses a ticket icon (a small ticket stub outline), not the sliders icon. "Agent profiles" keeps the sliders icon.
+6. Everything else stays identical, including all text, which must be spelled exactly as in the first reference image. No gradients, no glow, no purple, no shadows, no cards. Flat straight-on screenshot, crisp text.

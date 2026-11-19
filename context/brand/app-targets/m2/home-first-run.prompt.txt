@@ -1,0 +1,32 @@
+# Final prompt for the home-first-run target (gpt_image_2_6, --aspect_ratio 3:2 --resolution 2k --quality high). One generation.
+# Refs: ../m1/home.png (the approved 2048 original), ../../app-concepts/html/home-graphite.png, ../../kit/logo/export/ostra-hinge-single-color-2048.png
+# The right column was asked for empty, then composited with ../../files/web/sign-in-illustration.webp (B-017): scaled to 162.5% of the column's width, centred, top-aligned, at 0.85 brightness, over --side #0A0B0C (home-first-run.md, "The illustration").
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960, no device frame, no perspective, dark mode. Product: "ostra", a self-hosted control panel for coding agents. The FIRST attached image is an approved page of this product (its Home screen, full of data): copy its top bar, page heading, section titles, hairline rows, fonts, density and colours EXACTLY. This is the SAME Home page for a brand-new organization, in its first-run state, where a setup checklist takes the place of the "Needs you" section. It must look like the same product.
+
+PALETTE (neutral graphite, no hue in the chrome): page background #0D0E10, sidebar #0A0B0C, raised surfaces and inputs #131416, selected nav #1A1B1E, hairlines #1F2023, control borders #2A2C30, text #EDEDEE, secondary text #9A9DA3, faint text #64676D, success green #4FB286 (only the filled tick circles of done steps), link teal #6FB8AA (inline links only), primary button filled warm off-white #F3F0E8 with dark text #0C1D21. NO amber anywhere on this screen (nothing waits on the member yet). No gradients, no glow, no shadows, no purple, no blue, no cards, no boxes inside boxes.
+
+FONTS: page title Manrope Bold 24px; everything else IBM Plex Sans 13px (nav and buttons weight 500, section titles weight 600 13px); IBM Plex Mono for the date eyebrow, numbers and counts. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+LAYOUT, left to right:
+1) SIDEBAR 232px, #0A0B0C, right hairline, same style as the reference: top-left the 20px off-white logo mark (the rounded shell with one diagonal channel and a small notch, from the attached logo image) + "Acme Corp" semibold + small up-down chevron. Search field "Search" with "⌘K" and a small off-white square "+" button. Nav rows 26px: "Home" (SELECTED, #1A1B1E background, house icon), "Needs you" (hand icon, no badge), "My tasks" (user-circle icon, no count). Small faint label "Projects", then one faint row with a plus icon: "New project". Small faint label "Organization", then: "Runners" (server icon), "Models" (cpu icon), "GitHub" (git-pull-request icon), "Linear" (ticket icon), "Members" (users icon), "Settings" (gear icon). Bottom: grey circle avatar "DE" and "demo".
+2) TOP BAR 44px with bottom hairline: breadcrumbs "Acme Corp  ›  Home" ("Home" brighter). Far right: one SECONDARY outline button "+ New task" (#131416 fill, #2A2C30 border, white text), NOT filled.
+3) MAIN COLUMN (padding 28px top, 40px left), width like the reference, no cards:
+ - Eyebrow in faint mono: "Thursday 19 November"
+ - Title: "Acme Corp"
+ - Lede in secondary grey: "Your organization's projects and what waits on you."
+ - SECTION "Set up ostra": header row with "Set up ostra" semibold 13px and at the far right faint mono "3 of 7". Then 7 rows of 52px separated by hairlines. Each row: a 22px circle at left, then a title (13px, weight 500) with a one-line body under it (12.5px grey), and an action on the right:
+   row 1: filled green circle with a dark check mark | title "Create the first admin" in grey | body "You're signed in as the admin." | no action
+   row 2: filled green circle with check | title "Add a model provider" in grey | body "A base URL and a token. ostra lists the models and tests the connection." | no action
+   row 3: filled green circle with check | title "Connect GitHub" in grey | body "A GitHub App opens every pull request. Use an existing App or create one." | no action
+   row 4 (THE NEXT STEP): circle with a white 1px border and mono "4" | title "Connect Linear" in white | body "Tickets become tasks, and ostra keeps their status in step. Skip it to run on prompts alone." | on the right a small teal text link "Skip for now", then 12px gap, then the page's ONE PRIMARY button, filled off-white #F3F0E8 with dark text: "Connect Linear →", 28px tall
+   row 5: circle with #2A2C30 border and grey mono "5" | "Create a project" | "Pick a repo. ostra drafts its environment from the repo's files." | outline button "Create a project →"
+   row 6: circle "6" | "Connect a runner" | "Run one command on a machine. Tasks run there." | outline button "Connect a runner →"
+   row 7: circle "7" | "Start the first task" | "Type a prompt and watch the agent work, then review its pull request." | outline button "New task →"
+   Outline buttons: #131416 fill, #2A2C30 border, white 12.5px text, 28px tall, all right-aligned to the same edge.
+ - SECTION "Projects" with faint mono count "0". One row between hairlines, faint text: "No projects yet. Create one from the checklist."
+ - SECTION "Recent activity". One row between hairlines, faint text: "Nothing has happened yet."
+ - Calm empty dark space below.
+4) RIGHT COLUMN 300px with a left hairline: completely EMPTY, plain flat #0A0B0C from top to bottom, no text, no image, no chart, nothing in it.
+
+All text must be spelled exactly as given, sharp and legible. Crisp alignment on a common left edge, calm and precise, like a tool engineers use all day. No illustrations, no marketing, no octopus, no sparkles, no Linear logo.
