@@ -153,19 +153,30 @@ const bootSkewMs = async (): Promise<number> => {
 /** Every process on the machine. Throws when the platform's tool can't run. */
 export const listProcesses = async (): Promise<ProcessInfo[]> => (isWindows ? listWindows() : isLinux ? listLinux() : listPosix());
 
+/**
+ * Every process below `rootPid`, by the parent links. A link counts only when the child was born
+ * after its parent: a process keeps its parent's PID after the parent exits, and once Windows hands
+ * that PID on, the link points at a stranger, whose "children" would be another program's.
+ */
 export const descendantsOf = (rootPid: number, processes: readonly ProcessInfo[]): ProcessInfo[] => {
   const byParent = new Map<number, ProcessInfo[]>();
+  const byPid = new Map<number, ProcessInfo>();
   for (const p of processes) {
     const siblings = byParent.get(p.ppid) ?? [];
     siblings.push(p);
     byParent.set(p.ppid, siblings);
+    byPid.set(p.pid, p);
   }
   const out: ProcessInfo[] = [];
   const queue = [rootPid];
   const seen = new Set<number>([rootPid]);
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    const parent = byPid.get(next);
     for (const child of byParent.get(next) ?? []) {
       if (seen.has(child.pid)) {
+        continue;
+      }
+      if (parent !== undefined && parent.startedAt !== 0 && child.startedAt !== 0 && child.startedAt < parent.startedAt) {
         continue;
       }
       seen.add(child.pid);

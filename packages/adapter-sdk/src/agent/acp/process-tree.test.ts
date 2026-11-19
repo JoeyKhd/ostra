@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isAlive, watchProcessTree } from "./process-tree.ts";
+import { descendantsOf, isAlive, watchProcessTree } from "./process-tree.ts";
 
 // A cancelled turn's reap (ticket 42): the processes born during the turn end, and with a unit
 // that can list its processes (a Windows job, a cgroup), the ones that left the agent's tree too.
@@ -101,4 +101,15 @@ describe("a watched root whose PID another process took", () => {
     expect(isAlive(child), "its child").toBe(true);
     process.kill(child, "SIGKILL");
   }, 30_000);
+});
+
+describe("a process's descendants", () => {
+  it("F-014: follow a parent link only to a child born after its parent, not to an older process that kept a dead parent's PID", () => {
+    const proc = (pid: number, ppid: number, startedAt: number) => ({ pid, ppid, name: "node.exe", startedAt });
+    const list = [proc(1, 0, 100), proc(2, 1, 150), proc(3, 2, 160), proc(4, 1, 50), proc(5, 4, 60)];
+    // 4 names PID 1 as its parent but is older than it: its parent was an earlier process with that PID.
+    expect(descendantsOf(1, list).map((p) => p.pid)).toEqual([2, 3]);
+    // With the root gone, its orphans are still found: there's no birth to compare with.
+    expect(descendantsOf(1, list.slice(1)).map((p) => p.pid)).toEqual([2, 4, 3, 5]);
+  });
 });
