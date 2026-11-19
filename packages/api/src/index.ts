@@ -21,6 +21,7 @@ export { serveCheckOutput } from "./services/check-output.ts";
 export { corePanelUploader } from "./services/panel-blobs.ts";
 export type { PanelUploaderOptions } from "./services/panel-blobs.ts";
 export { serveSkillFileUpload } from "./services/skill-file-upload.ts";
+export { serveAuditExport } from "./services/audit-log.ts";
 export type { GitHubLinkOutcome, GitHubLinkResult, GitHubLinkStart } from "./services/github-link.ts";
 export type { LinearTrackerAuth, TrackerDirectory, TrackerLookup } from "./services/trackers.ts";
 export { createLinearAppKit, linearEndpoints, linearScopes, linearWebhookEvents } from "./services/linear-app.ts";

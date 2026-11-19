@@ -16,6 +16,7 @@ import { poolsRouter, runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
 import { accountRouter } from "./account.ts";
+import { auditRouter } from "./audit.ts";
 import { searchRouter } from "./search.ts";
 import { agentProfilesRouter } from "./agent-profiles.ts";
 import { insightsRouter } from "./insights.ts";
@@ -32,6 +33,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   email: emailRouter,
   organization: organizationRouter,
+  audit: auditRouter,
   search: searchRouter,
   instance: instanceRouter,
   providers: providersRouter,

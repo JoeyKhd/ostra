@@ -1,6 +1,6 @@
 # 25: API: the audit log and the task's event log
 
-Status: ready-for-agent
+Status: resolved
 Builder: api
 Blocked by: 10
 Features: F-073
@@ -16,7 +16,9 @@ Spec: `../spec.md`, section 4 ("The audit log"); ADR 0054
 
 ## Done when
 
-- [ ] Tests named `it("F-073: ...")`: an organization admin sees every entry and filters each way; a project admin sees only their project's, and a member none; another organization's entries never; the export's rows equal the list's for the same filters; the event log returns a tool call's full input for `execute`, `read`, `search`, `edit` and `fetch`; a member who can't open the project gets `NOT_FOUND`.
-- [ ] Committed as `✨ add the audit log and the event log`.
+- [x] Tests named `it("F-073: ...")`: an organization admin sees every entry and filters each way; a project admin sees only their project's, and a member none; another organization's entries never; the export's rows equal the list's for the same filters; the event log returns a tool call's full input for `execute`, `read`, `search`, `edit` and `fetch`; a member who can't open the project gets `NOT_FOUND`.
+- [x] Committed as `✨ add the audit log and the event log`.
 
 ## Comments
+
+- 2026-11-19: `audit.list` and `audit.actions` (`packages/api/src/routers/audit.ts`), the export `GET /api/audit/export` (`apps/web/src/app/api/audit/export/route.ts` calling `serveAuditExport`), both on one query in `packages/api/src/services/audit-log.ts`: keyset pages by `(createdAt, id)`, newest first, an action or a prefix ending in `.`, actor, project, entity and period. An organization admin reads all of it; anyone else names a project they administer (`FORBIDDEN` otherwise, `NOT_FOUND` for a project they can't open). Each entry carries the actor's kept name and `removed`, the project's name and the task's ID (`taskId`, from an entry about a task, or its `data.taskId`). The CSV quotes every field and defuses a leading `=`, `+`, `-` or `@`. `tasks.eventLog` reads the stored events by `seq`, with kind filters, through `taskProcedure("read")`. Tests: `packages/api/src/routers/audit.test.ts` (7); break-its in `context/proof/F-073.md`. Committed as `✨ add the audit log and the event log`.

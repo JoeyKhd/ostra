@@ -155,6 +155,10 @@ const reviewCheckOf = (checks: readonly ReviewCheckRow[], reviewers: ReadonlyMap
   return newest === undefined ? null : { ...reviewCheckHeadOf(newest, reviewers), heads: checks.map((check) => reviewCheckHeadOf(check, reviewers)) };
 };
 
+/** How many events a page of the event log holds by default, and at most (ticket 25). */
+const EVENT_LOG_PAGE = 200;
+const EVENT_LOG_MAX_PAGE = 1000;
+
 export const tasksRouter = router({
   /** F-037, F-135 (tickets 27, 50): whether a new task would start now, or the reason it would wait. */
   startCheck: startCheckProcedure,
@@ -508,6 +512,43 @@ export const tasksRouter = router({
       /** The newest seq that existed when the first page was read: where the live tail resumes. */
       headSeq: input.beforeSeq === undefined ? (events.at(-1)?.seq ?? 0) : null,
       taskHeadSeq: task.eventSeq,
+    };
+  }),
+
+  /**
+   * The task's event log (F-073, ADR 0054, ticket 25): every event in order, paged by `seq`, for any
+   * member who can open the task. A tool call carries its full input as stored, a failed or refused
+   * one its error, an approval the command it asked about. `kinds` keeps only those kinds. It reads
+   * only.
+   */
+  eventLog: taskProcedure(
+    "read",
+    z.strictObject({
+      taskId: taskIdSchema,
+      /** Events after this seq: the previous page's `nextAfterSeq`. */
+      afterSeq: z.number().int().nonnegative().optional(),
+      kinds: z.array(z.string().min(1).max(80)).max(50).optional(),
+      limit: z.number().int().min(1).max(EVENT_LOG_MAX_PAGE).optional(),
+    }),
+  ).query(async ({ ctx, input }) => {
+    const { db } = ctx.deps;
+    const limit = input.limit ?? EVENT_LOG_PAGE;
+    const rows = await db.event.findMany({
+      where: {
+        taskId: input.taskId,
+        organizationId: ctx.scope.organizationId,
+        seq: { gt: input.afterSeq ?? 0 },
+        ...(input.kinds === undefined || input.kinds.length === 0 ? {} : { kind: { in: input.kinds } }),
+      },
+      orderBy: { seq: "asc" },
+      take: limit + 1,
+    });
+    const page = rows.slice(0, limit);
+    const events: StoredEvent[] = page.map(mapEventToStored);
+    return {
+      events,
+      /** The `afterSeq` of the next page, or `null` when this page reaches the newest event. */
+      nextAfterSeq: rows.length > limit ? (events.at(-1)?.seq ?? null) : null,
     };
   }),
 
