@@ -1,6 +1,7 @@
 import { syncProviderModels, addModelProvider } from "@ostra/domain";
 import {
   addModelProviderInputSchema,
+  agentProfileIdSchema,
   apiFormatSchema,
   authSchemeSchema,
   httpUrlSchema,
