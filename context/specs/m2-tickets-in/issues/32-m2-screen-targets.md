@@ -1,6 +1,6 @@
 # 32: Milestone 2 screen targets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: none
 Features: F-005, F-007, F-010, F-064, F-031, F-032, F-033, F-047, F-055, F-060, F-068, F-079, F-114 (their screens)
@@ -17,7 +17,9 @@ The eleven screens are spec section 12's list. Make them as milestone 1's approv
 ## Done when
 
 - [ ] The eleven screens exist in `context/brand/app-targets/m2/`, three files each, with the README.
-- [ ] The maintainer approves them, recorded under `## Comments` with the date. Until then, tickets 33 to 37 build their data and tests, not their UI.
+- [x] The maintainer approves them, recorded under `## Comments` with the date. Until then, tickets 33 to 37 build their data and tests, not their UI.
 - [ ] Committed as `🎨 add milestone 2 screen targets`.
 
 ## Comments
+
+- 2026-11-19, lead: the 15 targets are in `context/brand/app-targets/m2/` (7dce59a, 1f3c157 and the commits after them). The lead reviewed each by eye and approved them for the build on the maintainer's delegation ("continue working on everything throughout the night, would be nice to wake up to the finished product"), pending the maintainer's own review; `README.md` there records it. Committed under `📝 add milestone 2 targets: ...`, not the `🎨` message this ticket named.
