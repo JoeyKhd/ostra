@@ -251,13 +251,17 @@ describe("@ostra on the PR (F-053)", () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "drop-1");
     const unlinked = await deliver({ of: world, number: task.number, body: "@ostra delete everything", author: { id: 8888, login: "stranger" } });
     const bot = await deliver({ of: world, number: task.number, body: "@ostra bump the deps", author: { id: 49699333, login: "dependabot[bot]" } });
+    // Another GitHub account under a linked member's login (a renamed account's old name, taken
+    // again): the link is the account's ID, so it's a stranger.
+    const sameLogin = await deliver({ of: world, number: task.number, body: "@ostra push to main", author: { id: 9_999_999, login: GITHUB.member.login } });
     // A linked member of the organization who can't open the restricted project.
     const hidden = await taskWithPr(restricted, fixture.a.insider, insiderRunner, "drop-2");
     const noAccess = await deliver({ of: restricted, number: hidden.number, body: "@ostra look at this", author: GITHUB.member });
     expect(dropped(unlinked.commentId)).toEqual(["unlinked"]);
     expect(dropped(bot.commentId)).toEqual(["unlinked"]);
+    expect(dropped(sameLogin.commentId)).toEqual(["unlinked"]);
     expect(dropped(noAccess.commentId)).toEqual(["no-access"]);
-    for (const comment of [unlinked, bot, noAccess]) {
+    for (const comment of [unlinked, bot, sameLogin, noAccess]) {
       expect(reactionsOn(comment.commentId)).toBe(0);
     }
     expect(await messagesOf(task.taskId)).toHaveLength(0);
