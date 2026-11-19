@@ -57,6 +57,14 @@ export type AgentProfileProbes = {
   readonly allowAllRepoConfig: { readonly path: string; readonly content: string };
   /** Whether the agent says back each marked block of a prompt (`Read <label>: <text>`): the fakes do. */
   readonly echoesMarkedBlocks: boolean;
+  /**
+   * Where an HTTP MCP server of that name answers, for an agent that connects to its servers
+   * before it lists their tools (a real agent does). Absent: an address nothing answers at, which
+   * the fakes never call.
+   */
+  readonly mcpUrl?: (name: string) => string;
+  /** The command of a stdio MCP server that answers, for the same agents. Absent: `mcp-local`, which the fakes never run. */
+  readonly mcpStdio?: { readonly command: string; readonly args: readonly string[] };
 };
 
 export type ProfileCaseFixture = {
@@ -79,6 +87,9 @@ const rule = (id: string, tool: ApprovalRule["tool"], match: ApprovalRule["match
   tool,
   match,
 });
+
+/** An HTTP MCP server's address in a case: the fixture's live one, or one nothing answers at. */
+const mcpUrlOf = (profile: AgentProfileProbes, name: string): string => profile.mcpUrl?.(name) ?? `http://127.0.0.1:9/mcp/${name}`;
 
 const textOf = (events: readonly TaskEvent[]): string =>
   events.flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
@@ -378,8 +389,8 @@ export const defineAgentProfileCases = (subject: Subject): void => {
     }
     const events: TaskEvent[] = [];
     const mcpServers: LaunchMcpServer[] = [
-      { name: "docs", transport: "http", url: "http://127.0.0.1:9/mcp/docs", readOnly: true },
-      { name: "files", transport: "http", url: "http://127.0.0.1:9/mcp/files", readOnly: false },
+      { name: "docs", transport: "http", url: mcpUrlOf(profile, "docs"), readOnly: true },
+      { name: "files", transport: "http", url: mcpUrlOf(profile, "files"), readOnly: false },
     ];
     const before = (await readdir(workspace(), { recursive: true })).sort();
     const running = await profileSession(
@@ -461,8 +472,8 @@ export const defineAgentProfileCases = (subject: Subject): void => {
       {
         skills: [{ name: "release-notes", dir: skillDir }],
         mcpServers: [
-          { name: "docs", transport: "http", url: "http://127.0.0.1:9/mcp/docs", readOnly: true },
-          { name: "local", transport: "stdio", command: "mcp-local", args: [], env: {}, readOnly: false },
+          { name: "docs", transport: "http", url: mcpUrlOf(profile, "docs"), readOnly: true },
+          { name: "local", transport: "stdio", command: profile.mcpStdio?.command ?? "mcp-local", args: [...(profile.mcpStdio?.args ?? [])], env: {}, readOnly: false },
         ],
       },
       events,

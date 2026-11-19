@@ -112,6 +112,12 @@ export type PrepareLaunchInput = {
   readonly mcpServers?: readonly LaunchMcpServer[];
   /** The mode the agent starts in (F-063). Absent: `build`. */
   readonly mode?: TurnMode;
+  /**
+   * Each repo's checkout folder, by its name inside `workspaceDir` (the task spec's `checkoutDir`).
+   * An adapter that keeps the repo's own config out (`projectConfigOverride`) names the repos'
+   * own skills from them, so the profile's sit beside the repo's (F-021). Absent: none named.
+   */
+  readonly repoDirs?: readonly string[];
 };
 
 // ---------- the driver seam (ticket 09) ----------
