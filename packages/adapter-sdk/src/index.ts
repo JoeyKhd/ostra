@@ -9,6 +9,7 @@ export * from "./plumbing/retry.ts";
 export * from "./plumbing/rate-budget.ts";
 export * from "./plumbing/idempotency.ts";
 export * from "./plumbing/vendor.ts";
+export * from "./plumbing/signature.ts";
 
 export * from "./tracker/capabilities.ts";
 export * from "./tracker/base.ts";

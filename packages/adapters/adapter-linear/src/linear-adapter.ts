@@ -4,13 +4,23 @@ import type {
   AdapterError,
   AdapterResult,
   BoardRef,
+  CodeHostIntegration,
+  DownloadedFile,
   HealthReport,
+  MoveResult,
   Ticket,
+  TicketContext,
   TicketPage,
   TicketQuery,
+  TicketRef,
+  TicketStatusCategory,
+  TrackerBoard,
   TrackerCapabilities,
+  TrackerStatus,
+  TrackerWebhookHint,
+  WebhookVerification,
 } from "@ostra/adapter-sdk";
-import { ticketKeySchema } from "@ostra/protocol";
+import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { TicketKey } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -48,12 +58,33 @@ const issueSchema = z.looseObject({
   url: z.string(),
   priority: z.number().nullish(),
   updatedAt: z.string(),
-  state: z.looseObject({ id: z.string(), name: z.string() }),
-  parent: z.looseObject({ identifier: z.string() }).nullish(),
+  state: z.looseObject({ id: z.string(), name: z.string(), type: z.string() }),
+  parent: z.looseObject({ id: z.string(), identifier: z.string() }).nullish(),
+  labels: z.looseObject({ nodes: z.array(z.looseObject({ name: z.string() })) }).nullish(),
 });
 type LinearIssue = z.infer<typeof issueSchema>;
 
-const ISSUE_FIELDS = "id identifier title description url priority updatedAt state { id name } parent { identifier }";
+const ISSUE_FIELDS =
+  "id identifier title description url priority updatedAt state { id name type } parent { id identifier } labels { nodes { name } }";
+
+/** Linear's state types, in the four categories every tracker shares. */
+export const linearStateCategory = (type: string): TicketStatusCategory => {
+  switch (type) {
+    case "started":
+      return "started";
+    case "completed":
+      return "done";
+    case "canceled":
+      return "cancelled";
+    default:
+      // triage, backlog, unstarted, and any type Linear adds later.
+      return "open";
+  }
+};
+
+/** What a stub answers until tickets 07 and 08 build the operation. */
+const notYet = (operation: string): Promise<AdapterResult<never>> =>
+  Promise.resolve(adapterError("unsupported", `${operation}: the Linear adapter builds it in milestone 2 (tickets 07 and 08)`));
 
 const responseSchema = z.looseObject({
   data: z.unknown().optional(),
@@ -64,20 +95,27 @@ const responseSchema = z.looseObject({
 
 const toTicket = (issue: LinearIssue): AdapterResult<Ticket> => {
   const key = ticketKeySchema.safeParse(issue.identifier);
+  const externalId = externalTicketIdSchema.safeParse(issue.id);
   const parent = issue.parent === null || issue.parent === undefined ? null : ticketKeySchema.safeParse(issue.parent.identifier);
+  const parentId = issue.parent === null || issue.parent === undefined ? null : externalTicketIdSchema.safeParse(issue.parent.id);
   const updated = Date.parse(issue.updatedAt);
-  if (!key.success || (parent !== null && !parent.success) || Number.isNaN(updated)) {
+  const unreadable =
+    !key.success || !externalId.success || parent?.success === false || parentId?.success === false || Number.isNaN(updated);
+  if (unreadable) {
     return adapterError("invalid-response", "Linear's issue could not be read");
   }
   return ok({
+    externalId: externalId.data,
     key: key.data,
     title: issue.title,
     description: issue.description ?? null,
-    status: { id: issue.state.id, name: issue.state.name },
+    status: { id: issue.state.id, name: issue.state.name, category: linearStateCategory(issue.state.type) },
     url: issue.url,
     // Linear's 0 is "no priority"; 1 is urgent and 4 is low: lower is more urgent, as ostra says.
     priority: issue.priority === null || issue.priority === undefined || issue.priority === 0 ? null : issue.priority,
     parentKey: parent?.success === true ? parent.data : null,
+    parentExternalId: parentId?.success === true ? parentId.data : null,
+    labels: issue.labels?.nodes.map((label) => label.name) ?? [],
     updatedAt: updated,
   });
 };
@@ -90,6 +128,13 @@ export class LinearAdapter extends TrackerAdapter {
     // A ticket's parent is read, so a sub-issue is told from a ticket.
     subIssues: true,
     statusGraph: false,
+    // Milestone 2's operations are stubs until tickets 07 (writes, context) and 08 (webhooks), which
+    // turn these on as they build them.
+    webhooks: false,
+    commentEdit: false,
+    attachments: false,
+    // Linear sets a status directly.
+    transitions: false,
   };
 
   readonly #auth: LinearAuth;
@@ -108,8 +153,10 @@ export class LinearAdapter extends TrackerAdapter {
     return viewer.ok ? { status: "ok" } : { status: "down", reason: viewer.error.message };
   }
 
-  async getTicket(_board: BoardRef, key: TicketKey): Promise<AdapterResult<Ticket>> {
-    const found = await this.#issue(key);
+  async getTicket(_board: BoardRef, ref: TicketKey | TicketRef): Promise<AdapterResult<Ticket>> {
+    // Linear's `issue(id:)` takes an ID or an identifier.
+    const id = typeof ref === "string" ? ref : "externalId" in ref ? ref.externalId : ref.key;
+    const found = await this.#issue(id);
     return found.ok ? toTicket(found.value) : found;
   }
 
@@ -119,7 +166,8 @@ export class LinearAdapter extends TrackerAdapter {
       filter["state"] = { id: { in: [...query.statusIds] } };
     }
     if (query.updatedSince !== undefined) {
-      filter["updatedAt"] = { gt: new Date(query.updatedSince).toISOString() };
+      // Inclusive, as the interface says.
+      filter["updatedAt"] = { gte: new Date(query.updatedSince).toISOString() };
     }
     const page = await this.#query(
       "listing tickets",
@@ -203,9 +251,55 @@ export class LinearAdapter extends TrackerAdapter {
     return linked.value.attachmentLinkGitHubPR.success ? ok(undefined) : adapterError("conflict", "Linear did not link the PR");
   }
 
+  // ---------- milestone 2: stubs until tickets 07 and 08 ----------
+
+  listBoards(): Promise<AdapterResult<readonly TrackerBoard[]>> {
+    return notYet("listBoards");
+  }
+
+  listStatuses(): Promise<AdapterResult<readonly TrackerStatus[]>> {
+    return notYet("listStatuses");
+  }
+
+  getTicketContext(): Promise<AdapterResult<TicketContext>> {
+    return notYet("getTicketContext");
+  }
+
+  moveTicket(): Promise<AdapterResult<MoveResult>> {
+    return notYet("moveTicket");
+  }
+
+  updateComment(): Promise<AdapterResult<void>> {
+    return notYet("updateComment");
+  }
+
+  linkTask(): Promise<AdapterResult<{ readonly attachmentId: string }>> {
+    return notYet("linkTask");
+  }
+
+  createTicket(): Promise<AdapterResult<Ticket>> {
+    return notYet("createTicket");
+  }
+
+  detectCodeHostIntegration(): Promise<AdapterResult<CodeHostIntegration>> {
+    return notYet("detectCodeHostIntegration");
+  }
+
+  downloadFile(): Promise<AdapterResult<DownloadedFile>> {
+    return notYet("downloadFile");
+  }
+
+  verifyWebhook(): WebhookVerification {
+    return { ok: false, reason: "bad-signature" };
+  }
+
+  parseWebhook(): AdapterResult<TrackerWebhookHint> {
+    return adapterError("unsupported", "parseWebhook: the Linear adapter builds it in ticket 08");
+  }
+
   // ---------- internals ----------
 
-  async #issue(key: TicketKey): Promise<AdapterResult<LinearIssue>> {
+  async #issue(key: string): Promise<AdapterResult<LinearIssue>> {
     // Linear takes a ticket's identifier, such as `OST-12`, where it takes an ID.
     const found = await this.#query(
       "reading a ticket",

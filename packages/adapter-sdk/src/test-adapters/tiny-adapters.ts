@@ -62,7 +62,18 @@ import { SecretStoreAdapter, secretRefSchema } from "../secret-store/base.ts";
 import type { SecretRef, SecretScope } from "../secret-store/base.ts";
 import type { StubEndpoint } from "../testing/model-provider-suite.ts";
 import { TrackerAdapter } from "../tracker/base.ts";
-import type { Ticket, TicketPage } from "../tracker/base.ts";
+import type {
+  CodeHostIntegration,
+  DownloadedFile,
+  MoveResult,
+  Ticket,
+  TicketContext,
+  TicketPage,
+  TrackerBoard,
+  TrackerStatus,
+  TrackerWebhookHint,
+  WebhookVerification,
+} from "../tracker/base.ts";
 
 // Tiny adapters of every kind, for this package's own tests: each runs its kind's contract suite,
 // so the suites are known to pass against a correct adapter. None of these is shipped.
@@ -71,9 +82,19 @@ const unsupported = (what: string) => Promise.resolve(adapterError("unsupported"
 
 // ---------- tracker, notification, blob store: the first cases only ----------
 
+// The tracker's full suite runs against the Jira fake (`testing/jira-fake.ts`), a full in-memory
+// tracker; this one answers `unsupported` and runs the first cases.
 export class TinyTracker extends TrackerAdapter {
-  readonly name = "tiny-tracker";
-  readonly capabilities = { agentSessions: false, subIssues: true, statusGraph: true };
+  readonly name: string = "tiny-tracker";
+  readonly capabilities = {
+    agentSessions: false,
+    subIssues: true,
+    statusGraph: true,
+    webhooks: false,
+    commentEdit: false,
+    attachments: false,
+    transitions: false,
+  };
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });
   }
@@ -91,6 +112,39 @@ export class TinyTracker extends TrackerAdapter {
   }
   linkPullRequest(): Promise<AdapterResult<void>> {
     return unsupported("linkPullRequest");
+  }
+  listBoards(): Promise<AdapterResult<readonly TrackerBoard[]>> {
+    return unsupported("listBoards");
+  }
+  listStatuses(): Promise<AdapterResult<readonly TrackerStatus[]>> {
+    return unsupported("listStatuses");
+  }
+  getTicketContext(): Promise<AdapterResult<TicketContext>> {
+    return unsupported("getTicketContext");
+  }
+  moveTicket(): Promise<AdapterResult<MoveResult>> {
+    return unsupported("moveTicket");
+  }
+  updateComment(): Promise<AdapterResult<void>> {
+    return unsupported("updateComment");
+  }
+  linkTask(): Promise<AdapterResult<{ readonly attachmentId: string }>> {
+    return unsupported("linkTask");
+  }
+  createTicket(): Promise<AdapterResult<Ticket>> {
+    return unsupported("createTicket");
+  }
+  detectCodeHostIntegration(): Promise<AdapterResult<CodeHostIntegration>> {
+    return unsupported("detectCodeHostIntegration");
+  }
+  downloadFile(): Promise<AdapterResult<DownloadedFile>> {
+    return unsupported("downloadFile");
+  }
+  verifyWebhook(): WebhookVerification {
+    return { ok: false, reason: "bad-signature" };
+  }
+  parseWebhook(): AdapterResult<TrackerWebhookHint> {
+    return adapterError("unsupported", "parseWebhook: not in this test adapter");
   }
 }
 

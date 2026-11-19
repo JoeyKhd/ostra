@@ -10,7 +10,9 @@ import { memorySecretRowStore } from "./testing/memory.ts";
 import { defineAgentContractSuite } from "./testing/agent-suite.ts";
 import { defineCodeHostContractSuite } from "./testing/code-host-suite.ts";
 import { defineExecutorContractSuite } from "./testing/executor-suite.ts";
-import { defineBlobStoreContractSuite, defineNotificationContractSuite, defineTrackerContractSuite } from "./testing/first-case-suites.ts";
+import { defineBlobStoreContractSuite, defineNotificationContractSuite } from "./testing/first-case-suites.ts";
+import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
+import { defineTrackerContractSuite, defineTrackerFirstCases } from "./testing/tracker-suite.ts";
 import { defineModelProviderContractSuite } from "./testing/model-provider-suite.ts";
 import { defineSecretStoreContractSuite } from "./testing/secret-store-suite.ts";
 import {
@@ -30,7 +32,14 @@ import {
 // Every contract suite, run against this package's tiny adapters: the suites pass against an
 // adapter that does what its kind promises.
 
-defineTrackerContractSuite({ name: "tiny tracker", create: () => Promise.resolve({ adapter: new TinyTracker(), fixture: {} }) });
+defineTrackerFirstCases({ name: "tiny tracker", create: () => Promise.resolve({ adapter: new TinyTracker(), fixture: {} }) });
+defineTrackerContractSuite({
+  name: "the Jira fake",
+  create: () => {
+    const { adapter, fixture } = createJiraFakeSuiteSubject();
+    return Promise.resolve({ adapter, fixture });
+  },
+});
 defineNotificationContractSuite({
   name: "tiny notifier",
   create: () => Promise.resolve({ adapter: new TinyNotifier(), fixture: {} }),

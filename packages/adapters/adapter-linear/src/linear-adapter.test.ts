@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { defineTrackerContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
+import { defineTrackerFirstCases, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
 import { ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -25,6 +25,7 @@ type FakeIssue = {
 };
 
 const states: Readonly<Record<string, string>> = { s1: "Todo", s2: "In Progress", s3: "Done" };
+const stateTypes: Readonly<Record<string, string>> = { s1: "unstarted", s2: "started", s3: "completed" };
 
 const startFake = async () => {
   const issues: FakeIssue[] = [
@@ -45,8 +46,9 @@ const startFake = async () => {
     url: `https://linear.app/ostra-test/issue/${issue.identifier}`,
     priority: issue.priority,
     updatedAt: "2026-11-18T10:00:00.000Z",
-    state: { id: issue.stateId, name: states[issue.stateId] ?? "?" },
-    parent: issue.parent === null ? null : { identifier: issue.parent },
+    state: { id: issue.stateId, name: states[issue.stateId] ?? "?", type: stateTypes[issue.stateId] ?? "unstarted" },
+    parent: issue.parent === null ? null : { id: `uuid-of-${issue.parent}`, identifier: issue.parent },
+    labels: { nodes: [] },
   });
 
   const server = http.createServer((request, response) => {
@@ -128,7 +130,7 @@ const startFake = async () => {
 };
 
 let suiteFake: Awaited<ReturnType<typeof startFake>> | undefined;
-defineTrackerContractSuite({
+defineTrackerFirstCases({
   name: "linear, against a fake Linear",
   create: async () => {
     suiteFake = await startFake();
@@ -221,6 +223,14 @@ describe("the Linear adapter", () => {
   });
 
   it("declares what it has: sub-issues, and no agent sessions or status graph yet", () => {
-    expect(adapter.capabilities).toEqual({ agentSessions: false, subIssues: true, statusGraph: false });
+    expect(adapter.capabilities).toEqual({
+      agentSessions: false,
+      subIssues: true,
+      statusGraph: false,
+      webhooks: false,
+      commentEdit: false,
+      attachments: false,
+      transitions: false,
+    });
   });
 });

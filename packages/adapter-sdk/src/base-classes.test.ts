@@ -5,7 +5,6 @@ import type { AgentLaunch, MappedUpdate } from "./agent/base.ts";
 import type { AgentCapabilities } from "./agent/capabilities.ts";
 import { BlobStoreAdapter } from "./blob-store/base.ts";
 import { CodeHostAdapter } from "./code-host/base.ts";
-import { adapterError } from "./common/result.ts";
 import type { AdapterResult, HealthReport } from "./common/result.ts";
 import { ExecutorAdapter } from "./executor/base.ts";
 import { ModelProviderAdapter } from "./model-provider/base.ts";
@@ -28,7 +27,6 @@ import {
 } from "./test-adapters/tiny-adapters.ts";
 
 const ok = (): Promise<HealthReport> => Promise.resolve({ status: "ok" });
-const no = (): Promise<AdapterResult<never>> => Promise.resolve(adapterError("unsupported", "no"));
 
 describe("the eight base classes", () => {
   const world = {
@@ -77,27 +75,11 @@ describe("the eight base classes", () => {
 
   it("gives every adapter the shared plumbing, with its kind and name on every log line", async () => {
     const context = memoryAdapterContext();
-    class LoggingTracker extends TrackerAdapter {
-      readonly name = "logging-tracker";
-      readonly capabilities = { agentSessions: false, subIssues: false, statusGraph: false };
-      health(): Promise<HealthReport> {
+    class LoggingTracker extends TinyTracker {
+      override readonly name = "logging-tracker";
+      override health(): Promise<HealthReport> {
         this.plumbing.logger.info("checked", { boardCount: 0 });
         return ok();
-      }
-      getTicket(): Promise<AdapterResult<never>> {
-        return no();
-      }
-      listTickets(): Promise<AdapterResult<never>> {
-        return no();
-      }
-      updateStatus(): Promise<AdapterResult<never>> {
-        return no();
-      }
-      comment(): Promise<AdapterResult<never>> {
-        return no();
-      }
-      linkPullRequest(): Promise<AdapterResult<never>> {
-        return no();
       }
     }
     await new LoggingTracker(context).health();
@@ -117,7 +99,15 @@ describe("a missing operation", () => {
     // @ts-expect-error getTicket and the others are missing.
     class NoTracker extends TrackerAdapter {
       readonly name = "no";
-      readonly capabilities = { agentSessions: false, subIssues: false, statusGraph: false };
+      readonly capabilities = {
+        agentSessions: false,
+        subIssues: false,
+        statusGraph: false,
+        webhooks: false,
+        commentEdit: false,
+        attachments: false,
+        transitions: false,
+      };
       health(): Promise<HealthReport> {
         return ok();
       }
