@@ -67,13 +67,36 @@ export const branchNameSchema = z
   .regex(/^(?!\/)(?!.*\/\/)(?!.*\.\.)[^\s~^:?*[\\]+(?<![/.])$/, "a git branch name");
 export type BranchName = z.infer<typeof branchNameSchema>;
 
-/** A runner label, used to pick a runner for a task (F-067). */
+/**
+ * A runner label, used to pick a runner for a task (F-067, F-069). Minor 4 (milestone 5) also
+ * allows `:` and `/`, for `tier:fast` and the built-in `executor:`, `os:` and `arch:` labels; a
+ * label is sent to a peer below minor 4 only when it matches `legacyRunnerLabelPattern`.
+ */
 export const runnerLabelSchema = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z0-9][a-z0-9._-]*$/, "a label is lowercase letters, digits, dot, dash or underscore");
+  .regex(/^[a-z0-9][a-z0-9._:/-]*$/, "a label is lowercase letters, digits, dot, dash, underscore, colon or slash");
 export type RunnerLabel = z.infer<typeof runnerLabelSchema>;
+
+/** What a label had to match below minor 4: no `:` and no `/`. */
+export const legacyRunnerLabelPattern = /^[a-z0-9][a-z0-9._-]*$/;
+
+/**
+ * The prefixes of the built-in labels a runner gets from what it reports (ADR 0059): its executor,
+ * its system and its architecture. A runner can't set one itself (`OSTRA_RUNNER_LABELS`), and a
+ * profile may ask for one.
+ */
+export const reservedLabelPrefixes = ["executor:", "os:", "arch:"] as const;
+export type ReservedLabelPrefix = (typeof reservedLabelPrefixes)[number];
+
+/** Whether a label is one of the built-in ones, which only ostra sets. */
+export const isReservedLabel = (label: string): boolean =>
+  reservedLabelPrefixes.some((prefix) => label.startsWith(prefix));
+
+/** The names of an organization's three box sizes (F-095, ADR 0059). */
+export const boxSizeNameSchema = z.enum(["small", "medium", "large"]);
+export type BoxSizeName = z.infer<typeof boxSizeNameSchema>;
 
 /** An `http:` or `https:` URL. */
 export const httpUrlSchema = z.url({ protocol: /^https?$/ });

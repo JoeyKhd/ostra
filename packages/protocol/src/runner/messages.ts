@@ -6,15 +6,18 @@ import {
   epochMsSchema,
   executorKindSchema,
   leaseEpochSchema,
+  legacyRunnerLabelPattern,
   runnerLabelSchema,
   sessionSeqSchema,
 } from "../common.ts";
+import type { ExecutorKind } from "../common.ts";
 import {
   encodeEventForMinor,
   runnerEventSchema,
   runnerEventSchemaV0,
   runnerEventSchemaV1,
   runnerEventSchemaV2,
+  runnerEventSchemaV3,
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
@@ -25,6 +28,7 @@ import {
   commandSchemaV0,
   commandSchemaV1,
   commandSchemaV2,
+  commandSchemaV3,
   encodeCommandForMinor,
 } from "./commands.ts";
 import { runnerLimits } from "./limits.ts";
@@ -57,10 +61,57 @@ export const helloSessionSchema = z.looseObject({
 });
 export type HelloSession = z.infer<typeof helloSessionSchema>;
 
+// ---------- what a runner reports (minor 4, milestone 5) ----------
+
 /**
- * The first frame a peer sends. Its versions are negotiated (`negotiate`), and its peer identity
- * must match the access token it connected with. The one loose message: a newer peer may add
- * fields an older server ignores.
+ * What a runner offers (F-067, F-095, ADR 0059): its slots, and on `docker` and `kubernetes` the
+ * CPU and memory its boxes may take, as its whole offer (the engine's or the namespace quota's,
+ * less the runner's reserve). Core subtracts the boxes it placed, counted from its own rows.
+ * `null` on `host`, which counts `capacity` as slots.
+ */
+export const runnerResourcesSchema = z.strictObject({
+  slots: count,
+  cpuMillis: count,
+  memoryMiB: count,
+});
+export type RunnerResources = z.infer<typeof runnerResourcesSchema>;
+
+/** Whether an executor needs a registry for its snapshots (F-120): `kubernetes` does, `docker` may use one. */
+export const registryNeedSchema = z.enum(["required", "optional", "none"]);
+export type RegistryNeed = z.infer<typeof registryNeedSchema>;
+
+/**
+ * What a runner's executor can do (ADR 0025, ADR 0029), as `ExecutorAdapter` declares it: the
+ * four milestones 1 to 3 built, and the registry and the node wait of minor 4.
+ */
+export const runnerCapabilitiesSchema = z.strictObject({
+  /** `container`: the agent runs in a box with no credential. `none`: a worktree, "not isolated". */
+  isolation: z.enum(["container", "none"]),
+  services: z.boolean(),
+  boxSizes: z.boolean(),
+  snapshots: z.enum(["image", "host-cache", "none"]),
+  registry: registryNeedSchema,
+  /** A box may wait for a node while the cluster grows (`kubernetes`, F-093). */
+  nodeWait: z.boolean(),
+});
+export type RunnerCapabilities = z.infer<typeof runnerCapabilitiesSchema>;
+
+/** How a runner was installed, for the pin and the panel (ADR 0034, ADR 0046). */
+export const runnerInstallSchema = z.enum(["npm", "image", "source"]);
+export type RunnerInstall = z.infer<typeof runnerInstallSchema>;
+
+/** Minor 4's fields of `hello` and `status`, all optional: a minor-3 peer sends none of them. */
+const runnerReportFields = {
+  resources: runnerResourcesSchema.nullable().optional(),
+  capabilities: runnerCapabilitiesSchema.optional(),
+  install: runnerInstallSchema.optional(),
+};
+
+/**
+ * The first frame a peer sends. Its versions are negotiated (`negotiate`, then
+ * `refuseHelloExecutor`), and its peer identity must match the access token it connected with.
+ * The one loose message: a newer peer may add fields an older server ignores. Minor 4 adds the
+ * runner's executor and what it reports; a peer below minor 4 is never sent them, and never sends them.
  */
 export const helloSchema = z.looseObject({
   type: z.literal("hello"),
@@ -73,8 +124,50 @@ export const helloSchema = z.looseObject({
   /** The highest command `seq` the peer applied, so the server resends from the one after. */
   lastCommandSeq: count,
   sessions: z.array(helloSessionSchema).max(runnerLimits.helloSessionsMax),
+  /** Minor 4: the runner's executor, so a `kubernetes` runner below minor 4 is refused at once. */
+  executor: executorKindSchema.optional(),
+  ...runnerReportFields,
 });
 export type Hello = z.infer<typeof helloSchema>;
+
+/** The lowest minor an executor's runner may speak: `kubernetes` is new in minor 4 (ADR 0034). */
+export const executorMinMinor = (executor: ExecutorKind): number => {
+  switch (executor) {
+    case "kubernetes":
+      return 4;
+    case "docker":
+    case "host":
+      return 0;
+    default:
+      return executor satisfies never;
+  }
+};
+
+/** Why a `hello` inside the window is still refused: its executor needs a later minor. */
+export type HelloExecutorRefusal = {
+  readonly reason: "executor-needs-minor";
+  readonly executor: ExecutorKind;
+  readonly minMinor: number;
+};
+
+/**
+ * Checks a `hello` against the minor negotiated for it (ADR 0034): a `kubernetes` runner below
+ * minor 4 is refused with its own reason. The executor is the one `hello` names, or else the one
+ * the runner registered with (a minor-3 runner's `hello` names none). `null` when the executor may
+ * speak `minor`. Run after `negotiate`, which settles the window.
+ */
+export const refuseHelloExecutor = (
+  hello: Hello,
+  minor: number,
+  registeredExecutor?: ExecutorKind,
+): HelloExecutorRefusal | null => {
+  const executor = hello.executor ?? registeredExecutor;
+  if (executor === undefined) {
+    return null;
+  }
+  const minMinor = executorMinMinor(executor);
+  return Math.min(minor, hello.protocolMinor) < minMinor ? { reason: "executor-needs-minor", executor, minMinor } : null;
+};
 
 /**
  * A batch of events, in session order per session. The server saves the batch in one transaction,
@@ -89,6 +182,11 @@ export const eventsFrameSchema = z.strictObject({
   events: z.array(runnerEventSchema).min(1).max(runnerLimits.eventsPerFrameMax),
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
+
+/** Minor 3's `events` frame: its events refuse minor 4's kinds. */
+const eventsFrameSchemaV3 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV3).min(1).max(runnerLimits.eventsPerFrameMax),
+});
 
 /** Minor 2's `events` frame: its events refuse minor 3's kinds. */
 const eventsFrameSchemaV2 = eventsFrameSchema.extend({
@@ -166,9 +264,16 @@ const statusSchemaV0 = z.strictObject({
  * Minor 1 (milestone 2's ticket 42): the status also says how the runner contains a task's
  * processes. Optional: a sidecar and an older runner leave it out. Minor 0 never sees it.
  */
-export const statusSchema = statusSchemaV0.extend({
+const statusSchemaV3 = statusSchemaV0.extend({
   processContainment: processContainmentSchema.optional(),
 });
+
+/**
+ * The status at the current minor (4): minor 1's, with what the runner offers (`resources`), what
+ * its executor can do (`capabilities`) and how it was installed (`install`). A minor-3 server is
+ * sent none of them, and only the labels it can read.
+ */
+export const statusSchema = statusSchemaV3.extend(runnerReportFields);
 export type Status = z.infer<typeof statusSchema>;
 
 /** Partial text: unsequenced, never spooled, never acked (ADR 0035). */
@@ -178,7 +283,7 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV3 = z.discriminatedUnion("type", [
+const upFrameV4 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
   commandAckSchema,
@@ -186,11 +291,19 @@ const upFrameV3 = z.discriminatedUnion("type", [
   liveTextSchema,
   runnerEventFrameSchema,
 ]);
+const upFrameV3 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV3,
+  commandAckSchema,
+  statusSchemaV3,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
 const upFrameV2 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchemaV2,
   commandAckSchema,
-  statusSchema,
+  statusSchemaV3,
   liveTextSchema,
   runnerEventFrameSchema,
 ]);
@@ -198,7 +311,7 @@ const upFrameV1 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchemaV1,
   commandAckSchema,
-  statusSchema,
+  statusSchemaV3,
   liveTextSchema,
 ]);
 const upFrameV0 = z.discriminatedUnion("type", [
@@ -208,7 +321,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV3>;
+export type UpFrame = z.infer<typeof upFrameV4>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -304,11 +417,20 @@ export const evictSchema = z.strictObject({
 });
 export type Evict = z.infer<typeof evictSchema>;
 
-const downFrameV3 = z.discriminatedUnion("type", [
+const downFrameV4 = z.discriminatedUnion("type", [
   welcomeSchema,
   ackSchema,
   creditSchema,
   commandSchema,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+const downFrameV3 = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV3,
   goawaySchema,
   errorFrameSchema,
   evictSchema,
@@ -340,21 +462,34 @@ const downFrameV0 = z.discriminatedUnion("type", [
   errorFrameSchema,
   evictSchema,
 ]);
-export type DownFrame = z.infer<typeof downFrameV3>;
+export type DownFrame = z.infer<typeof downFrameV4>;
 export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
 
-/** A status in minor 0's shape: without `processContainment`. */
-const statusForMinor0 = (frame: Status): unknown => {
-  const minor0: Record<string, unknown> = { ...frame };
-  Reflect.deleteProperty(minor0, "processContainment");
-  return minor0;
+/** The fields minor 4 added to `hello` and `status`. */
+const minor4ReportKeys = ["resources", "capabilities", "install"] as const;
+
+/**
+ * A `hello` or a status in minor 3's shape: without what minor 4 added, and with only the labels
+ * a minor-3 server reads (no `:` or `/`). A `hello` keeps its `executor`: it's the loose message,
+ * so a minor-3 server ignores it.
+ */
+const reportForMinor3 = (frame: Hello | Status): Record<string, unknown> => {
+  const minor3: Record<string, unknown> = { ...frame };
+  for (const key of minor4ReportKeys) {
+    Reflect.deleteProperty(minor3, key);
+  }
+  if (frame.type === "status") {
+    minor3["labels"] = frame.labels.filter((label) => legacyRunnerLabelPattern.test(label));
+  }
+  return minor3;
 };
 
 /**
  * An up frame in the shape of a lower minor: an `events` frame's events lose the newer fields,
- * and below minor 1 a status loses its containment.
+ * below minor 4 a `hello` and a status lose what the runner reports, and below minor 1 a status
+ * loses its containment.
  */
 const encodeUpFrameFor =
   (minor: number) =>
@@ -362,8 +497,15 @@ const encodeUpFrameFor =
     if (frame.type === "events") {
       return { ...frame, events: frame.events.map((item) => ({ ...item, event: encodeEventForMinor(item.event, minor) })) };
     }
-    if (frame.type === "status" && minor < 1) {
-      return statusForMinor0(frame);
+    if (frame.type === "hello" && minor < 4) {
+      return reportForMinor3(frame);
+    }
+    if (frame.type === "status" && minor < 4) {
+      const minor3 = reportForMinor3(frame);
+      if (minor < 1) {
+        Reflect.deleteProperty(minor3, "processContainment");
+      }
+      return minor3;
     }
     return frame;
   };
@@ -379,20 +521,23 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 0, decode: upFrameV0, encode: encodeUpFrameFor(0) },
   { minor: 1, decode: upFrameV1, encode: encodeUpFrameFor(1) },
   { minor: 2, decode: upFrameV2, encode: encodeUpFrameFor(2) },
-  { minor: 3, decode: upFrameV3, encode: (frame) => frame },
+  { minor: 3, decode: upFrameV3, encode: encodeUpFrameFor(3) },
+  { minor: 4, decode: upFrameV4, encode: (frame) => frame },
 ]);
 
 /**
  * Down frames, one codec per kept minor. Minor 1 added the `release` command; minor 2 added three
  * commands and two command fields, which a lower minor's encode drops and its decode refuses.
  * Minor 3 added `set-effort` (F-137), which minor 2's decode refuses and the outbox never sends
- * it (`commandKindSupportedAt`).
+ * it (`commandKindSupportedAt`). Minor 4 added `resume`, the dispatch's `box` and the snapshot
+ * build's `push` and `builder`.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
   { minor: 1, decode: downFrameV1, encode: encodeDownFrameFor(1) },
   { minor: 2, decode: downFrameV2, encode: encodeDownFrameFor(2) },
-  { minor: 3, decode: downFrameV3, encode: (frame) => frame },
+  { minor: 3, decode: downFrameV3, encode: encodeDownFrameFor(3) },
+  { minor: 4, decode: downFrameV4, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

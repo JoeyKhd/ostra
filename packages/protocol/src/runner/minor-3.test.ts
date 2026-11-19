@@ -88,16 +88,16 @@ const eventsFrame = (event: TaskEvent): UpFrame => ({
 const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
 describe("the version", () => {
-  it("F-061: is minor 3; a minor-2 peer is inside the window and a minor-1 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(3);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 2, max: 4 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 2)).toEqual({ ok: true, minor: 2 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 3 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 1)).toEqual({ ok: false, reason: "minor", window: { min: 2, max: 4 } });
+  it("F-061: at a minor-3 server, a minor-2 peer is inside the window and a minor-1 peer is outside it", () => {
+    expect(PROTOCOL_MINOR).toBeGreaterThanOrEqual(3);
+    expect(minorWindow(3)).toEqual({ min: 2, max: 4 });
+    expect(negotiate(3, PROTOCOL_MAJOR, 2)).toEqual({ ok: true, minor: 2 });
+    expect(negotiate(3, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 3 });
+    expect(negotiate(3, PROTOCOL_MAJOR, 1)).toEqual({ ok: false, reason: "minor", window: { min: 2, max: 4 } });
     // A minor-3 runner against a minor-2 server speaks minor 2.
-    expect(negotiate(2, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 2 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3]);
+    expect(negotiate(2, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 2 });
+    expect(upFrameCodec.minors).toContain(3);
+    expect(downFrameCodec.minors).toContain(3);
   });
 
   it("names the working values", () => {

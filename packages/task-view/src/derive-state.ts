@@ -250,6 +250,11 @@ export const deriveTaskState = (
       case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
+      case "box.waiting":
+      case "box.scheduled":
+      case "task.cancelled":
+      case "runner.drained":
+      case "runner.resumed":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

@@ -834,6 +834,13 @@ export const foldTaskEvents = (
         });
         break;
       }
+      case "box.waiting":
+      case "box.scheduled":
+      case "task.cancelled":
+      case "runner.drained":
+      case "runner.resumed":
+        // Protocol minor 4. No row until the milestone 5 task page draws them (ticket 33).
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

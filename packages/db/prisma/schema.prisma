@@ -2295,6 +2295,8 @@ enum CommandKind {
   snapshot_build
   /// Protocol minor 3: the driver's new reasoning level for the session (milestone 4, F-137).
   set_effort
+  /// Protocol minor 4: take tasks again after a drain (milestone 5).
+  resume
 }
 
 /// A reasoning level (F-137, ADR 0066): `@ostra/protocol`'s `effortLevelSchema`. `default`

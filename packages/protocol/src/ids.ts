@@ -269,3 +269,13 @@ export type HeldTurnId = z.infer<typeof heldTurnIdSchema>;
 /** The ID of a task PR's independent-review check (F-104, ADR 0040). */
 export const reviewCheckIdSchema = idBase.brand<"ReviewCheckId">();
 export type ReviewCheckId = z.infer<typeof reviewCheckIdSchema>;
+
+// ---------- milestone 5 ----------
+
+/** The ID of an organization's box size (F-095, ADR 0059). */
+export const boxSizeIdSchema = idBase.brand<"BoxSizeId">();
+export type BoxSizeId = z.infer<typeof boxSizeIdSchema>;
+
+/** The ID of an organization's snapshot registry (F-120, ADR 0060). */
+export const registryIdSchema = idBase.brand<"RegistryId">();
+export type RegistryId = z.infer<typeof registryIdSchema>;

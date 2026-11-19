@@ -19,7 +19,7 @@ import {
 } from "../memory/notes.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import { taskSpecSchema } from "../task/spec.ts";
-import { downFrameCodec, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
+import { downFrameCodec, errorFrameSchema, helloSchema, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
 import type { DownFrame, UpFrame } from "./messages.ts";
 import { runnerLimits } from "./limits.ts";
 import { RUNNER_PATH_PREFIX } from "./version.ts";
@@ -67,6 +67,13 @@ export const runnerPaths = {
   /** `POST`: propose a note, for a member to approve (F-111). */
   taskMemoryProposals: (taskId: string): string =>
     `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/memory/proposals`,
+  // Minor 4 (milestone 5): the registry's short-lived credentials (F-120, ADR 0060).
+  /** `POST`: the pull credential for the lease's snapshot image, for the runner that holds the lease. */
+  taskPullCredential: (taskId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/pull-credential`,
+  /** `POST`: the push credential for a snapshot build, for the runner the build was given to. */
+  snapshotPushCredential: (snapshotId: string): string =>
+    `${RUNNER_PATH_PREFIX}/snapshots/${encodeURIComponent(snapshotId)}/push-credential`,
 } as const;
 
 /** Headers the HTTP carrier uses (ADR 0034). */
@@ -78,8 +85,11 @@ export const runnerHeaders = {
    * A request without it is read as minor 0.
    */
   minor: "x-ostra-minor",
-  /** The connection epoch from `welcome`; a newer connection answers `409`. */
-  connectionEpoch: "x-ostra-connection-epoch",
+  /**
+   * The connection epoch from `welcome`, on every HTTP carrier request after `POST /hello`; a
+   * newer connection of the runner answers `409 { code: "superseded" }` (ADR 0034).
+   */
+  connectionEpoch: "x-ostra-epoch",
   /**
    * Minor 1, on the bulk path's download (`GET .../blobs/:blobId`): the blob's SHA-256 in lower-case
    * hex, so the runner checks what it read. A ticket file's spec entry names no digest, so this is
@@ -159,11 +169,13 @@ export const encodeRunnerHttpErrorForMinor = (body: RunnerHttpError, minor: numb
 
 // ---------- GET /runner/v1/info ----------
 
-/** What a runner reads first: the server's version and where the panel is for the device flow. */
-export const infoResponseSchema = z.strictObject({
+const minorWindowSchema = z.strictObject({ min: z.number().int().nonnegative(), max: z.number().int().nonnegative() });
+
+/** Up to minor 3: what a runner reads first. Strict, so core answers a runner below minor 4 in this shape. */
+export const infoResponseSchemaV3 = z.strictObject({
   protocolMajor: z.number().int().nonnegative(),
   serverMinor: z.number().int().nonnegative(),
-  supported: z.strictObject({ min: z.number().int().nonnegative(), max: z.number().int().nonnegative() }),
+  supported: minorWindowSchema,
   /** The server's version: `ostra runner` installs the same one (ADR 0046). */
   serverVersion: z.string().min(1).max(64),
   /** The panel's address, where a member approves a device code (`/device`). */
@@ -171,7 +183,37 @@ export const infoResponseSchema = z.strictObject({
   /** The device flow's client ID (RFC 8628, through better-auth). */
   deviceClientId: z.string().min(1).max(128),
 });
+
+/** Where the pin installs the server's version from (ADR 0034, "How a runner is pinned"). */
+export const infoNpmSchema = z.strictObject({
+  /** The CLI's package name, `ostra`. */
+  package: z.string().min(1).max(214),
+  /** The npm registry to install it from. `OSTRA_RUNNER_NPM_REGISTRY` overrides it. */
+  registry: httpUrlSchema,
+});
+export type InfoNpm = z.infer<typeof infoNpmSchema>;
+
+/**
+ * What a runner reads first: the server's version, its minor window and where the panel is for the
+ * device flow. Minor 4 adds `minorWindow` (the same window as `supported`, named for the pin) and
+ * `npm`, which the pin reads (`null`: the server names no registry, and the runner's own setting
+ * or npm's public one applies). The server's version is `serverVersion`, there since minor 0.
+ *
+ * Every version reads it before anything is negotiated, so from minor 4 the runner sends its own
+ * minor in `x-ostra-minor`, and core sends the new fields only to a request whose header says 4 or
+ * more (`encodeInfoForMinor`). A request without the header is read as minor 0.
+ */
+export const infoResponseSchema = infoResponseSchemaV3.extend({
+  minorWindow: minorWindowSchema.optional(),
+  npm: infoNpmSchema.nullable().optional(),
+});
 export type InfoResponse = z.infer<typeof infoResponseSchema>;
+
+const infoStripV3 = z.object(infoResponseSchemaV3.shape);
+
+/** The info answer as a runner at `minor` reads it: below minor 4, minor 3's fields only. */
+export const encodeInfoForMinor = (info: InfoResponse, minor: number): InfoResponse =>
+  minor >= 4 ? info : infoStripV3.parse(info);
 
 // ---------- POST /runner/v1/register ----------
 
@@ -425,3 +467,94 @@ export const parseHttpDownBody = (
 export const httpDownQuerySchema = z.strictObject({
   after: z.coerce.number().pipe(z.number().int().nonnegative()),
 });
+
+// ---------- the HTTP fallback carrier's bodies (minor 4, ADR 0034) ----------
+
+/**
+ * `POST /runner/v1/hello`: the body is the `hello` frame. It's answered `200` with
+ * `{ frames: [welcome, ...acks] }` (`parseHttpDownBody`), or with `{ frames: [error] }` and the
+ * status of the refusal. The access token is the `Authorization` header and is never logged.
+ */
+export const httpHelloRequestSchema = helloSchema;
+
+/**
+ * The HTTP carrier's answers. `POST /runner/v1/up`'s body is `{ frames: [...] }` of up frames
+ * (`parseHttpUpBody`), sent with `x-ostra-epoch` and `x-ostra-minor`; it's answered `200` with
+ * `{ frames: [...] }` of down frames, the acks, credit and errors the batch earned
+ * (`parseHttpDownBody`). `GET /runner/v1/down?after=<seq>` is held up to `runnerLimits.longPollMs`,
+ * then answered `200` with `{ frames: [...] }` of commands, or `204` with no body.
+ */
+export const httpCarrierStatus = {
+  /** Frames in the body. */
+  ok: 200,
+  /** The long poll held its time and has nothing: poll again. */
+  idle: 204,
+  /** A newer connection of this runner holds it: send `POST /hello` again. */
+  superseded: 409,
+} as const;
+export type HttpCarrierStatus = (typeof httpCarrierStatus)[keyof typeof httpCarrierStatus];
+
+/** The `409` body when a request's `x-ostra-epoch` isn't the runner's newest connection. */
+export const httpSupersededSchema = z.strictObject({ code: z.literal("superseded") });
+export type HttpSuperseded = z.infer<typeof httpSupersededSchema>;
+
+/** A refused `POST /hello`: one `error` frame, at the server's minor. */
+export const httpHelloRefusalSchema = z.strictObject({ frames: z.tuple([errorFrameSchema]) });
+export type HttpHelloRefusal = z.infer<typeof httpHelloRefusalSchema>;
+
+/** The connection epoch header's value: a positive integer, or `null` when it's missing or bad. */
+export const connectionEpochFromHeader = (value: string | null | undefined): number | null => {
+  if (value === null || value === undefined || !/^[1-9]\d{0,14}$/.test(value)) {
+    return null;
+  }
+  return Number(value);
+};
+
+// ---------- the registry's credentials (minor 4, F-120, ADR 0060) ----------
+
+/**
+ * `POST /tasks/:taskId/pull-credential`: the lease the pull is for. Core answers the runner that
+ * holds the task's current lease at this epoch, for the image the lease's dispatch named.
+ */
+export const pullCredentialRequestSchema = z.strictObject({ leaseEpoch: leaseEpochSchema });
+export type PullCredentialRequest = z.infer<typeof pullCredentialRequestSchema>;
+
+/** `POST /snapshots/:snapshotId/push-credential`: no fields; the snapshot in the path names the build. */
+export const pushCredentialRequestSchema = z.strictObject({});
+export type PushCredentialRequest = z.infer<typeof pushCredentialRequestSchema>;
+
+/**
+ * A short-lived registry credential, for one pull or one build's push. The runner passes it to its
+ * engine or a per-box pull secret, never to a container. The username and the token are never
+ * logged, and never written to an event, a command, a pod's spec or an annotation.
+ */
+export const registryCredentialSchema = z
+  .strictObject({
+    /** The registry's host (and port), as an image reference names it. */
+    registry: z.string().min(1).max(253),
+    /** Never logged. */
+    username: z.string().min(1).max(512),
+    /** Never logged. */
+    token: z.string().min(1).max(65_536),
+    expiresAt: epochMsSchema,
+  })
+  .describe("A registry credential. The username and the token are never logged.");
+export type RegistryCredential = z.infer<typeof registryCredentialSchema>;
+
+export const pullCredentialResponseSchema = registryCredentialSchema;
+export const pushCredentialResponseSchema = registryCredentialSchema;
+
+/**
+ * Why a credential request was refused, as `409` with this body:
+ * - `no-image`: the lease's dispatch named no registry image (a pull)
+ * - `not-the-builder`: the snapshot isn't building, or its build went to another runner (a push)
+ * - `stale-lease`: the lease epoch isn't the task's current one (a pull), with `currentEpoch`
+ */
+export const registryCredentialRefusalSchema = z.strictObject({
+  error: z.strictObject({
+    code: z.enum(["no-image", "not-the-builder", "stale-lease"]),
+    message: z.string().max(2000),
+    currentEpoch: leaseEpochSchema.optional(),
+  }),
+});
+export type RegistryCredentialRefusal = z.infer<typeof registryCredentialRefusalSchema>;

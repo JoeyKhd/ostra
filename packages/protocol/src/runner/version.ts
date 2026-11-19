@@ -26,10 +26,15 @@ export const PROTOCOL_MAJOR = 1;
  * the closing turn, a git identity per repo, and the server's held turns, review checks and related
  * PRs. A minor-2 peer still works inside the window: it never receives the spec's `memory`,
  * `agent.closingTurn` or a repo's `gitIdentity` (core folds the memory block into
- * `agent.instructions`), and it sends no `memory.used`. A minor-1 peer is outside the window and
- * refused at `hello`.
+ * `agent.instructions`), and it sends no `memory.used`. Milestone 5 ships minor 4: the `resume`
+ * command, a box's size and image in the dispatch, a snapshot build's push and builder,
+ * `box.waiting` and `box.scheduled`, and what a runner offers and how it was installed in `hello`
+ * and `status`. A minor-3 peer still works inside the window: it never receives `resume`, the
+ * dispatch's `box` or the build's `push` and `builder`, and it sends no `box.waiting`,
+ * `box.scheduled`, `resources`, `capabilities` or `install`. A `kubernetes` runner needs minor 4
+ * (`refuseHelloExecutor`). A minor-2 peer is outside the window and refused at `hello`.
  */
-export const PROTOCOL_MINOR = 3;
+export const PROTOCOL_MINOR = 4;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

@@ -4,6 +4,7 @@ import {
   approvalIdSchema,
   approvalRuleIdSchema,
   blobIdSchema,
+  boxIdSchema,
   budgetIdSchema,
   checkIdSchema,
   clientMessageIdSchema,
@@ -638,6 +639,41 @@ const minor3NewEventOptions = [
   }),
 ] as const;
 
+// ---------- protocol minor 4's vocabularies (milestone 5) ----------
+
+/**
+ * Why a box is still being made (F-093, ADR 0060): the cluster has no node for its pod yet (the
+ * autoscaler is adding one), or its image is still being pulled.
+ */
+export const boxWaitingReasonSchema = z.enum(["node", "image-pull"]);
+export type BoxWaitingReason = z.infer<typeof boxWaitingReasonSchema>;
+
+// ---------- the events new in minor 4 ----------
+
+const minor4NewEventOptions = [
+  // ---- a box on its way (F-093) ----
+  z.strictObject({
+    kind: z.literal("box.waiting"),
+    boxId: boxIdSchema,
+    reason: boxWaitingReasonSchema,
+    /** When the wait started, in ms since the epoch, by the runner's clock. */
+    since: epochMsSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("box.scheduled"),
+    boxId: boxIdSchema,
+    /** How long the box waited before it was scheduled. */
+    afterMs: z.number().int().nonnegative(),
+  }),
+  // ---- server-only (milestone 5) ----
+  /** A queued task an admin cancelled from its pool's queue (F-067). */
+  z.strictObject({ kind: z.literal("task.cancelled"), memberId: memberIdSchema }),
+  /** The task's runner was drained by an admin (F-092): it finishes this task and takes no new one. */
+  z.strictObject({ kind: z.literal("runner.drained"), memberId: memberIdSchema }),
+  /** The task's runner was resumed by an admin (F-092). */
+  z.strictObject({ kind: z.literal("runner.resumed"), memberId: memberIdSchema }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -777,8 +813,31 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (3). */
+/** The event union at the current minor (4). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessageV2,
+  sessionRestoredV2,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReadyV2,
+  workspaceFilesOutsideRepos,
+  turnStarted,
+  usageRecorded,
+  approvalRequested,
+  approvalAnswered,
+  setupFinished,
+  ...minor2NewEventOptions,
+  ...minor3NewEventOptions,
+  ...minor4NewEventOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 3's event union, kept for the codecs (ADR 0034): a minor-3 peer's events parse with it,
+ * and it refuses minor 4's kinds.
+ */
+export const taskEventSchemaV3 = z.discriminatedUnion("kind", [
   userMessageV2,
   sessionRestoredV2,
   sessionCrashed,
@@ -882,6 +941,14 @@ export const minor3EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
 );
 
 /**
+ * The kinds minor 4 added (milestone 5). A minor-4 runner talking to a minor-3 server sends no
+ * `box.waiting` or `box.scheduled`; the rest are the server's own.
+ */
+export const minor4EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor4NewEventOptions.map((option) => option.shape.kind.value),
+);
+
+/**
  * The kinds a runner may also send outside a task, in a `runner-event` frame: a snapshot build's
  * result when no task triggered the build (F-051).
  */
@@ -892,6 +959,9 @@ export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEv
 
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor4EventKinds.has(kind)) {
+    return 4;
+  }
   if (minor3EventKinds.has(kind)) {
     return 3;
   }
@@ -1030,6 +1100,10 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "review.check_updated",
   "pr.related_updated",
   "effort.changed",
+  // Minor 4 (milestone 5):
+  "task.cancelled",
+  "runner.drained",
+  "runner.resumed",
 ]);
 
 // ---------- the read side ----------
@@ -1085,6 +1159,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 3's `runnerEventSchema`, for the up codec of a minor-3 peer. */
+export const runnerEventSchemaV3 = runnerEventSchema.extend({
+  event: taskEventSchemaV3.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 2's `runnerEventSchema`, for the up codec of a minor-2 peer. */
 export const runnerEventSchemaV2 = runnerEventSchema.extend({

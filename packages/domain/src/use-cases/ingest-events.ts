@@ -579,6 +579,14 @@ const applyEffects = async (
       case "review.check_updated":
       case "pr.related_updated":
       case "effort.changed":
+      // Protocol minor 4 (milestone 5): stored for the task page. Ticket 20 gives `box.waiting`
+      // and `box.scheduled` their reaction on the box's row; the server-only ones never come
+      // from a runner.
+      case "box.waiting":
+      case "box.scheduled":
+      case "task.cancelled":
+      case "runner.drained":
+      case "runner.resumed":
         // Stored for the task page; nothing else moves.
         break;
       default:

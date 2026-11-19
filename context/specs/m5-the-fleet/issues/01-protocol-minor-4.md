@@ -1,6 +1,6 @@
 # 01: Protocol: minor 4
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none (milestone 4's ticket 01, minor 3, lands first)
 Features: F-013, F-061, F-092, F-093, F-095, F-120 (their wire shapes)
@@ -23,9 +23,11 @@ Every change is additive. The schema is written once, Zod first; the types are `
 
 ## Done when
 
-- [ ] Tests: every new shape round-trips; minor-3 and minor-2 frames still parse at their minors; a minor-3 peer's codec drops each new field and refuses `resume`; a strict object refuses an unknown field; a `kubernetes` `hello` under minor 4 is refused; the server-only set includes the three new kinds; the fixtures in `src/testing/` cover each new kind, command and endpoint.
-- [ ] Every caller in the repo still compiles, and no existing schema changed shape.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add protocol minor 4`.
+- [x] Tests: every new shape round-trips; minor-3 and minor-2 frames still parse at their minors; a minor-3 peer's codec drops each new field and refuses `resume`; a strict object refuses an unknown field; a `kubernetes` `hello` under minor 4 is refused; the server-only set includes the three new kinds; the fixtures in `src/testing/` cover each new kind, command and endpoint.
+- [x] Every caller in the repo still compiles, and no existing schema changed shape.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add protocol minor 4`.
 
 ## Comments
+
+- 2026-11-19: built. Minor 4 in `packages/protocol` (`version.ts`, `runner/messages.ts`, `runner/commands.ts`, `runner/http.ts`, `events/agent-events.ts`, `common.ts`), minor 3's codecs kept (`commandSchemaV3`, `taskEventSchemaV3`, `infoResponseSchemaV3`), and the fixtures in `src/testing/fixtures.ts` (`minor4CommandFixtures`, `minor4StatusFixture`, `minor4HelloFixture`, `minor4HttpFixtures`, `registryCredentialRefusalFixtures`); the tests are `src/runner/minor-4.test.ts`, with break-its (the minor-3 encode keeping `box`, and `refuseHelloExecutor` never refusing) each failing its test. Differences from the ticket, each additive: `hello` also names its `executor` (optional), so core refuses a `kubernetes` runner under minor 4 at `hello` (`refuseHelloExecutor`), falling back to the executor the runner registered with when a minor-3 `hello` names none; `runnerLabelSchema` now allows `:` and `/`, as spec section 5.1 writes it, and a status sent to a minor-3 server keeps only the labels minor 3 reads; `resources` is the runner's whole offer, and core subtracts the boxes it placed from its own rows (ADR 0059); the connection epoch header's value is `x-ostra-epoch`, as the spec names it (no carrier sent the old name); `GET /runner/v1/info` sends `minorWindow` and `npm` only to a request whose `x-ostra-minor` is 4 or more, and the runner sends it. Callers updated in the same commit: core refuses the `kubernetes` `hello` and answers `info` by minor (`apps/core/src/gateway/`), the runner and the box dispatcher lift a drain on `resume`, ingest stores the five new kinds without a reaction yet (ticket 20 gives `box.waiting` and `box.scheduled` theirs), the task view draws no row for them yet (ticket 33), and the database's `CommandKind` gains `resume` in its own migration, `20261123000000_command_resume` (ticket 04's migration has the rest). Whole-repo typecheck, lint, test, `check:licenses` and `check:proof` green. Commit: `✨ add protocol minor 4`.

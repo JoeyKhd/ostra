@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { registerPersonalRunner } from "@ostra/domain";
 import {
+  encodeInfoForMinor,
   encodeRunnerHttpErrorForMinor,
   infoResponseSchema,
   minorFromHeader,
@@ -27,19 +28,27 @@ import type { GatewayContext } from "./context.ts";
 // Ported from spikes/runner-transport/src/server/replica.ts (`onHttp`), with ADR 0034's Ed25519
 // identity in place of the spike's shared secret.
 
-const info = (context: GatewayContext, response: ServerResponse): void => {
-  sendJson(
-    response,
-    200,
-    infoResponseSchema.parse({
-      protocolMajor: PROTOCOL_MAJOR,
-      serverMinor: context.serverMinor,
-      supported: minorWindow(context.serverMinor),
-      serverVersion: context.serverVersion,
-      panelUrl: context.panelUrl,
-      deviceClientId: context.deviceClientId,
-    }),
-  );
+/**
+ * `GET /runner/v1/info`. From minor 4 the runner sends its minor in `x-ostra-minor`, and gets the
+ * window again as `minorWindow` and where the pin installs from as `npm` (`null` here: the
+ * runner's own `OSTRA_RUNNER_NPM_REGISTRY` or npm's public registry applies). A request without
+ * the header gets minor 3's strict shape.
+ */
+const info = (context: GatewayContext, http: IncomingMessage, response: ServerResponse): void => {
+  const header = http.headers[runnerHeaders.minor];
+  const minor = minorFromHeader(typeof header === "string" ? header : undefined);
+  const window = minorWindow(context.serverMinor);
+  const body = infoResponseSchema.parse({
+    protocolMajor: PROTOCOL_MAJOR,
+    serverMinor: context.serverMinor,
+    supported: window,
+    serverVersion: context.serverVersion,
+    panelUrl: context.panelUrl,
+    deviceClientId: context.deviceClientId,
+    minorWindow: window,
+    npm: null,
+  });
+  sendJson(response, 200, encodeInfoForMinor(body, minor));
 };
 
 /**
@@ -246,7 +255,7 @@ export const handleRunnerEndpoint = async (
   const route = `${http.method ?? "GET"} ${url.pathname}`;
   switch (route) {
     case `GET ${runnerPaths.info}`:
-      info(context, response);
+      info(context, http, response);
       return true;
     case `POST ${runnerPaths.register}`:
       await register(context, http, response);

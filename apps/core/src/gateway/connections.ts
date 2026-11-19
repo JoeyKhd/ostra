@@ -9,10 +9,12 @@ import {
   commandIdSchema,
   commandSeqSchema,
   encodeDownFrame,
+  minorWindow,
   negotiate,
   parseJson,
   parseUpFrame,
   PROTOCOL_MAJOR,
+  refuseHelloExecutor,
   runnerLimits,
   organizationIdSchema,
   runnerIdSchema,
@@ -168,6 +170,29 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
             `to ${String(PROTOCOL_MAJOR)}.${String(window.max)}. Fix: install the runner version this server names ` +
             `(GET ${runnerPaths.info}, serverVersion ${context.serverVersion}), then start the runner again.`,
           supported: window,
+          serverMinor: context.serverMinor,
+        },
+        close: closeCodes.upgradeRequired,
+      };
+    }
+    // Minor 4: the `kubernetes` executor is new in it, so a runner below it is refused (ADR 0034).
+    const registered = await db.runner.findFirst({
+      where: { id: runner.runnerId, organizationId: runner.organizationId },
+      select: { executor: true },
+    });
+    const executorRefusal = refuseHelloExecutor(hello, negotiation.minor, registered?.executor);
+    if (executorRefusal !== null) {
+      return {
+        ok: false,
+        error: {
+          type: "error",
+          code: "version-unsupported",
+          message:
+            `The ${executorRefusal.executor} executor needs protocol ${String(PROTOCOL_MAJOR)}.${String(executorRefusal.minMinor)} ` +
+            `or later; this runner speaks ${String(hello.protocolMajor)}.${String(hello.protocolMinor)} with a server at ` +
+            `${String(PROTOCOL_MAJOR)}.${String(context.serverMinor)}. Fix: install the runner version this server names ` +
+            `(GET ${runnerPaths.info}, serverVersion ${context.serverVersion}), then start the runner again.`,
+          supported: { min: Math.max(executorRefusal.minMinor, minorWindow(context.serverMinor).min), max: minorWindow(context.serverMinor).max },
           serverMinor: context.serverMinor,
         },
         close: closeCodes.upgradeRequired,

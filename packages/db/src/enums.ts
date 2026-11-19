@@ -75,6 +75,7 @@ export const commandKindToDb = {
   "plan-answer": "plan_answer",
   "snapshot-build": "snapshot_build",
   "set-effort": "set_effort",
+  resume: "resume",
 } as const satisfies Record<CommandKind, DbCommandKind>;
 export const commandKindFromDb = {
   dispatch: "dispatch",
@@ -89,6 +90,7 @@ export const commandKindFromDb = {
   plan_answer: "plan-answer",
   snapshot_build: "snapshot-build",
   set_effort: "set-effort",
+  resume: "resume",
 } as const satisfies Record<DbCommandKind, CommandKind>;
 
 export const commandResultToDb = {

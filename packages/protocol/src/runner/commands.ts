@@ -14,10 +14,12 @@ import {
   taskIdSchema,
 } from "../ids.ts";
 import {
+  boxSizeNameSchema,
   branchNameSchema,
   commandSeqSchema,
   envNameSchema,
   epochMsSchema,
+  imageDigestSchema,
   leaseEpochSchema,
   repoFullNameSchema,
 } from "../common.ts";
@@ -48,12 +50,51 @@ import { runnerLimits } from "./limits.ts";
 //
 // Ported from spikes/runner-transport/src/protocol/messages.ts, widened to the product's set.
 
-/** `dispatch`: an offer of a task. The peer answers `accepted` or `rejected` within the offer timeout. */
-export const dispatchBodySchema = z.strictObject({
+/** `dispatch` up to minor 3: an offer of a task. */
+export const dispatchBodySchemaV3 = z.strictObject({
   taskId: taskIdSchema,
   sessionId: sessionIdSchema,
   boxId: boxIdSchema,
   leaseEpoch: leaseEpochSchema,
+});
+
+/** An image reference, as a registry names it (`host/path:tag`). Never holds a credential. */
+export const imageRefSchema = z.string().min(1).max(512).regex(/^[^\s@]+$/, "an image reference without a digest");
+
+/**
+ * A box's size, as the dispatch names it (F-095): the project's default size, with its limits. An
+ * executor whose `boxSizes` is false never gets one.
+ */
+export const dispatchBoxSizeSchema = z.strictObject({
+  name: boxSizeNameSchema,
+  cpuMillis: z.number().int().positive(),
+  memoryMiB: z.number().int().positive(),
+});
+export type DispatchBoxSize = z.infer<typeof dispatchBoxSizeSchema>;
+
+/**
+ * The snapshot image a box starts from (F-120): pulled by digest. The pull credential is never
+ * here: the runner fetches it for this lease (`POST /runner/v1/tasks/:taskId/pull-credential`).
+ */
+export const dispatchBoxImageSchema = z.strictObject({
+  ref: imageRefSchema,
+  digest: imageDigestSchema,
+});
+export type DispatchBoxImage = z.infer<typeof dispatchBoxImageSchema>;
+
+/** Minor 4: the box the dispatch asks for. A `null` part means "as before": slots only, a local snapshot or a full setup. */
+export const dispatchBoxSchema = z.strictObject({
+  size: dispatchBoxSizeSchema.nullable(),
+  image: dispatchBoxImageSchema.nullable(),
+});
+export type DispatchBox = z.infer<typeof dispatchBoxSchema>;
+
+/**
+ * `dispatch` at the current minor (4): an offer of a task. The peer answers `accepted` or
+ * `rejected` within the offer timeout. A minor-3 peer never sees `box`.
+ */
+export const dispatchBodySchema = dispatchBodySchemaV3.extend({
+  box: dispatchBoxSchema.optional(),
 });
 
 /**
@@ -168,8 +209,8 @@ export const snapshotBuildEnvironmentSchema = z.strictObject({
 });
 export type SnapshotBuildEnvironment = z.infer<typeof snapshotBuildEnvironmentSchema>;
 
-/** `snapshot-build` (minor 2, `docker` only): build the project's snapshot and keep it on this runner. */
-export const snapshotBuildBodySchema = z.strictObject({
+/** `snapshot-build` up to minor 3 (`docker` only): build the project's snapshot and keep it on this runner. */
+export const snapshotBuildBodySchemaV3 = z.strictObject({
   snapshotId: snapshotIdSchema,
   projectId: projectIdSchema,
   environment: snapshotBuildEnvironmentSchema,
@@ -185,6 +226,29 @@ export const setEffortBodySchema = z.strictObject({
   level: effortLevelSchema,
   changeId: effortChangeIdSchema,
 });
+
+/** How a snapshot is built (F-120): by the host's Docker engine, or by a rootless BuildKit pod. */
+export const snapshotBuilderSchema = z.enum(["docker", "buildkit"]);
+export type SnapshotBuilder = z.infer<typeof snapshotBuilderSchema>;
+
+/**
+ * Minor 4: where a built snapshot is pushed (F-120). The push credential is never here: the
+ * runner fetches it for this build (`POST /runner/v1/snapshots/:snapshotId/push-credential`).
+ */
+export const snapshotBuildPushSchema = z.strictObject({ ref: imageRefSchema });
+export type SnapshotBuildPush = z.infer<typeof snapshotBuildPushSchema>;
+
+/**
+ * `snapshot-build` at the current minor (4): minor 2's, with the registry to push to (`null`:
+ * keep it on this runner, as minor 2) and the builder. A minor-3 peer never sees either.
+ */
+export const snapshotBuildBodySchema = snapshotBuildBodySchemaV3.extend({
+  push: snapshotBuildPushSchema.nullable().optional(),
+  builder: snapshotBuilderSchema.optional(),
+});
+
+/** `resume` (minor 4): take tasks again after a drain (F-092). Never sent to a peer below minor 4. */
+export const resumeBodySchema = z.strictObject({});
 
 /** `drain`: take no new tasks; let the running ones finish. */
 export const drainBodySchema = z.strictObject({});
@@ -229,6 +293,7 @@ export const commandBodySchemas = {
   "plan-answer": planAnswerBodySchema,
   "snapshot-build": snapshotBuildBodySchema,
   "set-effort": setEffortBodySchema,
+  resume: resumeBodySchema,
 } as const;
 
 export const commandKindSchema = z.enum([
@@ -244,6 +309,7 @@ export const commandKindSchema = z.enum([
   "plan-answer",
   "snapshot-build",
   "set-effort",
+  "resume",
 ]);
 export type CommandKind = z.infer<typeof commandKindSchema>;
 export type CommandBody<K extends CommandKind> = z.infer<(typeof commandBodySchemas)[K]>;
@@ -251,6 +317,8 @@ export type CommandBody<K extends CommandKind> = z.infer<(typeof commandBodySche
 /** The lowest minor that carries a command kind. The outbox never sends one to a lower peer. */
 export const commandKindMinMinor = (kind: CommandKind): number => {
   switch (kind) {
+    case "resume":
+      return 4;
     case "set-effort":
       return 3;
     case "question-answer":
@@ -285,7 +353,6 @@ const envelope = {
 };
 
 const sharedCommandOptions = [
-  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("interrupt"), body: interruptBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("stop"), body: stopBodySchema }),
   z.strictObject({ ...envelope, kind: z.literal("drain"), body: drainBodySchema }),
@@ -295,41 +362,72 @@ const sharedCommandOptions = [
 const steerV1 = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchemaV1 });
 const approvalAnswerV1 = z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchemaV1 });
 const release = z.strictObject({ ...envelope, kind: z.literal("release"), body: releaseBodySchema });
+const dispatchV3 = z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchemaV3 });
+const steer = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema });
+const approvalAnswer = z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchema });
+const questionAnswer = z.strictObject({ ...envelope, kind: z.literal("question-answer"), body: questionAnswerBodySchema });
+const planAnswer = z.strictObject({ ...envelope, kind: z.literal("plan-answer"), body: planAnswerBodySchema });
 
+const setEffort = z.strictObject({ ...envelope, kind: z.literal("set-effort"), body: setEffortBodySchema });
+const snapshotBuildV3 = z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchemaV3 });
+
+/** Minor 2's commands, in their minor-3 shape: no dispatch `box`, no snapshot build `push` or `builder`. */
 const minor2CommandOptions = [
   ...sharedCommandOptions,
-  z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema }),
-  z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchema }),
+  dispatchV3,
+  steer,
+  approvalAnswer,
   release,
-  z.strictObject({ ...envelope, kind: z.literal("question-answer"), body: questionAnswerBodySchema }),
-  z.strictObject({ ...envelope, kind: z.literal("plan-answer"), body: planAnswerBodySchema }),
-  z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema }),
+  questionAnswer,
+  planAnswer,
+  snapshotBuildV3,
 ] as const;
 
-/** Commands at the current minor (3): minor 2's, with `set-effort`. */
+/** Commands at the current minor (4): minor 3's, with `resume`, the dispatch's `box` and the build's `push` and `builder`. */
 export const commandSchema = z.discriminatedUnion("kind", [
-  ...minor2CommandOptions,
-  z.strictObject({ ...envelope, kind: z.literal("set-effort"), body: setEffortBodySchema }),
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
+  steer,
+  approvalAnswer,
+  release,
+  questionAnswer,
+  planAnswer,
+  z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema }),
+  setEffort,
+  z.strictObject({ ...envelope, kind: z.literal("resume"), body: resumeBodySchema }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
+
+/** Minor 3's commands, kept for the down codec: minor 2's, with `set-effort`; no `resume`. */
+export const commandSchemaV3 = z.discriminatedUnion("kind", [...minor2CommandOptions, setEffort]);
 
 /** Minor 2's commands, kept for the down codec: no `set-effort`. */
 export const commandSchemaV2 = z.discriminatedUnion("kind", [...minor2CommandOptions]);
 
 /** Minor 1's commands, kept for the down codec: no minor-2 kind, and no minor-2 field. */
-export const commandSchemaV1 = z.discriminatedUnion("kind", [...sharedCommandOptions, steerV1, approvalAnswerV1, release]);
+export const commandSchemaV1 = z.discriminatedUnion("kind", [...sharedCommandOptions, dispatchV3, steerV1, approvalAnswerV1, release]);
 
 /** Minor 0's commands, kept for the down codec: no `release`. */
-export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOptions, steerV1, approvalAnswerV1]);
+export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOptions, dispatchV3, steerV1, approvalAnswerV1]);
 
 /**
- * A command as a peer at `minor` reads it: below minor 2, `steer` loses `intent` and
+ * A command as a peer at `minor` reads it: below minor 4, `dispatch` loses `box` and
+ * `snapshot-build` loses `push` and `builder`; below minor 2, `steer` loses `intent` and
  * `approval-answer` loses `reason` and `taskRule`. Minor 3 added a kind only (`set-effort`), no
  * field. A kind the minor lacks is returned as it is,
  * and that peer refuses it: the outbox checks `commandKindSupportedAt` first.
  */
 export const encodeCommandForMinor = (command: Command, minor: number): Command => {
+  if (minor >= 4) {
+    return command;
+  }
+  if (command.kind === "dispatch") {
+    return { ...command, body: dispatchBodyStripV3.parse(command.body) };
+  }
+  if (command.kind === "snapshot-build") {
+    return { ...command, body: snapshotBuildBodyStripV3.parse(command.body) };
+  }
   if (minor >= 2) {
     return command;
   }
@@ -341,6 +439,10 @@ export const encodeCommandForMinor = (command: Command, minor: number): Command 
   }
   return command;
 };
+
+// Minor 3's bodies as stripping objects: parsing a current body keeps minor 3's fields only.
+const dispatchBodyStripV3 = z.object(dispatchBodySchemaV3.shape);
+const snapshotBuildBodyStripV3 = z.object(snapshotBuildBodySchemaV3.shape);
 
 // Minor 1's bodies as stripping objects: parsing a current body keeps minor 1's fields only.
 const steerBodyStripV1 = z.object(steerBodySchemaV1.shape);

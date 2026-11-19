@@ -37,7 +37,14 @@ import type { ApprovalRule, TaskRule } from "../agent/rules.ts";
 import type { MemoryIndexEntry, MemoryNote, MemoryProposalInput } from "../memory/notes.ts";
 import type { TaskEvent, TaskEventKind, TaskEventOf } from "../events/agent-events.ts";
 import type { Command, CommandKind } from "../runner/commands.ts";
+import type { Hello, RunnerCapabilities, Status } from "../runner/messages.ts";
 import type {
+  HttpSuperseded,
+  InfoResponse,
+  PullCredentialRequest,
+  PushCredentialRequest,
+  RegistryCredential,
+  RegistryCredentialRefusal,
   MemoryNoteResponse,
   MemoryProposalRefusal,
   MemoryProposalRequest,
@@ -98,6 +105,8 @@ export const fixtureIds = {
   budget: budgetIdSchema.parse("0196f1a0-0000-7000-8000-00000000001e"),
   secondRepo: repoIdSchema.parse("0196f1a0-0000-7000-8000-00000000001f"),
   effortChange: effortChangeIdSchema.parse("0196f1a0-0000-7000-8000-000000000020"),
+  // Minor 4 (milestone 5).
+  secondBox: boxIdSchema.parse("0196f1a0-0000-7000-8000-000000000021"),
 } as const;
 
 const ids = fixtureIds;
@@ -347,6 +356,12 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     related: [{ repoId: ids.secondRepo, prNumber: 3 }],
   },
   "effort.changed": { kind: "effort.changed", from: "default", to: "high", memberId: ids.member },
+  // Minor 4 (milestone 5).
+  "box.waiting": { kind: "box.waiting", boxId: ids.box, reason: "node", since: 1_700_000_000_000 },
+  "box.scheduled": { kind: "box.scheduled", boxId: ids.box, afterMs: 40_000 },
+  "task.cancelled": { kind: "task.cancelled", memberId: ids.member },
+  "runner.drained": { kind: "runner.drained", memberId: ids.member },
+  "runner.resumed": { kind: "runner.resumed", memberId: ids.member },
 };
 
 /**
@@ -544,6 +559,8 @@ export const commandFixtures: { readonly [K in CommandKind]: Extract<Command, { 
     kind: "set-effort",
     body: { sessionId: ids.session, level: "high", changeId: ids.effortChange },
   },
+  // Minor 4 (milestone 5).
+  resume: { ...commandEnvelope, seq: 20, kind: "resume", body: {} },
 };
 
 /** Minor 2's optional command fields, present. */
@@ -860,4 +877,134 @@ export const taskSpecEffortFixture: TaskSpec = {
     reasoning: reasoningControlsFixtures.effortNoLow,
     limits: { contextWindow: 1_000_000, maxOutputTokens: 128_000 },
   },
+};
+
+// ---------- minor 4 (milestone 5) ----------
+
+/** A snapshot image in the fixture registry, by digest. */
+export const fixtureImage = {
+  ref: `registry.ostra-test.dev/ostra-dev/${ids.project}:${ids.snapshot}`,
+  digest: `sha256:${"b".repeat(64)}`,
+} as const;
+
+/** Minor 4's optional command fields, present. */
+export const minor4CommandFixtures = {
+  "dispatch, with a size and an image": {
+    ...commandEnvelope,
+    seq: 16,
+    kind: "dispatch",
+    body: {
+      taskId: ids.task,
+      sessionId: ids.session,
+      boxId: ids.box,
+      leaseEpoch: 1,
+      box: { size: { name: "small", cpuMillis: 2000, memoryMiB: 4096 }, image: fixtureImage },
+    },
+  },
+  "dispatch, slots only": {
+    ...commandEnvelope,
+    seq: 17,
+    kind: "dispatch",
+    body: { taskId: ids.task, sessionId: ids.session, boxId: ids.box, leaseEpoch: 1, box: { size: null, image: null } },
+  },
+  "snapshot-build, pushed by BuildKit": {
+    ...commandFixtures["snapshot-build"],
+    seq: 18,
+    body: { ...commandFixtures["snapshot-build"].body, push: { ref: fixtureImage.ref }, builder: "buildkit" },
+  },
+  "snapshot-build, kept by Docker": {
+    ...commandFixtures["snapshot-build"],
+    seq: 19,
+    body: { ...commandFixtures["snapshot-build"].body, push: null, builder: "docker" },
+  },
+} as const satisfies Readonly<Record<string, Command>>;
+
+/** A `kubernetes` runner's capabilities, as its executor declares them (ADR 0060). */
+export const kubernetesCapabilitiesFixture: RunnerCapabilities = {
+  isolation: "container",
+  services: true,
+  boxSizes: true,
+  snapshots: "image",
+  registry: "required",
+  nodeWait: true,
+};
+
+/** A `kubernetes` pool runner's status at minor 4, with every new field. */
+export const minor4StatusFixture: Status = {
+  type: "status",
+  executor: "kubernetes",
+  capacity: 20,
+  freeSlots: 19,
+  labels: ["tier:fast", "executor:kubernetes", "os:linux", "arch:x64", "gpu"],
+  version: "0.5.0",
+  running: [ids.session],
+  spoolBytes: 0,
+  processContainment: "container",
+  resources: { slots: 20, cpuMillis: 30_000, memoryMiB: 61_440 },
+  capabilities: kubernetesCapabilitiesFixture,
+  install: "image",
+};
+
+/** A `host` runner's status at minor 4: no resources, since `host` counts slots. */
+export const minor4HostStatusFixture: Status = {
+  type: "status",
+  executor: "host",
+  capacity: 2,
+  freeSlots: 2,
+  labels: [],
+  version: "0.5.0",
+  running: [],
+  spoolBytes: 0,
+  processContainment: "job-object",
+  resources: null,
+  capabilities: { isolation: "none", services: false, boxSizes: false, snapshots: "host-cache", registry: "none", nodeWait: false },
+  install: "npm",
+};
+
+/** A `kubernetes` runner's `hello` at minor 4. */
+export const minor4HelloFixture: Hello = {
+  type: "hello",
+  protocolMajor: 1,
+  protocolMinor: 4,
+  runnerVersion: "0.5.0",
+  peer: { kind: "runner", runnerId: ids.runner },
+  carrier: "http",
+  lastCommandSeq: 0,
+  sessions: [],
+  executor: "kubernetes",
+  resources: { slots: 20, cpuMillis: 30_000, memoryMiB: 61_440 },
+  capabilities: kubernetesCapabilitiesFixture,
+  install: "image",
+};
+
+/** The runner endpoints minor 4 adds and grows, a request and an answer each. */
+export const minor4HttpFixtures = {
+  info: {
+    protocolMajor: 1,
+    serverMinor: 4,
+    supported: { min: 3, max: 5 },
+    serverVersion: "0.5.0",
+    panelUrl: "https://ostra.example.test",
+    deviceClientId: "ostra-runner",
+    minorWindow: { min: 3, max: 5 },
+    npm: { package: "ostra", registry: "https://registry.npmjs.org" },
+  } satisfies InfoResponse,
+  pullCredentialRequest: { leaseEpoch: 1 } satisfies PullCredentialRequest,
+  pushCredentialRequest: {} satisfies PushCredentialRequest,
+  credential: {
+    registry: "registry.ostra-test.dev",
+    username: "fixture-user",
+    token: "fixture-registry-token-not-real",
+    expiresAt: 1_900_000_000_000,
+  } satisfies RegistryCredential,
+  superseded: { code: "superseded" } satisfies HttpSuperseded,
+} as const;
+
+/** Each refusal of a registry credential. */
+export const registryCredentialRefusalFixtures = {
+  "no-image": { error: { code: "no-image", message: "this lease's dispatch named no registry image" } },
+  "not-the-builder": { error: { code: "not-the-builder", message: "this snapshot's build went to another runner" } },
+  "stale-lease": { error: { code: "stale-lease", message: "the lease epoch is not the task's current one", currentEpoch: 2 } },
+} as const satisfies {
+  readonly [K in RegistryCredentialRefusal["error"]["code"]]: RegistryCredentialRefusal & { readonly error: { readonly code: K } };
 };

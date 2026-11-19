@@ -161,6 +161,13 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       options.link.statusChanged();
       return done({ result: "done" });
     },
+    // Minor 4 (F-092): the drain is lifted; offers are taken again.
+    resume: () => {
+      draining = false;
+      log.info("resumed: taking tasks again");
+      options.link.statusChanged();
+      return done({ result: "done" });
+    },
     "update-hint": (command) => {
       log.info("a newer runner is available", { version: command.body.version });
       return done({ result: "done" });

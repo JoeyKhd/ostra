@@ -1,4 +1,4 @@
-import { infoResponseSchema, PROTOCOL_MAJOR, PROTOCOL_MINOR, runnerPaths } from "@ostra/protocol";
+import { infoResponseSchema, PROTOCOL_MAJOR, PROTOCOL_MINOR, runnerHeaders, runnerPaths } from "@ostra/protocol";
 import type { InfoResponse } from "@ostra/protocol";
 import { RUNNER_VERSION } from "../version.ts";
 import { callJson, joinUrl } from "./http.ts";
@@ -28,6 +28,8 @@ export const fetchInfo = async (serverUrl: string, signal?: AbortSignal): Promis
     url: joinUrl(serverUrl, runnerPaths.info),
     method: "GET",
     schema: infoResponseSchema,
+    // Minor 4: the server answers in this minor's shape, with the window and the pin's registry.
+    headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
     ...(signal === undefined ? {} : { signal }),
   });
   if (!result.ok) {
