@@ -1,0 +1,96 @@
+# Clients in one organization: keys per project, and linked GitHub installations
+
+**Status:** accepted (2026-11-19, on the maintainer's delegation, pending the maintainer's review in milestone 4's ticket 55). Settles Q270 to Q284. Covers F-135 and F-136. Amends ADR 0033 (a provider is one key, and a project says which keys it may use), ADR 0040 (an App other accounts may install, linked installations, a bot per repo), ADR 0049 (a profile names its model by name) and ADR 0055 (spend per key). Builds on ADR 0026 (organizations and projects), ADR 0030 (no credential in the agent's container), ADR 0042 (metering at the key proxy) and ADR 0054 (the audit log).
+
+## Why
+
+The maintainer, 2026-11-19: "for some companies, I basically get an API key that I get to use for their projects. And from another company, I get to use another API key with a base URL. So it should be that you're able to configure each model to have several providers. And then once in that project or organization, you can actually select which key you want to use, because you don't want to be using company B's API key for company A."
+
+And, the same day: "I guess you don't have that many organizations. I guess it's just your team that owns the application, but you're able to add several repositories from other GitHub organizations as well. And then you can basically say, hey, I want this specific project, let's say the calculator app, to use this specific key. That is something that is really important."
+
+Read from the code on `main` on 2026-11-19: a `ModelProvider` belongs to one organization (a base URL, an API format and a token in the secret store), and an organization may have several. A `Model` belongs to one provider, so a models.dev model that two providers serve is two rows. An `AgentProfile` points at one `Model`, so at one provider, and a project picks a default profile per task kind. Nothing ties a project to a provider, so inside one organization a task on company A's repo can run on company B's key. On GitHub, the App's manifest sets `public: false` (`packages/adapters/adapter-github/src/manifest.ts`), and "Private GitHub Apps can only be installed on the user or organization account of the app owner" ([GitHub](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/making-a-github-app-public-or-private)), so a client's GitHub organization can't install it. A `Repo` stores its own installation and a `Connection` is unique per organization, kind and App, but the API finds "the" GitHub connection with one `findFirst` (`packages/api/src/services/github-connection.ts`, `packages/api/src/routers/github.ts`), and the task spec authors every repo's commits with the first repo's bot (`apps/core/src/dispatch/task-spec.ts`).
+
+## Clients are projects
+
+v1 is one organization per install: the maintainer moved several organizations per install after v1 on 2026-11-19 (F-134), and ostra is self-hosted only. So the team that runs ostra is the organization, and each client's work is one or more projects in it, with the client's repos and the client's key. Keys per project and repos from several GitHub organizations are the whole answer for clients in v1, and this ADR builds both. The data model still keeps every record inside its organization, with its test (ADR 0026), so a client could be an organization of its own once several per install come back.
+
+## Keys per project (F-135)
+
+A model provider is one key: a base URL and a token (ADR 0033). An organization may hold several that serve the same models, one per client.
+
+- **Each project has a list of the providers it may use.** It follows the **organization's default list** until an organization admin gives it a list of its own. Only an organization admin edits either list (F-003): a key is billed to whoever issued it, so choosing which projects spend it is an organization's decision. A project admin and a member see the project's providers by name and the model each serves, never a token (Q277).
+- **The default list may be empty.** An organization that serves clients can leave it empty, so a new project has no key until an admin picks one. The organization's first provider joins the default list, so a fresh install's setup works unchanged. Later providers join no list until an admin ticks one (Q270).
+- **A profile names its model by name** (Q271): its models.dev catalog ID, or, for a custom model, the ID its endpoint lists it under. It no longer points at one provider's listing. So one profile works in every client's project, each on its own key.
+- **In each project, each model is served by exactly one provider** (Q273): the one an organization admin chose for it there, or else the only provider on the project's list that lists it. A project on the default list uses the organization's default choices; a project given its own list starts from a copy of the default list and its choices.
+- **Nothing but an admin's save moves a model to another key.** When adding a provider to a list, or a provider's daily model refresh, would give a model a second provider on a list where it had one, ostra records the one already serving it as the choice, in the same transaction. A save that changes a list first shows every model whose key changes, or that is left with none, and applies only that.
+- **No pin on the profile** (Q272). A profile could also name a provider, but it isn't kept: it would be a second place that decides a task's key, and a member reading a project's "Models and keys" could no longer know which key every task there uses. What a pin would express, a profile for one client only, the project's list already says, with profile access (F-021) for who may use it. A pin can come back as an additive column if a case appears that a project's choice can't express.
+
+**Where it's enforced.** The server checks the key at three points, and never falls back to a key the project doesn't allow:
+1. **Dispatch.** A session's start resolves the project's provider and model row for the profile's model, records both on the session, and puts only that provider in the task spec. A session whose recorded provider isn't on its project's list doesn't dispatch.
+2. **The credentials endpoint,** which hands the key proxy its real key (ADR 0030, F-089). It issues a provider's token only when that provider is on the task's project's list and is the one its session recorded. Any other request is refused with `provider-not-allowed`, an audit entry and a log line with IDs only.
+3. **Every turn start,** beside the budget gate (ADR 0055): a turn never starts on a provider its project no longer allows. If the project now resolves the model to another provider, the turn starts in a fresh box on that one, through F-033's fresh-box path. A running turn finishes. When a provider leaves a project's list, the project's idle boxes holding its key are released at once, and a running turn's box after its turn, so no box keeps a key its project no longer allows past its current turn (Q275).
+
+**When no key serves the model** (Q274), the task can't start, and says so in words: "No key for GPT-5 in `calculator`. An organization admin picks one in Models and keys." The New task page shows it before Start, and Start is refused. A task from a ticket, an automation or a reopen waits queued with that reason, and Home's needs-you shows it to the organization's admins, the only people who can fix it: a new audience, `organization_admins`. A chosen model row that its provider stops listing is the same case: the task waits, and nothing moves to another key.
+
+**No silent fallback** (Q276). A project uses exactly one key per model. When it's rate-limited, its tasks wait on its hold (F-089); when it's at its cap of sessions at once, they wait for a slot (F-088); when it errors, the task fails as it does today. None of them moves a task to another key, so a client is billed only for its own work.
+
+**Spend, caps and personal runners** (Q276).
+- **Spend is counted per key, per project and per organization.** Milestone 4's `SpendDaily` rows are per project, day and model row, and a model row belongs to one provider, so the key's share needs no new rollup. A call is priced from the serving provider's own model prices, since two clients' contracts may price the same model differently. `usage.recorded` is attributed to the session's recorded provider; an event that names another is logged and counted against the session's own.
+- **Budgets stay per organization and per project** (ADR 0055). A client is a project, or several, each with its budget. A budget per key isn't in v1.
+- **A provider's cap of sessions at once stays per provider,** counted over that provider's sessions in every project.
+- **`allowOnPersonalRunners` stays per provider,** checked against the provider the project resolves (Q47).
+
+**Audit.** Every change to the default list, a project's list, its mode or a choice is an audit entry (F-073), and so is each refused issuance.
+
+**The upgrade** (Q278). Other teams upgrade on their own schedule (`AGENTS.md`), so the migration is additive and a fresh upgrade behaves as before:
+- The profile gains its model by name beside `modelId`, back-filled from its model row (`catalogId`, else `endpointModelId`).
+- The list table, the choice table, `Project.ownProviders` and the session's provider and model row are added. Every existing provider goes on the organization's default list, and every project follows it, so every project may use what it could before.
+- Each model name gets a default choice: the model row of the oldest profile that names it. Where existing profiles named the same model on different providers, that is the one case an upgrade changes; the Models page marks each such choice for an admin to confirm or change, and tasks already running keep the provider their session recorded.
+- This release still writes `modelId` and reads it nowhere new, so a rollback to the previous release keeps working. A later release drops it.
+
+## Repos from several GitHub organizations (F-136)
+
+The question (Q279) is how a client's GitHub organization gives ostra access to its repos. Three options:
+- **(a) The organization's App is installable by other accounts.** A public App: "any user on GitHub can install it and authorize it" ([GitHub](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/making-a-github-app-public-or-private)). The client's owner installs it on the repos they choose, and ostra uses an installation only once an organization admin has linked it.
+- **(b) Several Apps per organization.** An organization admin connects an App the client's own GitHub organization owns, beside the organization's own App.
+- **(c) Both.**
+
+**Chosen: (c), with (a) as the usual path.**
+- **(a) is the least work for a client:** one install, of repos they pick, and no App to create or key to hand over. F-006's one flow still creates the App.
+- **(b) is for a client whose rules need its own App.** It owns it, rotates or deletes its key, sees it among its own Apps, and its PRs carry its own bot. An organization owner can also keep App installs to owners only, so a repo admin has to ask them ([GitHub](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/limiting-oauth-app-and-github-app-access-requests)), and some won't install another account's App.
+- **(b) costs little on top of (a).** Connecting an existing App is already beside the one-flow creation (F-006, Q136). The webhook inbox already routes by connection, the PR opener, the reconcile and the credentials already use each repo's own connection, and the only lookups that assume one App are the API's, which (a) changes anyway.
+- **(b) alone was rejected:** every client would create an App, hand over its private key and set a webhook address and secret by hand.
+
+**Linked installations** (Q280). With (a), anyone on GitHub can install the App, so ostra acts only through installations an organization admin linked:
+- An installation on the App owner's own account is linked as soon as ostra sees it, so a team whose repos are all in one GitHub organization notices nothing.
+- Any other installation shows on the organization's GitHub page as "Waiting to be linked", with its account, until an organization admin links it or removes it. Removing it uninstalls the App from that account, which GitHub allows the App itself to do with its JWT ([GitHub](https://docs.github.com/en/rest/apps/apps#delete-an-installation-for-the-authenticated-app)). Linking, unlinking and removing are audit entries.
+- For an installation that isn't linked, ostra mints no token, lists no repo to add to a project, and stores no webhook delivery: the inbox verifies the signature and drops the delivery before any write. A stranger's install costs ostra a signature check, and nothing else. A repo can be added to a project only from a linked installation, and a repo whose installation was unlinked or removed stops new tasks with the reason.
+
+**The App's visibility** (Q281). The manifest form asks whether repos outside the App owner's account will use it, and sets `public` from the answer. **Private is the default,** because the choice only goes one way once a client has installed it: "Public apps cannot be made private if they're installed on other accounts" ([GitHub](https://docs.github.com/en/apps/maintaining-github-apps/modifying-a-github-app-registration)). An existing private App is made public on GitHub's own App settings page, under "Danger zone" (same source), and the panel links there and says why. A public App's homepage is ostra's own site, not the install's address, since anyone can open a public App's page to install it. Public doesn't mean a Marketplace listing ([GitHub](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/making-a-github-app-public-or-private)).
+
+**Several Apps** (Q282). A connected App gets its own webhook address, `/webhooks/github/<connectionId>`, which the inbox already accepts, and a webhook secret ostra generates and shows once for the client to paste into their App. The App-wide address, which finds the connection by the App's ID, stays for the organization's own App. When several organizations per install come after v1, an App connects to one of them, since one App has one webhook address; the inbox already refuses to guess between two.
+
+**A bot per repo** (Q283). An App authors as its own bot (`slug[bot]`, `research/platform-auth-github.md` §2.1), the same for every installation of that App. So with (a), a client's PRs are authored by the organization's App, and with (b), by the client's. A task whose repos belong to two Apps authors each repo's commits with that repo's App: the task spec gains a git identity per repo (protocol minor 3), and such a task goes only to a runner at minor 3, since an older one would sign every repo as the first.
+
+**Live runs** (Q284). The test workspaces hold one GitHub organization, `ostra-test`, and one model key (`docs/development.md`). Milestone 4's ticket 55 asks the maintainer for a second test organization with the test App installed on it, made public once for that, optionally an App the second organization owns, and a second model key. Until they exist, the scripted run uses the fake GitHub's two accounts and two stub model endpoints, and says so in its record. Every condition of F-135 and F-136 is still proved by tests.
+
+## Considered options
+
+- **A key per agent profile, one profile per client.** That's today's model. Rejected: the key would follow whoever picks the profile, not the project, so a member choosing the wrong profile in client A's project spends client B's key, and a profile is copied per client for nothing else.
+- **Fall back to another allowed key when one is rate-limited or down.** Rejected (Q276): a client's work would be billed to another key without anyone choosing it. A project can still list two keys; only an admin's choice decides which serves a model.
+- **A member picks the key when starting a task.** Rejected: the lock would depend on every member choosing right, every time.
+- **Project admins edit their project's keys.** Rejected for v1 (Q277): a key is the organization's contract with whoever issued it. A project admin sees them.
+- **Copy a provider into each project.** Rejected: the same key in two places, two tokens to rotate, and spend per key split across copies.
+- **Each client its own organization.** Rejected: several organizations per install move after v1 (the maintainer, 2026-11-19, F-134), and in the maintainer's words one team owns the install, so a member works across clients without switching.
+- **A public App by default.** Rejected (Q281): it can't be made private again once installed elsewhere, and most teams' repos are in one GitHub organization.
+- **Remove strangers' installations automatically.** Rejected: a client's real install would be removed before an admin got to link it. Removing is one click, and an unlinked installation reaches nothing.
+
+## Consequences
+
+- F-135 and F-136 are new v1 rows, in milestone 4 (`specs/m4-the-organization/`, tickets 45 to 55). F-021's profile names its model by name. F-088, F-089, F-037, F-087, F-006, F-086 and F-078 carry dated notes.
+- Adapter parity holds: the key is resolved in core before an agent adapter or the `ModelProviderAdapter` sees it, so every agent and every provider gets the same lock. The code host gains `removeInstallation` and a manifest's visibility, behind the same interface for the next code host (F-009).
+- Runner parity holds: the checks are core's (the dispatch, the credentials endpoint, the turn start), so `docker`, `host` and `kubernetes`, personal and pool runners, all get the same answer.
+- No new setting. A fresh install with only the required settings works as before: its first provider is on the default list, and its App, made private, links its own installation.
+- The isolation proof has two halves, both with a break-it: a task in one project never gets the token of a provider allowed only in another, at the dispatch and at the credentials endpoint, even with a session row edited to name it (F-135); and ostra mints, lists and stores nothing for an installation nobody linked (F-136).
+- A budget per key, and a member's own provider (F-128), are later. When F-128 comes, it says how a member's own provider meets a project's list.
+- Revisit if a client needs two keys for one model in one project, for example a second key for a different region, or if a team asks for a budget per key.

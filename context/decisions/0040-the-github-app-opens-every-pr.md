@@ -1,6 +1,6 @@
 # The GitHub App opens every PR
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122). **Amended again 2026-11-19 for milestone 4's spec** (Q207): whose approval counts, and how the check is kept current ("Milestone 4: the check in practice" below). **Amended again 2026-11-19 for milestone 6's spec** (Q227): a "changes requested" reviewer gets no trailer for it ("Milestone 6: a "changes requested" reviewer stays independent" below).
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Supersedes ADR 0019. Settles Q55, and the authorship part of Q41. **Amended 2026-11-18 after spike 4** (`research/spike-github-app-and-git-proxy.md`): what GitHub accepted for the App, how the check behaves, and who counts as the driver (Q121, Q122). **Amended again 2026-11-19 for milestone 4's spec** (Q207): whose approval counts, and how the check is kept current ("Milestone 4: the check in practice" below). **Amended again 2026-11-19 for milestone 6's spec** (Q227): a "changes requested" reviewer gets no trailer for it ("Milestone 6: a "changes requested" reviewer stays independent" below). **Amended again 2026-11-19 by ADR 0065** (Q279 to Q283): an App other accounts may install, linked installations, a client's own App beside the organization's, and a bot per repo ("Repos from several GitHub organizations" below).
 
 The organization's GitHub App opens every PR and authors every commit.
 
@@ -43,3 +43,11 @@ Added 2026-11-19 (Q207), for milestone 4's spec, which ships F-104.
 Added 2026-11-19 (Q227), for milestone 6's spec, which ships F-105.
 
 - **A review that requests changes reopens the task with its comments as one prompt (F-105), and gives its reviewer no co-author trailer.** The driver rule (Q121) makes everyone with a trailer a driver, and a driver's approval doesn't count for `ostra/independent-review`. A reviewer who asked for changes and then approves the fix is the independent reviewer the check is for. `@ostra` comments and the panel's messages still credit their member, as they always did.
+
+## Repos from several GitHub organizations
+
+Added 2026-11-19 by ADR 0065, for F-136.
+
+- **"The organization's GitHub App" becomes "the repo's App".** An organization has its own App, and may connect an App a client's GitHub organization owns beside it. Each repo's PR is opened, and its commits authored, by its own App's bot. A task whose repos belong to two Apps carries a git identity per repo (protocol minor 3).
+- **The App may be installable by other accounts.** The manifest form asks, and creates it private by default, since GitHub won't make a public App private again once another account installed it.
+- **ostra works only through linked installations.** The App owner's own account is linked when seen; any other installation waits until an organization admin links it, and until then ostra mints no token, offers no repo and stores no webhook delivery for it.

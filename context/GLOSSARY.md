@@ -311,12 +311,20 @@ A coding harness that ostra drives, such as OpenCode, Claude Code or Codex.
 _Avoid_: bot, model, AI, assistant
 
 **Agent profile**:
-A named setup of an agent (model, instructions, tools, how much it may do without asking) that automations and members choose from. It belongs to the organization, and a project picks a default for each task kind.
+A named setup of an agent (a model by its model name, instructions, tools, how much it may do without asking) that automations and members choose from. It belongs to the organization, and a project picks a default for each task kind.
 _Avoid_: preset, config, persona
 
 **Model provider**:
-An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself.
-_Avoid_: vendor, LLM
+An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself. Each one is one key: an organization may hold several that serve the same models, one per client, and a project uses only those on its provider list.
+_Avoid_: vendor, LLM, key (alone, when you mean the provider: the key is its token)
+
+**Model name**:
+A model as ostra knows it apart from who serves it: its models.dev catalog ID, or, for a model the catalog lacks, the ID its endpoint lists it under. An agent profile names its model this way, and each project serves it from one provider on its list.
+_Avoid_: model ID (that's one provider's listing of the model), model (alone, when you mean the name)
+
+**Provider list**:
+The model providers a project may use: the organization's default list, which a project follows until it has its own, or the project's own. Only an organization admin edits it. In each project, each model is served by exactly one provider on the list, and a task gets credentials for no provider outside it.
+_Avoid_: allowlist, key ring, fallback (no task ever moves to another provider on its own)
 
 **Agent image**:
 An image a runner builds itself from the base image, adding an agent the published base image doesn't carry (Claude Code, until its terms allow ostra to ship it), pinned and checked. Built once per base image and agent version, kept by the runner or in the organization's registry, never published. Not in v1: v1's one agent, OpenCode, is in the base image, and agent images come with Claude Code (F-018) after v1 (2026-11-19).
@@ -359,7 +367,7 @@ A person who belongs to an organization (to several, after v1: F-134). A restric
 _Avoid_: user, seat
 
 **Admin**:
-A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and members. A project admin manages one project's repos, environment and access. The first account of an install is seeded by the server when it starts with no account, and is also its instance admin and the admin of its one organization.
+A member who manages an organization or a project. An organization admin manages its integrations, runner pools, model providers and which projects may use each, and members. A project admin manages one project's repos, environment and access. The first account of an install is seeded by the server when it starts with no account, and is also its instance admin and the admin of its one organization.
 _Avoid_: owner, operator
 
 **Instance admin**:
@@ -391,6 +399,10 @@ _Avoid_: PM tool, project management tool, issue tracker
 **Code host**:
 The service where an organization's repos live and pull requests are reviewed: GitHub, later others.
 _Avoid_: VCS, forge, git provider
+
+**Installation**:
+A GitHub account's install of an App, which grants the App the repos that account chose. ostra works only through a linked installation: one on the App owner's own account, which is linked when ostra sees it, or one an organization admin linked. A client's GitHub organization installs the organization's App, or has its own App connected beside it.
+_Avoid_: integration, connection (that's ostra's record of the App itself)
 
 **Adapter**:
 ostra's connection to one specific tracker, code host, agent, model provider, executor, notification channel, secret store or blob store, behind the interface all of its kind share.

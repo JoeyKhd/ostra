@@ -1,6 +1,6 @@
 # Model providers: any base URL and token, with the catalog from models.dev
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q34 (with the maintainer's answer in chat that models are listed from the endpoint) and the provider half of Q47 and Q105. Covers F-088 and, for what it leaves later, F-128 and F-130.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q34 (with the maintainer's answer in chat that models are listed from the endpoint) and the provider half of Q47 and Q105. Covers F-088 and, for what it leaves later, F-128 and F-130. **Amended 2026-11-19 by ADR 0065** (Q270 to Q278): a provider is one key, each project uses only the providers on its list, and a profile names its model by name ("Several keys for the same models" below).
 
 ostra never assumes a model provider. A **model provider** is an API base URL and a token that an organization adds. Nothing in the form fits only one vendor. Any product named in the panel or the docs is an interchangeable example.
 
@@ -47,3 +47,11 @@ ostra never assumes a model provider. A **model provider** is an API base URL an
 - Claude Code (F-018, after v1 since 2026-11-19) needs a provider whose format is Anthropic's Messages API (ADR 0032). OpenCode takes either.
 - Spike 1 proves the pieces together: a turn against the endpoint in `model.env`, and against a local stub in each format, with the proxy's token count within 2% of the endpoint's. The spikes read one neutral file, `model.env` (base URL, token and model ID), and no spike, test or default assumes a provider (Q106).
 - A member's own provider for their personal runner is later (F-128).
+
+## Several keys for the same models
+
+Added 2026-11-19 by ADR 0065, for F-135.
+
+- **A provider is one key.** An organization may hold several providers that serve the same models, one per client, each with its own base URL, token, prices, cap and personal-runner switch.
+- **A project uses only the providers on its list,** the organization's default or its own, which only an organization admin edits. In each project each model is served by exactly one of them, and nothing moves it to another but an admin's save. The credentials endpoint issues a provider's token only for a task whose project allows it.
+- **A profile names its model by name:** the models.dev catalog ID this ADR already matches each listed model against, or a custom model's endpoint ID. The model rows stay per provider, with that provider's own prices, so two clients' contracts can price one model differently.

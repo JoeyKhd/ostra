@@ -1,6 +1,6 @@
 # Budgets, spend and Insights
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 4's spec). Settles Q199 and Q200. Covers F-037 and F-108, and builds on ADR 0042 (budgets, and metering at the key proxy), ADR 0035 (Insights aren't live), ADR 0037 (background work on pg-boss) and ADR 0050 (notifications).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 4's spec). Settles Q199 and Q200. **Amended 2026-11-19 by ADR 0065** (Q276): spend is also shown per model provider ("Spend per key" below). Covers F-037 and F-108, and builds on ADR 0042 (budgets, and metering at the key proxy), ADR 0035 (Insights aren't live), ADR 0037 (background work on pg-boss) and ADR 0050 (notifications).
 
 ADR 0042 says where spend is counted and what a budget does at 80% and 100%. This ADR settles how spend adds up to a month, where the gate stands, what a model with no price does, and what each Insights figure means.
 
@@ -56,3 +56,11 @@ Q200. F-108's figures, for an organization or one project, over a period the mem
 - The notification kinds gain `budget_warning` and `budget_reached`, which completes F-115 (ADR 0050).
 - Budgets per member and per agent profile stay after v1 (F-131).
 - Revisit if an install needs another currency, or a month in its own time zone.
+
+## Spend per key
+
+Added 2026-11-19 by ADR 0065, for F-135.
+
+- **Spend is shown per model provider too,** each provider being one client's key. `SpendDaily` is per project, day and model row, and a model row belongs to one provider, so the key's share needs no new rollup.
+- **A call is priced from the serving provider's own model row,** and attributed to the provider its session recorded.
+- **Budgets stay per organization and per project.** A client is one or more projects, each with its budget. A budget per key isn't in v1.

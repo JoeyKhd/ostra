@@ -6,13 +6,14 @@
 
 ```
 Install ── Organization ─┬─ Member (admin | member)
-                         ├─ Connection (the GitHub App, the Linear app)
+                         ├─ Connection (GitHub Apps, the Linear app) ── Installation (linked)
                          ├─ Model provider ── Model
                          ├─ Runner pool ── Runner        (a personal runner belongs to one member)
                          ├─ Agent profile
                          ├─ Memory note, Budget, Audit entry
                          └─ Project ─┬─ Project member (admin | member), when the project is restricted
                                      ├─ Repo (linked), Board
+                                     ├─ Provider list (its own, or the organization's default) ── Model choice
                                      ├─ Environment ── Variable or secret (per repo), Service, Check, Snapshot
                                      ├─ Automation (intake rule | schedule)
                                      ├─ Memory note, Proposal, Budget
@@ -32,13 +33,14 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 |---|---|---|
 | **Organization** | the install | The data model holds many. An install starts with one, and the first account is the instance admin (Q102, F-049). In v1 an install runs that one organization, with a team's clients as projects inside it; installs with several come after v1 (F-134, 2026-11-19). Every other record belongs to exactly one organization (ADR 0026). |
 | **Member** | an organization | An account with a unique username, an email address and a password (Q54, F-002). One account can be a member of several organizations in the data model, and in the product after v1 (F-134). Is an admin or a member of the organization (Q35, F-003). Links a GitHub account once, for identity only: co-author credit, `@ostra` and matching reviewers (Q55, F-119, F-053). |
-| **Connection** | an organization | The organization's own GitHub App and Linear app. Webhooks are routed by connection, not by one install-wide address (Q102, F-005, F-006). |
-| **Model provider** | an organization | An API base URL and a token, in one of the two API formats that "Test connection" detects (Q34, F-088). Usable on personal runners only when an admin allows it for that provider; off by default (Q47). |
+| **Connection** | an organization | The organization's own GitHub App and Linear app, and any App a client's GitHub organization owns, connected beside it. Webhooks are routed by connection, not by one install-wide address (Q102, F-005, F-006, F-136). |
+| **Installation** | a connection | A GitHub account's install of the App, with the repos that account chose. ostra works only through a linked one: the App owner's own account is linked when seen, any other waits until an organization admin links it. For an installation that isn't linked, ostra mints no token, offers no repo and stores no webhook delivery (Q279, Q280, F-136). |
+| **Model provider** | an organization | An API base URL and a token, in one of the two API formats that "Test connection" detects (Q34, F-088). Each is one key, and an organization may hold several that serve the same models, one per client (F-135). Usable on personal runners only when an admin allows it for that provider; off by default (Q47). |
 | **Model** | a model provider | Listed from the endpoint itself. Names, limits and prices come from the models.dev catalog, the endpoint's own list, or a price an admin enters (Q34, Q105). |
 | **Runner pool** | an organization | A named set of runners that projects send tasks to (Q9, F-091). Has its join tokens, may require an admin to approve each new runner, and caps its total boxes and each project's share (Q43, Q48). |
 | **Join token** | a runner pool | The key a runner joins the pool with. Shown once, stored hashed, expires after 30 days by default *(working value)*, and can be revoked. Any token of the pool that hasn't expired or been revoked lets a runner join, and every join is an audit entry that names the token (Q48, Q94, Q130). |
 | **Runner** | a runner pool, or one member | ostra's runner program, `ostra runner`. A pool runner gives tasks of any allowed project a place to run. A personal runner belongs to one member and runs only that member's tasks (Q32, Q44, F-013, F-014, F-015). Each reports its executor (`docker`, `host` or `kubernetes`), capacity, labels and version (F-061, F-067). |
-| **Agent profile** | an organization | Agent, model, instructions, skills, MCP servers, approval rules and plan-first. Can be limited to some members. A project picks a default per task kind (Q28, Q70, F-021, F-026, F-063). |
+| **Agent profile** | an organization | Agent, a model by its model name (Q271), instructions, skills, MCP servers, approval rules and plan-first. Can be limited to some members. A project picks a default per task kind (Q28, Q70, F-021, F-026, F-063). |
 | **Memory note** | an organization or a project | One fact every task in its scope should know. Written by members, scanned for secrets and model-control tokens (Q84, Q86, Q88, Q91, F-109). Agents get an index and search the rest through ostra's MCP tools; only a read counts as a note's use (Q85, Q91, F-110). Repo and path scopes come later (F-129). |
 | **Budget** | an organization or a project | A monthly spend limit. At 80% admins are told; at 100% new tasks and automatic rounds wait, and running tasks finish their current turn (Q105, F-037). |
 | **Audit entry** | an organization | Who did what, when: task starts, approvals, takeovers, joins, credential use, provider, budget, pool and memory changes, admin changes (F-073). |
@@ -47,9 +49,9 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 
 | Thing | Belongs to | Notes |
 |---|---|---|
-| **Project** | an organization | A product the organization works on: its repos, boards, environment, automations, memory and tasks (Q28, Q29, F-086). Open to the whole organization, or restricted to listed members (Q35, F-087). Names the pools it may use, a default box size and a default agent profile per task kind (Q32, Q43). |
+| **Project** | an organization | A product the organization works on: its repos, boards, environment, automations, memory and tasks (Q28, Q29, F-086). Open to the whole organization, or restricted to listed members (Q35, F-087). Names the pools it may use, a default box size and a default agent profile per task kind (Q32, Q43). Follows the organization's default provider list or has its own, which only an organization admin edits, and serves each model from exactly one provider on it (Q270, Q273, F-135). |
 | **Project member** | a project | A member's role in a restricted project: admin or member (Q35, F-087). |
-| **Repo** | a project | A GitHub repo the organization's App is installed on, linked to the project. A repo linked to two projects is two links, with a separate set of secrets in each environment (Q29). |
+| **Repo** | a project | A GitHub repo from a linked installation of one of the organization's Apps, linked to the project. A project's repos may come from several GitHub accounts (F-136). A repo linked to two projects is two links, with a separate set of secrets in each environment (Q29). |
 | **Board** | a project | A Linear team or Linear project, later a Jira project or board. Maps ticket statuses, "ready" among them (Q67, F-007, F-031). A project may have no board and run on prompts only (Q31). |
 | **Environment** | a project | One per project: the recipe for every box. A base image, a setup script, services, checks, and variables, secrets and files that each belong to one repo (Q33, F-050). Drafted by detection (Q2, F-112), and checked by the onboarding task (Q49, F-113). |
 | **Variable or secret** | an environment | Names one repo. A secret marked "available during setup" is mounted for the snapshot's build only (Q39). Secrets stay visible to the code under test (Q17). |
@@ -369,6 +371,8 @@ Text the agent is still writing isn't an event. It reaches browsers at most ever
 - **The branches are the task's.** The git proxy enforces it: only the task's sessions can push to them, and a refine or review task can't push at all (Q26, Q66, F-090).
 - **A box serves one task** and is never reused for another (Q38).
 - **No credential in the agent's container.** Model keys and GitHub tokens stay in the sidecar. The agent holds a fake key valid for one task (Q17, Q26, ADR 0030, F-089).
+- **A project's keys are its own.** A task gets the token of a model provider only when its project's provider list holds it and its session recorded it, and each model in a project is served by one provider, which only an admin's save moves. A task never moves to another provider on its own (ADR 0065, F-135).
+- **Only linked installations.** ostra mints a GitHub token, lists a repo and keeps a webhook delivery only for an installation an organization admin linked, or the App owner's own (ADR 0065, F-136).
 - **Saved before acted on.** Every event, state change and outside call is written down first. A restart picks up from what's written. Partial text is the one thing shown without being saved, and nothing acts on it (ADR 0011, Q23).
 - **Rebuildable.** A task can always be rebuilt from its branches, its hidden ref, its session archive and its stored history. That's why boxes can be thrown away (ADR 0006, F-079).
 - **Nothing reaches the tracker or memory from an agent without a person.** Drafts and proposals wait for a member (Q67, Q86).
@@ -404,3 +408,8 @@ For milestone 5's spec (`specs/m5-the-fleet/spec.md`, the same night):
 
 7. **A join token has a lifecycle,** and a queued task has a place in each of its pools' queues, by ticket priority and then queued time; a cancelled queued task stops with the reason `cancelled` (Q232, Q248).
 8. **A box takes a slot and its size's room on a runner,** and a project holds at most its share of a pool's boxes (Q231, Q233, Q236).
+
+For several clients in one organization (ADR 0065, the same night):
+
+9. **A session records its model provider and model row,** resolved from its project's provider list at its start, and an agent profile names its model by name (Q271, Q273, F-135).
+10. **A connection has installations,** and only linked ones are used (Q280, F-136).

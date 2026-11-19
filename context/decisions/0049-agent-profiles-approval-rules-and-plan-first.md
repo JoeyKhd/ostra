@@ -1,6 +1,6 @@
 # Agent profiles, approval rules and plan first
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 3's spec: "continue working on everything throughout the night"). Settles Q166 to Q171. Covers F-021, F-026 and F-063, and builds on ADR 0031 (explicit permissions and approvals), ADR 0032 (OpenCode's steering, plan and deny) and ADR 0036 (the approval card and its race).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 3's spec: "continue working on everything throughout the night"). Settles Q166 to Q171. **Amended 2026-11-19 by ADR 0065** (Q271, Q272): a profile names its model by name, and pins no provider ("The model by name" below). Covers F-021, F-026 and F-063, and builds on ADR 0031 (explicit permissions and approvals), ADR 0032 (OpenCode's steering, plan and deny) and ADR 0036 (the approval card and its race).
 
 An agent profile is the organization's named setup of an agent: the agent, a model, instructions, skills, MCP servers, approval rules, plan first, and who may use it (F-021). Milestone 1 built the row and a built-in OpenCode profile. Milestone 3 gives it the rest, and this ADR fixes the parts that are hard to change once tasks depend on them.
 
@@ -63,3 +63,11 @@ An agent profile is the organization's named setup of an agent: the agent, a mod
 - The agent interface gains `permissionRules`, `planMode`, `skills`, `mcp` and `projectConfigOverride` as declared capabilities, so a second agent (Claude Code, F-018, after v1 since 2026-11-19) states each one (adapter parity, `AGENTS.md`).
 - The sidecar grows an MCP proxy beside the key proxy and the git proxy. Milestone 7's security review of the box covers it.
 - `domain-model.md`'s approval lifecycle is unchanged; "for this task" writes a task rule, as it already said.
+
+## The model by name
+
+Added 2026-11-19 by ADR 0065, for F-135.
+
+- **A profile names its model by its model name:** its models.dev catalog ID, or a custom model's endpoint ID, not one provider's model row. Each project serves it from one provider on its own list, so one profile works in every client's project, each on its own key.
+- **A profile pins no provider.** The project's list is the one place that decides a task's key.
+- **Milestone 3 builds profiles on `modelId`.** Milestone 4 adds the name beside it, fills it from the model row, and a later release drops `modelId`.
