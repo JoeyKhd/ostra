@@ -30,6 +30,7 @@ import {
   planText,
   planTurnPrompt,
   questionIdSchema,
+  repoBranchName,
   runnerLimits,
   serviceNameSchema,
   truncateBytes,
@@ -908,9 +909,12 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     for (const repo of pushed.value) {
       if (repo.ahead && repo.headSha !== null) {
-        await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: repo.headSha, ref: `refs/heads/${currentSpec.branchName}` });
+        // F-066: each repo's own branch, which differs from the task's after a partial merge.
+        const specRepo = currentSpec.repos.find((candidate) => candidate.repoId === repo.repoId);
+        const branch = specRepo === undefined ? currentSpec.branchName : repoBranchName(currentSpec, specRepo);
+        await emit({ kind: "git.pushed", repoId: repo.repoId, branch, headSha: repo.headSha, ref: `refs/heads/${branch}` });
         if (options.hiddenRefEvent) {
-          await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: repo.headSha, ref: hiddenRef });
+          await emit({ kind: "git.pushed", repoId: repo.repoId, branch, headSha: repo.headSha, ref: hiddenRef });
         }
       }
     }
@@ -1016,7 +1020,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     for (const repo of currentSpec.repos) {
       const sha = savedRepos.get(repo.repoId)?.sha ?? null;
       if (sha !== null) {
-        await emit({ kind: "git.pushed", repoId: repo.repoId, branch: currentSpec.branchName, headSha: sha, ref: hiddenRef });
+        await emit({ kind: "git.pushed", repoId: repo.repoId, branch: repoBranchName(currentSpec, repo), headSha: sha, ref: hiddenRef });
       }
     }
     // 3. The session archive: export, gzip, upload with its digest.
@@ -1344,6 +1348,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         fullName: repo.fullName,
         cloneUrl: deps.gitUpstreamUrl === undefined ? repo.cloneUrl : deps.gitUpstreamUrl(repo.cloneUrl),
         lfsActionHosts: repo.lfsActionHosts,
+        // F-066: a repo on a branch of its own can be pushed to that one.
+        ...(repo.branchName === undefined ? {} : { branch: repo.branchName }),
         token: async () => {
           const current = tokens.get(repo.repoId);
           // Refreshed through the server a few minutes before it expires (ADR 0030).

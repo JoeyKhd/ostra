@@ -94,8 +94,18 @@ export const taskSpecRepoSchemaV0 = z.strictObject({
 export const taskSpecRepoSchema = taskSpecRepoSchemaV0.extend({
   /** Minor 3: the bot that authors this repo's commits, when its App isn't the task's first. */
   gitIdentity: gitPersonSchema.optional(),
+  /**
+   * Minor 3: this repo's own branch, when it isn't the task's (F-066, ticket 24): a reopen after a
+   * partial merge gives the merged repo a fresh `-2` branch while the others keep theirs. Missing
+   * means the spec's top-level `branchName`.
+   */
+  branchName: branchNameSchema.optional(),
 });
 export type TaskSpecRepo = z.infer<typeof taskSpecRepoSchema>;
+
+/** The branch ostra pushes a repo's work to: its own when it has one, else the task's. */
+export const repoBranchName = (spec: { readonly branchName: string }, repo: { readonly branchName?: string | undefined }): string =>
+  repo.branchName ?? spec.branchName;
 
 /** The agent section at minors 0 and 1. */
 export const taskSpecAgentSchemaV1 = z.strictObject({
@@ -559,7 +569,7 @@ export const taskSpecNeedsMinor2 = (spec: TaskSpec): boolean =>
 
 /**
  * Whether a spec uses anything a runner below minor 3 can't do: repos whose commits need
- * different bots (F-136), or a reasoning level other than `default` (F-137, ADR 0066). Memory
+ * different bots (F-136), a repo on a branch of its own (F-066), or a reasoning level other than `default` (F-137, ADR 0066). Memory
  * needs no minor 3, since a minor-2 runner gets it folded into its instructions; the model's
  * controls and limits need none either, since a minor-2 runner keeps its fixed limits.
  */
@@ -567,8 +577,10 @@ export const taskSpecNeedsMinor3 = (spec: TaskSpec): boolean =>
   (spec.agent.effort ?? "default") !== "default" ||
   spec.repos.some(
     (repo) =>
-      repo.gitIdentity !== undefined &&
-      (repo.gitIdentity.name !== spec.gitIdentity.name || repo.gitIdentity.email !== spec.gitIdentity.email),
+      (repo.gitIdentity !== undefined &&
+        (repo.gitIdentity.name !== spec.gitIdentity.name || repo.gitIdentity.email !== spec.gitIdentity.email)) ||
+      // A repo on its own branch (F-066): a runner below minor 3 would push it to the task's.
+      repoBranchName(spec, repo) !== spec.branchName,
   );
 
 /** The spec endpoint's answer schema for a runner at `minor`. */

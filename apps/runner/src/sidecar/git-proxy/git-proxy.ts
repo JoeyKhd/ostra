@@ -45,13 +45,15 @@ export type GitProxyRepo = {
   readonly cloneUrl: string;
   /** Hosts its LFS batch answers may send the proxy to, besides the clone URL's own origin. */
   readonly lfsActionHosts: readonly string[];
+  /** F-066: the repo's own branch, when it isn't the task's (`branch` in the options). */
+  readonly branch?: string;
   /** The repo's current token. Never logged. */
   readonly token: () => Promise<string>;
 };
 
 export type GitProxyOptions = {
   readonly taskId: TaskId;
-  /** The task's branch: the same name in every repo. */
+  /** The task's branch: the name in every repo, except a repo with a `branch` of its own. */
   readonly branch: string;
   readonly mode: ProxyMode;
   readonly repos: readonly GitProxyRepo[];
@@ -417,7 +419,7 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       await refusePush(request, response, iterator, head, ["other-repo"], () => "other-repo");
       return;
     }
-    const verdict = decidePush(policy, head.commands);
+    const verdict = decidePush(policy, head.commands, repo.branch ?? policy.branch);
     if (!verdict.allowed) {
       const byRef = new Map(verdict.verdicts.map((item) => [item.ref, item.allowed ? "other-ref-refused" : item.code] as const));
       await refusePush(request, response, iterator, head, verdict.codes, (command) => byRef.get(command.ref) ?? "ref-not-allowed");

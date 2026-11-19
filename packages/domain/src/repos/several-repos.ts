@@ -39,7 +39,13 @@ export const checkoutDirFor = (fullName: RepoFullName, taken: ReadonlySet<string
   return checkoutDirSchema.parse(candidate);
 };
 
-export type AgentRepo = { readonly fullName: RepoFullName; readonly checkoutDir: string; readonly defaultBranch: string };
+export type AgentRepo = {
+  readonly fullName: RepoFullName;
+  readonly checkoutDir: string;
+  readonly defaultBranch: string;
+  /** F-066: the repo's own branch, when it isn't the task's. */
+  readonly branchName?: string;
+};
 
 /**
  * What core appends to the agent's instructions when a task has more than one repo: the agent
@@ -54,7 +60,11 @@ export const renderReposForAgent = (repos: readonly AgentRepo[], branchName: str
     "",
     `This task's workspace holds ${String(repos.length)} repositories side by side; you start at the workspace root. Each is its own git repository, on the branch \`${branchName}\`:`,
     "",
-    ...repos.map((repo) => `- \`${repo.checkoutDir}/\`: ${repo.fullName} (base: ${repo.defaultBranch})`),
+    // A repo on a branch of its own (F-066, after a partial merge) says which one; it is already checked out.
+    ...repos.map(
+      (repo) =>
+        `- \`${repo.checkoutDir}/\`: ${repo.fullName} (base: ${repo.defaultBranch}${repo.branchName === undefined || repo.branchName === branchName ? "" : `, branch: \`${repo.branchName}\``})`,
+    ),
     "",
     "Change only the repositories the task needs. Commit in each one you change; each changed repository gets its own pull request.",
   ].join("\n");

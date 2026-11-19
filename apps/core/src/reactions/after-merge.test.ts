@@ -22,17 +22,20 @@ import {
   clientMessageIdSchema,
   connectionIdSchema,
   gitShaSchema,
+  leaseEpochSchema,
   memberIdSchema,
   repoIdSchema,
   segmentIdSchema,
   sessionIdSchema,
   taskEventSchema,
+  taskSpecNeedsMinor3,
   turnIdSchema,
   webhookDeliveryIdSchema,
 } from "@ostra/protocol";
 import type { OrganizationId, RepoId, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { buildTaskSpec } from "../dispatch/task-spec.ts";
 import { githubWebhookHandler } from "../code-host/pull-requests.ts";
 import type { PullRequestStateDeps } from "../code-host/pull-requests.ts";
 import type { RunnerRef } from "../gateway/context.ts";
@@ -294,6 +297,37 @@ describe("after the merge (F-066)", () => {
     // The unmerged repo keeps its branch and its PR; the task keeps its own branch name for it.
     expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId, repoId: secondRepoId } })).toMatchObject({ branchName, state: "pr_open" });
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).branchName).toBe(branchName);
+  });
+
+  it("F-066: after a partial merge the task spec gives the merged repo its fresh branch, and the other repo the task's", async () => {
+    const task = await runningTask([repo(), secondRepoId]);
+    await turn(task, 1, [
+      { repoId: repo(), head: "ps-1a" },
+      { repoId: secondRepoId, head: "ps-1b" },
+    ]);
+    const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+    await merge(task, repo(), "ostra-test/test1");
+    expect(await reopen(task, "Add a second line.")).toMatchObject({ ok: true });
+    await nextSession(task);
+    // The fake code host lists the second repo too, as the real one does for its installation.
+    codeHost.repos.set(INSTALLATION_ID, [
+      ...(codeHost.repos.get(INSTALLATION_ID) ?? []).filter((each) => each.fullName !== "ostra-test/test2"),
+      { hostRepoId: "host-ostra-test/test2", fullName: "ostra-test/test2", defaultBranch: "main", private: true, cloneUrl: "https://github.example/ostra-test/test2.git" },
+    ]);
+    const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+    const built = await buildTaskSpec({ db: test.db, codeHost, secretStore }, { taskId: task.taskId, runnerId: runner.runnerId, leaseEpoch: leaseEpochSchema.parse(leaseEpoch) });
+    if (!built.ok) throw new Error(`spec: ${built.error}`);
+    const { spec } = built;
+    // The task keeps its own name; the merged repo names its fresh one, and the other names none.
+    expect(spec.branchName).toBe(branchName);
+    expect(spec.repos.map((each) => [each.fullName, each.branchName])).toEqual([
+      ["ostra-test/test1", `${branchName}-2`],
+      ["ostra-test/test2", undefined],
+    ]);
+    // A runner below minor 3 would push both to the task's name, so core offers it to a minor-3 one only.
+    expect(taskSpecNeedsMinor3(spec)).toBe(true);
+    // The agent is told the merged repo's branch too.
+    expect(spec.agent.instructions).toContain(`branch: \`${branchName}-2\``);
   });
 
   it("F-066: a merged task reopens on -2, its first push opens a new PR, and a second merge and reopen makes -3", async () => {

@@ -15,7 +15,7 @@ A unit of work in an organization's tracker (a Linear issue, a Jira issue). ostr
 _Avoid_: issue (when meaning ostra's own work), card, story
 
 **Task**:
-ostra's long-lived unit of work in one project. It has a kind, and it starts from a ticket or from a prompt. It can change any of the project's repos, on one branch name, and opens one PR for each repo it changes. Each one is a task repo. A task can be reopened any number of times.
+ostra's long-lived unit of work in one project. It has a kind, and it starts from a ticket or from a prompt. It can change any of the project's repos, on one branch name (a repo that merged and was reopened moves to its own fresh `-2` branch), and opens one PR for each repo it changes. Each one is a task repo. A task can be reopened any number of times.
 _Avoid_: job, run, assignment
 
 **Task repo**:

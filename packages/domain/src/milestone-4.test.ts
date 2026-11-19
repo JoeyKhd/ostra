@@ -544,6 +544,17 @@ describe("several repos", () => {
     expect(checkoutDirFor(name("client-org/API"), new Set(["api", "api-2"]))).toBe("API-3");
   });
 
+  it("F-066: names the branch of a repo that has one of its own, and no other", () => {
+    const repos = [
+      { fullName: name("ostra-test/test1"), checkoutDir: "test1", defaultBranch: "main", branchName: "ostra/x-2" },
+      { fullName: name("client-org/api"), checkoutDir: "api", defaultBranch: "develop", branchName: "ostra/x" },
+    ];
+    const text = renderReposForAgent(repos, "ostra/x") ?? "";
+    expect(text).toContain("`test1/`: ostra-test/test1 (base: main, branch: `ostra/x-2`)");
+    expect(text).toContain("`api/`: client-org/api (base: develop)");
+    expect(text).not.toContain("branch: `ostra/x`)");
+  });
+
   it("F-098: lists the repos for the agent, and sets each PR's Related section idempotently", () => {
     const repos = [
       { fullName: name("ostra-test/test1"), checkoutDir: "test1", defaultBranch: "main" },

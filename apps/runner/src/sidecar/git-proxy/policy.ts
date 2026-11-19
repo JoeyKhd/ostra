@@ -9,7 +9,7 @@ export type ProxyMode = "read-write" | "read-only";
 
 export type TaskGitPolicy = {
   readonly taskId: TaskId;
-  /** The task's branch, without `refs/heads/`: the same in every repo of the task. */
+  /** The task's branch, without `refs/heads/`: the repos' own, except one that has a branch of its own (F-066). */
   readonly branch: string;
   readonly mode: ProxyMode;
 };
@@ -27,8 +27,9 @@ export type PushVerdict =
 /** The task's hidden ref, which holds unfinished work on stop and crash (ADR 0039). */
 export const hiddenRefFor = (taskId: TaskId): string => `refs/ostra/wip/${taskId}`;
 
-export const allowedRefs = (policy: TaskGitPolicy): ReadonlySet<string> =>
-  new Set([`refs/heads/${policy.branch}`, hiddenRefFor(policy.taskId)]);
+/** `branch` is the repo's own when it has one (F-066); the policy's is the task's. */
+export const allowedRefs = (policy: TaskGitPolicy, branch: string = policy.branch): ReadonlySet<string> =>
+  new Set([`refs/heads/${branch}`, hiddenRefFor(policy.taskId)]);
 
 /** GitHub's repo names are case-insensitive. */
 export const sameRepo = (a: string, b: RepoFullName): boolean => a.toLowerCase() === b.toLowerCase();
@@ -48,8 +49,8 @@ const firstPass = (policy: TaskGitPolicy, command: RefUpdateCommand, allow: Read
 };
 
 /** All or nothing: one refused ref refuses the whole push, so nothing at all goes upstream. */
-export const decidePush = (policy: TaskGitPolicy, commands: readonly RefUpdateCommand[]): PushVerdict => {
-  const allow = allowedRefs(policy);
+export const decidePush = (policy: TaskGitPolicy, commands: readonly RefUpdateCommand[], branch: string = policy.branch): PushVerdict => {
+  const allow = allowedRefs(policy, branch);
   const first = commands.map((command) => firstPass(policy, command, allow));
   const codes = [...new Set(first.flatMap((verdict) => (verdict.allowed ? [] : [verdict.code])))];
   if (codes.length === 0) {

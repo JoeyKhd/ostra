@@ -139,8 +139,8 @@ export const buildTaskSpec = async (
   let gitIdentity: GitPerson | null = null;
   // Plain data until `taskSpecSchema` parses the whole spec below, which checks every field.
   const repos: Record<string, unknown>[] = [];
-  for (const { repo } of taskRepos) {
-    const app = await appCredentials(deps.secretStore, organizationId, repo.connection);
+  for (const { repo, branchName: repoBranch } of taskRepos) {
+    const app =await appCredentials(deps.secretStore, organizationId, repo.connection);
     if (app === null) {
       return { ok: false, error: "code-host-failed", message: "the repo's App credentials couldn't be read" };
     }
@@ -172,6 +172,8 @@ export const buildTaskSpec = async (
       checkoutDir: repo.checkoutDir,
       lfsActionHosts: [...deps.codeHost.capabilities.lfsActionHosts],
       prTemplate: template?.ok === true ? template.value : null,
+      // F-066: a repo whose branch isn't the task's (a reopen after a partial merge) carries its own.
+      ...(repoBranch === task.branchName ? {} : { branchName: repoBranch }),
     });
   }
   if (gitIdentity === null) {
@@ -241,7 +243,12 @@ export const buildTaskSpec = async (
       apiFormat: apiFormatFromDb[model.provider.apiFormat],
       instructions: agentInstructions(
         profile.instructions,
-        taskRepos.map(({ repo }) => ({ fullName: repoFullNameSchema.parse(repo.fullName), checkoutDir: repo.checkoutDir, defaultBranch: repo.defaultBranch })),
+        taskRepos.map(({ repo, branchName: repoBranch }) => ({
+          fullName: repoFullNameSchema.parse(repo.fullName),
+          checkoutDir: repo.checkoutDir,
+          defaultBranch: repo.defaultBranch,
+          ...(repoBranch === task.branchName ? {} : { branchName: repoBranch }),
+        })),
         task.branchName,
         folded,
       ),

@@ -22,6 +22,7 @@ import {
 } from "../memory/notes.ts";
 import {
   encodeTaskSpecForMinor,
+  repoBranchName,
   taskSpecMemorySchema,
   taskSpecNeedsMinor3,
   taskSpecResponseSchemaFor,
@@ -255,6 +256,24 @@ describe("the task spec at minor 3", () => {
     expect(taskSpecNeedsMinor3(sameBot)).toBe(false);
     // Memory alone needs no minor 3: a minor-2 runner gets it folded into its instructions.
     expect(taskSpecNeedsMinor3({ ...taskSpecMinor2Fixture, memory: taskSpecMinor3Fixture.memory ?? null })).toBe(false);
+  });
+
+  it("F-066: says a spec with a repo on a branch of its own needs a minor-3 runner, and a minor-2 one never sees the branch", () => {
+    const [first] = taskSpecMinor2Fixture.repos;
+    if (first === undefined) throw new Error("a repo");
+    const second = { ...first, repoId: ids.secondRepo, checkoutDir: "second" };
+    const fresh = `${taskSpecMinor2Fixture.branchName}-2`;
+    const own = { ...taskSpecMinor2Fixture, repos: [{ ...first, branchName: fresh }, second] };
+    expect(repoBranchName(own, own.repos[0] ?? first)).toBe(fresh);
+    expect(repoBranchName(own, second)).toBe(taskSpecMinor2Fixture.branchName);
+    expect(taskSpecNeedsMinor3(own)).toBe(true);
+    // The task's own name on a repo is no difference.
+    expect(taskSpecNeedsMinor3({ ...own, repos: [{ ...first, branchName: taskSpecMinor2Fixture.branchName }, second] })).toBe(false);
+    // The schema carries it, and the encoder drops it for a minor-2 runner.
+    expect(taskSpecSchema.parse(roundTrip(own)).repos[0]?.branchName).toBe(fresh);
+    for (const repo of encodeTaskSpecForMinor(own, 2).repos) {
+      expect(repo).not.toHaveProperty("branchName");
+    }
   });
 
   it("picks the response schema by the negotiated minor", () => {

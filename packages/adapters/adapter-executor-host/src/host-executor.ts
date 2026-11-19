@@ -44,7 +44,7 @@ import type {
   TaskProxies,
   WipDeps,
 } from "@ostra/adapter-sdk";
-import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
+import { gitShaSchema, repoBranchName, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import { localProcesses } from "./task-processes.ts";
@@ -425,7 +425,7 @@ export class HostExecutor extends ExecutorAdapter {
         log.warn("clone failed", { repoId: repo.repoId, code: cloned.code });
         return adapterError("unavailable", `cloning ${repo.fullName} through the git proxy failed${this.#reason(cloned)}`);
       }
-      const configured = await this.#configureCheckout(record, checkout, repo.defaultBranch);
+      const configured = await this.#configureCheckout(record, checkout, repo);
       if (!configured.ok) {
         record.state = "failed";
         return configured;
@@ -520,7 +520,7 @@ export class HostExecutor extends ExecutorAdapter {
       // history the agent rewrote is pushed as it is.
       const pushed = await this.#git(
         record,
-        ["push", "--quiet", "--porcelain", "origin", `+HEAD:refs/heads/${input.branchName}`, `+HEAD:${input.hiddenRef}`],
+        ["push", "--quiet", "--porcelain", "origin", `+HEAD:refs/heads/${repo.branchName ?? input.branchName}`, `+HEAD:${input.hiddenRef}`],
         checkout,
       );
       if (pushed.code !== 0 || !head.success) {
@@ -646,11 +646,11 @@ export class HostExecutor extends ExecutorAdapter {
         continue;
       }
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
-      const result = await restoreWorkInProgressIn(this.#wip(record, checkout), { taskId: record.ref.taskId, remote: "origin", branch: record.spec.branchName });
+      const result = await restoreWorkInProgressIn(this.#wip(record, checkout), { taskId: record.ref.taskId, remote: "origin", branch: repoBranchName(record.spec, repo) });
       if (!result.ok) {
         this.plumbing.logger.warn("restoring the hidden ref failed", { taskId: record.ref.taskId, repoId: repo.repoId, reason: result.error.message });
         // Back to the branch's head, as a conflict leaves it: the ref stays for another try.
-        await this.#git(record, ["checkout", "--quiet", "--force", record.spec.branchName], checkout);
+        await this.#git(record, ["checkout", "--quiet", "--force", repoBranchName(record.spec, repo)], checkout);
         await this.#git(record, ["clean", "-fdq"], checkout);
         restored.push({ repoId: repo.repoId, outcome: "conflict" });
         continue;
@@ -741,10 +741,16 @@ export class HostExecutor extends ExecutorAdapter {
           }
         }
         await writeFile(path.join(checkout, ".git", "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+        // F-066: a repo that merged while the task carried on has a fresh branch now; its checkout
+        // moves onto it, from the base's current head, before anything is taken from the host.
+        const moved = await this.#moveToRepoBranch(record, checkout, repo);
+        if (!moved.ok) {
+          return moved;
+        }
         // F-103: a reopen starts from the branch as it is. A member may have pushed to it since the
         // last turn (`ostra checkout`): their commits come into the kept worktree before the agent
         // starts, or the next push, which is forced, would drop them.
-        const taken = await this.#takeRemoteCommits(record, checkout);
+        const taken = await this.#takeRemoteCommits(record, checkout, repoBranchName(record.spec, repo));
         if (!taken.ok) {
           return taken;
         }
@@ -759,13 +765,48 @@ export class HostExecutor extends ExecutorAdapter {
   }
 
   /**
+   * Puts a kept checkout on the repo's branch when the spec names another than the one checked out
+   * (F-066): a repo merged and reopened works on `<name>-2`, started from the base as it is now (a
+   * squash merge leaves the old branch's commits out of the base's history). Uncommitted work comes
+   * along, since a plain checkout keeps it; a checkout that can't move leaves the box unresumed, and
+   * the runner builds a fresh one.
+   */
+  async #moveToRepoBranch(record: BoxRecord, checkout: string, repo: TaskSpec["repos"][number]): Promise<AdapterResult<void>> {
+    const branch = repoBranchName(record.spec, repo);
+    const current = await this.#git(record, ["symbolic-ref", "--quiet", "--short", "HEAD"], checkout);
+    if (current.code === 0 && current.stdout.trim() === branch) {
+      return ok(undefined);
+    }
+    const local = await this.#git(record, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], checkout);
+    if (local.code === 0) {
+      const switched = await this.#git(record, ["checkout", "--quiet", branch], checkout);
+      return switched.code === 0 ? ok(undefined) : adapterError("conflict", "the kept checkout can't move onto the repo's branch");
+    }
+    // The branch on the host when it exists (pushed from elsewhere), else the base's current head.
+    const onHost = await this.#git(record, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], checkout);
+    let start = `refs/remotes/origin/${branch}`;
+    if (onHost.code !== 0) {
+      const base = await this.#git(record, ["fetch", "--quiet", "origin", `+refs/heads/${repo.defaultBranch}:refs/remotes/origin/${repo.defaultBranch}`], checkout);
+      if (base.code !== 0) {
+        return adapterError("unavailable", "the base branch couldn't be fetched for the repo's fresh branch");
+      }
+      start = `refs/remotes/origin/${repo.defaultBranch}`;
+    }
+    const created = await this.#git(record, ["checkout", "--quiet", "-b", branch, start], checkout);
+    if (created.code !== 0) {
+      return adapterError("conflict", "the kept checkout can't move onto the repo's fresh branch");
+    }
+    this.plumbing.logger.info("moved the kept checkout onto the repo's branch", { taskId: record.ref.taskId, repoId: repo.repoId });
+    return ok(undefined);
+  }
+
+  /**
    * Brings the task branch's commits from the code host into a kept checkout: a fast-forward when
    * the checkout has nothing new, a merge when both moved. A branch not pushed yet has nothing to
    * take. A merge that conflicts is undone and the box isn't resumed: the runner then builds a fresh
    * one from the branch as it is on the host.
    */
-  async #takeRemoteCommits(record: BoxRecord, checkout: string): Promise<AdapterResult<void>> {
-    const branch = record.spec.branchName;
+  async #takeRemoteCommits(record: BoxRecord, checkout: string, branch: string): Promise<AdapterResult<void>> {
     const remote = `refs/remotes/origin/${branch}`;
     const fetched = await this.#git(record, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:${remote}`], checkout);
     if (fetched.code !== 0) {
@@ -1297,7 +1338,7 @@ export class HostExecutor extends ExecutorAdapter {
     }
   }
 
-  async #configureCheckout(record: BoxRecord, checkout: string, defaultBranch: string): Promise<AdapterResult<void>> {
+  async #configureCheckout(record: BoxRecord, checkout: string, repo: TaskSpec["repos"][number]): Promise<AdapterResult<void>> {
     // The same settings locally, so the agent's own git (with its own environment) still goes
     // through the proxy, as the App's bot, with no credential helper.
     for (const [key, value] of await this.#settings(record)) {
@@ -1306,7 +1347,8 @@ export class HostExecutor extends ExecutorAdapter {
         return adapterError("unavailable", `configuring the checkout failed (${key})`);
       }
     }
-    const branch = record.spec.branchName;
+    const branch = repoBranchName(record.spec, repo);
+    const defaultBranch = repo.defaultBranch;
     const remote = await this.#git(record, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], checkout);
     const checkedOut =
       remote.code === 0

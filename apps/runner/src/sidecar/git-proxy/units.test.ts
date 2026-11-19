@@ -88,6 +88,13 @@ describe("the push policy", () => {
     expect(decidePush(policy, [command("refs/heads/ostra/t1"), command("refs/ostra/wip/t1", "create")]).allowed).toBe(true);
   });
 
+  it("F-066: allows a repo's own branch instead of the task's, and the hidden ref beside either", () => {
+    expect(decidePush(policy, [command("refs/heads/ostra/t1-2"), command("refs/ostra/wip/t1", "create")], "ostra/t1-2").allowed).toBe(true);
+    // The task's branch is not that repo's: it can't be pushed there, and nothing else can.
+    expect(decidePush(policy, [command("refs/heads/ostra/t1")], "ostra/t1-2").allowed).toBe(false);
+    expect(decidePush(policy, [command("refs/heads/ostra/t1-2")]).allowed).toBe(false);
+  });
+
   it("refuses everything else, exactly", () => {
     for (const ref of ["refs/heads/main", "refs/heads/ostra/t1-evil", "refs/heads/OSTRA/t1", "refs/tags/v1", "refs/ostra/wip/t2", "refs/heads/ostra/t1/x"]) {
       expect(decidePush(policy, [command(ref)]).allowed, ref).toBe(false);
