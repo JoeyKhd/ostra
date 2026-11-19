@@ -102,6 +102,11 @@ export type SaveAgentProfileInput = {
    * (`default` for a new one). A new task copies it; an edit changes new tasks only.
    */
   readonly effort?: EffortLevel;
+  /**
+   * Milestone 4 (F-111, ADR 0044 amended): the closing turn's switch, a last turn that proposes what
+   * the task learned. Absent keeps the profile's (off for a new one).
+   */
+  readonly closingTurn?: boolean;
 };
 export type SaveAgentProfile = (
   deps: M3Deps,

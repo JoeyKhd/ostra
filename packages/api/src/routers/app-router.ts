@@ -24,6 +24,7 @@ import { membersRouter } from "./members.ts";
 import { agentProfilesRouter } from "./agent-profiles.ts";
 import { insightsRouter } from "./insights.ts";
 import { budgetsRouter, spendRouter } from "./spend.ts";
+import { memoryRouter } from "./memory.ts";
 import { providersRouter } from "./providers.ts";
 import { setupRouter } from "./setup.ts";
 
@@ -61,6 +62,7 @@ export const appRouter = router({
   insights: insightsRouter,
   spend: spendRouter,
   budgets: budgetsRouter,
+  memory: memoryRouter,
 });
 
 export type AppRouter = typeof appRouter;

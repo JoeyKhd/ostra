@@ -55,6 +55,7 @@ import {
 import type { EffortLevel, OrganizationId, StoredEvent, TaskId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { startCheckProcedure } from "./task-start-check.ts";
+import { taskMemoryProcedure } from "./memory.ts";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
@@ -162,6 +163,9 @@ const EVENT_LOG_MAX_PAGE = 1000;
 export const tasksRouter = router({
   /** F-037, F-135 (tickets 27, 50): whether a new task would start now, or the reason it would wait. */
   startCheck: startCheckProcedure,
+
+  /** F-110, F-111 (ticket 29): the notes each session used and how, and the proposals the task made. */
+  memory: taskMemoryProcedure,
 
   /** Starts a code task from a prompt (F-097): no ticket is created. */
   create: projectProcedure("read", createPromptTaskInputSchema).mutation(async ({ ctx, input }) => {

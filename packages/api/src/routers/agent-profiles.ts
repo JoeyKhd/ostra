@@ -100,6 +100,8 @@ const profileRowSchema = z.object({
   /** F-137: how much its model reasons; a new task copies it. */
   effort: effortLevelSchema,
   planFirst: z.boolean(),
+  /** F-111 (ADR 0044 amended): whether a task ends with a closing turn that proposes what it learned. */
+  closingTurn: z.boolean(),
   access: accessViewSchema,
   archivedAt: z.number().nullable(),
   createdAt: z.number(),
@@ -260,6 +262,7 @@ const toRow = async (
             },
       effort: effortLevelFromDb[row.effort],
       planFirst: row.planFirst,
+      closingTurn: row.closingTurn,
       access:
         row.access === "everyone"
           ? { kind: "everyone" as const }
@@ -329,6 +332,8 @@ const saveInput = z.strictObject({
   skills: z.array(skillInput).max(profileLimits.skillsMax),
   /** F-137: one of the model's levels. Absent keeps the stored level (`default` for a new profile). */
   effort: effortLevelSchema.optional(),
+  /** F-111: the closing turn's switch. Absent keeps the stored one (off for a new profile). */
+  closingTurn: z.boolean().optional(),
 });
 
 const saveCodes = {
@@ -648,6 +653,7 @@ export const agentProfilesRouter = router({
         mcpServers: servers,
         skills: input.skills,
         ...(input.effort === undefined ? {} : { effort: input.effort }),
+        ...(input.closingTurn === undefined ? {} : { closingTurn: input.closingTurn }),
       });
       if (!result.ok) {
         await forgetWritten();

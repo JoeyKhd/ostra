@@ -1,6 +1,6 @@
 # 29: API: memory notes, proposals and the task's memory
 
-Status: ready-for-agent
+Status: resolved
 Builder: api
 Blocked by: 15, 16
 Features: F-109, F-110, F-111
@@ -20,7 +20,9 @@ Spec: `../spec.md`, section 4 ("A proposal's decision"); ADR 0044 (amended)
 
 ## Done when
 
-- [ ] Tests named `it("F-109: ...")`, `it("F-110: ...")` and `it("F-111: ...")`: each procedure's access per scope (a member who can't open a restricted project gets `NOT_FOUND` for its notes); a search; a secret refusal's shape; a stale save's and a stale merge's `CONFLICT`; each decision; `tasks.memory` lists what the session's `MemoryUse` rows say.
-- [ ] Committed as `✨ add memory to the API`.
+- [x] Tests named `it("F-109: ...")`, `it("F-110: ...")` and `it("F-111: ...")`: each procedure's access per scope (a member who can't open a restricted project gets `NOT_FOUND` for its notes); a search; a secret refusal's shape; a stale save's and a stale merge's `CONFLICT`; each decision; `tasks.memory` lists what the session's `MemoryUse` rows say.
+- [x] Committed as `✨ add memory to the API`.
 
 ## Comments
+
+- 2026-11-19 (api builder B): built and pushed as `✨ add memory to the API`, in `packages/api/src/routers/memory.ts`: `memory.notes`, `memory.note`, `memory.save`, `memory.archive`, `memory.proposals`, `memory.proposal`, `memory.decide`, `memory.rememberThis` and `tasks.memory`, over ticket 16's use cases. A refusal is a tRPC error whose message carries what the panel shows: a secret refusal is `BAD_REQUEST` naming the kind (never the value), a stale save or merge `CONFLICT` naming who saved which version (the router has no error formatter, so these are words, not fields). `rememberThis` drafts from a diff comment's text when no title and body are given; an `@ostra` comment's text is only in the member message, so the panel sends the member's edited text for it. `agentProfiles.save` takes `closingTurn` (kept when absent) and `get`/`list` return it; `SaveAgentProfileInput` gains the optional field. Tests: `packages/api/src/routers/memory.test.ts` and the isolation suite's memory rows; break-its in `context/proof/F-109.md`, `F-110.md` and `F-111.md`.

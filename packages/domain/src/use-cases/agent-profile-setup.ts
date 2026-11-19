@@ -237,6 +237,8 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
       mcpServers: servers.data,
       // F-137: the level, kept when the save leaves it out.
       effort: effortLevelToDb[input.effort ?? (existing === null ? "default" : effortLevelFromDb[existing.effort])],
+      // F-111: the closing turn's switch, kept when the save leaves it out.
+      closingTurn: input.closingTurn ?? existing?.closingTurn ?? false,
     };
     const saved =
       existing === null
@@ -278,6 +280,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
               access: existing.access,
               mcpServers: existing.mcpServers,
               effort: existing.effort,
+              closingTurn: existing.closingTurn,
               skills: skillsOf(existing.skills),
               members: existing.members.map((member) => member.memberId).sort(),
             },
@@ -303,6 +306,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
         access: input.access.kind,
         planFirst: input.planFirst,
         effort: data.effort,
+        closingTurn: data.closingTurn,
         changed: changed.join(","),
       },
     });
