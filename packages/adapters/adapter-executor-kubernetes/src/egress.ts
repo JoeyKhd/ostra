@@ -1,5 +1,5 @@
 import type { V1NetworkPolicy, V1NetworkPolicyEgressRule, V1NetworkPolicyPeer } from "@kubernetes/client-node";
-import { BLOCKED_V4, BLOCKED_V6 } from "@ostra/adapter-executor-docker";
+import { EGRESS_BLOCKED_V4, EGRESS_BLOCKED_V6 } from "@ostra/adapter-sdk";
 
 import type { NetworkPolicyView } from "./kube-api.ts";
 import { BOX_ROLE, LABELS } from "./pod.ts";
@@ -20,9 +20,12 @@ import { BOX_ROLE, LABELS } from "./pod.ts";
 // A snapshot build has its own policy in the build namespace (`buildEgressPolicy`): the registry and
 // the package hosts the environment names, and nothing else (ADR 0038).
 
-/** What a box never reaches: docker's blocked ranges, and loopback, multicast and the reserved blocks a pod could route. */
-export const BOX_BLOCKED_V4: readonly string[] = [...BLOCKED_V4, "127.0.0.0/8", "192.0.0.0/24", "198.18.0.0/15", "224.0.0.0/4"];
-export const BOX_BLOCKED_V6: readonly string[] = [...BLOCKED_V6, "::1/128", "ff00::/8"];
+/**
+ * What a box never reaches: the egress baseline's one list (ticket 24), which `docker`'s host rules
+ * are built from too, so the two executors close the same ranges.
+ */
+export const BOX_BLOCKED_V4: readonly string[] = EGRESS_BLOCKED_V4;
+export const BOX_BLOCKED_V6: readonly string[] = EGRESS_BLOCKED_V6;
 
 /** The ranges `health()` insists the baseline carves out: the private ones and the metadata address's. */
 export const REQUIRED_EXCEPTS: readonly string[] = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"];

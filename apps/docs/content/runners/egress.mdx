@@ -9,13 +9,16 @@ A box can't reach a private address range, the cloud metadata address or another
 
 | Blocked | Ranges |
 |---|---|
-| Private ranges | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` |
-| Link-local and the cloud metadata address | `169.254.0.0/16`, `169.254.169.254` |
-| Other boxes | every other box's networks |
+| Private ranges | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, `fc00::/7` |
+| Link-local and the cloud metadata address | `169.254.0.0/16` (with `169.254.169.254`), `fe80::/10` |
+| Loopback, multicast and reserved blocks | `127.0.0.0/8`, `192.0.0.0/24`, `198.18.0.0/15`, `224.0.0.0/4`, `::1/128`, `ff00::/8` |
+| Other boxes, and on `docker` the pool machine itself | every other box's networks, the box network's gateway |
 
-The one exception is the ostra server's own address and port, which a box's sidecar must reach, plus DNS on `kubernetes`.
+Both executors close this one list.
 
-- **On `docker`**, the agent's container is on an internal network with no route out except the sidecar, and the sidecar's network gets host rules in Docker's `DOCKER-USER` chain. Run them once as root on each pool machine, after Docker starts, with the boxes' egress subnet and the server's address, from a clone of the release: `sudo ./deploy/egress-baseline.sh <the egress subnet> <the server's address>`. Keep the runner's box subnets clear of your own networks.
+The one exception is the ostra server's own address and port, which a box's sidecar must reach, plus DNS on `kubernetes` and the addresses you name in `OSTRA_EGRESS_ALLOW`.
+
+- **On `docker`**, the agent's container is on an internal network with no route out except the sidecar, and the sidecar's network gets host rules in Docker's `DOCKER-USER` chain. Run them once as root on each pool machine, after Docker starts, with the boxes' egress subnet and the server's address, from a clone of the release: `sudo ./deploy/egress-baseline.sh <the egress subnet> <the server's address> [allowed addresses...]`, with `EGRESS_SUBNET_V6` set when the egress network has an IPv6 subnet. The rules reject rather than drop, so a blocked connection fails at once. If the machine's DNS resolver is at a private address, add it to the allowed addresses. Keep the runner's box subnets clear of your own networks.
 - **On `kubernetes`**, the runner's Helm chart applies it as NetworkPolicies on the box namespace, and the runner refuses to start boxes without them. The policy applies to the whole pod, so the agent's container keeps direct public egress ([Executors](/docs/runners/executors), the fourth difference). A cluster whose network plugin doesn't enforce NetworkPolicy ignores it, and ostra's check tells the two apart.
 - **On `host`** there's no box, so nothing enforces it: that's one reason `host` is labelled "not isolated".
 

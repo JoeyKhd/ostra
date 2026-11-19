@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { boxResources, createDockerBoxes, SIDECAR_DATA_DIR, TASK_ROOT } from "./boxes.ts";
 import type { BoxInput, DockerBoxes } from "./boxes.ts";
-import { egressRules, METADATA_ADDRESS } from "./egress.ts";
 import { createEngine, engineAddressFrom } from "./engine.ts";
 import { startFakeEngine } from "./testing/fake-engine.ts";
 import type { FakeEngine } from "./testing/fake-engine.ts";
@@ -179,16 +178,5 @@ describe("the box on the Engine API", () => {
     expect(engineAddressFrom("unix:///run/user/1000/docker.sock")).toEqual({ kind: "socket", path: "/run/user/1000/docker.sock" });
     expect(engineAddressFrom("tcp://10.0.0.5:2375")).toEqual({ kind: "tcp", host: "10.0.0.5", port: 2375 });
     expect(() => engineAddressFrom("ssh://host")).toThrow();
-  });
-});
-
-describe("the egress baseline", () => {
-  it("allows the server, then replies, then drops the metadata address and the private ranges, all before Docker's RETURN", () => {
-    const rules = egressRules({ egressSubnet: "172.30.0.0/16", allow: ["172.30.0.10"] });
-    expect(rules[0]).toEqual(["-I", "DOCKER-USER", "1", "-s", "172.30.0.0/16", "-d", "172.30.0.10", "-j", "ACCEPT"]);
-    expect(rules.every((rule) => rule[0] === "-I" && rule[1] === "DOCKER-USER")).toBe(true);
-    expect(rules.map((rule) => Number(rule[2]))).toEqual(rules.map((_rule, index) => index + 1));
-    const drops = rules.filter((rule) => rule.at(-1) === "DROP").map((rule) => rule[rule.indexOf("-d") + 1]);
-    expect(drops).toEqual([METADATA_ADDRESS, "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]);
   });
 });

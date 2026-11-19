@@ -7,8 +7,8 @@ export { AGENT_UID, BOX_PIDS_LIMIT, BRIDGE_PORT, boxResources, createDockerBoxes
 export type { BoxImages, BoxInput, BoxOptions, BoxResources, CapacitySettings, ContainerSpec, CreatedDockerBox, DockerBoxes, EngineInfo, FixedLimits, InspectedLimits, Resources } from "./boxes.ts";
 export { createEngine, engineAddressFrom, ENGINE_API_VERSION, registryAuthHeader, registryHostOf } from "./engine.ts";
 export type { Engine, EngineAddress, EngineError, EngineResult } from "./engine.ts";
-export { BLOCKED_V4, BLOCKED_V6, egressRules, METADATA_ADDRESS } from "./egress.ts";
-export type { EgressInput } from "./egress.ts";
+export { BLOCKED_V4, BLOCKED_V6, egressRules, egressRuleSet, METADATA_ADDRESS } from "./egress.ts";
+export type { EgressInput, EgressRule } from "./egress.ts";
 export { listenForInit } from "./bridge/bridge-server.ts";
 export type { Bridge, BridgeListener, BridgeListenOptions } from "./bridge/bridge-server.ts";
 export { bridgeProcesses } from "./bridge-processes.ts";

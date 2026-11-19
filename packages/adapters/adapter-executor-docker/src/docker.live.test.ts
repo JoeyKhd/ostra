@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { baselineHeld, egressProbePlan, parseProbeOutput, probeCommand, runEgressProbes } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -166,6 +167,38 @@ describe.skipIf(!ready)(`a box's size and registry image on Docker, live (skippe
     } finally {
       await box.removeBox(boxId);
       await rm(tokenDir, { recursive: true, force: true });
+    }
+  }, 300_000);
+});
+
+// Milestone 5 (ticket 24), live, for ticket 35's Linux job with `deploy/egress-baseline.sh` applied
+// (`OSTRA_TEST_EGRESS_APPLIED=1`): every probe of the plan from a shell in the agent's container,
+// each after its positive control (the box's own sidecar), a timeout counted inconclusive. The
+// probes reach the gateway and another box's sidecar ports too.
+
+const egressApplied = process.env["OSTRA_TEST_EGRESS_APPLIED"] === "1";
+
+describe.skipIf(!ready || !egressApplied)(`the egress baseline on Docker, live (skipped: ${!ready ? reason : egressApplied ? "no" : "the baseline isn't applied (OSTRA_TEST_EGRESS_APPLIED)"})`, () => {
+  it("F-116: from a shell in the agent's container, every blocked range, the metadata address, the gateway and another box's sidecar ports are blocked, each after its control connected", async () => {
+    const box = await liveBox("egress");
+    const other = await liveBox("egress-other");
+    try {
+      const sidecarIp = z.looseObject({ NetworkSettings: z.looseObject({ Networks: z.record(z.string(), z.looseObject({ IPAddress: z.string(), Gateway: z.string() })) }) });
+      const inspectOther = await engine.call("GET", `/containers/${other.created.sidecarId}/json`, sidecarIp);
+      const inspectOwn = await engine.call("GET", `/containers/${box.created.agentId}/json`, sidecarIp);
+      if (!inspectOther.ok || !inspectOwn.ok) throw new Error("inspect failed");
+      const otherAddress = Object.values(inspectOther.value.NetworkSettings.Networks).find((network) => network.IPAddress !== "")?.IPAddress ?? "";
+      const gateway = Object.values(inspectOwn.value.NetworkSettings.Networks)[0]?.Gateway ?? "";
+      const plan = egressProbePlan({ executor: "docker", control: { host: "sidecar", port: 7101 }, gateway: gateway === "" ? "172.17.0.1" : gateway, otherBox: { host: otherAddress, ports: [7101] } });
+      const results = await runEgressProbes(plan, async (address) => {
+        const ran = await engine.exec(box.created.agentId, probeCommand(address), "1000:1000");
+        return ran.ok ? parseProbeOutput(ran.value.output) : { kind: "error", code: "exec-failed" };
+      });
+      expect(results.filter((result) => result.verdict !== "blocked").map((result) => `${result.id}: ${result.verdict} (${result.detail})`)).toEqual([]);
+      expect(baselineHeld(results)).toBe(true);
+    } finally {
+      await other.dispose();
+      await box.dispose();
     }
   }, 300_000);
 });

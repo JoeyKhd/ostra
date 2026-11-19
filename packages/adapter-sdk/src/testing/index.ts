@@ -26,3 +26,4 @@ export * from "./fake-acp-agent/agent.ts";
 export * from "./fake-acp-agent/fake-agent-adapter.ts";
 export * from "./git-upstream.ts";
 export * from "./tracked-pids.ts";
+export * from "./egress-probes.ts";
