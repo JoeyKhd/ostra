@@ -46,7 +46,7 @@ Three labelled fields in one row, 12px apart; labels 12px 500 `--muted`, 6px abo
 | Field | Width | Contents |
 |---|---|---|
 | Name | ~212px | `Input`, `Careful`. Required, unique in the organization, at most 60 characters |
-| Agent | ~190px | `Select` of the registered agent adapters by display name (`agentDisplayName`): `OpenCode`. With one adapter it still shows as a select with one option, so Claude Code (milestone 7) slots in without a new layout |
+| Agent | ~190px | `Select` of the registered agent adapters by display name (`agentDisplayName`): `OpenCode`. With one adapter it still shows as a select with one option, so a second agent (Claude Code, after v1 since 2026-11-19) slots in without a new layout |
 | Model | flex (~295px) | `Select` of the organization's listed models, grouped by provider: the model's 15px logo (`logoPath`, Lucide `cpu` without one), its name in `--text` (`Claude Opus 5.5`), the provider in `--faint` (`Anthropic`). A custom model shows its endpoint ID in Plex Mono and a `custom` chip. No model listed anywhere: the select is disabled and reads `No models yet`, with a teal link under it `Add a provider under Models` |
 
 ### Instructions

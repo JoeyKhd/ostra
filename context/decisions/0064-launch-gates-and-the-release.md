@@ -1,6 +1,6 @@
 # The launch gates, and how v1 is released
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 7's spec). Settles Q256, Q257, Q258 and Q259. Amends ADR 0045 (publishing in practice) and ADR 0061 (the load test as the gate). Covers F-076's measure, F-117's gate, the security review of the box, and publishing. **It answers none of the maintainer's legal items** (Q109, Q110 and the legal review of ADR 0048): it plans around them, and the release waits for them. **Amended 2026-11-19:** Q109 and Q110 were settled the same day (ADR 0048) with no lawyer's review, so the legal gate below is now the repo's own state, and the release waits for nothing legal.
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 7's spec). Settles Q256, Q257, Q258 and Q259. Amends ADR 0045 (publishing in practice) and ADR 0061 (the load test as the gate). Covers F-076's measure, F-117's gate, the security review of the box, and publishing. **It answers none of the maintainer's legal items** (Q109, Q110 and the legal review of ADR 0048): it plans around them, and the release waits for them. **Amended 2026-11-19:** Q109 and Q110 were settled the same day (ADR 0048) with no lawyer's review, so the legal gate below is now the repo's own state, and the release waits for nothing legal. **Amended again 2026-11-19:** Claude Code (F-018) moved after v1 on the maintainer's word, so the agent gate is OpenCode's suite, the load test's mix stays milestone 5's, and the security review covers one agent.
 
 v1 is public when every gate below holds and the maintainer says go. Each gate leaves evidence in the repo, and none passes on a fake.
 
@@ -9,7 +9,7 @@ v1 is public when every gate below holds and the maintainer says go. Each gate l
 | Gate | Holds when | Evidence |
 |---|---|---|
 | **The ledger** | `pnpm check:proof` passes, and every v1 row is `done`, or `building` with a dated note the maintainer accepted as a known limit of v1 (a row waiting on a Mac, say) | `context/features.md`, `context/proof/` |
-| **Two agents** | The agent contract suite passes on OpenCode and on Claude Code, on the release candidate | The suite's run logs, per adapter (`packages/adapters/*/evidence/`) |
+| **The agent** | The agent contract suite passes on OpenCode and on the scripted fakes, on the release candidate. *Changed 2026-11-19: it was "two agents", with Claude Code, which is after v1* | The suite's run log (`packages/adapters/adapter-opencode/evidence/`) |
 | **The 30-minute measure** (F-076) | Two people new to ostra each go from the install guide's first command to their first agent-made PR in under 30 minutes, following only the docs site | `context/specs/m7-launch/measure/` |
 | **The load test** (F-117) | ADR 0061's run that counts passes on the release candidate | `context/specs/m7-launch/load/` |
 | **The security review of the box** | The review is written, its adversarial run passed, and no finding rated critical or high is open | `context/specs/m7-launch/security-review.md` |
@@ -33,7 +33,7 @@ Until the names and the go, everything else is built, run and dry-run, so the re
 ADR 0061's run that counts, unchanged in its bars: 1,000 tasks on three core replicas and one Postgres, on Linux, with a real Postgres on its own disk, on a machine of at least 16 vCPUs and 32 GB, the maintainer's. Milestone 7 adds:
 
 - **It runs on the release candidate**, so a regression since milestone 5 shows.
-- **The event mix gains Claude Code's rates,** recorded from milestone 7's live runs (driver events a minute, bytes a message), and the generator mixes both agents' tasks half and half. If Claude Code's recorded peak is higher than spike 10's 415 events a minute, the bar is checked at the higher rate.
+- *Withdrawn 2026-11-19 with F-018:* the event mix was to gain Claude Code's rates. It stays milestone 5's, on OpenCode's.
 - **This machine's ramp is re-run** on the release candidate too, and recorded as the largest step that held, as milestone 5's was. It never stands in for the Linux run.
 - **Launch waits** for the Linux run to pass. A failure is a bug to fix, not a bar to move; moving a bar is a change to F-117's row, which the maintainer agrees to.
 
@@ -41,18 +41,18 @@ ADR 0061's run that counts, unchanged in its bars: 1,000 tasks on three core rep
 
 **What's reviewed** is the boundary F-017, F-093 and ADR 0030 promise, on the release candidate:
 
-1. **No credential in the agent's container,** on `docker` and `kubernetes`: the model key, the git token, the App's key, the task token, registry credentials and every secret of the environment, searched for by value in the agent's environment, files, process list and network, while a task runs, for both agents.
+1. **No credential in the agent's container,** on `docker` and `kubernetes`: the model key, the git token, the App's key, the task token, registry credentials and every secret of the environment, searched for by value in the agent's environment, files, process list and network, while a task runs, for OpenCode.
 2. **The sidecar's proxies:** the key proxy accepts only its task's placeholder; the git proxy accepts only the task's refs, and only fetches for refine and review tasks; the MCP proxy adds its secret and serves only the task's tools.
 3. **The egress baseline:** private ranges, the metadata address and other boxes unreachable from the agent's shell, with the positive control (F-116).
 4. **What the agent can reach on the host:** no Docker socket, no host mounts but the workspace, a non-root user, the container's capabilities and seccomp profile, `automountServiceAccountToken: false` on a pod.
 5. **Untrusted text:** ticket text, PR comments, review comments, CI logs and agent output never reach a shell line, a SQL string or a log line (`AGENTS.md`'s boundaries), checked by grep and by the fixtures that hold shell syntax.
-6. **Each agent's own config from a repo:** OpenCode's and Claude Code's repo files that could run commands or add MCP servers are hidden for the task (ADR 0049, ADR 0062), and a hostile repo's hooks never run.
-7. **Network from the agent itself:** with the stub model, a turn of each agent opens connections only to the sidecar; Claude Code's nonessential traffic is off (ADR 0062).
+6. **Each agent's own config from a repo:** OpenCode's repo files that could run commands or add MCP servers don't win over the profile (ADR 0049), the `.claude/` files OpenCode must not pick up stay unread, and a hostile repo's hooks never run. *(Claude Code's half, ADR 0062, waits with F-018.)*
+7. **Network from the agent itself:** with the stub model, a turn of OpenCode opens connections only to the sidecar.
 8. **The runner protocol and the task token:** a token for one task opens nothing of another's; a revoked runner and an expired token are refused.
-9. **The images:** pins and checksums, no secret in a layer, no Anthropic file in a published image (ADR 0062), the runner and base images run as non-root.
+9. **The images:** pins and checksums, no secret in a layer, the runner and base images run as non-root.
 10. **`host`:** that the panel and the docs say it isn't isolated, and what it does contain (ADR 0029, ADR 0031).
 
-**How:** a threat model per boundary (the agent's container, the sidecar, the runner, the server, the browser), then a checklist with each check's evidence: a test that already proves it (cited, as a proof file does), a log from the Linux proof job, or a finding. Then an **adversarial run** in the proof job, with no secret: a hostile repo fixture (a `.claude/settings.json` hook and an `opencode.json` command that try to run, an `.mcp.json` server, a `postinstall` that reads the environment) and a hostile ticket (instructions to print the key, curl the metadata address, push to `main`, call another task's tools), worked by both agents on the stub model that obeys every instruction. It passes when every attempt is refused or reaches nothing, and each attempt's outcome is in its log.
+**How:** a threat model per boundary (the agent's container, the sidecar, the runner, the server, the browser), then a checklist with each check's evidence: a test that already proves it (cited, as a proof file does), a log from the Linux proof job, or a finding. Then an **adversarial run** in the proof job, with no secret: a hostile repo fixture (a `.claude/settings.json` hook and an `opencode.json` command that try to run, an `.mcp.json` server, a `postinstall` that reads the environment) and a hostile ticket (instructions to print the key, curl the metadata address, push to `main`, call another task's tools), worked by OpenCode on the stub model that obeys every instruction. It passes when every attempt is refused or reaches nothing, and each attempt's outcome is in its log.
 
 **By whom:** an independent review, written by an agent session that built none of the box's code, with the `security-review` skill and this checklist, and then read and signed by the maintainer. A human penetration test by an outside firm is the maintainer's choice and a paid service, so it isn't a gate; if the maintainer orders one, its report joins the record.
 

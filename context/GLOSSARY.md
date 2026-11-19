@@ -319,11 +319,11 @@ An endpoint an organization adds for models: an API base URL and a token. ostra 
 _Avoid_: vendor, LLM
 
 **Agent image**:
-An image a runner builds itself from the base image, adding an agent the published base image doesn't carry (Claude Code, until its terms allow ostra to ship it), pinned and checked. Built once per base image and agent version, kept by the runner or in the organization's registry, never published.
+An image a runner builds itself from the base image, adding an agent the published base image doesn't carry (Claude Code, until its terms allow ostra to ship it), pinned and checked. Built once per base image and agent version, kept by the runner or in the organization's registry, never published. Not in v1: v1's one agent, OpenCode, is in the base image, and agent images come with Claude Code (F-018) after v1 (2026-11-19).
 _Avoid_: custom image (that's an environment's own image), snapshot (that's a project's, built on top)
 
 **Launch gate**:
-A condition that must hold, with its evidence in the repo, before v1 is published: the ledger, both agents' suite, the 30-minute measure, the load test, the security review, the maintainer's legal items and names, and the maintainer's go (ADR 0064).
+A condition that must hold, with its evidence in the repo, before v1 is published: the ledger, the agent's suite (OpenCode's, since Claude Code moved after v1 on 2026-11-19), the 30-minute measure, the load test, the security review, the maintainer's legal items and names, and the maintainer's go (ADR 0064).
 _Avoid_: release criteria, checklist
 
 ### Memory and budgets

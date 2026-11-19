@@ -8,7 +8,7 @@ This extends ADR 0013 ("each tracker is an adapter") to every kind of integratio
 |---|---|---|---|
 | Tracker | `TrackerAdapter` | Linear | Jira, GitHub Issues, GitLab |
 | Code host | `CodeHostAdapter` | GitHub | GitLab, Bitbucket |
-| Agent | `AgentAdapter` (over ostra's own ACP driver, ADR 0018, ADR 0032) | OpenCode, then Claude Code before launch (milestone 7) | Codex, Pi |
+| Agent | `AgentAdapter` (over ostra's own ACP driver, ADR 0018, ADR 0032) | OpenCode (Claude Code moved after v1 on 2026-11-19) | Claude Code, Codex, Pi |
 | Executor | `ExecutorAdapter` (runs in the runner, ADR 0029) | `docker`, `host`, `kubernetes` | Community executors |
 | Model provider | `ModelProviderAdapter` | Any base URL and token, with the models.dev catalog (ADR 0033) | Providers that sign each request |
 | Notification channel | `NotificationAdapter` | The panel, Linear, email | Slack |

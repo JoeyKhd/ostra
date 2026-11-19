@@ -1,6 +1,7 @@
 # 10: Runner: Claude Code's calls at the key proxy
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: runner
 Blocked by: 06
 Features: F-018, F-089
@@ -23,3 +24,5 @@ Claude Code posts to `/v1/messages?beta=true`, may call `/v1/messages/count_toke
 - [ ] Committed as `✨ count Claude Code's calls at the key proxy`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

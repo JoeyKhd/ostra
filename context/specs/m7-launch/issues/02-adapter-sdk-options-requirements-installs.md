@@ -1,6 +1,7 @@
 # 02: Adapter SDK: options, requirements, installs and the subagent parent
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. Options, requirements, installs, the plan operations, the subagent parent and the new fakes all existed for Claude Code; OpenCode needs none of them. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: adapters
 Blocked by: 01
 Features: F-018, F-019 (its declarations)
@@ -25,3 +26,5 @@ Spec: `../spec.md`, section 5.2
 - [ ] Committed as `✨ add agent options, requirements and installs`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

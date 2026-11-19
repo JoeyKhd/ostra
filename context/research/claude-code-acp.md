@@ -1,5 +1,7 @@
 # Claude Code over ACP, on keys
 
+**Note 2026-11-19:** Claude Code (F-018) moved after v1 on the maintainer's word, so nothing in v1 builds on this research; it stays for when F-018 is built (ADR 0062, postponed).
+
 **Question:** How does ostra run Claude Code through its own ACP driver, as a second `AgentAdapter`, on a key the key proxy holds and against an endpoint that speaks Anthropic's Messages API, with no subscription login anywhere (F-018, Q45, Q47)? Which package does it launch, under which license, how, and what does it advertise in `initialize`?
 
 **Checked:** 2026-11-19, against the npm registry, the published package's own files, and Anthropic's Claude Code docs. Builds on `agent-harnesses.md` (2026-11-17), whose Claude Code section this updates: the adapter's version, its launch, its `initialize` reply, and how it takes a gateway. Milestone 7's spec (`specs/m7-launch/spec.md`) and ADR 0062 apply it. **Reviewed 2026-11-19** by the spec's critic: [P1], [D1], [D2] and [D3] were checked again against the live registry and docs, and [P1], [D1] and [D2] say what this file says; [D3] needed two corrections (section 2), and section 6 adds what the review found in the same tarball and docs.

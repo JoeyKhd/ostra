@@ -2,7 +2,7 @@
 
 Status: ready-for-human
 Builder: core (lead), with two people new to ostra whom the maintainer picks
-Blocked by: 22, 24, 29, 31
+Blocked by: 22, 24, 29 (it was also 31, which is `wontfix` since 2026-11-19 with F-018)
 Features: F-076, F-001 (its first sentence's live evidence)
 Packages: `context/specs/m7-launch/measure/` (new), `context/proof/F-076.md`
 Spec: `../spec.md`, sections 2 and 10.1; ADR 0064 ("The 30-minute measure")

@@ -1,6 +1,7 @@
 # 08: Runner: installing agents on `host` and reporting them
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. Installing agents on runners exists for an agent ostra may not redistribute; OpenCode is in the base image and bundled on `host`. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: runner
 Blocked by: 01, 02
 Features: F-018, F-014, F-015, F-093 (their agents)
@@ -25,3 +26,5 @@ Spec: `../spec.md`, sections 4 and 5.1; ADR 0062; ADR 0046 (amended)
 - [ ] Committed as `✨ install agents and build agent images`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

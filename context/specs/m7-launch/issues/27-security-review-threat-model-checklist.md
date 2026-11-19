@@ -2,16 +2,17 @@
 
 Status: ready-for-agent
 Builder: an independent session that built none of the box's code (core assigns it), then the maintainer's signature
-Blocked by: 07, 08, 28, 29, 31, 35, 38
+Blocked by: 28, 29 (it was also 07, 08, 31, 35 and 38, which are `wontfix` since 2026-11-19)
 Features: none (a launch gate, ADR 0064)
 Packages: `context/specs/m7-launch/security-review.md` (new), `SECURITY.md` (new), the docs' security page (ticket 23)
 Spec: `../spec.md`, section 2; ADR 0064 ("The security review of the box")
+Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the review covers OpenCode alone; the Claude Code items of areas 6 and 10 are in this file's history for F-018.
 
 ## What to do
 
-- **Who:** a fresh agent session that didn't write any of `apps/runner/src/sidecar/`, the executors or `adapter-claude-code`, with the `security-review` skill and this ticket. It reads the code on the release candidate, never a summary of it.
+- **Who:** a fresh agent session that didn't write any of `apps/runner/src/sidecar/` or the executors, with the `security-review` skill and this ticket. It reads the code on the release candidate, never a summary of it.
 - **The threat model,** per boundary (the agent's container, the sidecar, the runner, the server, the browser): what crosses it, who's on each side, what an attacker on the inside wants.
-- **The checklist:** ADR 0064's ten areas, each item with its evidence. Area 6 covers every way a repo's Claude config could run or widen something, not only `settings.json`: hooks, inline shell, `mcpServers`, `permissionMode` and `allowed-tools` in `.claude/agents/`, `.claude/skills/` and `.claude/commands/` (ticket 38), the "always allow" file (ticket 38), and a ticket that starts with `/`. Area 10 covers a `host` machine's managed Claude Code policy (ticket 06). Each item's evidence is a test that already proves it (cited as a proof file cites one), a log from the Linux or kind proof job (ticket 31), the adversarial run (ticket 28), or a finding.
+- **The checklist:** ADR 0064's ten areas, each item with its evidence. Area 6 covers every way a repo's agent config could run or widen something: OpenCode's `opencode.json`, the `.claude/` files OpenCode must not pick up (`OPENCODE_DISABLE_CLAUDE_CODE`, ADR 0032), an "always allow" answer, and a ticket that starts with `/`. Each item's evidence is a test that already proves it (cited as a proof file cites one), a log from the Linux or kind proof job, the adversarial run (ticket 28), or a finding.
 - **Findings,** each with a severity (critical, high, medium, low), where it is, how to reproduce it without a secret, and its fix's commit or why it stays open. A critical or high finding is fixed before this ticket is done, and the run that showed it repeated.
 - **What wasn't tested,** and why (a machine, a cloud, a person).
 - **`SECURITY.md`:** how to report a vulnerability through GitHub's private reporting, what's in scope, and what to expect.

@@ -40,7 +40,7 @@ Read from the code on `main` on 2026-11-19, so builders don't rebuild what exist
 - the ticket closed while its task runs, and the fresh branch after a merge: F-066, milestone 3
 - steering, approvals in the panel, take over: F-024, F-026, milestone 3. The composer in milestone 2 only reopens a task or sends the next turn to an idle session
 - invites, so "another member" reopens: F-002, milestone 4. The demo reopens as the same member
-- another agent through the rebuild template: F-018, milestone 7. The contract suite proves it with the scripted fake agent
+- another agent through the rebuild template: F-018, after v1 (it was milestone 7 until 2026-11-19). The contract suite proves it with the scripted fake agent
 - `kubernetes` and its deleted pods: F-093, milestone 5
 - budgets per organization and project: F-037, milestone 4. Milestone 2's spend cap is per task, with a server-wide default
 - Jira itself: F-008, after v1. Only the Jira fake runs in the tracker contract suite (ADR 0047, Q104)
@@ -74,7 +74,7 @@ The same adjustment as milestone 1 (`../m1-first-pr/spec.md`, section 1): the de
 | F-114 Blob storage | The built-in store on its own Postgres tables, the runner's upload and download through core, the full blob contract suite. The S3-compatible adapter on `@aws-sdk/client-s3` (approved 2026-11-19) | `adapter-blob-postgres`, `adapter-blob-s3` (new), `apps/core`, `packages/db` | 04, 05, 11, 12 | done |
 | F-096 Idle, stop and release | After every turn: commit and push, the hidden ref, the session archive uploaded. After 15 idle minutes the box stops. A turn that waits on a person follows the same timer | `apps/runner`, `apps/core`, `adapter-opencode` | 10, 17, 22, 23 | building: the kept `docker` box waits for Linux. "Starts no CI" was checked by hand against `test1`'s push workflow on 2026-11-19 (ticket 40), and ticket 39 checks it again |
 | F-032 Reopen | Any member reopens any task with a message and keeps working on the same branches; new commits update the same PRs | `packages/api`, `apps/core`, `apps/web` | 18, 30, 36 | done |
-| F-033 Reopen anywhere | The three steps of ADR 0039, on any runner: the same box while it's kept, a fresh box from the archive and the hidden ref (the normal path), the rebuild template | `apps/core`, `apps/runner`, `adapter-opencode`, `packages/domain` | 06, 10, 18, 24 | building: "by another member" needs invites (milestone 4), "with another agent" needs F-018 (milestone 7) |
+| F-033 Reopen anywhere | The three steps of ADR 0039, on any runner: the same box while it's kept, a fresh box from the archive and the hidden ref (the normal path), the rebuild template | `apps/core`, `apps/runner`, `adapter-opencode`, `packages/domain` | 06, 10, 18, 24 | building: "by another member" needs invites (milestone 4), "with another agent" needs F-018 (after v1 since 2026-11-19) |
 | F-055 Signed-commit repos | A repo whose default branch requires signed commits is reported to the admin as unsupported, and no task starts on it | `adapter-github`, `packages/api`, `apps/web` | 04, 09, 31, 37 | done |
 | F-060 Default-branch warning | A repo whose default branch isn't protected shows a warning, with the reason, on the project and when a task starts | `adapter-github`, `packages/api`, `apps/web` | 04, 09, 31, 37 | done |
 | F-097 Prompt tasks ("Create ticket") | "Create ticket" on a prompt task creates a ticket on one of the project's boards and links the task to it | `packages/api`, `apps/core`, `apps/web` | 29, 36 | done |

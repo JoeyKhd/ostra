@@ -48,7 +48,7 @@ Read from the code on `main` on 2026-11-19, and from milestone 2's spec for what
 - Slack: F-057, after v1. The notification interface leaves room for it
 - a terminal in the browser and attach: F-029, F-041, after v1
 - syntax highlighting in the diff: a dependency for later (ADR 0051)
-- another agent: F-018, milestone 7. Every agent-facing feature here goes through the agent interface, and the scripted fake agents prove the paths OpenCode doesn't take (a no-steer agent, native plans, reject and continue)
+- another agent: F-018, after v1 (it was milestone 7 until 2026-11-19). Every agent-facing feature here goes through the agent interface, and the scripted fake agents prove the paths OpenCode doesn't take (a no-steer agent, native plans, reject and continue)
 
 ### On this machine
 

@@ -1,6 +1,7 @@
 # 09: Core: preparing agents, agent images and choosing a runner by agent
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. Preparing agents, agent images, choosing a runner by agent and `agent.options` in the dispatch existed for Claude Code; with one agent in the base image, none applies. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: core
 Blocked by: 05, 08
 Features: F-018
@@ -21,3 +22,5 @@ Spec: `../spec.md`, section 4
 - [ ] Committed as `✨ choose runners by agent`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

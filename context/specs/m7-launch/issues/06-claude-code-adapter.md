@@ -1,6 +1,7 @@
 # 06: Claude Code adapter: the package, its pins, its launch and its environment
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: adapters
 Blocked by: 02
 Features: F-018
@@ -30,3 +31,5 @@ Note: the spec's review split this ticket. The files the adapter writes for a ta
 - [ ] Committed as `✨ add the Claude Code adapter`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

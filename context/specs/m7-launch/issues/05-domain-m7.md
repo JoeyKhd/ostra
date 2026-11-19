@@ -1,6 +1,7 @@
 # 05: Domain: the agent catalog, profiles and admission by agent
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. The agent catalog, the format check, the agent lifecycles, admission by agent and the four runner settings existed for Claude Code. `OSTRA_DOCS_URL`, the one launch part, moved to ticket 36. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: core
 Blocked by: 02, 04
 Features: F-018
@@ -24,3 +25,5 @@ Note: the palette's actions, setup's timeline and the theme moved to ticket 36 i
 - [ ] Committed as `✨ add the milestone 7 domain`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

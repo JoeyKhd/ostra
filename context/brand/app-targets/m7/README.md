@@ -1,10 +1,12 @@
 # Milestone 7 screen targets
 
-The design targets for milestone 7's screens (The second agent, and launch; `context/specs/m7-launch/spec.md`, section 13, ticket 12). They're made the same way as the earlier milestones' targets. Each screen has a `<screen>.webp` picture at CSS scale, a `<screen>.md` build spec and a `<screen>.prompt.txt`.
+The design targets for milestone 7's screens (Launch; `context/specs/m7-launch/spec.md`, section 13, ticket 12). They're made the same way as the earlier milestones' targets. Each screen has a `<screen>.webp` picture at CSS scale, a `<screen>.md` build spec and a `<screen>.prompt.txt`.
 
 **Status:** approved for the build on 2026-11-19 by the lead, on the maintainer's delegation, pending the maintainer's own review.
 - The lead reviewed every picture by eye.
 - If the maintainer rejects a screen, its target is remade and the screen rebuilt.
+
+**Postponed 2026-11-19:** Claude Code (F-018) moved after v1 on the maintainer's word, so its targets wait with it: `agent-profile-claude-code`, `runner-agents`, `task-subagent` and `task-subagent-preparing`. Their files stay here, unchanged, for when F-018 is built. Nothing in v1 builds them.
 
 ## Screens
 
@@ -16,9 +18,9 @@ The design targets for milestone 7's screens (The second agent, and launch; `con
 | The docs search, and its empty state | `docs-search`, `docs-search-empty` |
 | The command palette, at desktop and phone width | `command-palette`, `command-palette-phone` |
 | The keyboard shortcut sheet | `shortcut-sheet` |
-| An agent profile with Claude Code chosen | `agent-profile-claude-code` |
-| A runner's agents | `runner-agents` |
-| A Claude Code task with subagents, and while it prepares | `task-subagent`, `task-subagent-preparing` |
+| An agent profile with Claude Code chosen (postponed with F-018) | `agent-profile-claude-code` |
+| A runner's agents (postponed with F-018) | `runner-agents` |
+| A Claude Code task with subagents, and while it prepares (postponed with F-018) | `task-subagent`, `task-subagent-preparing` |
 | Account > Appearance | `account-appearance` |
 | Home and the task page in the light theme | `light-home`, `light-task` |
 

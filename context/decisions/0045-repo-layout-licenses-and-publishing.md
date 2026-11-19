@@ -1,6 +1,6 @@
 # One monorepo, a license per package checked by CI, and one version line
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Amended 2026-11-18: the server packages move from AGPL-3.0 to the Sustainable Use License, and the license check now keeps Apache-2.0 packages from depending on them (ADR 0048, which replaces ADR 0009). Settles Q78, Q79 and Q81. **Amended 2026-11-19 for milestone 7's spec:** `apps/docs` is Apache-2.0 (ADR 0063); `packages/adapters/adapter-claude-code` joins the adapters (ADR 0062); how a release is published, and what it waits on, is ADR 0064. Builds on ADR 0007 (pnpm and Turborepo), ADR 0048 (the license split) and ADR 0016 (two server processes). The CLI and the images are ADR 0046.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Amended 2026-11-18: the server packages move from AGPL-3.0 to the Sustainable Use License, and the license check now keeps Apache-2.0 packages from depending on them (ADR 0048, which replaces ADR 0009). Settles Q78, Q79 and Q81. **Amended 2026-11-19 for milestone 7's spec:** `apps/docs` is Apache-2.0 (ADR 0063); `packages/adapters/adapter-claude-code` joins the adapters (ADR 0062; postponed with it on 2026-11-19, since Claude Code is after v1); how a release is published, and what it waits on, is ADR 0064. Builds on ADR 0007 (pnpm and Turborepo), ADR 0048 (the license split) and ADR 0016 (two server processes). The CLI and the images are ADR 0046.
 
 ## The layout
 

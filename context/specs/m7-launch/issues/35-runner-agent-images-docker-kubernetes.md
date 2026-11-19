@@ -1,6 +1,7 @@
 # 35: Runner: agent images on `docker` and `kubernetes`
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. Agent images exist for an agent ostra may not redistribute; OpenCode is in the base image. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: runner
 Blocked by: 08
 Features: F-018, F-015, F-093 (their agents), F-039
@@ -24,3 +25,5 @@ Note: split out of ticket 08 by the spec's review: ticket 08 is the `host` insta
 - [ ] Committed as `✨ build agent images on docker and kubernetes`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

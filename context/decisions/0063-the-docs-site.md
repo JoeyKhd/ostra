@@ -16,7 +16,7 @@
   1. **Start:** what ostra is (source-available, self-hosted), what you need before you start (a Linux machine with Docker, a GitHub organization, a model provider's base URL and token), and the 30-minute path.
   2. **Install:** `docker compose up`; the first sign-in and the forced password change; setup in the panel, step by step, in the checklist's order (F-076); Linear as the optional last step; Helm for Kubernetes; upgrading (ADR 0022).
   3. **Runners:** pools and join tokens; `docker`, `host` and `kubernetes`, with what each isolates and the allowed differences (ADR 0029); personal runners with `ostra runner`; the egress baseline; the HTTP fallback.
-  4. **Agents and models:** model providers in either API format; OpenCode; Claude Code on keys, its Anthropic-format requirement and its one-time image (ADR 0062); agent profiles, approval rules, plan first.
+  4. **Agents and models:** model providers in either API format; OpenCode, the one agent at launch (Claude Code's page, on keys, its Anthropic-format requirement and its one-time image, waits with F-018 and ADR 0062, after v1 since 2026-11-19); agent profiles, approval rules, plan first.
   5. **Using ostra:** tasks, the three kinds, steering, approvals, reopening, review loops, automations, memory, budgets. Short, one page each, linking the panel's own words.
   6. **Security:** what the box does and doesn't contain, what `host` doesn't isolate, the key and git proxies, the security review's summary (ADR 0064), and how to report a vulnerability (`SECURITY.md`).
   7. **Reference:** the configuration reference (`docs/configuration.md`), the CLI's commands, the runner protocol's version window, the ports.

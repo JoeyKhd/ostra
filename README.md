@@ -18,7 +18,7 @@ ostra is a source-available, self-hosted control panel that turns the coding age
 
 A ticket from your tracker, or a plain prompt, becomes a **task**. An agent works on it on its own branch, in an isolated box prepared from your project's environment. Your team can watch it live, steer it, approve risky steps, and reopen it months later. It ships a GitHub pull request for each repo it changes.
 
-- **Your agents.** Any coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com): OpenCode first, Claude Code before launch, and more later through the same interface.
+- **Your agents.** Any coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com): OpenCode, with more agents later through the same interface.
 - **Your machines.** Run runners wherever you like: your servers, your Kubernetes cluster, a laptop. They connect out to your ostra, and on Docker and Kubernetes each task gets its own isolated box.
 - **Your models.** Any provider with an API base URL and a bearer token. Names, prices and logos come from [models.dev](https://models.dev).
 - **Your tracker.** Linear first, then Jira. The tracker stays the source of truth.
@@ -71,7 +71,7 @@ These are design concepts built in HTML, not screenshots of shipped software.
 | 4 · The organization | Several projects with their own access, two roles at each level, spend and budgets, and project memory | specced: [`context/specs/m4-the-organization/`](context/specs/m4-the-organization/spec.md) |
 | 5 · The fleet | Runner pools on Docker hosts and Kubernetes, plus laptops, joined with a token and load-tested at 1,000 tasks at once | specced: [`context/specs/m5-the-fleet/`](context/specs/m5-the-fleet/spec.md) |
 | 6 · The whole team, and autonomy | Refine, code and review tasks, intake rules and schedules, and review loops for CI and the AI review | |
-| 7 · Launch | Claude Code as the second agent, docs, accessibility and a security review. A new install goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs | specced: [`context/specs/m7-launch/`](context/specs/m7-launch/spec.md) |
+| 7 · Launch | Docs, accessibility, the load test and a security review, then the public release on OpenCode. A new install goes from `docker compose up` to its first agent-made PR in under 30 minutes, following only the docs | specced: [`context/specs/m7-launch/`](context/specs/m7-launch/spec.md) |
 
 Signed runner binaries come after v1. The details, and which feature lands where, are in [`context/build-order.md`](context/build-order.md) and the feature ledger [`context/features.md`](context/features.md).
 

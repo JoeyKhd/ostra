@@ -44,7 +44,7 @@ Read from the code on `main` on 2026-11-19, and from milestones 2 to 4's specs f
 - expanding a GitHub team in CODEOWNERS into its members: the App asks for no `members` permission (Q226)
 - `workflows: write`: an agent still can't change CI (ADR 0040, Q122), so a fixing round can't fix a workflow file
 - Jira itself: F-008, after v1. Every tracker operation of this milestone runs against the Jira fake too
-- Claude Code: F-018, milestone 7. Every agent-facing change is proved against OpenCode and the scripted fake agents
+- Claude Code: F-018, after v1 (it was milestone 7 until 2026-11-19). Every agent-facing change is proved against OpenCode and the scripted fake agents
 
 ### On this machine
 

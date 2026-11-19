@@ -60,6 +60,6 @@ An agent profile is the organization's named setup of an agent: the agent, a mod
 ## Consequences
 
 - Protocol minor 2 carries the rules, the task rules, the skills, the MCP servers, plan mode, `plan.proposed`, `plan.answered`, `question-answer` and `plan-answer` (milestone 3's spec, section 5.1). A runner at minor 1 can't run a task whose profile needs them, and isn't offered one.
-- The agent interface gains `permissionRules`, `planMode`, `skills`, `mcp` and `projectConfigOverride` as declared capabilities, so Claude Code in milestone 7 states each one (adapter parity, `AGENTS.md`).
+- The agent interface gains `permissionRules`, `planMode`, `skills`, `mcp` and `projectConfigOverride` as declared capabilities, so a second agent (Claude Code, F-018, after v1 since 2026-11-19) states each one (adapter parity, `AGENTS.md`).
 - The sidecar grows an MCP proxy beside the key proxy and the git proxy. Milestone 7's security review of the box covers it.
 - `domain-model.md`'s approval lifecycle is unchanged; "for this task" writes a task rule, as it already said.

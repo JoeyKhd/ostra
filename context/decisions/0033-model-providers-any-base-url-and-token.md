@@ -44,6 +44,6 @@ ostra never assumes a model provider. A **model provider** is an API base URL an
 - The fetch of the catalog is the one call an install makes to a service that nobody on the install configured. It's a plain GET of a public file with no install data in it, and ADR 0021 names it with its setting and the bundled copy. The setting ships with a working default and a line in the configuration reference.
 - The catalog and the model lists are vendor-owned formats, so their Zod schemas tolerate unknown fields (`AGENTS.md`).
 - `ModelProviderAdapter`'s v1 adapter is "the models.dev catalog plus any base URL and token" (ADR 0025). Its contract suite runs against fakes in both API formats.
-- Claude Code in milestone 7 needs a provider whose format is Anthropic's Messages API (ADR 0032). OpenCode takes either.
+- Claude Code (F-018, after v1 since 2026-11-19) needs a provider whose format is Anthropic's Messages API (ADR 0032). OpenCode takes either.
 - Spike 1 proves the pieces together: a turn against the endpoint in `model.env`, and against a local stub in each format, with the proxy's token count within 2% of the endpoint's. The spikes read one neutral file, `model.env` (base URL, token and model ID), and no spike, test or default assumes a provider (Q106).
 - A member's own provider for their personal runner is later (F-128).

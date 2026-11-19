@@ -39,7 +39,7 @@ Budgets per member and per agent profile come after v1 (F-131).
 
 - Budgets are only as good as the count. Spike 1 passes only when the proxy's token count is within 2% of what the endpoint reports. Its 2% bar compares the proxy's count with the agent's turn usage for the same response bytes, and the independent check is the provider's own usage figure for the session, which spike 1's run didn't use. Spike 10 records spend per run from the proxy.
 - **Spike 10 validated the meter against the agent, not against the bill.** On 30 of 30 runs the proxy's count over the calls that offered tools equalled OpenCode's own turn usage (0% off, against the 2% allowed), with no call missing its usage. Title calls were 0.37% of the tokens (spike 1 saw 1.4%), which is why the proxy meters every call. The reference is OpenCode's parse of the same response bytes, so it validates the meter and not the dollars: unverified against billing. The whole set cost $0.2040, and its dearest run $0.0273, about 900 times under the $25 task cap.
-- Every agent is metered by the same proxy. The second agent in milestone 7 (F-018) adds no metering of its own.
+- Every agent is metered by the same proxy. A second agent (Claude Code, F-018, after v1 since 2026-11-19) adds no metering of its own.
 - On a personal runner the proxy runs on the member's machine, so an admin allows each provider there knowingly (Q47). Its spend counts the same way.
 - Insights (F-108) read tokens and spend from the same records, computed by a scheduled job, not live.
 - The key proxy and its metering come first, in milestone 1 (F-089). The spend cap per task follows in milestone 2 (F-068). Budgets are built in milestone 4 (F-037). All three come before the loops in milestone 6.

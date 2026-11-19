@@ -1,6 +1,7 @@
 # 01: Protocol: minor 6
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. Every change of minor 6 (a runner's agents, the `agent.*` runner events, `agent.prepare`, `agent-missing`, `parentToolCallId`, `agent.options`) existed for Claude Code, so milestone 7 changes no wire shape. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: core (contracts, first)
 Blocked by: none (milestone 6's minor lands first)
 Features: F-018 (its wire shapes)
@@ -28,3 +29,5 @@ Every change is additive. The schema is written once, Zod first; the types are `
 - [ ] Committed as `✨ add protocol minor 6`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

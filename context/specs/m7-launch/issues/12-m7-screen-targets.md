@@ -3,7 +3,7 @@
 Status: resolved
 Builder: web
 Blocked by: none
-Features: F-018, F-058, F-081, F-082, F-076 (their screens)
+Features: F-058, F-081, F-082, F-076 (their screens); F-018's three targets are postponed with it (2026-11-19)
 Packages: `context/brand/app-targets/m7/` (new)
 Note: the maintainer requires `ui-taste` plus Higgsfield targets, approved before any of tickets 13 to 19 and 21 builds its UI.
 Spec: `../spec.md`, section 13
@@ -19,7 +19,7 @@ The screens that only grow (section 13's second list) get no new picture: their 
 Notes for some targets:
 - `docs-home`, `docs-guide`, `docs-reference` and `docs-search` are the docs site's, not the panel's: same tokens and type, no sidebar of the panel, a reading width for prose, both themes. Their build specs name Fumadocs' parts each maps to, and what the fallback (ADR 0063) does instead.
 - `command-palette` and `shortcut-sheet` settle the two-key sequences' display, the action that needs a second step, and the palette at phone width.
-- `agent-profile-claude-code` holds the words for each capability Claude Code declares, and the one difference, so they're designed once.
+- `agent-profile-claude-code` holds the words for each capability Claude Code declares, and the one difference, so they're designed once. *Postponed 2026-11-19 with F-018, with `runner-agents` and `task-subagent`.*
 - `light-home` and `light-task` settle the light theme's rules (surfaces, borders, the diff's colors, the amber of "needs you") from `brand/files/tokens/`, so every other screen follows them without its own picture.
 - Every target is checked against WCAG AA contrast in its build spec, as F-081 asks.
 
@@ -32,3 +32,4 @@ Notes for some targets:
 ## Comments
 
 - 2026-11-19, lead: the targets are in `context/brand/app-targets/m7/` (thirteen screens in seventeen pictures, made in commits 8bb573d, b2cee88 and 02a0f02). The lead reviewed each picture by eye and approved them for the build on the maintainer's delegation, pending the maintainer's own review. The open points in the build specs (the light page colour, `--amber-text`, the light chart colour, the 3px approval rule in light, the docs site's border colour and its "not isolated" callout) were settled as each spec recommends; the folder's README records them.
+- 2026-11-19, lead: Claude Code (F-018) moved after v1 on the maintainer's word, so its three targets (`agent-profile-claude-code`, `runner-agents`, and `task-subagent` with `task-subagent-preparing`) are postponed with it. Their files stay in `context/brand/app-targets/m7/`, and its README says so.

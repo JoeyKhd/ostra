@@ -1,6 +1,7 @@
 # 15: Web: nested subagent calls on the task page
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. The nesting reads Claude Code's subagent stamp (`_meta.claudeCode.parentToolUseId`), which OpenCode doesn't send. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: web
 Blocked by: 02, 12
 Features: F-018, F-023
@@ -20,3 +21,5 @@ Spec: `../spec.md`, sections 4 and 12 (item 16); target `task-subagent`
 - [ ] Committed as `✨ nest subagent calls on the task page`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

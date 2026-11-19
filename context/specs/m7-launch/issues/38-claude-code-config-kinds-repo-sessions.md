@@ -1,6 +1,7 @@
 # 38: Claude Code adapter: its config files, the task kinds, the repo's config and sessions
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: adapters
 Blocked by: 06
 Features: F-018, F-021, F-026, F-099, F-100 (their Claude Code halves)
@@ -31,3 +32,5 @@ Note: split out of ticket 06 by the spec's review, which also found the frontmat
 - [ ] Committed as `✨ write Claude Code's task config`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

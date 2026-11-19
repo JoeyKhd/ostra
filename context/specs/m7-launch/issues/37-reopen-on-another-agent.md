@@ -1,6 +1,7 @@
 # 37: Reopening a task on another agent (F-033)
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. Reopening on another agent needs a second agent; F-033's note says the clause waits with F-018. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: core
 Blocked by: 03, 05, 07
 Features: F-033 ("with another agent"), F-018
@@ -23,3 +24,5 @@ Note: added by the spec's review. F-033's "done when" says a task can be reopene
 - [ ] Committed as `✨ reopen a task on another agent`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

@@ -1,6 +1,6 @@
 # Agent-agnostic by design, Claude Code first
 
-**Status:** superseded by ADR 0032 (2026-11-18). It was accepted at the plan's sign-off on 2026-11-17, and the text below is kept as the historical record. ADR 0032 replaces "Claude Code first" with OpenCode as the default and only agent from milestone 1, driven over ostra's own ACP driver, and Claude Code on keys through the key proxy joins in milestone 7 as the second agent, with the interface staying agent-neutral (Q45, Q51, F-018, F-019).
+**Status:** superseded by ADR 0032 (2026-11-18). It was accepted at the plan's sign-off on 2026-11-17, and the text below is kept as the historical record. ADR 0032 replaces "Claude Code first" with OpenCode as the default and only agent from milestone 1, driven over ostra's own ACP driver, and Claude Code on keys through the key proxy joins in milestone 7 as the second agent, with the interface staying agent-neutral (Q45, Q51, F-018, F-019). ADR 0032 was amended on 2026-11-19: Claude Code comes after v1, so OpenCode is the only agent at launch.
 
 - **2026-11-17, first answer:** the maintainer named "claude code, opencode, ohmypi" for the first version, then added Codex: "all top tier popular coding tools should be supported".
 - **Later on 2026-11-17, narrowed:** "lets focus on claude code for now only".

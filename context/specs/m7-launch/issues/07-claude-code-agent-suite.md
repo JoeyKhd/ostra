@@ -1,6 +1,7 @@
 # 07: Claude Code adapter: the agent suite on the real Claude Code
 
-Status: ready-for-agent
+Status: wontfix
+Note: Won't do now (2026-11-19): Claude Code (F-018) moved after v1 (the maintainer: "perhaps we can just skip Claude Code with its ACP for now"), and milestone 7 is the launch alone, on OpenCode. This ticket waits for F-018 after v1; its text stays as written for then (ADR 0062, postponed).
 Builder: adapters
 Blocked by: 03, 06, 08, 38
 Features: F-018
@@ -25,3 +26,5 @@ Spec: `../spec.md`, sections 6 and 9
 - [ ] Committed as `✅ run the agent suite on Claude Code`.
 
 ## Comments
+
+- 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.

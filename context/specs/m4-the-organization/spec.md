@@ -72,7 +72,7 @@ The same adjustment as milestones 1 to 3: the demo runs on the `host` executor, 
 | F-104 Independent-review check | `ostra/independent-review` on every task PR, evaluated on reviews, new heads, links and the reconcile; only linked non-drivers count; `in_progress` or `action_required` as the live test on `test1` settles (ADR 0040, amended) | `adapter-sdk`, `adapter-github`, `packages/domain`, `apps/core`, `packages/api`, `apps/web` | 03, 05, 06, 08, 18, 30, 39, 40 | done |
 | F-115 Email notifications (grown) | The account mails (invitation, verification, reset) and the budget mails, on milestone 3's channel and templates | `adapter-sdk`, `packages/domain`, `apps/core` | 04, 06, 13, 19 | done |
 
-**Rows this milestone touches without finishing:** F-086 (projects) gains several repos and stays `building` for its pool list (F-091, milestone 5). F-033 (reopen anywhere) can now be reopened "by another member" for real, and stays `building` for "with another agent" (F-018, milestone 7); ticket 41 adds that proof to its file. F-036 stays `building` for milestone 6's audiences.
+**Rows this milestone touches without finishing:** F-086 (projects) gains several repos and stays `building` for its pool list (F-091, milestone 5). F-033 (reopen anywhere) can now be reopened "by another member" for real, and stays `building` for "with another agent" (F-018, after v1 since 2026-11-19); ticket 41 adds that proof to its file. F-036 stays `building` for milestone 6's audiences.
 
 **Built in from the first milestone** (`build-order.md`), checked again by ticket 41:
 - Organization-scoped data: every new row carries `organizationId`, every project record `projectId` with the composite key (05). Ticket 09's generated test is the check for every model, old and new.
