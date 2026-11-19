@@ -406,12 +406,18 @@ const ingestSession = async (
   items: readonly RunnerEvent[],
 ): Promise<SessionIngestOutcome> => {
   const { tx } = deps;
-  const session = await tx.session.findUnique({ where: { id: sessionId } });
-  if (session === null) {
+  const found = await tx.session.findUnique({ where: { id: sessionId }, select: { taskId: true } });
+  if (found === null) {
     return { kind: "unknown-session", sessionId };
   }
-  const task = await lockTaskRow(tx, taskIdSchema.parse(session.taskId));
+  const task = await lockTaskRow(tx, taskIdSchema.parse(found.taskId));
   if (task === null) {
+    return { kind: "unknown-session", sessionId };
+  }
+  // The session's cursor is read again under the task's lock: a batch that waited on the lock
+  // behind another of this session's must see the cursor that one left, not the one before it.
+  const session = await tx.session.findUnique({ where: { id: sessionId } });
+  if (session === null) {
     return { kind: "unknown-session", sessionId };
   }
   // The session is this runner's only if it holds, or held, a lease of the task. Another runner's

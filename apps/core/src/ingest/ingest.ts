@@ -244,6 +244,12 @@ export const createIngest = (options: {
       if (task?.leaseEpoch !== item.leaseEpoch) {
         return null;
       }
+      // Again under the task's lock: a batch of this session's that held it may have moved the
+      // cursor since, and moving it here would then move it back.
+      const current = await tx.session.findUnique({ where: { id: item.sessionId }, select: { ingestedSeq: true } });
+      if (current?.ingestedSeq !== item.sessionSeq - 1) {
+        return null;
+      }
       const lease = await tx.lease.findFirst({
         where: { taskId, organizationId: task.organizationId, runnerId: runner.runnerId, epoch: item.leaseEpoch },
         select: { id: true },

@@ -2,7 +2,7 @@ import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import { ingestEvents, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import { createJobs, lockTask } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { modelIdSchema, providerIdSchema, repoIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
@@ -67,6 +67,64 @@ const storedSeqs = async (task: LeasedTask) =>
   (await test.db.event.findMany({ where: { taskId: task.taskId }, orderBy: { seq: "asc" }, select: { seq: true, sessionSeq: true } })).map(
     (row) => [row.seq, row.sessionSeq],
   );
+
+/** Holds the task's row `FOR UPDATE` until released, as a grace sweep or a dispatch would. */
+const holdTaskRow = async (task: LeasedTask): Promise<{ readonly release: () => void; readonly done: Promise<void> }> => {
+  let release: () => void = () => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let locked: () => void = () => undefined;
+  const isLocked = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const done = test.db.$transaction(
+    async (tx) => {
+      await lockTask(tx, task.organizationId, task.taskId);
+      locked();
+      await released;
+    },
+    { timeout: 60_000 },
+  );
+  await Promise.race([isLocked, done]);
+  return { release, done };
+};
+
+/**
+ * Starts transactions one by one, each once the one before is waiting on a task row's lock. What
+ * `up` gives back is boxed, so awaiting it waits for the line, not for the transaction.
+ */
+const lineUp = (): { readonly up: <T>(start: () => Promise<T>) => Promise<{ readonly result: Promise<T> }> } => {
+  let waiting = 0;
+  return {
+    up: async (start) => {
+      const result = start();
+      // Its own failure surfaces where it's awaited.
+      result.catch(() => undefined);
+      waiting += 1;
+      await waitForLockWaiters(waiting);
+      return { result };
+    },
+  };
+};
+
+/** Waits until `count` transactions of this database are waiting on a task row's lock. */
+const waitForLockWaiters = async (count: number): Promise<void> => {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const rows = await test.db.$queryRaw<readonly { readonly waiting: bigint }[]>`
+      SELECT count(*) AS waiting FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FROM "task"%FOR%UPDATE%'`;
+    const waiting = Number(rows[0]?.waiting ?? 0);
+    if (waiting >= count) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`${String(waiting)} transactions wait on the task's row, not ${String(count)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+};
 
 const newTask = (state?: "preparing" | "running") =>
   seedLeasedTask(test.db, ours, fixture.a.openProject.id, { ...(state === undefined ? {} : { state }), creatorMemberId: fixture.a.member.id });
@@ -556,37 +614,96 @@ describe("the task grace", () => {
   });
 
   it("F-045: a grace and ingests at the same moment never store a row behind the fence", async () => {
+    // The same moment, pinned rather than left to timers: a blocker holds the task's row until
+    // five ingests and the grace all wait on it (each sent once the one before is waiting), then
+    // lets them go together. Postgres grants the row in whatever order it likes, so the checks
+    // hold for every order. Seven transactions at once, and the poll: inside the pool of ten.
     const task = await newTask("running");
+    const batch = (n: number): Promise<readonly DownFrame[]> => ingest(ours, frame(runnerEvent(task, n, thought(`n${String(n)}`))));
+    expect([...(await batch(1)), ...(await batch(2))]).toEqual([
+      { type: "ack", sessionId: task.sessionId, upTo: 1 },
+      { type: "ack", sessionId: task.sessionId, upTo: 2 },
+    ]);
+
+    const blocker = await holdTaskRow(task);
+    const lined = lineUp();
+    const ingests: Promise<readonly DownFrame[]>[] = [];
+    for (const n of [3, 4, 5]) {
+      ingests.push((await lined.up(() => batch(n))).result);
+    }
     let fenceSeq = -1;
-    const batches = Array.from({ length: 12 }, (_unused, index) => index);
-    const results = await Promise.all([
-      ...batches.map(async (index) => {
-        await new Promise((resolve) => setTimeout(resolve, index * 3));
-        // Each batch carries one event; resends of what's saved are fine, gaps get resendFrom.
-        const replies: readonly DownFrame[] = await ingest(ours, frame(runnerEvent(task, index + 1, thought(`n${String(index)}`))));
-        return replies;
-      }),
-      (async () => {
-        await new Promise((resolve) => setTimeout(resolve, 15));
-        await test.db.$transaction(async (tx) => {
+    const { result: grace } = await lined.up(() =>
+      test.db.$transaction(
+        async (tx) => {
           const row = await lockTask(tx, task.organizationId, task.taskId);
           if (row === null) {
             throw new Error("no task");
           }
           fenceSeq = row.eventSeq;
           await endGraceInTx(graceDeps, tx, row, { organizationId: task.organizationId, taskId: task.taskId, leaseEpoch: task.leaseEpoch });
-        });
-        return [];
-      })(),
-    ]);
-    expect(fenceSeq).toBeGreaterThanOrEqual(0);
-    const stored = await test.db.event.findMany({ where: { taskId: task.taskId, leaseEpoch: 1 }, select: { seq: true } });
-    // Nothing with the old epoch was stored after the grace raised it.
-    expect(Math.max(0, ...stored.map((row) => row.seq))).toBeLessThanOrEqual(fenceSeq);
-    expect(stored).toHaveLength(fenceSeq);
-    const flat = results.flat();
-    expect(flat.some((reply) => reply.type === "error" && reply.code === "stale-lease")).toBe(true);
+        },
+        { timeout: 60_000 },
+      ),
+    );
+    for (const n of [6, 7]) {
+      ingests.push((await lined.up(() => batch(n))).result);
+    }
+    blocker.release();
+    await blocker.done;
+    await grace;
+    const replies = (await Promise.all(ingests)).flat();
+
+    // The fence: what was stored under the old epoch is exactly what the grace saw, once each.
+    expect(fenceSeq).toBeGreaterThanOrEqual(2);
+    expect(await storedSeqs(task)).toEqual(Array.from({ length: fenceSeq }, (_unused, index) => [index + 1, index + 1]));
+    // Each batch was saved (or asked for what came before it) at or behind the fence, or refused.
+    for (const reply of replies) {
+      if (reply.type === "ack") {
+        expect(reply.upTo).toBeLessThanOrEqual(fenceSeq);
+      } else {
+        expect(reply).toMatchObject({ type: "error", code: "stale-lease", sessionId: task.sessionId, currentEpoch: 2 });
+      }
+    }
+    // And a batch that comes after the grace is refused and stores nothing.
+    expect(await batch(fenceSeq + 1)).toEqual([expect.objectContaining({ type: "error", code: "stale-lease", currentEpoch: 2 })]);
+    expect(await test.db.event.count({ where: { taskId: task.taskId } })).toBe(fenceSeq);
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).leaseEpoch).toBe(2);
+  });
+
+  it("F-045: a batch that waited on the task's lock reads the cursor the batch before it left", async () => {
+    // One batch waits on the row while the transaction holding it saves the event before it, the
+    // way an ingest of the same session does. Only one waits, so there's no order to leave open.
+    const task = await newTask("running");
+    expect(await ingest(ours, frame(runnerEvent(task, 1, thought("first"))))).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 1 }]);
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let locked: () => void = () => undefined;
+    const isLocked = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const holder = test.db.$transaction(
+      async (tx) => {
+        await lockTask(tx, task.organizationId, task.taskId);
+        locked();
+        await released;
+        return ingestEvents({ tx, jobs, notices: postgresChangeNotices, clock: systemClock }, { runnerId: ours.runnerId, events: [runnerEvent(task, 2, thought("second"))] });
+      },
+      { timeout: 60_000 },
+    );
+    await isLocked;
+    const lined = lineUp();
+    const { result: waiting } = await lined.up(() => ingest(ours, frame(runnerEvent(task, 3, thought("third")))));
+    release();
+    expect((await holder).outcomes).toEqual([expect.objectContaining({ kind: "saved", upTo: 2 })]);
+    // It read the session before it waited; under the lock it reads it again, and saves.
+    expect(await waiting).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 3 }]);
+    expect(await storedSeqs(task)).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+    ]);
   });
 });
 
