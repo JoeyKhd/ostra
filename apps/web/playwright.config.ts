@@ -4,7 +4,8 @@ import { e2eBaseUrl } from "./e2e/settings.ts";
 
 // The panel's browser checks (ADR 0007): a throwaway stack (`e2e/stack.ts`) and Chromium at
 // desktop and phone width. Run with `pnpm --filter @ostra/web test:e2e`, which builds the panel first.
-// On CI it also writes the HTML report, and a screenshot of each failure, for the job's artifacts.
+// On CI it also writes the HTML report and a screenshot of each failure, for the job's artifacts, and
+// an annotation per failure, which the run's page shows without signing in.
 const ci = process.env["CI"] === "true";
 
 export default defineConfig({
@@ -14,7 +15,7 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   forbidOnly: ci,
-  reporter: ci ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  reporter: ci ? [["list"], ["github"], ["html", { open: "never" }]] : [["list"]],
   use: { baseURL: e2eBaseUrl, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },

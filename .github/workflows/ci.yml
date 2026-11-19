@@ -79,8 +79,17 @@ jobs:
           restore-keys: |
             next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
-      - run: pnpm --filter @ostra/web test:e2e
+      # The output also goes to a file, whose end the job summary shows when the suite fails.
+      - run: set -o pipefail; pnpm --filter @ostra/web test:e2e 2>&1 | tee e2e.log
 
+      - if: failure()
+        run: |
+          {
+            echo '### The end of the e2e output'
+            echo '```'
+            grep -v '"level":"info"' e2e.log 2>/dev/null | tail -n 150 | cut -c1-400
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
