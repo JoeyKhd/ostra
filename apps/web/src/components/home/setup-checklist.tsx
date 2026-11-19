@@ -51,7 +51,7 @@ export const SetupChecklist = ({ admin }: { readonly admin: boolean }) => {
           const view = steps[step.id];
           const next = status.data.next === step.id;
           return (
-            <li key={step.id} data-step={step.id} data-done={step.done} className="flex min-h-[52px] items-center gap-3 py-2.5">
+            <li key={step.id} data-step={step.id} data-done={step.done} data-next={next} className="flex min-h-[52px] items-center gap-3 py-2.5">
               <Tick done={step.done} n={i + 1} />
               <div className="min-w-0 flex-1">
                 <div className={cn("font-medium", step.done && "text-muted")}>{t(view.title)}</div>

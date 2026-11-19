@@ -92,3 +92,10 @@ export const seedTask = async (scenario: "mid-turn" | "rest" | "without-changes"
   if (!seeded.success) throw new Error("seeding the task failed");
   return seeded.data.taskId;
 };
+
+/** The first-run checklist's rows on Home (F-076), in the order the page shows them. */
+export const checklistSteps = (page: Page): Promise<string[]> =>
+  page
+    .getByTestId("setup-checklist")
+    .locator("[data-step]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-step") ?? ""));

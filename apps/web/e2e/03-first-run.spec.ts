@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { readStack, signIn, watchOrigins } from "./helpers.ts";
+import { checklistSteps, readStack, signIn, watchOrigins } from "./helpers.ts";
 import { startRunner } from "./runner.ts";
 import type { E2eRunner } from "./runner.ts";
 import { e2eCoreUrl, e2eRepo, e2eRunnerName } from "./settings.ts";
@@ -9,10 +9,11 @@ import { e2eCoreUrl, e2eRepo, e2eRunnerName } from "./settings.ts";
 // first admin and the model provider (against the stub endpoint) are the two specs before this
 // one, in the same stack. GitHub is a fake (`@ostra/adapter-github/testing`) that the panel and
 // core reach through OSTRA_GITHUB_API_URL; the runner is the real `ostra runner` on the host
-// executor, signing in with a device code. No agent runs: the first task needs a model.
+// executor, signing in with a device code. The last test starts the first task from a prompt,
+// which finishes the checklist. Desktop only: the steps run once, so the phone project leaves
+// this file out (playwright.config.ts).
 
 test.describe.configure({ mode: "serial" });
-test.skip(({ viewport }) => (viewport?.width ?? 0) < 1024, "the setup steps run once, at desktop width");
 
 let runner: E2eRunner | undefined;
 test.afterAll(async () => {
@@ -87,4 +88,36 @@ test("Connect a runner: the command, the device approval, the runner online and 
   await expect(page.locator('[data-step="runner"]')).toHaveAttribute("data-done", "true");
   // Every step but the first task ticks: that one needs a model.
   await expect(page.locator('[data-step="first-task"]')).toHaveAttribute("data-done", "false");
+});
+
+test("F-076: with the runner online, the checklist's last step starts the first task from a prompt, and setup is done", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/");
+  const checklist = page.getByTestId("setup-checklist");
+  await expect(checklist).toBeVisible();
+  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "project", "runner", "first-task", "linear"]);
+  await expect(page.getByText("5 of 6", { exact: true })).toBeVisible();
+  for (const step of ["admin", "model-provider", "github", "project", "runner"]) {
+    await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute("data-done", "true");
+    // A step that's done has nothing left to click.
+    await expect(page.locator(`[data-step="${step}"]`).getByRole("link")).toHaveCount(0);
+  }
+  const firstTask = page.locator('[data-step="first-task"]');
+  await expect(firstTask).toHaveAttribute("data-next", "true");
+
+  // The checklist's button opens New task; a prompt starts the task on the admin's runner.
+  await firstTask.getByRole("link", { name: "New task" }).click();
+  await page.waitForURL((url) => url.pathname === "/tasks/new");
+  await expect(page.getByTestId("run-on")).toContainText(e2eRunnerName);
+  await page.getByLabel("Prompt").fill("Add a short CONTRIBUTING.md that explains how to run the tests");
+  await page.getByRole("button", { name: "Start task" }).click();
+  await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/);
+
+  // Every step is done: Home drops the checklist for Needs you. The right panel shows only once
+  // setup.status has loaded as done, so the page is past its loading state when Needs you is checked.
+  await page.goto("/");
+  await expect(page.getByTestId("home-panel").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs you", level: 2 })).toBeVisible();
+  await expect(page.getByTestId("setup-checklist")).toHaveCount(0);
+  await expect(page.locator("[data-step]")).toHaveCount(0);
 });

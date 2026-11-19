@@ -1,12 +1,38 @@
 import { expect, test } from "@playwright/test";
 
-import { signIn, watchOrigins } from "./helpers.ts";
+import { checklistSteps, signIn, watchOrigins } from "./helpers.ts";
 import { e2eModelToken, e2eStubBaseUrl } from "./settings.ts";
 
-// Ticket 37: the setup screens against the stub model endpoint. Desktop only: the steps write data.
+// Ticket 37: the setup screens against the stub model endpoint. Desktop only: the steps write data,
+// so the phone project leaves this file out (playwright.config.ts).
 
 test.describe.configure({ mode: "serial" });
-test.skip(({ viewport }) => (viewport?.width ?? 0) < 1024, "the setup steps run once, at desktop width");
+
+test("F-076: a new organization's Home shows the checklist in its order, and its next step opens the model provider page", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/");
+  const checklist = page.getByTestId("setup-checklist");
+  await expect(checklist).toBeVisible();
+  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "project", "runner", "first-task", "linear"]);
+  await expect(page.getByText("1 of 6", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-step="admin"]')).toHaveAttribute("data-done", "true");
+  // The next step is the model provider, the one primary button; GitHub and the rest wait.
+  await expect(checklist.locator('[data-next="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-step="model-provider"]')).toHaveAttribute("data-next", "true");
+  for (const step of ["model-provider", "github", "project", "runner", "first-task"]) {
+    await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute("data-done", "false");
+  }
+  // Linear comes last, as an optional step this milestone skips: no action, and not counted.
+  const linear = page.locator('[data-step="linear"]');
+  await expect(linear).toContainText("Connect Linear");
+  await expect(linear).toContainText("milestone 2");
+  await expect(linear.getByRole("link")).toHaveCount(0);
+
+  // The checklist's own button opens the step's page, in the panel.
+  await page.locator('[data-step="model-provider"]').getByRole("link", { name: "Add a provider" }).click();
+  await page.waitForURL((url) => url.pathname === "/organization/models");
+  await expect(page.getByRole("heading", { name: "Models", level: 1 })).toBeVisible();
+});
 
 test("Add a model provider: a wrong token is refused in words, the right one lists the models", async ({ page }) => {
   const origins = watchOrigins(page);

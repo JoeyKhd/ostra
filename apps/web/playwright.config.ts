@@ -19,7 +19,8 @@ export default defineConfig({
   use: { baseURL: e2eBaseUrl, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
-    { name: "phone", use: { ...devices["Pixel 7"] }, dependencies: ["desktop"] },
+    // The setup specs write data and run once, at desktop width; the phone project leaves them out.
+    { name: "phone", use: { ...devices["Pixel 7"] }, dependencies: ["desktop"], testIgnore: ["**/02-setup.spec.ts", "**/03-first-run.spec.ts"] },
   ],
   webServer: {
     command: "node e2e/stack.ts",
