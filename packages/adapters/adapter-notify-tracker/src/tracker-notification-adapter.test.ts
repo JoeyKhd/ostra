@@ -9,6 +9,7 @@ import {
   memoryIdempotencyStore,
   sampleAccountMail,
   sampleNotification,
+  sampleRunnerNotice,
   suiteRecipient,
 } from "@ostra/adapter-sdk/testing";
 import type { DeliveredNotification, FakeLinear, NotificationSuiteFixture, TrackerSuiteFixture } from "@ostra/adapter-sdk/testing";
@@ -150,6 +151,17 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     });
     return { ...subject, context, idempotency, adapter, ticket, comments, notify };
   };
+
+  it("F-091: refuses both runner notices on send and on update, and comments nothing on the ticket", async () => {
+    const { adapter, comments, ticket, dispose } = await setup();
+    for (const kind of ["runner_joined", "runner_awaiting_approval"] as const) {
+      const notification = { ...sampleRunnerNotice(kind, [ada]).notification, ticket: { externalId: ticket.externalId } };
+      expect(await adapter.send(notification)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(await adapter.update(notification, "comment-1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    }
+    expect(await comments()).toHaveLength(0);
+    await dispose();
+  });
 
   it("F-036: posts one comment per key, however many times the send is retried", async () => {
     const { adapter, comments, notify, dispose } = await setup();

@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
+import { memberIdSchema, organizationIdSchema, runnerIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import type { AccountNotification, MomentNotification, NotificationAdapter, NotificationRecipient } from "../notification/base.ts";
+import { runnerNotificationKinds } from "../notification/base.ts";
+import type { AccountNotification, MomentNotification, NotificationAdapter, NotificationRecipient, RunnerNotificationKind } from "../notification/base.ts";
 import type { LogRecord } from "../plumbing/logger.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
@@ -244,7 +245,91 @@ export const defineNotificationContractSuite = (options: ContractSuiteOptions<No
       expect(JSON.stringify(sent)).not.toContain(mail.url);
       expect((await fixture.delivered()).length).toBe(before);
     });
+
+    // ---- milestone 5: the runner notices (ticket 03) ----
+
+    for (const kind of runnerNotificationKinds) {
+      it(`F-091: a ${kind} notice reaches the panel and email channels, a mail with the runner's facts in both parts; the tracker refuses it`, async () => {
+        const { adapter, fixture } = subject();
+        const notice = sampleRunnerNotice(kind, [fixture.reachable]);
+        const notification = (await fixture.prepare?.(notice.notification)) ?? notice.notification;
+        const before = (await fixture.delivered()).length;
+        const sent = await adapter.send(notification);
+        if (adapter.capabilities.channels.includes("tracker")) {
+          expect(sent).toMatchObject({ ok: false, error: { code: "unsupported" } });
+          expect((await fixture.delivered()).length).toBe(before);
+          expect(await adapter.update(notification, "comment-1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        } else {
+          if (!sent.ok) throw new Error(sent.error.message);
+          expect(sent.value.refused).toEqual([]);
+          const delivered = (await fixture.delivered()).find((candidate) => candidate.providerMessageId === sent.value.providerMessageId);
+          expect(delivered).toBeDefined();
+          if (adapter.capabilities.channels.includes("email")) {
+            for (const part of [delivered?.html ?? "", delivered?.text ?? ""]) {
+              for (const fact of notice.facts) {
+                expect(part, `the mail names ${fact}`).toContain(fact);
+              }
+            }
+          }
+        }
+      });
+    }
   });
+};
+
+let runnerNotices = 0;
+
+/**
+ * Milestone 5 (F-091): a runner notice for the organization's admins, as core builds it from a joined
+ * runner. `facts` are what its mail must name; the notice has no field for the join token or the
+ * runner's key (the domain's renderer is tested for them).
+ */
+export const sampleRunnerNotice = (
+  kind: RunnerNotificationKind,
+  recipients: readonly NotificationRecipient[],
+): { readonly notification: MomentNotification; readonly facts: readonly string[] } => {
+  runnerNotices += 1;
+  const joined = {
+    runnerId: runnerIdSchema.parse(`runner-suite-${String(runnerNotices)}`),
+    runnerName: "build-box-07",
+    poolName: "linux-docker",
+    executor: "docker",
+    tokenLabel: "ci hosts, november",
+  } as const;
+  const url = `https://ostra.example/runners/${joined.runnerId}`;
+  const heading = kind === "runner_joined" ? "A runner joined" : "A runner waits for approval";
+  const line = `${joined.runnerName} joined the ${joined.poolName} pool (Docker, the token “${joined.tokenLabel}”).`;
+  return {
+    notification: {
+      organizationId,
+      memberIds: recipients.map((recipient) => recipient.memberId),
+      title: heading,
+      body: `${line} ${url}`,
+      url,
+      idempotencyKey: `suite-runner:${String(runnerNotices)}:${String(Date.now())}`,
+      kind,
+      category: "moment",
+      recipients,
+      subject: joined.runnerName,
+      runner: {
+        runnerId: joined.runnerId,
+        runnerName: joined.runnerName,
+        poolName: joined.poolName,
+        executor: joined.executor,
+        tokenLabel: joined.tokenLabel,
+        url,
+      },
+      rendered: {
+        subject: `${heading} · ${joined.runnerName} in ${joined.poolName}`,
+        html: `<table><tr><td><p><strong>${joined.runnerName}</strong> joined the ${joined.poolName} pool.</p><p>Docker · ${joined.tokenLabel}</p><p><a href="${url}">Open the runner</a></p></td></tr></table>`,
+        text: `${line}
+
+Open the runner: ${url}
+`,
+      },
+    },
+    facts: [joined.runnerName, joined.poolName, "Docker", joined.tokenLabel, url],
+  };
 };
 
 let accountMails = 0;

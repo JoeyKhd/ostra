@@ -1,4 +1,4 @@
-import type { MemberId, NotificationId, OrganizationId, TaskId } from "@ostra/protocol";
+import type { ExecutorKind, MemberId, NotificationId, OrganizationId, RunnerId, TaskId } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
@@ -44,8 +44,36 @@ export type BudgetNotificationKind = (typeof budgetNotificationKinds)[number];
 export const accountNotificationKinds = ["invitation", "email_verification", "password_reset"] as const;
 export type AccountNotificationKind = (typeof accountNotificationKinds)[number];
 
-/** A moment's kinds: milestone 3's and the budget notices. */
-export type MomentNotificationKind = NotificationKind | BudgetNotificationKind;
+/**
+ * Milestone 5 (F-091): the runner notices, for the organization's admins. A runner joined a pool,
+ * or joined one that requires approval and waits for it. Moments, in the panel and by mail; the
+ * tracker channel refuses them, since a runner is no ticket's business.
+ */
+export const runnerNotificationKinds = ["runner_joined", "runner_awaiting_approval"] as const;
+export type RunnerNotificationKind = (typeof runnerNotificationKinds)[number];
+
+/** Whether a kind is a runner notice, which only the panel and email channels deliver. */
+export const isRunnerNotice = (kind: string): kind is RunnerNotificationKind => runnerNotificationKinds.some((candidate) => candidate === kind);
+
+/**
+ * What a runner notice is about (F-091): the runner's name, its pool, its executor, the join
+ * token's label and the runner's page. Never the join token, the runner's key or any credential:
+ * the type has no field for one.
+ */
+export type RunnerNoticeSubject = {
+  readonly runnerId: RunnerId;
+  /** The name the runner gave itself. Untrusted text: data, never logged. */
+  readonly runnerName: string;
+  readonly poolName: string;
+  readonly executor: ExecutorKind;
+  /** The label of the join token it used; `null` for a token without one. Never the token. */
+  readonly tokenLabel: string | null;
+  /** The runner's page in the panel. */
+  readonly url: string;
+};
+
+/** A moment's kinds: milestone 3's, the budget notices and the runner notices. */
+export type MomentNotificationKind = NotificationKind | BudgetNotificationKind | RunnerNotificationKind;
 
 /**
  * Milestone 4: what a notification is. A `moment` is a needs-you moment or a budget notice for
@@ -113,6 +141,8 @@ export type MomentNotification = NotificationFields & {
   readonly ticket?: TicketRef | null;
   /** Where the moment stands (ticket 11): the panel's row and the ticket's comment follow it on `update`. Absent: `open`. */
   readonly state?: NotificationMomentState;
+  /** Milestone 5: the runner a runner notice is about. Absent for every other kind. */
+  readonly runner?: RunnerNoticeSubject;
 };
 
 /**
@@ -143,6 +173,10 @@ export const emailRecipientKey = (recipient: EmailRecipient): string => recipien
 /** The typed refusal of a channel that only sends moments, the panel's and the tracker's: `unsupported`. */
 export const refuseAccountMail = (channel: string): Err<AdapterError> =>
   adapterError("unsupported", `the ${channel} channel doesn't send account mails: they go by email`);
+
+/** The typed refusal of the tracker channel for a runner notice (F-091): `unsupported`. */
+export const refuseRunnerNotice = (channel: string): Err<AdapterError> =>
+  adapterError("unsupported", `the ${channel} channel doesn't send runner notices: they go to the panel and by mail`);
 
 /** A recipient the channel refused, without failing the others. `reason` is words, never a vendor's body. */
 export type RefusedRecipient = {

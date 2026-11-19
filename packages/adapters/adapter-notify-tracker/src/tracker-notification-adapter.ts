@@ -1,4 +1,4 @@
-import { adapterError, idempotencyKey, NotificationAdapter, ok, refuseAccountMail } from "@ostra/adapter-sdk";
+import { adapterError, idempotencyKey, isRunnerNotice, NotificationAdapter, ok, refuseAccountMail, refuseRunnerNotice } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
@@ -76,6 +76,10 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
     if (notification.category === "account") {
       return refuseAccountMail("tracker");
     }
+    // Milestone 5 (F-091): a runner notice is for the organization's admins, never on a ticket.
+    if (isRunnerNotice(notification.kind)) {
+      return refuseRunnerNotice("tracker");
+    }
     const ticket = notification.ticket;
     if (ticket === undefined || ticket === null) {
       return adapterError("invalid-input", "a ticket notification needs the task's ticket");
@@ -122,6 +126,10 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
   override async update(notification: Notification, providerMessageId: string): Promise<AdapterResult<void>> {
     if (notification.category === "account") {
       return refuseAccountMail("tracker");
+    }
+    // Milestone 5 (F-091): a runner notice is for the organization's admins, never on a ticket.
+    if (isRunnerNotice(notification.kind)) {
+      return refuseRunnerNotice("tracker");
     }
     if (!this.capabilities.edits) {
       return super.update(notification, providerMessageId);

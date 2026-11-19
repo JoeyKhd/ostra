@@ -4,6 +4,7 @@ import {
   memoryAdapterContext,
   sampleAccountMail,
   sampleNotification,
+  sampleRunnerNotice,
   startFakeSmtpServer,
   suiteRecipient,
 } from "@ostra/adapter-sdk/testing";
@@ -169,6 +170,23 @@ describe("the SMTP email adapter", () => {
     // The ID answered is the first message's.
     expect(sent.value).toEqual({ providerMessageId: readMail(server.received[0]?.data ?? "").messageId, refused: [] });
     expect(server.commands.filter((command) => command.startsWith("STARTTLS"))).not.toHaveLength(0);
+  });
+
+  it("F-091: mails both runner notices with the runner's facts in the HTML and the text parts", async () => {
+    const server = await startServer({ starttls: "offered", requireTls: true });
+    const adapter = adapterFor(server);
+    for (const kind of ["runner_joined", "runner_awaiting_approval"] as const) {
+      const notice = sampleRunnerNotice(kind, [ada]);
+      const sent = await adapter.send(notice.notification);
+      if (!sent.ok) throw new Error(sent.error.message);
+      const read = readMail(server.received.at(-1)?.data ?? "");
+      expect(read.subject).toBe(notice.notification.rendered?.subject);
+      for (const fact of notice.facts) {
+        expect(read.html).toContain(fact);
+        expect(read.text).toContain(fact);
+      }
+    }
+    expect(server.received).toHaveLength(2);
   });
 
   it("F-115: with STARTTLS refused, sends nothing and never signs in, so the password never crosses in clear", async () => {
