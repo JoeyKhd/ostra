@@ -468,9 +468,11 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
     case "data-driver":
       return (
         <Line icon={<InfoIcon />} tone="muted">
-          {part.data.memberId === part.data.byMemberId
-            ? t("task.tookOver", { name: memberName(part.data.memberId) })
-            : t("task.driverChanged", { name: memberName(part.data.memberId), by: memberName(part.data.byMemberId) })}
+          {part.data.memberId === null
+            ? t("task.driverDropped", { by: memberName(part.data.byMemberId) })
+            : part.data.memberId === part.data.byMemberId
+              ? t("task.tookOver", { name: memberName(part.data.memberId) })
+              : t("task.driverChanged", { name: memberName(part.data.memberId), by: memberName(part.data.byMemberId) })}
         </Line>
       );
     case "data-effort":

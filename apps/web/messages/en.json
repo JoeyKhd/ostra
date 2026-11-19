@@ -969,6 +969,7 @@
     "filesOutsideMore": "{names} and {n} more",
     "filesOutsideGone": "No files are left outside the repositories now.",
     "driverChanged": "{name} is driving now ({by} handed it over)",
+    "driverDropped": "Nobody is driving now: {by} removed the driver from the organization",
     "unsupported": "An event this panel doesn't know:",
     "tool": {
       "read": "Read",

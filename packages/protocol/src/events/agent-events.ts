@@ -753,7 +753,8 @@ const sharedEventOptions = [
     key: z.string().min(1).max(200),
     value: z.string().max(2000),
   }),
-  z.strictObject({ kind: z.literal("driver.changed"), memberId: memberIdSchema, byMemberId: memberIdSchema }),
+  // `memberId: null`: nobody drives now, as when the driver is removed from the organization (ADR 0053).
+  z.strictObject({ kind: z.literal("driver.changed"), memberId: memberIdSchema.nullable(), byMemberId: memberIdSchema }),
   z.strictObject({ kind: z.literal("runner.connected"), runnerId: runnerIdSchema }),
   z.strictObject({ kind: z.literal("runner.lost"), runnerId: runnerIdSchema }),
   z.strictObject({

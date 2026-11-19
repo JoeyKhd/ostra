@@ -136,7 +136,8 @@ export type SessionEndData = {
   readonly repos: readonly { readonly repoId: RepoId; readonly ahead: boolean }[];
 };
 
-export type DriverChangeData = { readonly memberId: MemberId; readonly byMemberId: MemberId };
+/** `memberId: null`: nobody drives now (a removed member's tasks, ADR 0053). */
+export type DriverChangeData = { readonly memberId: MemberId | null; readonly byMemberId: MemberId };
 
 /** The driver changed the task's reasoning level (F-137, `effort.changed`). */
 export type EffortChangeData = {
