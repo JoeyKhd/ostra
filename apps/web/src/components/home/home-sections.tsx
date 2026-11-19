@@ -26,7 +26,7 @@ import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { actionKey, activityIcon, activityParts, amberRow, formatSpend, monthShort, reasonParts } from "./home-words";
+import { actionHref, actionKey, activityIcon, activityParts, amberRow, formatSpend, monthShort, reasonParts } from "./home-words";
 import type { ActivityIcon, ActivityRow, NeedsYouRow, Part } from "./home-words";
 
 type Overview = RouterOutputs["home"]["overview"];
@@ -76,8 +76,6 @@ const ProjectSquare = ({ id }: { readonly id: string }) => (
 
 const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly amber: boolean; readonly now: number }) => {
   const reason = reasonParts(row.detail);
-  // F-135: a model with no key is fixed in the project's Models and keys, not on the task.
-  const actionHref = row.detail.reason === "no_provider_for_model" ? `/projects/${row.project.id}/settings/models` : `/tasks/${row.taskId}`;
   return (
     <li
       className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:grid-cols-[76px_minmax(0,1fr)_124px_212px_36px_100px] md:py-0"
@@ -101,7 +99,7 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
         {formatAge(row.since, now)}
       </span>
       <Link
-        href={actionHref}
+        href={actionHref(row.detail.reason, row.project.id, row.taskId)}
         className={cn(buttonVariants({ variant: amber ? "amber" : "outline", size: "sm" }), "h-7 w-[100px] justify-self-end text-ui", !amber && "font-normal")}
       >
         {t(actionKey(row.detail.reason))}

@@ -8,13 +8,15 @@ import { t } from "@/lib/messages";
 
 /**
  * A project's settings tabs (project-access.md, "Settings tabs"): links, so the URL carries the tab.
- * A project admin sees every tab; a project member only `Access`, read-only.
+ * A project admin sees every tab; a project member `Models and keys` and `Access`, read-only
+ * (F-135: `Models and keys` sits between `Repos` and `Access`, ticket 53).
  */
 export const ProjectSettingsTabs = ({ projectId, admin }: { readonly projectId: string; readonly admin: boolean }) => {
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
   const tabs = [
     ...(admin ? [{ href: `${base}/settings/ticket-template`, label: t("projectSettings.ticketTemplate") }, { href: `${base}/repos`, label: t("projectSettings.repos") }] : []),
+    { href: `${base}/settings/models`, label: t("projectSettings.models") },
     { href: `${base}/settings/access`, label: t("projectSettings.access") },
     ...(admin ? [{ href: `${base}/settings/audit`, label: t("projectSettings.audit") }] : []),
   ];

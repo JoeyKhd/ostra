@@ -54,7 +54,7 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
     case "files_outside_repos":
       return [plain(t("home.reason.filesOutsideRepos"))];
     case "no_provider_for_model":
-      return [plain(t("home.reason.noProviderForModel"))];
+      return [plain(detail.modelName === null ? t("home.reason.noProviderForModel") : t("home.reason.noKeyFor", { model: detail.modelName }))];
     case "runner_awaiting_approval":
       return [plain(t("home.reason.runnerAwaitingApproval"))];
     default:
@@ -93,6 +93,13 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
       return reason satisfies never;
   }
 };
+
+/**
+ * Where a needs-you row's action goes: the task, except a model with no key (F-135), which an
+ * organization admin fixes in the project's Models and keys.
+ */
+export const actionHref = (reason: NeedsYouReason, projectId: string, taskId: string): string =>
+  reason === "no_provider_for_model" ? `/projects/${projectId}/settings/models` : `/tasks/${taskId}`;
 
 /**
  * Amber once (home.md): only the approval that has waited longest gets the filled amber button.

@@ -1,7 +1,7 @@
 import { projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { actionKey, activityParts, amberRow, formatSpend, reasonParts, summaryText } from "./home-words";
+import { actionHref, actionKey, activityParts, amberRow, formatSpend, reasonParts, summaryText } from "./home-words";
 import type { NeedsYouDetail, NeedsYouRow } from "./home-words";
 
 const row = (id: string, detail: NeedsYouDetail, since: number): NeedsYouRow => ({
@@ -45,6 +45,8 @@ describe("actionKey", () => {
 
   it("F-135: a model with no key is picked in the project's Models and keys, not opened on the task", () => {
     expect(actionKey("no_provider_for_model")).toBe("home.action.pickKey");
+    expect(actionHref("no_provider_for_model", "p1", "t1")).toBe("/projects/p1/settings/models");
+    expect(actionHref("crashed", "p1", "t1")).toBe("/tasks/t1");
   });
 });
 

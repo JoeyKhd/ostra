@@ -153,7 +153,14 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
           <>
             <PropRow label={t("taskPage.agent")}><span className="truncate">{task.agent.agentName}</span></PropRow>
             {task.agent.model === null ? null : (
-              <PropRow label={t("taskPage.model")}><span className="truncate">{task.agent.model.name}</span></PropRow>
+              <PropRow label={t("taskPage.model")}>
+                <span className="truncate">{task.agent.model.name}</span>
+                {task.session?.providerName === undefined || task.session.providerName === null ? null : (
+                  <span className="shrink-0 truncate" data-testid="task-key">
+                    <span className="text-muted">{t("noKey.keyPrefix")}</span> <span className="font-mono text-ui">{task.session.providerName}</span>
+                  </span>
+                )}
+              </PropRow>
             )}
             {noKey ? <KeyRow providerName={null} projectName={projectName} /> : null}
           </>

@@ -44,7 +44,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { KeyRow, NoKeyNext, NoKeyReason } from "./no-key";
+import { KeyRow, NoKeyNext, NoKeyReason, ProjectKeys } from "./no-key";
 import type { NoKey } from "./no-key";
 import { POOLS, RunOnPicker, Trigger, useRunOn } from "./run-on";
 import { doingText, taskStateText } from "./task-words";
@@ -285,10 +285,12 @@ const PanelSkeleton = () => (
   </div>
 );
 
-const Properties = ({ project, profile, runner, noKey }: {
+const Properties = ({ project, profile, runner, noKey, servingKey }: {
   readonly project: ProjectSummary;
+  /** F-135: the key that serves the profile's model in the project, from the New task check. */
+  readonly servingKey: string | null;
   /** F-135: no key on the project's list serves the profile's model. */
-  readonly noKey: boolean;
+  readonly noKey: NoKey | null;
   /** The chosen profile; `undefined` while the options load, `null` when none is offered. */
   readonly profile: StartProfile | null | undefined;
   readonly runner: Runner | null;
@@ -320,10 +322,11 @@ const Properties = ({ project, profile, runner, noKey }: {
                 <><SparklesIcon aria-hidden /><span className="truncate">{profile.modelName}</span></>
               )}
             </PropRow>
-            {noKey ? <KeyRow providerName={null} projectName={project.name} /> : null}
+            {noKey !== null ? <KeyRow providerName={null} projectName={project.name} /> : servingKey === null ? null : <KeyRow providerName={servingKey} projectName={project.name} />}
           </>
         )}
       </PropGroup>
+      {noKey === null ? null : <ProjectKeys projectId={project.id} noKey={noKey} />}
       <PropGroup title={t("newTask.runsOn")}>
         {runner === null ? (
           <>
@@ -443,7 +446,7 @@ export const NewTaskView = () => {
     <PageFrame
       crumbs={crumbs}
       wideProperties
-      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} noKey={noKey !== null} />}
+      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} />}
     >
       <div className="max-w-[760px]">
         <PageHeading
@@ -492,7 +495,8 @@ export const NewTaskView = () => {
               <Kbd aria-hidden>{hint}</Kbd>
               <Button
                 type="submit"
-                variant="primary"
+                // No key: the outline button dimmed, not the primary fill (no-key-for-model.md, section 1).
+                variant={noKey === null ? "primary" : "outline"}
                 disabled={loading || starting || prompt.trim() === "" || blocked || noKey !== null || checking}
                 data-action="start-task"
                 {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : noKey === null ? {} : { "aria-describedby": NO_KEY_ID })}

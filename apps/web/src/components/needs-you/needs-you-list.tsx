@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
-import { actionKey, reasonParts } from "@/components/home/home-words";
+import { actionHref, actionKey, reasonParts } from "@/components/home/home-words";
 import type { Part } from "@/components/home/home-words";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
@@ -338,7 +338,7 @@ export const NotificationRow = ({
     </Button>
   ) : (
     <Button size="sm" className="h-[26px] w-[112px] justify-self-end font-normal" asChild>
-      <Link href={href}>{t(actionKey(row.detail.reason))}</Link>
+      <Link href={actionHref(row.detail.reason, row.project.id, row.taskId)}>{t(actionKey(row.detail.reason))}</Link>
     </Button>
   );
   return (

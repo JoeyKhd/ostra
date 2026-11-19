@@ -59,7 +59,7 @@ const startProfile = async (page: Page, name: string): Promise<void> => {
 const saveProfile = async (page: Page): Promise<void> => {
   await page.locator('[data-action="save-profile"]').click();
   await page.waitForURL(/\/organization\/agent-profiles\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await expect(page.getByRole("status")).toHaveText(/^\s*Saved\./);
 };
 
 /** New task's picker, in the e2e repo's project: the offered profiles' names, in order. */

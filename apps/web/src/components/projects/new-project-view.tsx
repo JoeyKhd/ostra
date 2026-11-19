@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode, SubmitEvent } from "react";
 
+import { providerIdSchema } from "@ostra/protocol";
+
 import { installationSettingsUrl } from "@/components/github/github-view";
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,10 +21,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
-import { useTRPC } from "@/lib/trpc";
+import { useTRPC, useTRPCClient } from "@/lib/trpc";
 
 import { EnvironmentDraft } from "./environment-draft";
 import type { DraftRepo } from "./environment-draft";
+import { ProjectKeysField, defaultKeysChoice } from "./project-keys-field";
+import type { KeysChoice } from "./project-keys-field";
 
 /** A project's slug from its name: lowercase letters, digits and inner hyphens. */
 export const slugOf = (name: string): string =>
@@ -99,9 +103,19 @@ export const NewProjectView = () => {
     enabled: installation !== null,
   });
 
+  const client = useTRPCClient();
+  const me = useQuery(trpc.me.get.queryOptions());
+  const organizationAdmin = me.data?.organization?.role === "admin";
+  const [keys, setKeys] = useState<KeysChoice>(defaultKeysChoice);
   const create = useMutation(
     trpc.projects.create.mutationOptions({
       onSuccess: async ({ projectId }) => {
+        // F-135: its own list, when an organization admin picked one; a save sends the version its preview read.
+        if (organizationAdmin && keys.own) {
+          const mode = { kind: "own" as const, providerIds: [...keys.providerIds].map((id) => providerIdSchema.parse(id)) };
+          const preview = await client.projects.previewProviders.query({ projectId, mode });
+          await client.projects.setProviders.mutate({ projectId, mode, version: preview.version });
+        }
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: trpc.projects.list.queryKey() }),
           queryClient.invalidateQueries({ queryKey: trpc.setup.status.queryKey() }),
@@ -269,6 +283,12 @@ export const NewProjectView = () => {
               </>
             )}
           </FormSection>
+
+          {organizationAdmin ? (
+            <FormSection title={t("projects.keys")} note={<span className="font-sans">{t("projects.keysNote")}</span>}>
+              <ProjectKeysField value={keys} onChange={setKeys} />
+            </FormSection>
+          ) : null}
 
           <FormSection title={t("projects.tracker")} note={<span className="font-sans">{t("projects.optional")}</span>}>
             <RadioGroup value="none" aria-label={t("projects.tracker")} className="rows">

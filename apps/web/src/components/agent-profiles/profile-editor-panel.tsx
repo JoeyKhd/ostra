@@ -103,9 +103,11 @@ export type EditorPanelProps = {
   readonly members: readonly PanelMember[];
   readonly onChange: (draft: ProfileDraft) => void;
   readonly onArchive: (() => void) | null;
+  /** The `{model} in each project` group, after `Profile` (F-135). */
+  readonly modelGroup?: ReactNode;
 };
 
-export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members, onChange, onArchive }: EditorPanelProps) => {
+export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members, onChange, onArchive, modelGroup }: EditorPanelProps) => {
   const id = useId();
   const nameOf = (memberId: MemberId): string =>
     members.find((member) => member.memberId === memberId)?.name ??
@@ -152,6 +154,7 @@ export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members
           </>
         )}
       </Group>
+      {modelGroup}
 
       <Group
         title={t("agentProfiles.props.planFirst")}

@@ -1,26 +1,28 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CpuIcon, PlusIcon, ServerIcon } from "lucide-react";
+import { CpuIcon, LoaderCircleIcon, PlusIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { SkeletonRows } from "@/components/ui/skeleton";
-import { Chip, Status } from "@/components/ui/status";
+import { Chip } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatPrice, formatTokens } from "@/lib/format";
-import { plural, t } from "@/lib/messages";
+import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { AddProviderForm } from "./add-provider-form";
+import { DefaultListSection, KeysSection, ToConfirmSection, defaultListOf, useDefaultListEdit } from "./keys-sections";
 import { ModelEditor, modelReasoningOf } from "./model-editor";
 import { priceDiffers } from "./model-reasoning";
 import { PriceFootnote, ReasoningCell } from "./models-table";
 import { ProviderSettings } from "./provider-settings";
+import { ProvidersPreview } from "./providers-preview";
 
 type Provider = RouterOutputs["providers"]["list"][number];
 type Model = RouterOutputs["providers"]["models"][number];
@@ -54,6 +56,9 @@ export const ModelsView = () => {
   const params = useSearchParams();
   const [confirmCatalog, setConfirmCatalog] = useState<string | null>(null);
   const admin = me.data?.organization?.role === "admin";
+  const defaultList = defaultListOf(providers.data);
+  const toConfirm = useQuery(trpc.providers.choicesToConfirm.queryOptions(undefined, { enabled: me.data?.organization?.role === "admin" }));
+  const edit = useDefaultListEdit(defaultList);
 
   const builtIn = profiles.data?.find((profile) => profile.builtIn && profile.adapter === "opencode");
   const defaultModelId = builtIn?.model?.id ?? null;
@@ -94,6 +99,12 @@ export const ModelsView = () => {
     (models[i]?.data ?? []).filter((model) => model.listed).map((model) => ({ provider, model })),
   );
 
+  // The models the organization's profiles use, by text: what a change to the default list is about.
+  const textOfModelId = new Map(rows.map(({ model }) => [model.id, model.catalogId ?? model.endpointModelId] as const));
+  const used = new Set((profiles.data ?? []).flatMap((profile) => {
+    const text = profile.model === null ? undefined : textOfModelId.get(profile.model.id);
+    return text === undefined ? [] : [text];
+  }));
   const noProviders = providers.data?.length === 0;
   const linked = params.get("model");
   const linkedRow = linked === null ? undefined : rows.find((row) => row.model.id === linked);
@@ -104,9 +115,10 @@ export const ModelsView = () => {
   const selectedRow =
     effective?.kind === "model" ? rows.find((row) => row.model.id === effective.modelId) : undefined;
 
-  const properties =
-    effective?.kind === "add" ? (
-      <AddProviderForm onCreated={(providerId) => { setSelection({ kind: "provider", providerId }); }} />
+  const properties = edit.changed ? (
+    <ProvidersPreview preview={edit.preview.data} error={edit.preview.error === null ? null : errorText(edit.preview.error)} conflict={edit.conflict} used={used} />
+  ) : effective?.kind === "add" ? (
+      <AddProviderForm first={noProviders} onCreated={(providerId) => { setSelection({ kind: "provider", providerId }); }} />
     ) : selectedProvider !== undefined ? (
       <ProviderSettings key={selectedProvider.id} provider={selectedProvider} />
     ) : selectedRow !== undefined ? (
@@ -129,45 +141,41 @@ export const ModelsView = () => {
     <PageFrame
       crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("shell.models") }]}
       actions={
-        <Button onClick={() => { setSelection({ kind: "add" }); }}>
-          <PlusIcon /> {t("models.add")}
-        </Button>
+        edit.editing ? (
+          <>
+            <Button onClick={edit.cancel} disabled={edit.save.isPending}>{t("common.cancel")}</Button>
+            <Button variant="primary" onClick={edit.submit} disabled={!edit.changed || edit.preview.data === undefined || edit.save.isPending}>
+              {edit.save.isPending ? <LoaderCircleIcon className="animate-spin" /> : null}
+              {t("models.keys.saveList")}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={() => { setSelection({ kind: "add" }); }}>
+            <PlusIcon /> {t("models.add")}
+          </Button>
+        )
       }
       properties={properties}
       wideProperties
     >
       <PageHeading title={t("models.title")} lede={t("models.lede")} />
 
-      <Section title={t("models.providers")} {...(providers.data === undefined ? {} : { count: providers.data.length })}>
-        {providers.isPending ? (
-          <SkeletonRows height="h-10" />
-        ) : noProviders ? (
-          <p className="border-t border-line py-3 text-muted">{t("models.noProviders")}</p>
-        ) : (
-          <ul className="rows">
-            {providers.data?.map((provider) => {
-              const on = effective?.kind === "provider" && effective.providerId === provider.id;
-              return (
-                <li key={provider.id}>
-                  <button
-                    type="button"
-                    onClick={() => { setSelection({ kind: "provider", providerId: provider.id }); }}
-                    aria-pressed={on}
-                    className={cn("flex h-10 w-full items-center gap-3 px-1 text-left hover:bg-raise", on && "bg-sel hover:bg-sel")}
-                  >
-                    <ServerIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />
-                    <span className="w-[150px] shrink-0 truncate">{provider.name}</span>
-                    <span className="hidden min-w-0 flex-1 truncate font-mono text-ui text-faint md:block" title={provider.baseUrl}>{provider.baseUrl}</span>
-                    <span className="ml-auto shrink-0 text-muted">{plural(provider.modelCount, "models.countOne", "models.countMany")}</span>
-                    {provider.allowOnPersonalRunners ? <Chip className="ml-1 hidden sm:inline-flex">{t("models.personalAllowed")}</Chip> : null}
-                    <Status tone="green" className="ml-2 shrink-0">{t("models.connectedShort")}</Status>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Section>
+      <DefaultListSection
+        list={defaultList}
+        editing={edit.editing}
+        onEdit={() => { setSelection(null); edit.start(); }}
+        draft={edit.draft}
+        onToggle={edit.toggle}
+        providers={providers.data ?? []}
+      />
+      {edit.save.error === null || edit.conflict ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(edit.save.error)}</p>}
+      <KeysSection
+        providers={providers.data}
+        selectedId={effective?.kind === "provider" ? effective.providerId : null}
+        onSelect={(providerId) => { setSelection({ kind: "provider", providerId }); }}
+      />
+      {providers.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(providers.error)}</p>}
+      <ToConfirmSection rows={toConfirm.data ?? []} />
 
       {providers.isPending ? (
         <Section title={t("models.enabled")}>
@@ -215,7 +223,7 @@ export const ModelsView = () => {
                           {model.custom ? <Chip>{t("models.custom")}</Chip> : null}
                         </span>
                       </td>
-                      <td className="pr-3 text-muted">{provider.name}</td>
+                      <td className="pr-3 font-mono text-ui text-muted">{provider.name}</td>
                       <td className="pr-3 text-right font-mono text-ui">{formatTokens(model.contextWindow)}</td>
                       <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.inputPricePerMTok)}</td>
                       <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.outputPricePerMTok)}</td>

@@ -1,7 +1,7 @@
 "use client";
 
-import { skipToken, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, CpuIcon, ShieldCheckIcon } from "lucide-react";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckIcon, ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -13,7 +13,7 @@ import { PageFrame } from "@/components/shell/page-frame";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/status";
 import { errorText } from "@/lib/errors";
@@ -23,9 +23,11 @@ import { useTRPC } from "@/lib/trpc";
 
 import { EditorSection } from "./editor-section";
 import { EffortField, effortChoiceOf } from "./effort-field";
-import { draftFromDetail, draftProblem, isDirty, newDraft, nextKey, saveInputOf } from "./editor-draft";
+import { draftFromDetail, draftProblem, isDirty, newDraft, nextKey, sameModel, saveInputOf } from "./editor-draft";
 import type { ProfileDraft, SkillDraft } from "./editor-draft";
 import { McpSection } from "./mcp-section";
+import { ModelInProjects, ModelPicker } from "./model-picker";
+import type { ModelOption } from "./model-picker";
 import { EditorPanel } from "./profile-editor-panel";
 import type { ProfileDetail } from "./profile-types";
 import { dayText, modelName } from "./profile-words";
@@ -106,35 +108,24 @@ const Instructions = ({ value, readOnly, onChange }: { readonly value: string; r
   );
 };
 
-type ModelOption = { readonly id: string; readonly name: string; readonly mono: boolean; readonly custom: boolean; readonly logoPath: string | null };
-
-const ModelLogo = ({ path }: { readonly path: string | null }) =>
-  path === null ? <CpuIcon aria-hidden className="size-[15px] shrink-0 text-muted" /> : <img src={path} alt="" className="size-[15px] shrink-0 opacity-75 invert" />;
-
 /** Agent and model: Name, Agent and Model in one row (one per line below 900px). */
-const AgentAndModel = ({ draft, readOnly, detail, onChange }: {
+const AgentAndModel = ({ draft, readOnly, detail, options, onChange, onHighlight }: {
   readonly draft: ProfileDraft;
   readonly readOnly: boolean;
   readonly detail: ProfileDetail | null;
+  readonly options: readonly ModelOption[] | undefined;
   readonly onChange: (draft: ProfileDraft) => void;
+  readonly onHighlight: (option: ModelOption | null) => void;
 }) => {
   const id = useId();
   const trpc = useTRPC();
   const agents = useQuery(trpc.agentProfiles.agents.queryOptions());
-  const providers = useQuery(trpc.providers.list.queryOptions(undefined, { enabled: !readOnly }));
-  const models = useQueries({
-    queries: (providers.data ?? []).map((provider) => trpc.providers.models.queryOptions({ providerId: provider.id })),
-  });
-  const groups = (providers.data ?? []).map((provider, i) => ({
-    provider,
-    models: (models[i]?.data ?? [])
-      .filter((model) => model.listed || model.id === draft.modelId)
-      .map((model): ModelOption => ({ id: model.id, name: model.displayName ?? model.endpointModelId, mono: model.displayName === null, custom: model.custom, logoPath: model.logoPath })),
-  }));
-  const anyModel = groups.some((group) => group.models.length > 0);
-  // F-137: the levels the agent offers on the chosen model, rebuilt as either changes.
+  const chosen = options?.find((option) => sameModel(option.name, draft.model));
+  const chosenKey = chosen?.text ?? null;
+  // F-137: the levels the agent offers on the chosen model (its first key's row), rebuilt as either changes.
+  const effortModelId = chosen?.providers[0]?.modelId ?? detail?.model?.id ?? null;
   const effort = useQuery(
-    trpc.agentProfiles.effortLevels.queryOptions(draft.modelId === null ? skipToken : { adapter: draft.adapter, modelId: modelIdSchema.parse(draft.modelId) }),
+    trpc.agentProfiles.effortLevels.queryOptions(effortModelId === null ? skipToken : { adapter: draft.adapter, modelId: modelIdSchema.parse(effortModelId) }),
   );
   const label = "mb-1.5 block text-sm font-medium text-muted";
 
@@ -165,43 +156,29 @@ const AgentAndModel = ({ draft, readOnly, detail, onChange }: {
           {readOnly ? (
             <p className="flex h-8 items-center text-body">{detail?.model === null || detail?.model === undefined ? <span className="text-red">{t("agentProfiles.noModel")}</span> : modelName(detail.model)}</p>
           ) : (
-            <>
-              <Select value={draft.modelId ?? ""} disabled={providers.isSuccess && !anyModel} onValueChange={(modelId) => { onChange({ ...draft, modelId }); }}>
-                <SelectTrigger className="h-8 w-full bg-surface" aria-labelledby={`${id}-model`} data-testid="profile-model">
-                  <SelectValue placeholder={providers.isSuccess && !anyModel ? t("agentProfiles.editor.noModels") : t("agentProfiles.editor.pickModelPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups.filter((group) => group.models.length > 0).map((group) => (
-                    <SelectGroup key={group.provider.id}>
-                      <SelectLabel>{group.provider.name}</SelectLabel>
-                      {group.models.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          <ModelLogo path={model.logoPath} />
-                          <span className={model.mono ? "truncate font-mono text-ui" : "truncate"}>{model.name}</span>
-                          <span className="truncate text-faint">{group.provider.name}</span>
-                          {model.custom ? <Chip className="h-5 px-1.5 text-xs">{t("agentProfiles.editor.custom")}</Chip> : null}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-              {providers.isSuccess && !anyModel ? (
-                <Link href="/organization/models" className="mt-1.5 inline-block text-sm text-teal hover:underline">{t("agentProfiles.editor.addProvider")}</Link>
-              ) : null}
-            </>
+            <ModelPicker
+              options={options}
+              chosenKey={chosenKey}
+              loading={options === undefined}
+              labelledBy={`${id}-model`}
+              onHighlight={onHighlight}
+              onPick={(option) => { onChange({ ...draft, model: option.name }); }}
+            />
           )}
+          {chosen?.providers.length === 0 ? (
+            <p className="mt-1.5 text-[12.5px] text-red">{t("agentProfiles.editor.modelPicker.noKeyListsNow", { model: chosen.displayName })}</p>
+          ) : null}
         </div>
       </div>
-      {draft.modelId === null ? null : (
+      {draft.model === null ? null : (
         <EffortField
           choice={effortChoiceOf(
             effort.data,
             {
-              model: groups.flatMap((group) => group.models).find((model) => model.id === draft.modelId)?.name ?? (detail?.model === null || detail?.model === undefined ? "" : modelName(detail.model)),
+              model: chosen === undefined ? (detail?.model === null || detail?.model === undefined ? "" : modelName(detail.model)) : chosen.displayName,
               agent: agents.data?.find((agent) => agent.adapter === draft.adapter)?.name ?? detail?.agentName ?? draft.adapter,
             },
-            readOnly ? null : `/organization/models?model=${draft.modelId}`,
+            readOnly || effortModelId === null ? null : `/organization/models?model=${effortModelId}`,
           )}
           value={draft.effort}
           readOnly={readOnly}
@@ -271,6 +248,10 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
   const loaded = profileId === null ? (list.data === undefined ? null : "new") : (detail.data ?? null);
   const [saved, setSaved] = useState<ProfileDraft | null>(null);
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const [highlighted, setHighlighted] = useState<ModelOption | null>(null);
+  const modelOptions = useQuery(trpc.agentProfiles.modelOptions.queryOptions(undefined, { enabled: admin }));
+  const savedNoKey = (modelOptions.data?.find((option) => sameModel(option.name, saved?.model ?? null))?.projectsWithout ?? []).map((project) => project.name);
+
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [leaving, setLeaving] = useState<string | null>(null);
@@ -279,7 +260,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
   // The draft starts from what loaded, once; a save resets it from the saved profile.
   useEffect(() => {
     if (loaded === null || saved !== null) return;
-    const builtInModel = list.data?.find((profile) => profile.builtIn)?.model?.id ?? null;
+    const builtInModel = list.data?.find((profile) => profile.builtIn)?.modelName ?? null;
     const first = loaded === "new" ? newDraft("opencode", builtInModel) : draftFromDetail(loaded);
     setSaved(first);
     setDraft(first);
@@ -398,13 +379,14 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
           members={memberList}
           onChange={update}
           onArchive={readOnly || builtIn ? null : () => { setConfirmArchive(true); }}
+          modelGroup={<ModelInProjects option={highlighted ?? modelOptions.data?.find((option) => sameModel(option.name, current.model))} organizationAdmin={admin} />}
         />
       }
     >
       <div className="max-w-[760px]" data-testid="profile-editor">
         <Heading eyebrow={eyebrowOf(data, savedAt)} title={title} builtIn={builtIn} loading={loading} />
         {savedAt !== null && !dirty ? (
-          <p role="status" className="mt-2 flex items-center gap-1.5 text-ui text-green"><CheckIcon aria-hidden className="size-[14px]" /> {t("agentProfiles.editor.saved")}</p>
+          <p role="status" className="mt-2 flex items-center gap-1.5 text-ui text-green"><CheckIcon aria-hidden className="size-[14px]" /> {savedNoKey.length === 0 ? t("agentProfiles.editor.saved") : t("agentProfiles.editor.modelPicker.savedNoKey", { projects: savedNoKey.join(", ") })}</p>
         ) : null}
         {save.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(save.error)}</p>}
         {archive.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(archive.error)}</p>}
@@ -420,7 +402,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
           </div>
         ) : (
           <>
-            <AgentAndModel draft={current} readOnly={readOnly} detail={data} onChange={update} />
+            <AgentAndModel draft={current} readOnly={readOnly} detail={data} options={modelOptions.data} onChange={update} onHighlight={setHighlighted} />
             <EditorSection title={t("agentProfiles.editor.instructions")} note={t("agentProfiles.editor.instructionsNote")}>
               {readOnly && current.instructions === "" ? (
                 <p className="text-ui text-faint">{t("agentProfiles.none")}</p>

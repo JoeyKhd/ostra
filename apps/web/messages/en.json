@@ -154,6 +154,7 @@
       "unstorableEvent": "An event couldn't be stored",
       "filesOutsideRepos": "Files left outside the repositories",
       "noProviderForModel": "No key for its model in this project. Pick a key in Models and keys.",
+      "noKeyFor": "No key for {model} in this project. Pick a key in Models and keys.",
       "runnerAwaitingApproval": "A runner waits for approval"
     },
     "action": {
@@ -556,6 +557,8 @@
     "create": "Create the project",
     "creating": "Reading the repo…",
     "createHelp": "Nothing runs yet. You review the environment next.",
+    "keys": "Keys",
+    "keysNote": "organization admins",
     "access": "Access",
     "open": "Every member",
     "restricted": "Restricted",
@@ -2887,12 +2890,6 @@
     "discard": "Discard",
     "saveList": "Save list",
     "tokenLine": "Members and project admins see the key names here. Nobody sees a token.",
-    "tabs": {
-      "label": "Project settings",
-      "ticketTemplate": "Ticket template",
-      "repos": "Repos",
-      "models": "Models and keys"
-    },
     "keys": {
       "title": "Keys it may use"
     },
@@ -2932,6 +2929,7 @@
       "changesOne": "This save changes {n} model",
       "changesMany": "This save changes {n} models",
       "movesTo": "moves to",
+      "gainsOn": "now on",
       "staysOn": "stays on",
       "noKeyHere": "has no key here",
       "whatHappens": "What happens",
@@ -3293,6 +3291,7 @@
     "tabs": "Project settings",
     "ticketTemplate": "Ticket template",
     "repos": "Repos",
+    "models": "Models and keys",
     "access": "Access",
     "audit": "Audit log",
     "settings": "Settings"

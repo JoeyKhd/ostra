@@ -1,11 +1,15 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { BanIcon, ClockIcon, PauseIcon, PencilLineIcon, SlidersHorizontalIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { PropRow } from "@/components/shell/page-frame";
+import type { ProjectId } from "@ostra/protocol";
+
+import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { t } from "@/lib/messages";
+import { useTRPC } from "@/lib/trpc";
 
 import { adminNames } from "./no-key-words";
 
@@ -126,5 +130,32 @@ export const HeldNoKey = ({ noKey }: { readonly noKey: NoKey }) => {
         {after}
       </span>
     </p>
+  );
+};
+
+/**
+ * The panel's `{project}'s keys` group: the keys on the project's list, by name and host (never a
+ * token), then that none of them lists the model, or that the project has no key yet.
+ */
+export const ProjectKeys = ({ projectId, noKey }: { readonly projectId: ProjectId; readonly noKey: NoKey }) => {
+  const trpc = useTRPC();
+  const view = useQuery(trpc.projects.providers.queryOptions({ projectId }));
+  const keys = view.data?.providers ?? [];
+  return (
+    <PropGroup title={t("noKey.projectKeys", { project: noKey.projectName })}>
+      <div data-testid="project-keys">
+        {keys.map((key) => (
+          <div key={key.providerId} className="py-1">
+            <p className="truncate font-mono text-[14px] text-text">{key.name}</p>
+            <p className="truncate font-mono text-sm text-muted">{key.host}</p>
+          </div>
+        ))}
+        {view.data === undefined ? null : (
+          <p className="mt-1.5 text-[12.5px] text-faint">
+            {keys.length === 0 ? t("noKey.noKeyYet", { project: noKey.projectName }) : t("noKey.noneLists", { model: noKey.model })}
+          </p>
+        )}
+      </div>
+    </PropGroup>
   );
 };

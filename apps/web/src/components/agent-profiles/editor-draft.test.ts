@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { presetRules } from "@ostra/domain";
+import { modelNameSchema, presetRules } from "@ostra/domain";
 import { agentProfileIdSchema, memberIdSchema } from "@ostra/protocol";
 
 import { draftProblem, isDirty, newDraft, pickedFileProblem, saveInputOf, serverProblem, skillDescription, skillProblem, withFile } from "./editor-draft";
@@ -13,7 +13,7 @@ import { groupRules } from "./rule-drafts";
 // F-021, F-026, F-063 (ticket 42): what the profile editor saves, what stops a save, what the start
 // picker says of a profile, and which profiles a project may default to.
 
-const MODEL = "01900000-0000-7000-8000-00000000a0de";
+const MODEL = modelNameSchema.parse({ kind: "catalog", catalogId: "anthropic/claude-sonnet-5-5" });
 const member = memberIdSchema.parse("01900000-0000-7000-8000-0000000000aa");
 let next = 0;
 const newId = (): string => `01900000-0000-7000-8000-${String(next++).padStart(12, "0")}`;
@@ -24,7 +24,7 @@ describe("the profile editor's draft", () => {
   it("F-021, F-063: saves the name, model, plan first, the listed members and the preset's rules as the router takes them", () => {
     const rules = groupRules(presetRules("dependency", newId));
     const input = saveInputOf(filled({ planFirst: true, access: "listed", members: [member], rules, instructions: "  " }), null, newId);
-    expect(input).toMatchObject({ name: "Careful", adapter: "opencode", modelId: MODEL, planFirst: true, instructions: null, access: { kind: "listed", members: [member] } });
+    expect(input).toMatchObject({ name: "Careful", adapter: "opencode", modelId: null, modelName: MODEL, planFirst: true, instructions: null, access: { kind: "listed", members: [member] } });
     expect(input).not.toHaveProperty("profileId");
     expect(input.approvalRules).toHaveLength(presetRules("dependency", newId).length);
     expect(new Set(input.approvalRules.map((rule) => rule.preset))).toEqual(new Set(["dependency"]));
@@ -50,13 +50,13 @@ describe("the profile editor's draft", () => {
   });
 
   it("F-063: a new profile starts with plan first off, open to everyone, with the built-in profile's model", () => {
-    expect(newDraft("opencode", MODEL)).toMatchObject({ planFirst: false, access: "everyone", members: [], modelId: MODEL, rules: [], skills: [], servers: [] });
+    expect(newDraft("opencode", MODEL)).toMatchObject({ planFirst: false, access: "everyone", members: [], model: MODEL, rules: [], skills: [], servers: [] });
     expect(saveInputOf(filled(), null, newId).planFirst).toBe(false);
   });
 
   it("F-021: Save profile waits for a name, a model, a listed member and valid rules", () => {
     expect(draftProblem(filled({ name: " " }))).toBe("agentProfiles.editor.name");
-    expect(draftProblem(filled({ modelId: null }))).toBe("agentProfiles.editor.pickModelPlaceholder");
+    expect(draftProblem(filled({ model: null }))).toBe("agentProfiles.editor.pickModelPlaceholder");
     expect(draftProblem(filled({ access: "listed" }))).toBe("agentProfiles.props.nobodyListed");
     expect(draftProblem(filled({ access: "listed", members: [member] }))).toBeNull();
     expect(draftProblem(filled({ rules: [{ key: "r", ruleIds: [], name: "", tool: "edit", matchKind: "path-glob", text: "a/**", preset: null }] }))).toBe("agentProfiles.rules.errorName");

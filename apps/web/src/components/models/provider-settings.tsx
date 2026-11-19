@@ -1,20 +1,23 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCwIcon, ServerIcon } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LockIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
+import { projectColour } from "@/components/shell/project-colour";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { PersonalRunnersSwitch, formatLabel } from "./add-provider-form";
+import { KeyLogo } from "./keys-sections";
+import { formatSpend } from "./keys-words";
 
 type Provider = RouterOutputs["providers"]["list"][number];
 
@@ -66,13 +69,75 @@ export const ProviderSettings = ({ provider }: { readonly provider: Provider }) 
   const parsedCap = cap.trim() === "" ? null : Number.parseInt(cap, 10);
   const capChanged = parsedCap !== provider.sessionsAtOnce;
 
+  const models = useQuery(trpc.providers.models.queryOptions({ providerId: provider.id }));
+  const listed = (models.data ?? []).filter((model) => model.listed);
+  const [editing, setEditing] = useState(false);
+
   return (
     <div data-testid="provider-settings">
-      <h2 className="mb-1 text-xs font-medium text-faint">{t("models.provider")}</h2>
-      <div className="mb-4 flex items-center gap-2">
-        <ServerIcon className="size-[15px] text-muted" />
-        <span className="text-[16.5px] font-semibold">{provider.name}</span>
+      <h2 className="mb-1 text-xs font-medium text-faint">{t("models.keys.key")}</h2>
+      <div className="mb-3 flex items-center gap-2">
+        <KeyLogo host={provider.host} />
+        <span className="truncate font-mono text-[15px] font-semibold">{provider.name}</span>
       </div>
+      <div className="mb-3.5 border-b border-line pb-3.5">
+        <PropRow label={t("models.baseUrl")} labelWidth={112}>
+          <span className="truncate font-mono text-[12.5px]" title={provider.baseUrl}>{provider.baseUrl}</span>
+        </PropRow>
+        <PropRow label={t("models.format")} labelWidth={112}>{formatLabel(provider.apiFormat)}</PropRow>
+        <PropRow label={t("models.token")} labelWidth={112}>
+          <LockIcon aria-hidden className="stroke-[1.75]" />
+          {t("models.tokenStored")}
+        </PropRow>
+        <PropRow label={t("models.keys.atOnceLabel")} labelWidth={112}>
+          {provider.sessionsAtOnce === null ? t("models.noCap") : <span className="font-mono">{plural(provider.sessionsAtOnce, "models.keys.sessionsOne", "models.keys.sessionsMany")}</span>}
+        </PropRow>
+        <PropRow label={t("models.keys.personalLabel")} labelWidth={112}>{provider.allowOnPersonalRunners ? t("models.keys.on") : t("models.keys.off")}</PropRow>
+      </div>
+      <div className="mb-3.5 border-b border-line pb-3.5" data-testid="provider-projects">
+        <h3 className="mb-1.5 flex items-center text-xs font-medium text-faint">
+          {t("models.keys.projects")}
+          <span className="ml-1.5 font-mono">{provider.projects.length}</span>
+        </h3>
+        {provider.projects.length === 0 ? (
+          <p className="text-sm text-faint">{t("models.keys.noProjects")}</p>
+        ) : (
+          <>
+            <ul>
+              {provider.projects.map((project) => (
+                <li key={project.projectId} className="flex h-[30px] items-center gap-2 text-ui">
+                  <span aria-hidden className="inline-block size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(project.projectId) }} />
+                  <span className="truncate font-mono text-text">{project.name}</span>
+                  <span className="ml-auto shrink-0 text-faint">{project.via === "own" ? t("models.keys.viaOwn") : t("models.keys.viaDefault")}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-[12.5px] text-faint">{t("models.keys.onlyAdmins")}</p>
+          </>
+        )}
+      </div>
+      <div className="mb-3.5 border-b border-line pb-3.5">
+        <h3 className="mb-1.5 flex items-center text-xs font-medium text-faint">
+          {t("models.keys.modelsItLists")}
+          <span className="ml-1.5 font-mono">{listed.length}</span>
+        </h3>
+        <ul>
+          {listed.map((model) => (
+            <li key={model.id} className="flex min-h-[30px] items-center gap-2 text-ui">
+              {model.logoPath === null ? null : <img src={model.logoPath} alt="" className="size-[15px] shrink-0 opacity-75 invert" />}
+              <span className={model.displayName === null ? "truncate font-mono" : "truncate"}>{model.displayName ?? model.endpointModelId}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="mb-3.5 border-b border-line pb-3.5">
+        <h3 className="mb-1.5 text-xs font-medium text-faint">{t("models.keys.thisMonthLabel")}</h3>
+        <PropRow label={t("models.keys.spent")} labelWidth={112}><span className="ml-auto font-mono">{formatSpend(provider.monthSpentMicroUsd / 1_000_000)}</span></PropRow>
+        <PropRow label={t("models.keys.tasks")} labelWidth={112}><span className="ml-auto font-mono">{provider.monthTaskCount}</span></PropRow>
+      </div>
+      {editing ? null : <Button onClick={() => { setEditing(true); }}>{t("models.keys.editProvider")}</Button>}
+      {editing ? (
+      <>
       <PropGroup title={t("models.endpoint")}>
         <PropRow label={t("models.baseUrl")}>
           <span className="truncate font-mono text-sm" title={provider.baseUrl}>{provider.baseUrl}</span>
@@ -114,6 +179,8 @@ export const ProviderSettings = ({ provider }: { readonly provider: Provider }) 
         />
         {update.error === null ? null : <p role="alert" className="text-sm text-red">{errorText(update.error)}</p>}
       </PropGroup>
+      </>
+      ) : null}
     </div>
   );
 };

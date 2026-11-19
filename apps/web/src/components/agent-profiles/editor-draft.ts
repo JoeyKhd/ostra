@@ -1,7 +1,11 @@
-import { blobIdSchema, modelIdSchema } from "@ostra/protocol";
+import { blobIdSchema } from "@ostra/protocol";
 import type { AgentProfileId, EffortLevel, MemberId } from "@ostra/protocol";
 
 import type { MessageKey } from "@/lib/messages";
+import type { RouterOutputs } from "@/lib/trpc";
+
+/** A model by name (F-135): a catalog ID, or a custom model's endpoint ID; never a key. */
+export type ModelName = RouterOutputs["agentProfiles"]["modelOptions"][number]["name"];
 import type { RouterInputs } from "@/lib/trpc";
 
 import type { ProfileDetail } from "./profile-types";
@@ -36,7 +40,8 @@ export type ServerDraft =
 export type ProfileDraft = {
   readonly name: string;
   readonly adapter: string;
-  readonly modelId: string | null;
+  /** The model by name (F-135): never a key. */
+  readonly model: ModelName | null;
   /** F-137: how much its model reasons; a new task copies it. */
   readonly effort: EffortLevel;
   readonly instructions: string;
@@ -76,7 +81,7 @@ export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** What stops "Save profile", in the order the page shows it, or `null`. */
 export const draftProblem = (draft: ProfileDraft): MessageKey | null => {
   if (draft.name.trim() === "") return "agentProfiles.editor.name";
-  if (draft.modelId === null) return "agentProfiles.editor.pickModelPlaceholder";
+  if (draft.model === null) return "agentProfiles.editor.pickModelPlaceholder";
   if (draft.access === "listed" && draft.members.length === 0) return "agentProfiles.props.nobodyListed";
   for (const rule of draft.rules) {
     const problem = ruleProblem(rule);
@@ -164,7 +169,7 @@ export const commandLine = (server: Extract<ServerDraft, { transport: "stdio" }>
 export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
   name: detail.name,
   adapter: detail.adapter,
-  modelId: detail.model?.id ?? null,
+  model: detail.modelName,
   effort: detail.effort,
   instructions: detail.instructions ?? "",
   planFirst: detail.planFirst,
@@ -200,10 +205,10 @@ export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
 });
 
 /** A new profile's draft: the agent, the built-in profile's model, nothing else (agent-profile.md, "New profile"). */
-export const newDraft = (adapter: string, modelId: string | null): ProfileDraft => ({
+export const newDraft = (adapter: string, model: ModelName | null): ProfileDraft => ({
   name: "",
   adapter,
-  modelId,
+  model,
   effort: "default",
   instructions: "",
   planFirst: false,
@@ -226,7 +231,8 @@ export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | nul
   ...(draft.effort === savedEffort ? {} : { effort: draft.effort }),
   name: draft.name.trim(),
   adapter: draft.adapter,
-  modelId: draft.modelId === null ? null : modelIdSchema.parse(draft.modelId),
+  modelId: null,
+  modelName: draft.model,
   instructions: draft.instructions.trim() === "" ? null : draft.instructions,
   approvalRules: [...draftsToRules(draft.rules, newId)],
   planFirst: draft.planFirst,
@@ -257,3 +263,7 @@ export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | nul
     files: skill.files.map((file) => ({ path: file.path, blobId: blobIdSchema.parse(file.blobId) })),
   })),
 });
+
+/** Whether two model names name the same model. */
+export const sameModel = (a: ModelName, b: ModelName | null): boolean =>
+  b !== null && (a.kind === "catalog" ? b.kind === "catalog" && b.catalogId === a.catalogId : b.kind === "custom" && b.endpointModelId === a.endpointModelId);

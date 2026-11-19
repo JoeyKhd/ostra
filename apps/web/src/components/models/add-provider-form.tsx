@@ -31,7 +31,7 @@ export const formatLabel = (format: ApiFormat): string =>
  * the sessions cap, and "Allow on personal runners", off by default. The token is never shown
  * again once it's saved.
  */
-export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId: string) => void }) => {
+export const AddProviderForm = ({ onCreated, first }: { readonly onCreated: (providerId: string) => void; readonly first: boolean }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -173,6 +173,7 @@ export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId
       <Button type="submit" variant="primary" disabled={!canSave}>
         {create.isPending ? t("common.saving") : t("models.save")}
       </Button>
+      <p className="mt-2 text-xs text-faint">{first ? t("models.keys.addFirst") : t("models.keys.addJoinsNoList")}</p>
     </form>
   );
 };
