@@ -41,8 +41,18 @@ export type FakeResendApi = {
   readonly refuse: Set<string>;
   /** How many calls reached it, accepted or not. */
   readonly calls: () => number;
+  /** Milestone 3 (ticket 12): the domains `GET /domains` lists. Edit it to make one unverified. */
+  readonly domains: { name: string; status: ResendDomainStatus }[];
+  /** The key is a sending-only one: `GET /domains` answers 401 `restricted_api_key`, as Resend does. */
+  restrictedKey: boolean;
+  /** With it on, `POST /emails` answers 403 for a `from` on a domain that isn't verified (`resend.dev` always sends). */
+  enforceDomains: boolean;
+  /** The next call, whatever it is, answers this status and error name (an outage, a refused key). */
+  readonly failNext: (status: number, name: string) => void;
   readonly close: () => Promise<void>;
 };
+
+export type ResendDomainStatus = "not_started" | "pending" | "verified" | "failed" | "partially_verified" | "partially_failed";
 
 // Resend's request body, read as a strict client would send it.
 const resendBodySchema = z.looseObject({
@@ -84,23 +94,57 @@ const resendError = (response: ServerResponse, status: number, name: string, mes
 };
 
 /** Starts the fake Resend API on loopback. */
-export const startFakeResendApi = async (options: { readonly apiKey?: string } = {}): Promise<FakeResendApi> => {
+export const startFakeResendApi = async (options: { readonly apiKey?: string; readonly domains?: readonly string[] } = {}): Promise<FakeResendApi> => {
   const apiKey = options.apiKey ?? `re_fake_${randomUUID().replaceAll("-", "")}`;
   const received: ResendReceived[] = [];
   const byKey = new Map<string, { readonly body: string; readonly id: string }>();
   const refuse = new Set<string>();
   let rateLimit: number | null = null;
   let calls = 0;
+  let fault: { readonly status: number; readonly name: string } | null = null;
+  const domains: { name: string; status: ResendDomainStatus }[] = (options.domains ?? ["example.com"]).map((name) => ({ name, status: "verified" }));
+  const controls = { restrictedKey: false, enforceDomains: false };
+  const stored = new Map<string, ResendReceived>();
   const server = createHttpServer((request, response) => {
     void (async () => {
       calls += 1;
       const body = await readBody(request);
-      if (request.method !== "POST" || request.url !== "/emails") {
+      const isGet = request.method === "GET";
+      const isSend = request.method === "POST" && request.url === "/emails";
+      const lookup = isGet ? /^\/emails\/([^/?]+)$/.exec(request.url ?? "") : null;
+      if (!isSend && !(isGet && (request.url === "/domains" || lookup !== null))) {
         resendError(response, 404, "not_found", "The requested endpoint does not exist.");
         return;
       }
       if (request.headers.authorization !== `Bearer ${apiKey}`) {
         resendError(response, 401, "missing_api_key", "API key is invalid");
+        return;
+      }
+      if (fault !== null) {
+        const { status, name } = fault;
+        fault = null;
+        resendError(response, status, name, "The fake was told to fail this call.");
+        return;
+      }
+      if (request.url === "/domains") {
+        if (controls.restrictedKey) {
+          resendError(response, 401, "restricted_api_key", "This API key is restricted to only send emails");
+          return;
+        }
+        sendJson(response, 200, {
+          object: "list",
+          has_more: false,
+          data: domains.map((domain, index) => ({ id: `domain-${String(index)}`, name: domain.name, status: domain.status, created_at: "2026-11-19T00:00:00.000Z", region: "us-east-1" })),
+        });
+        return;
+      }
+      if (lookup !== null) {
+        const found = stored.get(lookup[1] ?? "");
+        if (found === undefined) {
+          resendError(response, 404, "not_found", "Email not found.");
+          return;
+        }
+        sendJson(response, 200, { object: "email", id: found.id, from: found.from, to: found.to, subject: found.subject, html: found.html, text: found.text, last_event: "delivered" });
         return;
       }
       if (rateLimit !== null) {
@@ -134,6 +178,11 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string } =
         resendError(response, 422, "validation_error", "The body is not an email.");
         return;
       }
+      const fromDomain = /@([^>\s]+)>?\s*$/.exec(parsed.data.from)?.[1]?.toLowerCase();
+      if (controls.enforceDomains && fromDomain !== "resend.dev" && !domains.some((domain) => domain.status === "verified" && domain.name === fromDomain)) {
+        resendError(response, 403, "validation_error", `The ${fromDomain ?? "from"} domain is not verified.`);
+        return;
+      }
       const to = typeof parsed.data.to === "string" ? [parsed.data.to] : parsed.data.to;
       const refused = to.find((address) => refuse.has(address));
       if (refused !== undefined) {
@@ -144,7 +193,7 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string } =
       if (idempotencyKey !== null) {
         byKey.set(idempotencyKey, { body, id });
       }
-      received.push({
+      const mail: ResendReceived = {
         id,
         idempotencyKey,
         from: parsed.data.from,
@@ -153,7 +202,9 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string } =
         html: parsed.data.html ?? null,
         text: parsed.data.text ?? null,
         headers: parsed.data.headers ?? {},
-      });
+      };
+      received.push(mail);
+      stored.set(id, mail);
       sendJson(response, 200, { id });
     })();
   });
@@ -168,6 +219,22 @@ export const startFakeResendApi = async (options: { readonly apiKey?: string } =
     },
     refuse,
     calls: () => calls,
+    domains,
+    get restrictedKey() {
+      return controls.restrictedKey;
+    },
+    set restrictedKey(value: boolean) {
+      controls.restrictedKey = value;
+    },
+    get enforceDomains() {
+      return controls.enforceDomains;
+    },
+    set enforceDomains(value: boolean) {
+      controls.enforceDomains = value;
+    },
+    failNext: (status, name) => {
+      fault = { status, name };
+    },
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections();

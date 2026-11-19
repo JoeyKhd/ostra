@@ -65,6 +65,48 @@ describe("the fake Resend API", () => {
     expect(limited.headers.get("retry-after")).toBe("7");
     expect((await post(api, email)).status).toBe(200);
   });
+
+  const get = (api: FakeResendApi, path: string, key = api.apiKey) => fetch(`${api.url}${path}`, { headers: { authorization: `Bearer ${key}` } });
+
+  it("F-115: lists its domains with their status, answers 401 to a sending-only key, and 401 to a wrong one", async () => {
+    const api = await resend();
+    api.domains.push({ name: "pending.example", status: "pending" });
+    const listed: unknown = await (await get(api, "/domains")).json();
+    expect(listed).toMatchObject({
+      object: "list",
+      data: [
+        { name: "example.com", status: "verified" },
+        { name: "pending.example", status: "pending" },
+      ],
+    });
+    api.restrictedKey = true;
+    const restricted = await get(api, "/domains");
+    expect(restricted.status).toBe(401);
+    expect(await restricted.json()).toMatchObject({ name: "restricted_api_key" });
+    // A sending-only key still sends.
+    expect((await post(api, email)).status).toBe(200);
+    expect((await get(api, "/domains", "wrong")).status).toBe(401);
+  });
+
+  it("F-115: refuses a send from a domain that isn't verified, when told to, and reads a sent email back", async () => {
+    const api = await resend();
+    api.enforceDomains = true;
+    expect((await post(api, { ...email, from: "ostra@stranger.test" })).status).toBe(403);
+    expect((await post(api, { ...email, from: "Resend <onboarding@resend.dev>" })).status).toBe(200);
+    const sent = await post(api, email);
+    const body: unknown = await sent.json();
+    const id = api.received.at(-1)?.id ?? "";
+    expect(body).toEqual({ id });
+    expect(await (await get(api, `/emails/${id}`)).json()).toMatchObject({ id, to: ["ada@example.com"], subject: "Approval needed", last_event: "delivered" });
+    expect((await get(api, "/emails/unknown-id")).status).toBe(404);
+  });
+
+  it("F-115: fails the next call with the status it was told to, once", async () => {
+    const api = await resend();
+    api.failNext(503, "application_error");
+    expect((await post(api, email)).status).toBe(503);
+    expect((await post(api, email)).status).toBe(200);
+  });
 });
 
 // ---------- a hand-driven SMTP client ----------
