@@ -91,6 +91,12 @@ const makeDispatcher = (extra: DispatcherExtra) => {
 
 const sidecarBody = (): string => JSON.stringify([...engine.containers.values()].find((container) => container.name.endsWith("-sidecar"))?.body);
 
+/**
+ * Both of the box's containers started, not only made: `exitAll` before the sidecar's start would
+ * be undone by it, and the case would wait for an exit that never comes.
+ */
+const boxStarted = (): boolean => [...engine.containers.values()].filter((container) => container.status === "running").length >= 2;
+
 const exitAll = (): void => {
   for (const container of engine.containers.values()) {
     container.status = "exited";
@@ -107,7 +113,7 @@ describe("the box dispatcher", () => {
       result: "rejected",
       reason: "no-capacity",
     });
-    await waitFor(() => engine.containers.size >= 2);
+    await waitFor(boxStarted);
     expect(engine.containers.size).toBe(2);
     expect(dispatcher.status()).toMatchObject({ executor: "docker", freeSlots: 0, running: [taskSpecFixture.sessionId] });
     expect(await readFile(path.join(root, "boxes", boxId, "token"), "utf8")).toBe(ACCESS_TOKEN);
@@ -125,7 +131,7 @@ describe("the box dispatcher", () => {
   it.skipIf(!posix)("keeps the token readable by its group alone: 0440 in a 0750 folder, and the sidecar joins the group", async () => {
     const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 } });
     await dispatcher.handlers.dispatch(dispatchOf("box-group"));
-    await waitFor(() => engine.containers.size >= 2);
+    await waitFor(boxStarted);
     const folder = path.join(root, "boxes", "box-group");
     expect(await modeOf(path.join(folder, "token"))).toBe(0o440);
     expect(await modeOf(folder)).toBe(0o750);
@@ -149,7 +155,7 @@ describe("the box dispatcher", () => {
       },
     });
     await dispatcher.handlers.dispatch(dispatchOf("box-owner"));
-    await waitFor(() => engine.containers.size >= 2);
+    await waitFor(boxStarted);
     expect(handed).toEqual([
       { path: "boxes/box-owner", uid: 1000, gid: 1000 },
       { path: "boxes/box-owner/token.next", uid: 1000, gid: 1000 },
@@ -187,7 +193,7 @@ describe("the box dispatcher", () => {
         },
       });
       await dispatcher.handlers.dispatch(dispatchOf("box-once"));
-      await waitFor(() => engine.containers.size >= 2);
+      await waitFor(boxStarted);
       const file = path.join(root, "boxes", "box-once", "token");
       expect(await readFile(file, "utf8")).toBe(`${ACCESS_TOKEN}-1`);
       const written = (await stat(file)).mtimeMs;
