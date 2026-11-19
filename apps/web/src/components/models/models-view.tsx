@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { Chip, Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
@@ -31,13 +32,15 @@ const ModelLogo = ({ path }: { readonly path: string | null }) =>
   path === null ? (
     <CpuIcon aria-hidden className="size-[15px] shrink-0 text-muted" />
   ) : (
-    <img src={path} alt="" className="size-[15px] shrink-0 opacity-90 invert" />
+    // Drawn light grey on dark (between --muted and --text), so the vendors' marks read as one family.
+    <img src={path} alt="" className="size-[15px] shrink-0 opacity-75 invert" />
   );
 
 /** Organization › Models (F-088): providers, their models, and the form in the properties panel. */
 export const ModelsView = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const me = useQuery(trpc.me.get.queryOptions());
   const providers = useQuery(trpc.providers.list.queryOptions());
   const profiles = useQuery(trpc.agentProfiles.list.queryOptions());
   const models = useQueries({
@@ -111,7 +114,7 @@ export const ModelsView = () => {
 
   return (
     <PageFrame
-      crumbs={[{ label: t("shell.organization") }, { label: t("shell.models") }]}
+      crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("shell.models") }]}
       actions={
         <Button onClick={() => { setSelection({ kind: "add" }); }}>
           <PlusIcon /> {t("models.add")}
@@ -122,8 +125,10 @@ export const ModelsView = () => {
     >
       <PageHeading title={t("models.title")} lede={t("models.lede")} />
 
-      <Section title={t("models.providers")} count={providers.data?.length ?? 0}>
-        {noProviders ? (
+      <Section title={t("models.providers")} {...(providers.data === undefined ? {} : { count: providers.data.length })}>
+        {providers.isPending ? (
+          <SkeletonRows height="h-10" />
+        ) : noProviders ? (
           <p className="border-t border-line py-3 text-muted">{t("models.noProviders")}</p>
         ) : (
           <ul className="rows">
@@ -135,14 +140,14 @@ export const ModelsView = () => {
                     type="button"
                     onClick={() => { setSelection({ kind: "provider", providerId: provider.id }); }}
                     aria-pressed={on}
-                    className={cn("flex min-h-10 w-full items-center gap-3 px-1 text-left hover:bg-raise", on && "bg-sel")}
+                    className={cn("flex h-10 w-full items-center gap-3 px-1 text-left hover:bg-raise", on && "bg-sel hover:bg-sel")}
                   >
-                    <ServerIcon className="size-[15px] shrink-0 text-muted" />
-                    <span className="w-36 shrink-0 truncate font-medium">{provider.name}</span>
-                    <span className="hidden min-w-0 flex-1 truncate font-mono text-sm text-faint md:block">{provider.baseUrl}</span>
+                    <ServerIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />
+                    <span className="w-[150px] shrink-0 truncate">{provider.name}</span>
+                    <span className="hidden min-w-0 flex-1 truncate font-mono text-[12.5px] text-faint md:block" title={provider.baseUrl}>{provider.baseUrl}</span>
                     <span className="ml-auto shrink-0 text-muted">{plural(provider.modelCount, "models.countOne", "models.countMany")}</span>
-                    {provider.allowOnPersonalRunners ? <Chip className="hidden sm:inline-flex">{t("models.personalAllowed")}</Chip> : null}
-                    <Status tone="green" className="shrink-0">{t("models.connectedShort")}</Status>
+                    {provider.allowOnPersonalRunners ? <Chip className="ml-1 hidden sm:inline-flex">{t("models.personalAllowed")}</Chip> : null}
+                    <Status tone="green" className="ml-2 shrink-0">{t("models.connectedShort")}</Status>
                   </button>
                 </li>
               );
@@ -151,7 +156,11 @@ export const ModelsView = () => {
         )}
       </Section>
 
-      {rows.length === 0 ? null : (
+      {providers.isPending ? (
+        <Section title={t("models.enabled")}>
+          <SkeletonRows height="h-10" />
+        </Section>
+      ) : rows.length === 0 ? null : (
         <Section title={t("models.enabled")} count={rows.length}>
           {setDefault.error === null ? null : <p role="alert" className="mb-2 text-sm text-red">{errorText(setDefault.error)}</p>}
           <div className="overflow-x-auto">
@@ -173,14 +182,14 @@ export const ModelsView = () => {
                       key={model.id}
                       data-model={model.endpointModelId}
                       onClick={() => { setSelection({ kind: "model", providerId: provider.id, modelId: model.id }); }}
-                      className={cn("h-10 cursor-pointer border-b border-line hover:bg-raise", on && "bg-sel")}
+                      className={cn("h-10 cursor-pointer border-b border-line hover:bg-raise", on && "bg-sel hover:bg-sel")}
                     >
                       <td className="pr-3">
                         <span className="flex items-center gap-2.5">
                           <ModelLogo path={model.logoPath} />
                           <button
                             type="button"
-                            className="truncate text-left"
+                            className={cn("truncate text-left", model.displayName === null && "font-mono text-[12.5px]")}
                             onClick={(event) => {
                               event.stopPropagation();
                               setSelection({ kind: "model", providerId: provider.id, modelId: model.id });

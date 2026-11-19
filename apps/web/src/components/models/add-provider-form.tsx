@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2Icon, EyeIcon, EyeOffIcon, XCircleIcon } from "lucide-react";
+import { ChevronDownIcon, CircleCheckIcon, CircleXIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import { useState } from "react";
 import type { SubmitEvent } from "react";
 
@@ -91,8 +91,9 @@ export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId
 
   return (
     <form onSubmit={submit} noValidate aria-label={t("models.addTitle")}>
-      <h2 className="mb-1 text-xs font-medium text-faint">{t("models.addEyebrow")}</h2>
-      <p className="mb-4 text-sm text-muted">{t("models.addLede")}</p>
+      <p className="mb-1 text-xs font-medium text-faint">{t("models.addEyebrow")}</p>
+      <h2 className="mb-1 text-[15px] font-semibold text-text">{t("models.addTitle")}</h2>
+      <p className="mb-4 text-[12.5px] text-muted">{t("models.addLede")}</p>
       <Field id="provider-name" label={t("models.name")}>
         <Input id="provider-name" value={name} onChange={(e) => { setName(e.target.value); }} placeholder="anthropic" />
       </Field>
@@ -141,9 +142,10 @@ export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId
       {tested?.ok === true ? (
         <>
           <Field id="provider-format" label={t("models.format")} help={t("models.formatHelp")}>
+            <div className="relative">
             <select
               id="provider-format"
-              className={cn(fieldClass, "h-8")}
+              className={cn(fieldClass, "h-8 appearance-none pr-8")}
               value={apiFormat ?? tested.apiFormat}
               onChange={(e) => {
                 const next = formats.find((format) => format === e.target.value);
@@ -157,6 +159,8 @@ export const AddProviderForm = ({ onCreated }: { readonly onCreated: (providerId
                 </option>
               ))}
             </select>
+            <ChevronDownIcon aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 size-[14px] -translate-y-1/2 stroke-[1.75] text-faint" />
+            </div>
           </Field>
           <Field id="provider-cap" label={t("models.sessionsCap")} help={t("models.sessionsCapHelp")}>
             <Input id="provider-cap" inputMode="numeric" className="font-mono" value={cap} onChange={(e) => { setCap(e.target.value.replace(/\D/g, "")); }} placeholder={t("models.noCap")} />
@@ -177,27 +181,27 @@ const TestResult = ({ tested }: { readonly tested: Tested }) => {
   if (!tested.ok) {
     return (
       <div role="alert" className="mb-4 flex items-start gap-2 text-sm text-red">
-        <XCircleIcon className="mt-0.5 size-[14px] shrink-0" />
+        <CircleXIcon className="mt-0.5 size-[14px] shrink-0 stroke-[1.75]" />
         <span>{tested.message}</span>
       </div>
     );
   }
   return (
     <div className="mb-4" data-testid="test-result">
-      <div className="mb-2 flex items-center gap-2 text-sm text-green">
-        <CheckCircle2Icon className="size-[14px]" />
+      <div className="mb-2 flex items-center gap-2 text-[12.5px] text-green">
+        <CircleCheckIcon className="size-[14px] shrink-0 stroke-[1.75]" />
         <span>
           {t("models.connected", { format: formatLabel(tested.apiFormat) })} · {plural(tested.models.length, "models.foundOne", "models.foundMany")}
         </span>
       </div>
       <ul className="rows max-h-56 overflow-y-auto text-sm">
         {tested.models.map((model) => (
-          <li key={model.endpointModelId} className="flex min-h-8 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate font-mono">{model.endpointModelId}</span>
-            <span className="shrink-0 text-faint">
+          <li key={model.endpointModelId} className="flex h-[31px] items-center gap-3">
+            <span className="min-w-0 max-w-[60%] shrink-0 truncate font-mono text-[12.5px] text-text" title={model.endpointModelId}>{model.endpointModelId}</span>
+            <span className="min-w-0 flex-1 truncate text-faint">
               {model.match.kind === "catalog" ? model.match.name : t("models.custom")}
             </span>
-            <span className="w-12 shrink-0 text-right font-mono text-faint">
+            <span className="shrink-0 text-right font-mono text-faint">
               {formatTokens(model.match.kind === "catalog" ? model.match.contextWindow : model.contextWindow)}
             </span>
           </li>
@@ -221,7 +225,7 @@ export const PersonalRunnersSwitch = ({
 }) => (
   <div className="mb-4">
     <div className="flex items-center justify-between gap-3">
-      <label htmlFor={id} className="text-sm font-medium text-muted">
+      <label htmlFor={id} className="text-body text-text">
         {t("models.allowPersonal")}
       </label>
       <Switch id={id} checked={checked} onCheckedChange={onChange} disabled={disabled} />
