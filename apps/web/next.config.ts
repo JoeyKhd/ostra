@@ -13,7 +13,9 @@ const config: NextConfig = {
   // every child-process environment, so it runs on its own config and doesn't block the build.
   typescript: { tsconfigPath: "tsconfig.next.json", ignoreBuildErrors: true },
   // Workspace packages are TypeScript source, which Turbopack transpiles; these stay Node's own.
-  serverExternalPackages: ["pg", "@prisma/client", "@prisma/adapter-pg", "pg-boss"],
+  // `koffi` loads a native addon (`.node`), which Turbopack can't bundle: the adapter SDK's Windows
+  // process lister imports it, and without this `next build` fails.
+  serverExternalPackages: ["pg", "@prisma/client", "@prisma/adapter-pg", "pg-boss", "koffi"],
   headers: () =>
     Promise.resolve([
       {
