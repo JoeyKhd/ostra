@@ -128,3 +128,40 @@ export const fixChecksPrompt = (checks: readonly FailedCheckForPrompt[]): string
 
 /** "Keep working" on a task whose ticket closed while it ran (Q181): the turn after the interrupt. */
 export const KEEP_WORKING_PROMPT = "Carry on where you stopped.";
+
+// ---------- an approval answered after it expired (F-026, ADR 0039; ticket 17) ----------
+
+/**
+ * The reopen's message when a member answers an approval that expired: the turn that asked was
+ * cancelled, so the decision starts the next one. The request's subject and a deny's reason are data.
+ */
+export const expiredApprovalAnswerPrompt = (input: {
+  readonly decision: "allow_once" | "allow_task" | "deny";
+  /** What the request touched (a path, a command, a URL, `<server>/<tool>`), when the runner said. */
+  readonly subject: string | null;
+  readonly reason: string | null;
+}): string => {
+  const asked = input.subject === null ? [] : [markedBlock("request", input.subject)];
+  switch (input.decision) {
+    case "allow_once":
+    case "allow_task":
+      return [
+        `Your last turn ended while you waited for a member to approve a request. A member has now approved it${input.decision === "allow_task" ? " for the rest of this task" : ""}. Carry on with it, and with the rest of the work.`,
+        ...(asked.length === 0 ? [] : [DATA_LINE, ...asked]),
+      ].join("\n\n");
+    case "deny": {
+      const reason = input.reason?.trim() ?? "";
+      return [
+        "Your last turn ended while you waited for a member to approve a request. A member has now denied it.",
+        reason === ""
+          ? "Carry on without it, or suggest another way to do what you needed it for."
+          : "They said why. Carry on without the request, taking the reason into account, or suggest another way.",
+        DATA_LINE,
+        ...asked,
+        ...(reason === "" ? [] : [markedBlock("deny-reason", reason.slice(0, runnerLimits.denyReasonMaxChars))]),
+      ].join("\n\n");
+    }
+    default:
+      return input.decision satisfies never;
+  }
+};

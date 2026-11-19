@@ -65,6 +65,7 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
     const known = [
       "apps/core/src/ingest/ingest.ts",
       "packages/api/src/routers/tasks.ts",
+      "packages/domain/src/use-cases/approvals.ts",
       "packages/domain/src/use-cases/ingest-events.ts",
       "packages/domain/src/use-cases/record-session-end.ts",
       "packages/domain/src/use-cases/reopen.ts",

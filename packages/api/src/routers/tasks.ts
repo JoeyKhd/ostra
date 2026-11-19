@@ -1,4 +1,5 @@
 import {
+  answerApproval,
   appendServerEvent,
   checkProjectRepos,
   createPromptTask,
@@ -12,7 +13,6 @@ import {
   retryTicketWrites,
   retryTicketWritesInputSchema,
   startTicketTask,
-  resolveNeedsYouItemsInTx,
   startTicketTaskInputSchema,
   waitingFor,
   stopTask,
@@ -30,7 +30,6 @@ import {
   clientMessageIdSchema,
   memberIdSchema,
   needsYouItemIdSchema,
-  optionIdSchema,
   projectIdSchema,
   runnerIdSchema,
   runnerLimits,
@@ -44,7 +43,7 @@ import { z } from "zod";
 import { loadAgentProfileView } from "./agent-profile-view.ts";
 import { loadDoingByTask } from "./task-doing.ts";
 import { loadTaskExtras, prStateOf } from "./task-extras.ts";
-import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
+import { memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
 // F-097, F-023, F-025, F-014 (picking the runner), ticket 33: tasks. A task is visible to every
 // member who can open its project and to nobody else (ADR 0026). Reading, stopping and answering an
@@ -619,80 +618,33 @@ export const approvalsRouter = router({
    * Answers an approval (F-026): any member who can open the project may. The first answer wins,
    * through a compare-and-set on the approval, and a second member gets `CONFLICT`. The answer is a
    * committed event and an audit entry, and a command to the runner holding the task's lease.
+   * Milestone 3 (ticket 17): "for this task" writes a task rule and returns it; a deny takes an
+   * optional reason; an expired approval whose item is open is answered too, and reopens the task.
    */
   answer: memberProcedure
-    .input(z.strictObject({ approvalId: approvalIdSchema, decision: approvalDecisionSchema }))
+    .input(z.strictObject({ approvalId: approvalIdSchema, decision: approvalDecisionSchema, reason: z.string().max(runnerLimits.denyReasonMaxChars * 2).optional() }))
     .mutation(async ({ ctx, input }) => {
-      const { db, ports } = ctx.deps;
-      const organizationId = ctx.scope.organizationId;
-      const found = await db.approval.findFirst({ where: { id: input.approvalId, organizationId }, select: { taskId: true, projectId: true } });
+      const { db, ports, settings } = ctx.deps;
+      const found = await db.approval.findFirst({ where: { id: input.approvalId, organizationId: ctx.scope.organizationId }, select: { options: true } });
+      const options = z.array(approvalOptionSchema).safeParse(found?.options ?? []);
+      const option = options.success ? options.data.find((candidate) => candidate.decision === input.decision) : undefined;
       if (found === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No such approval" });
       }
-      const projectId = projectIdSchema.parse(found.projectId);
-      await loadProjectAccess(db, ctx.scope, projectId, "read").catch(() => {
-        throw new TRPCError({ code: "NOT_FOUND", message: "No such approval" });
+      if (option === undefined) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "The agent offered no such option" });
+      }
+      const result = await answerApproval(
+        { db, ...ports, spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap } },
+        ctx.scope,
+        { approvalId: input.approvalId, decision: input.decision, optionId: option.optionId, reason: input.reason ?? null },
+      );
+      const answered = unwrap(result, {
+        "not-found": "NOT_FOUND",
+        "already-answered": "CONFLICT",
+        "no-pattern": "PRECONDITION_FAILED",
+        "invalid-input": "BAD_REQUEST",
       });
-      return db.$transaction(async (tx) => {
-        const task = await lockTask(tx, taskIdSchema.parse(found.taskId), organizationId);
-        if (task === null) {
-          throw notFoundTask();
-        }
-        const approval = await tx.approval.findUniqueOrThrow({ where: { id: input.approvalId } });
-        const options = z.array(approvalOptionSchema).safeParse(approval.options);
-        const option = options.success ? options.data.find((candidate) => candidate.decision === input.decision) : undefined;
-        if (option === undefined) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "The agent offered no such option" });
-        }
-        // The compare-and-set: of two members answering at once, one row update matches.
-        const won = await tx.approval.updateMany({
-          where: { id: approval.id, state: "open" },
-          data: { state: "answered", decision: input.decision, optionId: option.optionId, answeredByMemberId: ctx.scope.memberId, resolvedAt: new Date(ports.clock.now()) },
-        });
-        if (won.count !== 1) {
-          throw new TRPCError({ code: "CONFLICT", message: "Someone answered this first" });
-        }
-        const now = ports.clock.now();
-        const sessionId = sessionIdSchema.parse(approval.sessionId);
-        await appendServerEvent(tx, {
-          organizationId,
-          projectId,
-          taskId: taskIdSchema.parse(task.id),
-          sessionId,
-          at: now,
-          event: { kind: "approval.answered", approvalId: approvalIdSchema.parse(approval.id), optionId: optionIdSchema.parse(option.optionId), decision: input.decision, memberId: ctx.scope.memberId },
-        });
-        await resolveNeedsYouItemsInTx(ports, tx, { approvalId: approval.id }, { state: "answered", at: new Date(now), byMemberId: ctx.scope.memberId });
-        // A deny ends the agent's turn, and the runner cancels the session's other pending requests
-        // and reports each as `approval.closed`: that kind is the runner's to write, so the other
-        // approvals close when its events are saved (ADR 0036, ticket 25), not here.
-        const lifecycle = lifecycleOf(task);
-        if (lifecycle.status.state === "needs_you") {
-          const moved = transitionTask(lifecycle, { type: "member_acted", boxWarm: true });
-          if (moved.ok) {
-            await tx.task.update({ where: { id: task.id }, data: taskToColumns(moved.state) });
-          }
-        }
-        const { lease } = await activeLeaseAndSession(tx, task.id);
-        if (lease !== null) {
-          await ports.outbox.enqueueInTx(tx, organizationId, runnerIdSchema.parse(lease.runnerId), {
-            kind: "approval-answer",
-            body: { sessionId, approvalId: approvalIdSchema.parse(approval.id), decision: input.decision },
-            notAfter: now + runnerLimits.offerTimeoutMs,
-            task: { taskId: taskIdSchema.parse(task.id), projectId },
-          });
-        }
-        await ports.audit.recordInTx(tx, {
-          organizationId,
-          projectId,
-          actor: { kind: "member", id: ctx.scope.memberId },
-          action: "approval.answered",
-          entity: "approval",
-          entityId: input.approvalId,
-          data: { decision: input.decision },
-        });
-        await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: taskIdSchema.parse(task.id) });
-        return { approvalId: input.approvalId, decision: input.decision };
-      });
+      return { approvalId: input.approvalId, decision: input.decision, taskRule: answered.taskRule, reopened: answered.reopened };
     }),
 });

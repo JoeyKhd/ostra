@@ -8,6 +8,7 @@ import { z } from "zod";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
+import { recordApprovalAutoAnsweredInTx, recordApprovalClosedInTx, recordApprovalRequestedInTx } from "./approvals.ts";
 import { holdProviderInTx } from "./hold-provider.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx, setNeedsYouSummaryInTx } from "./needs-you-items.ts";
@@ -156,6 +157,7 @@ const item0SessionId = (session: Session): SessionId => sessionIdSchema.parse(se
 /** What the stored events imply, in the same transaction (ticket 25). */
 const applyEffects = async (
   deps: IngestEventsDeps,
+  runnerId: RunnerId,
   task: LockedTask,
   session: Session,
   stored: readonly Stored[],
@@ -364,6 +366,22 @@ const applyEffects = async (
         await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
         break;
       }
+      case "approval.requested":
+        // Milestone 3 (ticket 17, F-026): the approval, its item, needs you, the fan-out.
+        await recordApprovalRequestedInTx(deps, { task: taskRow, session: current, runnerId, event });
+        await reloadSession();
+        await reloadTask();
+        break;
+      case "approval.auto_answered":
+        await recordApprovalAutoAnsweredInTx(deps, { task: taskRow, session: current, event });
+        await reloadSession();
+        await reloadTask();
+        break;
+      case "approval.closed":
+        await recordApprovalClosedInTx(deps, { task: taskRow, session: current, event });
+        await reloadSession();
+        await reloadTask();
+        break;
       case "workspace.files_outside_repos":
         // Q133, ticket 44: one open item per task, updated as the set changes, closed when it's empty.
         await applyFilesOutsideReposInTx(deps, taskRow, event.paths, event.more);
@@ -446,10 +464,7 @@ const applyEffects = async (
       case "tool.progress":
       case "tool.completed":
       case "tool.failed":
-      case "approval.requested":
       case "approval.answered":
-      case "approval.auto_answered":
-      case "approval.closed":
       case "question.asked":
       case "question.answered":
       case "question.closed":
@@ -569,7 +584,7 @@ const ingestSession = async (
       })),
     });
     await tx.session.update({ where: { id: sessionId }, data: { ingestedSeq: cursor } });
-    await applyEffects(deps, task, session, stored);
+    await applyEffects(deps, runnerId, task, session, stored);
     // One wake-up per task per batch, which commits with it: IDs and the newest seq, never content.
     await tx.$executeRaw`SELECT pg_notify(${notifyChannels.taskEvents}, ${JSON.stringify({ taskId: task.id, seq: headSeq })})`;
   } else {

@@ -495,6 +495,8 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     const place = { organizationId: orgA(), projectId: project };
     const runnerId = await seedPersonalRunner(harness, a.admin.id, `${slug}-runner`);
     const task = await seedTask(harness, { ...place, state: "needs_you", driverMemberId: a.member.id, sessionState: "waiting" });
+    // The approvals are what the task needs: an answer to the last one lets it go on (ticket 17).
+    await harness.test.db.task.update({ where: { id: task.taskId }, data: { needsYouReason: "approval" } });
     await seedLease(harness, task, orgA(), project, runnerId);
     const approvals: string[] = [];
     for (let index = 0; index < open; index += 1) {
@@ -507,13 +509,13 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     return { task, project, runnerId, approvals };
   };
 
-  it("lets any member of the project answer, and commits the answer, the command and the task's move", async () => {
+  it("F-026: lets any member of the project answer, and commits the answer, the command and the task's move", async () => {
     const { task, runnerId, approvals } = await prepare("approve-1");
     const first = approvalIdSchema.parse(approvals[0]);
     harness.fakes.outbox.clear();
     // Not the driver: an insider answers.
     const answered = await (await harness.as(harness.fixture.a.insider)).approvals.answer({ approvalId: first, decision: "allow_once" });
-    expect(answered).toEqual({ approvalId: first, decision: "allow_once" });
+    expect(answered).toEqual({ approvalId: first, decision: "allow_once", taskRule: null, reopened: false });
     expect(await harness.test.db.approval.findUniqueOrThrow({ where: { id: first } })).toMatchObject({
       state: "answered",
       decision: "allow_once",
@@ -524,11 +526,14 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     expect(event.payload).toMatchObject({ approvalId: first, optionId: optionIdSchema.parse("o-once"), decision: "allow_once", memberId: memberIdSchema.parse(harness.fixture.a.insider.id) });
     expect(harness.fakes.outbox.commands).toMatchObject([{ runnerId, kind: "approval-answer", body: { approvalId: first, decision: "allow_once", sessionId: task.sessionId } }]);
     expect(await harness.test.db.auditEntry.count({ where: { action: "approval.answered", entityId: first } })).toBe(1);
-    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("running");
     const answeredItem = await harness.test.db.needsYouItem.findFirstOrThrow({ where: { approvalId: first } });
     expect(answeredItem.state).toBe("answered");
     // F-036: the answer enqueued its fan-out, in the transaction that wrote it.
     expect(harness.fakes.jobs.jobs.filter((job) => job.job === "notify.fanout" && job.key === `item:${answeredItem.id}:fanout:answered`)).toHaveLength(1);
+    // Milestone 3 (ticket 17): the other approval still holds the task; answering it lets the task go on.
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("needs_you");
+    await (await harness.as(harness.fixture.a.member)).approvals.answer({ approvalId: approvalIdSchema.parse(approvals[1]), decision: "allow_once" });
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("running");
   });
 
   it("gives the first answer the win: a second member, or the same twice, gets a conflict", async () => {
