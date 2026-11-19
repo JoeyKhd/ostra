@@ -370,21 +370,6 @@ describe("the task host", () => {
     expect(kinds(leaky)).not.toContain("turn.started");
   }, 120_000);
 
-  it("keeps every real credential out of the task root, the event stream and the logs", async () => {
-    const { dataDir, dispatch } = await start();
-    const { spec } = taskFor("[[fake:silent]]");
-    dispatch(spec);
-    await waitForKind(spec, "turn.started");
-    // While the agent runs: every file the runner wrote, the task root included.
-    const files: string[] = [];
-    const walk = async (dir: string): Promise<void> => {
-      for (const entry of await readdir(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else {
-          files.push(full);
-        }
   it("reports a model provider's rate limit as an event, once for a burst of 429s", async () => {
     const { dispatch } = await start();
     const limited = await startAnthropicStub({
@@ -423,6 +408,21 @@ describe("the task host", () => {
     }
   }, 120_000);
 
+  it("keeps every real credential out of the task root, the event stream and the logs", async () => {
+    const { dataDir, dispatch } = await start();
+    const { spec } = taskFor("[[fake:silent]]");
+    dispatch(spec);
+    await waitForKind(spec, "turn.started");
+    // While the agent runs: every file the runner wrote, the task root included.
+    const files: string[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else {
+          files.push(full);
+        }
       }
     };
     await walk(dataDir);
