@@ -44,6 +44,9 @@ export type CatalogEntry = {
   /** US dollars per million tokens. */
   readonly inputPricePerMTok: number | null;
   readonly outputPricePerMTok: number | null;
+  /** Milestone 2 (Q163): the cache-read and cache-write prices, when the catalog has them. */
+  readonly cacheReadPricePerMTok?: number | null;
+  readonly cacheWritePricePerMTok?: number | null;
   /** The logo's path on ostra's own server, never the vendor's (F-088). */
   readonly logoPath: string | null;
 };

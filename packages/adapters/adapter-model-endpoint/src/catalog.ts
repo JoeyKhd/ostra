@@ -16,7 +16,7 @@ const modelsDevModelSchema = z.looseObject({
   name: z.string().nullish(),
   tool_call: z.boolean().nullish(),
   limit: z.looseObject({ context: number, output: number }).nullish(),
-  cost: z.looseObject({ input: number, output: number }).nullish(),
+  cost: z.looseObject({ input: number, output: number, cache_read: number, cache_write: number }).nullish(),
 });
 
 const modelsDevProviderSchema = z.looseObject({
@@ -83,6 +83,8 @@ export const catalogEntries = (catalog: ModelsDevCatalog): readonly CatalogEntry
         maxOutputTokens: finite(model.limit?.output),
         inputPricePerMTok: finite(model.cost?.input),
         outputPricePerMTok: finite(model.cost?.output),
+        cacheReadPricePerMTok: finite(model.cost?.cache_read),
+        cacheWritePricePerMTok: finite(model.cost?.cache_write),
         logoPath: logoPathFor(providerId),
       });
     }

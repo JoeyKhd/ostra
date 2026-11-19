@@ -459,6 +459,10 @@ model Model {
   /// Prices in US dollars per million tokens, from the catalog or an admin.
   inputPricePerMTok  Decimal?      @db.Decimal(12, 6)
   outputPricePerMTok Decimal?      @db.Decimal(12, 6)
+  /// Milestone 2 (Q163, F-068): the cache-read and cache-write prices, in the same unit. `null`:
+  /// not known, and the spend count prices that kind at the input price.
+  cacheReadPricePerMTok  Decimal? @db.Decimal(12, 6)
+  cacheWritePricePerMTok Decimal? @db.Decimal(12, 6)
   /// Whether the endpoint still lists it.
   listed             Boolean       @default(true)
   createdAt          DateTime      @default(now())

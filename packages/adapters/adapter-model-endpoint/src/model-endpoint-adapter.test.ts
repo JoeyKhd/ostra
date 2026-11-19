@@ -280,7 +280,7 @@ describe("the model endpoint adapter", () => {
     });
 
     it("parses a fetched catalog loosely, and refuses one that isn't a catalog", () => {
-      const fetched = { acme: { id: "acme", unknown_field: 1, models: { m: { id: "m", name: "M", limit: { context: 1000, output: 100 }, cost: { input: 1.5, output: 6 }, extra: true } } } };
+      const fetched = { acme: { id: "acme", unknown_field: 1, models: { m: { id: "m", name: "M", limit: { context: 1000, output: 100 }, cost: { input: 1.5, output: 6, cache_read: 0.15, cache_write: 1.875 }, extra: true } } } };
       const parsed = parseModelsDevCatalog(fetched);
       expect(parsed.ok && parsed.value).toEqual([
         {
@@ -291,6 +291,8 @@ describe("the model endpoint adapter", () => {
           maxOutputTokens: 100,
           inputPricePerMTok: 1.5,
           outputPricePerMTok: 6,
+          cacheReadPricePerMTok: 0.15,
+          cacheWritePricePerMTok: 1.875,
           logoPath: "/model-logos/acme.svg",
         },
       ]);

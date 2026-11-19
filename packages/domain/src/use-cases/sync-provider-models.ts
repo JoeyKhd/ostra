@@ -83,6 +83,9 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
           maxOutputTokens: entry.maxOutputTokens,
           inputPricePerMTok: entry.inputPricePerMTok,
           outputPricePerMTok: entry.outputPricePerMTok,
+          // Q163: the cache prices when the catalog has them; unknown ones price at the input price.
+          cacheReadPricePerMTok: entry.cacheReadPricePerMTok ?? null,
+          cacheWritePricePerMTok: entry.cacheWritePricePerMTok ?? null,
           listed: true,
         };
         if (row === undefined) {
