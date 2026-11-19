@@ -102,6 +102,11 @@ export type TaskInput =
   | { readonly type: "changes_requested" }
   | { readonly type: "last_pr_merged" }
   | { readonly type: "all_prs_closed" }
+  /**
+   * A PR someone reopened on the code host (Q107): a merged task, or one stopped because its PRs
+   * closed, is in review again.
+   */
+  | { readonly type: "pr_reopened" }
   // ---- refine ----
   | { readonly type: "draft_handed_in" }
   | { readonly type: "draft_accepted" }
@@ -160,6 +165,7 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
     case "changes_requested":
     case "last_pr_merged":
     case "all_prs_closed":
+    case "pr_reopened":
     case "draft_handed_in":
     case "draft_accepted":
     case "findings_posted":
@@ -227,6 +233,10 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
       return status.state === "in_review" ? moveTo({ state: "merged" }) : refuse(input, from);
     case "all_prs_closed":
       return status.state === "in_review" ? moveTo({ state: "stopped", reason: "prs_closed" }) : refuse(input, from);
+    case "pr_reopened":
+      return status.state === "merged" || (status.state === "stopped" && status.reason === "prs_closed")
+        ? moveTo({ state: "in_review", subState: "waiting_for_reviewer" })
+        : refuse(input, from);
     case "crashed":
       // A fixing round runs a session in a box, so it can crash while the task is in review.
       if (status.state === "in_review" && (status.subState === "fixing_ci" || status.subState === "fixing_findings")) {
@@ -296,6 +306,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "changes_requested":
     case "last_pr_merged":
     case "all_prs_closed":
+    case "pr_reopened":
     case "findings_posted":
       return refuse(input, from);
     case "approve":
@@ -331,6 +342,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "changes_requested":
     case "last_pr_merged":
     case "all_prs_closed":
+    case "pr_reopened":
     case "draft_handed_in":
     case "draft_accepted":
       return refuse(input, from);

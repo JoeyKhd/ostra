@@ -50,13 +50,14 @@ import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } fr
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
+import { createReconcileSchedules, githubWebhookHandler, reconcileHandler } from "./code-host/pull-requests.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
 import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
-import { recordOnlyHandler, webhookProcessHandler } from "./webhooks/process.ts";
+import { webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
 
 // Core (ADR 0016): one process that holds runner connections, runs the queue's workers and serves
@@ -271,9 +272,22 @@ export const startCore = async (
   // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
   const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger });
   const ingestDeps = { db, trackers, notices, clock: systemClock, logger };
+  // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.
+  const prDeps = {
+    db,
+    jobs,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    codeHost: adapters.codeHost,
+    secretStore: adapters.secretStore,
+    logger,
+  };
+  await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
+  const reconcileSchedules = createReconcileSchedules({ db, jobs, reconcileMinutes: settings.reconcileMinutes });
   const webhookHandlers: WebhookHandlers = {
     linear: trackerWebhookHandler(ingestDeps),
-    github: recordOnlyHandler("PR states are not wired yet"),
+    github: githubWebhookHandler(prDeps),
   };
   await jobs.work("webhook.process", webhookProcessHandler({ db, clock: systemClock, handlers: webhookHandlers }));
   // Polling (ticket 14): a schedule per attached board, made here from the board rows.
@@ -290,6 +304,9 @@ export const startCore = async (
   const trackerTick = async (): Promise<void> => {
     await pollSchedules.ensure().catch((error: unknown) => {
       logger.warn("tracker.schedules-failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
+    await reconcileSchedules.ensure().catch((error: unknown) => {
+      logger.warn("github.reconcile-schedules-failed", { error: error instanceof Error ? error.name : "unknown" });
     });
     await ensureTokenRefreshes(refreshDeps).catch((error: unknown) => {
       logger.warn("linear.refresh-schedule-failed", { error: error instanceof Error ? error.name : "unknown" });

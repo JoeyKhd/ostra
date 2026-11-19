@@ -141,6 +141,8 @@ describe("code: in review", () => {
     ["every PR closed", inReview("ci_running"), { type: "all_prs_closed" }, code({ state: "stopped", reason: "prs_closed" })],
     ["stopped in review", inReview("ai_review"), { type: "stop", reason: "requested" }, code({ state: "stopped", reason: "requested" })],
     ["merged reopens", code({ state: "merged" }), { type: "reopen" }, code({ state: "queued" })],
+    ["a merged task's PR reopened on the host (Q107)", code({ state: "merged" }), { type: "pr_reopened" }, inReview("waiting_for_reviewer")],
+    ["a task stopped as prs_closed, its PR reopened", code({ state: "stopped", reason: "prs_closed" }), { type: "pr_reopened" }, inReview("waiting_for_reviewer")],
   ] satisfies readonly (readonly [string, TaskLifecycle, TaskInput, TaskLifecycle])[])("%s", (_name, from, input, to) => {
     expect(go(from, input)).toEqual({ ok: true, task: to });
   });
@@ -171,6 +173,9 @@ describe("refused inputs: at least one per state", () => {
     ["preparing", code({ state: "preparing" }), { type: "runner_accepted" }],
     ["running", code({ state: "running" }), { type: "reopen" }],
     ["running: no PR to merge", code({ state: "running" }), { type: "last_pr_merged" }],
+    ["running: no PR to reopen", code({ state: "running" }), { type: "pr_reopened" }],
+    ["stopped by a member: a PR reopened doesn't restart it", code({ state: "stopped", reason: "requested" }), { type: "pr_reopened" }],
+    ["refine: no PR", refine({ state: "done" }), { type: "pr_reopened" }],
     ["needs_you", code({ state: "needs_you", reason: "no_changes" }), { type: "box_ready" }],
     ["stopped", code({ state: "stopped", reason: "requested" }), { type: "stop", reason: "requested" }],
     ["in_review/waiting", code({ state: "in_review", subState: "waiting_for_reviewer" }), { type: "pushed" }],
