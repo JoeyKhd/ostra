@@ -10,7 +10,7 @@
   <a href="#the-plan-lives-here">The plan</a>
 </p>
 
-> **ostra is being planned in the open.** The plan was signed off on 2026-11-17 and reworked on 2026-11-18. The repo's skeleton is in place, and the first code, ten short experiments, is being built. There's nothing to install yet. Star or watch the repo to follow along.
+> **ostra is being built in the open.** The plan was signed off on 2026-11-17 and reworked on 2026-11-18. The ten short experiments that tested its riskiest assumptions are done, and milestone 1 is under way: a typed prompt already becomes a pull request on a developer's machine. There's nothing to install yet. Star or watch the repo to follow along.
 
 ## What ostra is
 
@@ -64,8 +64,8 @@ These are design concepts built in HTML, not screenshots of shipped software.
 
 | Milestone | What it delivers | |
 |---|---|---|
-| 0 · Spikes | Ten short experiments that test the plan's riskiest assumptions | **in progress**: six findings are in |
-| 1 · First PR, from a prompt | Install ostra, add a model provider and the GitHub App, create a project and type a prompt. OpenCode works in a box and opens a pull request | **next** |
+| 0 · Spikes | Ten short experiments that test the plan's riskiest assumptions | **done**: all ten have a finding, and the checks that need a Linux machine with Docker or a Mac are tracked in the build order |
+| 1 · First PR, from a prompt | Install ostra, add a model provider and the GitHub App, create a project and type a prompt. OpenCode works in a box and opens a pull request | **in progress**: a prompt becomes a pull request through a runner on a developer's machine, and the Docker box still needs a Linux machine to test |
 | 2 · Tickets in, nothing lost | A Linear ticket becomes a PR linked back on the ticket. Restarts, dropped runners and duplicate events lose nothing, and a task reopens on a fresh box a day later | |
 | 3 · Step in and come back | Agent profiles, steering, approvals, plan first, comments on the diff, and boxes that start from a snapshot with their services | |
 | 4 · The organization | Several projects with their own access, two roles at each level, spend and budgets, and project memory | |
