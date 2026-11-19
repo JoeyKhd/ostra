@@ -559,7 +559,7 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     expect(await harness.test.db.event.count({ where: { taskId: task.taskId, kind: "approval.closed" } })).toBe(0);
   });
 
-  it("refuses a decision the agent didn't offer, another organization, and a restricted project's outsiders", async () => {
+  it("F-026: refuses a decision the agent didn't offer, another organization, and a restricted project's outsiders", async () => {
     const { a, b } = harness.fixture;
     const { approvals } = await prepare("approve-4", 1);
     const target = approvalIdSchema.parse(approvals[0]);
@@ -572,5 +572,10 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
       data: { organizationId: orgA(), projectId: a.restrictedProject.id, taskId: restricted.taskId, sessionId: restricted.sessionId, toolCallId: "t", options: [...options] },
     });
     await expect((await harness.as(a.member)).approvals.answer({ approvalId: approvalIdSchema.parse(hidden.id), decision: "allow_once" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // Refused means untouched: still open, no answer event, no audit entry. A member of it answers.
+    expect(await harness.test.db.approval.findUniqueOrThrow({ where: { id: hidden.id } })).toMatchObject({ state: "open", answeredByMemberId: null });
+    expect(await harness.test.db.event.count({ where: { taskId: restricted.taskId, kind: "approval.answered" } })).toBe(0);
+    expect(await harness.test.db.auditEntry.count({ where: { action: "approval.answered", entityId: hidden.id } })).toBe(0);
+    await expect((await harness.as(a.insider)).approvals.answer({ approvalId: approvalIdSchema.parse(hidden.id), decision: "allow_once" })).resolves.toMatchObject({ decision: "allow_once" });
   });
 });
