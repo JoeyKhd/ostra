@@ -9,6 +9,7 @@ import type { PoolId, RunnerId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { hashJoinToken } from "./bootstrap-join-token.ts";
 import { connectPeer, makeRunnerKey, signAssertion } from "../testing/fake-peer.ts";
 import type { FakePeer } from "../testing/fake-peer.ts";
 import { accessToken, postJson, registerBody, startGateway } from "../testing/harness.ts";
@@ -134,6 +135,44 @@ describe("join tokens an admin makes", () => {
     await joined(first.token, "box-host");
     expect((await join(second.token, "box-host")).response.status).toBe(409);
     expect(await api.test.db.runner.count({ where: { poolId } })).toBe(1);
+  });
+
+  it("F-091: joins that race with one name in a pool make one runner, and the others are refused", async () => {
+    const admin = await api.as(api.fixture.a.admin);
+    const { poolId } = await admin.pools.create({ name: "racing-names" });
+    const made = await admin.pools.createJoinToken({ poolId });
+    // The race, made certain: this test holds the join token's row, which a join writes last, so
+    // every join reads the pool before any of them commits; then it lets go.
+    const locked = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
+    const holder = api.test.db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT 1 FROM "join_token" WHERE "tokenHash" = ${hashJoinToken(made.token)} FOR UPDATE`;
+        locked.resolve(undefined);
+        await release.promise;
+      },
+      { timeout: 60_000 },
+    );
+    try {
+      await locked.promise;
+      const joins = [join(made.token, "same-name"), join(made.token, "same-name"), join(made.token, "same-name")];
+      const waiting = async (): Promise<number> => {
+        const rows = await api.test.db.$queryRaw<readonly { readonly waiting: number }[]>`
+          SELECT count(*)::int AS "waiting" FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+        return rows[0]?.waiting ?? 0;
+      };
+      for (let attempt = 0; attempt < 200 && (await waiting()) < joins.length; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(await waiting()).toBe(joins.length);
+      release.resolve(undefined);
+      await holder;
+      expect((await Promise.all(joins)).map((outcome) => outcome.response.status).sort()).toEqual([201, 409, 409]);
+      expect(await api.test.db.runner.count({ where: { poolId, name: "same-name" } })).toBe(1);
+    } finally {
+      release.resolve(undefined);
+      await holder.catch(() => undefined);
+    }
   });
 
   it("F-091: a token of another organization registers nothing in this one", async () => {

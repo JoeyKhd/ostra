@@ -57,6 +57,9 @@ const registerPoolRunner = async (
     if (request.executor === "host") {
       return { status: 400, code: "bad-request", message: "a pool runner uses the docker or kubernetes executor" };
     }
+    // Joins into one pool take its row in turn, so of two that race with one name, the second
+    // reads the first's runner below and is refused.
+    await tx.$queryRaw`SELECT 1 FROM "runner_pool" WHERE "id" = ${token.poolId} AND "organizationId" = ${token.organizationId} FOR NO KEY UPDATE`;
     const sameName = await tx.runner.findFirst({
       where: { organizationId: token.organizationId, poolId: token.poolId, name: request.name, revokedAt: null },
       select: { id: true },
