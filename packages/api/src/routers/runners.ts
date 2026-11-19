@@ -124,9 +124,10 @@ export const poolsRouter = router({
           data: { organizationId, name: input.name, requiresApproval: input.requiresApproval, maxBoxes: input.maxBoxes },
           select: { id: true },
         });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "pool.created", entity: "runner-pool", entityId: pool.id });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: pool.id });
-        return { poolId: poolIdSchema.parse(pool.id) };
+        const poolId = poolIdSchema.parse(pool.id);
+        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "pool.created", entity: "runner-pool", entityId: poolId });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: poolId });
+        return { poolId };
       });
     }),
 
@@ -158,8 +159,8 @@ export const poolsRouter = router({
             ...(input.maxBoxes === undefined ? {} : { maxBoxes: input.maxBoxes }),
           },
         });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "pool.updated", entity: "runner-pool", entityId: pool.id });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: pool.id });
+        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "pool.updated", entity: "runner-pool", entityId: input.poolId });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: input.poolId });
         return { poolId: input.poolId };
       });
     }),
@@ -218,8 +219,8 @@ export const poolsRouter = router({
           },
           select: { id: true },
         });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "join-token.created", entity: "join-token", entityId: row.id, data: { poolId: pool.id } });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: pool.id });
+        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "join-token.created", entity: "join-token", entityId: joinTokenIdSchema.parse(row.id), data: { poolId: pool.id } });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: input.poolId });
         return row;
       });
       return { joinTokenId: joinTokenIdSchema.parse(created.id), token, expiresAt: expiresAt === null ? null : expiresAt.getTime() };
@@ -236,8 +237,8 @@ export const poolsRouter = router({
       }
       if (row.revokedAt === null) {
         await tx.joinToken.update({ where: { id: row.id }, data: { revokedAt: new Date(ports.clock.now()) } });
-        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "join-token.revoked", entity: "join-token", entityId: row.id, data: { poolId: row.poolId } });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: row.poolId });
+        await ports.audit.recordInTx(tx, { organizationId, projectId: null, actor: { kind: "member", id: ctx.scope.memberId }, action: "join-token.revoked", entity: "join-token", entityId: input.joinTokenId, data: { poolId: row.poolId } });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "runner-pool", entityId: poolIdSchema.parse(row.poolId) });
       }
       return { joinTokenId: input.joinTokenId, revoked: true as const };
     });

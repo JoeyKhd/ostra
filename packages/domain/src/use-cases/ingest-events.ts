@@ -1,8 +1,8 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
 import type { Session, Tx } from "@ostra/db";
-import { runnerEventSchema, runnerIdSchema, taskSeqSchema } from "@ostra/protocol";
-import type { LeaseEpoch, RunnerEvent, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
+import { runnerEventSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
+import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { Ports } from "../ports.ts";
@@ -59,7 +59,7 @@ export type IngestEvents = (deps: IngestEventsDeps, input: IngestEventsInput) =>
 type LockedTask = ReturnType<typeof mapTask>;
 
 /** Locks the task row for the batch (see the note on the lock above) and reads it. */
-const lockTaskRow = async (tx: Tx, taskId: string): Promise<LockedTask | null> => {
+const lockTaskRow = async (tx: Tx, taskId: TaskId): Promise<LockedTask | null> => {
   const locked = await tx.$queryRaw<readonly unknown[]>`SELECT 1 FROM "task" WHERE "id" = ${taskId} FOR NO KEY UPDATE`;
   const row = locked.length === 0 ? null : await tx.task.findUnique({ where: { id: taskId } });
   return row === null ? null : mapTask(row);
@@ -243,7 +243,7 @@ const applyEffects = async (
 
 const ingestSession = async (
   deps: IngestEventsDeps,
-  runnerId: string,
+  runnerId: RunnerId,
   sessionId: SessionId,
   items: readonly RunnerEvent[],
 ): Promise<SessionIngestOutcome> => {
@@ -252,7 +252,7 @@ const ingestSession = async (
   if (session === null) {
     return { kind: "unknown-session", sessionId };
   }
-  const task = await lockTaskRow(tx, session.taskId);
+  const task = await lockTaskRow(tx, taskIdSchema.parse(session.taskId));
   if (task === null) {
     return { kind: "unknown-session", sessionId };
   }

@@ -1,6 +1,7 @@
 import type { Tx } from "@ostra/db";
 import { registerRequestSchema, runnerIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, RegisterRequest, RegisterResponse } from "@ostra/protocol";
+import { z } from "zod";
 
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -13,9 +14,13 @@ import type { UseCaseResult } from "./common.ts";
 export const registerPersonalRunnerInputSchema = registerRequestSchema;
 export type RegisterPersonalRunnerInput = RegisterRequest;
 
+/** The ID of a device session: the row better-auth keeps for it, which core revokes (not an ostra record). */
+export const deviceSessionIdSchema = z.string().min(1).regex(/^\S+$/, "an ID has no whitespace").brand<"DeviceSessionId">();
+export type DeviceSessionId = z.infer<typeof deviceSessionIdSchema>;
+
 /** Who the device session belongs to, as better-auth resolved it. */
 export type DeviceSessionOwner = {
-  readonly sessionId: string;
+  readonly sessionId: DeviceSessionId;
   readonly memberId: MemberId;
   readonly organizationId: OrganizationId;
 };
@@ -29,7 +34,7 @@ export type RegisterPersonalRunnerDeps = Pick<Ports, "notices" | "audit" | "cloc
   readonly tx: Tx;
   readonly owner: DeviceSessionOwner;
   /** Revokes the device session once the runner exists (Q115). */
-  readonly revokeSession: (sessionId: string) => Promise<void>;
+  readonly revokeSession: (sessionId: DeviceSessionId) => Promise<void>;
 };
 
 export type RegisterPersonalRunner = (

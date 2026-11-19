@@ -1,4 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
+import { mapTask } from "@ostra/db";
 import type { Db, Task, Tx } from "@ostra/db";
 import { appendServerEvent, moveSessionInTx, moveTaskInTx } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobPayload } from "@ostra/domain";
@@ -108,7 +109,7 @@ export const endGraceInTx = async (
   // The fence: from here on, a write carrying the old epoch is refused (F-045).
   await tx.task.update({ where: { id: task.id }, data: { leaseEpoch: { increment: 1 } } });
   const moveDeps = { tx, notices: deps.notices, logger: deps.logger };
-  await moveTaskInTx(moveDeps, task, { type: "stop", reason: "runner_lost" });
+  await moveTaskInTx(moveDeps, mapTask(task), { type: "stop", reason: "runner_lost" });
   const session = await activeSession(tx, task.id);
   if (session !== null) {
     await moveSessionInTx(moveDeps, session, { type: "stop" });
@@ -135,7 +136,7 @@ export const endGraceInTx = async (
     actor: { kind: "system", id: null },
     action: "task.stopped",
     entity: "task",
-    entityId: task.id,
+    entityId: payload.taskId,
     data: { reason: "runner_lost", leaseEpoch: payload.leaseEpoch },
   });
   return "stopped";

@@ -1,8 +1,8 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { boxIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits } from "@ostra/protocol";
-import type { BoxId, CommandId, LeaseEpoch, RunnerId } from "@ostra/protocol";
+import { boxIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, runnerLimits } from "@ostra/protocol";
+import type { BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, RunnerId } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
 import type { Ports } from "../ports.ts";
@@ -40,10 +40,15 @@ const ACTIVE_SESSION_STATES = ["starting", "running", "waiting", "idle"] as cons
 /** Thrown when another transaction holds the task: the job is retried, nothing is lost. */
 export const TASK_BUSY = "the task is locked by another transaction; the job retries";
 
-type Candidate = { readonly id: string; readonly executor: "docker" | "host" | "kubernetes"; readonly freeSlots: number };
+type Candidate = { readonly id: RunnerId; readonly executor: "docker" | "host" | "kubernetes"; readonly freeSlots: number };
 
 /** The runners among `ids` that can take a task now: online, present, with a free slot. */
-const available = async (tx: Tx, organizationId: string, where: { readonly ids?: readonly string[]; readonly poolIds?: readonly string[] }, now: number): Promise<readonly Candidate[]> => {
+const available = async (
+  tx: Tx,
+  organizationId: OrganizationId,
+  where: { readonly ids?: readonly RunnerId[]; readonly poolIds?: readonly PoolId[] },
+  now: number,
+): Promise<readonly Candidate[]> => {
   const runners = await tx.runner.findMany({
     where: {
       organizationId,
@@ -56,7 +61,7 @@ const available = async (tx: Tx, organizationId: string, where: { readonly ids?:
     select: { id: true, executor: true, capacity: true, _count: { select: { leases: { where: { state: "active" } } } } },
   });
   return runners
-    .map((runner) => ({ id: runner.id, executor: runner.executor, freeSlots: runner.capacity - runner._count.leases }))
+    .map((runner) => ({ id: runnerIdSchema.parse(runner.id), executor: runner.executor, freeSlots: runner.capacity - runner._count.leases }))
     .filter((runner) => runner.freeSlots > 0)
     .sort((a, b) => b.freeSlots - a.freeSlots);
 };
@@ -147,7 +152,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     if (!provider.allowOnPersonalRunners) {
       return noRunner("The model provider isn't allowed on personal runners: an admin turns it on under Models.");
     }
-    candidates = await available(tx, task.organizationId, { ids: [chosen.id] }, now);
+    candidates = await available(tx, task.organizationId, { ids: [runnerIdSchema.parse(chosen.id)] }, now);
     if (candidates.length === 0) {
       return noRunner("The picked personal runner is offline or busy.");
     }
@@ -155,8 +160,10 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     const listed = await tx.projectPool.findMany({ where: { projectId: task.projectId }, select: { poolId: true } });
     const poolIds =
       listed.length > 0
-        ? listed.map((row) => row.poolId)
-        : (await tx.runnerPool.findMany({ where: { organizationId: task.organizationId, isDefault: true }, select: { id: true } })).map((row) => row.id);
+        ? listed.map((row) => poolIdSchema.parse(row.poolId))
+        : (await tx.runnerPool.findMany({ where: { organizationId: task.organizationId, isDefault: true }, select: { id: true } })).map((row) =>
+            poolIdSchema.parse(row.id),
+          );
     candidates = poolIds.length === 0 ? [] : await available(tx, task.organizationId, { poolIds }, now);
     if (candidates.length === 0) {
       return noRunner("No runner of the project's pools is online with a free slot.");
@@ -170,7 +177,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   // The grant, in this one transaction: box, lease (the epoch goes up), the command, the timer.
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
-  const runnerId = runnerIdSchema.parse(runner.id);
+  const runnerId = runner.id;
   const box = await tx.box.create({
     data: { organizationId, projectId, taskId: task.id, runnerId, executor: runner.executor, state: "creating" },
     select: { id: true },

@@ -143,10 +143,10 @@ export const organizationRouter = router({
           actor: { kind: "member", id: ctx.scope.memberId },
           action: "member.role-changed",
           entity: "member",
-          entityId: target.id,
+          entityId: input.memberId,
           data: { role: input.role },
         });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "member", entityId: target.id });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "member", entityId: input.memberId });
       });
       return { memberId: input.memberId, role: input.role };
     }),

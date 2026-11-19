@@ -2,6 +2,7 @@ import type { Logger } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { organizationIdSchema, projectIdSchema, taskEventSchema } from "@ostra/protocol";
+import type { SessionId, TaskId } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
@@ -35,14 +36,14 @@ export type RecordSessionEnd = (deps: RecordSessionEndDeps, input: RecordSession
 const M1_ROUNDS = { ci: false, aiReview: false } as const;
 
 /** The agent's last complete message of the session: the needs-you item's summary, and a PR body's fallback. */
-export const lastAgentMessageInTx = async (tx: Tx, taskId: string, sessionId: string): Promise<string | null> => {
+export const lastAgentMessageInTx = async (tx: Tx, taskId: TaskId, sessionId: SessionId): Promise<string | null> => {
   const row = await tx.event.findFirst({ where: { taskId, sessionId, kind: "agent.message" }, orderBy: { seq: "desc" }, select: { payload: true } });
   const parsed = row === null ? null : taskEventSchema.safeParse(row.payload);
   return parsed?.success === true && parsed.data.kind === "agent.message" ? parsed.data.text : null;
 };
 
 /** Ends the task's active lease and stops its box: the session is over (milestone 1: one turn). */
-export const releaseLeaseInTx = async (tx: Tx, taskId: string, at: Date, reason: "released"): Promise<void> => {
+export const releaseLeaseInTx = async (tx: Tx, taskId: TaskId, at: Date, reason: "released"): Promise<void> => {
   const lease = await tx.lease.findFirst({ where: { taskId, state: "active" } });
   if (lease === null) {
     return;

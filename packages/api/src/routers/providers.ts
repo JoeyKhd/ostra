@@ -237,14 +237,14 @@ export const providersRouter = router({
           actor: { kind: "member", id: ctx.scope.memberId },
           action: "provider.updated",
           entity: "model-provider",
-          entityId: updated.id,
+          entityId: input.providerId,
           data: {
             ...(input.name === undefined ? {} : { renamed: true }),
             ...(input.sessionsAtOnce === undefined ? {} : { sessionsAtOnce: input.sessionsAtOnce }),
             ...(input.allowOnPersonalRunners === undefined ? {} : { allowOnPersonalRunners: input.allowOnPersonalRunners }),
           },
         });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: updated.id });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: input.providerId });
         const provider = mapModelProvider(updated);
         return {
           id: provider.id,
@@ -348,9 +348,9 @@ export const providersRouter = router({
           actor: { kind: "member", id: ctx.scope.memberId },
           action: "model.updated",
           entity: "model",
-          entityId: model.id,
+          entityId: input.modelId,
         });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: model.providerId });
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: providerIdSchema.parse(model.providerId) });
         return { id: input.modelId };
       });
     }),
@@ -419,6 +419,7 @@ export const agentProfilesRouter = router({
         if (profile === null) {
           throw new TRPCError({ code: "NOT_FOUND", message: "This organization has no built-in OpenCode profile" });
         }
+        const profileId = agentProfileIdSchema.parse(profile.id);
         await tx.agentProfile.update({ where: { id: profile.id }, data: { modelId: model.id } });
         await ports.audit.recordInTx(tx, {
           organizationId,
@@ -426,11 +427,11 @@ export const agentProfilesRouter = router({
           actor: { kind: "member", id: ctx.scope.memberId },
           action: "agent-profile.model-set",
           entity: "agent-profile",
-          entityId: profile.id,
+          entityId: profileId,
           data: { modelId: model.id, providerId: model.providerId },
         });
-        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "agent-profile", entityId: profile.id });
-        return { profileId: profile.id, modelId: input.modelId };
+        await ports.notices.emitInTx(tx, { organizationId, projectId: null, entity: "agent-profile", entityId: profileId });
+        return { profileId, modelId: input.modelId };
       });
     }),
 });

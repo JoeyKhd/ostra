@@ -1,8 +1,8 @@
 import type { Tx } from "@ostra/db";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretRef } from "@ostra/adapter-sdk";
-import { DEFAULT_ENV_FILE, environmentConfigSchema, environmentIdSchema, projectIdSchema } from "@ostra/protocol";
-import type { EnvironmentId, OrganizationId } from "@ostra/protocol";
+import { DEFAULT_ENV_FILE, environmentConfigSchema, environmentIdSchema, projectIdSchema, repoIdSchema } from "@ostra/protocol";
+import type { EnvironmentId, OrganizationId, ProjectId, RepoId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
@@ -38,7 +38,7 @@ const refuse = (error: Exclude<SaveEnvironmentResult, { readonly ok: true }>["er
   message,
 });
 
-const secretKey = (repoId: string, name: string): string => `${repoId}\u0000${name}`;
+const secretKey = (repoId: RepoId, name: string): string => `${repoId}\u0000${name}`;
 
 export const saveEnvironment: SaveEnvironment = async (deps, input) => {
   const { tx, scope } = deps;
@@ -47,18 +47,16 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
   if (project === null) {
     return refuse("not-found", "No such project");
   }
-  const access = requireProjectAccess(
-    scope,
-    { id: projectIdSchema.parse(project.id), organizationId, access: project.access },
-    "admin",
-  );
+  const projectId = projectIdSchema.parse(project.id);
+  const access = requireProjectAccess(scope, { id: projectId, organizationId, access: project.access }, "admin");
   if (!access.ok) {
     return access.code === "not-found" ? refuse("not-found", "No such project") : refuse("forbidden", "Only a project admin saves its environment");
   }
 
   const { environment } = input;
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, select: { id: true } });
-  const repoIds = new Set(repos.map((repo) => repo.id));
+  const projectRepoIds = repos.map((repo) => repoIdSchema.parse(repo.id));
+  const repoIds = new Set<RepoId>(projectRepoIds);
   if (environment.entries.some((entry) => !repoIds.has(entry.repoId)) || environment.envFiles.some((file) => !repoIds.has(file.repoId))) {
     return refuse("unknown-repo", "An entry names a repo that isn't in this project");
   }
@@ -72,7 +70,7 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
     }
     seen.add(key);
   }
-  const envFileRepos = new Set<string>();
+  const envFileRepos = new Set<RepoId>();
   for (const file of environment.envFiles) {
     if (envFileRepos.has(file.repoId)) {
       return refuse("duplicate-entry", "A repo has two env files");
@@ -92,16 +90,16 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
   for (const entry of existing) {
     const ref = secretRefSchema.safeParse(entry.secretRef);
     if (entry.name !== null && ref.success) {
-      existingRefs.set(secretKey(entry.repoId, entry.name), ref.data);
+      existingRefs.set(secretKey(repoIdSchema.parse(entry.repoId), entry.name), ref.data);
     }
   }
 
   const created: SecretRef[] = [];
   const rows: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    repoId: string;
+    organizationId: OrganizationId;
+    projectId: ProjectId;
+    environmentId: EnvironmentId;
+    repoId: RepoId;
     kind: "variable" | "secret" | "file";
     name: string | null;
     path: string | null;
@@ -109,7 +107,7 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
     secretRef: string | null;
     availableDuringSetup: boolean;
   }[] = [];
-  const base = { organizationId, projectId: project.id, environmentId: environmentRow.id };
+  const base = { organizationId, projectId, environmentId };
   try {
     for (const entry of environment.entries) {
       switch (entry.kind) {
@@ -146,9 +144,9 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
       await tx.environmentEntry.createMany({ data: rows });
     }
     // Where each repo's variables and secrets are written in its checkout (spec section 11, item 7).
-    const envFileOf = new Map<string, string>(environment.envFiles.map((file) => [file.repoId, file.path] as const));
-    for (const repo of repos) {
-      await tx.repo.update({ where: { id: repo.id }, data: { envFile: envFileOf.get(repo.id) ?? DEFAULT_ENV_FILE } });
+    const envFileOf = new Map<RepoId, string>(environment.envFiles.map((file) => [file.repoId, file.path] as const));
+    for (const repoId of projectRepoIds) {
+      await tx.repo.update({ where: { id: repoId }, data: { envFile: envFileOf.get(repoId) ?? DEFAULT_ENV_FILE } });
     }
     await tx.environment.update({
       where: { id: environmentRow.id },
@@ -162,7 +160,7 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
     });
     await deps.audit.recordInTx(tx, {
       organizationId,
-      projectId: projectIdSchema.parse(project.id),
+      projectId,
       actor: { kind: "member", id: scope.memberId },
       action: "environment.saved",
       entity: "environment",
@@ -174,7 +172,7 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
         hasSetupScript: environment.setupScript !== null,
       },
     });
-    await deps.notices.emitInTx(tx, { organizationId, projectId: projectIdSchema.parse(project.id), entity: "environment", entityId: environmentId });
+    await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "environment", entityId: environmentId });
 
     // Secrets this save replaced or dropped are deleted last, once everything else is written.
     const keep = new Set<string>(rows.flatMap((candidate) => (candidate.secretRef === null ? [] : [candidate.secretRef])));

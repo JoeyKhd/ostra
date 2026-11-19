@@ -1,5 +1,6 @@
 import type { Db, Tx } from "@ostra/db";
-import type { DeviceSessionOwner } from "@ostra/domain";
+import { deviceSessionIdSchema } from "@ostra/domain";
+import type { DeviceSessionId, DeviceSessionOwner } from "@ostra/domain";
 import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 
 // The member's device session, as a personal runner presents it at `POST /runner/v1/register`
@@ -12,7 +13,7 @@ export type DeviceSessions = {
   /** Who the session belongs to, in its active organization; `null` when it's unknown or expired. */
   readonly verify: (token: string) => Promise<DeviceSessionOwner | null>;
   /** Revokes the session in the caller's transaction, so it goes only if the runner was created. */
-  readonly revokeInTx: (tx: Tx, sessionId: string) => Promise<void>;
+  readonly revokeInTx: (tx: Tx, sessionId: DeviceSessionId) => Promise<void>;
 };
 
 export const postgresDeviceSessions = (db: Db, now: () => number = Date.now): DeviceSessions => ({
@@ -42,7 +43,7 @@ export const postgresDeviceSessions = (db: Db, now: () => number = Date.now): De
       return null;
     }
     return {
-      sessionId: session.id,
+      sessionId: deviceSessionIdSchema.parse(session.id),
       memberId: memberIdSchema.parse(member.id),
       organizationId: organizationIdSchema.parse(member.organizationId),
     };

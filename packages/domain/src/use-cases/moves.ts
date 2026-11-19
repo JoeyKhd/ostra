@@ -1,6 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import type { Session, Task, Tx } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema } from "@ostra/protocol";
+import type { mapTask, Session, Tx } from "@ostra/db";
 
 import { sessionFromColumns, sessionToColumns, taskFromColumns, taskToColumns } from "../lifecycles/mapping.ts";
 import { transitionSession } from "../lifecycles/session.ts";
@@ -19,7 +18,11 @@ export type MoveDeps = {
   readonly logger?: Logger;
 };
 
-type TaskRow = Pick<Task, "id" | "organizationId" | "projectId" | "kind" | "state" | "subState" | "needsYouReason" | "stoppedReason">;
+/** A task row as `mapTask` gives it, so its IDs are branded. */
+type TaskRow = Pick<
+  ReturnType<typeof mapTask>,
+  "id" | "organizationId" | "projectId" | "kind" | "state" | "subState" | "needsYouReason" | "stoppedReason"
+>;
 
 /** Applies `input` to the task; `true` when it moved. A change notice goes with every move. */
 export const moveTaskInTx = async (deps: MoveDeps, task: TaskRow, input: TaskInput): Promise<boolean> => {
@@ -44,8 +47,8 @@ export const moveTaskInTx = async (deps: MoveDeps, task: TaskRow, input: TaskInp
     },
   });
   await deps.notices.emitInTx(deps.tx, {
-    organizationId: organizationIdSchema.parse(task.organizationId),
-    projectId: projectIdSchema.parse(task.projectId),
+    organizationId: task.organizationId,
+    projectId: task.projectId,
     entity: "task",
     entityId: task.id,
   });

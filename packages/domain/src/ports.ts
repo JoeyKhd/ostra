@@ -1,12 +1,21 @@
 import type { CodeHostAdapter, ModelProviderAdapter, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Tx } from "@ostra/db";
 import type {
+  AgentProfileId,
+  ApprovalId,
   CommandBody,
   CommandId,
   CommandKind,
   CommandSeq,
+  ConnectionId,
+  EnvironmentId,
+  JoinTokenId,
+  MemberId,
+  ModelId,
   OrganizationId,
+  PoolId,
   ProjectId,
+  ProviderId,
   RunnerId,
   TaskId,
 } from "@ostra/protocol";
@@ -50,13 +59,32 @@ export type CommandOutbox = {
   ) => Promise<{ readonly commandId: CommandId; readonly seq: CommandSeq }>;
 };
 
+/**
+ * The ID of any record a change notice or an audit entry can name. A bare string is not one: the
+ * caller holds the record's branded ID, or parses it with the ID's schema.
+ */
+export type EntityId =
+  | AgentProfileId
+  | ApprovalId
+  | ConnectionId
+  | EnvironmentId
+  | JoinTokenId
+  | MemberId
+  | ModelId
+  | OrganizationId
+  | PoolId
+  | ProjectId
+  | ProviderId
+  | RunnerId
+  | TaskId;
+
 /** A change to tell the panel's live views about: IDs only (ADR 0035). */
 export type ChangeNoticeInput = {
   readonly organizationId: OrganizationId;
   readonly projectId: ProjectId | null;
   /** The kind of record: `task`, `runner`, `project`, `model-provider`, … */
   readonly entity: string;
-  readonly entityId: string;
+  readonly entityId: EntityId;
 };
 
 export type ChangeNotices = {
@@ -70,7 +98,7 @@ export type AuditInput = {
   readonly actor: { readonly kind: "member" | "runner" | "system"; readonly id: string | null };
   readonly action: string;
   readonly entity: string | null;
-  readonly entityId: string | null;
+  readonly entityId: EntityId | null;
   readonly data?: Readonly<Record<string, string | number | boolean | null>>;
 };
 

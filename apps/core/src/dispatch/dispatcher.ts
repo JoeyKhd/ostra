@@ -62,7 +62,7 @@ export const offerTimeoutHandler = (deps: DispatcherDeps): JobHandler<"task.offe
         organizationId: context.payload.organizationId,
         projectId: projectIdSchema.parse(task.projectId),
         entity: "task",
-        entityId: task.id,
+        entityId: context.payload.taskId,
       });
       context.logger.info("task.offer-timed-out", { taskId: task.id, leaseEpoch: context.payload.leaseEpoch });
     },

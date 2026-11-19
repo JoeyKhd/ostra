@@ -386,7 +386,7 @@ export const tasksRouter = router({
         notAfter: now + runnerLimits.offerTimeoutMs,
         task: { taskId: input.taskId, projectId },
       });
-      await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+      await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: input.taskId });
       return { seq, duplicate: false as const };
     });
   }),
@@ -417,7 +417,7 @@ export const tasksRouter = router({
         notAfter: now + runnerLimits.offerTimeoutMs,
         task: { taskId: input.taskId, projectId },
       });
-      await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+      await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: input.taskId });
       return { interrupted: true as const };
     });
   }),
@@ -454,9 +454,9 @@ export const tasksRouter = router({
         actor: { kind: "member", id: ctx.scope.memberId },
         action: "task.driver-changed",
         entity: "task",
-        entityId: task.id,
+        entityId: input.taskId,
       });
-      await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+      await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: input.taskId });
       return { driver: ctx.scope.memberId, changed: true as const };
     });
   }),
@@ -550,10 +550,10 @@ export const approvalsRouter = router({
           actor: { kind: "member", id: ctx.scope.memberId },
           action: "approval.answered",
           entity: "approval",
-          entityId: approval.id,
+          entityId: input.approvalId,
           data: { decision: input.decision },
         });
-        await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+        await ports.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: taskIdSchema.parse(task.id) });
         return { approvalId: input.approvalId, decision: input.decision };
       });
     }),

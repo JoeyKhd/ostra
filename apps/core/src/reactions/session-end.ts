@@ -94,13 +94,13 @@ export const applyStopResultsInTx = async (
     }
     const lease = await tx.lease.findFirst({ where: { taskId: task.id, epoch: body.data.leaseEpoch, runnerId: runner.runnerId, state: "active" } });
     if (lease !== null) {
-      await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released");
+      await releaseLeaseInTx(tx, body.data.taskId, new Date(deps.clock.now()), "released");
     }
     await deps.notices.emitInTx(tx, {
       organizationId: organizationIdSchema.parse(task.organizationId),
       projectId: projectIdSchema.parse(task.projectId),
       entity: "task",
-      entityId: task.id,
+      entityId: body.data.taskId,
     });
     deps.logger.info("task.stop-answered", { taskId: task.id, runnerId: runner.runnerId, result: result.result });
   }

@@ -96,9 +96,9 @@ export const stopTask: StopTask = async (deps, input) => {
     actor: { kind: "member", id: scope.memberId },
     action: "task.stopped",
     entity: "task",
-    entityId: task.id,
+    entityId: input.taskId,
     data: { dispatched: lease !== null },
   });
-  await deps.notices.emitInTx(tx, { organizationId, projectId: projectIdSchema.parse(task.projectId), entity: "task", entityId: task.id });
+  await deps.notices.emitInTx(tx, { organizationId, projectId: projectIdSchema.parse(task.projectId), entity: "task", entityId: input.taskId });
   return { ok: true, commandId };
 };

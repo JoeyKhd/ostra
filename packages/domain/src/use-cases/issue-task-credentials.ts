@@ -140,7 +140,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     actor: { kind: "runner", id: input.runnerId },
     action: "task.credentials-issued",
     entity: "task",
-    entityId: task.id,
+    entityId: input.taskId,
     data: { leaseEpoch: input.leaseEpoch, repos: repos.length, secrets: entries.length },
   });
   return { ok: true, credentials };
