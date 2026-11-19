@@ -398,6 +398,9 @@ model Connection {
   activatedAt           DateTime?
   /// The last webhook or poll that brought an event, for the panel's "last event" line.
   lastEventAt           DateTime?
+  /// Set when polling's drift check found changes the webhooks never brought: "webhooks silent
+  /// since …" in the panel (ticket 14). Cleared by the next webhook. The mode is never switched on its own.
+  webhooksSilentSince   DateTime?
   /// The admin who started a pending connection. No foreign key: the row outlives the member.
   createdByMemberId     String?
 
@@ -824,6 +827,8 @@ model Board {
   /// The next poll asks from it, minus the overlap.
   pollCursor          DateTime?
   lastPolledAt        DateTime?
+  /// How many tickets the last poll changed in the cache (ticket 14), for the panel's "last poll" line.
+  lastPollChanged     Int?
   /// Whether the tracker's own GitHub integration is installed (F-031); `null` until checked.
   integrationDetected Boolean?
   /// Set when a project admin detaches the board: it stops polling and starts no new task, but its
