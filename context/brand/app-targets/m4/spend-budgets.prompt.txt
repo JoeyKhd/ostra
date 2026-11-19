@@ -1,0 +1,73 @@
+# Generation 1 (kept: spend-budgets.webp). References: app-targets/m1/models.png, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on screenshot of a desktop web app at 1440x960 CSS pixels rendered at 2x, dark mode. Not a device mockup, not tilted, no perspective, no shadows around the window. It is the "Spend" page of ostra's organization settings, a self-hosted control panel for coding agents. It must look like the same product as the attached reference screenshots: the same sidebar, the same top bar, the same graphite near-black chrome, the same small dense type, hairline rows, few boxes. Render at the exact scale and density of the FIRST attached screenshot (the Models page): the same sidebar, the same text sizes, the same table style, the same right properties panel holding a form. Copy every label exactly as written below.
+
+PALETTE (exact hex, flat colours only): page background #0D0E10; sidebar #0A0B0C; inputs #131416 with a 1px #2A2C30 border; selected row #1A1B1E; hairlines #1F2023; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; budget bars: a 6px tall track #1F2023 with a flat fill in pale mist #CFD8D4; red #E5675C ONLY for a reached budget's bar, its overshoot and the no-price warning; teal #6FB8AA only for inline links; primary button filled off-white #F3F0E8 with dark text #0C1D21. Amber #FFB224 appears ONLY on the small "2" count pill next to "Needs you" in the sidebar, nowhere else. No gradients, no glow, no purple, no blue, no shadows, no illustrations, no pie or donut charts.
+
+FONTS: page title in Manrope Bold. UI text IBM Plex Sans. IBM Plex Mono for every money amount, percentage, token count and date. Icons are thin Lucide line icons, 15px, stroke 1.75.
+
+LAYOUT, three columns:
+
+1) LEFT SIDEBAR, exactly like the first reference's sidebar: the small white ostra hinge logo (the attached logo, tiny) then "Acme Corp" semibold and an up-down chevron; a search field "Search" with "⌘K" and a small off-white square "+" button beside it. Rows: "Home"; "Needs you" with a small amber pill "2"; "My tasks" with a faint "7". Small faint label "Projects": "calculator" (tiny teal square), "billing-platform" (violet square), "web-storefront" (orange square), "mobile-app" (blue square), "data-pipeline" (pink square), "··· 13 more". Small faint label "Organization": "Runner pools", "Models", "Agent profiles", "GitHub", "Linear", "Members", "Spend" (wallet icon; this row is SELECTED, background #1A1B1E, white text), "Insights", "Memory", "Audit log", "Settings". At the very bottom a round grey avatar "AK" and "Alex Kim".
+
+2) TOP BAR, 46px tall, a hairline under it. Left: breadcrumb "Acme Corp  >  Spend" ("Spend" white medium). Right: an outline select button (1px #2A2C30, 30px tall) with a calendar icon "November 2026" and a small chevron-down.
+
+3) MAIN PAGE COLUMN, padding 28px top, 36px left:
+- Page title "Spend" (Manrope Bold 26px).
+- A muted lede, two lines, max 720px: "What agents spent, counted at the key proxy and priced per model. Budgets run by calendar month in UTC: at 80% admins are told, and at 100% new tasks and turns wait while running turns finish."
+- 24px lower, the month summary, no box: small faint label "This month, Nov 1 – 19"; then a large mono figure "$1,842.17" (white, 28px) followed by secondary text "of the organization's $2,500.00 budget" and, at the far right of the line, mono "74%". Under it a full-width bar, 8px tall, track #1F2023, fill pale mist #CFD8D4 to 74% of the width, with a thin 1px faint vertical tick at 80%. Under the bar, faint small text: "186.7M tokens · 2,431 turns · resets Dec 1" and at the right a teal link "Set budget".
+- 28px lower, section head "Projects" (semibold) and a faint mono count "5". A table with NO box, header row 30px with faint small labels: "Project", "Spent", "Budget", "Used" (a wide column), right-aligned "Status". Body rows 40px with hairlines.
+  Row 1 (SELECTED, background #1A1B1E): violet square "billing-platform" | mono "$612.40" | mono "$600.00" | a 6px bar completely filled in red #E5675C, with a short extra red segment poking past a faint end tick, and mono red "102%" | red text "Reached · $12.40 over"
+  Row 2: teal square "calculator" | "$488.10" | "$600.00" | mist bar filled to 81% and mono "81%" | secondary text with a small triangle-alert icon "Warned 16 Nov"
+  Row 3: orange square "web-storefront" | "$402.55" | "$800.00" | mist bar 50%, mono "50%" | faint "–"
+  Row 4: blue square "mobile-app" | "$221.90" | faint "No budget" | empty track, no fill | teal link "Set budget"
+  Row 5: pink square "data-pipeline" | "$117.22" | "$300.00" | mist bar 39%, mono "39%" | faint "–"
+  Under the table, faint small text: "13 projects spent nothing this month."
+- 28px lower, a warning line with a 2px red left rule (no box, no fill): a red circle-alert icon and white text "acme/sql-coder-ft has no price, so budgets can't count it." then secondary text "3.4M tokens this month aren't in these figures, and 1 task in data-pipeline waits for a price." and a teal link "Enter its price".
+- 20px lower, section head "Models" and a faint mono count "5". A table with NO box, header labels faint, right-aligned number columns: "Model", "Fresh input", "Output", "Cache read", "Cache write", "Spent". Rows 40px, a small light-grey model logo before each name, numbers in mono:
+  "Claude Opus 5.5" | 48.1M | 3.9M | 71.2M | 6.4M | $972.40
+  "Claude Sonnet 5.5" | 22.7M | 2.6M | 18.3M | 2.1M | $611.25
+  "GPT-6.2 Sol" | 1.9M | 0.4M | 3.8M | – | $188.60
+  "DeepSeek V4 Flash" | 1.1M | 0.2M | 0.6M | – | $69.92
+  "acme/sql-coder-ft" (mono, a plain grey chip icon, a small outline chip "custom") | 2.8M | 0.6M | – | – | red text "No price"
+
+4) RIGHT PROPERTIES PANEL, 380px wide, same #0D0E10 background, separated by a 1px #1F2023 vertical line, padding 20px, no boxes. It holds the budget form for the selected project:
+- small faint eyebrow "Project budget", then title with a violet 8px square: "billing-platform" (semibold 15px).
+- secondary line: "Spent $612.40 this month. Reached on 18 Nov: new tasks and turns wait."
+- field label "Monthly budget" (small secondary), an input 34px tall (#131416 fill, #2A2C30 border, 7px radius) with a faint "$" prefix and the mono value "750.00", and a faint "USD" at its right; faint help under it: "Each calendar month in UTC. A raise above what's spent lets the held work go, in the order it was held."
+- a hairline, then small faint group label "Waiting on this budget", key/value rows 30px, key secondary in a 120px column, value white mono:
+  Held turns | 3
+  Queued tasks | 2
+  After the raise | 82% used
+- a hairline, then faint text "Set by Alex Kim on 2 Nov · $600.00"
+- a row of two buttons: the one light primary button "Save budget" (#F3F0E8 fill, #0C1D21 text, 30px tall), and beside it an outline button "Remove budget" (1px #2A2C30, white text).
+
+Everything aligned on clean left edges, calm and dense like Linear's app, crisp small legible text, every word and number spelled exactly as written.
+
+# Generation 2 (kept: spend-budgets-price.webp, a constrained edit). References: generation 1's output first, then app-targets/m1/models.png, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+Reproduce the FIRST attached image exactly: the same screen, the same sidebar, top bar, title, lede, month summary, Projects table, warning line and Models table, every word, number and colour, at the same size and positions. Change only these things:
+
+1) In the Projects table, the "billing-platform" row is no longer selected: its background is the plain page background #0D0E10 like the other rows (its red bar, "102%" and "Reached · $12.40 over" stay exactly as they are).
+
+2) In the Models table, the last row "acme/sql-coder-ft" (with its "custom" chip and red "No price") is now SELECTED: the whole row has a #1A1B1E rounded background, like a selected row.
+
+3) The RIGHT PROPERTIES PANEL (same width, same position, same 1px #1F2023 left line, same padding) now holds the price form for that model instead of the budget form. Top to bottom, left-aligned:
+- small faint eyebrow "Model price"
+- title row: a small grey chip icon, then "acme/sql-coder-ft" in IBM Plex Mono semibold 15px white, then a small outline chip "custom"
+- secondary line: "OpenRouter · neither the endpoint nor models.dev lists a price."
+- key/value rows 30px, key secondary in a 120px column:
+  Price source | faint "None yet"
+  Unpriced this month | white mono "3.4M tokens"
+- a hairline
+- small faint group label "Price per million tokens, in USD"
+- a 2 by 2 grid of labelled inputs, 12px gap, each input 34px tall (#131416 fill, #2A2C30 border, 7px radius) with a faint "$" prefix and a mono value:
+  label "Fresh input" value "0.20"      label "Output" value "0.80"
+  label "Cache read" value "0.02"       label "Cache write" value "0.25"
+- faint help text under the grid: "Applies from when you save. Spend already counted is never repriced, so these 3.4M tokens stay unpriced."
+- one secondary line with a small info icon: "The waiting task in data-pipeline starts once this is saved."
+- the one light primary button "Save price" (#F3F0E8 fill, #0C1D21 text, 30px tall), on its own, left-aligned.
+
+Everything else stays pixel-identical to the first image. Flat dark graphite UI: #0D0E10 background, #0A0B0C sidebar, #1F2023 hairlines, #F2F3F4 text, red #E5675C only where the first image has it, teal #6FB8AA only for the links, amber #FFB224 only on the sidebar "2" pill. No gradients, no glow, no purple, no shadows. Every word and number spelled exactly as written.
