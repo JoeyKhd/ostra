@@ -20,7 +20,7 @@ import type {
   TaskProxies,
 } from "@ostra/adapter-sdk";
 import { gitShaSchema, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
-import type { BoxState, GitPerson, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
+import type { BoxReleaseReason, BoxState, GitPerson, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import { localProcesses } from "./task-processes.ts";
 import type { TaskProcesses } from "./task-processes.ts";
@@ -410,7 +410,7 @@ export class HostExecutor extends ExecutorAdapter {
     return ok(undefined);
   }
 
-  async release(box: BoxRef): Promise<AdapterResult<void>> {
+  async release(box: BoxRef, reason: BoxReleaseReason = "requested"): Promise<AdapterResult<void>> {
     const record = this.#boxes.get(boxKey(box));
     if (record === undefined) {
       return ok(undefined);
@@ -425,7 +425,7 @@ export class HostExecutor extends ExecutorAdapter {
     }
     record.state = "released";
     this.#boxes.delete(boxKey(box));
-    this.plumbing.logger.info("box released", { taskId: box.taskId, boxId: box.boxId });
+    this.plumbing.logger.info("box released", { taskId: box.taskId, boxId: box.boxId, reason });
     return ok(undefined);
   }
 

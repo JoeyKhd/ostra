@@ -9,6 +9,7 @@ export * from "./model-provider-suite.ts";
 export * from "./secret-store-suite.ts";
 export * from "./first-case-suites.ts";
 export * from "./tracker-suite.ts";
+export * from "./blob-store-suite.ts";
 export * from "./jira-fake.ts";
 export * from "./fake-linear/fake-linear.ts";
 export * from "./stub-models/types.ts";

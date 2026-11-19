@@ -1,9 +1,21 @@
 import type { Readable, Writable } from "node:stream";
 
-import type { BoxId, BoxState, GitPerson, GitSha, RepoId, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
+import type {
+  BoxId,
+  BoxReleaseReason,
+  BoxState,
+  GitPerson,
+  GitSha,
+  HiddenRefRestore,
+  RepoId,
+  RepoSecret,
+  TaskId,
+  TaskSpec,
+} from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
+import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { AgentLaunch } from "../agent/base.ts";
 import type { ExecutorCapabilities } from "./capabilities.ts";
@@ -131,6 +143,31 @@ export type StopInput = {
   readonly graceMs: number;
 };
 
+// ---------- milestone 2: work in progress (ADR 0039) ----------
+
+export type SaveWorkInProgressInput = {
+  readonly box: BoxRef;
+  /** The turn this save follows. */
+  readonly turnOrdinal: number;
+};
+
+/** One repo's hidden ref after a save. `sha` is `null` for a repo with no commit yet, or a failed save. */
+export type SavedRepoWork = {
+  readonly repoId: RepoId;
+  readonly sha: GitSha | null;
+  /** The branch head it was saved on. */
+  readonly baseSha: GitSha | null;
+};
+
+export type RestoreWorkInProgressInput = {
+  readonly box: BoxRef;
+  /** From the task spec's `restore.hiddenRefs`: what each repo saved last. */
+  readonly refs: readonly HiddenRefRestore[];
+};
+
+/** One repo's restore: `conflict` leaves the branch's head checked out (Q150). */
+export type RestoredRepoWork = { readonly repoId: RepoId; readonly outcome: "applied" | "none" | "conflict" };
+
 export abstract class ExecutorAdapter {
   readonly kind = "executor" as const;
   abstract readonly name: string;
@@ -167,8 +204,29 @@ export abstract class ExecutorAdapter {
   /** Ends the agent and every process of the task (`stopped`). The workspace stays. */
   abstract stop(input: StopInput): Promise<AdapterResult<void>>;
 
-  /** Removes the box and its workspace (`released`). A box is never reused. */
-  abstract release(box: BoxRef): Promise<AdapterResult<void>>;
+  /** Removes the box and its workspace (`released`), for the reason given. A box is never reused. */
+  abstract release(box: BoxRef, reason: BoxReleaseReason): Promise<AdapterResult<void>>;
+
+  /**
+   * Milestone 2, after any turn: each repo's working tree to the task's hidden ref, by a forced push
+   * through the git proxy, with `--no-verify` and `GIT_CEILING_DIRECTORIES` set (ADR 0039). The
+   * shared steps are `saveWorkInProgressIn` (`executor/work-in-progress.ts`). Additive: an
+   * executor answers `unsupported` until it has it (tickets 22 and 24).
+   */
+  saveWorkInProgress(input: SaveWorkInProgressInput): Promise<AdapterResult<readonly SavedRepoWork[]>> {
+    this.plumbing.logger.debug("saveWorkInProgress is not supported", { taskId: input.box.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't save work in progress yet`));
+  }
+
+  /**
+   * Milestone 2, on a fresh box: each repo's hidden ref restored onto the commit it was saved on,
+   * then the branch's new commits merged in; on a conflict, the branch's head checked out and
+   * `conflict` answered (Q150). The shared steps are `restoreWorkInProgressIn`.
+   */
+  restoreWorkInProgress(input: RestoreWorkInProgressInput): Promise<AdapterResult<readonly RestoredRepoWork[]>> {
+    this.plumbing.logger.debug("restoreWorkInProgress is not supported", { taskId: input.box.taskId, repos: input.refs.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't restore work in progress yet`));
+  }
 
   /** The box's state as the executor sees it. */
   abstract state(box: BoxRef): Promise<AdapterResult<BoxState>>;

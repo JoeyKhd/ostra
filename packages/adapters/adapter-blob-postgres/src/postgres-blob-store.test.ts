@@ -15,7 +15,7 @@ const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 defineBlobStoreContractSuite({
   name: "postgres blob store, in-memory rows",
-  create: () => Promise.resolve({ adapter: new PostgresBlobStore({ rows: createMemoryBlobRows() }), fixture: {} }),
+  create: () => Promise.resolve({ adapter: new PostgresBlobStore({ rows: createMemoryBlobRows(), maxBytes: 4096 }), fixture: { maxBytes: 4096 } }),
 });
 
 const setup = (maxBytes?: number) => {

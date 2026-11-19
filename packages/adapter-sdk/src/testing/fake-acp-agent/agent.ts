@@ -6,6 +6,8 @@ import type { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk/unstable";
 import { z } from "zod";
 
+import { loadFakeSession, saveFakeSession } from "./archive.ts";
+
 // A scripted fake ACP agent (ADR 0032, ticket 10): a program that speaks ACP over stdio and plays
 // a script named by a marker in the prompt, `[[fake:<script> <args>]]`. It exists so the driver and
 // every agent contract suite run without a model and without OpenCode. It runs as a child process
@@ -36,6 +38,11 @@ export type FakeAgentOptions = {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** What the `crash` script does: a process exits, an in-process agent drops its streams. */
   readonly crash: () => void;
+  /**
+   * Milestone 2: where the agent keeps its sessions (`FAKE_AGENT_DATA`), so they can be exported,
+   * imported into another box, and loaded there. Absent: in memory only.
+   */
+  readonly dataDir?: string;
 };
 
 /** The scripts a prompt can name. `[[fake:say]]` is the default for a prompt with no marker. */
@@ -58,6 +65,13 @@ export const fakeScripts = [
   "compaction",
   "content",
   "write",
+  // Milestone 2.
+  /** Says it will remember the word given, which a session that moved must still know. */
+  "remember",
+  /** Says everything it said before in the session, oldest first. */
+  "recall",
+  /** A long turn: a thought every 100 ms for the seconds given (default 2), then a message. */
+  "long",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -139,8 +153,22 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     })
     .onRequest(acp.methods.agent.session.load, async (ctx) => {
       const id = ctx.params.sessionId;
-      const cwd: unknown = Reflect.get(Object(ctx.params), "cwd");
-      const session = sessions.get(id) ?? { id, cwd: typeof cwd === "string" ? cwd : null, history: ["(an earlier turn)"], cancel: new AbortController(), steer: undefined, running: false };
+      const cwdParam: unknown = Reflect.get(Object(ctx.params), "cwd");
+      const cwd = typeof cwdParam === "string" ? cwdParam : null;
+      // A session kept on disk (an imported one) loads only in the directory it's bound to.
+      const kept = sessions.has(id) || options.dataDir === undefined ? undefined : await loadFakeSession(options.dataDir, id);
+      const boundTo = kept?.cwd ?? null;
+      if (boundTo !== null && cwd !== null && path.resolve(boundTo) !== path.resolve(cwd)) {
+        throw acp.RequestError.invalidParams(undefined, "the session belongs to another directory");
+      }
+      const session = sessions.get(id) ?? {
+        id,
+        cwd: kept?.cwd ?? cwd,
+        history: kept === undefined ? ["(an earlier turn)"] : [...kept.history],
+        cancel: new AbortController(),
+        steer: undefined,
+        running: false,
+      };
       sessions.set(id, session);
       // A real agent replays the session's history as updates, before it answers.
       for (const line of session.history) {
@@ -199,6 +227,9 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     } finally {
       session.running = false;
       session.steer = undefined;
+      if (options.dataDir !== undefined) {
+        await saveFakeSession(options.dataDir, { id: session.id, cwd: session.cwd, history: [...session.history] });
+      }
     }
   });
 
@@ -217,6 +248,30 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         await say("Hello from the fake agent. ");
         await say("The work is done.");
         return "end_turn";
+
+      case "remember":
+        await say(`I'll remember ${args === "" ? "nothing" : args}.`);
+        return "end_turn";
+
+      case "recall": {
+        const earlier = session.history.join(" ");
+        await say(`Earlier in this session I said: ${earlier === "" ? "nothing" : earlier}`);
+        return "end_turn";
+      }
+
+      case "long": {
+        const seconds = Number.parseFloat(args);
+        const until = Date.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds : 2) * 1000;
+        while (Date.now() < until && !signal.aborted) {
+          await update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Still working. " } });
+          await sleep(100, signal);
+        }
+        if (signal.aborted) {
+          return "cancelled";
+        }
+        await say("The long step is done.");
+        return "end_turn";
+      }
 
       case "tools":
         await say("Looking around, then changing things. ");

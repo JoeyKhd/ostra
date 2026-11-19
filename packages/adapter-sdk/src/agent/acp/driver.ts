@@ -264,8 +264,12 @@ const connectAgent = async (
         transform: (message, controller) => {
           if ("method" in message && !("id" in message) && message.method === acp.methods.client.session.update) {
             const notification = updateNotificationSchema.safeParse(message.params);
-            if (notification.success && !replaying.has(notification.data.sessionId)) {
-              handlers.onUpdate(notification.data.sessionId, notification.data.update);
+            if (notification.success) {
+              if (replaying.has(notification.data.sessionId)) {
+                handlers.onReplay?.(notification.data.sessionId, notification.data.update);
+              } else {
+                handlers.onUpdate(notification.data.sessionId, notification.data.update);
+              }
             }
             return;
           }

@@ -120,6 +120,51 @@ export type WebhookInput = {
   readonly secret: string;
 };
 
+// ---------- milestone 2 ----------
+
+/** One answer of `readBranchRules`: `unknown` when the host can't say, and `reasons` says why. */
+export type BranchRules = {
+  readonly protected: boolean | "unknown";
+  readonly requiresSignedCommits: boolean | "unknown";
+  /** Words for the panel, one per check that isn't a plain yes: never a vendor's body. */
+  readonly reasons: readonly string[];
+};
+
+/** A PR's state, for the reconcile (F-044). */
+export type PullRequestDetails = PullRequest & {
+  readonly merged: boolean;
+  readonly headSha: string;
+  /** In ms since the epoch. */
+  readonly updatedAt: number;
+  readonly mergedAt: number | null;
+  readonly closedAt: number | null;
+};
+
+/** A verified webhook, read loosely. Only `pull_request` events are read in milestone 2. */
+export type CodeHostWebhookEvent =
+  | {
+      readonly kind: "pull_request";
+      /** The host's action: `opened`, `closed`, `reopened`, `synchronize`, `edited`, … */
+      readonly action: string;
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      readonly number: number;
+      readonly state: "open" | "closed" | "merged";
+      readonly headBranch: string;
+      readonly headSha: string;
+      /** When the PR last changed, in ms since the epoch: an older report changes nothing. */
+      readonly changedAt: number;
+    }
+  /** Every other event: recorded and not acted on. */
+  | { readonly kind: "other"; readonly event: string };
+
+/** A ref on the host, full, such as `refs/ostra/wip/<taskId>`. */
+export type DeleteRefResult = {
+  /** `false` when there was no such ref: deleting it again is not an error. */
+  readonly deleted: boolean;
+};
+
 export abstract class CodeHostAdapter {
   readonly kind = "code-host" as const;
   abstract readonly name: string;
@@ -187,6 +232,39 @@ export abstract class CodeHostAdapter {
   /** Opens a PR as the App. Opening one that exists answers `conflict`. */
   abstract openPullRequest(input: OpenPullRequestInput): Promise<AdapterResult<PullRequest>>;
 
-  /** Checks a webhook's signature. Milestone 2. */
+  /** Checks a webhook's signature. */
   abstract verifyWebhook(input: WebhookInput): boolean;
+
+  // ---------- milestone 2: additive, so each answers `unsupported` until an adapter has it ----------
+
+  /**
+   * A branch's protection and its signed-commit rule (F-055, F-060), from classic protection and
+   * rulesets both. A private repo on a free plan, which the host won't answer for, reads as `unknown`
+   * with the reason. Needs the capability `branchRules`.
+   */
+  readBranchRules(access: RepoAccess, branch: string): Promise<AdapterResult<BranchRules>> {
+    this.plumbing.logger.debug("readBranchRules is not supported", { repo: access.repo, branch });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read branch rules`));
+  }
+
+  /** One PR by number, with its merge state and head (the reconcile, F-044). */
+  getPullRequest(access: RepoAccess, number: number): Promise<AdapterResult<PullRequestDetails>> {
+    this.plumbing.logger.debug("getPullRequest is not supported", { repo: access.repo, number });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read a PR by number`));
+  }
+
+  /**
+   * Reads a webhook `verifyWebhook` accepted into an event. The event's name is the host's header
+   * (GitHub's `X-GitHub-Event`); a body that doesn't read is `invalid-response`.
+   */
+  parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
+    this.plumbing.logger.debug("parseWebhook is not supported", { bytes: input.body.length });
+    return adapterError("unsupported", `${this.name} can't read webhooks yet`);
+  }
+
+  /** Deletes a ref, such as a task's hidden ref after its last PR closed (F-079). */
+  deleteRef(access: RepoAccess, ref: string): Promise<AdapterResult<DeleteRefResult>> {
+    this.plumbing.logger.debug("deleteRef is not supported", { repo: access.repo, refLength: ref.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't delete refs`));
+  }
 }

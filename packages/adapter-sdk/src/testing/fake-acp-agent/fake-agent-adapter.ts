@@ -3,7 +3,15 @@ import { fileURLToPath } from "node:url";
 
 import { createAcpDriver } from "../../agent/acp/driver.ts";
 import { AgentAdapter } from "../../agent/base.ts";
-import type { AgentLaunch, DriverPort, MappedUpdate, PrepareLaunchInput } from "../../agent/base.ts";
+import type {
+  AgentCommand,
+  AgentLaunch,
+  DriverPort,
+  ExportSessionInput,
+  ImportSessionInput,
+  MappedUpdate,
+  PrepareLaunchInput,
+} from "../../agent/base.ts";
 import type { AgentCapabilities } from "../../agent/capabilities.ts";
 import type { AdapterContext } from "../../common/context.ts";
 import { ok } from "../../common/result.ts";
@@ -35,7 +43,42 @@ export class FakeAgentAdapter extends AgentAdapter {
       ...declared,
       elicitationForm: true,
       modelBaseUrlAndPlaceholderKey: true,
+      sessionArchive: true,
     };
+  }
+
+  /** The agent's own folder for its sessions, in the box's agent folder. */
+  static dataDirOf(agentDir: string): string {
+    return path.join(agentDir, "fake-agent-data");
+  }
+
+  #baseEnv(agentDir: string): Record<string, string> {
+    const env: Record<string, string> = {};
+    for (const name of PASSTHROUGH) {
+      const value = process.env[name];
+      if (value !== undefined) {
+        env[name] = value;
+      }
+    }
+    return { ...env, HOME: agentDir, USERPROFILE: agentDir, FAKE_AGENT_DATA: FakeAgentAdapter.dataDirOf(agentDir) };
+  }
+
+  override exportSession(input: ExportSessionInput): AdapterResult<AgentCommand> {
+    return ok({
+      command: process.execPath,
+      args: [MAIN, "export", `--session=${input.agentSessionId}`, `--out=${input.archivePath}`],
+      env: this.#baseEnv(input.agentDir),
+      cwd: input.workspaceDir,
+    });
+  }
+
+  override importSession(input: ImportSessionInput): AdapterResult<AgentCommand> {
+    return ok({
+      command: process.execPath,
+      args: [MAIN, "import", `--in=${input.archivePath}`, `--directory=${input.workspaceDir}`],
+      env: this.#baseEnv(input.agentDir),
+      cwd: input.workspaceDir,
+    });
   }
 
   health(): Promise<HealthReport> {
@@ -55,6 +98,7 @@ export class FakeAgentAdapter extends AgentAdapter {
       USERPROFILE: input.agentDir,
       TEMP: path.join(input.agentDir, "tmp"),
       TMP: path.join(input.agentDir, "tmp"),
+      FAKE_AGENT_DATA: FakeAgentAdapter.dataDirOf(input.agentDir),
       FAKE_AGENT_BASE_URL: input.model.baseUrl,
       FAKE_AGENT_API_KEY: input.model.placeholderKey,
       ...input.extraEnv,

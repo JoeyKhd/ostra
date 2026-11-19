@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { isRunning } from "../agent/acp/process-tree.ts";
 import type {
   AgentAdapter,
+  AgentCommand,
   AgentIo,
   AgentLaunch,
   AgentSession,
@@ -86,6 +87,20 @@ export type AgentFixture = {
   /** A prompt the agent keeps working on until it's cancelled. */
   readonly longPrompt: string;
   readonly probes?: AgentProbes;
+  /**
+   * Milestone 2 (ADR 0039): moving a session to a fresh box. Absent, or without the capability
+   * `sessionArchive`, the case is skipped.
+   */
+  readonly archive?: {
+    /** Runs an export or import command where the agent runs. */
+    readonly run: (command: AgentCommand) => Promise<{ readonly code: number | null }>;
+    /** A launch input for a fresh box: new agent folder, new workspace, the same task. */
+    readonly freshBox: () => Promise<PrepareLaunchInput>;
+    /** A path the archive can be written to and read from. */
+    readonly archivePath: string;
+    /** A prompt that makes the agent state a fact, and one that asks for it back without tools. */
+    readonly remember: { readonly prompt: string; readonly recall: string; readonly fact: string };
+  };
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -112,6 +127,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       rejectAndContinue: "boolean",
       elicitationForm: "boolean",
       modelBaseUrlAndPlaceholderKey: "boolean",
+      sessionArchive: "boolean",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -175,6 +191,66 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       }
       return value;
     };
+
+    it("ADR 0039: exports a session, imports it into a fresh box's workspace, and loads it there with its history", async (context) => {
+      const { adapter, fixture } = subject();
+      const archive = fixture.archive;
+      if (archive === undefined || !adapter.capabilities.sessionArchive || !adapter.capabilities.sessionLoad) {
+        context.skip();
+        return;
+      }
+      // Turn one, in the first box: the agent states the fact.
+      const first: TaskEvent[] = [];
+      const { session: running, started } = await session(first);
+      const said = await adapter.prompt(running, turn(1), archive.remember.prompt);
+      expect(said.ok).toBe(true);
+      const agentSessionId = running.agentSessionId;
+      await adapter.close(running);
+      await started.stop();
+      const exported = adapter.exportSession({
+        agentSessionId,
+        agentDir: fixture.launchInput.agentDir,
+        workspaceDir: fixture.launchInput.workspaceDir,
+        archivePath: archive.archivePath,
+      });
+      if (!exported.ok) throw new Error(`exportSession: ${exported.error.message}`);
+      expect((await archive.run(exported.value)).code).toBe(0);
+
+      // A fresh box: another agent folder and workspace. The import binds the session to it.
+      const fresh = await archive.freshBox();
+      const imported = adapter.importSession({ agentSessionId, agentDir: fresh.agentDir, workspaceDir: fresh.workspaceDir, archivePath: archive.archivePath });
+      if (!imported.ok) throw new Error(`importSession: ${imported.error.message}`);
+      expect((await archive.run(imported.value)).code).toBe(0);
+      const prepared = await adapter.prepareLaunch(fresh);
+      if (!prepared.ok) throw new Error(`prepareLaunch: ${prepared.error.message}`);
+      const second = await fixture.start(prepared.value);
+      const events: TaskEvent[] = [];
+      try {
+        const resumed = await adapter.startSession({
+          taskId: fresh.taskId,
+          sessionId: fresh.sessionId,
+          io: second.io,
+          cwd: fresh.workspaceDir,
+          mcpServers: [],
+          onEvents: (batch) => {
+            events.push(...batch);
+          },
+          onPermission: () => Promise.resolve({ outcome: "cancelled" }),
+          onQuestion: () => Promise.resolve({ outcome: "cancelled" }),
+          resumeAgentSessionId: agentSessionId,
+        });
+        if (!resumed.ok) throw new Error(`loading the imported session: ${resumed.error.message}`);
+        // The replay is marked and counted, never handed over as new events.
+        expect(resumed.value.replayedUpdates, "session/load replayed the history").toBeGreaterThan(0);
+        expect(events, "a replayed update reached onEvents").toEqual([]);
+        const recalled = await adapter.prompt(resumed.value, turn(2), archive.remember.recall);
+        expect(recalled.ok).toBe(true);
+        expect(textOf(events)).toContain(archive.remember.fact);
+        await adapter.close(resumed.value);
+      } finally {
+        await second.stop();
+      }
+    }, 60_000);
 
     it("ADR 0030: launches with an allowlisted environment that holds no credential", async () => {
       const prepared = await launch();

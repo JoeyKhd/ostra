@@ -195,6 +195,7 @@ describe("the OpenCode adapter's capabilities", () => {
       rejectAndContinue: false,
       elicitationForm: true,
       modelBaseUrlAndPlaceholderKey: true,
+      sessionArchive: false,
     });
   });
 });

@@ -113,6 +113,11 @@ export type QuestionAnswer =
 /** What the driver calls back with. Each callback names the agent's own session ID. */
 export type DriverHandlers = {
   readonly onUpdate: (agentSessionId: string, update: AcpUpdate) => void;
+  /**
+   * An update `session/load` replayed: the session's history, which ostra already stored. The
+   * driver marks it so; it's counted, never stored as a new event (ADR 0035).
+   */
+  readonly onReplay?: (agentSessionId: string, update: AcpUpdate) => void;
   readonly onPermission: (agentSessionId: string, request: PermissionRequest, signal: AbortSignal) => Promise<PermissionAnswer>;
   readonly onQuestion: (agentSessionId: string, request: QuestionRequest, signal: AbortSignal) => Promise<QuestionAnswer>;
 };
@@ -191,6 +196,42 @@ export type AgentSession = {
   readonly sessionId: SessionId;
   readonly agentSessionId: string;
   readonly connection: DriverConnection;
+  /** How many updates `session/load` replayed when the session was resumed: `session.restored`'s count. */
+  readonly replayedUpdates: number;
+};
+
+// ---------- milestone 2: moving a session to another box (ADR 0039) ----------
+
+/** A command run beside the live agent, in its box, with its environment: an argument array, never a shell line. */
+export type AgentCommand = {
+  readonly command: string;
+  readonly args: readonly string[];
+  /** An allowlist, as the agent's own launch has (ADR 0030). */
+  readonly env: Readonly<Record<string, string>>;
+  readonly cwd: string;
+};
+
+export type ExportSessionInput = {
+  readonly agentSessionId: string;
+  /** The box's agent folder and workspace, as the agent was launched with. */
+  readonly agentDir: string;
+  readonly workspaceDir: string;
+  /** Where the command writes the archive. The runner gzips and uploads it (ticket 22). */
+  readonly archivePath: string;
+};
+
+export type ImportSessionInput = {
+  /** The session the archive holds. */
+  readonly agentSessionId: string;
+  /** The fresh box's agent folder. */
+  readonly agentDir: string;
+  /**
+   * The fresh box's workspace: the import binds the session to it, because the agent refuses to
+   * load a session in another directory (OpenCode's `--directory`, spike 2).
+   */
+  readonly workspaceDir: string;
+  /** The archive, downloaded and gunzipped. */
+  readonly archivePath: string;
 };
 
 /** What an adapter's own mapping decides for one update. */
@@ -235,6 +276,21 @@ export abstract class AgentAdapter {
   /** The agent's own ACP quirks. Return `{ handled: false }` for the shared mapping. */
   protected abstract mapUpdate(update: AcpUpdate, context: MapContext): MappedUpdate;
 
+  /**
+   * Milestone 2: the command that exports a session to `archivePath`, with the capability
+   * `sessionArchive`. Additive: an adapter answers `unsupported` until it has it (ticket 10).
+   */
+  exportSession(input: ExportSessionInput): AdapterResult<AgentCommand> {
+    this.plumbing.logger.debug("exportSession is not supported", { agentSession: input.agentSessionId.length });
+    return adapterError("unsupported", `${this.name} can't export a session`);
+  }
+
+  /** Milestone 2: the command that imports an archive into a fresh box, bound to its workspace. */
+  importSession(input: ImportSessionInput): AdapterResult<AgentCommand> {
+    this.plumbing.logger.debug("importSession is not supported", { agentSession: input.agentSessionId.length });
+    return adapterError("unsupported", `${this.name} can't import a session`);
+  }
+
   /** Connects to the agent's process and starts (or resumes) its session. */
   async startSession(input: StartSessionInput): Promise<AdapterResult<AgentSession>> {
     if (input.resumeAgentSessionId !== undefined && !this.capabilities.sessionLoad) {
@@ -242,10 +298,17 @@ export abstract class AgentAdapter {
     }
     const sessionKey = String(input.sessionId);
     this.#emitters.set(sessionKey, input.onEvents);
+    let replayed = 0;
     const connected = await this.#driver.connect(input.io, {
+      onReplay: () => {
+        replayed += 1;
+      },
       onUpdate: (_agentSessionId, update) => {
         const turnId = this.#turns.get(sessionKey);
         if (turnId === undefined) {
+          // Before the first turn there's nothing to attach an update to: a load's replay that the
+          // driver didn't mark is counted as one too, and never stored.
+          replayed += 1;
           return;
         }
         const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId, cwd: input.cwd };
@@ -270,12 +333,12 @@ export abstract class AgentAdapter {
         mcpServers: input.mcpServers,
       });
       return loaded.ok
-        ? ok({ taskId: input.taskId, sessionId: input.sessionId, agentSessionId: input.resumeAgentSessionId, connection })
+        ? ok({ taskId: input.taskId, sessionId: input.sessionId, agentSessionId: input.resumeAgentSessionId, connection, replayedUpdates: replayed })
         : loaded;
     }
     const created = await connection.newSession({ cwd: input.cwd, mcpServers: input.mcpServers });
     return created.ok
-      ? ok({ taskId: input.taskId, sessionId: input.sessionId, agentSessionId: created.value.agentSessionId, connection })
+      ? ok({ taskId: input.taskId, sessionId: input.sessionId, agentSessionId: created.value.agentSessionId, connection, replayedUpdates: 0 })
       : created;
   }
 

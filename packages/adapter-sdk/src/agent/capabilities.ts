@@ -12,4 +12,9 @@ export type AgentCapabilities = {
   readonly elicitationForm: boolean;
   /** The agent takes a model base URL and a placeholder key, so the key proxy can sit in front (ADR 0030). */
   readonly modelBaseUrlAndPlaceholderKey: boolean;
+  /**
+   * Milestone 2 (ADR 0039, F-033): the agent exports a session to an archive and imports one into
+   * another box's workspace (`exportSession`, `importSession`), so a fresh box carries the session on.
+   */
+  readonly sessionArchive: boolean;
 };

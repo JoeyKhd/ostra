@@ -42,6 +42,8 @@ export class OpenCodeAdapter extends AgentAdapter {
     rejectAndContinue: false,
     elicitationForm: true,
     modelBaseUrlAndPlaceholderKey: true,
+    // Ticket 10 builds `opencode export` and `import --directory`, and turns this on.
+    sessionArchive: false,
   };
 
   readonly #resolveBinary: () => Promise<AdapterResult<OpenCodeBinary>>;

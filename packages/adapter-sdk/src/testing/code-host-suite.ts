@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CodeHostAdapter, CodeHostAppCredentials, RepoAccess, WebhookInput } from "../code-host/base.ts";
+import type { BranchRules, CodeHostAdapter, CodeHostAppCredentials, RepoAccess, WebhookInput } from "../code-host/base.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
@@ -26,13 +26,25 @@ export type CodeHostFixture = {
   readonly prHead: string | null;
   /** A webhook signed with its secret; the suite checks it and a tampered copy. */
   readonly webhook: WebhookInput;
+  // ---- milestone 2: absent, the case is skipped (an adapter adds them as it builds each one) ----
+  /** Branches with known rules, and what `readBranchRules` must answer for each. */
+  readonly branchRules?: readonly { readonly branch: string; readonly expected: Omit<BranchRules, "reasons"> }[];
+  /** A signed `pull_request` webhook, and the PR it's about. */
+  readonly pullRequestWebhook?: { readonly input: WebhookInput; readonly number: number; readonly state: "open" | "closed" | "merged" };
+  /** A ref the suite may delete, such as a hidden ref made for it. */
+  readonly deletableRef?: string;
 };
 
 export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHostAdapter, CodeHostFixture>): void => {
   describe(`code host contract: ${options.name}`, () => {
     const subject = useSubject(options);
 
-    defineCommonCases(subject, "code-host", { checkRuns: "boolean", prTemplates: "boolean", lfsActionHosts: "array" });
+    defineCommonCases(subject, "code-host", {
+      checkRuns: "boolean",
+      prTemplates: "boolean",
+      lfsActionHosts: "array",
+      branchRules: "boolean",
+    });
 
     it("builds a manifest that points the App's webhooks at the given address", () => {
       const { manifest, createUrl } = subject().adapter.appManifest({
@@ -109,6 +121,57 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       expect(await adapter.openPullRequest(input)).toMatchObject({ ok: false, error: { code: "conflict" } });
       const found = await adapter.findPullRequest(fixture.access, fixture.prHead);
       expect(found.ok && found.value?.number).toBe(opened.ok ? opened.value.number : -1);
+      // Milestone 2: the reconcile reads it back by number.
+      if (opened.ok) {
+        const byNumber = await adapter.getPullRequest(fixture.access, opened.value.number);
+        if (!byNumber.ok && byNumber.error.code === "unsupported") {
+          return;
+        }
+        expect(byNumber).toMatchObject({ ok: true, value: { number: opened.value.number, state: "open", merged: false } });
+        expect(byNumber.ok && byNumber.value.headSha.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("reads a branch's protection and signed-commit rule (F-055, F-060)", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.branchRules) {
+        expect(await adapter.readBranchRules(fixture.access, fixture.defaultBranch)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      if (fixture.branchRules === undefined) {
+        context.skip();
+        return;
+      }
+      for (const { branch, expected } of fixture.branchRules) {
+        const rules = await adapter.readBranchRules(fixture.access, branch);
+        expect(rules, branch).toMatchObject({ ok: true, value: expected });
+        if (rules.ok && (rules.value.protected === "unknown" || rules.value.requiresSignedCommits === "unknown")) {
+          expect(rules.value.reasons.length, "an unknown says why").toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it("reads a pull_request webhook into its PR, and another event as other", (context) => {
+      const { adapter, fixture } = subject();
+      if (fixture.pullRequestWebhook === undefined) {
+        context.skip();
+        return;
+      }
+      const { input, number, state } = fixture.pullRequestWebhook;
+      expect(adapter.verifyWebhook(input)).toBe(true);
+      expect(adapter.parseWebhook(input)).toMatchObject({ ok: true, value: { kind: "pull_request", number, state } });
+      const other = adapter.parseWebhook({ ...input, headers: { ...input.headers, "x-github-event": "push" } });
+      expect(other).toMatchObject({ ok: true, value: { kind: "other" } });
+    });
+
+    it("deletes a ref once, and deleting it again isn't an error", async (context) => {
+      const { adapter, fixture } = subject();
+      if (fixture.deletableRef === undefined) {
+        context.skip();
+        return;
+      }
+      expect(await adapter.deleteRef(fixture.access, fixture.deletableRef)).toEqual({ ok: true, value: { deleted: true } });
+      expect(await adapter.deleteRef(fixture.access, fixture.deletableRef)).toEqual({ ok: true, value: { deleted: false } });
     });
 
     it("verifies a webhook's signature and refuses a tampered body", () => {

@@ -320,7 +320,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     await Promise.allSettled([keyProxy?.close(), gitProxy?.close(), mcp?.close()]);
     credentials = undefined;
     if (boxCreated && !keepWorkspace) {
-      const released = await deps.executor.release(box);
+      // Milestone 1's one-turn session: the workspace goes when the session ends. Ticket 23 keeps it.
+      const released = await deps.executor.release(box, "requested");
       if (!released.ok) {
         log.warn("releasing the workspace failed", { code: released.error.code });
       }

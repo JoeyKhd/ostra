@@ -34,7 +34,28 @@ export type ExecutorFixture = {
    * Cases the adapter can't pass yet on this platform, each with its reason. A listed case is
    * expected to fail, and the suite fails if it starts passing, so the gap is noticed when it closes.
    */
-  readonly knownGaps?: { readonly detachedHelper?: string; readonly cleanEnvHelper?: string };
+  readonly knownGaps?: { readonly detachedHelper?: string; readonly cleanEnvHelper?: string; readonly workInProgress?: string };
+  /**
+   * Milestone 2: a box's first repo's checkout, to make work in progress in and read it back.
+   * Absent, the work-in-progress cases are skipped.
+   */
+  readonly workInProgress?: {
+    readonly checkout: (box: CreatedBox) => WorkspaceFiles;
+    /** Two files the repo's default branch has. */
+    readonly trackedFiles: readonly [string, string];
+  };
+};
+
+/** A checkout's files, as a person in the box would touch them. Paths are relative to the checkout. */
+export type WorkspaceFiles = {
+  readonly write: (file: string, content: string) => Promise<void>;
+  readonly remove: (file: string) => Promise<void>;
+  /** `null` when the file isn't there. */
+  readonly read: (file: string) => Promise<string | null>;
+  /** `git add` of one file. */
+  readonly stage: (file: string) => Promise<void>;
+  /** `git status --porcelain` lines, `XY path`. */
+  readonly status: () => Promise<readonly string[]>;
 };
 
 /** A process that leaves a helper behind, and how the suite finds and ends that helper. */
@@ -156,14 +177,14 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
 
       expect(await adapter.stop({ box, graceMs: 1000 })).toEqual({ ok: true, value: undefined });
       expect(await adapter.state(box)).toEqual({ ok: true, value: "stopped" });
-      expect(await adapter.release(box)).toEqual({ ok: true, value: undefined });
+      expect(await adapter.release(box, "requested")).toEqual({ ok: true, value: undefined });
       expect(await adapter.state(box)).toEqual({ ok: true, value: "released" });
     }, CASE_TIMEOUT_MS);
 
     it("refuses to start an agent in a released box", async () => {
       const { adapter, fixture } = subject();
       const { box, created } = await createAndPrepare(fixture.spec);
-      await adapter.release(box);
+      await adapter.release(box, "requested");
       const agent = await adapter.startAgent(box, fixture.echoLaunch(created));
       expect(agent.ok).toBe(false);
     }, CASE_TIMEOUT_MS);
@@ -183,7 +204,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         onSetupOutput: () => undefined,
       });
       expect(prepared.ok && prepared.value.setup !== null && prepared.value.setup.exitCode !== 0).toBe(true);
-      await adapter.release(box);
+      await adapter.release(box, "requested");
     }, CASE_TIMEOUT_MS);
 
     const helperCase = async (pick: (fixture: ExecutorFixture) => HelperCase): Promise<void> => {
@@ -205,9 +226,96 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         if (pid !== null) {
           await helper.kill(pid);
         }
-        await adapter.release(box);
+        await adapter.release(box, "requested");
       }
     };
+
+    // ---------- milestone 2: work in progress (ADR 0039) ----------
+
+    const wipCase = async (body: () => Promise<void>, context: { readonly skip: () => void; readonly annotate: (note: string) => Promise<unknown> }): Promise<void> => {
+      const { fixture } = subject();
+      if (fixture.workInProgress === undefined) {
+        context.skip();
+        return;
+      }
+      const reason = fixture.knownGaps?.workInProgress;
+      if (reason === undefined) {
+        await body();
+        return;
+      }
+      await context.annotate(`known gap: ${reason}`);
+      let failed = false;
+      try {
+        await body();
+      } catch {
+        failed = true;
+      }
+      expect(failed, `the known gap is closed (${reason}): remove it from knownGaps`).toBe(true);
+    };
+
+    it("saves untracked, staged, unstaged and deleted work to the hidden ref, without ignored files, and a fresh box restores it", async (context) => {
+      await wipCase(async () => {
+        const { adapter, fixture } = subject();
+        const wip = fixture.workInProgress;
+        if (wip === undefined) return;
+        const [modified, deleted] = wip.trackedFiles;
+        const first = await createAndPrepare(fixture.spec);
+        const files = wip.checkout(first.created);
+        await files.write(".gitignore", "ignored.log\n");
+        await files.write("ignored.log", "not saved");
+        await files.write("untracked.txt", "new and untracked");
+        await files.write("staged.txt", "new and staged");
+        await files.stage("staged.txt");
+        await files.write(modified, "changed, not staged");
+        await files.remove(deleted);
+        const saved = await adapter.saveWorkInProgress({ box: first.box, turnOrdinal: 1 });
+        if (!saved.ok) throw new Error(`saveWorkInProgress: ${saved.error.message}`);
+        const repo = saved.value[0];
+        if (repo?.sha === null || repo?.sha === undefined || repo.baseSha === null) throw new Error("no hidden ref was saved");
+        await adapter.release(first.box, "requested");
+
+        const second = await createAndPrepare(fixture.spec);
+        const restored = await adapter.restoreWorkInProgress({
+          box: second.box,
+          refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }],
+        });
+        expect(restored).toEqual({ ok: true, value: [{ repoId: repo.repoId, outcome: "applied" }] });
+        const back = wip.checkout(second.created);
+        expect(await back.read("untracked.txt")).toBe("new and untracked");
+        expect(await back.read("staged.txt")).toBe("new and staged");
+        expect(await back.read(modified)).toBe("changed, not staged");
+        expect(await back.read(deleted)).toBeNull();
+        expect(await back.read("ignored.log")).toBeNull();
+        const status = await back.status();
+        expect(status).toContain("A  staged.txt");
+        expect(status).toContain("?? untracked.txt");
+        await adapter.release(second.box, "requested");
+      }, context);
+    }, CASE_TIMEOUT_MS);
+
+    it("replaces the hidden ref with each save, so a fresh box gets the last one", async (context) => {
+      await wipCase(async () => {
+        const { adapter, fixture } = subject();
+        const wip = fixture.workInProgress;
+        if (wip === undefined) return;
+        const first = await createAndPrepare(fixture.spec);
+        const files = wip.checkout(first.created);
+        await files.write("turn.txt", "turn 1");
+        const one = await adapter.saveWorkInProgress({ box: first.box, turnOrdinal: 1 });
+        await files.write("turn.txt", "turn 2");
+        const two = await adapter.saveWorkInProgress({ box: first.box, turnOrdinal: 2 });
+        if (!one.ok || !two.ok) throw new Error("a save failed");
+        const repo = two.value[0];
+        if (repo?.sha === null || repo?.sha === undefined || repo.baseSha === null) throw new Error("no hidden ref was saved");
+        expect(repo.sha).not.toBe(one.value[0]?.sha);
+        await adapter.release(first.box, "requested");
+        const second = await createAndPrepare(fixture.spec);
+        await adapter.restoreWorkInProgress({ box: second.box, refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }] });
+        expect(await wip.checkout(second.created).read("turn.txt")).toBe("turn 2");
+        await adapter.release(second.box, "requested");
+      }, context);
+    }, CASE_TIMEOUT_MS);
+
 
     /** A case that is a known gap must fail, so the gap is noticed when it closes. */
     const withGap = async (reason: string | undefined, annotate: (text: string) => Promise<unknown>, run: () => Promise<void>): Promise<void> => {

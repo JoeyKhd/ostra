@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { segmentIdSchema } from "@ostra/protocol";
+import { repoFullNameSchema, segmentIdSchema } from "@ostra/protocol";
+import { z } from "zod";
 import type { BoxState, GitPerson, OrganizationId, RepoFullName, StopReason, TaskEvent } from "@ostra/protocol";
 
 import { AgentAdapter } from "../agent/base.ts";
@@ -26,12 +27,16 @@ import type {
   AppInfo,
   AppManifest,
   AppManifestInput,
+  BranchRules,
   CodeHostAppCredentials,
+  CodeHostWebhookEvent,
   CreatedApp,
+  DeleteRefResult,
   HostRepo,
   Installation,
   OpenPullRequestInput,
   PullRequest,
+  PullRequestDetails,
   ReadFilesResult,
   RepoAccess,
   RepoToken,
@@ -195,6 +200,10 @@ export type MemoryRepo = {
   readonly defaultBranch: string;
   readonly files: Readonly<Record<string, string>>;
   readonly branches: readonly string[];
+  /** Milestone 2: each branch's rules; a branch not listed is unprotected and unsigned. */
+  readonly rules?: Readonly<Record<string, BranchRules>>;
+  /** Milestone 2: refs outside the branches, such as hidden refs, which `deleteRef` removes. */
+  readonly refs?: readonly string[];
 };
 
 export type MemoryHostWorld = {
@@ -207,13 +216,26 @@ const TEMPLATE_PATHS = [".github/pull_request_template.md", ".github/PULL_REQUES
 
 export class TinyCodeHost extends CodeHostAdapter {
   readonly name = "tiny-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: false, prTemplates: true, lfsActionHosts: [] };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: false, prTemplates: true, lfsActionHosts: [], branchRules: true };
   readonly #world: MemoryHostWorld;
-  readonly #prs: (PullRequest & { readonly repo: RepoFullName })[] = [];
+  readonly #prs: (PullRequest & { readonly repo: RepoFullName; updatedAt: number; mergedAt: number | null; closedAt: number | null })[] = [];
+  readonly #refs = new Map<string, Set<string>>();
 
   constructor(world: MemoryHostWorld) {
     super();
     this.#world = world;
+    for (const repo of world.repos) {
+      this.#refs.set(repo.fullName, new Set(repo.refs ?? []));
+    }
+  }
+
+  /** Merges or closes a PR, as a person does on the host: for tests. */
+  finishPullRequest(repo: RepoFullName, number: number, how: "merged" | "closed"): void {
+    const pr = this.#prs.find((candidate) => candidate.repo === repo && candidate.number === number);
+    if (pr === undefined) throw new Error("no such PR");
+    const index = this.#prs.indexOf(pr);
+    const now = Date.now();
+    this.#prs[index] = { ...pr, state: how, updatedAt: now, mergedAt: how === "merged" ? now : null, closedAt: now };
   }
 
   #authorized(app: CodeHostAppCredentials): boolean {
@@ -370,6 +392,9 @@ export class TinyCodeHost extends CodeHostAdapter {
       headBranch: input.head,
       baseBranch: input.base,
       title: input.title,
+      updatedAt: Date.now(),
+      mergedAt: null,
+      closedAt: null,
     };
     this.#prs.push(pr);
     return Promise.resolve(ok(withoutRepo(pr)));
@@ -384,7 +409,85 @@ export class TinyCodeHost extends CodeHostAdapter {
     const given = Buffer.from(header);
     return expected.length === given.length && timingSafeEqual(expected, given);
   }
+
+  override readBranchRules(access: RepoAccess, branch: string): Promise<AdapterResult<BranchRules>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    return Promise.resolve(ok(repo.value.rules?.[branch] ?? { protected: false, requiresSignedCommits: false, reasons: [] }));
+  }
+
+  override getPullRequest(access: RepoAccess, number: number): Promise<AdapterResult<PullRequestDetails>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const pr = this.#prs.find((candidate) => candidate.repo === access.repo && candidate.number === number);
+    if (pr === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    return Promise.resolve(
+      ok({ ...withoutRepo(pr), merged: pr.state === "merged", headSha: "0".repeat(40), updatedAt: pr.updatedAt, mergedAt: pr.mergedAt, closedAt: pr.closedAt }),
+    );
+  }
+
+  override parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
+    const event = input.headers["x-github-event"] ?? "unknown";
+    if (event !== "pull_request") {
+      return ok({ kind: "other", event });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(input.body);
+    } catch {
+      return adapterError("invalid-response", "the webhook's body isn't JSON");
+    }
+    const parsed = tinyPullRequestEventSchema.safeParse(body);
+    if (!parsed.success) {
+      return adapterError("invalid-response", "the pull_request event couldn't be read");
+    }
+    const { action, pull_request: pr, repository, installation } = parsed.data;
+    const fullName = repoFullNameSchema.safeParse(repository.full_name);
+    if (!fullName.success) {
+      return adapterError("invalid-response", "the repo's name couldn't be read");
+    }
+    return ok({
+      kind: "pull_request",
+      action,
+      installationId: installation === undefined ? null : String(installation.id),
+      hostRepoId: String(repository.id),
+      repo: fullName.data,
+      number: pr.number,
+      state: pr.merged ? "merged" : pr.state,
+      headBranch: pr.head.ref,
+      headSha: pr.head.sha,
+      changedAt: Date.parse(pr.updated_at),
+    });
+  }
+
+  override deleteRef(access: RepoAccess, ref: string): Promise<AdapterResult<DeleteRefResult>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const refs = this.#refs.get(access.repo);
+    return Promise.resolve(ok({ deleted: refs?.delete(ref) === true }));
+  }
 }
+
+const tinyPullRequestEventSchema = z.looseObject({
+  action: z.string(),
+  installation: z.looseObject({ id: z.number() }).optional(),
+  repository: z.looseObject({ id: z.number(), full_name: z.string() }),
+  pull_request: z.looseObject({
+    number: z.number().int().positive(),
+    state: z.enum(["open", "closed"]),
+    merged: z.boolean(),
+    updated_at: z.string(),
+    head: z.looseObject({ ref: z.string(), sha: z.string() }),
+  }),
+});
 
 const withoutRepo = (pr: PullRequest & { readonly repo: RepoFullName }): PullRequest => ({
   number: pr.number,
@@ -459,6 +562,7 @@ export class TinyAgent extends AgentAdapter {
     rejectAndContinue: true,
     elicitationForm: true,
     modelBaseUrlAndPlaceholderKey: true,
+    sessionArchive: false,
   };
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });

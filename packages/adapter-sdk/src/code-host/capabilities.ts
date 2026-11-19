@@ -9,4 +9,9 @@ export type CodeHostCapabilities = {
    * no LFS, or the proxy refuses every LFS action.
    */
   readonly lfsActionHosts: readonly string[];
+  /**
+   * Milestone 2 (F-055, F-060): `readBranchRules` reads whether a branch is protected and requires
+   * signed commits. Without it, `readBranchRules` answers `unsupported`, and the panel shows both checks as unknown.
+   */
+  readonly branchRules: boolean;
 };

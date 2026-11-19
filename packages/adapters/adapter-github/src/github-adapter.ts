@@ -132,7 +132,8 @@ export class GitHubAdapter extends CodeHostAdapter {
     this.#webUrl = (options.webUrl ?? DEFAULT_WEB_URL).replace(/\/+$/, "");
     this.#userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     // Where an LFS batch answer may send the git proxy (Q119, spike 4).
-    this.capabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)] };
+    // `branchRules` turns on with ticket 09, which builds `readBranchRules` (and the PR state, webhooks and refs).
+    this.capabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [...(options.lfsActionHosts ?? GITHUB_COM_LFS_ACTION_HOSTS)], branchRules: false };
   }
 
   // ---------- health ----------

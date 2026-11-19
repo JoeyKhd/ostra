@@ -393,6 +393,7 @@ describe("the GitHub adapter", () => {
         checkRuns: true,
         prTemplates: true,
         lfsActionHosts: ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"],
+        branchRules: false,
       });
     });
   });

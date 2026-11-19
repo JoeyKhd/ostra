@@ -16,7 +16,7 @@ import type {
   RepoPushResult,
   StopInput,
 } from "@ostra/adapter-sdk";
-import type { BoxState } from "@ostra/protocol";
+import type { BoxReleaseReason, BoxState } from "@ostra/protocol";
 import type { Bridge } from "./bridge/bridge-server.ts";
 import { bridgeProcesses } from "./bridge-processes.ts";
 
@@ -81,8 +81,8 @@ export class DockerExecutor extends ExecutorAdapter {
     return this.#inner.stop(input);
   }
 
-  release(box: BoxRef): Promise<AdapterResult<void>> {
-    return this.#inner.release(box);
+  release(box: BoxRef, reason: BoxReleaseReason): Promise<AdapterResult<void>> {
+    return this.#inner.release(box, reason);
   }
 
   state(box: BoxRef): Promise<AdapterResult<BoxState>> {

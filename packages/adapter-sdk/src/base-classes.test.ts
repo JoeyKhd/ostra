@@ -115,7 +115,7 @@ describe("a missing operation", () => {
     // @ts-expect-error openPullRequest and the others are missing.
     class NoCodeHost extends CodeHostAdapter {
       readonly name = "no";
-      readonly capabilities = { checkRuns: false, prTemplates: false, lfsActionHosts: [] };
+      readonly capabilities = { checkRuns: false, prTemplates: false, lfsActionHosts: [], branchRules: false };
       health(): Promise<HealthReport> {
         return ok();
       }
@@ -130,6 +130,7 @@ describe("a missing operation", () => {
         rejectAndContinue: false,
         elicitationForm: false,
         modelBaseUrlAndPlaceholderKey: false,
+        sessionArchive: false,
       };
       health(): Promise<HealthReport> {
         return ok();

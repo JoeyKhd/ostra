@@ -77,7 +77,7 @@ export type OpenedPull = PullRequest & { readonly repo: string; readonly body: s
 
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"] };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false };
   /** App ID to its private key and bot. */
   readonly apps = new Map<string, { readonly privateKey: string; readonly bot: GitPerson }>();
   /** Installation ID to the repos it lists. */

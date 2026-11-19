@@ -10,7 +10,8 @@ import { memorySecretRowStore } from "./testing/memory.ts";
 import { defineAgentContractSuite } from "./testing/agent-suite.ts";
 import { defineCodeHostContractSuite } from "./testing/code-host-suite.ts";
 import { defineExecutorContractSuite } from "./testing/executor-suite.ts";
-import { defineBlobStoreContractSuite, defineNotificationContractSuite } from "./testing/first-case-suites.ts";
+import { defineBlobStoreFirstCases } from "./testing/blob-store-suite.ts";
+import { defineNotificationContractSuite } from "./testing/first-case-suites.ts";
 import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
 import { defineTrackerContractSuite, defineTrackerFirstCases } from "./testing/tracker-suite.ts";
 import { defineModelProviderContractSuite } from "./testing/model-provider-suite.ts";
@@ -44,7 +45,7 @@ defineNotificationContractSuite({
   name: "tiny notifier",
   create: () => Promise.resolve({ adapter: new TinyNotifier(), fixture: {} }),
 });
-defineBlobStoreContractSuite({
+defineBlobStoreFirstCases({
   name: "tiny blob store",
   create: () => Promise.resolve({ adapter: new TinyBlobStore(), fixture: {} }),
 });
@@ -52,6 +53,12 @@ defineBlobStoreContractSuite({
 const repo = repoFullNameSchema.parse("test-org/test1");
 const app = { appId: "42", privateKey: "-----BEGIN TEST KEY-----", slug: "ostra-tiny", name: "ostra tiny" };
 const webhookBody = JSON.stringify({ action: "opened", number: 1 });
+const pullRequestBody = JSON.stringify({
+  action: "closed",
+  installation: { id: 7 },
+  repository: { id: 1001, full_name: "test-org/test1" },
+  pull_request: { number: 3, state: "closed", merged: true, updated_at: "2026-11-19T10:00:00Z", head: { ref: "ostra/contract", sha: "a".repeat(40) } },
+});
 
 defineCodeHostContractSuite({
   name: "tiny code host",
@@ -66,7 +73,12 @@ defineCodeHostContractSuite({
             fullName: repo,
             defaultBranch: "main",
             files: { "package.json": "{}", ".github/pull_request_template.md": "## What\n" },
-            branches: ["main", "ostra/contract"],
+            branches: ["main", "ostra/contract", "signed"],
+            rules: {
+              main: { protected: true, requiresSignedCommits: false, reasons: [] },
+              signed: { protected: true, requiresSignedCommits: true, reasons: [] },
+            },
+            refs: ["refs/ostra/wip/contract-task"],
           },
         ],
       }),
@@ -85,6 +97,21 @@ defineCodeHostContractSuite({
           body: webhookBody,
           secret: "hook-secret",
         },
+        branchRules: [
+          { branch: "main", expected: { protected: true, requiresSignedCommits: false } },
+          { branch: "signed", expected: { protected: true, requiresSignedCommits: true } },
+          { branch: "ostra/contract", expected: { protected: false, requiresSignedCommits: false } },
+        ],
+        pullRequestWebhook: {
+          input: {
+            headers: { "x-hub-signature-256": signWebhook("hook-secret", pullRequestBody), "x-github-event": "pull_request" },
+            body: pullRequestBody,
+            secret: "hook-secret",
+          },
+          number: 3,
+          state: "merged",
+        },
+        deletableRef: "refs/ostra/wip/contract-task",
       },
     }),
 });
