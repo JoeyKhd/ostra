@@ -37,6 +37,8 @@ export type ApiSettings = Pick<
   // Milestone 4: the budget page's warn share (ticket 27), a project's repo limit (ticket 30).
   | "budgetWarnPercent"
   | "projectMaxRepos"
+  // Milestone 4: Insights say when they're stale (F-108, ticket 37).
+  | "insightsIntervalMinutes"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */

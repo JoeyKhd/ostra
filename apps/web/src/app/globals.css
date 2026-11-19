@@ -31,6 +31,9 @@
   --shell: #f3f0e8;
   --ink: #0c1d21;
   --mist: #cfd8d4;
+  /* Chart marks (insights.md): Mist for the main series, a quieter grey above 3:1 for the second. */
+  --chart: #cfd8d4;
+  --chart-2: #62656b;
   /* The diff's line fills (task-changes.md): --green and --red at 10%. */
   --add-bg: rgba(79, 178, 134, 0.1);
   --del-bg: rgba(229, 103, 92, 0.1);

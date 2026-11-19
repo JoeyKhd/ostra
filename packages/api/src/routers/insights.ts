@@ -97,7 +97,23 @@ export const insightsViewSchema = z.object({
   timeToFirstPr: z.object({ medianMs: z.number().nullable(), count: z.number().int() }),
   waiting: waitingFigureSchema.extend({ byReason: z.array(waitingFigureSchema.extend({ reason: z.string() })) }),
   /** One row per UTC day of the period, oldest first. */
-  series: z.array(z.object({ day: z.string(), prsOpened: z.number().int(), prsMerged: z.number().int() })),
+  series: z.array(
+    z.object({
+      day: z.string(),
+      prsOpened: z.number().int(),
+      prsMerged: z.number().int(),
+      /** Ticket 37's sparklines: the day's merge rate (`null` with none closed), the median time to a
+       *  first PR of the tasks whose first PR opened that day, the day's waiting and its money. */
+      mergeRate: z.number().nullable(),
+      firstPrMedianMs: z.number().nullable(),
+      waitingMs: z.number(),
+      spentMicroUsd: z.number(),
+    }),
+  ),
+  /** The repos of the projects in scope that the member can open ("across {n} repos"). */
+  repoCount: z.number().int(),
+  /** How often `insights.compute` runs, for the page's stale line. */
+  intervalMinutes: z.number().int(),
   tokens: z.object({
     total: tokenFiguresSchema,
     byProject: z.array(tokenFiguresSchema.extend({ line: projectLineSchema })),
@@ -138,7 +154,7 @@ export const insightsRouter = router({
       const period = resolveInsightPeriod(input.period, ports.clock.now());
       const days = { gte: new Date(period.start), lt: new Date(period.end) };
 
-      const [daily, metrics, spend, run, folding] = await Promise.all([
+      const [daily, metrics, spend, run, folding, repoCount] = await Promise.all([
         db.insightDaily.findMany({ where: { organizationId, projectId, day: days }, orderBy: { day: "asc" } }),
         db.taskMetric.findMany({
           where: { organizationId, firstPrAt: { gte: days.gte, lt: days.lt }, ...(projectId === null ? {} : { projectId }) },
@@ -150,18 +166,19 @@ export const insightsRouter = router({
         }),
         db.insightRun.findUnique({ where: { organizationId }, select: { lastRunAt: true } }),
         loadProjectFolding(db, ctx.scope),
+        projectId === null ? null : db.repo.count({ where: { organizationId, projectId } }),
       ]);
 
       let prsOpened = 0;
       let prsMerged = 0;
       let prsClosedUnmerged = 0;
       const durations: Record<string, number[]> = {};
-      const byDay = new Map<string, { prsOpened: number; prsMerged: number }>();
+      const byDay = new Map<string, { prsOpened: number; prsMerged: number; prsClosedUnmerged: number; waitingMs: number }>();
       for (const row of daily) {
         prsOpened += row.prsOpened;
         prsMerged += row.prsMerged;
         prsClosedUnmerged += row.prsClosedUnmerged;
-        byDay.set(dayText(row.day.getTime()), { prsOpened: row.prsOpened, prsMerged: row.prsMerged });
+        byDay.set(dayText(row.day.getTime()), { prsOpened: row.prsOpened, prsMerged: row.prsMerged, prsClosedUnmerged: row.prsClosedUnmerged, waitingMs: Number(row.waitingMs) });
         const parsed = insightWaitingByReasonSchema.safeParse(row.waitingByReason);
         if (!parsed.success) {
           ctx.deps.logger.warn("insights.waiting_unreadable", { organizationId, insightDailyId: row.id });
@@ -175,16 +192,35 @@ export const insightsRouter = router({
       const waiting = waitingFromDurations(durations);
 
       const firstPr: number[] = [];
+      const firstPrByDay = new Map<string, number[]>();
       for (const metric of metrics) {
         if (metric.firstPrAt !== null) {
-          firstPr.push(Math.max(0, metric.firstPrAt.getTime() - metric.createdAt.getTime()));
+          const ms = Math.max(0, metric.firstPrAt.getTime() - metric.createdAt.getTime());
+          firstPr.push(ms);
+          const text = dayText(dayStart(metric.firstPrAt.getTime()));
+          firstPrByDay.set(text, [...(firstPrByDay.get(text) ?? []), ms]);
         }
       }
+      const spendByDay = new Map<string, number>();
+      for (const row of spend) {
+        const text = dayText(row.day.getTime());
+        spendByDay.set(text, (spendByDay.get(text) ?? 0) + Number(row.spentMicroUsd));
+      }
 
-      const series: { day: string; prsOpened: number; prsMerged: number }[] = [];
+      const series: InsightsView["series"] = [];
       for (let day = period.start; day < period.end; day += DAY_MS) {
         const text = dayText(day);
-        series.push({ day: text, ...(byDay.get(text) ?? { prsOpened: 0, prsMerged: 0 }) });
+        const row = byDay.get(text) ?? { prsOpened: 0, prsMerged: 0, prsClosedUnmerged: 0, waitingMs: 0 };
+        const dayClosed = row.prsMerged + row.prsClosedUnmerged;
+        series.push({
+          day: text,
+          prsOpened: row.prsOpened,
+          prsMerged: row.prsMerged,
+          mergeRate: dayClosed === 0 ? null : row.prsMerged / dayClosed,
+          firstPrMedianMs: median(firstPrByDay.get(text) ?? []),
+          waitingMs: row.waitingMs,
+          spentMicroUsd: spendByDay.get(text) ?? 0,
+        });
       }
 
       let total = zeroFigures;
@@ -217,6 +253,8 @@ export const insightsRouter = router({
           byReason: [...waiting.byReason].map(([reason, figure]) => ({ reason, ...figure })).sort((x, y) => y.totalMs - x.totalMs || x.reason.localeCompare(y.reason)),
         },
         series,
+        repoCount: repoCount ?? (await db.repo.count({ where: { organizationId, projectId: { in: [...folding.visible.keys()] } } })),
+        intervalMinutes: ctx.deps.settings.insightsIntervalMinutes,
         tokens: {
           total,
           byProject: foldByLine(perProject, addFigures).map(({ line, value }) => ({ line, ...value })),

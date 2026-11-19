@@ -13,7 +13,7 @@ import { repoIdSchema } from "@ostra/protocol";
 import type { ModelId, ProjectId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApiHarness, seedTask } from "../testing/index.ts";
+import { createApiHarness, seedConnectionAndModel, seedProject, seedTask } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
 import { seedModelRow, seedProviderRow, seedSpendRows } from "../testing/m4-seed.ts";
 
@@ -212,6 +212,34 @@ describe("insights.get", () => {
     expect(view.series.map((row) => row.day)).toEqual(["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"]);
     expect(view.series.map((row) => row.prsOpened)).toEqual([2, 1, 1, 0, 0, 1, 0]);
     expect(view.series.map((row) => row.prsMerged)).toEqual([1, 1, 0, 0, 1, 1, 0]);
+  });
+
+  it("F-108: each day of the series carries the sparklines' figures, from the job's rows and the rollup alone", async () => {
+    const view = await (await harness.as(harness.fixture.a.admin)).insights.get({ projectId: null, period: PERIOD });
+    view.series.forEach((row, i) => {
+      const day: InsightPeriod = { start: PERIOD_MS.start + i * DAY, end: PERIOD_MS.start + (i + 1) * DAY };
+      expect(row.mergeRate).toBe(mergeRate(fixture.prs, day));
+      expect(row.firstPrMedianMs).toBe(medianTimeToFirstPr(fixture.tasks, fixture.prs, day).medianMs);
+      expect(row.waitingMs).toBe(timeWaiting(fixture.items, day).totalMs);
+      expect(row.spentMicroUsd).toBe(fixture.spend.filter((spend) => at(`${spend.day}T00:00:00Z`) === day.start).reduce((sum, spend) => sum + spend.spentMicroUsd, 0));
+    });
+    // The days add up to the period's figures.
+    expect(view.series.reduce((sum, row) => sum + row.waitingMs, 0)).toBe(view.waiting.totalMs);
+    expect(view.series.reduce((sum, row) => sum + row.spentMicroUsd, 0)).toBe(view.tokens.total.spentMicroUsd);
+    expect(view.series.filter((row) => row.mergeRate === null).length).toBeGreaterThan(0);
+    expect(view.series.filter((row) => row.firstPrMedianMs !== null).length).toBe(view.timeToFirstPr.count);
+    expect(view.intervalMinutes).toBe(5);
+  });
+
+  it("F-108: the repo count covers the projects the member can open, or the one project", async () => {
+    const { a } = harness.fixture;
+    const member = await harness.as(a.member);
+    expect((await member.insights.get({ projectId: null, period: PERIOD })).repoCount).toBe(0);
+    const world = await seedConnectionAndModel(harness);
+    const project = await seedProject(harness, world, "insights-repos");
+    expect((await member.insights.get({ projectId: null, period: PERIOD })).repoCount).toBe(1);
+    expect((await member.insights.get({ projectId: project.projectId, period: PERIOD })).repoCount).toBe(1);
+    expect((await member.insights.get({ projectId: a.openProject.id, period: PERIOD })).repoCount).toBe(0);
   });
 
   it("F-108: a project's figures cover its own rows only", async () => {

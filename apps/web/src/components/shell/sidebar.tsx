@@ -1,6 +1,6 @@
 "use client";
 
-import { BellIcon, CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
+import { BellIcon, ChartNoAxesColumnIcon, CheckIcon, ChevronsUpDownIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -153,6 +153,9 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       ) : null}
       <NavLink href="/organization/agent-profiles" icon={<SlidersHorizontalIcon />} onNavigate={onNavigate}>
         {t("shell.agentProfiles")}
+      </NavLink>
+      <NavLink href="/organization/insights" icon={<ChartNoAxesColumnIcon />} onNavigate={onNavigate}>
+        {t("shell.insights")}
       </NavLink>
 
       <div className="mt-auto pt-3">

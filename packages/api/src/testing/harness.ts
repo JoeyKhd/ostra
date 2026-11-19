@@ -144,6 +144,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       cliSessionDays: 30,
       budgetWarnPercent: 80,
       projectMaxRepos: 10,
+      insightsIntervalMinutes: 5,
     },
     blobStore: {
       name: "postgres",
