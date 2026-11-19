@@ -5,6 +5,8 @@ import { runnerEventSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "
 import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
 import { z } from "zod";
 
+import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
+import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
 import { holdProviderInTx } from "./hold-provider.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
@@ -178,10 +180,17 @@ const applyEffects = async (
       }
       case "git.pushed":
         if (event.ref === `refs/heads/${event.branch}`) {
-          await tx.taskRepo.updateMany({
-            where: { taskId: task.id, repoId: event.repoId, branchName: event.branch },
-            data: { headSha: event.headSha },
-          });
+          // The branch exists from its first push, however the session ends: a stop or a crash sends
+          // no `session.ended`, and its branch must still read as pushed, ready to reopen (F-025).
+          const rows = await tx.taskRepo.findMany({ where: { taskId: task.id, repoId: event.repoId, branchName: event.branch } });
+          for (const row of rows) {
+            const state = taskRepoFromColumns(row);
+            const pushed = state.ok ? transitionTaskRepo(state.value, { type: "pushed" }) : null;
+            await tx.taskRepo.update({
+              where: { id: row.id },
+              data: { headSha: event.headSha, ...(pushed?.ok === true ? { state: taskRepoToColumns(pushed.state).state, ahead: true } : {}) },
+            });
+          }
         }
         break;
       case "pr.text_set":

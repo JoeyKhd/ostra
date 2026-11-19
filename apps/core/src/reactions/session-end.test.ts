@@ -6,13 +6,16 @@ import type { LogRecord } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { dispatchTask, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, stopTask, systemClock } from "@ostra/domain";
+import { createPromptTask, dispatchTask, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, stopTask, systemClock } from "@ostra/domain";
 import type { JobName, JobPayload, MemberScope } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { JobContext, Jobs } from "@ostra/jobs";
 import {
+  branchNameSchema,
   commandIdSchema,
+  gitShaSchema,
   organizationIdSchema,
+  projectIdSchema,
   repoFullNameSchema,
   repoIdSchema,
   segmentIdSchema,
@@ -246,6 +249,54 @@ describe("a task with several repos", () => {
   });
 });
 
+describe("a prompt task in a project with no tracker (F-097, Q31)", () => {
+  it("F-097: goes from a member's prompt to an opened PR with no tracker and no ticket", async () => {
+    expect(await test.db.board.count({ where: { projectId: world.projectId } })).toBe(0);
+    const scope: MemberScope = { organizationId: fixture.a.organization.id, memberId: fixture.a.member.id, role: "member", projectRoles: new Map() };
+    const prompt = "Add a docs/numbers.md that lists one to ten";
+    const created = await test.db.$transaction((tx) =>
+      createPromptTask({ tx, scope, jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { projectId: projectIdSchema.parse(world.projectId), prompt, runnerId: runner.runnerId }),
+    );
+    if (!created.ok) {
+      throw new Error(`create failed: ${created.message}`);
+    }
+    const task: QueuedTask = { taskId: created.taskId, sessionId: created.sessionId, organizationId: fixture.a.organization.id };
+    const offered = await test.db.$transaction((tx) =>
+      dispatchTask({ tx, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock }, dispatchPayload(task)),
+    );
+    if (!offered.ok) {
+      throw new Error(`dispatch failed: ${offered.message}`);
+    }
+    const command = await test.db.command.findUniqueOrThrow({ where: { id: offered.commandId } });
+    await test.db.$transaction((tx) =>
+      applyOfferResultsInTx({ jobs, notices: postgresChangeNotices, clock: systemClock, logger }, tx, runner, [{ commandId: offered.commandId, seq: command.seq, kind: "dispatch", body: command.body, taskId: task.taskId, result: "accepted", reason: null }]),
+    );
+    let seq = 0;
+    const next = (): number => {
+      seq += 1;
+      return seq;
+    };
+    const headSha = gitShaSchema.parse("b".repeat(40));
+    await send(
+      task,
+      next,
+      { kind: "turn.started", turnId },
+      { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "I added docs/numbers.md." },
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+      { kind: "git.pushed", repoId: theRepo(), branch: created.branchName, headSha, ref: `refs/heads/${created.branchName}` },
+      { kind: "session.ended", outcome: "with-changes", repos: [{ repoId: theRepo(), ahead: true }] },
+    );
+    await reactToEnd(task);
+    await openPrs(task);
+    const pull = codeHost.pulls.find((item) => item.headBranch === created.branchName);
+    expect(pull).toMatchObject({ title: prompt, baseBranch: "main" });
+    expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ source: "prompt", state: "in_review", ticketKey: null, ticketId: null, boardId: null });
+    expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "pr_open", prNumber: pull?.number });
+    expect(await test.db.ticket.count({ where: { projectId: world.projectId } })).toBe(0);
+    expect(await test.db.ticketWrite.count({ where: { taskId: task.taskId } })).toBe(0);
+  });
+});
+
 describe("a session that ends without changes", () => {
   it("F-065: opens no PR and puts the task in needs you with the agent's summary", async () => {
     const task = await runningTask();
@@ -296,6 +347,41 @@ describe("stop and crash", () => {
     expect(await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "ended" });
     expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "branch_pushed", ahead: true });
     expect(await test.db.auditEntry.findFirst({ where: { entityId: task.taskId, action: "task.stopped", actorId: fixture.a.member.id } })).not.toBeNull();
+  });
+
+  it("F-025: a member's stop, answered as the runner answers it, ends the session stopped with the branch and the hidden ref recorded and no PR", async () => {
+    const task = await runningTask();
+    const scope: MemberScope = { organizationId: fixture.a.organization.id, memberId: fixture.a.member.id, role: "member", projectRoles: new Map() };
+    const stopped = await test.db.$transaction((tx) =>
+      stopTask({ tx, scope, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { taskId: task.taskId }),
+    );
+    if (!stopped.ok || stopped.commandId === null) {
+      throw new Error("stop failed");
+    }
+    const stopCommandId = stopped.commandId;
+    const command = await test.db.command.findUniqueOrThrow({ where: { id: stopCommandId } });
+    expect(command).toMatchObject({ runnerId: runner.runnerId, kind: "stop" });
+    // The runner (apps/runner's task run): the turn ends cancelled, the unfinished work goes to the
+    // branch and the hidden ref, and no session.ended follows; then it acks the stop.
+    const headSha = gitShaSchema.parse("a".repeat(40));
+    const branch = branchNameSchema.parse((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).branchName);
+    await send(
+      task,
+      task.next,
+      { kind: "turn.ended", turnId, stopReason: "cancelled" },
+      { kind: "git.pushed", repoId: theRepo(), branch, headSha, ref: `refs/heads/${branch}` },
+      { kind: "git.pushed", repoId: theRepo(), branch, headSha, ref: `refs/ostra/wip/${task.taskId}` },
+    );
+    await test.db.$transaction((tx) =>
+      applyStopResultsInTx(deps, tx, runner, [{ commandId: stopCommandId, seq: command.seq, kind: "stop", body: command.body, taskId: task.taskId, result: "done", reason: null }]),
+    );
+    expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "stopped" });
+    expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "stopped", stoppedReason: "requested" });
+    expect(await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "ended", endReason: "released" });
+    expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "branch_pushed", ahead: true, headSha });
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "git.pushed" } })).toBe(2);
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.opened" } })).toBe(0);
+    expect(codeHost.pulls.filter((pull) => pull.headBranch === branch)).toEqual([]);
   });
 
   it("a crash reaches needs you for the driver with the box failed", async () => {
