@@ -63,6 +63,7 @@ export * from "./panel-blob-token.ts";
 export * from "./use-cases/approvals.ts";
 export * from "./use-cases/plans-questions.ts";
 export * from "./use-cases/pools.ts";
+export * from "./use-cases/pool-admin.ts";
 export * from "./use-cases/runner-approval.ts";
 export * from "./use-cases/sync-provider-models.ts";
 export * from "./use-cases/linear-connection.ts";

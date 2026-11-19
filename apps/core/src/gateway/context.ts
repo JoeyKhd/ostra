@@ -107,7 +107,8 @@ export type GatewayContext = {
   readonly taskTokens: TaskTokens;
   readonly nonces: NonceCache;
   readonly deviceSessions: DeviceSessions;
-  readonly ports: Pick<Ports, "notices" | "audit" | "clock">;
+  /** `jobs`: a pool runner's join enqueues its notice (milestone 5, F-091). */
+  readonly ports: Pick<Ports, "notices" | "audit" | "clock" | "jobs">;
   readonly hooks: GatewayHooks;
   readonly timers: GatewayTimers;
   readonly logger: Logger;

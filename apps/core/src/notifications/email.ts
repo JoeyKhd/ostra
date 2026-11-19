@@ -2,15 +2,15 @@ import { ResendEmailAdapter } from "@ostra/adapter-email-resend";
 import type { ResendEmailAdapterOptions } from "@ostra/adapter-email-resend";
 import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
 import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
-import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, Result, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
+import { isRunnerNotice, secretRefSchema } from "@ostra/adapter-sdk";
+import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, Result, RunnerNotificationKind, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { budgetNoticeIdOfKey, emailStillNeeded, isBudgetNoticeKind, loadBudgetNoticeView, momentHeading, momentKindOf, renderBudgetNoticeMail, renderNeedsYouEmail, spendUrlOf } from "@ostra/domain";
 import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
 import { approvalSubjectSchema, memberIdSchema, notificationIdSchema, organizationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalSubject } from "@ostra/protocol";
 
-import { retryable, urlOf, words } from "./deliver.ts";
+import { loadRunnerNotice, retryable, urlOf, words } from "./deliver.ts";
 import type { ChannelOutcome, DeliveryRow, EmailChannel } from "./deliver.ts";
 
 // The email channel (F-115, F-036, ADR 0050, ticket 21). A mail waits its delay; at the due time it
@@ -279,6 +279,55 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
   };
 
+  /**
+   * Milestone 5 (F-091, ticket 12): a runner notice's mail to an admin, rendered from the runner when
+   * it's due. Skipped once they read it in the panel, the runner is gone, or the approval is answered.
+   */
+  const deliverRunnerNotice = async (
+    row: DeliveryRow,
+    kind: RunnerNotificationKind,
+    fingerprint: string,
+    config: Exclude<EmailConfig, { readonly provider: "off" }>,
+  ): Promise<ChannelOutcome> => {
+    const stored = row.notification;
+    if (stored.readAt !== null) {
+      return { outcome: "skipped", why: "read" };
+    }
+    const notice = await loadRunnerNotice(deps, row, kind);
+    if (notice === null) {
+      return { outcome: "skipped", why: "closed" };
+    }
+    const address = stored.member.user.email.trim();
+    if (address === "") {
+      return { outcome: "skipped", why: "no-address" };
+    }
+    const memberId = memberIdSchema.parse(stored.memberId);
+    const sent = await adapterFor(fingerprint, config).send({
+      organizationId: notice.organizationId,
+      memberIds: [memberId],
+      title: notice.rendered.email.subject,
+      body: notice.rendered.email.subject,
+      url: notice.runner.url,
+      idempotencyKey: row.idempotencyKey,
+      kind,
+      recipients: [{ memberId, email: address, trackerMention: null }],
+      subject: notice.runner.runnerName,
+      rendered: notice.rendered.email,
+      notificationId: notificationIdSchema.parse(stored.id),
+      taskId: null,
+      ticket: null,
+      runner: notice.runner,
+    });
+    if (!sent.ok) {
+      return { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+    }
+    const refused = sent.value.refused.find((entry) => entry.memberId === memberId);
+    if (refused !== undefined) {
+      return { outcome: "failed", error: `the mail provider refused the address: ${refused.reason}`.slice(0, 500), retryable: false };
+    }
+    return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
+  };
+
   const deliver = async (row: DeliveryRow): Promise<ChannelOutcome> => {
     const configured = await configOf();
     if ("failed" in configured) {
@@ -291,6 +340,9 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     const { notification: stored } = row;
     if (isBudgetNoticeKind(stored.kind)) {
       return deliverBudgetNotice(row, stored.kind, configured.fingerprint, configured.config);
+    }
+    if (isRunnerNotice(stored.kind)) {
+      return deliverRunnerNotice(row, stored.kind, configured.fingerprint, configured.config);
     }
     // Due now: a member who read it in the panel meanwhile, or an item closed meanwhile, needs no mail.
     const kind = momentKindOf(stored.kind);

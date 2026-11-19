@@ -54,6 +54,7 @@ import { createLiveTextWriter } from "./ingest/live-text.ts";
 import { createEmailChannel, createNotificationChannels, notifyDeliverHandler, notifyFanoutHandler, realEmailFactories } from "./notifications/index.ts";
 import type { NotifyDeps } from "./notifications/index.ts";
 import { accountMailSendHandler } from "./reactions/account-mail.ts";
+import { runnerJoinNoticeHandler } from "./notifications/runner-notices.ts";
 import { budgetCheckHandler, budgetNewMonthHandler, budgetReleaseHandler, ensureBudgetNewMonthSchedule } from "./reactions/budgets.ts";
 import { ensureInsightsSchedule, insightsComputeHandler } from "./reactions/insights.ts";
 import { enqueueSearchBackfill, searchBackfillHandler } from "./search/backfill.ts";
@@ -230,7 +231,7 @@ export const startCore = async (
     panelUrl: settings.publicUrl,
     signingKey,
     deviceSessions: postgresDeviceSessions(db),
-    ports: { notices, audit: postgresAuditLog, clock: systemClock },
+    ports: { notices, audit: postgresAuditLog, clock: systemClock, jobs },
     hooks: {
       ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox, budgetWarnPercent: settings.budgetWarnPercent }),
       liveText: liveText.write,
@@ -481,6 +482,12 @@ export const startCore = async (
     budgetWarnPercent: settings.budgetWarnPercent,
     emailDelaySeconds: settings.emailDelaySeconds,
   };
+  // Milestone 5 (F-091, ticket 12): a pool runner's join tells the admins, and opens its approval.
+  await jobs.work(
+    "runner.join-notice",
+    runnerJoinNoticeHandler({ db, jobs, notices, clock: systemClock, emailDelaySeconds: settings.emailDelaySeconds }),
+    { localConcurrency: 2 },
+  );
   await jobs.work("budget.check", budgetCheckHandler(budgetDeps), { localConcurrency: 2 });
   await jobs.work("budget.release", budgetReleaseHandler(budgetDeps), { localConcurrency: 1 });
   await jobs.work("budget.new-month", budgetNewMonthHandler(budgetDeps), { localConcurrency: 1 });

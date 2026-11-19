@@ -107,7 +107,7 @@ describe("join tokens an admin makes", () => {
       kind: "pool",
       state: "joining",
     });
-    const audit = await api.test.db.auditEntry.findFirstOrThrow({ where: { action: "runner.registered", entityId: runner.runnerId } });
+    const audit = await api.test.db.auditEntry.findFirstOrThrow({ where: { action: "runner.joined", entityId: runner.runnerId } });
     expect(audit.data).toMatchObject({ joinTokenId: made.joinTokenId, bootstrap: false });
     expect(JSON.stringify(audit)).not.toContain(made.token);
     expect((await api.test.db.joinToken.findUniqueOrThrow({ where: { id: made.joinTokenId } })).lastUsedAt).not.toBeNull();

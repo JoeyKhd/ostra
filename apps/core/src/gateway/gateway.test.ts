@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { silentLogger } from "@ostra/adapter-sdk";
 import { recordingLogger } from "@ostra/adapter-sdk/testing";
+import { memoryJobQueue } from "@ostra/api/testing";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { notifyRunnerInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox } from "@ostra/domain";
@@ -232,7 +233,7 @@ describe("refused tokens", () => {
     let serverAheadMs = 0;
     const clocked = await startGateway(test.db, test.url, {
       logger: log,
-      ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: { now: () => Date.now() + serverAheadMs } },
+      ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: { now: () => Date.now() + serverAheadMs }, jobs: memoryJobQueue() },
     });
     try {
       const runner = await registerPersonal(clocked, test.db, fixture.a.member);

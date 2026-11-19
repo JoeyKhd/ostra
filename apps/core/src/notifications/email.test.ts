@@ -9,23 +9,28 @@ import type { FakeResendApi, FakeSmtpServer } from "@ostra/adapter-sdk/testing";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import {
+  createPool,
   createNeedsYouItemInTx,
   markNotificationRead,
   postgresAuditLog,
   postgresChangeNotices,
   postgresCommandOutbox,
+  registerPoolRunner,
+  rejectRunner,
   resolveNeedsYouItemsInTx,
   saveEmailSettings,
+  sendRunnerJoinNotice,
   syncEmailSettingsRow,
 } from "@ostra/domain";
 import type { Clock, EmailFromSettings } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { JobContext, Jobs } from "@ostra/jobs";
 import { memberIdSchema, notificationDeliveryIdSchema, notificationIdSchema, organizationIdSchema, questionIdSchema, turnIdSchema } from "@ostra/protocol";
-import type { NeedsYouItemId, ProjectId, TaskEvent, TaskId } from "@ostra/protocol";
+import type { NeedsYouItemId, ProjectId, RunnerId, TaskEvent, TaskId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { makeRunnerKey } from "../testing/fake-peer.ts";
 import { queuedDeliveries } from "../testing/notify.ts";
 import { seedTicketTask } from "../testing/tickets.ts";
 import { createConnectionTrackers } from "../tracker/connections.ts";
@@ -443,5 +448,56 @@ describe("what never reaches a log", () => {
     expect(lines).not.toContain(resend.apiKey);
     expect(lines).not.toContain("relay-password");
     expect(lines).not.toContain("second-password");
+  });
+});
+
+describe("the runner notices (milestone 5, ticket 12)", () => {
+  const poolDeps = () => ({ db: test.db, jobs, audit: postgresAuditLog, notices: postgresChangeNotices, clock });
+  const joinRunner = async (token: string, name: string): Promise<RunnerId> => {
+    const joined = await registerPoolRunner(poolDeps(), { token, name, publicKey: (await makeRunnerKey()).publicKey, executor: "docker", version: "0.0.0", install: null, labels: [] });
+    if (!joined.ok) {
+      throw new Error(joined.message);
+    }
+    return joined.runnerId;
+  };
+  const runnerMails = (runnerId: RunnerId) =>
+    test.db.notificationDelivery.findMany({ where: { channel: "email", idempotencyKey: { contains: `:${runnerId}:` } }, include: { notification: true }, orderBy: { id: "asc" } });
+
+  it("F-091: mails both runner notices to each admin with the runner's facts and no token, and skips the approval's once it's answered", async () => {
+    const deps = depsFor();
+    expect(await saveEmailSettings(deps, admin(), resendSettings())).toMatchObject({ ok: true, provider: "resend" });
+    const scope = { organizationId, memberId: memberIdSchema.parse(fixture.a.admin.id), role: "admin" as const, projectRoles: new Map() };
+    const pool = await createPool(poolDeps(), scope, { name: "mail-approvals", requiresApproval: true, maxBoxes: null, joinTokenDays: null });
+    if (!pool.ok) {
+      throw new Error(pool.message);
+    }
+    const admins = await test.db.member.count({ where: { organizationId, role: "admin", state: "active" } });
+
+    const runnerId = await joinRunner(pool.joinToken.token, "mail-runner-a");
+    expect(await sendRunnerJoinNotice({ db: test.db, jobs, notices: postgresChangeNotices, clock, emailDelaySeconds: 120 }, { organizationId, runnerId })).toMatchObject({
+      kind: "sent",
+      notifications: admins * 2,
+    });
+    await deliverQueued(deps);
+    const mails = resendMail().filter((mail) => mail.subject.includes("mail-runner-a"));
+    expect(mails).toHaveLength(admins * 2);
+    expect(mails.filter((mail) => mail.subject.startsWith("A runner joined"))).toHaveLength(admins);
+    expect(mails.filter((mail) => mail.subject.startsWith("A runner waits for approval"))).toHaveLength(admins);
+    expect(mails.every((mail) => mail.subject.includes("mail-approvals") && (mail.html ?? "").includes(PUBLIC_URL) && (mail.html ?? "").includes(runnerId))).toBe(true);
+    expect(JSON.stringify(mails)).not.toContain(pool.joinToken.token);
+    expect((await runnerMails(runnerId)).every((row) => row.state === "sent")).toBe(true);
+
+    // A runner rejected before its mail is due: the joined mail goes, the approval's is skipped.
+    const rejected = await joinRunner(pool.joinToken.token, "mail-runner-b");
+    await sendRunnerJoinNotice({ db: test.db, jobs, notices: postgresChangeNotices, clock, emailDelaySeconds: 120 }, { organizationId, runnerId: rejected });
+    await test.db.$transaction((tx) =>
+      rejectRunner({ tx, notices: postgresChangeNotices, audit: postgresAuditLog, clock }, { organizationId, runnerId: rejected, memberId: memberIdSchema.parse(fixture.a.admin.id) }),
+    );
+    await deliverQueued(deps);
+    const after = await runnerMails(rejected);
+    expect(after.filter((row) => row.notification.kind === "runner_joined").every((row) => row.state === "sent")).toBe(true);
+    expect(after.filter((row) => row.notification.kind === "runner_awaiting_approval").map((row) => row.state)).toEqual(Array.from({ length: admins }, () => "skipped"));
+    expect(resendMail().filter((mail) => mail.subject.includes("mail-runner-b"))).toHaveLength(admins);
+    deps.close();
   });
 });

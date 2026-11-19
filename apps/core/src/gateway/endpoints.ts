@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { registerPersonalRunner } from "@ostra/domain";
+import { registerPersonalRunner, registerPoolRunner as joinPool } from "@ostra/domain";
 import {
   encodeInfoForMinor,
   encodeRunnerHttpErrorForMinor,
@@ -8,11 +8,9 @@ import {
   minorFromHeader,
   minorWindow,
   organizationIdSchema,
-  poolIdSchema,
   PROTOCOL_MAJOR,
   registerRequestSchema,
   runnerHeaders,
-  runnerIdSchema,
   runnerPaths,
   tokenAssertionSchema,
 } from "@ostra/protocol";
@@ -51,73 +49,69 @@ const info = (context: GatewayContext, http: IncomingMessage, response: ServerRe
   sendJson(response, 200, encodeInfoForMinor(body, minor));
 };
 
+/** How often a refused join is logged per token (or per unknown token): at most once a minute. */
+const JOIN_REFUSAL_LOG_MS = 60_000;
+const joinRefusalsLogged = new Map<string, number>();
+
+/** Logs a refused join with the token's ID when it's known, never the token; rate-limited per token. */
+const logJoinRefusal = (context: GatewayContext, reason: "token-unknown" | "token-expired" | "token-revoked", joinTokenId: string | null): void => {
+  const now = context.ports.clock.now();
+  const key = joinTokenId ?? "unknown";
+  const last = joinRefusalsLogged.get(key);
+  if (last !== undefined && now - last < JOIN_REFUSAL_LOG_MS) {
+    return;
+  }
+  if (joinRefusalsLogged.size > 1_000) {
+    joinRefusalsLogged.clear();
+  }
+  joinRefusalsLogged.set(key, now);
+  context.logger.warn("runner.join-refused", { reason, ...(joinTokenId === null ? {} : { joinTokenId }) });
+};
+
 /**
  * A pool runner's join, with any join token of its pool that isn't revoked or expired: the bootstrap
- * one core writes at first start, and the ones an admin makes in the panel (F-091, Q130).
+ * one core writes at first start, and the ones an admin makes in the panel (F-091, Q130). The join
+ * is the domain's (`registerPoolRunner`): one transaction with the audit entry and the notice's job.
  */
 const registerPoolRunner = async (
   context: GatewayContext,
   request: RegisterRequest,
   joinToken: string,
 ): Promise<{ readonly status: number; readonly body: RegisterResponse } | { readonly status: number; readonly code: "unauthorized" | "conflict" | "bad-request"; readonly message: string }> => {
-  const now = new Date(context.ports.clock.now());
-  return context.db.$transaction(async (tx) => {
-    const token = await tx.joinToken.findUnique({ where: { tokenHash: hashJoinToken(joinToken) } });
-    if (token?.revokedAt !== null || (token.expiresAt !== null && token.expiresAt <= now)) {
-      return { status: 401, code: "unauthorized", message: "the join token is not valid" };
+  const result = await joinPool(
+    { db: context.db, audit: context.ports.audit, notices: context.ports.notices, clock: context.ports.clock, jobs: context.ports.jobs },
+    {
+      token: joinToken,
+      name: request.name,
+      publicKey: request.publicKey,
+      executor: request.executor,
+      version: request.version,
+      install: null,
+      labels: request.labels,
+      capacity: request.capacity,
+      os: request.os,
+    },
+  );
+  if (result.ok) {
+    return { status: 201, body: { runnerId: result.runnerId, kind: "pool", poolId: result.poolId } };
+  }
+  switch (result.error) {
+    case "token-unknown":
+    case "token-expired":
+    case "token-revoked": {
+      // The token's ID, when it names one, for the log line: never the token.
+      const known = result.error === "token-unknown" ? null : await context.db.joinToken.findUnique({ where: { tokenHash: hashJoinToken(joinToken) }, select: { id: true } });
+      logJoinRefusal(context, result.error, known?.id ?? null);
+      return { status: 401, code: "unauthorized", message: result.message };
     }
-    if (request.executor === "host") {
-      return { status: 400, code: "bad-request", message: "a pool runner uses the docker or kubernetes executor" };
-    }
-    // Joins into one pool take its row in turn, so of two that race with one name, the second
-    // reads the first's runner below and is refused.
-    await tx.$queryRaw`SELECT 1 FROM "runner_pool" WHERE "id" = ${token.poolId} AND "organizationId" = ${token.organizationId} FOR NO KEY UPDATE`;
-    const sameName = await tx.runner.findFirst({
-      where: { organizationId: token.organizationId, poolId: token.poolId, name: request.name, revokedAt: null },
-      select: { id: true },
-    });
-    if (sameName !== null) {
-      return { status: 409, code: "conflict", message: "a runner of this name already joined this pool" };
-    }
-    if ((await tx.runner.findUnique({ where: { publicKey: request.publicKey }, select: { id: true } })) !== null) {
-      return { status: 409, code: "conflict", message: "a runner with this key exists; make a new key pair" };
-    }
-    const runner = await tx.runner.create({
-      data: {
-        organizationId: token.organizationId,
-        kind: "pool",
-        poolId: token.poolId,
-        name: request.name,
-        publicKey: request.publicKey,
-        executor: request.executor,
-        capacity: request.capacity,
-        labels: [...request.labels],
-        version: request.version,
-        os: { platform: request.os.platform, arch: request.os.arch, release: request.os.release },
-        state: "joining",
-      },
-      select: { id: true },
-    });
-    const runnerId = runnerIdSchema.parse(runner.id);
-    await tx.joinToken.update({ where: { id: token.id }, data: { lastUsedAt: now } });
-    const organizationId = organizationIdSchema.parse(token.organizationId);
-    await context.ports.audit.recordInTx(tx, {
-      organizationId: organizationId,
-      projectId: null,
-      actor: { kind: "runner", id: runnerId },
-      action: "runner.registered",
-      entity: "runner",
-      entityId: runnerId,
-      data: { kind: "pool", executor: request.executor, capacity: request.capacity, joinTokenId: token.id, bootstrap: token.bootstrap },
-    });
-    await context.ports.notices.emitInTx(tx, {
-      organizationId: organizationId,
-      projectId: null,
-      entity: "runner",
-      entityId: runnerId,
-    });
-    return { status: 201, body: { runnerId, kind: "pool", poolId: poolIdSchema.parse(token.poolId) } };
-  });
+    case "name-taken":
+    case "key-taken":
+      return { status: 409, code: "conflict", message: result.message };
+    case "invalid-input":
+      return { status: 400, code: "bad-request", message: result.message };
+    default:
+      return result.error satisfies never;
+  }
 };
 
 const register = async (context: GatewayContext, http: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -140,7 +134,7 @@ const register = async (context: GatewayContext, http: IncomingMessage, response
     }
     const result = await registerPoolRunner(context, request, request.joinToken);
     if ("body" in result) {
-      context.logger.info("runner.registered", { runnerId: result.body.runnerId, kind: "pool" });
+      context.logger.info("runner.joined", { runnerId: result.body.runnerId, kind: "pool", poolId: result.body.poolId });
       sendJson(response, result.status, result.body);
     } else {
       sendError(response, result.status, result.code, result.message);

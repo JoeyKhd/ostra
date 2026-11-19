@@ -6,6 +6,7 @@ import { transitionRunner } from "../lifecycles/runner.ts";
 import { notifyRunnerInTx } from "../postgres-outbox.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import { resolveRunnerApprovalNoticesInTx } from "./pool-admin.ts";
 
 // F-091, Q130 (milestone 1's ticket 42): a pool that requires approval keeps a joined runner
 // `joining`, with no task, until an admin approves it. Core's `hello` applies the lifecycle's
@@ -76,6 +77,8 @@ export const approveRunner = async (deps: RunnerDecisionDeps, input: RunnerDecis
     where: { id: input.runnerId },
     data: { approvedAt: row.approvedAt ?? now, approvedByMemberId: input.memberId, state },
   });
+  // The admins' open approval notice is answered (milestone 5, ticket 12).
+  await resolveRunnerApprovalNoticesInTx(tx, deps, { organizationId: input.organizationId, runnerId: input.runnerId });
   await deps.audit.recordInTx(tx, {
     organizationId: input.organizationId,
     projectId: null,
@@ -108,6 +111,7 @@ export const rejectRunner = async (deps: RunnerDecisionDeps, input: RunnerDecisi
   });
   // Every replica that holds its connection sends `evict` and closes with 4403.
   await notifyRunnerInTx(tx, { kind: "revoked", runnerId: input.runnerId });
+  await resolveRunnerApprovalNoticesInTx(tx, deps, { organizationId: input.organizationId, runnerId: input.runnerId });
   await deps.audit.recordInTx(tx, {
     organizationId: input.organizationId,
     projectId: null,

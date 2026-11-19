@@ -14,7 +14,7 @@ import { silentLogger } from "@ostra/adapter-sdk";
 import { recordingLogger } from "@ostra/adapter-sdk/testing";
 import { createAuth, ensureFirstAdmin } from "@ostra/api/auth";
 import type { OstraAuth } from "@ostra/api/auth";
-import { cookieHeaderFrom, TEST_PASSWORD } from "@ostra/api/testing";
+import { cookieHeaderFrom, memoryJobQueue, TEST_PASSWORD } from "@ostra/api/testing";
 import { createTestDatabase } from "@ostra/db/testing";
 import { exitCodes } from "@ostra/runner";
 import type { TestDatabase } from "@ostra/db/testing";
@@ -120,7 +120,7 @@ const startCore = async (key: Buffer = signingKey): Promise<Core> => {
     panelUrl: coreUrl(),
     signingKey: key,
     deviceSessions: postgresDeviceSessions(test.db),
-    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: coreClock },
+    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: coreClock, jobs: memoryJobQueue() },
     // A ping a second, so a peer core counts dead is found within a second, not twenty.
     timers: { pingMs: 1_000 },
     logger: coreLog,

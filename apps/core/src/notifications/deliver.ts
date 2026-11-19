@@ -1,4 +1,5 @@
-import type { AdapterError, BoardRef, Logger, MomentNotification, NotificationAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
+import { isRunnerNotice } from "@ostra/adapter-sdk";
+import type { AdapterError, BoardRef, Logger, MomentNotification, NotificationAdapter, RunnerNotificationKind, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db, Prisma } from "@ostra/db";
 import {
   budgetNoticeIdOfKey,
@@ -7,6 +8,10 @@ import {
   fanOutNotification,
   isBudgetNoticeKind,
   loadBudgetNoticeView,
+  loadRunnerNoticeView,
+  renderRunnerNotice,
+  runnerIdOfNoticeKey,
+  runnerNoticeSubject,
   momentHeading,
   spendUrlOf,
   momentKindOf,
@@ -213,9 +218,52 @@ const budgetPanelOutcome = async (deps: NotifyDeps, row: DeliveryRow, kind: "bud
   return sent.ok ? { outcome: "sent", providerMessageId: sent.value.providerMessageId } : { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
 };
 
+/**
+ * Milestone 5 (F-091, ticket 12): a runner notice, its words read from the runner when it's due. A
+ * runner gone, or an approval notice already answered, has nothing to say.
+ */
+export const loadRunnerNotice = async (deps: Pick<NotifyDeps, "db" | "publicUrl">, row: DeliveryRow, kind: RunnerNotificationKind) => {
+  const organizationId = organizationIdSchema.parse(row.organizationId);
+  const runnerId = runnerIdOfNoticeKey(row.idempotencyKey);
+  const view = runnerId === null ? null : await loadRunnerNoticeView(deps.db, organizationId, runnerId);
+  if (view === null || (kind === "runner_awaiting_approval" && row.notification.state !== "open")) {
+    return null;
+  }
+  const runner = runnerNoticeSubject(view, deps.publicUrl);
+  return { organizationId, runner, rendered: renderRunnerNotice({ kind, runner, organizationName: view.organizationName, publicUrl: deps.publicUrl }) };
+};
+
+const runnerPanelOutcome = async (deps: NotifyDeps, row: DeliveryRow, kind: RunnerNotificationKind): Promise<ChannelOutcome> => {
+  const notice = await loadRunnerNotice(deps, row, kind);
+  if (notice === null) {
+    return { outcome: "skipped", why: "closed" };
+  }
+  const memberId = memberIdSchema.parse(row.notification.memberId);
+  const sent = await deps.channels.panel(notice.organizationId).send({
+    organizationId: notice.organizationId,
+    memberIds: [memberId],
+    title: notice.rendered.panel.title,
+    body: notice.rendered.panel.line,
+    url: notice.rendered.panel.url,
+    idempotencyKey: row.idempotencyKey,
+    kind,
+    recipients: [{ memberId, email: null, trackerMention: null }],
+    subject: notice.runner.runnerName,
+    rendered: null,
+    notificationId: notificationIdSchema.parse(row.notification.id),
+    taskId: null,
+    ticket: null,
+    runner: notice.runner,
+  });
+  return sent.ok ? { outcome: "sent", providerMessageId: sent.value.providerMessageId } : { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+};
+
 const panelOutcome = async (deps: NotifyDeps, row: DeliveryRow, change: "created" | "answered" | "dismissed"): Promise<ChannelOutcome> => {
   if (isBudgetNoticeKind(row.notification.kind)) {
     return budgetPanelOutcome(deps, row, row.notification.kind);
+  }
+  if (isRunnerNotice(row.notification.kind)) {
+    return runnerPanelOutcome(deps, row, row.notification.kind);
   }
   const memberId = memberIdSchema.parse(row.notification.memberId);
   const notification = await baseNotification(deps, row, change, [{ memberId, email: null, trackerMention: null }]);

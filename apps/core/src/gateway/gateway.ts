@@ -35,7 +35,7 @@ export type GatewayOptions = {
   /** The key that signs access tokens: core's own, from OSTRA_DATA_DIR. */
   readonly signingKey: Buffer;
   readonly deviceSessions: DeviceSessions;
-  readonly ports: Pick<Ports, "notices" | "audit" | "clock">;
+  readonly ports: Pick<Ports, "notices" | "audit" | "clock" | "jobs">;
   readonly hooks?: Partial<GatewayHooks>;
   readonly timers?: Partial<GatewayTimers>;
   readonly serverMinor?: number;

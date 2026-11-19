@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { silentLogger } from "@ostra/adapter-sdk";
+import { memoryJobQueue } from "@ostra/api/testing";
 import type { Db } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
@@ -37,7 +38,7 @@ export const startGateway = async (
     panelUrl: "http://localhost:3000",
     signingKey: randomBytes(32),
     deviceSessions: postgresDeviceSessions(db),
-    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
+    ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs: memoryJobQueue() },
     logger: silentLogger,
     ...options,
   });

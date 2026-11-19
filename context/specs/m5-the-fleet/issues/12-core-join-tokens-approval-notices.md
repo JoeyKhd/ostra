@@ -1,6 +1,6 @@
 # 12: Core: join tokens, approval and the join notices
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 03, 05
 Features: F-091, F-036 (grown)
@@ -16,9 +16,13 @@ Spec: `../spec.md`, section 4 ("A pool and its tokens", "A join"); ADR 0029; sec
 
 ## Done when
 
-- [ ] Tests on the register endpoint, named for `F-091`: each token state accepted or refused; expiry by the clock; the token stored hashed and returned once; a rotation keeps a joined runner connected; an unapproved runner gets no offer; the audit entry and the job in the join's transaction (a rollback leaves neither); the notice and the needs-you item, and their resolution.
-- [ ] Break-it: accepting an expired token fails its test; recorded in `context/proof/F-091.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add join tokens, approval and notices`.
+- [x] Tests on the register endpoint, named for `F-091`: each token state accepted or refused; expiry by the clock; the token stored hashed and returned once; a rotation keeps a joined runner connected; an unapproved runner gets no offer; the audit entry and the job in the join's transaction (a rollback leaves neither); the notice and the needs-you item, and their resolution.
+- [x] Break-it: accepting an expired token fails its test; recorded in `context/proof/F-091.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add join tokens, approval and notices`.
 
 ## Comments
+
+- 2026-11-19: built. The use cases are in `packages/domain/src/use-cases/pool-admin.ts`: `createPool` (the pool and its first join token, in one transaction), `updatePool` (a changed cap or approval switch enqueues `queue.admit`), `createJoinToken` (lifetime: the admin's `days`, else the pool's `joinTokenDays`, else `OSTRA_JOIN_TOKEN_DAYS`; `0` is none), `revokeJoinToken` (with `revokedByMemberId`; runners that joined stay), `registerPoolRunner` and `sendRunnerJoinNotice`. The signatures grew additively in their own commit: `CreatePool` answers the first token, `CreateJoinToken` takes `days`, and `PoolRunnerJoin` takes milestone 1's `capacity` and `os`. Core's register endpoint joins through `registerPoolRunner`; its gateway ports gain `jobs`. A join counts `useCount`, records `joinTokenId`, drops reserved labels, writes `runner.joined` (new in the closed list, in place of `runner.registered` for a pool runner) and enqueues `runner.join-notice`, all in one transaction. A refused token answers `401` whose message says expired, revoked or unknown (the error body's `reason` is the token endpoint's enum, so the join's reason is in the message), and logs `runner.join-refused` with the token's ID when known, at most once a minute per token. `runner.join-notice` is worked in core (`apps/core/src/notifications/runner-notices.ts`): `runner_joined` to the organization's active admins and, when the runner waits for approval, `runner_awaiting_approval`, in the panel and by mail (each admin's mail choice wins), made once per admin and kind. `notify.deliver` renders both from the runner's row (`renderRunnerNotice`) in the panel and the mail.
+- Departures, each a decision for speed and without a migration: (1) `NeedsYouItem.taskId` is required, so the "needs-you item" is the admins' open `runner_awaiting_approval` notification itself; `approveRunner` and `rejectRunner` answer it (`resolveRunnerApprovalNoticesInTx`), and a mail not yet sent is then skipped. A runner notice's delivery key names the runner (`<kind>:<runnerId>:created:<memberId>:<channel>`), as a budget notice's names its notice, since `Notification` has no runner column. Ticket 31 shows them from the notifications. (2) `approveRunner` keeps milestone 1's behaviour and ticket 05's lifecycle: an approved runner that isn't connected stays `joining`, approved, and goes online at its next `hello`, rather than `offline`. (3) A `host` pool runner may join now (ADR 0029 allows a `host` pool; ticket 10 guards the runner side). (4) The panel's `pools.*` procedures still write tokens themselves until ticket 25 moves them onto these use cases, and passes `OSTRA_JOIN_TOKEN_DAYS` as `joinTokenDays`.
+- Tests: `apps/core/src/gateway/join-notices.test.ts` (eight, on the register endpoint, the real job queue and the real delivery) and one in `apps/core/src/notifications/email.test.ts` (both mails through the real Resend adapter on its fake). Break-its: reading every token as unexpired failed the states, clock and milestone 1 tests; a 31-day default failed the lifetime test; revoking a token's runners failed the rotation test; the audit entry outside the transaction failed the rollback test; leaving the approval notice open, and delivering an answered one, failed the notice and mail tests. Proof: `context/proof/F-091.md`; the notification row is `proved`. Checks: typecheck and lint of `@ostra/domain` and its dependents; the tests of `@ostra/domain`, `@ostra/core` and `@ostra/api`; `check:licenses`; `check:proof`.
