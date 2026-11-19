@@ -1,6 +1,6 @@
 # 46: Contracts: linked installations, several Apps and a bot per repo
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: 01, 05, 06, 45 (its migration lands first)
 Features: F-136, F-078
@@ -20,14 +20,16 @@ Spec: `../spec.md`, section 5.5; ADR 0065
 
 ## Done when
 
-- [ ] `pnpm db:migrate` applies to an empty database and to one at ticket 45's head with repos on one installation; after it, every existing repo's installation is linked.
-- [ ] Tests named `it("F-136: ...")`:
+- [x] `pnpm db:migrate` applies to an empty database and to one at ticket 45's head with repos on one installation; after it, every existing repo's installation is linked.
+- [x] Tests named `it("F-136: ...")`:
   - the `Repo` key refuses an installation with no row
   - `installationUsable` is false for a removed or unknown installation
   - linking another organization's installation is refused
   - each use case writes its audit entry
-- [ ] Protocol tests: a spec with a git identity per repo round-trips, and its minor-2 encoding keeps only the top-level one.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the linked-installation contracts`.
+- [x] Protocol tests: a spec with a git identity per repo round-trips, and its minor-2 encoding keeps only the top-level one.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the linked-installation contracts`.
 
 ## Comments
+
+- 2026-11-19: migration `20261121020000_linked_installations` (`Connection.ownerLogin` and `ownerAccountId`, `CodeHostInstallation`, and `Repo`'s composite key to it, put on after the backfill writes one `linked` row per installation an existing repo uses). Domain in `packages/domain/src/code-host/installations.ts`: `installationUsable`, `linkOwnInstallation`, `linkInstallation`, `unlinkInstallation`, `removeInstallation` (uninstalls through a port before the commit), `connectExistingApp`, each with its audit entry in its transaction, and `requiredRunnerMinor` for the dispatch rule. The protocol's `TaskSpec.repos[].gitIdentity` and `taskSpecNeedsMinor3` landed with ticket 01 (6786658). Every place that creates a repo row directly now gives it its installation row: `createProject` upserts it (as before milestone 4, the installation the repo was listed through is used; ticket 49 makes it linked-only), and tests use `seedInstallation` from `@ostra/db/testing`. Tests: `packages/db/src/schema-installations.test.ts`, `packages/api/src/services/installations.test.ts`, with break-its; proof rows in `context/proof/F-136.md`. The isolation list of ticket 09 doesn't exist yet, so ticket 09 adds `CodeHostInstallation` when it builds it. Commit: `✨ add the linked-installation contracts`.

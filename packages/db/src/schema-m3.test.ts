@@ -21,6 +21,7 @@ import {
   mapTaskApprovalRule,
   mapTaskPullRequest,
 } from "./mappers.ts";
+import { seedInstallation } from "./testing/installations.ts";
 import { seedIsolationFixture } from "./testing/isolation.ts";
 import type { IsolationFixture } from "./testing/isolation.ts";
 import { createTestDatabase } from "./testing/test-database.ts";
@@ -73,6 +74,7 @@ const seedTask = async (side: Side) => {
   const connection = await test.db.connection.create({
     data: { organizationId, kind: "github", appId: `app-${randomUUID()}` },
   });
+  await seedInstallation(test.db, { organizationId, connectionId: connection.id, installationId: "9" });
   const repo = await test.db.repo.create({
     data: {
       organizationId,

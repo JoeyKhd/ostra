@@ -1,5 +1,6 @@
 import { createNeedsYouItemInTx } from "@ostra/domain";
 import type { DbEnum } from "@ostra/db";
+import { seedInstallation } from "@ostra/db/testing";
 import { optionIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -236,6 +237,7 @@ const seedRepoFor = async (projectId: ProjectId): Promise<string> => {
     data: { organizationId: orgA, kind: "github", appId: "board-app" },
     select: { id: true },
   });
+  await seedInstallation(harness.test.db, { organizationId: orgA, connectionId: connection.id, installationId: "board-install" });
   const repo = await harness.test.db.repo.create({
     data: {
       organizationId: orgA,

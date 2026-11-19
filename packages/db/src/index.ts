@@ -28,6 +28,7 @@ export type {
   ReviewCheck,
   ProviderListEntry,
   ModelChoice,
+  CodeHostInstallation,
   User,
   AuthSession,
   Account,

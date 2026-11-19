@@ -137,6 +137,14 @@ export const createProject: CreateProject = async (deps, input) => {
     select: { id: true },
   });
   const projectId = projectIdSchema.parse(project.id);
+  // Milestone 4 (F-136, ADR 0065): the repo's installation row, which `Repo`'s key needs. As
+  // before milestone 4, the installation the repo was listed through is used as it is; ticket 49
+  // replaces this with the rule that only a linked installation offers repos.
+  await tx.codeHostInstallation.upsert({
+    where: { connectionId_installationId: { connectionId: connection.id, installationId: input.repo.installationId } },
+    create: { organizationId, connectionId: connection.id, installationId: input.repo.installationId, accountLogin: hostRepo.fullName.split("/")[0] ?? "" },
+    update: {},
+  });
   const repo = await tx.repo.create({
     data: {
       organizationId,

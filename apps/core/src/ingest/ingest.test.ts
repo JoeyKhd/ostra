@@ -1,6 +1,6 @@
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { ingestEvents, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import { createJobs, lockTask } from "@ostra/jobs";
@@ -187,15 +187,15 @@ describe("ingest", () => {
 
   it("moves the task and session as the events say, in the same transaction", async () => {
     const task = await newTask();
+    const repoConnection = await test.db.connection.create({
+      data: { organizationId: task.organizationId, kind: "github", appId: "5821041", slug: "ostra-test" },
+    });
+    await seedInstallation(test.db, { organizationId: task.organizationId, connectionId: repoConnection.id, installationId: "1" });
     const repo = await test.db.repo.create({
       data: {
         organizationId: task.organizationId,
         projectId: task.projectId,
-        connectionId: (
-          await test.db.connection.create({
-            data: { organizationId: task.organizationId, kind: "github", appId: "5821041", slug: "ostra-test" },
-          })
-        ).id,
+        connectionId: repoConnection.id,
         installationId: "1",
         hostRepoId: "1",
         fullName: "ostra-test/test1",

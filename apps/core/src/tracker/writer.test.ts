@@ -5,7 +5,7 @@ import type { LogRecord, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createFakeLinear, createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear, JiraSite } from "@ostra/adapter-sdk/testing";
 import { LinearAdapter } from "@ostra/adapter-linear";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import {
   moveTaskInTx,
@@ -130,6 +130,7 @@ const writesOf = (taskId: TaskId) => test.db.ticketWrite.findMany({ where: { tas
 
 const addPullRequest = async (b: Bench, taskId: TaskId, name: string, state: "pr_open" | "merged" | "closed_unmerged" = "pr_open") => {
   const connection = await test.db.connection.create({ data: { organizationId: b.organizationId, kind: "github", appId: String(Math.floor(Math.random() * 1e9)) } });
+  await seedInstallation(test.db, { organizationId: b.organizationId, connectionId: connection.id, installationId: "1" });
   const repo = await test.db.repo.create({
     data: { organizationId: b.organizationId, projectId: b.projectId, connectionId: connection.id, installationId: "1", hostRepoId: randomUUID(), fullName: `ostra-test/${name}`, defaultBranch: "main", checkoutDir: name },
   });

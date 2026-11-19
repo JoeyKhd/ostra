@@ -445,8 +445,14 @@ model Connection {
   webhooksSilentSince   DateTime?
   /// The admin who started a pending connection. No foreign key: the row outlives the member.
   createdByMemberId     String?
+  // ---- milestone 4, several GitHub accounts (F-136, ADR 0065) ----
+  /// The App's owner, from `readApp`: its installation on this account is linked when seen. Filled
+  /// on the next read for an existing row.
+  ownerLogin            String?
+  ownerAccountId        String?
 
   repos             Repo[]
+  installations     CodeHostInstallation[]
   boards            Board[]
   webhookDeliveries WebhookDelivery[]
   tickets           Ticket[]
@@ -853,8 +859,10 @@ model Repo {
   project              Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   connectionId         String
   connection           Connection @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Restrict)
-  /// The App installation that grants access to the repo.
+  /// The App installation that grants access to the repo. Milestone 4 (F-136): it must be a
+  /// `CodeHostInstallation` row of this connection (the composite key below).
   installationId       String
+  installation         CodeHostInstallation @relation(fields: [organizationId, connectionId, installationId], references: [organizationId, connectionId, installationId], onDelete: NoAction)
   /// The code host's own ID of the repo, which survives a rename.
   hostRepoId           String
   /// `owner/name`, as of the last check.
@@ -2971,4 +2979,50 @@ enum ModelChoiceReason {
   admin
   kept
   upgrade
+}
+
+// ===========================================================================
+// Milestone 4, several GitHub accounts (ticket 46, spec section 5.5, ADR 0065). Additive only.
+// ===========================================================================
+
+/// An installation of a connected App that an organization admin linked, or the App owner's own,
+/// linked when seen (F-136). ostra mints a token, lists a repo and keeps a delivery only for a
+/// `linked` one. Any other installation isn't a row: it waits on the GitHub page until an admin links it.
+model CodeHostInstallation {
+  id                String                   @id @default(uuid(7))
+  organizationId    String
+  connectionId      String
+  connection        Connection               @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The code host's ID of the installation.
+  installationId    String
+  /// The account it's on; `null` for a row the upgrade made, filled on the next read.
+  accountId         String?
+  accountLogin      String
+  accountKind       InstallationAccountKind?
+  state             InstallationState        @default(linked)
+  /// No foreign key: the admin who linked it; `null` for the owner's own, or the upgrade's.
+  linkedByMemberId  String?
+  linkedAt          DateTime                 @default(now())
+  removedAt         DateTime?
+  /// No foreign key: kept by ID.
+  removedByMemberId String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  repos Repo[]
+
+  @@unique([connectionId, installationId])
+  /// The target of `Repo`'s composite key.
+  @@unique([organizationId, connectionId, installationId])
+  @@map("code_host_installation")
+}
+
+enum InstallationState {
+  linked
+  removed
+}
+
+enum InstallationAccountKind {
+  organization
+  user
 }

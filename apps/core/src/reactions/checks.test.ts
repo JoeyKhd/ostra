@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import {
   askAgentToFixChecks,
@@ -74,6 +74,7 @@ beforeAll(async () => {
   otherWorld = await seedWorld(test.db, { codeHost, secretStore }, fixture.b.organization.id, fixture.b.project.id, { fullName: "ostra-test/other" });
   // A second repo of the project, on the same App, for the two-repo cases (Q188).
   const first = await test.db.repo.findUniqueOrThrow({ where: { id: world.repoId } });
+  await seedInstallation(test.db, { organizationId: world.organizationId, connectionId: first.connectionId, installationId: INSTALLATION_ID });
   const second = await test.db.repo.create({
     data: {
       organizationId: world.organizationId,

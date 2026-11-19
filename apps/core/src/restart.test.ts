@@ -8,7 +8,7 @@ import { createFakeLinear } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import type { FakeGitHub } from "@ostra/adapter-github/testing";
 import { generateSecretsKey } from "@ostra/adapter-secret-store-builtin";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { writeTicketStepsInTx } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
@@ -103,6 +103,7 @@ beforeAll(async () => {
   const connection = await test.db.connection.create({
     data: { organizationId, kind: "github", appId: github.appId, slug: github.appSlug, botName: "ostra-fake[bot]", botEmail: "1+ostra-fake[bot]@users.noreply.github.com", privateKeySecretRef: key.value },
   });
+  await seedInstallation(test.db, { organizationId, connectionId: connection.id, installationId: github.installationId });
   const repo = await test.db.repo.create({
     data: { organizationId, projectId, connectionId: connection.id, installationId: github.installationId, hostRepoId: "101", fullName: "fake-org/test1", defaultBranch: "main", checkoutDir: "test1" },
   });

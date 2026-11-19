@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "@ostra/adapter-sdk";
 import type { CompareResult, LogRecord } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import {
   freshBranchName,
@@ -89,6 +89,7 @@ beforeAll(async () => {
   world = await seedWorld(test.db, { codeHost, secretStore }, fixture.a.organization.id, fixture.a.openProject.id);
   otherWorld = await seedWorld(test.db, { codeHost, secretStore }, fixture.b.organization.id, fixture.b.project.id, { fullName: "ostra-test/other" });
   const first = await test.db.repo.findUniqueOrThrow({ where: { id: world.repoId } });
+  await seedInstallation(test.db, { organizationId: world.organizationId, connectionId: first.connectionId, installationId: INSTALLATION_ID });
   const second = await test.db.repo.create({
     data: {
       organizationId: world.organizationId,

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { Db } from "@ostra/db";
+import { seedInstallation } from "@ostra/db/testing";
 import type { SeededMember } from "@ostra/db/testing";
 import { leaseEpochSchema, organizationIdSchema, providerIdSchema, runnerIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId, ProviderId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
@@ -73,6 +74,7 @@ export const seedWorld = async (
       privateKeySecretRef: keyRef.value,
     },
   });
+  await seedInstallation(db, { organizationId, connectionId: connection.id, installationId: INSTALLATION_ID });
   const repo = await db.repo.create({
     data: {
       organizationId,

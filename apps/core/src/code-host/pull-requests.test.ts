@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { LogRecord, RepoAccess } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { postgresAuditLog, postgresChangeNotices, pullRequestsOutcome, systemClock } from "@ostra/domain";
 import type { BoardMapping } from "@ostra/domain";
@@ -88,6 +88,7 @@ const taskInReview = async (target: World, repoCount: number): Promise<Seeded> =
   const base = await test.db.repo.findUniqueOrThrow({ where: { id: target.repoId } });
   for (let index = 1; index < repoCount; index += 1) {
     const fullName = `ostra-test/extra-${randomUUID().slice(0, 6)}`;
+    await seedInstallation(test.db, { organizationId, connectionId: base.connectionId, installationId: INSTALLATION_ID });
     const repo = await test.db.repo.create({
       data: { organizationId, projectId, connectionId: base.connectionId, installationId: INSTALLATION_ID, hostRepoId: `host-${fullName}`, fullName, defaultBranch: "main", checkoutDir: fullName.split("/")[1] ?? "x" },
     });
@@ -363,6 +364,7 @@ describe.skipIf(Object.values(live).some((value) => value === undefined || value
       if (!keyRef.ok) throw new Error("refused");
       // Organization B's App connection and repo, pointed at the real App's key and test1's ID.
       const connection = await test.db.connection.update({ where: { id: githubB }, data: { appId: live.appId ?? "", privateKeySecretRef: keyRef.value } });
+      await seedInstallation(test.db, { organizationId: fixture.b.organization.id, connectionId: githubB, installationId: live.installationId ?? "" });
       const repo = await test.db.repo.update({ where: { id: otherWorld.repoId }, data: { installationId: live.installationId ?? "", hostRepoId, fullName } });
       const task = await test.db.task.create({
         data: { organizationId: fixture.b.organization.id, projectId: fixture.b.project.id, kind: "code", source: "prompt", title: "live", prompt: "live", branchName: branch, state: "in_review", subState: "waiting_for_reviewer" },

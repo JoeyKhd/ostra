@@ -78,6 +78,7 @@ import type {
   Board,
   Box,
   Budget,
+  CodeHostInstallation,
   BudgetNotice,
   HeldTurn,
   InsightDaily,
@@ -705,4 +706,14 @@ export const mapModelChoice = (row: ModelChoice) => ({
   projectId: optional(projectIdSchema, row.projectId),
   modelId: modelIdSchema.parse(row.modelId),
   chosenByMemberId: optional(memberIdSchema, row.chosenByMemberId),
+});
+
+// ---------- milestone 4, linked installations (ticket 46) ----------
+
+export const mapCodeHostInstallation = (row: CodeHostInstallation) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  connectionId: connectionIdSchema.parse(row.connectionId),
+  linkedByMemberId: optional(memberIdSchema, row.linkedByMemberId),
+  removedByMemberId: optional(memberIdSchema, row.removedByMemberId),
 });

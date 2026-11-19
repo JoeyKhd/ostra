@@ -97,6 +97,7 @@ export * from "./mail/account-mails.ts";
 export * from "./providers/model-name.ts";
 export * from "./providers/resolve.ts";
 export * from "./providers/provider-lists.ts";
+export * from "./code-host/installations.ts";
 export * from "./diff/unified-diff.ts";
 export * from "./diff/stored-diff.ts";
 export * from "./use-cases/repo-access.ts";

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { createPromptTask, dispatchTask, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, stopTask, systemClock } from "@ostra/domain";
 import type { JobName, JobPayload, MemberScope } from "@ostra/domain";
@@ -492,6 +492,7 @@ describe.skipIf(Object.values(live).some((value) => value === undefined || value
       const connection = await test.db.connection.create({
         data: { organizationId, kind: "github", appId: live.appId ?? "", slug: "live", privateKeySecretRef: keyRef.value },
       });
+      await seedInstallation(test.db, { organizationId, connectionId: connection.id, installationId: live.installationId ?? "" });
       const repo = await test.db.repo.create({
         data: {
           organizationId,
