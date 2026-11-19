@@ -105,11 +105,10 @@ const signInAsAdmin = async (page: Page, settings: DemoSettings, state: DemoStat
     say("step 2: the seeded admin chooses its own password");
     // The panel sends it there itself; going there directly also covers OSTRA_ALLOW_DEFAULT_PASSWORD.
     await page.goto("/change-password");
-    await page.getByLabel("Current password").fill("demo");
     await page.getByLabel("New password", { exact: true }).fill(state.password);
-    await page.getByLabel("New password, again").fill(state.password);
+    await page.getByLabel("Confirm the new password").fill(state.password);
     await screenshot(page, settings, "change-password");
-    await page.getByRole("button", { name: "Change the password" }).click();
+    await page.getByRole("button", { name: "Save and continue" }).click();
     await page.waitForURL((url) => url.pathname === "/");
     // A fresh stack: a runner identity from an earlier one would be refused.
     await rm(settings.runnerDataDir, { recursive: true, force: true });

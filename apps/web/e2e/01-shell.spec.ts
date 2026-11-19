@@ -25,25 +25,22 @@ test("a fresh install signs in as demo@demo.com / demo, and must choose a new pa
   await page.goto("/organization/models");
   await expect(page).toHaveURL(/\/change-password\?next=%2Forganization%2Fmodels$/);
 
-  const current = page.getByLabel("Current password");
   const next = page.getByLabel("New password", { exact: true });
-  const again = page.getByLabel("New password, again");
-  const submit = page.getByRole("button", { name: "Change the password" });
-  // The normal policy: the default password, or anything short, can't be chosen.
-  await current.fill(e2eAdmin.defaultPassword);
+  const again = page.getByLabel("Confirm the new password");
+  const submit = page.getByRole("button", { name: "Save and continue" });
+  // The normal policy: the default password, or anything short, can't be chosen. No current
+  // password is asked for: the account still has the public default one.
   await next.fill(e2eAdmin.defaultPassword);
   await again.fill(e2eAdmin.defaultPassword);
   await expect(submit).toBeDisabled();
+  await expect(next).toHaveAttribute("aria-invalid", "true");
   await next.fill(e2eAdmin.password);
   await again.fill(`${e2eAdmin.password}!`);
   await submit.click();
-  await expect(page.getByRole("alert").filter({ hasText: /./ })).toHaveText("The two new passwords don't match.");
-  await current.fill("not the current password");
-  await again.fill(e2eAdmin.password);
-  await submit.click();
-  await expect(page.getByRole("alert").filter({ hasText: /./ })).toHaveText("That isn't the current password.");
+  await expect(page.getByRole("alert").filter({ hasText: /./ })).toHaveText("The two passwords don't match.");
+  await expect(again).toBeFocused();
 
-  await current.fill(e2eAdmin.defaultPassword);
+  await again.fill(e2eAdmin.password);
   await submit.click();
   await page.waitForURL((url) => url.pathname === "/organization/models");
   await expect(page.getByTestId("default-password-banner")).toHaveCount(0);

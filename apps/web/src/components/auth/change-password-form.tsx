@@ -1,106 +1,182 @@
 "use client";
 
-import { MIN_PASSWORD_LENGTH } from "@ostra/domain/accounts";
+import { defaultFirstAdmin } from "@ostra/domain/accounts";
+import { CheckIcon, CircleAlertIcon, LoaderCircleIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SubmitEvent } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 
-import { safeNext } from "./sign-in-form";
+import { FormMessage } from "./form-message";
+import { brokenRuleOf, changeFailureOf, ruleLineOf, ruleText } from "./new-password";
+import type { ChangeFailure, PasswordRule } from "./new-password";
+import { safeNext } from "./safe-next";
 
-type Failure = { readonly field: "current" | "next" | "confirm"; readonly text: string };
+type Status = { readonly kind: "idle" } | { readonly kind: "submitting" } | { readonly kind: "failed" };
 
-/** What better-auth's refusal of a password change means, in the form's words. */
-const failureOf = (code: string | undefined): Failure => {
-  if (code === "INVALID_PASSWORD") return { field: "current", text: t("changePassword.wrongCurrent") };
-  if (code === "PASSWORD_TOO_SHORT") return { field: "next", text: t("changePassword.tooShort", { n: MIN_PASSWORD_LENGTH }) };
-  return { field: "confirm", text: t("errors.unknown") };
+const RULE_ID = "new-password-rule";
+const MESSAGE_ID = "change-password-message";
+
+/**
+ * better-auth's password change, as a refusal or null. There's no current-password field: this
+ * page only opens while the account still has the seeded default password, which is public, and
+ * better-auth checks it all the same (change-password.md, Route and flow).
+ */
+const change = async (newPassword: string): Promise<ChangeFailure | null> => {
+  try {
+    const result = await authClient.changePassword({ currentPassword: defaultFirstAdmin.password, newPassword, revokeOtherSessions: true });
+    return result.error === null ? null : changeFailureOf(result.error.status, result.error.code);
+  } catch {
+    return { kind: "unknown" };
+  }
 };
 
 /**
- * The current password and a new one, twice (F-001). better-auth checks the policy and the current
- * password; changing it clears the account's default-password flag and signs out its other sessions.
+ * "Choose a new password" (F-001, change-password.md): a new password, twice. The rule line is the
+ * first field's help, and its error; a mismatch waits for the second field's blur or a submit.
  */
-export const ChangePasswordForm = () => {
+export const ChangePasswordForm = ({ email }: { readonly email: string }) => {
   const router = useRouter();
   const next = safeNext(useSearchParams().get("next"));
-  const [current, setCurrent] = useState("");
+  const confirmRef = useRef<HTMLInputElement>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [failure, setFailure] = useState<Failure | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [flagged, setFlagged] = useState<PasswordRule | null>(null);
+  const [mismatch, setMismatch] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  const busy = status.kind === "submitting";
+  const rule = ruleLineOf(password, flagged);
+  const message = mismatch ? t("changePassword.mismatch") : status.kind === "failed" ? t("errors.unknown") : null;
 
   const submit = async (event: SubmitEvent) => {
     event.preventDefault();
-    if (password !== confirm) {
-      setFailure({ field: "confirm", text: t("changePassword.mismatch") });
+    if (busy) return;
+    const broken = brokenRuleOf(password);
+    if (broken !== null) {
+      setFlagged(broken);
       return;
     }
-    setBusy(true);
-    setFailure(null);
-    const result = await authClient.changePassword({ currentPassword: current, newPassword: password, revokeOtherSessions: true });
-    setBusy(false);
-    if (result.error !== null) {
-      setFailure(failureOf(result.error.code));
+    if (confirm !== password) {
+      setMismatch(true);
+      confirmRef.current?.focus();
       return;
     }
-    router.replace(next);
+    setStatus({ kind: "submitting" });
+    const failure = await change(password);
+    if (failure === null) {
+      router.replace(next);
+      router.refresh();
+      return;
+    }
+    switch (failure.kind) {
+      case "signedOut":
+        router.replace("/sign-in?next=%2Fchange-password");
+        return;
+      case "rejected":
+        setFlagged(failure.rule);
+        setStatus({ kind: "idle" });
+        return;
+      case "unknown":
+        setStatus({ kind: "failed" });
+        return;
+      default:
+        failure satisfies never;
+    }
+  };
+
+  const signOut = async () => {
+    await authClient.signOut();
+    router.replace("/sign-in");
     router.refresh();
   };
 
-  const errorFor = (field: Failure["field"]): string | null => (failure?.field === field ? failure.text : null);
+  /** Editing clears that field's error and the mismatch: the member is fixing it. */
+  const edited = () => {
+    setMismatch(false);
+    if (status.kind === "failed") setStatus({ kind: "idle" });
+  };
 
   return (
-    <form onSubmit={(event) => void submit(event)} noValidate>
-      <Field id="current-password" label={t("changePassword.current")} error={errorFor("current")}>
-        <Input
-          id="current-password"
-          type="password"
-          autoComplete="current-password"
-          autoFocus
-          required
-          aria-invalid={failure?.field === "current"}
-          value={current}
-          onChange={(event) => { setCurrent(event.target.value); }}
-        />
-      </Field>
-      <Field id="new-password" label={t("changePassword.next")} help={t("changePassword.nextHelp", { n: MIN_PASSWORD_LENGTH })} error={errorFor("next")}>
+    <form onSubmit={(event) => void submit(event)} noValidate className="mt-[24px]">
+      {/* So a password manager saves the new password against this account. */}
+      <input type="text" name="username" autoComplete="username" value={email} readOnly hidden />
+      <div>
+        <Label className="mb-[3px]" htmlFor="new-password">{t("changePassword.newPassword")}</Label>
         <Input
           id="new-password"
           type="password"
           autoComplete="new-password"
+          autoFocus
           required
-          minLength={MIN_PASSWORD_LENGTH}
-          aria-invalid={failure?.field === "next"}
+          readOnly={busy}
+          aria-invalid={rule.tone === "error"}
+          aria-describedby={RULE_ID}
+          className="h-[36px] px-[10px]"
           value={password}
-          onChange={(event) => { setPassword(event.target.value); }}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            setFlagged(null);
+            edited();
+          }}
+          onBlur={() => {
+            if (password !== "" && brokenRuleOf(password) === "min") setFlagged("min");
+          }}
         />
-      </Field>
-      <Field id="confirm-password" label={t("changePassword.confirm")} error={errorFor("confirm")}>
+        <p id={RULE_ID} className={cn("mt-[4px] flex items-center gap-[6px] text-[12px] leading-[18px]", rule.tone === "error" ? "text-red" : "text-faint")}>
+          <span className="flex size-[13px] shrink-0 items-center justify-center" aria-hidden>
+            {rule.tone === "met" ? <CheckIcon className="size-[13px] text-green" strokeWidth={1.75} /> : null}
+            {rule.tone === "error" ? <CircleAlertIcon className="size-[13px]" strokeWidth={1.75} /> : null}
+          </span>
+          {ruleText(rule.rule)}
+        </p>
+      </div>
+      <div className="mt-[14px]">
+        <Label className="mb-[3px]" htmlFor="confirm-password">{t("changePassword.confirm")}</Label>
         <Input
+          ref={confirmRef}
           id="confirm-password"
           type="password"
           autoComplete="new-password"
           required
-          aria-invalid={failure?.field === "confirm"}
+          readOnly={busy}
+          aria-invalid={mismatch}
+          aria-describedby={message === null ? undefined : MESSAGE_ID}
+          className="h-[36px] px-[10px]"
           value={confirm}
-          onChange={(event) => { setConfirm(event.target.value); }}
+          onChange={(event) => {
+            setConfirm(event.target.value);
+            edited();
+          }}
+          onBlur={() => {
+            if (confirm !== "" && confirm !== password) setMismatch(true);
+          }}
         />
-      </Field>
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        className="mt-2 w-full"
-        disabled={busy || current === "" || password.length < MIN_PASSWORD_LENGTH || confirm === ""}
-      >
-        {busy ? t("changePassword.busy") : t("changePassword.submit")}
+      </div>
+      {message === null ? null : <FormMessage id={MESSAGE_ID}>{message}</FormMessage>}
+      <Button type="submit" variant="primary" size="xl" className="mt-[23px] w-full" disabled={busy || brokenRuleOf(password) !== null || confirm === ""}>
+        {busy ? (
+          <>
+            <LoaderCircleIcon strokeWidth={1.75} className="motion-safe:animate-spin" aria-hidden />
+            {t("changePassword.busy")}
+          </>
+        ) : (
+          t("changePassword.submit")
+        )}
       </Button>
+      <p className="mt-[12px] text-[12px] leading-[18px] text-faint">
+        {t("changePassword.signedInAs", { email })}
+        <span aria-hidden className="mx-[6px]">·</span>
+        <Button type="button" variant="link" className="h-auto p-0 align-baseline text-[12px] leading-[18px] font-medium" onClick={() => void signOut()}>
+          {t("changePassword.signOut")}
+        </Button>
+      </p>
     </form>
   );
 };

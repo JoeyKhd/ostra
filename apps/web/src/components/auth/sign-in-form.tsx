@@ -12,12 +12,9 @@ import { authClient } from "@/lib/auth-client";
 import { t } from "@/lib/messages";
 
 import { FormMessage } from "./form-message";
+import { safeNext } from "./safe-next";
 import { signInFailureOf, signInFailureText } from "./sign-in-failure";
 import type { SignInFailure } from "./sign-in-failure";
-
-/** A same-site path to return to after sign-in; anything else goes Home. */
-export const safeNext = (next: string | null): string =>
-  next !== null && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/";
 
 type Status =
   | { readonly kind: "idle" }

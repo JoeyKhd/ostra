@@ -14,8 +14,8 @@ describe("t", () => {
   });
 
   it("picks the singular or plural key", () => {
-    expect(plural(1, "checklist.progress", "changePassword.nextHelp", { done: 1, total: 1 })).toBe("1 of 1");
-    expect(plural(12, "checklist.progress", "changePassword.nextHelp")).toBe("At least 12 characters.");
+    expect(plural(1, "checklist.progress", "changePassword.rule", { done: 1, total: 1 })).toBe("1 of 1");
+    expect(plural(12, "checklist.progress", "changePassword.rule")).toBe("At least 12 characters.");
   });
 });
 

@@ -68,16 +68,16 @@
   },
   "changePassword": {
     "title": "Choose a new password",
-    "lede": "This account still has the default password it was created with. Choose your own before you go on.",
-    "current": "Current password",
-    "next": "New password",
-    "nextHelp": "At least {n} characters.",
-    "confirm": "New password, again",
-    "mismatch": "The two new passwords don't match.",
-    "tooShort": "A password has at least {n} characters.",
-    "wrongCurrent": "That isn't the current password.",
-    "submit": "Change the password",
-    "busy": "Changing…"
+    "lede": "This install still uses the default password. Choose your own before you go on.",
+    "newPassword": "New password",
+    "confirm": "Confirm the new password",
+    "rule": "At least {n} characters.",
+    "ruleMax": "At most {n} characters.",
+    "mismatch": "The two passwords don't match.",
+    "submit": "Save and continue",
+    "busy": "Saving…",
+    "signedInAs": "Signed in as {email}",
+    "signOut": "Sign out"
   },
   "banner": {
     "defaultPassword": {
