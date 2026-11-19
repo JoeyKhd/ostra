@@ -2,9 +2,9 @@
 
 > **Committed image:** `sign-in.webp`, downscaled from the 2048×1360 generation to 1200 px wide, so one image pixel is one CSS pixel. Where this file gives sizes in image px at ×1.42, read them as CSS px directly against the WebP.
 
-Sign-in (F-002), the screen at `/sign-in`: a member signs in with their username or email, and their password. Picture: `sign-in.webp` (2048×1360). Prompt: `sign-in.prompt.txt`. Made with the `ui-taste` skill, image first, on Higgsfield `gpt_image_2_6` (3 generations; the third is the target), from the graphite concepts (`../../app-concepts/html/task-b-graphite.png`, `home-graphite.png`) and the Shell lockup (`../../files/logo/lockup-horizontal-shell-1600.png`, composited on `#0D0E10`).
+Sign-in (F-002), the screen at `/sign-in`: a member signs in with their username or email, and their password. Picture: `sign-in.webp` (2048×1360). Prompt: `sign-in.prompt.txt`. Made with the `ui-taste` skill, image first, on Higgsfield `gpt_image_2_6` (3 generations; the third is the target), from the graphite concepts (`../../app-concepts/html/task-b-graphite.png`, `home-graphite.png`) and the Shell lockup (`../../files/logo/lockup-horizontal-shell-1600.png`, composited on `#0D0E10`). The right column was then replaced: it's the sign-in illustration (`../../files/web/sign-in-illustration.webp`, B-017 in `../../assets.md`) and the tagline, composited onto the generation at the placement below.
 
-**Status:** a target, not yet approved by the maintainer. The picture is an image-model render: the copy in this file wins over the copy in the picture, and the tokens below win over its colours (see "Errata in the picture").
+**Status:** approved by the maintainer on 2026-11-19, the right column included: they chose the "Deep water" illustration from three directions ("deep water is nice"). The picture is an image-model render: the copy in this file wins over the copy in the picture, and the tokens below win over its colours (see "Errata in the picture").
 
 **Scale.** The picture's controls are a little larger than the prompt asked for. It matches a **1200×800 viewport at ×1.707** (inputs and button measure 36–37px there, the lockup 22px, the title 24px). Compare the build at 1200×800, not 1440. The numbers in this file are CSS pixels at that viewport.
 
@@ -13,7 +13,7 @@ Sign-in (F-002), the screen at `/sign-in`: a member signs in with their username
 The first thing every member sees, on every visit after a sign-out or an expired session. It must:
 1. Let them sign in in one step, with whichever identifier they remember.
 2. Fail calmly: one line that doesn't say which half was wrong.
-3. Say, without a word of marketing, what this product is: a glimpse of a task the way the panel shows it, from ticket to PR.
+3. Feel like ostra, without a word of marketing: the brand's illustration and one quiet line about what it is.
 
 Who sees it: anyone signed out, once the first admin exists. Unchanged from today: `setup.state.needsFirstAdmin` redirects to `/setup`, a signed-in member goes to `/`, and `?next=` (through `safeNext`) decides where a successful sign-in lands.
 
@@ -25,18 +25,16 @@ Two columns, one hairline between them, full viewport height (`min-h-dvh`). No c
 |---|---|---|---|
 | Form column | `41%` of the width, min 440px, max 600px | `--bg` `#0D0E10` | lockup top-left, the form, the version footer |
 | Hairline | 1px | `--line` `#1F2023` | the vertical split (`border-right` on the form column) |
-| Glimpse column | the rest (`1fr`) | `--side` `#0A0B0C` | a read-only task fragment, the tagline footer |
+| Illustration column | the rest (`1fr`) | `--side` `#0A0B0C`, under the image | the illustration, the tagline |
 
-Both columns are a flex column with three rows: a top row (32px inset), a middle that grows, a bottom row (32px inset).
+The form column is a flex column with three rows: a top row (32px inset), a middle that grows, a bottom row (32px inset).
 
-- **Shared guides.** The form block and the glimpse block both sit in a 300px-tall box, vertically centred in the middle row, content aligned to the box's top. The "Sign in" title and the `CALC-161 · from Linear` line therefore start on the same y (252px at 1200×800). The two footers share one baseline, 32px above the bottom edge.
+- **Form guide.** The form block sits in a 300px-tall box, vertically centred in the middle row, content aligned to the box's top, so the "Sign in" title starts at y 252 at 1200×800. The version footer and the tagline share one baseline: y 747 at 1200×800, 53px above the bottom edge, as in the picture.
 - **Form column:**
   - Top row, at 32px from the top and left: the lockup, `lockup-horizontal-shell.svg` (copy it to `public/brand/`), 22px tall, `alt="ostra"`. Never type the wordmark live (`brief.md`).
   - Middle: the form block, **360px wide**, centred horizontally in the column (the picture sits it ~25px right of centre; centring is the rule).
   - Bottom row, at 32px from the left: `ostra v0.1.0`, Plex Mono 400 11.5px `--faint`. The version comes from the server's package version at build time; omit the line if it isn't available, never hard-code it.
-- **Glimpse column:**
-  - Middle: the glimpse block, left edge 48px from the hairline, right edge 64px from the viewport's right edge, max width 640px.
-  - Bottom row: on the left (48px in) `Self-hosted cloud agents for your team.` Plex Sans 13px `--muted`; on the right (64px in, right-aligned) `ticket → task → pull request`, Plex Mono 12px `--faint`.
+- **Illustration column:** see "The illustration" below.
 
 ### The form block (top to bottom)
 
@@ -54,28 +52,18 @@ Both columns are a flex column with three rows: a top row (32px inset), a middle
 
 **Button** (`variant="primary"`, a new 36px height): fill and border `--shell` `#F3F0E8`, text `--ink` `#0C1D21`, Plex Sans 600 13px, radius 7px, hover `#E6E2D8`. The page's one primary button.
 
-### The glimpse (decorative, `aria-hidden="true"`, not interactive)
+### The illustration (decorative)
 
-A fragment of a task page, built from the panel's real timeline styles with fixed copy: not a screenshot, not an image. It's one step quieter than the form: no text in it is `--text`, so the form is always the brightest thing on screen.
+A machined, matte stone in the shape of the Hinge, split by a diagonal seam with Shell light inside, in deep blue-green water. It's a picture, not markup, and it carries no information, so screen readers skip it.
 
-| Row | Copy | Style |
-|---|---|---|
-| Key line | `CALC-161 · from Linear` | Plex Mono 500 12px `--faint` |
-| Title | `Add history panel` | Manrope 700 20px `--muted`, 4px below |
-| Tabs | `Activity`, `Changes 3`, `Checks 1/2`, `Events` | 18px below. The `.tabs` style, gap 18px, Plex Sans 500 13px. `Activity` `--muted` with a 2px `--muted` underline; the others `--faint`; counts Plex Mono 500 11px `--faint`. A 1px `--line` hairline under the whole row |
-| Message 1 | avatar (user icon) · `Sam Rivera` · `14:02` / `Pick up CALC-161. Keep the last 50 results.` | 20px below the tabs |
-| Message 2 | avatar (bot icon) · `OpenCode` · `14:03 · Claude Sonnet 5.5` / `I'll add a history panel that keeps the last 50 results.` | 18px below message 1 |
-| Tool row | `file-text` · `Read` · `src/calculator/state.ts` | rows 27px tall, indented to the message text |
-| Tool row | `pencil` · `Edited` · `src/history/panel.tsx` · `+118` | `+118` Plex Mono 500 12px `--green` |
-| Tool row | `play` · `Ran` · `pnpm test history` · `check` `12 passed` | check and `12 passed` `--green` |
-| Tool row | `git-pull-request` · `Opened` · `PR #483` · `calc-161-add-history` | `PR #483` `--teal` `#6FB8AA`; the branch Plex Mono `--faint` |
-
-- Avatars: 28px circles, 1px `--line-2` border, a Lucide `user` or `bot` icon 14px `--faint`, 12px gap to the text.
-- Names: Plex Sans 600 13px `--muted`. Times and model: Plex Mono 12px `--faint`.
-- Message lines: Plex Sans 13px `--muted`, 4px under the name line.
-- Tool rows: icon 15px `--faint`, verb Plex Sans 13px `--faint`, path or command Plex Mono 13px `--muted`, 12px gaps.
-- **No amber anywhere on this screen:** nothing here needs the member yet. No `>_` icon: `Ran` uses Lucide `play` (the brief bans the terminal prompt).
-- The copy is demo data, the same story as `task-b-graphite`. It's an illustration of what ostra does, not a claim about this install. It never reads real tasks.
+- **The file:** `../../files/web/sign-in-illustration.webp` (1792×2240) and `sign-in-illustration-1200.webp` (960×1200). Copy both to `apps/web/public/`, served as `/sign-in-illustration.webp` and `/sign-in-illustration-1200.webp`.
+- **The fades are baked in.** The asset already carries its grade: darkened so the form stays the brightest thing on the screen, a soft fade into `--side` along its left edge (so it meets the hairline as graphite, not as a teal panel), and the bottom fade the tagline sits on. The build adds no CSS gradients, overlays or filters.
+- **The column:** `position: relative; overflow: hidden; background: var(--side)`. The background only shows while the image loads.
+- **The image fills the column:** `object-fit: cover; object-position: 50% 8%`. At 1200×800 the column is about 705px wide, the image scales to about 705×881 and loses 7px at the top and 74px at the bottom, which puts the stone's centre at about x 843, y 367 of the viewport, beside the form. On a wider column the crop takes more off the bottom, the darkest part, and the stone sits lower (its centre about 60% down at 1920×1080), still well clear of the tagline. On a narrower, taller one the crop takes the sides instead, and the stone stays whole and centred.
+- **As Next code:** `<Image src="/sign-in-illustration.webp" alt="" aria-hidden fill sizes="60vw" className="object-cover object-[50%_8%]" />`. Without the image optimizer, a plain `<img alt="" aria-hidden="true" loading="lazy">` with `srcset="/sign-in-illustration-1200.webp 960w, /sign-in-illustration.webp 1792w"` and `sizes="60vw"`, or a CSS `background: var(--side) url(/sign-in-illustration-1200.webp) 50% 8% / cover no-repeat`, gives the same picture.
+- **Empty `alt` and `aria-hidden`.** It's decorative: no caption, no title, no link, nothing focusable.
+- **The tagline:** `Self-hosted cloud agents for your team.`, real text above the image: `position: absolute; left: 48px; bottom: 48px; z-index: 1`, IBM Plex Sans 400 `13px/20px`, colour `--shell` at 70% (`color-mix(in srgb, var(--shell) 70%, transparent)`, `rgb(243 240 232 / 0.7)`). That puts its baseline at y 747 at 1200×800, on the version footer's, with its left edge 48px from the hairline. One size at every width; it's drawn in the picture at the same 13px ×1.707. It isn't `aria-hidden`: it's the page's one line about the product. Copy: `signIn.tagline`.
+- **No amber anywhere on this screen:** nothing here needs the member yet.
 
 ## States (all on the same layout; only the form block changes)
 
@@ -92,7 +80,7 @@ A fragment of a task page, built from the panel's real timeline styles with fixe
 - Editing either field clears the red borders and the message.
 - Success: `router.replace(next)` then `router.refresh()`, as today. No success state is drawn.
 
-Copy comes from `apps/web/messages/en.json` (`signIn.*`). Two keys change: `signIn.lede` (below) and a new `signIn.forgot` for the help line once it ships.
+Copy comes from `apps/web/messages/en.json` (`signIn.*`). Two keys change, `signIn.lede` (below) and a new `signIn.forgot` for the help line once it ships, and one is new: `signIn.tagline`.
 
 ## Components (shadcn/ui names)
 
@@ -104,43 +92,40 @@ Copy comes from `apps/web/messages/en.json` (`signIn.*`). Two keys change: `sign
 | Inputs | `Input` | at 36px (`h-9`) |
 | Label | `Label` | Plex Sans 500 12px `--muted` |
 | Button | `Button` `variant="primary"` | a new `size` of 36px (`h-9`, 13px, `px-3.5`), or `size="lg"` raised to 36px |
-| Glimpse tabs | `Tabs` look only | Plain markup with the `.tabs`/`.tab` styles; not a real `Tabs`, because nothing in the glimpse is interactive |
-| Glimpse avatars | `Avatar` + `AvatarFallback` | holding the Lucide icon |
+| Illustration | `next/image` (`Image`, `fill`) | see "The illustration" |
 | Split | `Separator orientation="vertical"` or a `border-r` | `--line` |
-| Icons | Lucide | `circle-alert`, `loader-circle`, `user`, `bot`, `file-text`, `pencil`, `play`, `check`, `git-pull-request` (15px, stroke 1.75 unless noted) |
+| Icons | Lucide | `circle-alert`, `loader-circle` (stroke 1.75) |
 
 ## Tokens (from `../../app-concepts/html/graphite.css`, already in `globals.css` as `--color-*`)
 
 | Token | Hex | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | form column |
-| `--side` | `#0A0B0C` | glimpse column |
+| `--side` | `#0A0B0C` | illustration column, under the image (the asset's fades end in it) |
 | `--surface` | `#131416` | input fill |
-| `--line` | `#1F2023` | column hairline, tab hairline |
-| `--line-2` | `#2A2C30` | input border, avatar ring |
-| `--text` | `#EDEDEE` | title, input values (form only) |
-| `--muted` | `#9A9DA3` | lede, labels, tagline, all glimpse text |
-| `--faint` | `#64676D` | version, help line, glimpse key line, times, icons, verbs, inactive tabs, focus border |
+| `--line` | `#1F2023` | column hairline |
+| `--line-2` | `#2A2C30` | input border |
+| `--text` | `#EDEDEE` | title, input values |
+| `--muted` | `#9A9DA3` | lede, labels |
+| `--faint` | `#64676D` | version, help line, focus border |
 | `--red` | `#E5675C` | invalid borders, error line and icon |
-| `--green` | `#4FB286` | `+118`, `12 passed` (glimpse only) |
-| `--teal` | `#6FB8AA` | `PR #483` (glimpse only) |
-| `--shell` | `#F3F0E8` | primary button fill, lockup |
+| `--shell` | `#F3F0E8` | primary button fill, lockup, the tagline at 70% |
 | `--ink` | `#0C1D21` | primary button text |
 | `--amber` | `#FFB224` | **not used on this screen** |
 
-Type: Manrope 700 (titles), IBM Plex Sans 400/500/600 (everything else), IBM Plex Mono 400/500 (key, times, model, paths, command, branch, version, counts).
+Type: Manrope 700 (the title), IBM Plex Sans 400/500/600 (everything else, the tagline included), IBM Plex Mono 400 (the version).
 
 ## Responsive
 
 - **≥ 960px:** two columns as above.
-- **< 960px:** the glimpse column is hidden (`hidden lg:flex` or similar). The form column takes the full width; the form block stays 360px and centred; the version footer stays at the bottom.
+- **< 960px:** the illustration column is hidden (`hidden min-[960px]:block` or similar), and with it the tagline. The form column takes the full width; the form block stays 360px and centred; the version footer stays at the bottom. Keep the image lazy (`next/image`'s default; no `priority`), so a hidden column costs a phone no download.
 - **Phone (< 420px):** 16px side gutters, the form block is `100%` wide, the lockup row 16px from the top, no horizontal scroll.
-- Very short viewports: the middle row scrolls; the form never overlaps the lockup or the footer.
+- Very short viewports: the middle row scrolls; the form never overlaps the lockup or the footer. The illustration column stays the viewport's height and crops.
 
 ## Differences from the current code
 
-1. **Frame:** today `AuthCard` floats a 400px column at 12vh on a black page, with the bare mark (`ostra-mark.svg`, 28px) above the title. The target is a two-column page: the lockup (mark + wordmark) top-left, the form vertically centred, a glimpse of a task on the right, and footers on a shared baseline.
-2. **Glimpse column:** new. A static, `aria-hidden` task fragment and the tagline `Self-hosted cloud agents for your team.` / `ticket → task → pull request`.
+1. **Frame:** today `AuthCard` floats a 400px column at 12vh on a black page, with the bare mark (`ostra-mark.svg`, 28px) above the title. The target is a two-column page: the lockup (mark + wordmark) top-left, the form vertically centred, the illustration on the right, and footers on a shared baseline.
+2. **Illustration column:** new. The `aria-hidden` sign-in illustration and the tagline `Self-hosted cloud agents for your team.`
 3. **Lede:** `Sign in with your username or email.` becomes `Use your username or email, and your password.` (no "Sign in" said twice in a row).
 4. **Sizes:** the inputs go from 32px (`h-8`) to 36px, and the button from 32px (`size="lg"`) to 36px. Both stay full width (360px, down from 400px).
 5. **Error:** today the message is a bare red line in the password `Field`, and only the password input is `aria-invalid`, which hints that the password was the wrong half. In the target, both inputs turn red, and the message gets a `circle-alert` icon. A 429 and other failures show the line without red borders. Editing a field clears the error.
@@ -151,17 +136,15 @@ Type: Manrope 700 (titles), IBM Plex Sans 400/500/600 (everything else), IBM Ple
 
 ## Errata in the picture
 
-The image model got these wrong; build from this file instead.
+The image model got these wrong; build from this file instead. The right column is right as drawn: it's the real asset and the real tagline, composited at the placement above.
 
 - **Lockup:** the mark's top-left notch and channel are approximated, and the wordmark looks typed. Use `lockup-horizontal-shell.svg` exactly.
-- **Text halos:** the title, the button and some glimpse text have a soft dark shadow, and the button has a faint texture. Real text has no shadow, and the button is flat `#F3F0E8`.
+- **Text halos:** the title and the button have a soft dark shadow, and the button has a faint texture. Real text has no shadow, and the button is flat `#F3F0E8`.
 - **Labels:** `Username or email` and `Password` render near `#B5B7BB`; they're `--muted` `#9A9DA3`.
 - **Error borders:** only the password input is red in the picture; both inputs are red in this state.
-- **Glimpse brightness:** `Sam Rivera`, `OpenCode`, both message lines and the paths render close to `--text`. They're all `--muted`; only the title came out right.
 - **Form position:** the form sits slightly right of the column's centre; centre it.
-- All copy in the picture is spelled correctly: `Sign in`, `Use your username or email, and your password.`, `Username or email`, `Password`, `sam.rivera`, `That username or email and password don't match.`, `Forgot your password? Ask your instance admin for a reset link.`, `ostra v0.1.0`, and the glimpse copy in the table above.
+- All copy in the picture is spelled correctly: `Sign in`, `Use your username or email, and your password.`, `Username or email`, `Password`, `sam.rivera`, `That username or email and password don't match.`, `Forgot your password? Ask your instance admin for a reset link.`, `ostra v0.1.0`, `Self-hosted cloud agents for your team.`
 
 ## Open points for the maintainer
 
-- The glimpse shows demo data (`CALC-161`, `Sam Rivera`) on every install. The alternative is a quiet version with only the tagline, at the cost of the product presence the screen is meant to have.
 - Whether `ostra v0.1.0` belongs on a public page of a self-hosted install. It helps support; some admins hide versions. It could become a setting later.

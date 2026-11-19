@@ -1,6 +1,6 @@
 # Choose a new password: target
 
-> **Committed images:** `change-password.webp`, downscaled from the 2048×1360 generation to 1200 px wide like `sign-in.webp`, and `home-banner.webp`, downscaled to 1440 px wide like `home.webp`. One image pixel is one CSS pixel in both.
+> **Committed images:** `change-password.webp`, downscaled from the 2048×1360 generation to 1200 px wide like `sign-in.webp`, with the right column replaced by the sign-in illustration and the tagline exactly as on `sign-in.webp`, and `home-banner.webp`, downscaled to 1440 px wide like `home.webp`. One image pixel is one CSS pixel in both.
 
 Two pieces of F-001's default first admin (the maintainer, 2026-11-19: a fresh install seeds `demo@demo.com` / `demo` unless `OSTRA_ADMIN_*` says otherwise):
 1. **Choose a new password**, the screen at `/change-password`: the forced step after the first sign-in while the account still uses the default password. Picture: `change-password.webp`, in the "passwords don't match" state.
@@ -8,7 +8,7 @@ Two pieces of F-001's default first admin (the maintainer, 2026-11-19: a fresh i
 
 Prompts: `change-password.prompt.txt` (both). Made with the `ui-taste` skill, image first, on Higgsfield `gpt_image_2_6` (3:2, 2k, high). Each picture is an edit of the committed target it belongs to: `change-password` of the sign-in original (with `../../app-concepts/html/home-graphite.png` and the Shell lockup composited on `#0D0E10`), `home-banner` of the Home original (with `home-graphite.png` and the Hinge logo). One generation each.
 
-**Status:** a target, not yet approved by the maintainer. The pictures are image-model renders: the copy and rules in this file win over the pixels, and the tokens below win over the pictures' colours (see "Wrong in the image").
+**Status:** approved by the maintainer on 2026-11-19, the right column included (the "Deep water" illustration, chosen that day; see `sign-in.md`). The pictures are image-model renders: the copy and rules in this file win over the pixels, and the tokens below win over the pictures' colours (see "Wrong in the image").
 
 ## Purpose
 
@@ -31,7 +31,7 @@ The banner is the reminder for as long as the default password stays in use (see
 
 ## Layout
 
-The sign-in frame (`sign-in.md`), unchanged: two columns, the form column (`41%`, min 440px, max 600px, `--bg`) and the glimpse column (`--side`) with the same read-only task glimpse and footers, one `--line` hairline between them. Only the form block changes. Keeping the frame means the move from sign-in to this step changes the form and nothing else, so it reads as the next step of signing in, not a new place.
+The sign-in frame (`sign-in.md`), unchanged: two columns, the form column (`41%`, min 440px, max 600px, `--bg`) and the illustration column (`--side` under the sign-in illustration, with the tagline), one `--line` hairline between them. The illustration column is built exactly as `sign-in.md`'s "The illustration" says: the same file, `object-position: 50% 8%`, the fades baked into the asset, empty `alt` and `aria-hidden`, the tagline at `left: 48px; bottom: 48px` in Plex Sans 400 13px/20px, `--shell` at 70%. In both originals the hairline is at the same x (843–844 in the 2048 px generation, 494 CSS px), so the column lines up from one screen to the next. Only the form block changes. Keeping the frame means the move from sign-in to this step changes the form and nothing else, so it reads as the next step of signing in, not a new place.
 
 Compare the build at **1200×800**, like sign-in. Sizes below are CSS px at that viewport.
 
@@ -48,7 +48,7 @@ Compare the build at **1200×800**, like sign-in. Sizes below are CSS px at that
 | Button | 20px below the last line. Full width, 36px, primary: `Save and continue` | 524–560 |
 | Account line | 16px below the button. Plex Sans 12px `--faint`: `Signed in as demo@demo.com · Sign out`, the email being the account's real email, `Sign out` a teal (`--teal`) button styled as a link, 500 | 580 |
 
-- The title sits on the same guide as the glimpse's `CALC-161 · from Linear` line, as on sign-in. This block is taller than sign-in's, so it grows downwards from that guide; it doesn't move up.
+- The title starts on sign-in's title guide (y 252 at 1200×800). This block is taller than sign-in's, so it grows downwards from that guide; it doesn't move up.
 - A visually hidden `<input type="text" name="username" autoComplete="username" value="<email>" readOnly hidden>` sits in the form, so password managers save the new password against the right account.
 - **Inputs, button, label, error line:** exactly sign-in's (`fieldClass` at 36px, the 36px primary button, the 12.5px `--red` line with a `circle-alert` icon, `role="alert"`, `aria-describedby`).
 - **The rule line is the field's help text** (`aria-describedby` on input 1), not a validation badge. Its icon slot is always 13px wide, so the text never shifts when the icon appears.
@@ -122,7 +122,7 @@ So the band is neutral: a raised graphite fill, a white lead sentence, the teal 
 
 | Part | Component | Notes |
 |---|---|---|
-| Page frame | the sign-in frame | Share it with `/sign-in` (an `AuthFrame` with the lockup, the glimpse and the footers; the form is its child) instead of copying it |
+| Page frame | the sign-in frame | Share it with `/sign-in` (an `AuthFrame` with the lockup, the illustration column, the tagline and the version footer; the form is its child) instead of copying it |
 | Form | `Form` pattern, `Field` / `FieldLabel` / `FieldDescription` / `FieldError` | The rule line is `FieldDescription` with an icon slot; the mismatch and server lines are the form's error, under field 2 |
 | Inputs | `Input` | 36px (`h-9`), `type="password"` |
 | Labels | `Label` | Plex Sans 500 12px `--muted` |
@@ -137,7 +137,7 @@ So the band is neutral: a raised graphite fill, a white lead sentence, the teal 
 | Token | Hex | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | form column, page |
-| `--side` | `#0A0B0C` | glimpse column |
+| `--side` | `#0A0B0C` | illustration column, under the image |
 | `--surface` | `#131416` | input fill |
 | `--raise` | `#17181B` | the banner's fill |
 | `--line` | `#1F2023` | column hairline, the banner's bottom hairline |
@@ -148,14 +148,14 @@ So the band is neutral: a raised graphite fill, a white lead sentence, the teal 
 | `--green` | `#4FB286` | the rule line's check |
 | `--red` | `#E5675C` | invalid borders, error lines and icons |
 | `--teal` | `#6FB8AA` | `Sign out`, `Change it` |
-| `--shell` / `--ink` | `#F3F0E8` / `#0C1D21` | the primary button |
+| `--shell` / `--ink` | `#F3F0E8` / `#0C1D21` | the primary button; `--shell` at 70% for the tagline |
 | `--amber` | `#FFB224` | **not used** on the screen or the banner |
 
-Type: Manrope 700 (the title), IBM Plex Sans 400/500/600 (everything else, the email included), IBM Plex Mono only in the glimpse and the version footer.
+Type: Manrope 700 (the title), IBM Plex Sans 400/500/600 (everything else, the email included), IBM Plex Mono only in the version footer.
 
 ## Responsive
 
-As `sign-in.md`: the glimpse column hides under 960px, the form block stays 360px and centred, and on a phone (< 420px) it takes the full width with 16px gutters and no horizontal scroll. The banner's narrow rule is above.
+As `sign-in.md`: the illustration column (and the tagline) hides under 960px, the form block stays 360px and centred, and on a phone (< 420px) it takes the full width with 16px gutters and no horizontal scroll. The banner's narrow rule is above.
 
 ## Wrong in the image
 
@@ -163,8 +163,8 @@ As `sign-in.md`: the glimpse column hides under 960px, the form block stays 360p
 - **Text brightness:** the labels, the lede, the rule line and the account line render brighter than their tokens (labels near `#CBCAD3`, the rule text near `#C6C4C5`). They're `--muted` and `--faint` as specified above; the title and the input values are the only `--text` in the form.
 - **Apostrophe:** `don’t` is curly; `en.json` uses straight apostrophes (`don't`), as sign-in does.
 - **Dots:** sixteen and thirteen masked dots, not the prompt's fourteen and eleven. Harmless: the input shows what the member typed.
-- **Lockup and glimpse:** the same errata as `sign-in.md` (an approximated lockup, glimpse names and paths near `--text` instead of `--muted`). Use the real `lockup-horizontal-shell.svg` and sign-in's glimpse component.
-- Right as drawn: the copy, the order, the green check with faint text, the red border on confirm only, the teal `Sign out`, and the title on the glimpse's guide.
+- **Lockup:** the same erratum as `sign-in.md`: the lockup is approximated. Use the real `lockup-horizontal-shell.svg`.
+- Right as drawn: the copy, the order, the green check with faint text, the red border on confirm only, the teal `Sign out`, and the whole right column (the real illustration and tagline, composited as on `sign-in.webp`).
 
 **`home-banner.webp`**
 - **Icon position:** the key sits about 20px left of the page's text edge, and the lead starts at about x 287. The icon's left edge goes on the text edge (x 272 at 1440), the lead 25px after it.

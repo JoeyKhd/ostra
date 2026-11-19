@@ -10,7 +10,7 @@ They were made image first with the `ui-taste` skill on Higgsfield `gpt_image_2_
 | `<screen>.md` | The build spec: purpose, layout, every state with its copy, components, tokens, differences from the current code, and what the picture gets wrong |
 | `<screen>.prompt.txt` | The prompt that made the picture |
 
-**Status:** the maintainer approved every target on 2026-11-19, except the right column of `sign-in` and `change-password`. That column needs a real brand illustration in place of the dimmed task mock ("the sign in page requires a proper illustration on the right"); three directions are being made for the maintainer to pick. Until then, build that column as an empty `--bg` panel. No screen is rebuilt to its target before it's approved (`../../app-design.md`, and the UI process in `AGENTS.md`).
+**Status:** the maintainer approved every target on 2026-11-19, `sign-in` and `change-password` included. Their right column, first a dimmed task mock, is now a brand illustration ("the sign in page requires a proper illustration on the right"): the maintainer chose "Deep water" from three directions (Strata, Deep water, Contour) the same day, and both pictures show it composited in. The file is `../../files/web/sign-in-illustration.webp` (B-017 in `../../assets.md`), and `sign-in.md` says how to build the column. No screen is rebuilt to its target before it's approved (`../../app-design.md`, and the UI process in `AGENTS.md`).
 
 ## Screens
 

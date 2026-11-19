@@ -35,6 +35,7 @@ Every brand file ostra needs, so nothing is forgotten. Same rules as `context/fe
 | B-013 | Web manifest colours | `files/web/site.webmanifest`, with Abyss as `theme_color` and `background_color` | script | v1 | done |
 | B-014 | Open Graph image | `files/web/og-image.png` 1200×630, dark: the lockup, the headline and the proof line | script | v1 | done |
 | B-015 | Email logo | `files/web/email-logo@2x.png`, 400 px wide (shown at 200), the Abyss lockup for light email backgrounds | script | v1 | done |
+| B-017 | Sign-in illustration | `files/web/sign-in-illustration.webp` 1792×2240 (the master, WebP quality 90) and `sign-in-illustration-1200.webp` 960×1200 (the app at 1×). The decorative right column of `/sign-in` and `/change-password` (`app-targets/m1/sign-in.md`): a machined matte stone in the Hinge's shape, split by a diagonal seam with Shell light inside, in deep blue-green water. Higgsfield `gpt_image_2_6`, 4:5, generation 3 of the "Deep water" direction; the maintainer chose it on 2026-11-19 from three directions (Strata, Deep water, Contour). Graded, not regenerated, by `scripts/sign-in-illustration.py`, which takes the raw generation (not committed): darkened ×0.87 so the form stays the brightest thing on the screen, a soft left-edge fade and a bottom fade into `--side` `#0A0B0C`, baked in | Higgsfield + script | v1 | done |
 
 ## Inside the tools ostra plugs into
 
