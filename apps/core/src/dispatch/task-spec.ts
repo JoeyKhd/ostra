@@ -8,7 +8,7 @@ import { gitPersonSchema, organizationIdSchema, repoFullNameSchema, taskIdSchema
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
 import type { BlobService } from "../blobs/blob-service.ts";
 import { agentInstructions } from "./agent-instructions.ts";
-import { specServices } from "./environment-spec.ts";
+import { specChecks, specServices } from "./environment-spec.ts";
 import { profileSpecParts } from "./profile-spec.ts";
 import { specMilestone2Parts } from "./restore-spec.ts";
 
@@ -179,6 +179,8 @@ export const buildTaskSpec = async (
   const extras = await specMilestone2Parts(db, task, session);
   // Milestone 3 (ticket 27): the environment's services, for a runner that can start them.
   const services = await specServices(db, task);
+  // Milestone 3 (ticket 23): the environment's checks, run after every turn with changes.
+  const checks = await specChecks(db, task, taskRepos.map(({ repo }) => repo.id));
   const spec = taskSpecSchema.parse({
     taskId: task.id,
     sessionId: session.id,
@@ -228,6 +230,7 @@ export const buildTaskSpec = async (
     gitIdentity,
     coAuthors,
     limits: await specLimits(deps, task, model),
+    ...(checks.length === 0 ? {} : { checks }),
     ...(services.length === 0 ? {} : { services }),
   });
   return { ok: true, spec };

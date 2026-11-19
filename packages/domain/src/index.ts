@@ -83,3 +83,5 @@ export * from "./diff/stored-diff.ts";
 export * from "./use-cases/repo-access.ts";
 export * from "./use-cases/member-message.ts";
 export * from "./use-cases/diff-comments.ts";
+export * from "./checks/pr-checks.ts";
+export * from "./use-cases/checks.ts";

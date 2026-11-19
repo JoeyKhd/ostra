@@ -14,6 +14,7 @@ import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx, setNeedsYouSummaryInT
 import { releaseLeaseInTx } from "./record-session-end.ts";
 import { storableEvent } from "./storable-event.ts";
 import type { MoveDeps } from "./moves.ts";
+import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
 import { modelTokenPrices, priceTokens } from "./spend.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
@@ -381,6 +382,23 @@ const applyEffects = async (
         await reloadTask();
         break;
       }
+      case "check.started":
+        // F-054, ticket 23: the check's run of this turn, until its `check.finished`.
+        await recordCheckStartedInTx(tx, task, { sessionId: sessionRef.sessionId, checkId: event.checkId, repoId: event.repoId, name: event.name, at: item.at });
+        break;
+      case "check.finished":
+        // Its result and the full output's blob; the PR opener reads it after `session.saved`.
+        await recordCheckFinishedInTx(tx, {
+          taskId: task.id,
+          sessionId: sessionRef.sessionId,
+          checkId: event.checkId,
+          status: event.status,
+          exitCode: event.exitCode,
+          durationMs: event.durationMs,
+          outputBlobId: event.outputBlobId,
+          at: item.at,
+        });
+        break;
       case "session.limit_reached": {
         // The runner's key proxy stopped the session at the spend cap (ticket 19, F-068).
         if (deps.outbox === undefined) {
@@ -454,8 +472,6 @@ const applyEffects = async (
       // from a runner, since the gateway refuses them.
       case "plan.proposed":
       case "plan.answered":
-      case "check.started":
-      case "check.finished":
       case "snapshot.built":
       case "snapshot.failed":
       // `service.healthy` is stored on the box's session: the environment page reads a service's

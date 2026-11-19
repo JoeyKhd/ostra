@@ -234,6 +234,10 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   if (withChanges || prOpen) {
     // The push already updated the open PRs: the task is (still) in review.
     const moved = await moveTaskInTx(moveDeps, task, { type: "work_saved", withChanges, prOpen, rounds: M2_ROUNDS });
+    if (prOpen && (input.event.checks?.length ?? 0) > 0) {
+      // F-054 (ticket 23): the turn's checks go into each changed PR's body and draft state.
+      await deps.jobs.enqueueInTx(tx, "task.open-pull-requests", { organizationId, taskId: task.id, sessionId: input.sessionId, eventSeq: input.eventSeq });
+    }
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
     return { ok: true, outcome: moved || task.state === "in_review" ? "in-review" : "unchanged" };
   }

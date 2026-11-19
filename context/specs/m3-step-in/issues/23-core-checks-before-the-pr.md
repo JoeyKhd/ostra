@@ -1,6 +1,6 @@
 # 23: Core: checks before the PR, and drafts
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 07, 09
 Features: F-054
@@ -18,9 +18,9 @@ Spec: `../spec.md`, section 4 ("Checks"); ADR 0052
 
 ## Done when
 
-- [ ] Tests: a passing turn opens a ready PR with the section; a failing one opens a draft; a later pass marks it ready; a person's draft stays a draft; the section is edited, not appended; check output with markdown and HTML is escaped; "Ask the agent to fix" sends one message; another organization's runs are invisible.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
-- [ ] Committed as `✨ add checks before the PR`.
+- [x] Tests: a passing turn opens a ready PR with the section; a failing one opens a draft; a later pass marks it ready; a person's draft stays a draft; the section is edited, not appended; check output with markdown and HTML is escaped; "Ask the agent to fix" sends one message; another organization's runs are invisible.
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `core` and `domain`.
+- [x] Committed as `✨ add checks before the PR`.
 
 ## Decided 2026-11-19
 
