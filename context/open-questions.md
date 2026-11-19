@@ -34,6 +34,7 @@ A settled question leaves this file. Its answer lives on in the ADR (`decisions/
 | Q-28 | ADR 0018: Claude Code through ACP. Amended by ADR 0032: OpenCode through ACP first |
 | Q60–Q63, the panel's look (asked in chat 2026-11-18) | `brand/app-design.md`: neutral graphite chrome with brand accents, denser type, few boxes, concepts in real HTML; direction B picked |
 | Q164 agent reach on `host` | `AGENTS.md` Boundaries (2026-11-19): enforced by the box on `docker` and `kubernetes`; `host` is labelled not isolated (ADR 0029, ADR 0031) |
+| Q127 dependencies waiting for a yes | ADR 0007 (2026-11-19): `@tanstack/react-virtual`, `dockerode` and `@kubernetes/client-node` confirmed; Resend (`resend`) for email in place of `nodemailer`; ADR 0043: `@aws-sdk/client-s3`. Q126's Windows helper gets its own yes when it's chosen |
 
 ### Delegated on 2026-11-18
 
@@ -263,8 +264,6 @@ The maintainer delegated these calls too, and each recommendation of the finding
 **Q110 👤 Who is the licensor?** (ADR 0048). For now the licensor and copyright holder is "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra". Does that line stay, or does it become a legal name or a company? The license, the CLA and the commercial licenses all name the licensor. *Recommendation:* keep the line through milestones 1 to 6. Settle it with the legal review of the license and the CLA before the milestone 7 launch (`build-order.md`, "Outside the code").
 
 **Q126 👤 Containing a task's processes on the `host` executor** (ADR 0029, `research/spike-how-should-the-runner-drive-opencode.md`, item 6). The decision is made: a Windows job object, a Linux cgroup. Two things aren't. How does a Node runner create a Windows job object (a native addon or a small helper program, either of which is a new dependency)? And what does macOS use, which has neither? Until it is settled, milestone 1's `host` executor on Windows ends the agent's process tree and says so in the panel, and `host` on macOS reaps a process group and walks the tree, recorded as the third allowed difference in ADR 0029. *Recommendation:* a small helper program for Windows, so the runner needs no native addon on a laptop, and for macOS test a process group plus a sweep for orphans against a detached helper, and record the result.
-
-**Q127 👤 Dependencies waiting for a yes** (ADR 0007, "pending the maintainer"). `@tanstack/react-virtual` for the task page's long lists (Q112), `dockerode`, `@kubernetes/client-node`, `nodemailer`, and whatever Q126 picks. Each is added only when the feature that needs it is built, and only after the maintainer confirms it and its license. *Recommendation:* yes to all four named ones, since each has no standard-library or already-listed alternative. *2026-11-19:* the S3 client is settled: `@aws-sdk/client-s3`, confirmed by the maintainer (ADR 0043).
 
 ### Raised by milestone 1 (2026-11-19)
 

@@ -1,6 +1,6 @@
 # The web app uses the libraries the maintainer already works with
 
-**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
+**Status:** accepted (plan signed off 2026-11-17). Amended 2026-11-18: adds `ai` (types only), assistant-ui, pg-boss and `ws` (Q24, Q50, ADR 0034, ADR 0036, ADR 0037), and lists `dockerode`, `@kubernetes/client-node` and `nodemailer` as pending the maintainer (ADR 0029, F-115). Amended 2026-11-19: the maintainer confirmed `dockerode`, `@kubernetes/client-node` and `@tanstack/react-virtual`, and chose Resend (`resend`) for email in place of `nodemailer`. First answered on 2026-11-17. The maintainer chose the frontend libraries they already ship with elsewhere. Since the server is TypeScript too (ADR 0008), the server-side libraries of that stack come along.
 
 | Area | Choice |
 |---|---|
@@ -49,16 +49,16 @@ Milestone 1 starts from these and pins exactly (a version less than a day old is
 - **Vitest and Playwright** were already in the table above.
 - **`yaml`** (ISC), spike 3's dev dependency for reading its deploy files, and **`@dbos-inc/dbos-sdk`** (MIT core only, no Conductor), spike 8's fallback arm. Approved for the spikes only (Q162). Neither is a product dependency: no package outside `spikes/` lists them.
 
-## Dependencies added in the 2026-11-18 rework, pending the maintainer
+## Dependencies added in the 2026-11-18 rework
 
-`AGENTS.md` says to ask before adding a dependency. The three below were chosen on the maintainer's delegation (answers 4.6) and no other ADR names them. Each is added only when its feature is built, and only after the maintainer confirms it and its license.
+`AGENTS.md` says to ask before adding a dependency. The ones below were chosen on the maintainer's delegation (answers 4.6), and no other ADR names them. Each is added only when its feature is built, pinned exactly, in the same commit as the updated `pnpm-lock.yaml`. The maintainer confirmed them on 2026-11-19 ("rest is ok"), except the Windows job-object helper, which is still to choose.
 
 | Dependency | Package | For | License |
 |---|---|---|---|
-| `dockerode` | runner | The `docker` executor (ADR 0029, F-017) | to confirm |
-| `@kubernetes/client-node` | runner | The `kubernetes` executor (ADR 0029, F-093) | Apache-2.0 per `research/elastic-sandboxes.md`; to confirm with the maintainer |
-| `nodemailer` | server | Mail for invites, reset links and notifications (F-115, Q54) | to confirm |
-| `@tanstack/react-virtual` | web | List virtualization on the task page for long tasks (ADR 0036, Q112). Until it is confirmed, paging by turn is the long-task answer | to confirm, with its license, with the maintainer |
+| `dockerode` | runner | The `docker` executor (ADR 0029, F-017) | Apache-2.0; confirmed 2026-11-19 |
+| `@kubernetes/client-node` | runner | The `kubernetes` executor (ADR 0029, F-093) | Apache-2.0; confirmed 2026-11-19 |
+| `resend` | server | Email for invites, reset links and notifications (F-115, Q54), as the email channel's `NotificationAdapter` and better-auth's mail callbacks. Chosen by the maintainer on 2026-11-19 in place of `nodemailer` ("resend is better and works with better-auth"). An SMTP channel for installs that can't use a hosted service can be added later as another adapter, with its own yes | MIT; confirmed 2026-11-19 |
+| `@tanstack/react-virtual` | web | List virtualization on the task page for long tasks (ADR 0036, Q112) | MIT; confirmed 2026-11-19 |
 | A way to make a Windows job object from Node | runner | Process containment on the `host` executor on Windows (ADR 0029, Q126): a native addon or a small helper program | to choose and confirm |
 
 Other dependencies from the same list are recorded in the ADR of the feature that needs them, each with its own confirmation line: `@agentclientprotocol/sdk` (ADR 0032), `@modelcontextprotocol/sdk` (ADR 0044), an S3 client (ADR 0043) and `@changesets/cli` (ADR 0045).
