@@ -1,7 +1,10 @@
 import type {
   ApiFormat,
+  ApprovalSubjectKind,
+  ApprovalTool,
   AuthScheme,
   BoxReleaseReason,
+  CheckStatus,
   CommandKind,
   CommandResult,
   ProcessContainment,
@@ -11,7 +14,11 @@ import type {
 
 import type {
   ApiFormat as DbApiFormat,
+  ApprovalRuleSource as DbApprovalRuleSource,
+  ApprovalSubjectKind as DbApprovalSubjectKind,
+  ApprovalTool as DbApprovalTool,
   AuthScheme as DbAuthScheme,
+  CheckRunStatus as DbCheckRunStatus,
   BoxReleaseReason as DbBoxReleaseReason,
   CommandKind as DbCommandKind,
   CommandResult as DbCommandResult,
@@ -128,3 +135,56 @@ export const processContainmentFromDb = {
   cgroup: "cgroup",
   process_tree: "process-tree",
 } as const satisfies Record<DbProcessContainment, ProcessContainment>;
+
+// ---- milestone 3 ----
+
+/** A check run's status: the protocol's results, and `running` between `check.started` and `check.finished`. */
+export type CheckRunStatus = CheckStatus | "running";
+
+export const checkRunStatusToDb = {
+  running: "running",
+  passed: "passed",
+  failed: "failed",
+  "timed-out": "timed_out",
+  error: "error",
+} as const satisfies Record<CheckRunStatus, DbCheckRunStatus>;
+export const checkRunStatusFromDb = {
+  running: "running",
+  passed: "passed",
+  failed: "failed",
+  timed_out: "timed-out",
+  error: "error",
+} as const satisfies Record<DbCheckRunStatus, CheckRunStatus>;
+
+// The protocol's rule vocabularies, spelled the same in the database. The maps hold the two in
+// step: a value added on one side only is a type error.
+export const approvalToolToDb = {
+  edit: "edit",
+  execute: "execute",
+  fetch: "fetch",
+  mcp: "mcp",
+} as const satisfies Record<ApprovalTool, DbApprovalTool>;
+export const approvalToolFromDb = {
+  edit: "edit",
+  execute: "execute",
+  fetch: "fetch",
+  mcp: "mcp",
+} as const satisfies Record<DbApprovalTool, ApprovalTool>;
+
+export const approvalSubjectKindToDb = {
+  path: "path",
+  command: "command",
+  url: "url",
+  tool: "tool",
+} as const satisfies Record<ApprovalSubjectKind, DbApprovalSubjectKind>;
+export const approvalSubjectKindFromDb = {
+  path: "path",
+  command: "command",
+  url: "url",
+  tool: "tool",
+} as const satisfies Record<DbApprovalSubjectKind, ApprovalSubjectKind>;
+
+export const approvalRuleSourceFromDb = {
+  profile: "profile",
+  task: "task",
+} as const satisfies Record<DbApprovalRuleSource, "profile" | "task">;

@@ -1,7 +1,13 @@
 import {
   agentProfileIdSchema,
+  agentProfileSkillIdSchema,
   approvalIdSchema,
+  approvalRulesSchema,
   blobIdSchema,
+  checkIdSchema,
+  checkRunIdSchema,
+  cliSessionIdSchema,
+  diffCommentIdSchema,
   boardIdSchema,
   boxIdSchema,
   commandIdSchema,
@@ -14,16 +20,23 @@ import {
   memberIdSchema,
   modelIdSchema,
   needsYouItemIdSchema,
+  notificationDeliveryIdSchema,
+  notificationIdSchema,
   oauthStateIdSchema,
   organizationIdSchema,
   poolIdSchema,
   projectIdSchema,
   providerIdSchema,
+  questionIdSchema,
   repoIdSchema,
+  repoRelativePathSchema,
   runnerIdSchema,
   sessionIdSchema,
+  snapshotIdSchema,
   storedEventSchema,
+  taskApprovalRuleIdSchema,
   taskIdSchema,
+  taskPullRequestIdSchema,
   taskRepoIdSchema,
   ticketIdSchema,
   ticketKeySchema,
@@ -33,25 +46,36 @@ import {
   userIdSchema,
 } from "@ostra/protocol";
 import type { Command as ProtocolCommand, StoredEvent } from "@ostra/protocol";
-import type { z } from "zod";
+import { z } from "zod";
 
 import {
   apiFormatFromDb,
+  approvalSubjectKindFromDb,
+  approvalToolFromDb,
   authSchemeFromDb,
   boxReleaseReasonFromDb,
+  checkRunStatusFromDb,
   commandKindFromDb,
   sessionLimitFromDb,
 } from "./enums.ts";
 import type {
   AgentProfile,
+  AgentProfileMember,
+  AgentProfileSkill,
   Approval,
   Blob,
   BlobChunk,
   BlobUpload,
   Board,
   Box,
+  Check,
+  CheckRun,
+  CliSession,
   Command,
   Connection,
+  DiffCache,
+  DiffComment,
+  EmailSettings,
   Environment,
   EnvironmentEntry,
   Event,
@@ -62,6 +86,9 @@ import type {
   Model,
   ModelProvider,
   NeedsYouItem,
+  Notification,
+  NotificationDelivery,
+  NotificationPreference,
   OAuthState,
   Organization,
   OrganizationSetting,
@@ -71,8 +98,11 @@ import type {
   Runner,
   RunnerPool,
   Session,
+  Snapshot,
   Task,
+  TaskApprovalRule,
   TaskCoAuthor,
+  TaskPullRequest,
   TaskRepo,
   Ticket,
   TicketWrite,
@@ -148,6 +178,8 @@ export const mapAgentProfile = (row: AgentProfile) => ({
   id: agentProfileIdSchema.parse(row.id),
   organizationId: organizationIdSchema.parse(row.organizationId),
   modelId: optional(modelIdSchema, row.modelId),
+  // Milestone 3: the rules, as the protocol's schema parses them (ADR 0049).
+  approvalRules: approvalRulesSchema.parse(row.approvalRules),
 });
 
 export const mapProject = (row: Project) => ({
@@ -195,6 +227,7 @@ export const mapTask = (row: Task) => ({
   ticketKey: optional(ticketKeySchema, row.ticketKey),
   ticketId: optional(ticketIdSchema, row.ticketId),
   boardId: optional(boardIdSchema, row.boardId),
+  agentProfileId: optional(agentProfileIdSchema, row.agentProfileId),
 });
 
 export const mapTaskRepo = (row: TaskRepo) => ({
@@ -263,6 +296,7 @@ export const mapApproval = (row: Approval) => ({
   taskId: taskIdSchema.parse(row.taskId),
   sessionId: sessionIdSchema.parse(row.sessionId),
   answeredByMemberId: optional(memberIdSchema, row.answeredByMemberId),
+  subjectKind: row.subjectKind === null ? null : approvalSubjectKindFromDb[row.subjectKind],
 });
 
 export const mapNeedsYouItem = (row: NeedsYouItem) => ({
@@ -273,6 +307,8 @@ export const mapNeedsYouItem = (row: NeedsYouItem) => ({
   taskId: taskIdSchema.parse(row.taskId),
   approvalId: optional(approvalIdSchema, row.approvalId),
   resolvedByMemberId: optional(memberIdSchema, row.resolvedByMemberId),
+  questionId: optional(questionIdSchema, row.questionId),
+  planTurnId: optional(turnIdSchema, row.planTurnId),
 });
 
 // ---- milestone 2 ----
@@ -376,3 +412,124 @@ export const mapCommandToFrame = (row: Command): ProtocolCommand =>
     kind: commandKindFromDb[row.kind],
     body: row.body,
   });
+
+// ---- milestone 3 ----
+
+/** A skill's files, as `AgentProfileSkill.files` holds them. */
+export const skillFilesSchema = z.array(z.strictObject({ path: repoRelativePathSchema, blobId: blobIdSchema }));
+
+export const mapAgentProfileMember = (row: AgentProfileMember) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  profileId: agentProfileIdSchema.parse(row.profileId),
+  memberId: memberIdSchema.parse(row.memberId),
+});
+
+export const mapAgentProfileSkill = (row: AgentProfileSkill) => ({
+  ...row,
+  id: agentProfileSkillIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  profileId: agentProfileIdSchema.parse(row.profileId),
+  files: skillFilesSchema.parse(row.files),
+});
+
+export const mapTaskApprovalRule = (row: TaskApprovalRule) => ({
+  ...row,
+  id: taskApprovalRuleIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  tool: approvalToolFromDb[row.tool],
+  approvalId: optional(approvalIdSchema, row.approvalId),
+  createdByMemberId: memberIdSchema.parse(row.createdByMemberId),
+});
+
+export const mapDiffComment = (row: DiffComment) => ({
+  ...row,
+  id: diffCommentIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  taskRepoId: taskRepoIdSchema.parse(row.taskRepoId),
+  memberId: memberIdSchema.parse(row.memberId),
+});
+
+export const mapDiffCache = (row: DiffCache) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  repoId: repoIdSchema.parse(row.repoId),
+});
+
+export const mapTaskPullRequest = (row: TaskPullRequest) => ({
+  ...row,
+  id: taskPullRequestIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskRepoId: taskRepoIdSchema.parse(row.taskRepoId),
+});
+
+export const mapCheck = (row: Check) => ({
+  ...row,
+  id: checkIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  environmentId: environmentIdSchema.parse(row.environmentId),
+  repoId: optional(repoIdSchema, row.repoId),
+});
+
+export const mapCheckRun = (row: CheckRun) => ({
+  ...row,
+  id: checkRunIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  taskId: taskIdSchema.parse(row.taskId),
+  sessionId: sessionIdSchema.parse(row.sessionId),
+  checkId: checkIdSchema.parse(row.checkId),
+  repoId: optional(repoIdSchema, row.repoId),
+  status: checkRunStatusFromDb[row.status],
+  outputBlobId: optional(blobIdSchema, row.outputBlobId),
+});
+
+export const mapSnapshot = (row: Snapshot) => ({
+  ...row,
+  id: snapshotIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  projectId: projectIdSchema.parse(row.projectId),
+  environmentId: environmentIdSchema.parse(row.environmentId),
+  runnerId: optional(runnerIdSchema, row.runnerId),
+});
+
+export const mapNotification = (row: Notification) => ({
+  ...row,
+  id: notificationIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  memberId: memberIdSchema.parse(row.memberId),
+  projectId: optional(projectIdSchema, row.projectId),
+  taskId: optional(taskIdSchema, row.taskId),
+  needsYouItemId: optional(needsYouItemIdSchema, row.needsYouItemId),
+});
+
+export const mapNotificationDelivery = (row: NotificationDelivery) => ({
+  ...row,
+  id: notificationDeliveryIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  notificationId: notificationIdSchema.parse(row.notificationId),
+});
+
+export const mapNotificationPreference = (row: NotificationPreference) => ({
+  ...row,
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  memberId: memberIdSchema.parse(row.memberId),
+});
+
+/** The install's email settings. The secret references stay references: the values are the secret store's. */
+export const mapEmailSettings = (row: EmailSettings) => ({ ...row });
+
+export const mapCliSession = (row: CliSession) => ({
+  ...row,
+  id: cliSessionIdSchema.parse(row.id),
+  organizationId: organizationIdSchema.parse(row.organizationId),
+  memberId: memberIdSchema.parse(row.memberId),
+  userId: userIdSchema.parse(row.userId),
+});

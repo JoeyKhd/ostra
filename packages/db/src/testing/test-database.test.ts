@@ -26,11 +26,13 @@ describe("the test database", () => {
     expect(await tables(first)).toEqual(await tables(second));
   });
 
-  it("starts empty", async () => {
+  it("starts empty, but for the rows the migrations themselves make", async () => {
+    // Milestone 3's migration makes the install's one email settings row (ticket 06).
+    const seededByMigrations: Readonly<Record<string, number>> = { email_settings: 1 };
     for (const table of await tables(first)) {
       const quoted = `"${table.replaceAll('"', '""')}"`;
       const rows = await first.db.$queryRawUnsafe<{ count: number }[]>(`SELECT count(*)::int AS count FROM ${quoted}`);
-      expect({ table, count: rows[0]?.count }).toEqual({ table, count: 0 });
+      expect({ table, count: rows[0]?.count }).toEqual({ table, count: seededByMigrations[table] ?? 0 });
     }
   });
 

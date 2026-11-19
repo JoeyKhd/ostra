@@ -102,6 +102,10 @@ _Avoid_: policy, permission (the agent's own settings are its permissions, which
 What "Approve for this task" adds: an approval rule on one task, with a narrow pattern (the exact path, a command's program and first argument), that answers later matching requests without a person.
 _Avoid_: exception, allowlist
 
+**Marked block**:
+How a prompt carries text that isn't ostra's (a member's reason or plan, a PR comment, a ticket, the agent's own output): fenced as data between an opening and a closing line whose number the text can't hold, so the text can't end its block early or pose as ostra's instructions (`@ostra/protocol`, `markedBlock`).
+_Avoid_: quote, escaping
+
 **Plan first**:
 An agent profile's switch: the task's first turn only proposes a plan, reading and never writing, and the driver approves or edits it before the work starts.
 _Avoid_: plan mode (that's how the agent is made read-only for that turn), dry run
@@ -109,6 +113,14 @@ _Avoid_: plan mode (that's how the agent is made read-only for that turn), dry r
 **Notification**:
 A needs-you moment delivered to one member on one channel: the panel's "Needs you" page, a comment on the task's ticket, or an email. Each member chooses which moments reach them on which channel.
 _Avoid_: alert, inbox (the Inbox is a project's tickets), message (members send messages to the agent)
+
+**Delivery**:
+One channel's sending of one notification: the panel's row, the ticket's comment or the mail, each sent once by its idempotency key, retried on its own, and shown on the notification when it fails.
+_Avoid_: send, job
+
+**Check run**:
+One check's run after one turn of a session: its status, exit code, time and full output. A PR reads the latest run of each check that applies to its repo.
+_Avoid_: CI run, build (those are the code host's)
 
 **Dispatch**:
 Choosing where a task runs, on a runner in one of its project's pools or on its member's personal runner, and starting its box and its session. A dispatch reaches the runner as an offer, and the task stays queued until the runner accepts it.

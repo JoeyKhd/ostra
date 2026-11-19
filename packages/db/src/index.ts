@@ -64,4 +64,17 @@ export type {
   BlobUpload,
   BlobChunk,
   OAuthState,
+  // Milestone 3.
+  AgentProfileMember,
+  AgentProfileSkill,
+  TaskApprovalRule,
+  DiffComment,
+  DiffCache,
+  TaskPullRequest,
+  CheckRun,
+  Notification,
+  NotificationDelivery,
+  NotificationPreference,
+  EmailSettings,
+  CliSession,
 } from "./generated/prisma/client.ts";

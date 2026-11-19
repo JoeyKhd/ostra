@@ -53,13 +53,21 @@ model User {
   /// sign-in must choose a new one, unless OSTRA_ALLOW_DEFAULT_PASSWORD is on. A better-auth
   /// additional field (`input: false`), so no sign-up or profile update can set it.
   mustChangePassword Boolean       @default(false)
+  // ---- milestone 3 ----
+  /// ostra: the verified GitHub account (F-119, ADR 0052), from the App's own OAuth. One GitHub
+  /// identity per person across organizations, unique per install. No token is kept.
+  githubUserId       String?
+  githubLogin        String?
+  githubLinkedAt     DateTime?
   sessions           AuthSession[]
   accounts           Account[]
   members            Member[]
   invitations        Invitation[]
+  cliSessions        CliSession[]
 
   @@unique([email])
   @@unique([username])
+  @@unique([githubUserId], where: raw("\"githubUserId\" IS NOT NULL"), map: "user_github_user_id_unique")
   @@map("user")
 }
 
@@ -168,6 +176,11 @@ model Member {
 
   ownedRunners       Runner[]
   projectMemberships ProjectMember[]
+  // ---- milestone 3 ----
+  profileAccess           AgentProfileMember[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  cliSessions             CliSession[]
 
   // ostra: one membership per account and organization, not just unlikely twice (spike 9).
   @@unique([organizationId, userId])
@@ -206,6 +219,10 @@ model DeviceCode {
   pollingInterval Int?
   clientId        String?
   scope           String?
+  /// ostra, milestone 3 (F-103): what the code signs in, a runner or the `ostra` CLI.
+  purpose         DeviceCodePurpose @default(runner)
+  /// ostra, milestone 3: the machine's name the CLI sent, for the device page and the CLI session.
+  machineName     String?
 
   @@unique([deviceCode], map: "deviceCode_deviceCode_uidx")
   @@unique([userCode], map: "deviceCode_userCode_uidx")
@@ -231,9 +248,36 @@ model InstanceSetting {
   /// When an admin last saved retention. `null`: none has, so `OSTRA_RETENTION_DAYS` applies;
   /// set: the saved `retentionDays` wins, and `null` there means "keep" (spec section 11, item 11).
   retentionSetAt          DateTime?
+  /// Milestone 3 (F-115): how long a needs-you mail waits, or `null` for `OSTRA_EMAIL_DELAY_SECONDS`.
+  emailDelaySeconds       Int?
   updatedAt               DateTime  @updatedAt
 
   @@map("instance_setting")
+}
+
+/// The install's email (F-115, ADR 0050): one row, `id = 'instance'`, made by the migration. Set
+/// in the panel by an instance admin, or by settings, which lock it. Secrets are references.
+model EmailSettings {
+  id                    String        @id @default("instance")
+  provider              EmailProvider @default(off)
+  fromAddress           String?
+  fromName              String?
+  /// The Resend API key, in the secret store: a reference, never the value.
+  resendApiKeySecretRef String?
+  smtpHost              String?
+  smtpPort              Int?
+  smtpSecure            SmtpSecurity?
+  smtpUser              String?
+  /// The SMTP password, in the secret store: a reference, never the value.
+  smtpPasswordSecretRef String?
+  /// Set when `OSTRA_EMAIL_PROVIDER` chose the provider: the panel shows it read-only.
+  lockedBySettings      Boolean       @default(false)
+  lastTestAt            DateTime?
+  /// "Send a test mail"'s outcome, in words and IDs: never a mail's body or a secret.
+  lastTestResult        String?
+  updatedAt             DateTime      @updatedAt
+
+  @@map("email_settings")
 }
 
 /// One organization's own settings (milestone 2): one row per organization, made when first written.
@@ -513,6 +557,8 @@ model Runner {
   boxes    Box[]
   leases   Lease[]
   tasks    Task[]
+  // ---- milestone 3 ----
+  snapshots Snapshot[]
 
   @@unique([id, organizationId])
   @@index([organizationId, state])
@@ -550,12 +596,59 @@ model AgentProfile {
   model          Model?       @relation(fields: [modelId, organizationId], references: [id, organizationId], onDelete: NoAction)
   instructions   String?
   builtIn        Boolean      @default(false)
+  // ---- milestone 3 (F-021, F-026, F-063, ADR 0049) ----
+  /// What needs a person, as `@ostra/protocol`'s `approvalRulesSchema` parses it.
+  approvalRules  Json          @default("[]")
+  planFirst      Boolean       @default(false)
+  access         ProfileAccess @default(everyone)
+  /// Archived profiles are offered to no new task; tasks keep the profile they started with (Q189).
+  archivedAt     DateTime?
+  /// The MCP servers: name, transport, `readOnly`, the URL or the command, and secret references for
+  /// an HTTP server's headers. Never a header's value.
+  mcpServers     Json          @default("[]")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
+  members AgentProfileMember[]
+  skills  AgentProfileSkill[]
+  tasks   Task[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
   @@map("agent_profile")
+}
+
+/// Who may use a `listed` profile (F-021). Organization admins use every profile.
+model AgentProfileMember {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  profileId      String
+  profile        AgentProfile @relation(fields: [profileId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  memberId       String
+  member         Member       @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([profileId, memberId])
+  @@index([memberId])
+  @@map("agent_profile_member")
+}
+
+/// A skill of a profile (F-021, ADR 0049): its `SKILL.md` text and up to 20 files, as blobs.
+model AgentProfileSkill {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  profileId      String
+  profile        AgentProfile @relation(fields: [profileId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  name           String
+  /// The `SKILL.md` text. Never logged.
+  body           String
+  /// The skill's other files: `[{ path, blobId }]`.
+  files          Json         @default("[]")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([profileId, name])
+  @@map("agent_profile_skill")
 }
 
 /// An encrypted value of the built-in secret store (ADR 0025, ticket 14). Other stores keep their
@@ -625,6 +718,13 @@ model Project {
   ticketWrites  TicketWrite[]
   blobs         Blob[]
   blobUploads   BlobUpload[]
+  // ---- milestone 3 ----
+  taskApprovalRules TaskApprovalRule[]
+  diffComments      DiffComment[]
+  diffCaches        DiffCache[]
+  taskPullRequests  TaskPullRequest[]
+  checkRuns         CheckRun[]
+  notifications     Notification[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -692,6 +792,8 @@ model Repo {
 
   entries   EnvironmentEntry[]
   taskRepos TaskRepo[]
+  // ---- milestone 3 ----
+  diffCaches DiffCache[]
 
   @@unique([projectId, hostRepoId])
   @@unique([projectId, checkoutDir])
@@ -899,6 +1001,9 @@ model Check {
   name           String
   command        String
   repoId         String?
+  /// Milestone 3 (ADR 0052): the check's timeout, and its place in the order the checks run.
+  timeoutSeconds Int         @default(600)
+  position       Int         @default(0)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -920,6 +1025,15 @@ model Snapshot {
   imageRef       String?
   digest         String?
   failedReason   String?
+  // ---- milestone 3 (F-051, ADR 0038) ----
+  /// The `docker` runner that built it and keeps it; there's no registry (Q184).
+  runnerId        String?
+  runner          Runner?             @relation(fields: [runnerId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  /// The hash of the build's inputs: base image, repos' heads, setup script, setup secret names.
+  buildInputsHash String?
+  /// The scan of the image for each setup secret's value, before it's used.
+  secretScan      SnapshotSecretScan?
+  buildDurationMs Int?
   createdAt      DateTime      @default(now())
   readyAt        DateTime?
   updatedAt      DateTime      @updatedAt
@@ -1004,6 +1118,12 @@ model Task {
   /// Why a queued task waits, as a code with its values (Q132, milestone 2's ticket 43). Parsed by
   /// `dispatchWaitSchema` in `@ostra/domain`; the panel words it. Replaces `dispatchNote`.
   dispatchWait      Json?
+  // ---- milestone 3 ----
+  /// The profile the task started with (F-021): kept when the profile is archived (Q189).
+  agentProfileId    String?
+  agentProfile      AgentProfile?   @relation(fields: [agentProfileId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  /// Plan first's progress (F-063): `none` until a plan is proposed.
+  planState         PlanState       @default(none)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1021,6 +1141,11 @@ model Task {
   ticketWrites  TicketWrite[]
   blobs         Blob[]
   blobUploads   BlobUpload[]
+  // ---- milestone 3 ----
+  taskRules     TaskApprovalRule[]
+  diffComments  DiffComment[]
+  checkRuns     CheckRun[]
+  notifications Notification[]
 
   @@unique([id, projectId])
   /// One active code task per ticket per project (spec section 11, item 12).
@@ -1060,10 +1185,20 @@ model TaskRepo {
   /// When the PR merged, or closed unmerged (F-079).
   mergedAt         DateTime?
   closedAt         DateTime?
+  // ---- milestone 3 ----
+  /// How many commits the base is ahead of the branch (F-070), and when that was read.
+  behindBy         Int?
+  behindCheckedAt  DateTime?
+  /// 1 for the task repo's first branch; a reopen after a merge raises it (`-2`, `-3`, F-066).
+  generation       Int           @default(1)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
+  diffComments DiffComment[]
+  pullRequests TaskPullRequest[]
+
   @@unique([taskId, repoId])
+  @@unique([id, projectId])
   @@map("task_repo")
 }
 
@@ -1214,6 +1349,8 @@ model Session {
   turns     Turn[]
   events    Event[]
   approvals Approval[]
+  // ---- milestone 3 ----
+  checkRuns CheckRun[]
 
   @@unique([id, taskId])
   @@unique([taskId], where: raw("state IN ('starting', 'running', 'waiting', 'idle')"), map: "session_one_active_per_task")
@@ -1238,6 +1375,16 @@ model Turn {
   stopReason     String?
   startedAt      DateTime  @default(now())
   endedAt        DateTime?
+  // ---- milestone 3 (F-084): filled as the turn's usage arrives ----
+  inputTokens      Int     @default(0)
+  outputTokens     Int     @default(0)
+  cacheReadTokens  Int     @default(0)
+  cacheWriteTokens Int     @default(0)
+  spentMicroUsd    Int     @default(0)
+  /// True when any of the turn's usage was estimated by the key proxy.
+  estimated        Boolean @default(false)
+  /// The agent's own time in the turn, in ms.
+  agentMs          Int?
 
   @@unique([sessionId, ordinal])
   @@index([taskId, startSeq])
@@ -1318,10 +1465,19 @@ model Approval {
   answeredByMemberId String?
   ruleId             String?
   closedReason       ApprovalCloseReason?
+  // ---- milestone 3 (F-026, ADR 0049) ----
+  /// Whether `ruleId` names a profile's rule or a task rule.
+  ruleSource         ApprovalRuleSource?
+  /// What the request touched, for the card and the "for this task" pattern. Never logged.
+  subjectKind        ApprovalSubjectKind?
+  subjectValue       String?
+  /// A deny's reason, shown to the project's members; never logged, never in the audit entry.
+  denyReason         String?
   createdAt          DateTime             @default(now())
   resolvedAt         DateTime?
 
   needsYouItems NeedsYouItem[]
+  taskRules     TaskApprovalRule[]
 
   @@unique([id, taskId])
   @@index([taskId, state])
@@ -1343,10 +1499,19 @@ model NeedsYouItem {
   approval           Approval?        @relation(fields: [approvalId, taskId], references: [id, taskId], onDelete: Cascade)
   /// The agent's summary, for a session that ended without changes (F-065).
   summary            String?
+  // ---- milestone 3 ----
+  /// A question's ID (F-024), and a plan's turn (F-063), for the item's answer.
+  questionId         String?
+  planTurnId         String?
+  /// When fan-out first ran for it (F-036).
+  notifiedAt         DateTime?
   createdAt          DateTime         @default(now())
   resolvedAt         DateTime?
   resolvedByMemberId String?
 
+  notifications Notification[]
+
+  @@unique([id, projectId])
   @@index([projectId, state])
   @@index([taskId])
   @@map("needs_you_item")
@@ -1526,6 +1691,231 @@ model OAuthState {
 // ===========================================================================
 // Enums. Values that cross into `@ostra/protocol` with a hyphen there are written with an
 // underscore here; `src/enums.ts` maps them both ways.
+
+// ===========================================================================
+// Milestone 3: step in and come back
+// ===========================================================================
+
+/// A "for this task" rule (F-026, ADR 0049, Q167): the request's tool and a pattern drawn from it.
+/// Its ID is the protocol's `TaskRule.ruleId`, written before the `approval-answer` command.
+model TaskApprovalRule {
+  id                String       @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId            String
+  task              Task         @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  tool              ApprovalTool
+  /// An exact path, a command prefix, a host or an MCP tool's name. May quote the repo: never logged.
+  pattern           String
+  /// The approval whose "Approve for this task" wrote it.
+  approvalId        String?
+  approval          Approval?    @relation(fields: [approvalId, taskId], references: [id, taskId], onDelete: NoAction)
+  createdByMemberId String
+  createdAt         DateTime     @default(now())
+
+  @@unique([taskId, tool, pattern])
+  @@map("task_approval_rule")
+}
+
+/// A member's comment on a line of a task repo's diff (F-072, ADR 0051). A draft until sent.
+model DiffComment {
+  id             String           @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  taskRepoId     String
+  taskRepo       TaskRepo         @relation(fields: [taskRepoId, projectId], references: [id, projectId], onDelete: Cascade)
+  memberId       String
+  path           String
+  side           DiffSide
+  line           Int
+  /// The head the comment was written on: a later head that changes the line makes it outdated.
+  headSha        String
+  /// The member's text. Never logged.
+  body           String
+  state          DiffCommentState @default(draft)
+  /// The task seq of the member message that carried it.
+  sentInSeq      Int?
+  outdatedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([taskId, state])
+  @@index([taskId, memberId, state])
+  @@map("diff_comment")
+}
+
+/// The code host's compare of a base and a head, cached (F-027, ADR 0051).
+model DiffCache {
+  id             String   @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  repoId         String
+  repo           Repo     @relation(fields: [repoId, projectId], references: [id, projectId], onDelete: Cascade)
+  baseSha        String
+  headSha        String
+  /// The compare as the code host adapter returns it. Holds the repo's code: never logged.
+  result         Json
+  fetchedAt      DateTime @default(now())
+
+  @@unique([repoId, baseSha, headSha])
+  @@map("diff_cache")
+}
+
+/// Every PR a task repo has had (F-066, ADR 0052): a reopen after a merge opens a new one.
+model TaskPullRequest {
+  id             String           @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskRepoId     String
+  taskRepo       TaskRepo         @relation(fields: [taskRepoId, projectId], references: [id, projectId], onDelete: Cascade)
+  number         Int
+  url            String
+  branchName     String
+  state          PullRequestState @default(open)
+  draft          Boolean          @default(false)
+  /// Set when ostra made it a draft for a failed check, so ostra may mark it ready (ADR 0052).
+  draftByOstra   Boolean          @default(false)
+  openedAt       DateTime         @default(now())
+  closedAt       DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([taskRepoId, number])
+  @@map("task_pull_request")
+}
+
+/// One check's run after one turn (F-054, ADR 0052).
+model CheckRun {
+  id             String         @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project        @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task           @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  sessionId      String
+  session        Session        @relation(fields: [sessionId, taskId], references: [id, taskId], onDelete: Cascade)
+  turnOrdinal    Int
+  /// The environment's check; kept by ID and name, so a deleted check's runs still read.
+  checkId        String
+  name           String
+  /// The repo it ran in, or `null` for the workspace root (Q188).
+  repoId         String?
+  status         CheckRunStatus @default(running)
+  exitCode       Int?
+  durationMs     Int?
+  /// The full output, as a blob. Never logged.
+  outputBlobId   String?
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+
+  @@unique([sessionId, turnOrdinal, checkId])
+  @@index([taskId])
+  @@map("check_run")
+}
+
+/// A member's notification of one needs-you moment, or a test (F-036, ADR 0050).
+model Notification {
+  id             String            @id @default(uuid(7))
+  organizationId String
+  memberId       String
+  member         Member            @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The project, task and item, all `null` for a test notification. Set with a task or an item
+  /// only: the migration checks it (F-086).
+  projectId      String?
+  project        Project?          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String?
+  task           Task?             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  needsYouItemId String?
+  needsYouItem   NeedsYouItem?     @relation(fields: [needsYouItemId, projectId], references: [id, projectId], onDelete: Cascade)
+  kind           NotificationKind
+  /// When the member read it in the panel: a mail still waiting is then skipped.
+  readAt         DateTime?
+  state          NotificationState @default(open)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  deliveries NotificationDelivery[]
+
+  @@unique([id, organizationId])
+  /// One notification per member and item.
+  @@unique([memberId, needsYouItemId], where: raw("\"needsYouItemId\" IS NOT NULL"), map: "notification_one_per_member_and_item")
+  @@index([memberId, state])
+  @@index([memberId, readAt])
+  @@map("notification")
+}
+
+/// One channel's delivery of a notification (F-036, F-115, ADR 0050).
+model NotificationDelivery {
+  id                String              @id @default(uuid(7))
+  organizationId    String
+  notificationId    String
+  notification      Notification        @relation(fields: [notificationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  channel           NotificationChannel
+  /// The adapter's registered name, such as `resend` or `linear`.
+  adapter           String
+  state             DeliveryState       @default(pending)
+  /// The item, the member and the channel (and the moment): the adapter sends each key once.
+  idempotencyKey    String              @unique
+  /// The provider's ID of what it sent, for an edit (the tracker's coalescing).
+  providerMessageId String?
+  attempts          Int                 @default(0)
+  /// Why the last attempt failed, in words and IDs: never a mail's body or a token.
+  error             String?
+  /// When it's due: email waits `OSTRA_EMAIL_DELAY_SECONDS`.
+  dueAt             DateTime            @default(now())
+  sentAt            DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([state, dueAt])
+  @@index([notificationId])
+  @@map("notification_delivery")
+}
+
+/// A member's choice for one moment and channel (F-036, F-115). No row means the default (ADR 0050).
+model NotificationPreference {
+  id             String              @id @default(uuid(7))
+  organizationId String
+  memberId       String
+  member         Member              @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  kind           NotificationKind
+  channel        NotificationChannel
+  enabled        Boolean
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([memberId, kind, channel])
+  @@map("notification_preference")
+}
+
+/// A member's `ostra login` (F-103, ADR 0051): its own credential, made by a device-code grant.
+model CliSession {
+  id             String    @id @default(uuid(7))
+  organizationId String
+  memberId       String
+  member         Member    @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The SHA-256 of the token, which the CLI was shown once. The token itself is never stored.
+  tokenHash      String    @unique
+  /// The machine's name the CLI sent, for "Account".
+  name           String
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+  expiresAt      DateTime
+  revokedAt      DateTime?
+
+  @@index([memberId])
+  @@index([userId])
+  @@map("cli_session")
+}
+
 // ===========================================================================
 
 enum AuditActorKind {
@@ -1843,4 +2233,126 @@ enum BoxReleaseReason {
   idle_expired
   task_deleted
   requested
+}
+
+// ---------- milestone 3's enums ----------
+
+/// Who may use an agent profile (F-021).
+enum ProfileAccess {
+  everyone
+  listed
+}
+
+/// Plan first's progress on a task (F-063).
+enum PlanState {
+  none
+  proposed
+  approved
+}
+
+/// The four tools an approval rule names (ADR 0049).
+enum ApprovalTool {
+  edit
+  execute
+  fetch
+  mcp
+}
+
+/// Which kind of rule asked for, or answered, an approval.
+enum ApprovalRuleSource {
+  profile
+  task
+}
+
+/// What an approval's request touched.
+enum ApprovalSubjectKind {
+  path
+  command
+  url
+  tool
+}
+
+enum DiffSide {
+  old
+  new
+}
+
+enum DiffCommentState {
+  draft
+  sent
+  deleted
+}
+
+/// A check's run: `running` from `check.started` until `check.finished`.
+enum CheckRunStatus {
+  running
+  passed
+  failed
+  timed_out
+  error
+}
+
+enum PullRequestState {
+  open
+  merged
+  closed_unmerged
+}
+
+/// The moments a member is notified of (ADR 0050), and a test mail.
+enum NotificationKind {
+  approval
+  question
+  plan
+  pr_ready
+  no_changes
+  stalled
+  spend_cap
+  crashed
+  setup_failed
+  ticket_closed
+  test
+}
+
+enum NotificationChannel {
+  panel
+  tracker
+  email
+}
+
+enum NotificationState {
+  open
+  answered
+  dismissed
+}
+
+enum DeliveryState {
+  pending
+  sent
+  skipped
+  failed
+}
+
+enum EmailProvider {
+  off
+  resend
+  smtp
+}
+
+/// How SMTP is secured: STARTTLS on a plain connection, TLS from the start, or neither.
+enum SmtpSecurity {
+  starttls
+  tls
+  none
+}
+
+/// The image scan for setup secrets before a snapshot is used (F-051, ADR 0038).
+enum SnapshotSecretScan {
+  passed
+  failed
+}
+
+/// What a device code signs in (F-103).
+enum DeviceCodePurpose {
+  runner
+  cli
 }
