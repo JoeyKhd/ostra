@@ -1,5 +1,47 @@
 # Milestone 3 demo: step in and come back
 
+## The final check (ticket 50), 2026-11-19, 21:38 to 22:04 UTC
+
+One run of spec section 3 by the script, from a fresh `git clone` of `origin/main` on a short path (`ow/m3-fc`, at `4ecbd15`), `pnpm install`, an empty data folder and a fresh dev stack on ports 3660, 9260 and 54860, with a cloudflared quick tunnel to core, on Windows 11 with the `host` executor. Same settings, members, model and mail as the first run below. Targets: ticket [OST-165](https://linear.app/ostra-test/issue/OST-165/set-the-release-name-in-configsettingsjson); PRs [#142](https://github.com/ostra-test/test1/pull/142) (merged) and [#143](https://github.com/ostra-test/test1/pull/143) (the `-2` branch, left open as step 12 says). The screenshots in [`demo/`](demo/) are this run's (those whose picture didn't change keep their file), and [`demo/checks.json`](demo/checks.json) holds its 60 checks: **59 passed, 1 failed**.
+
+**Before the run that counted, two starts stopped on bugs, both fixed and pushed:**
+
+- **No task could start** (`896be41`). Milestone 4's keys per project resolve a profile's model by name, and counted the rows that serve it: the dev endpoint lists `deepseek-v4.1-flash-1017` and `deepseek-v4.1-flash-1017:batch`, which the catalog match gives one name, so one provider's two rows read as "no provider" ("No provider on this project's list serves ambient/deepseek/deepseek-v4.1-flash-1017"). A provider that lists a name twice now serves it from its plain row (`packages/domain/src/keys-per-project.test.ts`, "F-135: one provider that lists a model twice …", with its break-it).
+- **The approval never came** (`02dec7e`). The first run's step 11 merged `releaseName` into `test1`'s main, so the agent found nothing to edit and the rule never asked. The ticket step now removes the key from main first, when it's there.
+
+**In the run itself:** the cancel step timed out once: the follow-up turn finished in seconds, before Linear's webhook for the cancel arrived, so there was no running turn to interrupt (`0f46480a` makes that turn wait two minutes first). The script then ran the remaining steps (`cancel` to `secrets`) on the same stack, with that one file taken from `origin/main`; the rest of the clone stayed at `4ecbd15`.
+
+| Step | Result |
+|---|---|
+| Before | Fresh stack, the provider, the App, `test1` and `test2`, Linear with a webhook on the tunnel, the runner approved. Every new page loads for both members. |
+| 1. A profile | `Careful` made in the editor; `test1`'s default for code tasks. |
+| 2. Start with the profile | The picker offered `Careful` first, then `OpenCode`; the task ran with `Careful`, Demo driving. **But see the finding below: the agent never got the ticket's text.** |
+| 3. Plan first | The plan turn ran in plan mode and changed no file; the sidebar count read 1; Home showed the plan first; ostra's comment on OST-165 said it waits for a plan approval; the mail "A plan to approve · OST-165" reached Demo with no ticket text; the edited plan was approved. |
+| 4. An approval by another member | The rule held the edit of `config/settings.json`; Sam approved it for this task; the task rule is `edit config/settings.json`; the audit log has the answer. |
+| 5. Steer, interrupt, take over | Send delivered mid-turn (`immediate`); "Interrupt and send" went after an interrupt; Demo's composer reads "sam is driving". |
+| 6. Checks before the PR | PR #142 opened ready, its body's Checks section naming `whitespace` and `settings-json` as passed; the Checks tab shows both. |
+| 7. Diff comments | One member message with both comments (`diff-comments`); the agent's commit moved PR #142's head; both show "Sent". |
+| 8. Update branch | 1 commit behind after 50 s (the reconcile); Update branch sent one message; 0 behind after the turn. |
+| 9. Take it local | `ostra checkout OST-165` put Sam's clone at the PR's head (`9a58dd9`); Sam's pushed commit `81daddf` was read by the resumed agent (it named `NOTES-1b8e.md`); after Revoke the next checkout exited 1. |
+| 10. `@ostra` on the PR | Not run: it waits for ticket 51 (the App's webhook and a member's token), as before. |
+| 11. Merge, then a fresh branch | PR #142 merged; OST-165 moved to Done within 80 s; Sam's reopen got `…-config-settings-2` and PR #143. |
+| 12. A ticket cancelled while its task runs | `ticket.closed` and a cancelled turn 24 s after the cancel; Sam stopped the task; PR #143 stays open. |
+| 13. Usage | The totals (111.1k in · 38.5k out · 1.86M cache read · 7 m 43 s) equal the sum of 58 `usage.recorded` events; 9 turns each with their own footer. |
+| 14. Home and Needs you | Sam's board in five columns; Sam's Needs you lists the notification. |
+| 15. Mail | Three mails over SMTP with AUTH; none carries the ticket's text. |
+| 16. Services and the cache on `host` | `test2`'s task waits: "Waiting for a runner that can start services. Online now: m3-runner (host)."; two more `test1` tasks found the dependency cache warm. |
+| After | No credential in the event log, 3 logs (29 values and the GitHub token pattern) or 351 files of the runner's folder; 3 of ostra's comments on OST-165, edited in place; one mail per member and moment. **Failed:** "the agent reached `release-names` only through the sidecar, with the token": every session connected to the MCP server through the sidecar with the token and listed its tools (36 requests, all authorized), but the agent never called the tool. |
+
+**What the failure showed: a ticket task can start without its ticket** (fixed in `0c632ad9`). `tasks.startFromTicket` leaves the task queued with no prompt and enqueues `ticket.fetch-context`, which renders the ticket and dispatches it. Core's requeue sweep (`requeueQueuedTasks`, after a runner comes online or a slot frees) dispatched the task 1 s earlier, so the render found it moved on (`outcome: moved-on`), the task's `prompt` stayed empty and its first message never existed. The agent worked from the profile's instructions and the branch's name, took "Quiet Heron" from `test1`'s history instead of the tool, and said so in its plan ("the prompt itself only contains the changelog rule"). The panel's "What the agent got: title, description and labels" read as if it had. A dispatch of a ticket task now waits until its prompt is rendered (`apps/core/src/dispatch/waiting.test.ts`, "F-064: a dispatch before the ticket's prompt is rendered offers nothing …", with its break-it). Steps 2 to 4 still passed their checks because the profile, the plan, the rule and the approval don't depend on the ticket's text.
+
+**Also seen:** core restarted 45 times under `node --watch` during the run, each time a file in the clone's `node_modules` changed on disk (Turbopack reported `better-auth` files), with other sessions installing at the same time on this machine; nothing was lost across those restarts (two sessions' late events were refused as `stale-lease`, as they should be).
+
+**Not done, as before:** step 10, the run by hand, the live Resend send, a second `pnpm e2e:m3` in a row from an empty data folder, and what waits for Linux. Next: one more run from an empty data folder with the dispatch fix, to see the agent call `release-names` and the failed check pass.
+
+**Clean-up:** the two stopped starts' tickets (OST-163, OST-164) archived, their PR (#141) closed and its branch deleted, and the webhooks of this session's tunnels deleted; every process this session started is stopped.
+
+## The first run, 2026-11-19, 14:41 to 16:40 UTC
+
 **Run:** 2026-11-19, 14:41 to 16:40 UTC, on Windows 11 with the `host` executor, by the scripted run (`pnpm e2e:m3`, ticket 50), driving two members' browsers with Playwright: Demo (the default first admin) and Sam (`pnpm dev:seed-member sam`).
 **Stack:** a fresh dev stack from an empty data folder on ports 3630 (panel), 9230 (core) and 54830 (Postgres), `OSTRA_BOX_IDLE_MINUTES=5`, `OSTRA_RECONCILE_MINUTES=2`, `OSTRA_EMAIL_DELAY_SECONDS=0`, a cloudflared quick tunnel to core for Linear's webhooks.
 **Targets:** Linear `ostra-test` team `OST`, ticket [OST-75](https://linear.app/ostra-test/issue/OST-75/set-the-release-name-in-configsettingsjson); GitHub `ostra-test/test1`, PRs [#71](https://github.com/ostra-test/test1/pull/71) (merged) and [#77](https://github.com/ostra-test/test1/pull/77) (the fresh branch after the merge, left open as step 12 says); `ostra-test/test2` for the service.
