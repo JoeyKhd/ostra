@@ -154,6 +154,17 @@ export const resolveNeedsYouItemsInTx = async (
   return closed;
 };
 
+/**
+ * Hands a task's open driver items to the project's members, as when its driver is removed from the
+ * organization (ADR 0053, F-002): the task is driven by nobody, so whoever can open the project
+ * answers. Not a new moment: it enqueues nothing, and the items show in the project's members'
+ * needs-you at once. Returns how many it handed over.
+ */
+export const handDriverItemsToProjectInTx = async (tx: Tx, taskId: string): Promise<number> => {
+  const handed = await tx.needsYouItem.updateMany({ where: { taskId, state: "open", audience: "driver" }, data: { audience: "project_members" } });
+  return handed.count;
+};
+
 /** Rewrites an open item's summary. Not a moment: it enqueues nothing. */
 export const setNeedsYouSummaryInTx = async (tx: Tx, itemId: string, summary: string): Promise<void> => {
   await tx.needsYouItem.update({ where: { id: itemId }, data: { summary } });

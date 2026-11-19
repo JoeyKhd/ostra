@@ -36,7 +36,7 @@ const sourceFiles = async (dir: string): Promise<readonly string[]> => {
 const WRITE = /needsYouItem\s*\.\s*(create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany)\b|(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"?needs_you_item"?/i;
 
 /** The helpers that write and enqueue. */
-const HELPERS = /\b(createNeedsYouItemInTx|resolveNeedsYouItemsInTx|setNeedsYouSummaryInTx)\b/;
+const HELPERS = /\b(createNeedsYouItemInTx|resolveNeedsYouItemsInTx|setNeedsYouSummaryInTx|handDriverItemsToProjectInTx)\b/;
 
 /** Reading every source file of the repo takes longer than 5 s on a slow disk (Windows, a loaded machine). */
 const SCAN_TIMEOUT_MS = 60_000;
@@ -79,6 +79,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/use-cases/sessions-m2.ts",
       // Milestone 4's ticket 48: no provider on the project's list serves the model (F-135).
       "packages/domain/src/providers/session-model.ts",
+      // Milestone 4's ticket 23: a removed member's driven tasks hand their driver's items to the project (F-002).
+      "packages/domain/src/use-cases/members.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);

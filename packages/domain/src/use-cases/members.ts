@@ -8,6 +8,7 @@ import type { AccountScope, MemberScope, OrganizationRole } from "../access.ts";
 import type { M4Deps } from "./m4-signatures.ts";
 import type { GrantInstanceAdmin, RemoveMember, SetProjectAccess, SetProjectMember } from "./m4-signatures.ts";
 import type { UseCaseResult } from "./common.ts";
+import { handDriverItemsToProjectInTx } from "./needs-you-items.ts";
 import { revokeRunner } from "./revoke-runner.ts";
 import { appendServerEvent } from "./server-events.ts";
 
@@ -157,7 +158,7 @@ export const removeMember = async (
       const taskId = taskIdSchema.parse(task.id);
       const projectId = projectIdSchema.parse(task.projectId);
       await tx.task.update({ where: { id: task.id }, data: { driverMemberId: null } });
-      await tx.needsYouItem.updateMany({ where: { taskId: task.id, state: "open", audience: "driver" }, data: { audience: "project_members" } });
+      await handDriverItemsToProjectInTx(tx, task.id);
       const session = await tx.session.findFirst({ where: { taskId: task.id }, orderBy: { startedAt: "desc" }, select: { id: true } });
       if (session !== null) {
         await appendServerEvent(tx, {
