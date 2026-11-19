@@ -8,6 +8,25 @@ import { describeIssues } from "../json.ts";
 // refused. `docs/configuration.md` lists every field, quoting `description`; a test keeps the two
 // in step.
 
+/** Every field's key. `runnerConfigFields` must hold exactly these: the compiler refuses a missing or an extra one. */
+export const runnerConfigKeys = [
+  "serverUrl",
+  "dataDir",
+  "transport",
+  "executor",
+  "capacity",
+  "labels",
+  "name",
+  "joinToken",
+  "shell",
+  "joinTokenFile",
+  "boxBaseImage",
+  "boxRunnerImage",
+  "boxServerUrl",
+] as const;
+
+export type RunnerConfigKey = (typeof runnerConfigKeys)[number];
+
 /** Where each field comes from, its default as written in the docs, and what it does. */
 export const runnerConfigFields = {
   serverUrl: {
@@ -88,9 +107,10 @@ export const runnerConfigFields = {
     default: "the --server address",
     description: "Core's address as a docker box's sidecar reaches it, when that differs from --server.",
   },
-} as const;
-
-export type RunnerConfigKey = keyof typeof runnerConfigFields;
+} as const satisfies Record<
+  RunnerConfigKey,
+  { readonly flag: string; readonly env: string; readonly default: string; readonly description: string }
+>;
 
 const describe = (key: RunnerConfigKey): string => runnerConfigFields[key].description;
 
@@ -124,11 +144,8 @@ export type RunnerConfigResult =
   | { readonly ok: true; readonly config: RunnerConfig }
   | { readonly ok: false; readonly errors: readonly string[] };
 
-const fieldKeys = Object.keys(runnerConfigFields).filter(
-  (key): key is RunnerConfigKey => key in runnerConfigFields,
-);
-const knownFlags: ReadonlySet<string> = new Set(fieldKeys.map((key) => runnerConfigFields[key].flag));
-const knownEnv: ReadonlySet<string> = new Set(fieldKeys.map((key) => runnerConfigFields[key].env));
+const knownFlags: ReadonlySet<string> = new Set(runnerConfigKeys.map((key) => runnerConfigFields[key].flag));
+const knownEnv: ReadonlySet<string> = new Set(runnerConfigKeys.map((key) => runnerConfigFields[key].env));
 
 /** Every variable name the runner reads. */
 export const runnerEnvNames: readonly string[] = [...knownEnv];
@@ -150,7 +167,7 @@ export const parseRunnerConfig = (input: RunnerConfigInput): RunnerConfigResult 
     return { ok: false, errors };
   }
   const raw: Record<string, unknown> = {};
-  for (const key of fieldKeys) {
+  for (const key of runnerConfigKeys) {
     const field = runnerConfigFields[key];
     const value = input.flags[field.flag] ?? input.env[field.env];
     if (value === undefined || value === "") {

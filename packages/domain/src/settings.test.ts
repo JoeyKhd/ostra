@@ -5,9 +5,13 @@ import { devDatabaseUrl, DEV_PG_PORT_DEFAULT, repoRoot } from "@ostra/db/dev";
 import { runnerEnvNames } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { devOnlyEnvNames, parseServerSettings, settingNames } from "./settings.ts";
+import { devOnlyEnvNames, parseServerSettings, settingFields, settingNames } from "./settings.ts";
 
 describe("the server's settings", () => {
+  it("list exactly the names their fields hold", () => {
+    expect([...settingNames].sort()).toEqual(Object.keys(settingFields).sort());
+  });
+
   it("parse an empty environment in development, with every default", () => {
     const result = parseServerSettings({});
     expect(result.ok).toBe(true);

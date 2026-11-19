@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { requireOrganizationAdmin, requireOrganizationMember, requireProjectAccess, visibleProjects } from "./access.ts";
 import type { MemberScope, ProjectAccessInfo } from "./access.ts";
 import * as domain from "./index.ts";
-import { jobKey, jobNames, parseJobPayload } from "./jobs.ts";
+import { jobKey, jobNames, jobPayloadSchemas, parseJobPayload } from "./jobs.ts";
 
 const organizationA = organizationIdSchema.parse("org-a");
 const organizationB = organizationIdSchema.parse("org-b");
@@ -52,6 +52,10 @@ describe("access checks (ADR 0026)", () => {
 });
 
 describe("the job catalogue (ADR 0037)", () => {
+  it("lists exactly the names its payload schemas hold", () => {
+    expect([...jobNames].sort()).toEqual(Object.keys(jobPayloadSchemas).sort());
+  });
+
   it("has milestone 1's jobs", () => {
     expect([...jobNames].sort()).toEqual(
       [

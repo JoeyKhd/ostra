@@ -15,6 +15,19 @@ import { z } from "zod";
 
 const taskScope = { organizationId: organizationIdSchema, taskId: taskIdSchema };
 
+/** Every job's name. `jobPayloadSchemas` must hold exactly these: the compiler refuses a missing or an extra one. */
+export const jobNames = [
+  "task.dispatch",
+  "task.offer-timeout",
+  "task.grace",
+  "task.session-ended",
+  "task.open-pull-requests",
+  "provider.refresh-models",
+  "catalog.refresh",
+] as const;
+
+export type JobName = (typeof jobNames)[number];
+
 /** Each job's payload. */
 export const jobPayloadSchemas = {
   /** Lease the task to a runner and send the `dispatch` command (ticket 26). Keyed by the epoch it grants. */
@@ -31,9 +44,8 @@ export const jobPayloadSchemas = {
   "provider.refresh-models": z.strictObject({ organizationId: organizationIdSchema, providerId: providerIdSchema }),
   /** The daily models.dev catalog fetch, unless `OSTRA_CATALOG_FETCH` is off (F-088, ticket 28). */
   "catalog.refresh": z.strictObject({}),
-} as const;
+} as const satisfies Record<JobName, z.ZodType>;
 
-export type JobName = keyof typeof jobPayloadSchemas;
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
 
 /** Each job's key rule. */
@@ -48,10 +60,6 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
 };
 
 const typedSchemas: { readonly [N in JobName]: z.ZodType<JobPayload<N>> } = jobPayloadSchemas;
-
-export const jobNames: readonly JobName[] = Object.keys(jobPayloadSchemas).filter(
-  (name): name is JobName => name in jobPayloadSchemas,
-);
 
 /** A job's key, from its payload. */
 export const jobKey = <N extends JobName>(job: N, payload: JobPayload<N>): string => jobKeys[job](payload);

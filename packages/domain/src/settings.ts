@@ -11,6 +11,26 @@ import { z } from "zod";
 
 const DEV_ONLY = "development only";
 
+/** Every setting's variable. `settingFields` must hold exactly these: the compiler refuses a missing or an extra one. */
+export const settingNames = [
+  "NODE_ENV",
+  "DATABASE_URL",
+  "OSTRA_WEB_PORT",
+  "OSTRA_CORE_PORT",
+  "OSTRA_PUBLIC_URL",
+  "OSTRA_CORE_PUBLIC_URL",
+  "OSTRA_DATA_DIR",
+  "OSTRA_SECRETS_KEY",
+  "OSTRA_CATALOG_FETCH",
+  "OSTRA_OPEN_SIGNUP_ACCOUNTS",
+  "OSTRA_OPEN_SIGNUP_ORGANIZATIONS",
+  "BETTER_AUTH_SECRET",
+  "OSTRA_SETUP_TOKEN",
+  "OSTRA_DEV_PG_PORT",
+] as const;
+
+export type SettingName = (typeof settingNames)[number];
+
 /** Every setting: its variable, its default as the docs write it, and what it does. */
 export const settingFields = {
   NODE_ENV: {
@@ -63,9 +83,7 @@ export const settingFields = {
     default: String(DEV_PG_PORT_DEFAULT),
     description: `The embedded dev database's port (${DEV_ONLY}).`,
   },
-} as const;
-
-export type SettingName = keyof typeof settingFields;
+} as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
 /** Variables ostra's development setup reads, which the settings don't refuse (docs/development.md). */
 export const devOnlyEnvNames = [
@@ -79,10 +97,6 @@ export const devOnlyEnvNames = [
 
 /** Spikes' own variables (`spikes/`), which share the dev env files: never read, never refused. */
 const SPIKE_PREFIX = "OSTRA_SPIKE_";
-
-export const settingNames: readonly SettingName[] = Object.keys(settingFields).filter(
-  (name): name is SettingName => name in settingFields,
-);
 
 const describe = (name: SettingName): string => settingFields[name].description;
 

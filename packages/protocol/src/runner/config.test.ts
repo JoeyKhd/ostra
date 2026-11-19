@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRunnerConfig, runnerConfigFields, runnerConfigSchema, runnerEnvNames } from "./config.ts";
+import { parseRunnerConfig, runnerConfigFields, runnerConfigKeys, runnerConfigSchema, runnerEnvNames } from "./config.ts";
 
 describe("the runner's config", () => {
+  it("lists exactly the keys its fields hold", () => {
+    expect([...runnerConfigKeys].sort()).toEqual(Object.keys(runnerConfigFields).sort());
+  });
+
   it("needs only the server's address, and fills every other default", () => {
     expect(parseRunnerConfig({ flags: { server: "http://localhost:8787" }, env: {} })).toEqual({
       ok: true,
