@@ -2,7 +2,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { buildMemoryBlock, githubNoReplyAddress, modelTokenPrices, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import { buildMemoryBlock, githubNoReplyAddress, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
 import type { MemoryLimits, SpendCapSettings } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
@@ -26,7 +26,9 @@ export type SpecFailure =
   | { readonly ok: false; readonly error: "stale-lease"; readonly message: string; readonly currentEpoch: number }
   | { readonly ok: false; readonly error: "code-host-failed"; readonly message: string }
   /** Milestone 3: the profile's rules or servers don't parse, or its skills couldn't be copied. */
-  | { readonly ok: false; readonly error: "profile-unusable"; readonly message: string };
+  | { readonly ok: false; readonly error: "profile-unusable"; readonly message: string }
+  /** Milestone 4 (F-135): the session's provider is no longer on its project's list. */
+  | { readonly ok: false; readonly error: "provider-not-allowed"; readonly message: string };
 
 export type SpecResult = { readonly ok: true; readonly spec: TaskSpec } | SpecFailure;
 
@@ -115,13 +117,18 @@ export const buildTaskSpec = async (
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const session = await db.session.findFirst({ where: { taskId: task.id, boxId: lease.boxId }, orderBy: { startedAt: "desc" } });
   const profileId = session?.agentProfileId ?? null;
-  const profile =
-    profileId === null
+  const profile = profileId === null ? null : await db.agentProfile.findFirst({ where: { id: profileId, organizationId } });
+  // Milestone 4 (F-135, ADR 0065): the session's own model row, which its start resolved through the
+  // project's list; the profile names the model only by name. The spend cap's prices are this row's.
+  const model =
+    session?.modelId === null || session === null
       ? null
-      : await db.agentProfile.findFirst({ where: { id: profileId, organizationId }, include: { model: { include: { provider: true } } } });
-  const model = profile?.model;
-  if (session === null || profile === null || model === undefined || model === null) {
+      : await db.model.findFirst({ where: { id: session.modelId, organizationId }, include: { provider: true } });
+  if (session === null || profile === null || model === null || session.providerId === null) {
     return { ok: false, error: "not-found", message: "the task's session has no agent profile with a model" };
+  }
+  if (!(await sessionRowAllowedInTx(db, { organizationId, projectId: projectIdSchema.parse(task.projectId), providerId: session.providerId, modelId: model.id }))) {
+    return { ok: false, error: "provider-not-allowed", message: "the session's model provider isn't on its project's list" };
   }
 
   const taskRepos = await db.taskRepo.findMany({

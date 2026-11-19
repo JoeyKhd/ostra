@@ -43,7 +43,7 @@ import type { Gateway } from "./gateway/gateway.ts";
 import { loadRunnerTokenKey, RUNNER_TOKEN_KEY_FILE } from "./gateway/keys.ts";
 import { cancelGraceInTx, cancelSidecarGraceInTx, graceHandler, startGraceInTx, startSidecarGraceInTx } from "./ingest/grace.ts";
 import type { GraceDeps } from "./ingest/grace.ts";
-import { applyReleaseResultsInTx, boxReleaseHandler, ensureRetentionSchedule, releaseAfterIdleHandler, retentionSweepHandler } from "./cleanup/cleanup.ts";
+import { applyReleaseResultsInTx, boxReleaseHandler, ensureRetentionSchedule, providerBoxesHandler, releaseAfterIdleHandler, retentionSweepHandler } from "./cleanup/cleanup.ts";
 import type { CleanupDeps } from "./cleanup/cleanup.ts";
 import { createIngest } from "./ingest/ingest.ts";
 import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler } from "./limits/limits.ts";
@@ -492,6 +492,8 @@ export const startCore = async (
   };
   await jobs.work("box.release", boxReleaseHandler(cleanupDeps), { localConcurrency: 4 });
   await jobs.work("box.release-after-idle", releaseAfterIdleHandler(cleanupDeps), { localConcurrency: 4 });
+  // Keys per project (F-135): a list change releases the boxes that hold a key it removed.
+  await jobs.work("providers.release-boxes", providerBoxesHandler(cleanupDeps), { localConcurrency: 2 });
   await jobs.work("retention.sweep", retentionSweepHandler(cleanupDeps), { localConcurrency: 1 });
   // A ticket task's context, images and first prompt, then its dispatch (ticket 18).
   await jobs.work("ticket.fetch-context", fetchContextHandler({ db, jobs, notices, clock: systemClock, trackers, blobs, logger }), { localConcurrency: 4 });

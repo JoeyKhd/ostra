@@ -155,6 +155,8 @@ describe("dispatch", () => {
           allowOnPersonalRunners: true,
         },
       });
+      // Milestone 4 (F-135): a project uses only the providers on its list; this one serves another model.
+      await test.db.providerListEntry.create({ data: { organizationId: world.organizationId, projectId: null, providerId: secondProvider.id } });
       const secondModel = await test.db.model.create({ data: { organizationId: world.organizationId, providerId: secondProvider.id, endpointModelId: "second-model" } });
       const secondProfile = await test.db.agentProfile.create({
         data: { organizationId: world.organizationId, name: "OpenCode on the second endpoint", adapter: "opencode", modelId: secondModel.id },

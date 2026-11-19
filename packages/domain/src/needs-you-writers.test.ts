@@ -76,6 +76,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/use-cases/record-session-end.ts",
       "packages/domain/src/use-cases/reopen.ts",
       "packages/domain/src/use-cases/sessions-m2.ts",
+      // Milestone 4's ticket 48: no provider on the project's list serves the model (F-135).
+      "packages/domain/src/providers/session-model.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);

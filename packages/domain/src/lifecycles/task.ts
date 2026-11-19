@@ -97,6 +97,12 @@ export type TaskInput =
    * fresh branch from its base (`<old branch>-2`, `-3`) and a new PR on its first push.
    */
   | { readonly type: "reopen_after_merge"; readonly mergedRepoIds: readonly RepoId[] }
+  // ---- milestone 4 ----
+  /**
+   * A turn start found the session's provider changed (F-135, ADR 0065): the project now serves its
+   * model from another provider, or from none. The task waits for a fresh session in a fresh box.
+   */
+  | { readonly type: "provider_changed" }
   // ---- code ----
   /**
    * The session ended; `withChanges` when any repo's branch is ahead (F-030, F-065).
@@ -185,6 +191,8 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
       return status.state === "needs_you" && status.reason === "ticket_closed"
         ? moveTo(input.boxWarm ? { state: "running" } : { state: "queued" })
         : refuse(input, from);
+    case "provider_changed":
+      return from === "running" || from === "needs_you" ? moveTo({ state: "queued" }) : refuse(input, from);
     case "reopen_after_merge":
     case "session_ended":
     case "work_saved":
@@ -318,6 +326,7 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
     case "plan_answered":
     case "ticket_closed":
     case "keep_working":
+    case "provider_changed":
       break;
     default:
       return input satisfies never;
@@ -362,6 +371,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "plan_answered":
     case "ticket_closed":
     case "keep_working":
+    case "provider_changed":
       return isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     default:
       return input satisfies never;
@@ -404,6 +414,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "plan_answered":
     case "ticket_closed":
     case "keep_working":
+    case "provider_changed":
       return isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     default:
       return input satisfies never;

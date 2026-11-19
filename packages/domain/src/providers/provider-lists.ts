@@ -8,7 +8,7 @@ import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
 import { modelNameColumns, modelNameKey, modelNameOfModel } from "./model-name.ts";
 import type { ModelName } from "./model-name.ts";
-import { planProviderChange, resolveProjectModel } from "./resolve.ts";
+import { keepChoicesOnRefresh, planProviderChange, resolveProjectModel } from "./resolve.ts";
 import type { ListedModel, ModelChoiceRow, ProviderChangePlan, Resolution } from "./resolve.ts";
 
 // Keys per project, against the database (F-135, ADR 0065): loading a project's list, its choices
@@ -37,7 +37,8 @@ export type ProviderListState = {
   readonly models: readonly ListedModel[];
 };
 
-const loadModels = async (tx: Tx | Db, organizationId: OrganizationId): Promise<readonly ListedModel[]> =>
+/** Every model row of the organization, as the resolution reads them. */
+export const loadListedModelsInTx = async (tx: Tx | Db, organizationId: OrganizationId): Promise<readonly ListedModel[]> =>
   (
     await tx.model.findMany({
       where: { organizationId },
@@ -73,7 +74,7 @@ export const loadProviderList = async (tx: Tx | Db, organizationId: Organization
     own = project.ownProviders;
   }
   const listProjectId = own ? projectId : null;
-  const [{ list, choices }, models] = await Promise.all([loadList(tx, organizationId, listProjectId), loadModels(tx, organizationId)]);
+  const [{ list, choices }, models] = await Promise.all([loadList(tx, organizationId, listProjectId), loadListedModelsInTx(tx, organizationId)]);
   return { listProjectId, own, list, choices, models };
 };
 
@@ -144,6 +145,34 @@ const upsertChoice = async (
   } else {
     await tx.modelChoice.update({ where: { id: existing.id }, data });
   }
+};
+
+/**
+ * The keep rule after a provider's model refresh (F-135, ADR 0065), in the refresh's transaction:
+ * on every list the provider is on, a model the refresh would give a second provider keeps the one
+ * serving it, recorded as a `kept` choice. `before` is the organization's rows as the refresh found
+ * them. Returns how many choices it recorded.
+ */
+export const keepChoicesAfterRefreshInTx = async (
+  tx: Tx,
+  organizationId: OrganizationId,
+  providerId: ProviderId,
+  before: readonly ListedModel[],
+): Promise<number> => {
+  const entries = await tx.providerListEntry.findMany({ where: { organizationId, providerId }, select: { projectId: true } });
+  const listIds = [...new Set(entries.map((entry) => entry.projectId))];
+  const lists = await Promise.all(
+    listIds.map(async (listId) => ({ listProjectId: listId === null ? null : projectIdSchema.parse(listId), ...(await loadList(tx, organizationId, listId === null ? null : projectIdSchema.parse(listId))) })),
+  );
+  const after = await loadListedModelsInTx(tx, organizationId);
+  let recorded = 0;
+  for (const { list, keep } of keepChoicesOnRefresh(lists, before, after)) {
+    for (const choice of keep) {
+      await upsertChoice(tx, organizationId, list.listProjectId, choice.modelId, after, { reason: "kept", memberId: null });
+      recorded += 1;
+    }
+  }
+  return recorded;
 };
 
 /** Idle boxes holding a key a project no longer allows are released (ADR 0065). */

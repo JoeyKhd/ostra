@@ -401,7 +401,7 @@ const taskSelect = {
  */
 export const listOpenNeedsYou = async (
   deps: { readonly db: Db },
-  scope: { readonly organizationId: OrganizationId; readonly memberId: MemberId },
+  scope: { readonly organizationId: OrganizationId; readonly memberId: MemberId; readonly role?: "admin" | "member" | undefined },
   input: { readonly projectIds: readonly string[]; readonly limit: number; readonly cursor?: string | undefined; readonly now: number },
 ): Promise<{ readonly total: number; readonly rows: readonly NeedsYouView[]; readonly nextCursor: string | null }> => {
   const { db } = deps;
@@ -411,7 +411,13 @@ export const listOpenNeedsYou = async (
     organizationId,
     projectId: { in: projectIds },
     state: "open" as const,
-    OR: [{ audience: "project_members" as const }, { reason: "approval" as const }, { audience: "driver" as const, task: { OR: [{ driverMemberId: memberId }, { driverMemberId: null }] } }],
+    OR: [
+      { audience: "project_members" as const },
+      { reason: "approval" as const },
+      { audience: "driver" as const, task: { OR: [{ driverMemberId: memberId }, { driverMemberId: null }] } },
+      // Milestone 4 (F-135): what only an organization admin can fix (no provider serves a model) is theirs alone.
+      ...(scope.role === "admin" ? [{ audience: "organization_admins" as const }] : []),
+    ],
   };
   const legacyWhere = { organizationId, projectId: { in: projectIds }, state: "needs_you" as const, needsYouItems: { none: { state: "open" as const } } };
   const after = parseCursor(input.cursor);

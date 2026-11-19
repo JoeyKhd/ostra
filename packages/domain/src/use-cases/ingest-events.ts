@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
 import type { Session, Tx } from "@ostra/db";
-import { boxIdSchema, organizationIdSchema, projectIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
+import { boxIdSchema, modelIdSchema, organizationIdSchema, projectIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
 import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -253,8 +253,15 @@ const applyEffects = async (
       case "usage.recorded": {
         // F-068, Q163: priced on its four kinds with the model's prices; a model with no price is
         // counted in tokens only. Clamped to the column, so a runaway count can't refuse the event.
+        // Milestone 4 (F-135, ADR 0065): priced from the session's own model row and counted against
+        // its own provider. An event naming another provider or row is logged and counted as the
+        // session's: a runner can't move spend onto another key.
+        const ownModelId = current.modelId ?? event.modelId;
+        if ((current.providerId !== null && event.providerId !== current.providerId) || ownModelId !== event.modelId) {
+          deps.logger?.warn("usage.provider-mismatch", { taskId: task.id, sessionId: session.id, providerId: event.providerId, modelId: event.modelId });
+        }
         const model = await tx.model.findFirst({
-          where: { id: event.modelId, organizationId },
+          where: { id: ownModelId, organizationId },
           select: { inputPricePerMTok: true, outputPricePerMTok: true, cacheReadPricePerMTok: true, cacheWritePricePerMTok: true },
         });
         const prices = model === null ? null : modelTokenPrices(model);
@@ -279,7 +286,7 @@ const applyEffects = async (
           await recordSpendInTx({ jobs: deps.jobs, budgetWarnPercent: deps.budgetWarnPercent }, tx, {
             organizationId,
             projectId: projectIdSchema.parse(task.projectId),
-            modelId: event.modelId,
+            modelId: modelIdSchema.parse(ownModelId),
             at: item.at,
             inputTokens: event.inputTokens,
             outputTokens: event.outputTokens,
@@ -314,14 +321,8 @@ const applyEffects = async (
       case "provider.rate_limited": {
         // F-088, F-089: the key proxy saw a rate limit, so new dispatches wait on that provider. A
         // runner can only hold the provider its own session's model runs on, never another one.
-        const profile =
-          current.agentProfileId === null
-            ? null
-            : await tx.agentProfile.findFirst({
-                where: { id: current.agentProfileId, organizationId: task.organizationId },
-                select: { model: { select: { providerId: true } } },
-              });
-        if (profile?.model?.providerId === event.providerId) {
+        // Milestone 4 (F-135): the provider the session recorded at its start.
+        if (current.providerId === event.providerId) {
           await holdProviderInTx(tx, task.organizationId, event.providerId, new Date(deps.clock.now() + event.retryAfterSeconds * 1000));
         } else {
           deps.logger?.warn("ingest.rate-limit-for-another-provider", { taskId: task.id, sessionId: session.id, providerId: event.providerId });

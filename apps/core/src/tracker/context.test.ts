@@ -181,7 +181,9 @@ describe("ticket.fetch-context (F-064)", () => {
     const box = await test.db.box.create({ data: { organizationId: fixture.a.organization.id, projectId: world.projectId, taskId: task.taskId, runnerId: runner.runnerId, executor: "host" } });
     await test.db.lease.create({ data: { organizationId: fixture.a.organization.id, projectId: world.projectId, taskId: task.taskId, epoch: 1, runnerId: runner.runnerId, boxId: box.id } });
     await test.db.task.update({ where: { id: task.taskId }, data: { leaseEpoch: 1 } });
-    await test.db.session.update({ where: { id: task.sessionId }, data: { boxId: box.id } });
+    // What the dispatch records (F-135): the box, and the provider and model row the session runs on.
+    const { modelId } = await test.db.agentProfile.findUniqueOrThrow({ where: { id: world.profileId }, select: { modelId: true } });
+    await test.db.session.update({ where: { id: task.sessionId }, data: { boxId: box.id, providerId: world.providerId, modelId } });
     const built = await buildTaskSpec({ db: test.db, codeHost, secretStore }, { taskId: task.taskId, runnerId: runner.runnerId, leaseEpoch: leaseEpochSchema.parse(1) });
     expect(built.ok).toBe(true);
     if (built.ok) {

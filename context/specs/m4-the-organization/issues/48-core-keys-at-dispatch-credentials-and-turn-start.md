@@ -1,6 +1,6 @@
 # 48: Core: keys enforced at the dispatch, the credentials and every turn start
 
-Status: ready-for-agent
+Status: resolved
 Builder: core
 Blocked by: 12 (the turn starts it gates), 45
 Features: F-135, F-089, F-088, F-037
@@ -23,19 +23,21 @@ Today every one of these reads the provider through the profile (`profile.model.
 
 ## Done when
 
-- [ ] **The isolation test,** named `it("F-135: a task in one project never gets the token of a provider allowed only in another")`:
+- [x] **The isolation test,** named `it("F-135: a task in one project never gets the token of a provider allowed only in another")`:
   - two projects, two providers serving one model by name, each provider on one project's list
   - a task in each gets its own provider in its spec and its credentials
   - with the first task's session row edited to name the second provider, the dispatch doesn't send it, the credentials endpoint refuses it with an audit entry, and no response body holds the second token (searched by value, never printed)
-- [ ] **Its break-it,** recorded in `context/proof/F-135.md`: the list check removed from the credentials endpoint fails the test, and so does the one removed from the dispatch.
-- [ ] Tests named `it("F-135: ...")`:
+- [x] **Its break-it,** recorded in `context/proof/F-135.md`: the list check removed from the credentials endpoint fails the test, and so does the one removed from the dispatch.
+- [x] Tests named `it("F-135: ...")`:
   - a turn start after a list change, for `open`, `moved` and `none`
   - idle boxes released at once, and a running turn finishing first
   - a rate limit, a cap and an endpoint error each leave the task on its provider
   - the cap counted across projects, and personal runners refused in every project
   - spend per provider, priced from each provider's own row, and the mismatched usage event
   - New task's refusal, and a ticket task's queued reason with its needs-you item, seen by organization admins and not by members
-- [ ] The whole-repo checks pass (credentials, spec section 9).
-- [ ] Committed as `✨ enforce keys per project`.
+- [x] The whole-repo checks pass (credentials, spec section 9).
+- [x] Committed as `✨ enforce keys per project`.
 
 ## Comments
+
+- 2026-11-19, `✨ enforce keys per project`: a session's start resolves its provider and model row through the project's list (`resolveProfileModelInTx`, `packages/domain/src/providers/session-model.ts`) in `createPromptTask`, `startTicketTask` and the dispatch, and records them; the dispatch, the task spec, the credentials endpoint (with `task.credentials-refused` in the audit log and an IDs-only log line), the spend and the rate-limit hold read only the session's row. A turn start (`sendMemberMessageInTx`, `tasks.send` on an idle session) runs the provider gate before the budget gate: `moved` and `none` start a fresh session (`restartOnProviderChangeInTx`, `providers/turn-start.ts`), whose dispatch takes a fresh box or waits with `no-provider-for-model` and a needs-you item for organization admins, closed again once a provider serves the model. `providers.release-boxes` runs in core (`apps/core/src/cleanup/cleanup.ts`, `releaseProviderBoxes`): idle boxes at once, a running turn's box on a later run after its turn. The model refresh calls `keepChoicesAfterRefreshInTx` in its transaction. The organization's first provider joins the default list. Tests: `apps/core/src/dispatch/keys-per-project.test.ts`, `packages/api/src/routers/keys-at-start.test.ts`; 13 break-its in `context/proof/F-135.md`. Proved with the fake adapters and a stub second key; the live two-key run is ticket 55. Left to others: the New task page's words and the wait codes' panel copy (ticket 53), spend per provider on screen (tickets 27, 50), and the needs-you row's words.

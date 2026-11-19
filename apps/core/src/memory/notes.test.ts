@@ -29,7 +29,7 @@ import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { accessToken, postJson, registerPersonal, startGateway } from "../testing/harness.ts";
 import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
 import { runnerEvent } from "../testing/seed.ts";
-import { ENV_SECRET, seedQueuedTask, seedWorld } from "../testing/world.ts";
+import { ENV_SECRET, recordSessionModel, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { QueuedTask, World } from "../testing/world.ts";
 import { handleMemoryEndpoint } from "./endpoints.ts";
 
@@ -127,6 +127,8 @@ const leasedTask = async (): Promise<QueuedTask> => {
   });
   await test.db.task.update({ where: { id: row.id }, data: { leaseEpoch: 1, runnerId: runner.runnerId, state: "preparing" } });
   await test.db.session.update({ where: { id: task.sessionId }, data: { boxId: box.id } });
+  // The session's start records its provider and model row (F-135); this lease skips the dispatch.
+  await recordSessionModel(test.db, world, task.sessionId);
   return task;
 };
 

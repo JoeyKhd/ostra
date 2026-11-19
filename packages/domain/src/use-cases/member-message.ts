@@ -12,6 +12,8 @@ import { moveTaskInTx } from "./moves.ts";
 import { reopenTask } from "./reopen.ts";
 import type { ReopenTaskResult } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { sessionProviderGateInTx } from "../providers/session-model.ts";
+import { restartOnProviderChangeInTx } from "../providers/turn-start.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 import type { SpendCapSettings } from "./spend.ts";
 
@@ -102,7 +104,7 @@ export const sendMemberMessageInTx = async (
     tx.session.findFirst({
       where: { taskId: task.id, state: { in: [...GOING_SESSION_STATES] } },
       orderBy: { startedAt: "desc" },
-      select: { id: true, state: true, agentProfileId: true, modelId: true },
+      select: { id: true, state: true, agentProfileId: true, providerId: true, modelId: true },
     }),
   ]);
   const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
@@ -136,6 +138,14 @@ export const sendMemberMessageInTx = async (
   // Milestone 4 (F-037, ADR 0055): a message to an idle session starts a turn, so it passes the
   // budget gate first. A session with a turn going takes it into that turn, gate or not.
   if (session.state === "idle") {
+    // Milestone 4 (F-135, ADR 0065): a turn start checks the session's provider against the
+    // project's list now. Moved or gone, the turn starts in a fresh session instead of the box that
+    // holds the old key; a turn going finishes on its own.
+    const providers = await sessionProviderGateInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, providerId: session.providerId, modelId: session.modelId });
+    if (providers !== null && providers.kind !== "open") {
+      const restarted = await restartOnProviderChangeInTx(deps, tx, task, providers, { memberId: scope.memberId, clientMessageId: input.clientMessageId, text, intent: input.intent });
+      return { ok: true, delivery: "reopen", sessionId: restarted.sessionId, seq: restarted.seq, duplicate: false };
+    }
     const gate = await checkBudget(tx, {
       organizationId: organizationIdSchema.parse(organizationId),
       projectId,

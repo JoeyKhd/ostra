@@ -2,7 +2,7 @@ import { hiddenRefFor, secretRefSchema } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import { boxReleaseReasonToDb } from "@ostra/db";
 import type { Db, Tx } from "@ostra/db";
-import { hiddenRefsToDelete, recordBoxReleasedInTx, releaseBox, retentionDaysInEffect, sweepCleanup, sweepRetention } from "@ostra/domain";
+import { hiddenRefsToDelete, recordBoxReleasedInTx, releaseBox, releaseProviderBoxes, retentionDaysInEffect, sweepCleanup, sweepRetention } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobQueue, ServerAdapters } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { organizationIdSchema, releaseBodySchema, repoFullNameSchema } from "@ostra/protocol";
@@ -107,6 +107,32 @@ export const releaseAfterIdleHandler =
     );
     const refs = released.ok ? await deleteHiddenRefs(deps, payload.organizationId, payload.taskId) : 0;
     context.logger.info("box.release-after-idle", { taskId: payload.taskId, boxId: payload.boxId, outcome: released.ok ? released.outcome : released.error, refsDeleted: refs });
+  };
+
+/** How long a box whose turn runs on a removed key waits before `providers.release-boxes` looks again. */
+export const PROVIDER_RELEASE_RETRY_MS = 30_000;
+
+/**
+ * `providers.release-boxes` (F-135, ADR 0065): a list change released the project's idle boxes that
+ * hold a key it no longer allows. A box with a running turn is looked at again after it, by a later
+ * run of the same job, until none is left.
+ */
+export const providerBoxesHandler =
+  (deps: CleanupDeps): JobHandler<"providers.release-boxes"> =>
+  async (context) => {
+    const { payload } = context;
+    const result = await releaseProviderBoxes(deps, { organizationId: payload.organizationId, projectId: payload.projectId });
+    if (result.waiting > 0) {
+      await deps.db.$transaction((tx) =>
+        deps.jobs.enqueueInTx(
+          tx,
+          "providers.release-boxes",
+          { organizationId: payload.organizationId, projectId: payload.projectId, changedAt: deps.clock.now() },
+          { startAfterMs: PROVIDER_RELEASE_RETRY_MS },
+        ),
+      );
+    }
+    context.logger.info("providers.release-boxes", { projectId: payload.projectId, released: result.released, waiting: result.waiting, reset: result.reset });
   };
 
 /** One retention pass and the idle-box backstop: what they did, counted. */

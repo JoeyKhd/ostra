@@ -41,6 +41,10 @@ if (builtIn.modelId === null) {
     create: { organizationId, name: "e2e-profiles", baseUrl: "http://127.0.0.1:9/v1", apiFormat: "anthropic_messages", authScheme: "x_api_key", tokenSecretRef: "builtin:e2e-profiles" },
     update: {},
   });
+  // Milestone 4 (F-135): a project serves a model only from a provider on its list; the first is on the default.
+  if ((await db.providerListEntry.count({ where: { organizationId, projectId: null } })) === 0) {
+    await db.providerListEntry.create({ data: { organizationId, projectId: null, providerId: provider.id } });
+  }
   const model = await db.model.upsert({
     where: { providerId_endpointModelId: { providerId: provider.id, endpointModelId: "claude-sonnet-4-5" } },
     create: { organizationId, providerId: provider.id, endpointModelId: "claude-sonnet-4-5", displayName: "Claude Sonnet 4.5" },

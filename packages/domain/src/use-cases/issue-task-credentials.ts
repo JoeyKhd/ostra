@@ -7,6 +7,8 @@ import type { z } from "zod";
 
 import { serviceVariablesFromDb } from "../environment/services.ts";
 import type { Ports } from "../ports.ts";
+import { providerAuditActions } from "../providers/provider-lists.ts";
+import { sessionRowAllowedInTx } from "../providers/session-model.ts";
 import { storedMcpServersSchema } from "./task-profile.ts";
 
 // ADR 0030, ADR 0034: `POST /runner/v1/tasks/:taskId/credentials`. Only for the runner that holds the
@@ -25,7 +27,9 @@ export type IssueTaskCredentialsResult =
   | { readonly ok: true; readonly credentials: TaskCredentials }
   | { readonly ok: false; readonly error: "not-found"; readonly message: string }
   | { readonly ok: false; readonly error: "stale-lease"; readonly message: string; readonly currentEpoch: LeaseEpoch }
-  | { readonly ok: false; readonly error: "provider-not-allowed-on-personal-runners" | "token-mint-failed"; readonly message: string };
+  | { readonly ok: false; readonly error: "provider-not-allowed-on-personal-runners" | "token-mint-failed"; readonly message: string }
+  /** Milestone 4 (F-135): the session's provider is no longer on its project's list; an audit entry records the refusal. */
+  | { readonly ok: false; readonly error: "provider-not-allowed"; readonly message: string };
 
 export type IssueTaskCredentialsDeps = Pick<Ports, "audit" | "clock" | "adapters"> & {
   readonly tx: Tx;
@@ -67,10 +71,30 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
   const profile =
     session?.agentProfileId === null || session === null
       ? null
-      : await tx.agentProfile.findFirst({ where: { id: session.agentProfileId, organizationId }, include: { model: { include: { provider: true } } } });
-  const provider = profile?.model?.provider;
-  if (provider === undefined) {
-    return failed("the session's profile has no model provider");
+      : await tx.agentProfile.findFirst({ where: { id: session.agentProfileId, organizationId } });
+  // Milestone 4 (F-135, ADR 0065): the provider is the session's recorded row, never the profile's,
+  // and it must be on the project's list now, checked before the token is read.
+  const sessionProviderId = session?.providerId ?? null;
+  const sessionModelId = session?.modelId ?? null;
+  if (session === null || sessionProviderId === null || sessionModelId === null) {
+    return failed("the session has no model provider");
+  }
+  const projectId = projectIdSchema.parse(task.projectId);
+  if (!(await sessionRowAllowedInTx(tx, { organizationId, projectId, providerId: sessionProviderId, modelId: sessionModelId }))) {
+    await deps.audit.recordInTx(tx, {
+      organizationId,
+      projectId,
+      actor: { kind: "runner", id: input.runnerId },
+      action: providerAuditActions.credentialsRefused,
+      entity: "task",
+      entityId: input.taskId,
+      data: { leaseEpoch: input.leaseEpoch, sessionId: session.id, providerId: sessionProviderId, reason: "provider-not-allowed" },
+    });
+    return { ok: false, error: "provider-not-allowed", message: "the session's model provider isn't on its project's list" };
+  }
+  const provider = await tx.modelProvider.findFirst({ where: { id: sessionProviderId, organizationId } });
+  if (provider === null) {
+    return failed("the session has no model provider");
   }
   const runner = await tx.runner.findUniqueOrThrow({ where: { id: lease.runnerId }, select: { kind: true } });
   if (runner.kind === "personal" && !provider.allowOnPersonalRunners) {
@@ -190,7 +214,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
   });
   await deps.audit.recordInTx(tx, {
     organizationId,
-    projectId: projectIdSchema.parse(task.projectId),
+    projectId,
     actor: { kind: "runner", id: input.runnerId },
     action: "task.credentials-issued",
     entity: "task",

@@ -97,6 +97,7 @@ beforeAll(async () => {
   const provider = await test.db.modelProvider.create({
     data: { organizationId, name: "Dev", baseUrl: "https://models.example/v1", apiFormat: "anthropic_messages", authScheme: "x_api_key", tokenSecretRef: token.value, allowOnPersonalRunners: true },
   });
+  await test.db.providerListEntry.create({ data: { organizationId, projectId: null, providerId: provider.id } });
   const model = await test.db.model.create({ data: { organizationId, providerId: provider.id, endpointModelId: "dev-model-1" } });
   const profile = await test.db.agentProfile.create({ data: { organizationId, name: "OpenCode", adapter: "opencode", modelId: model.id, builtIn: true } });
   await test.db.project.update({ where: { id: projectId }, data: { defaultCodeProfileId: profile.id } });

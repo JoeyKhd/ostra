@@ -58,6 +58,10 @@ export const seedWorld = async (
       allowOnPersonalRunners: options.allowOnPersonalRunners ?? true,
     },
   });
+  // Milestone 4 (F-135): the organization's first provider is on its default list, as `addModelProvider` leaves it.
+  if ((await db.providerListEntry.count({ where: { organizationId, projectId: null } })) === 0) {
+    await db.providerListEntry.create({ data: { organizationId, projectId: null, providerId: provider.id } });
+  }
   const model = await db.model.create({ data: { organizationId, providerId: provider.id, endpointModelId: "dev-model-1" } });
   const profile = await db.agentProfile.create({
     data: { organizationId, name: "OpenCode", adapter: "opencode", modelId: model.id, builtIn: true },
@@ -156,6 +160,15 @@ export const seedQueuedTask = async (db: Db, world: World, creator: SeededMember
     data: { organizationId: world.organizationId, projectId: world.projectId, taskId: task.id, agentProfileId: world.profileId, origin: "new", state: "starting" },
   });
   return { taskId: taskIdSchema.parse(task.id), sessionId: sessionIdSchema.parse(session.id), organizationId: organizationIdSchema.parse(world.organizationId) };
+};
+
+/**
+ * Records the world's provider and model row on a seeded session, as its start does (F-135): for a
+ * test that leases a task by hand instead of through the dispatch.
+ */
+export const recordSessionModel = async (db: Db, world: World, sessionId: string): Promise<void> => {
+  const profile = await db.agentProfile.findUniqueOrThrow({ where: { id: world.profileId }, select: { modelId: true } });
+  await db.session.update({ where: { id: sessionId }, data: { providerId: world.providerId, modelId: profile.modelId } });
 };
 
 export const dispatchPayload = (task: QueuedTask, epoch = 1) => ({

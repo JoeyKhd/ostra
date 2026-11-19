@@ -5,6 +5,7 @@ import type { CatalogEntry } from "@ostra/adapter-sdk";
 import type { OrganizationId, ProviderId } from "@ostra/protocol";
 
 import type { Ports } from "../ports.ts";
+import { keepChoicesAfterRefreshInTx, loadListedModelsInTx } from "../providers/provider-lists.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-088, ADR 0033: lists a provider's models from its endpoint, matches each to the models.dev
@@ -68,6 +69,8 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
   let matched = 0;
 
   await db.$transaction(async (tx) => {
+    // Milestone 4 (F-135): the rows as they were, for the keep rule at the end.
+    const before = await loadListedModelsInTx(tx, organizationId);
     const existing = await tx.model.findMany({ where: { providerId, organizationId } });
     const known = new Map(existing.map((row) => [row.endpointModelId, row] as const));
     for (const model of listed.value) {
@@ -124,6 +127,8 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
     if (gone.length > 0) {
       await tx.model.updateMany({ where: { id: { in: gone } }, data: { listed: false } });
     }
+    // A model this refresh gives a second provider on a list keeps the one serving it (ADR 0065).
+    await keepChoicesAfterRefreshInTx(tx, organizationId, providerId, before);
     await tx.modelProvider.update({ where: { id: providerId }, data: { modelsRefreshedAt: now } });
     await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "model-provider", entityId: providerId });
   });

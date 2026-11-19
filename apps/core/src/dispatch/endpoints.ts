@@ -208,6 +208,10 @@ export const handleTaskEndpoint =
           logger.warn("task.spec-refused", { leaseEpoch: query.data.leaseEpoch, error: result.error });
           sendError(response, 500, "internal", result.message);
           return true;
+        case "provider-not-allowed":
+          logger.warn("task.spec-refused", { leaseEpoch: query.data.leaseEpoch, error: result.error });
+          sendError(response, 403, "unauthorized", result.message);
+          return true;
         default:
           return result satisfies never;
       }
@@ -267,6 +271,7 @@ export const handleTaskEndpoint =
           sendError(response, 409, "stale-lease", result.message, { currentEpoch: result.currentEpoch });
           return true;
         case "provider-not-allowed-on-personal-runners":
+        case "provider-not-allowed":
           sendError(response, 403, "unauthorized", result.message);
           return true;
         case "token-mint-failed":

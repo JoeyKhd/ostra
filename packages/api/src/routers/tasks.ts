@@ -19,6 +19,8 @@ import {
   dismissNeedsYou,
   dismissNeedsYouInputSchema,
   reopenTask,
+  restartOnProviderChangeInTx,
+  sessionProviderGateInTx,
   reopenTaskInputSchema,
   retryTicketWrites,
   retryTicketWritesInputSchema,
@@ -32,7 +34,7 @@ import {
   transitionTask,
 } from "@ostra/domain";
 import type { TaskLifecycle, Waiting } from "@ostra/domain";
-import { effortLevelFromDb, mapEventToStored } from "@ostra/db";
+import { effortLevelFromDb, mapEventToStored, mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import {
   approvalDecisionSchema,
@@ -150,6 +152,7 @@ export const tasksRouter = router({
       forbidden: "FORBIDDEN",
       "runner-not-yours": "FORBIDDEN",
       "provider-not-allowed-on-personal-runners": "PRECONDITION_FAILED",
+      "no-provider-for-model": "PRECONDITION_FAILED",
       "no-agent-profile": "PRECONDITION_FAILED",
       "no-repo": "PRECONDITION_FAILED",
       "repo-unsupported": "PRECONDITION_FAILED",
@@ -173,6 +176,7 @@ export const tasksRouter = router({
       forbidden: "FORBIDDEN",
       "runner-not-yours": "FORBIDDEN",
       "provider-not-allowed-on-personal-runners": "PRECONDITION_FAILED",
+      "no-provider-for-model": "PRECONDITION_FAILED",
       "no-agent-profile": "PRECONDITION_FAILED",
       "no-repo": "PRECONDITION_FAILED",
       "repo-unsupported": "PRECONDITION_FAILED",
@@ -644,6 +648,18 @@ export const tasksRouter = router({
       // Milestone 4 (F-037, ADR 0055): between turns a message starts one, so it passes the budget
       // gate first; a closed gate saves it and holds the turn. A turn going takes it, gate or not.
       if (session.state === "idle") {
+        // Milestone 4 (F-135, ADR 0065): a turn start checks the session's provider against the
+        // project's list now; moved or gone, the message starts a fresh session instead of a steer.
+        const providers = await sessionProviderGateInTx(tx, { organizationId, projectId, providerId: session.providerId, modelId: session.modelId });
+        if (providers !== null && providers.kind !== "open") {
+          const restarted = await restartOnProviderChangeInTx(ports, tx, mapTask(task), providers, {
+            memberId: ctx.scope.memberId,
+            clientMessageId: input.clientMessageId,
+            text: input.text,
+            intent: input.intent,
+          });
+          return { seq: restarted.seq, duplicate: false as const };
+        }
         const gate = await checkBudget(tx, {
           organizationId,
           projectId,
@@ -840,7 +856,10 @@ const sessionAdapterInTx = async (tx: Tx, profileId: string | null, organization
 const activeLeaseAndSession = async (tx: Tx, taskId: string) => {
   const [lease, session] = await Promise.all([
     tx.lease.findFirst({ where: { taskId, state: "active" }, select: { runnerId: true, epoch: true } }),
-    tx.session.findFirst({ where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } }, select: { id: true, state: true, agentProfileId: true, modelId: true } }),
+    tx.session.findFirst({
+      where: { taskId, state: { in: ["starting", "running", "waiting", "idle"] } },
+      select: { id: true, state: true, agentProfileId: true, providerId: true, modelId: true },
+    }),
   ]);
   return { lease, session };
 };

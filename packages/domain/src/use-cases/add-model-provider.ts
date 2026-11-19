@@ -83,6 +83,12 @@ export const addModelProvider: AddModelProvider = async (deps, input) => {
     select: { id: true },
   });
   const providerId = providerIdSchema.parse(created.id);
+  // Milestone 4 (F-135, ADR 0065, Q270): the organization's first provider joins its default list,
+  // so a fresh install's setup works unchanged. Later providers join no list until an admin ticks one.
+  const others = await tx.modelProvider.count({ where: { organizationId, id: { not: providerId } } });
+  if (others === 0) {
+    await tx.providerListEntry.create({ data: { organizationId, projectId: null, providerId, addedByMemberId: scope.memberId } });
+  }
 
   // The models the endpoint listed are rows at once (custom, until the refresh matches the
   // catalog), so the admin can pick one without waiting for the job.

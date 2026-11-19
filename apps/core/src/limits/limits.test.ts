@@ -231,7 +231,17 @@ describe("spend (F-068, Q163)", () => {
       // A second session of the same task (a reopen) adds to the task's total.
       await test.db.session.update({ where: { id: task.sessionId }, data: { state: "ended", outcome: "with_changes", endedAt: new Date() } });
       const second = await test.db.session.create({
-        data: { organizationId: task.organizationId, projectId: world.projectId, taskId: task.taskId, agentProfileId: world.profileId, origin: "restored", state: "running" },
+        data: {
+          organizationId: task.organizationId,
+          projectId: world.projectId,
+          taskId: task.taskId,
+          agentProfileId: world.profileId,
+          origin: "restored",
+          state: "running",
+          // What its start recorded (F-135): the provider and model row it runs on.
+          providerId: world.providerId,
+          modelId,
+        },
       });
       const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
       await ingest(runner, {

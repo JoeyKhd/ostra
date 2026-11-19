@@ -224,11 +224,9 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   }
   // The spend cap holds across sessions: a reopen at the cap waits for the cap to be raised.
   if (deps.spendCap !== undefined) {
-    const profileId = previous?.agentProfileId ?? null;
-    const model =
-      profileId === null
-        ? null
-        : ((await tx.agentProfile.findFirst({ where: { id: profileId, organizationId }, include: { model: true } }))?.model ?? null);
+    // Milestone 4 (F-135): priced by the model row the last session ran on.
+    const modelId = previous?.modelId ?? null;
+    const model = modelId === null ? null : await tx.model.findFirst({ where: { id: modelId, organizationId } });
     const cap = spendCapFor(deps.spendCap, model === null ? null : modelTokenPrices(model), {
       microUsd: task.spentMicroUsd,
       tokens: await taskTokensInTx(tx, task.id),

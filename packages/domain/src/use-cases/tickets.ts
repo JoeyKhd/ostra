@@ -29,6 +29,7 @@ import { claimBranchNameInTx } from "./create-prompt-task.ts";
 import type { ConnectionTracker } from "./linear-connection.ts";
 import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
 import { resolveStartProfileInTx } from "./task-profile.ts";
+import { noProviderMessage, resolveProfileModelInTx } from "../providers/session-model.ts";
 
 // Tickets in (F-010, F-042, F-064, F-097, spec section 4, "A ticket change" and "A ticket becomes a
 // task"). A ticket's text is untrusted throughout: it's data in the cache and the prompt, never a
@@ -96,6 +97,8 @@ export type StartTicketTaskResult =
       | "no-repo"
       | "runner-not-yours"
       | "provider-not-allowed-on-personal-runners"
+      /** Milestone 4 (F-135): no provider on the project's list serves the profile's model. */
+      | "no-provider-for-model"
       /** A repo's default branch requires signed commits (F-055). */
       | "repo-unsupported"
     >
@@ -208,9 +211,13 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     return refuseStart(resolved.error, resolved.message);
   }
   const { profile } = resolved;
-  const { model } = profile;
-  if (model === null) {
-    return refuseStart("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models");
+  // Milestone 4 (F-135, ADR 0065): the provider the project's list serves the profile's model from,
+  // checked before anything is made. The session records it; nothing falls back to another key.
+  const served = await resolveProfileModelInTx(tx, { organizationId, projectId: projectIdSchema.parse(project.id), profileId: profile.id });
+  if (!served.ok) {
+    return served.modelName === null
+      ? refuseStart("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models")
+      : refuseStart("no-provider-for-model", noProviderMessage(served.modelName));
   }
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
@@ -229,7 +236,7 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     if (runner === null) {
       return refuseStart("runner-not-yours", "That isn't one of your personal runners");
     }
-    if (!model.provider.allowOnPersonalRunners) {
+    if (!served.allowOnPersonalRunners) {
       return refuseStart(
         "provider-not-allowed-on-personal-runners",
         "The project's model provider isn't allowed on personal runners: an admin turns it on under Models",
@@ -278,7 +285,7 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     data: { organizationId, projectId: project.id, taskId, memberId: scope.memberId, name: member.user.name, email: member.user.email },
   });
   const session = await tx.session.create({
-    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting" },
+    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting", providerId: served.providerId, modelId: served.modelId },
     select: { id: true },
   });
   const sessionId = sessionIdSchema.parse(session.id);

@@ -16,6 +16,7 @@ import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
 import { writeTaskSearchEntries } from "../search/entries.ts";
 import { appendServerEvent } from "./server-events.ts";
 import { resolveStartProfileInTx } from "./task-profile.ts";
+import { noProviderMessage, resolveProfileModelInTx } from "../providers/session-model.ts";
 
 // F-097: a member starts a code task in a project by typing a prompt. In one transaction: the task
 // (queued), its first session (origin `new`), its task repos, the member as co-author, a change
@@ -41,6 +42,8 @@ export type CreatePromptTaskResult = UseCaseResult<
   | "forbidden"
   | "runner-not-yours"
   | "provider-not-allowed-on-personal-runners"
+  /** Milestone 4 (F-135): no provider on the project's list serves the profile's model. */
+  | "no-provider-for-model"
   | "no-agent-profile"
   | "no-repo"
   /** A repo's default branch requires signed commits (F-055, ticket 31). */
@@ -134,9 +137,13 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
     return refuse(resolved.error, resolved.message);
   }
   const { profile } = resolved;
-  const { model } = profile;
-  if (model === null) {
-    return refuse("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models");
+  // Milestone 4 (F-135, ADR 0065): the provider the project's list serves the profile's model from,
+  // checked before anything is made. The session records it; nothing falls back to another key.
+  const served = await resolveProfileModelInTx(tx, { organizationId, projectId: projectIdSchema.parse(project.id), profileId: profile.id });
+  if (!served.ok) {
+    return served.modelName === null
+      ? refuse("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models")
+      : refuse("no-provider-for-model", noProviderMessage(served.modelName));
   }
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
@@ -160,7 +167,7 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
       return refuse("runner-not-yours", "That isn't one of your personal runners");
     }
     // A personal runner isn't isolated: a provider's token reaches it only when an admin allows it (Q47).
-    if (!model.provider.allowOnPersonalRunners) {
+    if (!served.allowOnPersonalRunners) {
       return refuse(
         "provider-not-allowed-on-personal-runners",
         "The project's model provider isn't allowed on personal runners: an admin turns it on under Models",
@@ -210,7 +217,7 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
   });
 
   const session = await tx.session.create({
-    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting" },
+    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting", providerId: served.providerId, modelId: served.modelId },
     select: { id: true },
   });
   const sessionId = sessionIdSchema.parse(session.id);

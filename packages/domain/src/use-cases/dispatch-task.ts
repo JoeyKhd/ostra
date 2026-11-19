@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { blobIdSchema, boxIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
+import { blobIdSchema, boxIdSchema, modelIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, RunnerId, TaskId } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
@@ -9,10 +9,13 @@ import type { Ports } from "../ports.ts";
 import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
 import { runnerStartsServices } from "../environment/services.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
-import { budgetWaitOf, checkBudget, sessionModelIdInTx } from "./budgets.ts";
+import { budgetWaitOf, checkBudget } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { chooseReopenStep } from "./reopen.ts";
 import { PROFILE_FEATURES_MINOR, profileNeedsMinor2 } from "./task-profile.ts";
+import { modelNameText } from "../providers/model-name.ts";
+import type { ModelName } from "../providers/model-name.ts";
+import { clearNoProviderInTx, raiseNoProviderInTx, resolveProfileModelInTx, sessionRowStateInTx } from "../providers/session-model.ts";
 import type { ReopenStep } from "./reopen.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
@@ -235,39 +238,69 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       ? null
       : await tx.agentProfile.findFirst({
           where: { id: session.agentProfileId, organizationId: task.organizationId },
-          include: { model: { include: { provider: true } }, _count: { select: { skills: true } } },
+          include: { _count: { select: { skills: true } } },
         });
-  const provider = profile?.model?.provider;
-  if (provider === undefined) {
+  if (profile === null) {
     return noRunner({ code: "no-model" });
   }
-  // Milestone 4 (F-037, ADR 0055): the budget gate, in the task's lock. A closed one leaves the task
-  // queued with its reason; the release (or the requeue sweep) offers it again.
-  const gate = await checkBudget(tx, {
-    organizationId: organizationIdSchema.parse(task.organizationId),
-    projectId: projectIdSchema.parse(task.projectId),
-    modelId: await sessionModelIdInTx(tx, task.organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }),
-    origin: "dispatch",
-    now,
-  });
-  if (gate.kind === "held") {
-    return noRunner(budgetWaitOf(gate));
+  // Milestone 4 (F-135, ADR 0065): the session's provider and model row. Its start resolves them
+  // through the project's list and records them; a recorded row is used only while its provider is
+  // on the project's list now, and nothing ever falls back to another provider's key.
+  const organization = organizationIdSchema.parse(task.organizationId);
+  const project = projectIdSchema.parse(task.projectId);
+  let providerId = session.providerId;
+  let modelId = session.modelId;
+  const noProvider = async (modelName: ModelName): Promise<DispatchTaskResult> => {
+    await raiseNoProviderInTx(deps, tx, task, modelName);
+    return noRunner({ code: "no-provider-for-model", modelName: modelNameText(modelName) });
+  };
+  if (providerId === null || modelId === null) {
+    const resolved = await resolveProfileModelInTx(tx, { organizationId: organization, projectId: project, profileId: profile.id });
+    if (!resolved.ok) {
+      return resolved.modelName === null ? noRunner({ code: "no-model" }) : noProvider(resolved.modelName);
+    }
+    providerId = resolved.providerId;
+    modelId = resolved.modelId;
+    await tx.session.update({ where: { id: session.id }, data: { providerId, modelId } });
+  } else {
+    const { allowed, gate } = await sessionRowStateInTx(tx, { organizationId: organization, projectId: project, providerId, modelId });
+    if (!allowed) {
+      deps.logger?.warn("dispatch.provider-not-allowed", { taskId: task.id, sessionId: session.id, providerId });
+      return noRunner({ code: "provider-not-allowed" });
+    }
+    // A turn start (ADR 0065): a session that hasn't run yet takes the row the project serves now.
+    if (gate?.kind === "none") {
+      return noProvider(gate.modelName);
+    }
+    if (gate?.kind === "moved") {
+      providerId = gate.providerId;
+      modelId = gate.modelId;
+      await tx.session.update({ where: { id: session.id }, data: { providerId, modelId } });
+    }
+  }
+  const provider = await tx.modelProvider.findFirst({ where: { id: providerId, organizationId: task.organizationId } });
+  if (provider === null) {
+    return noRunner({ code: "provider-not-allowed" });
+  }
+  await clearNoProviderInTx(deps, tx, task, now);
+  // Milestone 4 (F-037, ADR 0055): the budget gate, in the task's lock, on the session's own model
+  // row. A closed one leaves the task queued with its reason; the release (or the requeue sweep)
+  // offers it again.
+  const budget = await checkBudget(tx, { organizationId: organization, projectId: project, modelId: modelIdSchema.parse(modelId), origin: "dispatch", now });
+  if (budget.kind === "held") {
+    return noRunner(budgetWaitOf(budget));
   }
   if (provider.dispatchHeldUntil !== null && provider.dispatchHeldUntil.getTime() > now) {
     return noRunner({ code: "provider-held", until: provider.dispatchHeldUntil.getTime() });
   }
   if (provider.sessionsAtOnce !== null) {
-    // Sessions name their profile, not their provider: the provider's profiles first, then one count.
-    const profiles = await tx.agentProfile.findMany({
-      where: { organizationId: task.organizationId, model: { providerId: provider.id } },
-      select: { id: true },
-    });
+    // The cap is the provider's, whichever project its sessions run in (F-088, F-135).
     const sameProvider = await tx.session.count({
       where: {
         organizationId: task.organizationId,
         id: { not: session.id },
         state: { in: [...ACTIVE_SESSION_STATES] },
-        agentProfileId: { in: profiles.map((row) => row.id) },
+        providerId: provider.id,
         task: { leases: { some: { state: "active" } } },
       },
     });
@@ -281,7 +314,6 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   // Milestone 3 (F-021, ticket 16): a profile with rules, plan first, skills or MCP servers goes only
   // to a runner at minor 2 or later. When only older runners could take it, the task says so.
   const minMinor =
-    profile !== null &&
     profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills })
       ? PROFILE_FEATURES_MINOR
       : 0;
@@ -315,12 +347,23 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   };
 
   // Milestone 2 (ticket 18): a reopen's step. The same box goes back to its own runner.
-  let plan = await reopenPlanInTx(tx, task, session, profile?.adapter ?? null, deps.reopen, now);
+  let plan = await reopenPlanInTx(tx, task, session, profile.adapter, deps.reopen, now);
+  if (plan.step === "resumed") {
+    // A kept box holds the key its last session ran on: a session on another provider gets a fresh box (ADR 0065).
+    const kept = await tx.session.findFirst({
+      where: { taskId: task.id, id: { not: session.id }, boxId: plan.boxId },
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+      select: { providerId: true },
+    });
+    if (kept !== null && kept.providerId !== providerId) {
+      plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
+    }
+  }
   let candidates: readonly Candidate[] = [];
   if (plan.step === "resumed" && plan.keptRunnerId !== undefined) {
     candidates = await fitting({ ids: [plan.keptRunnerId] });
     if (candidates.length === 0) {
-      plan = await withoutKeptBox(tx, task, session, profile?.adapter ?? null, deps.reopen);
+      plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
     }
   }
   if (candidates.length > 0) {
