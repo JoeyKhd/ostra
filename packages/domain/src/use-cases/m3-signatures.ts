@@ -334,7 +334,7 @@ export type RecordTicketClosed = (
 
 export type ScheduleSnapshot = (
   deps: M3Deps,
-  input: { readonly projectId: ProjectId; readonly reason: "environment-changed" | "lockfile-changed" | "nightly" },
+  input: { readonly projectId: ProjectId; readonly reason: "environment-changed" | "lockfile-changed" | "nightly" | "rebuild" },
 ) => Promise<UseCaseResult<{ readonly snapshotId: SnapshotId | null }, "no-docker-runner" | "not-found">>;
 
 export type RecordSnapshotResult = (

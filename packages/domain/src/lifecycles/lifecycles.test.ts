@@ -336,9 +336,12 @@ describe("snapshot", () => {
       [sn("building"), { type: "build_finished" }, sn("ready")],
       [sn("building"), { type: "build_failed", reason: "secret found" }, { state: "failed", reason: "secret found" }],
       [sn("ready"), { type: "newer_ready" }, sn("replaced")],
+      [sn("building"), { type: "build_returned" }, sn("queued")],
     ],
     [
       [sn("queued"), { type: "build_finished" }],
+      [sn("queued"), { type: "build_returned" }],
+      [sn("ready"), { type: "build_returned" }],
       [sn("building"), { type: "newer_ready" }],
       [sn("ready"), { type: "build_started" }],
       [sn("replaced"), { type: "newer_ready" }],

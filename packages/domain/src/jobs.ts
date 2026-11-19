@@ -139,11 +139,14 @@ export const jobPayloadSchemas = {
     connectionId: connectionIdSchema,
     commentId: z.string().min(1).max(64).regex(/^[0-9]+$/, "a code host's comment ID"),
   }),
-  /** Build a project's snapshot (F-051, ticket 26): the environment changed, a lockfile moved, or the nightly. */
+  /**
+   * Build a project's snapshot (F-051, ticket 26): the environment changed, a lockfile moved, the
+   * nightly, or a project admin pressed Rebuild (`rebuild`, which the panel's "Why" names).
+   */
   "snapshot.schedule": z.strictObject({
     organizationId: organizationIdSchema,
     projectId: projectIdSchema,
-    reason: z.enum(["environment-changed", "lockfile-changed", "nightly"]),
+    reason: z.enum(["environment-changed", "lockfile-changed", "nightly", "rebuild"]),
   }),
   /** Once a night: schedule a snapshot for each project whose default branch moved (F-051, ticket 26). */
   "snapshot.nightly": z.strictObject({}),

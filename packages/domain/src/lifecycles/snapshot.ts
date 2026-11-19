@@ -2,7 +2,9 @@ import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
 
 // A snapshot's lifecycle (domain-model.md, "A snapshot's lifecycle"; Q39, F-051). `replaced` and
-// `failed` are final; a failed build leaves the previous ready snapshot in use.
+// `failed` are final; a failed build leaves the previous ready snapshot in use. A build its runner
+// refused, or lost by going offline before it reported, goes back to `queued` for another runner
+// (milestone 3's ticket 26).
 
 export type SnapshotLifecycle =
   | { readonly state: "queued" }
@@ -15,7 +17,9 @@ export type SnapshotInput =
   | { readonly type: "build_started" }
   | { readonly type: "build_finished" }
   | { readonly type: "build_failed"; readonly reason: string }
-  | { readonly type: "newer_ready" };
+  | { readonly type: "newer_ready" }
+  /** The runner refused the build, or went offline before it reported. */
+  | { readonly type: "build_returned" };
 
 export const transitionSnapshot = (snapshot: SnapshotLifecycle, input: SnapshotInput): Transition<SnapshotLifecycle> => {
   const from = snapshot.state;
@@ -28,6 +32,8 @@ export const transitionSnapshot = (snapshot: SnapshotLifecycle, input: SnapshotI
       return from === "building" ? moveTo({ state: "failed", reason: input.reason }) : refuse(input, from);
     case "newer_ready":
       return from === "ready" ? moveTo({ state: "replaced" }) : refuse(input, from);
+    case "build_returned":
+      return from === "building" ? moveTo({ state: "queued" }) : refuse(input, from);
     default:
       return input satisfies never;
   }

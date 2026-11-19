@@ -291,14 +291,15 @@ A task in `queued` waits in the pool queue of every pool of its project that cou
 
 ```
  queued ──▶ building ──▶ ready ──▶ replaced
-              │
+   ▲          │
+   └──────────┤ refused, or its runner went offline
               └──▶ failed
 ```
 
 | State | Means | Leaves when |
 |---|---|---|
 | **queued** | A rebuild is due: the environment changed, a lockfile changed on a default branch, or a default branch moved since last night (Q39) | A runner takes the build (→ building) |
-| **building** | A runner builds the image: a `docker` runner itself, a `kubernetes` pool in a rootless BuildKit pod. Setup secrets are mounted for the build only (Q39, Q95) | The image is pushed and checked (→ ready), or the build fails (→ failed) |
+| **building** | A runner builds the image: a `docker` runner itself, a `kubernetes` pool in a rootless BuildKit pod. Setup secrets are mounted for the build only (Q39, Q95) | The image is pushed and checked (→ ready), or the build fails (→ failed). The runner refused the build, or went offline before it reported (→ queued, for another runner; milestone 3, ticket 26) |
 | **ready** | New boxes of the project start from it | A newer snapshot is ready (→ replaced) |
 | **replaced** | A newer snapshot took its place. Boxes that already started from it keep it | Never |
 | **failed** | The build failed, or a setup secret's value was found in the image (Q39) | Never. The previous ready snapshot stays in use |
