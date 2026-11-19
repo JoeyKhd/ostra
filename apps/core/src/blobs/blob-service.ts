@@ -128,11 +128,33 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
     throw new Error("OSTRA_BLOB_STORE=s3 needs the S3-compatible blob store adapter");
   }
 
-  /** The store for one owner: the built-in one is bound to it, so its rows carry the task. */
+  /** The store new blobs go to: the built-in one is bound to its owner, so its rows carry the task. */
   const storeFor = (owner: BlobScopeOwner): BlobStoreAdapter =>
     settings.kind === "postgres" || s3 === undefined
       ? new PostgresBlobStore({ rows: postgresBlobRows(db, owner.task), maxBytes }, deps.context)
       : s3;
+
+  /**
+   * The store that holds a blob already written, whatever the default is now: a `Blob` row names its
+   * store (ADR 0043), so a blob kept in Postgres before the switch to S3 is still read from Postgres.
+   * `undefined`: the blob is in a store this install has no settings for.
+   */
+  const storeHolding = (store: "postgres" | "s3", owner: BlobScopeOwner): BlobStoreAdapter | undefined =>
+    store === "s3" ? s3 : new PostgresBlobStore({ rows: postgresBlobRows(db, owner.task), maxBytes }, deps.context);
+
+  const notConfigured = (store: string): BlobServiceResult<never> => ({
+    ok: false,
+    error: "unavailable",
+    message: `the blob is kept in the ${store} store, which this install is not set up to reach`,
+  });
+
+  /**
+   * What an S3-compatible store is told an upload is for. It resumes an upload by organization,
+   * purpose and digest; the task is part of the purpose, so two tasks uploading the same bytes never
+   * share one (the built-in store's rows are bound to the task the same way).
+   */
+  const adapterPurpose = (owner: BlobScopeOwner, purpose: string): string =>
+    owner.task === null ? purpose : `${purpose}/${owner.task.taskId}`;
 
   const tooLarge = (size: number): BlobServiceResult<never> => ({
     ok: false,
@@ -230,17 +252,41 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
         return tooLarge(input.size);
       }
       const started = fromAdapter(
-        await storeFor(owner).startUpload({ organizationId: owner.organizationId, purpose: input.purpose }, input.sha256, input.size),
+        await storeFor(owner).startUpload(
+          { organizationId: owner.organizationId, purpose: settings.kind === "s3" ? adapterPurpose(owner, input.purpose) : input.purpose },
+          input.sha256,
+          input.size,
+        ),
         "start",
       );
       if (!started.ok) {
         return started;
       }
-      // The port has no content type: the service keeps it on the upload, for the blob it becomes.
-      await db.blobUpload.updateMany({
-        where: { id: started.value.uploadId, organizationId: owner.organizationId, receivedBytes: 0, blobId: null },
-        data: { contentType: input.contentType },
-      });
+      if (settings.kind === "s3") {
+        // The S3-compatible store keeps the bytes; the service keeps the upload's record, which the
+        // ownership and lease checks of the bulk path read, and which `blob.gc` ages out.
+        await db.blobUpload.upsert({
+          where: { id: started.value.uploadId },
+          create: {
+            id: started.value.uploadId,
+            organizationId: owner.organizationId,
+            ...(owner.task === null ? {} : { projectId: owner.task.projectId, taskId: owner.task.taskId }),
+            store: "s3",
+            purpose: input.purpose,
+            contentType: input.contentType,
+            expectedSha256: input.sha256,
+            size: input.size,
+            receivedBytes: started.value.receivedBytes,
+          },
+          update: { receivedBytes: started.value.receivedBytes },
+        });
+      } else {
+        // The port has no content type: the service keeps it on the upload, for the blob it becomes.
+        await db.blobUpload.updateMany({
+          where: { id: started.value.uploadId, organizationId: owner.organizationId, receivedBytes: 0, blobId: null },
+          data: { contentType: input.contentType },
+        });
+      }
       logger.info("blob.upload-started", {
         organizationId: owner.organizationId,
         taskId: owner.task?.taskId ?? null,
@@ -270,6 +316,12 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
         };
       }
       const appended = fromAdapter(await storeFor(owner).appendUpload(uploadId, offset, chunk), "append");
+      if (appended.ok && settings.kind === "s3") {
+        await db.blobUpload.updateMany({
+          where: { id: uploadId, organizationId: owner.organizationId, blobId: null },
+          data: { receivedBytes: appended.value.receivedBytes },
+        });
+      }
       return appended.ok ? { ok: true, value: { receivedBytes: appended.value.receivedBytes } } : appended;
     },
 
@@ -303,7 +355,15 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
         }
         return fromAdapter(finished, "finish");
       }
-      return recordBlob(owner, finished.value, upload.purpose, upload.contentType);
+      const recorded = await recordBlob(owner, finished.value, upload.purpose, upload.contentType);
+      if (recorded.ok && settings.kind === "s3") {
+        // Finishing twice answers the same blob.
+        await db.blobUpload.updateMany({
+          where: { id: uploadId, organizationId: owner.organizationId },
+          data: { blobId: recorded.value.blobId, receivedBytes: upload.size },
+        });
+      }
+      return recorded;
     },
 
     find,
@@ -318,16 +378,24 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
         return { ok: false, error: "not-found", message: "no such blob" };
       }
       const owner: BlobScopeOwner = { organizationId, task: null };
-      const bytes = fromAdapter(await storeFor(owner).get(organizationId, row.key), "read");
+      const holder = storeHolding(row.store, owner);
+      if (holder === undefined) {
+        return notConfigured(row.store);
+      }
+      const bytes = fromAdapter(await holder.get(organizationId, row.key), "read");
       return bytes.ok ? { ok: true, value: { ...found, bytes: bytes.value } } : bytes;
     },
 
     delete: async (organizationId, blobId) => {
-      const row = await db.blob.findFirst({ where: { id: blobId, organizationId }, select: { key: true } });
+      const row = await db.blob.findFirst({ where: { id: blobId, organizationId }, select: { key: true, store: true } });
       if (row === null) {
         return { ok: false, error: "not-found", message: "no such blob" };
       }
-      const deleted = fromAdapter(await storeFor({ organizationId, task: null }).delete(organizationId, row.key), "delete");
+      const holder = storeHolding(row.store, { organizationId, task: null });
+      if (holder === undefined) {
+        return notConfigured(row.store);
+      }
+      const deleted = fromAdapter(await holder.delete(organizationId, row.key), "delete");
       if (!deleted.ok && deleted.error !== "not-found") {
         return deleted;
       }

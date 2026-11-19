@@ -1,0 +1,26 @@
+{
+  "name": "@ostra/adapter-blob-s3",
+  "version": "0.0.0",
+  "description": "The S3-compatible blob store: any bucket that speaks the S3 API (ADR 0043)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1165.0",
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "5.1.1"
+  }
+}

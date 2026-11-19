@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@ostra/adapter-blob-postgres": "workspace:*",
+    "@ostra/adapter-blob-s3": "workspace:*",
     "@ostra/adapter-github": "workspace:*",
     "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",

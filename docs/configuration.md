@@ -44,13 +44,15 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_RETENTION_DAYS` | unset: keep while the task exists | Delete a finished task's histories, archives and blobs this many days after it ends (F-079). It applies only until an admin saves a retention in the panel, which wins, "keep" included. |
 | `OSTRA_BLOB_STORE` | `postgres` | Where blobs are kept (session archives, ticket images): `postgres`, in the database's own tables, or `s3`, any S3-compatible store (F-114). |
 | `OSTRA_BLOB_MAX_MIB` | `64` | The largest blob in MiB, and so the largest session archive; over it, the next reopen uses the rebuild template. At most `64`. |
-| `OSTRA_S3_ENDPOINT` | unset: AWS S3 | The S3-compatible store's endpoint, such as a MinIO or R2 URL. Read only with `OSTRA_BLOB_STORE=s3`. |
+| `OSTRA_S3_ENDPOINT` | unset: AWS S3 | The S3-compatible store's endpoint, such as a MinIO, Garage or R2 URL. Set, the bucket is addressed by path (`<endpoint>/<bucket>/<key>`). Read only with `OSTRA_BLOB_STORE=s3`. |
 | `OSTRA_S3_BUCKET` | unset; required with `OSTRA_BLOB_STORE=s3` | The bucket blobs are kept in. |
-| `OSTRA_S3_REGION` | unset | The store's region. Read only with `OSTRA_BLOB_STORE=s3`. |
+| `OSTRA_S3_REGION` | unset: us-east-1 | The store's region, which AWS S3 needs and most other stores ignore. Read only with `OSTRA_BLOB_STORE=s3`. |
 | `OSTRA_S3_ACCESS_KEY_ID` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's ID. |
 | `OSTRA_S3_SECRET_ACCESS_KEY` | unset; required with `OSTRA_BLOB_STORE=s3` | The access key's secret. Never logged. |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
+
+**Blobs in an S3-compatible store.** With `OSTRA_BLOB_STORE=s3` new blobs go to the bucket, and the bucket must exist already: core creates none. The access key needs to read, write, list and delete objects in it. A blob written before the switch stays in Postgres and is still read from there, because each blob's row names its store. A blob written to S3 is read from S3 only while the `OSTRA_S3_*` settings are set, so keep them when you change the default back. **Back up the bucket as well as the database**: an archive in the bucket is not in the database's backup. The bucket's `blobs/` prefix holds the blobs and its `uploads/` prefix holds uploads in flight. Core drops an upload nobody finished within 24 hours (`blob.gc`); as a backstop, give the bucket a lifecycle rule that expires `uploads/` and `upload-index/` after a few days, and one that aborts incomplete multipart uploads. A blob over `OSTRA_BLOB_MAX_MIB` is refused either way.
 
 **The database runs in UTC.** Core and the panel open every connection with `TimeZone=UTC` (added to `DATABASE_URL` as `options=-c TimeZone=UTC`, unless the URL sets a time zone itself), because times are written as UTC with no offset. At start core checks `SHOW timezone` and the job queue's forwarding heartbeat, and refuses to start its workers, with a `jobs.boot_check_failed` log line, when either is wrong (ADR 0037).
 

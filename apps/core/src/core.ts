@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 
 import { systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger } from "@ostra/adapter-sdk";
+import { S3BlobStore } from "@ostra/adapter-blob-s3";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
@@ -208,7 +209,23 @@ export const startCore = async (
       spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
     },
   });
-  const blobs = createBlobService({ db, settings: settings.blobStore, context: { logger, clock: adapterClock } });
+  // The S3-compatible store, when OSTRA_BLOB_STORE=s3 (ticket 11). Blobs written to the built-in store
+  // before the switch stay readable there: each `Blob` row names its store.
+  const s3 =
+    settings.blobStore.kind === "s3"
+      ? new S3BlobStore(
+          {
+            endpoint: settings.blobStore.endpoint,
+            bucket: settings.blobStore.bucket,
+            region: settings.blobStore.region,
+            accessKeyId: settings.blobStore.accessKeyId,
+            secretAccessKey: settings.blobStore.secretAccessKey,
+            maxBytes: settings.blobStore.maxBytes,
+          },
+          { logger, clock: adapterClock },
+        )
+      : undefined;
+  const blobs = createBlobService({ db, settings: settings.blobStore, context: { logger, clock: adapterClock }, ...(s3 === undefined ? {} : { s3 }) });
   const blobEndpoints = handleBlobEndpoint({
     db,
     tokens: gateway.context.tokens,
@@ -217,7 +234,7 @@ export const startCore = async (
     clock: systemClock,
     logger,
   });
-  await jobs.work("blob.gc", blobGcHandler({ db, clock: systemClock, logger }), { localConcurrency: 1 });
+  await jobs.work("blob.gc", blobGcHandler({ db, clock: systemClock, logger, ...(s3 === undefined ? {} : { s3 }) }), { localConcurrency: 1 });
   // The webhook inbox (ticket 13): verify, claim, 200; `webhook.process` acts from the queue.
   const inbox = createWebhookInbox({
     db,
@@ -304,6 +321,7 @@ export const startCore = async (
       await server.close();
       await liveText.stop();
       await jobs.stop({ graceful: true, timeoutMs: 10_000 });
+      s3?.close();
       await db.$disconnect();
     },
   };

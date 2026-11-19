@@ -202,15 +202,15 @@ export const settingFields = {
   },
   OSTRA_S3_ENDPOINT: {
     default: "unset: AWS S3",
-    description: "The S3-compatible store's endpoint, such as a MinIO or R2 URL. Read only with OSTRA_BLOB_STORE=s3.",
+    description: "The S3-compatible store's endpoint, such as a MinIO, Garage or R2 URL. Set, the bucket is addressed by path. Read only with OSTRA_BLOB_STORE=s3.",
   },
   OSTRA_S3_BUCKET: {
     default: "unset; required with OSTRA_BLOB_STORE=s3",
     description: "The bucket blobs are kept in. Read only with OSTRA_BLOB_STORE=s3.",
   },
   OSTRA_S3_REGION: {
-    default: "unset",
-    description: "The store's region. Read only with OSTRA_BLOB_STORE=s3.",
+    default: "unset: us-east-1",
+    description: "The store's region, which AWS S3 needs and most other stores ignore. Read only with OSTRA_BLOB_STORE=s3.",
   },
   OSTRA_S3_ACCESS_KEY_ID: {
     default: "unset; required with OSTRA_BLOB_STORE=s3",
