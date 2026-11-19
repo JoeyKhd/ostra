@@ -58,6 +58,13 @@ export type AgentProfileProbes = {
   /** Whether the agent says back each marked block of a prompt (`Read <label>: <text>`): the fakes do. */
   readonly echoesMarkedBlocks: boolean;
   /**
+   * Whether the agent sends a session's permission requests one at a time, each once the last is
+   * answered: OpenCode 2.3.2's ACP layer queues them, where the fakes send both of `askPair`'s at
+   * once. On a deny such an agent rejects the session's other pending requests itself, and that
+   * can land before the next one is sent, which then never reaches ostra.
+   */
+  readonly asksOneAtATime: boolean;
+  /**
    * Where an HTTP MCP server of that name answers, for an agent that connects to its servers
    * before it lists their tools (a real agent does). Absent: an address nothing answers at, which
    * the fakes never call.
@@ -336,7 +343,16 @@ export const defineAgentProfileCases = (subject: Subject): void => {
     );
     try {
       await running.prompt(1, profile.askPair);
-      expect(running.log.member).toHaveLength(2);
+      // An agent that asks both at once puts both before a member. One that asks one at a time sends
+      // the second only once the deny is answered, and its own reject of it may land first: OpenCode
+      // then never sends it, or sends it and withdraws it at once (`$/cancel_request`), by its own
+      // timing. Either way the deny comes first, and neither request runs.
+      if (profile.asksOneAtATime) {
+        expect(running.log.member.length).toBeGreaterThanOrEqual(1);
+        expect(running.log.member.length).toBeLessThanOrEqual(2);
+      } else {
+        expect(running.log.member).toHaveLength(2);
+      }
       expect(await exists(path.join(workspace(), "pair-a.txt"))).toBe(false);
       expect(await exists(path.join(workspace(), "pair-b.txt"))).toBe(false);
       expect(events.filter((event) => event.kind === "tool.failed")).toHaveLength(2);

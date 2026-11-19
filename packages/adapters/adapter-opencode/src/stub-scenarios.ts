@@ -98,7 +98,7 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     return step === 1 ? { text: refused(lastToolResults) ? `Could not run ${args}.` : `Ran ${args}.` } : undefined;
   },
 
-  /** Two writes in one step, so two requests are open at once. */
+  /** Two writes in one step, so two requests are pending in OpenCode at once: it sends them to ostra one at a time. */
   "ask-pair": ({ step }) => {
     if (step === 0) {
       return {

@@ -128,6 +128,8 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
       mcpTool: "search",
       allowAllRepoConfig: { path: "opencode.json", content: allowAllRepoConfig(mcpHttp.urlFor("evil")) },
       echoesMarkedBlocks: false,
+      // Its ACP layer sends a session's permission requests one at a time (F-026's other-requests case).
+      asksOneAtATime: true,
       mcpUrl: (name) => mcpHttp.urlFor(name),
       mcpStdio,
     },

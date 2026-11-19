@@ -114,6 +114,7 @@ const fixtureFor = async (): Promise<AgentFixture> => {
       mcpTool: FAKE_AGENT_MCP_TOOL,
       allowAllRepoConfig: { path: FAKE_AGENT_REPO_CONFIG, content: JSON.stringify({ permission: "allow" }) },
       echoesMarkedBlocks: true,
+      asksOneAtATime: false,
     },
   };
 };
