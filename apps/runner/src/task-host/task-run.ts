@@ -71,6 +71,7 @@ import type { McpTools } from "../sidecar/mcp-tools.ts";
 import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
+import { checkRepoFolders } from "./repo-folders.ts";
 import type { ServerLink } from "./server-link.ts";
 import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
 import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
@@ -1290,6 +1291,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const taskSpec = fetched.value;
     if (taskSpec.taskId !== dispatch.taskId || taskSpec.sessionId !== dispatch.sessionId || taskSpec.leaseEpoch !== dispatch.leaseEpoch) {
       return { ok: false, error: "the task's spec doesn't match its dispatch" };
+    }
+    // Ticket 21 (F-098): the folders the agent is told about are the ones checked out, each its own.
+    const folders = checkRepoFolders(taskSpec);
+    if (!folders.ok) {
+      return { ok: false, error: folders.error };
     }
     spec = taskSpec;
     acrossTurns = spansTurns(taskSpec, channel);

@@ -4,7 +4,7 @@ import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
 import type { HostExecutorOptions } from "@ostra/adapter-executor-host";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, ExportSessionInput, LogRecord } from "@ostra/adapter-sdk";
+import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, ExecutorAdapter, ExportSessionInput, Logger, LogRecord } from "@ostra/adapter-sdk";
 import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream, StubBrain, StubServer } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, clientMessageIdSchema, runnerIdSchema, sessionIdSchema, taskCredentialsSchema, taskIdSchema } from "@ostra/protocol";
@@ -91,6 +91,15 @@ export type HarnessOptions = {
   readonly peer?: Peer;
   /** Overrides of the host executor's options (milestone 3: a docker box's services, as its sidecar runs them). */
   readonly executor?: Partial<Omit<HostExecutorOptions, "dataDir">>;
+  /**
+   * Ticket 21 (F-098): another executor in place of the host executor, as a box's sidecar runs the
+   * task host (`DockerExecutor` through its bridge), with its kind. Disposed of on close.
+   */
+  readonly makeExecutor?: (input: { readonly dataDir: string; readonly logger: Logger }) => Promise<{
+    readonly executor: ExecutorAdapter;
+    readonly kind: TaskHostOptions["executorKind"];
+    readonly dispose: () => Promise<void>;
+  }>;
 };
 
 export type Harness = {
@@ -98,7 +107,7 @@ export type Harness = {
   readonly server: FakeServer;
   readonly gateway: FakeGateway;
   readonly host: TaskHost;
-  readonly executor: HostExecutor;
+  readonly executor: ExecutorAdapter;
   readonly logs: LogRecord[];
   /** Each agent launch the executor was given, in order. */
   readonly launches: AgentLaunch[];
@@ -135,7 +144,8 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
   const holder: { connection: RunnerConnection | undefined } = { connection: undefined };
   const logs: LogRecord[] = [];
   const logger = createLogger((record) => logs.push(record));
-  const executor = new HostExecutor({ ...options.executor, dataDir }, { logger, clock: { now: () => Date.now() } });
+  const made = options.makeExecutor === undefined ? undefined : await options.makeExecutor({ dataDir, logger });
+  const executor: ExecutorAdapter = made?.executor ?? new HostExecutor({ ...options.executor, dataDir }, { logger, clock: { now: () => Date.now() } });
   const launches: AgentLaunch[] = [];
   const startAgent = executor.startAgent.bind(executor);
   executor.startAgent = (box: BoxRef, launch: AgentLaunch): Promise<AdapterResult<AgentProcess>> => {
@@ -164,7 +174,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
     listenHost: "127.0.0.1",
     stopGraceMs: 1_000,
     capacity: 4,
-    executorKind: "host",
+    executorKind: made?.kind ?? "host",
     labels: [],
     gitUpstreamUrl: (cloneUrl) => cloneUrl.replace("https://github.com", shared.upstream.origin),
     ...options.host,
@@ -269,6 +279,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
       await connection.stop();
       await gateway.close();
       await server.close();
+      await made?.dispose();
     },
   };
 };
