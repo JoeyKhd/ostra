@@ -1,6 +1,6 @@
 /** What a code host adapter can do (ADR 0025). */
 export type CodeHostCapabilities = {
-  /** The host has check runs ostra can write (`checks: write`, F-054). */
+  /** The host has check runs ostra can write (`checks: write`, F-054): `publishCheckRun` and `updateCheckRun` (milestone 4). */
   readonly checkRuns: boolean;
   /** The host has PR templates the agent fills in (F-078). */
   readonly prTemplates: boolean;
@@ -23,4 +23,7 @@ export type CodeHostCapabilities = {
   readonly prComments: boolean;
   /** `userAuthorizeUrl` and `exchangeUserCode` verify a member's own account (F-119). */
   readonly userLink: boolean;
+  // ---- milestone 4 (F-104, ADR 0040) ----
+  /** `listReviews` and the `pull_request_review` webhook. Check runs are `checkRuns`. */
+  readonly reviews: boolean;
 };

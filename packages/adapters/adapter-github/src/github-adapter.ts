@@ -219,6 +219,8 @@ export class GitHubAdapter extends CodeHostAdapter {
       draftPullRequests: true,
       prComments: true,
       userLink: true,
+      // Milestone 4: reviews and the review webhook come with ticket 08.
+      reviews: false,
     };
   }
 

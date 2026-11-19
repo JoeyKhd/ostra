@@ -30,6 +30,7 @@ import type {
   BranchRules,
   CodeHostAppCredentials,
   CodeHostOAuthClient,
+  CheckRunInput,
   CodeHostWebhookEvent,
   CommentRef,
   CompareFile,
@@ -37,7 +38,9 @@ import type {
   CreatedApp,
   DeleteRefResult,
   LinkedUser,
+  PublishedCheckRun,
   PullRequestComment,
+  PullRequestReview,
   Reaction,
   HostRepo,
   Installation,
@@ -47,8 +50,12 @@ import type {
   ReadFilesResult,
   RepoAccess,
   RepoToken,
+  UpdatePullRequestBodyInput,
   WebhookInput,
 } from "../code-host/base.ts";
+import { pullRequestReviewStates } from "../code-host/base.ts";
+import { FakeReviewsAndChecks } from "../testing/fake-reviews-and-checks.ts";
+import type { FakeMergeOutcome } from "../testing/fake-reviews-and-checks.ts";
 import type { CodeHostCapabilities } from "../code-host/capabilities.ts";
 import { adapterError, ok } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
@@ -341,10 +348,22 @@ const DEFAULT_COMPARE_LIMITS = { maxFiles: 300, maxPatchBytes: 1024 * 1024 } as 
 
 const TEMPLATE_PATHS = [".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md", "pull_request_template.md"];
 
+/** A PR the tiny host keeps. */
+type TinyPullRequest = PullRequest & {
+  readonly repo: RepoFullName;
+  updatedAt: number;
+  mergedAt: number | null;
+  closedAt: number | null;
+  draft: boolean;
+  /** Milestone 4: its head and its description. */
+  headSha: string;
+  body: string;
+};
+
 export class TinyCodeHost extends CodeHostAdapter {
   readonly name = "tiny-code-host";
   readonly capabilities: CodeHostCapabilities = {
-    checkRuns: false,
+    checkRuns: true,
     prTemplates: true,
     lfsActionHosts: [],
     branchRules: true,
@@ -352,15 +371,12 @@ export class TinyCodeHost extends CodeHostAdapter {
     draftPullRequests: true,
     prComments: true,
     userLink: true,
+    reviews: true,
   };
+  /** Milestone 4, for tests: the PRs' reviews, the check runs and branch protection. */
+  readonly reviewsAndChecks = new FakeReviewsAndChecks();
   readonly #world: MemoryHostWorld;
-  readonly #prs: (PullRequest & {
-    readonly repo: RepoFullName;
-    updatedAt: number;
-    mergedAt: number | null;
-    closedAt: number | null;
-    draft: boolean;
-  })[] = [];
+  readonly #prs: TinyPullRequest[] = [];
   readonly #refs = new Map<string, Set<string>>();
   readonly #reactions = new Set<string>();
   /** Milestone 3, for tests: the user tokens a sign-in got, and how many were revoked (F-119). */
@@ -536,7 +552,7 @@ export class TinyCodeHost extends CodeHostAdapter {
       return Promise.resolve(adapterError("conflict", "a PR from this branch is open"));
     }
     const number = this.#prs.length + 1;
-    const pr = {
+    const pr: TinyPullRequest = {
       repo: input.access.repo,
       number,
       url: `https://code-host.invalid/${input.access.repo}/pull/${String(number)}`,
@@ -548,6 +564,8 @@ export class TinyCodeHost extends CodeHostAdapter {
       mergedAt: null,
       closedAt: null,
       draft: input.draft,
+      headSha: "0".repeat(40),
+      body: input.body,
     };
     this.#prs.push(pr);
     return Promise.resolve(ok(withoutRepo(pr)));
@@ -581,13 +599,13 @@ export class TinyCodeHost extends CodeHostAdapter {
       return Promise.resolve(adapterError("not-found", "no such PR"));
     }
     return Promise.resolve(
-      ok({ ...withoutRepo(pr), merged: pr.state === "merged", headSha: "0".repeat(40), updatedAt: pr.updatedAt, mergedAt: pr.mergedAt, closedAt: pr.closedAt }),
+      ok({ ...withoutRepo(pr), merged: pr.state === "merged", headSha: pr.headSha, updatedAt: pr.updatedAt, mergedAt: pr.mergedAt, closedAt: pr.closedAt, body: pr.body }),
     );
   }
 
   override parseWebhook(input: WebhookInput): AdapterResult<CodeHostWebhookEvent> {
     const event = input.headers["x-github-event"] ?? "unknown";
-    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push") {
+    if (event !== "pull_request" && event !== "issue_comment" && event !== "pull_request_review_comment" && event !== "push" && event !== "pull_request_review") {
       return ok({ kind: "other", event });
     }
     let body: unknown;
@@ -595,6 +613,9 @@ export class TinyCodeHost extends CodeHostAdapter {
       body = JSON.parse(input.body);
     } catch {
       return adapterError("invalid-response", "the webhook's body isn't JSON");
+    }
+    if (event === "pull_request_review") {
+      return parseReview(body);
     }
     if (event !== "pull_request") {
       return parseCommentOrPush(event, body);
@@ -716,6 +737,71 @@ export class TinyCodeHost extends CodeHostAdapter {
     }
     this.userTokens.revoked += 1;
     return Promise.resolve(ok(found.user));
+  }
+  // ---------- milestone 4 (ticket 03, F-104): reviews, check runs, a PR's body and its head ----------
+
+  /** Moves a PR's head, as a push to its branch does: for tests. */
+  pushHead(repo: RepoFullName, number: number, headSha: string): void {
+    this.#pr(repo, number).headSha = headSha;
+  }
+
+  /**
+   * Merges a PR as a person does on the host, if its base's protection lets it (the two modes of
+   * `FakeReviewsAndChecks`): for tests.
+   */
+  mergePullRequest(repo: RepoFullName, number: number): FakeMergeOutcome {
+    const pr = this.#pr(repo, number);
+    const outcome = this.reviewsAndChecks.merge(repo, pr.baseBranch, pr.headSha);
+    if (outcome.merged) {
+      this.finishPullRequest(repo, number, "merged");
+    }
+    return outcome;
+  }
+
+  #pr(repo: RepoFullName, number: number): TinyPullRequest {
+    const pr = this.#prs.find((candidate) => candidate.repo === repo && candidate.number === number);
+    if (pr === undefined) throw new Error("no such PR");
+    return pr;
+  }
+
+  override updatePullRequestBody(input: UpdatePullRequestBodyInput): Promise<AdapterResult<PullRequest>> {
+    const repo = this.#repo(input.access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const pr = this.#prs.find((candidate) => candidate.repo === input.access.repo && candidate.number === input.number);
+    if (pr === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    pr.body = input.body;
+    pr.updatedAt = Date.now();
+    return Promise.resolve(ok(withoutRepo(pr)));
+  }
+
+  override listReviews(access: RepoAccess, number: number): Promise<AdapterResult<readonly PullRequestReview[]>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    if (!this.#prs.some((candidate) => candidate.repo === access.repo && candidate.number === number)) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    return Promise.resolve(ok(this.reviewsAndChecks.reviews(access.repo, number)));
+  }
+
+  override publishCheckRun(access: RepoAccess, input: CheckRunInput): Promise<AdapterResult<PublishedCheckRun>> {
+    const repo = this.#repo(access);
+    return Promise.resolve(repo.ok ? ok(this.reviewsAndChecks.publish(access.repo, input)) : repo);
+  }
+
+  override updateCheckRun(access: RepoAccess, checkRunId: string, input: CheckRunInput): Promise<AdapterResult<void>> {
+    const repo = this.#repo(access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    return Promise.resolve(
+      this.reviewsAndChecks.update(access.repo, checkRunId, input) ? ok(undefined) : adapterError("not-found", "no such check run"),
+    );
   }
 }
 
@@ -856,6 +942,53 @@ const tinyPullRequestEventSchema = z.looseObject({
     head: z.looseObject({ ref: z.string(), sha: z.string() }),
   }),
 });
+
+// ---------- milestone 4: the pull_request_review webhook, in GitHub's shape, read loosely ----------
+
+const reviewEventSchema = z.looseObject({
+  action: z.string(),
+  installation: webhookInstallationSchema,
+  repository: webhookRepoSchema,
+  pull_request: z.looseObject({ number: z.number().int().positive(), head: z.looseObject({ sha: z.string() }) }),
+  review: z.looseObject({
+    id: z.number(),
+    user: z.looseObject({ id: z.number(), login: z.string(), type: z.string().optional() }),
+    state: z.string(),
+    commit_id: z.string().nullish(),
+    submitted_at: z.string().nullish(),
+  }),
+});
+
+const reviewStateOf = (state: string): PullRequestReview["state"] | undefined =>
+  pullRequestReviewStates.find((known) => known === state.toLowerCase());
+
+const parseReview = (body: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = reviewEventSchema.safeParse(body);
+  const repo = parsed.success ? repoFullNameSchema.safeParse(parsed.data.repository.full_name) : undefined;
+  const state = parsed.success ? reviewStateOf(parsed.data.review.state) : undefined;
+  if (!parsed.success || repo?.success !== true || state === undefined) {
+    return adapterError("invalid-response", "the pull_request_review event couldn't be read");
+  }
+  const { review } = parsed.data;
+  return ok({
+    kind: "pull_request_review",
+    action: parsed.data.action,
+    installationId: parsed.data.installation === undefined ? null : String(parsed.data.installation.id),
+    hostRepoId: String(parsed.data.repository.id),
+    repo: repo.data,
+    number: parsed.data.pull_request.number,
+    headSha: parsed.data.pull_request.head.sha,
+    review: {
+      reviewId: String(review.id),
+      userId: String(review.user.id),
+      login: review.user.login,
+      isBot: review.user.type === "Bot",
+      state,
+      commitId: review.commit_id ?? null,
+      submittedAt: review.submitted_at === undefined || review.submitted_at === null ? null : Date.parse(review.submitted_at),
+    },
+  });
+};
 
 const withoutRepo = (pr: PullRequest & { readonly repo: RepoFullName; readonly draft: boolean }): PullRequest => ({
   number: pr.number,

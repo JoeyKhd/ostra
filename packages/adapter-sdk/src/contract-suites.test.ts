@@ -120,6 +120,22 @@ const pushBody = JSON.stringify({
   repository: { id: 1001, full_name: "test-org/test1" },
   commits: [{ added: ["pnpm-lock.yaml"], modified: ["package.json"], removed: [] }, { modified: ["package.json"] }],
 });
+// Milestone 4 (ticket 03): a review submitted, one dismissed, and a new head, in GitHub's shape.
+const reviewBody = (action: string, id: number, state: string) =>
+  JSON.stringify({
+    action,
+    installation: { id: 7 },
+    repository: { id: 1001, full_name: "test-org/test1" },
+    pull_request: { number: 3, head: { sha: "4".repeat(40) } },
+    review: { id, user: { id: 888, login: "grace", type: "User" }, state, commit_id: "4".repeat(40), submitted_at: "2026-11-19T10:00:00Z" },
+  });
+const synchronizeBody = JSON.stringify({
+  action: "synchronize",
+  installation: { id: 7 },
+  repository: { id: 1001, full_name: "test-org/test1" },
+  pull_request: { number: 3, state: "open", merged: false, updated_at: "2026-11-19T10:05:00Z", head: { ref: "ostra/contract", sha: "5".repeat(40) } },
+});
+
 const signed = (event: string, body: string) => ({
   headers: { "x-hub-signature-256": signWebhook("hook-secret", body), "x-github-event": event },
   body,
@@ -131,7 +147,7 @@ const linkedUser = { userId: "777", login: "member" };
 
 defineCodeHostContractSuite({
   name: "tiny code host",
-  create: () => {
+  create: async () => {
     const host = new TinyCodeHost({
       app,
       installationId: "7",
@@ -141,7 +157,7 @@ defineCodeHostContractSuite({
           fullName: repo,
           defaultBranch: "main",
           files: { "package.json": "{}", ".github/pull_request_template.md": "## What\n" },
-          branches: ["main", "ostra/contract", "signed"],
+          branches: ["main", "ostra/contract", "signed", "ostra/reviewed"],
           rules: {
             main: { protected: true, requiresSignedCommits: false, reasons: [] },
             signed: { protected: true, requiresSignedCommits: true, reasons: [] },
@@ -168,7 +184,22 @@ defineCodeHostContractSuite({
       compareLimits: { maxFiles: 2, maxPatchBytes: 1024 },
       oauth: { client: oauthClient, users: [{ code: "sign-in-code", user: linkedUser }] },
     });
-    return Promise.resolve({
+    // Milestone 4: a PR with reviews: a changes request later dismissed, a bot's comment and an approval.
+    const reviewed = await host.openPullRequest({
+      access: { app: { appId: app.appId, privateKey: app.privateKey }, installationId: "7", repo },
+      head: "ostra/reviewed",
+      base: "main",
+      title: "Reviewed",
+      body: "",
+      draft: false,
+    });
+    if (!reviewed.ok) throw new Error(reviewed.error.message);
+    const reviewedNumber = reviewed.value.number;
+    const asked = host.reviewsAndChecks.addReview(repo, reviewedNumber, { userId: "888", login: "grace", isBot: false, state: "changes_requested", commitId: "1".repeat(40), submittedAt: 1_000 });
+    host.reviewsAndChecks.addReview(repo, reviewedNumber, { userId: "999", login: "ci-helper[bot]", isBot: true, state: "commented", commitId: "1".repeat(40), submittedAt: 2_000 });
+    host.reviewsAndChecks.addReview(repo, reviewedNumber, { userId: "777", login: "ada", isBot: false, state: "approved", commitId: "1".repeat(40), submittedAt: 3_000 });
+    host.reviewsAndChecks.dismissReview(repo, reviewedNumber, asked.reviewId);
+    return {
       adapter: host,
       fixture: {
         app: { appId: app.appId, privateKey: app.privateKey },
@@ -222,8 +253,32 @@ defineCodeHostContractSuite({
             host.failNextRevocation = true;
           },
         },
+        reviews: {
+          number: reviewedNumber,
+          expected: [
+            { reviewId: asked.reviewId, userId: "888", login: "grace", isBot: false, state: "dismissed", commitId: "1".repeat(40), submittedAt: 1_000 },
+            { reviewId: "review-2", userId: "999", login: "ci-helper[bot]", isBot: true, state: "commented", commitId: "1".repeat(40), submittedAt: 2_000 },
+            { reviewId: "review-3", userId: "777", login: "ada", isBot: false, state: "approved", commitId: "1".repeat(40), submittedAt: 3_000 },
+          ],
+        },
+        checkRuns: {
+          headSha: "6".repeat(40),
+          otherHeadSha: "7".repeat(40),
+          read: (checkRunId) => Promise.resolve(host.reviewsAndChecks.checkRun(checkRunId)),
+          count: (headSha, name) => Promise.resolve(host.reviewsAndChecks.checkRuns(repo, headSha, name).length),
+        },
+        reviewWebhooks: {
+          submitted: {
+            input: signed("pull_request_review", reviewBody("submitted", 6001, "approved")),
+            number: 3,
+            headSha: "4".repeat(40),
+            review: { reviewId: "6001", userId: "888", login: "grace", isBot: false, state: "approved", commitId: "4".repeat(40), submittedAt: Date.parse("2026-11-19T10:00:00Z") },
+          },
+          dismissed: { input: signed("pull_request_review", reviewBody("dismissed", 6002, "dismissed")), number: 3, reviewId: "6002" },
+          synchronize: { input: signed("pull_request", synchronizeBody), number: 3, headSha: "5".repeat(40) },
+        },
       },
-    });
+    };
   },
 });
 

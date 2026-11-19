@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type {
   BranchRules,
+  CheckRunInput,
   CodeHostAdapter,
   CodeHostAppCredentials,
   CodeHostOAuthClient,
   CommentRef,
   LinkedUser,
+  PullRequestReview,
   RepoAccess,
   WebhookInput,
 } from "../code-host/base.ts";
@@ -76,7 +78,38 @@ export type CodeHostFixture = {
     /** Makes the host's next revocation fail. */
     readonly failNextRevocation: () => void;
   };
+  // ---- milestone 4 (ticket 03, F-104) ----
+  /** A PR whose reviews the fake holds, and what `listReviews` must answer, oldest first: a dismissal, a bot's and an approval among them. Absent: skipped. */
+  readonly reviews?: { readonly number: number; readonly expected: readonly PullRequestReview[] };
+  /** Heads to publish check runs on, and the fake's view of them. Absent: skipped. */
+  readonly checkRuns?: {
+    readonly headSha: string;
+    readonly otherHeadSha: string;
+    readonly read: (checkRunId: string) => Promise<CheckRunView | undefined>;
+    /** How many runs the head has under the name. */
+    readonly count: (headSha: string, name: string) => Promise<number>;
+  };
+  /** Signed `pull_request_review` webhooks (submitted, dismissed) and a `pull_request` `synchronize`. Absent: skipped. */
+  readonly reviewWebhooks?: {
+    readonly submitted: { readonly input: WebhookInput; readonly number: number; readonly headSha: string; readonly review: PullRequestReview };
+    readonly dismissed: { readonly input: WebhookInput; readonly number: number; readonly reviewId: string };
+    readonly synchronize: { readonly input: WebhookInput; readonly number: number; readonly headSha: string };
+  };
 };
+
+/** Milestone 4: a check run as the fake host holds it, for the suite to read back. */
+export type CheckRunView = CheckRunInput & { readonly checkRunId: string };
+
+/** A check run's first state, as the review check publishes it on a new head (ADR 0040). */
+export const checkRunInput = (headSha: string, name: string): CheckRunInput => ({
+  name,
+  headSha,
+  status: "in_progress",
+  conclusion: null,
+  title: "Waiting for an independent reviewer",
+  summary: "A member who didn't drive the task approves the PR's current head.",
+  externalId: `suite:${name}`,
+});
 
 /** A base and a head the host can compare, and the counts it must report. */
 export type ComparePair = { readonly base: string; readonly head: string; readonly aheadBy: number; readonly behindBy: number };
@@ -94,6 +127,7 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       draftPullRequests: "boolean",
       prComments: "boolean",
       userLink: "boolean",
+      reviews: "boolean",
     });
 
     it("builds a manifest that points the App's webhooks at the given address", () => {
@@ -368,6 +402,125 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       expect((await adapter.exchangeUserCode(link.client, link.code, link.redirectUri)).ok).toBe(false);
       expect(link.revokedTokens()).toBe(before + 1);
       expect((await adapter.exchangeUserCode(link.client, "a-wrong-code", link.redirectUri)).ok).toBe(false);
+    });
+
+    // ---- milestone 4 (ticket 03, F-104): reviews, check runs and PR bodies ----
+
+    it("F-104: lists a PR's reviews oldest first, a dismissal and a bot's among them; a host without reviews says unsupported", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.reviews) {
+        expect(await adapter.listReviews(fixture.access, fixture.reviews?.number ?? 1)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      const reviews = fixture.reviews;
+      if (reviews === undefined) {
+        context.skip();
+        return;
+      }
+      // The fixture must hold what the check reads past: a dismissed review, a bot's, and an approval.
+      expect(reviews.expected.some((review) => review.state === "dismissed")).toBe(true);
+      expect(reviews.expected.some((review) => review.isBot)).toBe(true);
+      expect(reviews.expected.some((review) => review.state === "approved")).toBe(true);
+      expect(await adapter.listReviews(fixture.access, reviews.number)).toEqual({ ok: true, value: reviews.expected });
+      expect(await adapter.listReviews({ ...fixture.access, app: fixture.wrongApp }, reviews.number)).toMatchObject({ ok: false });
+    });
+
+    it("F-104: publishes a check run once per head and name: a second publish answers the same run", async (context) => {
+      const { adapter, fixture } = subject();
+      const runs = fixture.checkRuns;
+      const input = checkRunInput(runs?.headSha ?? "0".repeat(40), "ostra/independent-review");
+      if (!adapter.capabilities.checkRuns) {
+        expect(await adapter.publishCheckRun(fixture.access, input)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      if (runs === undefined) {
+        context.skip();
+        return;
+      }
+      const first = await adapter.publishCheckRun(fixture.access, input);
+      if (!first.ok) throw new Error(first.error.message);
+      expect(await adapter.publishCheckRun(fixture.access, input)).toEqual(first);
+      expect(await runs.count(runs.headSha, input.name)).toBe(1);
+      // Another name on the same head is another run, and so is the same name on another head.
+      const other = await adapter.publishCheckRun(fixture.access, { ...input, name: "ostra/another-check" });
+      expect(other.ok && other.value.checkRunId).not.toBe(first.value.checkRunId);
+      const otherHead = await adapter.publishCheckRun(fixture.access, { ...input, headSha: runs.otherHeadSha });
+      expect(otherHead.ok && otherHead.value.checkRunId).not.toBe(first.value.checkRunId);
+      expect(await runs.count(runs.headSha, input.name)).toBe(1);
+    });
+
+    it("F-104: updating a check run changes its status, conclusion and words, on its own head", async (context) => {
+      const { adapter, fixture } = subject();
+      const runs = fixture.checkRuns;
+      if (!adapter.capabilities.checkRuns || runs === undefined) {
+        context.skip();
+        return;
+      }
+      const name = "ostra/updated-check";
+      const published = await adapter.publishCheckRun(fixture.access, checkRunInput(runs.headSha, name));
+      if (!published.ok) throw new Error(published.error.message);
+      const id = published.value.checkRunId;
+      expect(await runs.read(id)).toMatchObject({ name, headSha: runs.headSha, status: "in_progress", conclusion: null });
+      const passed: CheckRunInput = { ...checkRunInput(runs.headSha, name), status: "completed", conclusion: "success", title: "Approved by an independent reviewer" };
+      expect(await adapter.updateCheckRun(fixture.access, id, passed)).toEqual({ ok: true, value: undefined });
+      expect(await runs.read(id)).toMatchObject({ name, headSha: runs.headSha, status: "completed", conclusion: "success", title: passed.title });
+      const back: CheckRunInput = { ...checkRunInput(runs.headSha, name), status: "completed", conclusion: "action_required" };
+      expect(await adapter.updateCheckRun(fixture.access, id, back)).toEqual({ ok: true, value: undefined });
+      expect(await runs.read(id)).toMatchObject({ status: "completed", conclusion: "action_required" });
+      // A second publish after the update answers the same run and leaves its state.
+      expect(await adapter.publishCheckRun(fixture.access, checkRunInput(runs.headSha, name))).toEqual(published);
+      expect(await runs.read(id)).toMatchObject({ conclusion: "action_required" });
+    });
+
+    it("F-104: a body update replaces the description and keeps the rest of the PR", async (context) => {
+      const { adapter, fixture } = subject();
+      if (fixture.prHead === null) {
+        context.skip();
+        return;
+      }
+      const found = await adapter.findPullRequest(fixture.access, fixture.prHead);
+      const pr = found.ok && found.value !== null
+        ? found.value
+        : await adapter.openPullRequest({ access: fixture.access, head: fixture.prHead, base: fixture.defaultBranch, title: "ostra contract suite", body: "Opened by the code host contract suite.", draft: false }).then((opened) => {
+            if (!opened.ok) throw new Error(opened.error.message);
+            return opened.value;
+          });
+      const body = "Opened by the code host contract suite.\n\nRelated: another repo's PR.";
+      const updated = await adapter.updatePullRequestBody({ access: fixture.access, number: pr.number, body });
+      if (!updated.ok && updated.error.code === "unsupported") {
+        context.skip();
+        return;
+      }
+      expect(updated).toMatchObject({ ok: true, value: { number: pr.number, title: pr.title, headBranch: pr.headBranch, baseBranch: pr.baseBranch, state: pr.state } });
+      const read = await adapter.getPullRequest(fixture.access, pr.number);
+      if (read.ok) {
+        expect(read.value).toMatchObject({ number: pr.number, title: pr.title, headBranch: pr.headBranch, baseBranch: pr.baseBranch, state: pr.state });
+        if (read.value.body !== undefined) {
+          expect(read.value.body).toBe(body);
+        }
+      }
+    });
+
+    it("F-104: reads a review submitted and dismissed, and a new head, from their signed webhooks", (context) => {
+      const { adapter, fixture } = subject();
+      const hooks = fixture.reviewWebhooks;
+      if (!adapter.capabilities.reviews || hooks === undefined) {
+        context.skip();
+        return;
+      }
+      expect(adapter.verifyWebhook(hooks.submitted.input)).toBe(true);
+      expect(adapter.parseWebhook(hooks.submitted.input)).toMatchObject({
+        ok: true,
+        value: { kind: "pull_request_review", action: "submitted", number: hooks.submitted.number, headSha: hooks.submitted.headSha, review: hooks.submitted.review },
+      });
+      expect(adapter.parseWebhook(hooks.dismissed.input)).toMatchObject({
+        ok: true,
+        value: { kind: "pull_request_review", action: "dismissed", number: hooks.dismissed.number, review: { reviewId: hooks.dismissed.reviewId, state: "dismissed" } },
+      });
+      expect(adapter.parseWebhook(hooks.synchronize.input)).toMatchObject({
+        ok: true,
+        value: { kind: "pull_request", action: "synchronize", number: hooks.synchronize.number, headSha: hooks.synchronize.headSha },
+      });
     });
 
     it("verifies a webhook's signature and refuses a tampered body", () => {

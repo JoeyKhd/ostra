@@ -156,7 +156,10 @@ export type PullRequestDetails = PullRequest & {
   readonly body?: string | null;
 };
 
-/** A verified webhook, read loosely. Only `pull_request` events are read in milestone 2. */
+/**
+ * A verified webhook, read loosely. Only `pull_request` events are read in milestone 2. A new head
+ * on a PR is its `synchronize` action, which milestone 4's review check reads (F-104).
+ */
 export type CodeHostWebhookEvent =
   | {
       readonly kind: "pull_request";
@@ -212,6 +215,20 @@ export type CodeHostWebhookEvent =
       readonly after: string;
       /** The paths the push's commits touched, when the payload lists them; `null` when it doesn't. */
       readonly changedPaths: readonly string[] | null;
+    }
+    // ---- milestone 4 (F-104): a review submitted, edited or dismissed ----
+  /** A review on a PR. A new head is the `pull_request` event's `synchronize`. */
+  | {
+      readonly kind: "pull_request_review";
+      /** `submitted`, `edited`, `dismissed`. */
+      readonly action: string;
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      readonly number: number;
+      /** The PR's head when the review was sent, so a review of an older head is told apart. */
+      readonly headSha: string;
+      readonly review: PullRequestReview;
     }
   /** Every other event: recorded and not acted on. */
   | { readonly kind: "other"; readonly event: string };
@@ -282,6 +299,48 @@ export type DeleteRefResult = {
   /** `false` when there was no such ref: deleting it again is not an error. */
   readonly deleted: boolean;
 };
+
+// ---------- milestone 4 (F-104, ADR 0040, ADR 0027): reviews, check runs ----------
+
+/** A review's state, as the host reports it: `dismissed` is a review someone dismissed since. */
+export const pullRequestReviewStates = ["approved", "changes_requested", "commented", "dismissed", "pending"] as const;
+export type PullRequestReviewState = (typeof pullRequestReviewStates)[number];
+
+/** One review on a PR (`listReviews`, the `pull_request_review` webhook). Its body is never read. */
+export type PullRequestReview = {
+  readonly reviewId: string;
+  /** The reviewer's account on the host: what a member's linked account is matched by (F-119). */
+  readonly userId: string;
+  readonly login: string;
+  /** A bot or an App, which never counts as an independent review (F-104). */
+  readonly isBot: boolean;
+  readonly state: PullRequestReviewState;
+  /** The head commit it reviewed; `null` when the host doesn't say. */
+  readonly commitId: string | null;
+  /** In ms since the epoch; `null` for a pending review, which isn't submitted. */
+  readonly submittedAt: number | null;
+};
+
+/**
+ * A check run's state: in progress with no conclusion, or completed with one. ostra writes only
+ * `success` and `action_required` (ADR 0040): a check that waits for a review is never a failure.
+ */
+export type CheckRunState =
+  | { readonly status: "in_progress"; readonly conclusion: null }
+  | { readonly status: "completed"; readonly conclusion: "success" | "action_required" };
+
+/** What `publishCheckRun` and `updateCheckRun` write. The title and summary are ostra's words, sent as data. */
+export type CheckRunInput = CheckRunState & {
+  /** The check's name, as branch protection requires it. With `headSha`, its identity. */
+  readonly name: string;
+  readonly headSha: string;
+  readonly title: string;
+  readonly summary: string;
+  /** ostra's own ID for it, such as the review check's row. */
+  readonly externalId: string;
+};
+
+export type PublishedCheckRun = { readonly checkRunId: string };
 
 export abstract class CodeHostAdapter {
   readonly kind = "code-host" as const;
@@ -436,5 +495,32 @@ export abstract class CodeHostAdapter {
   exchangeUserCode(client: CodeHostOAuthClient, code: string, redirectUri: string): Promise<AdapterResult<LinkedUser>> {
     this.plumbing.logger.debug("exchangeUserCode is not supported", { codeLength: code.length, redirectLength: redirectUri.length, clientLength: client.clientId.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't link a member's account`));
+  }
+
+  // ---------- milestone 4: additive, so each answers `unsupported` until an adapter has it ----------
+
+  /**
+   * A PR's reviews, oldest first, dismissed ones included (F-104, ADR 0040). Needs the capability
+   * `reviews`.
+   */
+  listReviews(access: RepoAccess, number: number): Promise<AdapterResult<readonly PullRequestReview[]>> {
+    this.plumbing.logger.debug("listReviews is not supported", { repo: access.repo, number });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't list a PR's reviews`));
+  }
+
+  /**
+   * Publishes a check run on a head, as the App, idempotent by `(headSha, name)`: a second publish
+   * for the same head and name answers the run that exists, and makes no second one (ADR 0040).
+   * Needs the capability `checkRuns`.
+   */
+  publishCheckRun(access: RepoAccess, input: CheckRunInput): Promise<AdapterResult<PublishedCheckRun>> {
+    this.plumbing.logger.debug("publishCheckRun is not supported", { repo: access.repo, nameLength: input.name.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't publish a check run`));
+  }
+
+  /** Changes a published check run's status, conclusion and words. Needs the capability `checkRuns`. */
+  updateCheckRun(access: RepoAccess, checkRunId: string, input: CheckRunInput): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("updateCheckRun is not supported", { repo: access.repo, idLength: checkRunId.length, status: input.status });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't update a check run`));
   }
 }

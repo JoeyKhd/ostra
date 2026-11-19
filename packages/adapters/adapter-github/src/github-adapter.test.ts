@@ -1061,6 +1061,8 @@ describe("the GitHub adapter", () => {
         draftPullRequests: true,
         prComments: true,
         userLink: true,
+        // Milestone 4: until ticket 08.
+        reviews: false,
       });
     });
   });

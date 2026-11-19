@@ -75,6 +75,10 @@ export const githubWebhookHandler =
       // Milestone 3 (F-053, ticket 25): an `@ostra` comment, acted on by its own job.
       return deps.onComment === undefined ? { outcome: "ignored", reason: "comments aren't read here" } : deps.onComment(context, event);
     }
+    if (event.kind === "pull_request_review") {
+      // Milestone 4 (F-104): the independent-review check reads reviews (ticket 18).
+      return { outcome: "ignored", reason: "reviews aren't read here yet" };
+    }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.event.slice(0, 64)})` };
     }
