@@ -46,10 +46,11 @@ export class DockerExecutor extends ExecutorAdapter {
   readonly name = "docker";
   readonly capabilities: ExecutorCapabilities = {
     isolation: "container",
-    // The environment's services come with F-094 (milestone 3).
+    // The environment's services and the snapshot image come with milestone 3's ticket 14, which
+    // declares `services: true` and `snapshots: "image"` once they're built.
     services: false,
     boxSizes: false,
-    snapshots: false,
+    snapshots: "none",
     processContainment: "container",
   };
 
@@ -68,7 +69,8 @@ export class DockerExecutor extends ExecutorAdapter {
   }
 
   create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
-    return this.#inner.create(input);
+    const unfit = this.refuseUnfitSpec(input.spec);
+    return unfit === null ? this.#inner.create(input) : Promise.resolve(unfit);
   }
 
   prepare(input: PrepareInput): Promise<AdapterResult<PrepareResult>> {

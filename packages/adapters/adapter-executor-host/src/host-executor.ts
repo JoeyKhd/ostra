@@ -204,7 +204,8 @@ export class HostExecutor extends ExecutorAdapter {
         return this.#containment;
       });
     const kind = options.processContainment ?? options.containment?.kind ?? "process-tree";
-    this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: false, processContainment: kind };
+    // Milestone 3's ticket 15 builds the repo mirrors and the dependency cache, and declares `host-cache`.
+    this.capabilities = { isolation: "none", services: false, boxSizes: false, snapshots: "none", processContainment: kind };
   }
 
   /**
@@ -260,6 +261,11 @@ export class HostExecutor extends ExecutorAdapter {
   }
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
+    // A host never starts services, and only a host cache it keeps (ADR 0038, ADR 0029).
+    const unfit = this.refuseUnfitSpec(input.spec);
+    if (unfit !== null) {
+      return unfit;
+    }
     const key = boxKey(input);
     if (this.#boxes.has(key)) {
       return adapterError("conflict", "the box exists already");

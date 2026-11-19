@@ -288,6 +288,14 @@ defineExecutorContractSuite({
         },
         proxies: { gitBaseUrl: "http://127.0.0.1:9/git", modelBaseUrl: "http://127.0.0.1:9/model", mcpUrl: "http://127.0.0.1:9/mcp" },
         echoLaunch: (box) => nodeLaunch(box.workspaceDir, "process.stdin.pipe(process.stdout)"),
+        // Milestone 3: the tiny executor's checks are JavaScript, as its setup script is.
+        checks: {
+          passing: "process.exit(0)",
+          failing: "process.exit(3)",
+          slow: "setTimeout(() => {}, 60000)",
+          printsEnv: "console.log(JSON.stringify(process.env))",
+          noisy: "console.log('first line'); for (let i = 0; i < 400; i++) console.log('x'.repeat(60) + ' ' + i); console.log('the last line')",
+        },
         detachedHelper: {
           // The agent starts a helper in its own session or console, writes its PID, and exits: the
           // helper is an orphan that walking the agent's tree can't reach.

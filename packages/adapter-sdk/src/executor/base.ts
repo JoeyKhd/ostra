@@ -7,8 +7,13 @@ import type {
   GitPerson,
   GitSha,
   HiddenRefRestore,
+  ProjectId,
   RepoId,
   RepoSecret,
+  SnapshotBuildEnvironment,
+  SnapshotCredentials,
+  SnapshotFailureReason,
+  SnapshotId,
   TaskId,
   TaskSpec,
 } from "@ostra/protocol";
@@ -19,6 +24,7 @@ import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { AgentCommand, AgentLaunch } from "../agent/base.ts";
 import type { ExecutorCapabilities } from "./capabilities.ts";
+import type { CheckRunResult, RunChecksInput } from "./checks.ts";
 
 // The executor kind (ADR 0025, ADR 0029): `docker`, `host`, then `kubernetes`. It runs in the
 // runner and gives each task its place to run. The same task code drives every executor, so a
@@ -181,6 +187,47 @@ export type RunAgentCommandInput = {
 /** A command's end. `stdout` is cut at 64 KiB; it can hold content, so it's never logged. */
 export type AgentCommandResult = { readonly exitCode: number | null; readonly stdout: string };
 
+// ---------- milestone 3: checks, snapshots and the host cache ----------
+
+/** A snapshot build's inputs and secrets (F-051): the command's environment and the snapshot credentials. */
+export type BuildSnapshotInput = {
+  readonly snapshotId: SnapshotId;
+  readonly projectId: ProjectId;
+  readonly environment: SnapshotBuildEnvironment;
+  /** The setup secrets and the repos' tokens, mounted for the build only. Never logged. */
+  readonly credentials: SnapshotCredentials;
+  /** The build's output, as it comes: words for the panel, never logged with a secret's value. */
+  readonly onOutput: (stream: "stdout" | "stderr", text: string) => void;
+  readonly signal?: AbortSignal;
+};
+
+/** A built snapshot, or why it wasn't: `snapshot.built` or `snapshot.failed`. */
+export type SnapshotBuildResult =
+  | { readonly outcome: "built"; readonly imageRef: string; readonly imageDigest: string; readonly durationMs: number }
+  | { readonly outcome: "failed"; readonly reason: SnapshotFailureReason; readonly detail: string };
+
+/** A snapshot image this runner keeps. */
+export type KeptSnapshot = { readonly imageRef: string; readonly imageDigest: string };
+
+/** A project's host cache: what to mirror, under which key. */
+export type PrepareCacheInput = {
+  readonly projectId: ProjectId;
+  /** The spec's `snapshot.cacheKey`: names the project's mirrors and cache folder on this runner. */
+  readonly cacheKey: string;
+  /** The repos to mirror, cloned through the git proxy as a task's are. */
+  readonly repos: readonly { readonly repoId: RepoId; readonly cloneUrl: string }[];
+  readonly proxies: TaskProxies;
+  readonly signal?: AbortSignal;
+};
+
+export type PreparedCache = {
+  readonly cacheKey: string;
+  /** Whether a cache for the key was there already, so this made nothing new but fetched. */
+  readonly reused: boolean;
+  /** The project's dependency cache folder, which each box's package managers point at. */
+  readonly dependencyCacheDir: string;
+};
+
 export abstract class ExecutorAdapter {
   readonly kind = "executor" as const;
   abstract readonly name: string;
@@ -271,4 +318,61 @@ export abstract class ExecutorAdapter {
    * the task volume, as the sidecar sees it. Names only, never content, and never logged.
    */
   abstract listWorkspaceRoot(box: BoxRef): Promise<AdapterResult<readonly string[]>>;
+
+  // ---------- milestone 3: additive, so each answers `unsupported` until an executor has it ----------
+
+  /**
+   * A spec this executor can't run (ADR 0038): services without `services`, a snapshot of a kind it
+   * doesn't keep. `create` calls it first, so such a spec is refused before a box is made; `null`
+   * when the spec fits.
+   */
+  protected refuseUnfitSpec(spec: TaskSpec): AdapterResult<never> | null {
+    if ((spec.services?.length ?? 0) > 0 && !this.capabilities.services) {
+      return adapterError("unsupported", `${this.name} doesn't start services`);
+    }
+    const snapshot = spec.snapshot ?? null;
+    if (snapshot !== null) {
+      const wanted = snapshot.kind === "image" ? "image" : "host-cache";
+      if (this.capabilities.snapshots !== wanted) {
+        return adapterError("unsupported", `${this.name} doesn't start a box from a ${wanted} snapshot`);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Runs the turn's checks in the agent's environment (F-054, ADR 0052, Q188), in order, each with
+   * its timeout and the total's, and keeps each one's output (`runChecksWith` does the shared part).
+   * A check's environment holds the environment's variables and never a model key, a code host
+   * token or the runner's own variables.
+   */
+  runChecks(box: BoxRef, input: Omit<RunChecksInput, "workspaceDir">): Promise<AdapterResult<readonly CheckRunResult[]>> {
+    this.plumbing.logger.debug("runChecks is not supported", { taskId: box.taskId, checks: input.spec.checks?.length ?? 0 });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't run checks yet`));
+  }
+
+  /**
+   * Builds a project's snapshot image and keeps it on this runner (F-051, ADR 0038), with the setup
+   * secrets mounted for the build only and the image scanned for each one's value. Needs
+   * `snapshots: "image"`.
+   */
+  buildSnapshot(input: BuildSnapshotInput): Promise<AdapterResult<SnapshotBuildResult>> {
+    this.plumbing.logger.debug("buildSnapshot is not supported", { snapshotId: input.snapshotId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't build a snapshot`));
+  }
+
+  /** The snapshot image this runner keeps by ID, or `null`. Needs `snapshots: "image"`. */
+  hasSnapshot(snapshotId: SnapshotId): Promise<AdapterResult<KeptSnapshot | null>> {
+    this.plumbing.logger.debug("hasSnapshot is not supported", { snapshotId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} keeps no snapshots`));
+  }
+
+  /**
+   * Makes or refreshes a project's repo mirrors and dependency cache folder (F-051, ADR 0038 as
+   * amended, Q185), which the project's next boxes start from. Needs `snapshots: "host-cache"`.
+   */
+  prepareCache(input: PrepareCacheInput): Promise<AdapterResult<PreparedCache>> {
+    this.plumbing.logger.debug("prepareCache is not supported", { projectId: input.projectId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} keeps no host cache`));
+  }
 }

@@ -154,7 +154,7 @@ describe("a missing operation", () => {
         isolation: "none",
         services: false,
         boxSizes: false,
-        snapshots: false,
+        snapshots: "none",
         processContainment: "process-tree",
       } as const;
       health(): Promise<HealthReport> {

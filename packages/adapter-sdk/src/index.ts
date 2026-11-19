@@ -25,6 +25,7 @@ export { descendantsOf, isAlive, killTree, listProcesses, sameProcess, watchProc
 export type { ProcessInfo, ProcessKey, TreeWatch } from "./agent/acp/process-tree.ts";
 export * from "./executor/capabilities.ts";
 export * from "./executor/base.ts";
+export * from "./executor/checks.ts";
 export * from "./executor/work-in-progress.ts";
 export * from "./model-provider/capabilities.ts";
 export * from "./model-provider/base.ts";

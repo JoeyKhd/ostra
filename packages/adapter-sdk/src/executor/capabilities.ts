@@ -12,8 +12,12 @@ export type ExecutorCapabilities = {
   readonly services: boolean;
   /** It honours box sizes (Q43); without them it counts slots only. */
   readonly boxSizes: boolean;
-  /** It starts boxes from a prepared snapshot (F-051). */
-  readonly snapshots: boolean;
+  /**
+   * What a box can start from instead of a full setup (F-051, ADR 0038; milestone 3): a snapshot
+   * image this runner built and keeps (`image`, `docker`), the project's repo mirrors and dependency
+   * cache (`host-cache`, `host`), or nothing (`none`).
+   */
+  readonly snapshots: "image" | "host-cache" | "none";
   /**
    * How a task's processes end together (ADR 0029): with the box's container, a Windows job
    * object, a Linux cgroup, or only by walking the agent's process tree (which can miss a process

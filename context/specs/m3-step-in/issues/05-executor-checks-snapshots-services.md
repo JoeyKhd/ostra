@@ -1,6 +1,6 @@
 # 05: Adapter SDK: executor additions for checks, snapshots and services
 
-Status: ready-for-agent
+Status: done
 Builder: adapters (contracts, first)
 Blocked by: 01
 Features: F-054, F-051, F-094
@@ -16,9 +16,10 @@ Spec: `../spec.md`, section 5.2 ("`ExecutorAdapter`"); ADR 0038 (amended), ADR 0
 
 ## Done when
 
-- [ ] Tests: the suite passes against the tiny executor and `host`; the `docker` cases pass against the fake engine and are gated live on a Docker host.
-- [ ] Every caller compiles.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add executor checks, snapshots, services`.
+- [x] Tests: the suite passes against the tiny executor and `host`; the `docker` cases pass against the fake engine and are gated live on a Docker host.
+- [x] Every caller compiles.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add executor checks, snapshots, services`.
 
 ## Comments
+- 2026-11-19, adapters (contracts): done in `✨ add executor checks, snapshots, services`. **Capabilities:** `services` stays a boolean; `snapshots` is now `"image" | "host-cache" | "none"`, as section 5.2 names it, in place of milestone 1's boolean, which nothing read (only the declarations, all changed in this commit). **Declared as built, not as planned:** `host` says `services: false, snapshots: "none"` and `docker` `services: false, snapshots: "none"` until tickets 15 and 14 build the host cache, and the services and the image, and declare `host-cache`, and `true` and `image`, with their proofs; a declared capability is a promise the scheduler acts on (adapter parity). **Base class** (additive, each `unsupported` by default): `runChecks(box, { spec, changedRepoIds, env, outputDir, totalTimeoutMs?, signal? })` -> `CheckRunResult[]` (`checkId`, `name`, `repoId`, `status`, `exitCode`, `durationMs`, `outputTail`, `outputPath`); `buildSnapshot({ snapshotId, projectId, environment, credentials, onOutput })` -> `{ outcome: "built", imageRef, imageDigest, durationMs }` or `{ outcome: "failed", reason, detail }`; `hasSnapshot(snapshotId)` -> `{ imageRef, imageDigest }` or `null`; `prepareCache({ projectId, cacheKey, repos, proxies })` -> `{ cacheKey, reused, dependencyCacheDir }`; and `refuseUnfitSpec(spec)`, which `create` calls first, so a spec with services or a snapshot this executor can't use is refused before a box is made (`create` already took the spec's `services` and `snapshot`, through the minor-2 spec). The tiny executor, `host` and `docker` call it. **The shared part** (`src/executor/checks.ts`, exported): `runChecksWith(input, runOne)` runs the checks that apply in order (`checksToRun`: a check with no repo always, one with a repo only when the turn changed it, Q188), each in its repo's folder or the workspace root, every one even after a failure, each with `min(its timeout, what's left of the total)`, the rest `timed-out` past the total; keeps the output's tail (16 KiB, `tailBytes`, cut at a character) and the whole to 4 MiB in `<checkId>.log`; and builds the environment with `checkEnvironment` (what a command needs, the environment's variables, minus `OSTRA_*`, GitHub and model-provider tokens by name, nothing else of the runner's). An executor brings `RunOneCheck`: the tiny one runs JavaScript with Node, as its setup does. **The suite** gains eight cases: pass, fail and time out in order; a repo check skipped when its repo didn't change; no runner variable, code host token or model key in a check, planted in the runner's environment and in the environment's variables; the output cut to its tail with the whole in its file; services refused without `services`; a snapshot of a kind the executor doesn't keep refused; a snapshot built, found and used (`image` with a fixture, so gated to a Docker host); the host cache reused by the same project and not another (`host-cache` with a fixture). The fixture's `checks`, `snapshot` and `cache` probes are optional, so `host` and `docker` run the refusal cases now and the rest with tickets 15 and 14. Unit tests: `src/executor/checks.test.ts`. Break-it checks: ten (the repo filter, the credential filter, the runner's environment, the tail's cap, a failure stopping the rest, a timeout read as a failure, the total, a tail inside a character, the services refusal, the snapshot kind), each failing its case.

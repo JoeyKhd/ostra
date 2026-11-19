@@ -64,6 +64,8 @@ import type {
   StopInput,
 } from "../executor/base.ts";
 import type { ExecutorCapabilities } from "../executor/capabilities.ts";
+import { runChecksWith } from "../executor/checks.ts";
+import type { CheckRunResult, RunChecksInput } from "../executor/checks.ts";
 import { ModelProviderAdapter } from "../model-provider/base.ts";
 import type { CatalogEntry, CatalogMatch, ConnectionTest, EndpointModel, ModelEndpoint } from "../model-provider/base.ts";
 import type { ModelProviderCapabilities } from "../model-provider/capabilities.ts";
@@ -995,16 +997,59 @@ export class TinyExecutor extends ExecutorAdapter {
     isolation: "none",
     services: false,
     boxSizes: false,
-    snapshots: false,
+    snapshots: "none",
     processContainment: "process-tree",
   };
   readonly #boxes = new Map<string, TinyBox>();
+
+  /**
+   * Milestone 3: the turn's checks, each a JavaScript program run by Node, as the tiny setup script
+   * is, so the case runs the same on every platform (the real executors run a command line).
+   */
+  override async runChecks(ref: BoxRef, input: Omit<RunChecksInput, "workspaceDir">): Promise<AdapterResult<readonly CheckRunResult[]>> {
+    const box = this.#boxes.get(String(ref.boxId));
+    if (box === undefined) {
+      return adapterError("not-found", "no such box");
+    }
+    return ok(
+      await runChecksWith({ ...input, workspaceDir: box.created.workspaceDir }, ({ command, cwd, env, timeoutMs, onOutput }) =>
+        new Promise((resolve) => {
+          let timedOut = false;
+          const child = spawn(process.execPath, ["-e", command], { cwd, env: { ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+          const timer = setTimeout(() => {
+            timedOut = true;
+            if (child.pid !== undefined) {
+              void killTree(child.pid);
+            }
+          }, timeoutMs);
+          child.stdout.on("data", (chunk: Buffer) => {
+            onOutput(chunk.toString("utf8"));
+          });
+          child.stderr.on("data", (chunk: Buffer) => {
+            onOutput(chunk.toString("utf8"));
+          });
+          child.on("error", (error) => {
+            clearTimeout(timer);
+            resolve({ exitCode: null, timedOut: false, error: error.name });
+          });
+          child.on("close", (code) => {
+            clearTimeout(timer);
+            resolve({ exitCode: code, timedOut, error: null });
+          });
+        }),
+      ),
+    );
+  }
 
   health(): Promise<HealthReport> {
     return Promise.resolve({ status: "ok" });
   }
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
+    const unfit = this.refuseUnfitSpec(input.spec);
+    if (unfit !== null) {
+      return unfit;
+    }
     const root = await mkdtemp(path.join(tmpdir(), "ostra-tiny-box-"));
     const created = { workspaceDir: path.join(root, "workspace"), agentDir: path.join(root, "agent"), gitConfig: path.join(root, "git", "config") };
     await mkdir(created.workspaceDir, { recursive: true });
