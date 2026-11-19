@@ -7,7 +7,7 @@ import { exitCodes } from "./cli/cli.ts";
 import { createBoxDispatcher } from "./box-dispatcher.ts";
 import { startConnection } from "./connection/peer.ts";
 import type { CommandHandlers, ConnectionHooks, PeerStatus, RunnerConnection } from "./connection/peer.ts";
-import { signInAgainAdvice, updateStatus } from "./identity/store.ts";
+import { dataPaths, signInAgainAdvice, updateStatus } from "./identity/store.ts";
 import { defaultAgents } from "./task-host/agents.ts";
 import { fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
@@ -60,9 +60,28 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
   let work: Work;
   switch (config.executor) {
     case "host": {
-      const executor = await HostExecutor.start({ dataDir: path.resolve(dataDir), shell: config.shell }, { logger, clock: { now: () => Date.now() } });
+      const context = { logger, clock: { now: () => Date.now() } };
+      // Milestone 5 (ticket 10): a pool runs the agent as a separate OS user, and refuses to start
+      // where it can't (Windows), without that user, or on the development switch in production.
+      let executor: HostExecutor;
+      if (record.kind === "pool") {
+        const started = await HostExecutor.startPool(
+          { dataDir: path.resolve(dataDir), shell: config.shell, agentUser: config.hostPoolAgentUser, secrets: [dataPaths(path.resolve(dataDir)).privateKey] },
+          context,
+        );
+        if (!started.ok) {
+          terminal.warn(`${started.reason}.`);
+          return exitCodes.failed;
+        }
+        executor = started.value;
+      } else {
+        executor = await HostExecutor.start({ dataDir: path.resolve(dataDir), shell: config.shell }, context);
+      }
       const health = await executor.health();
-      if (health.status !== "ok") {
+      // A pool on the development switch says so and runs; anything else short of ok stops here.
+      if (health.status === "degraded" && executor.agentUser.kind === "same-user-development") {
+        terminal.warn(`The host pool runs the agent as this runner's own user: ${health.reason}.`);
+      } else if (health.status !== "ok") {
         terminal.warn(`The host executor can't run tasks here: ${health.reason}.`);
         return exitCodes.failed;
       }
@@ -95,7 +114,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
           }
         },
         shutdown: host.shutdown,
-        describe: `host, not isolated, ${executor.capabilities.processContainment} containment`,
+        describe: `host, not isolated, ${executor.capabilities.processContainment} containment${executor.agentUser.kind === "same-user-development" ? ", same user (development only)" : ""}`,
       };
       break;
     }

@@ -460,6 +460,10 @@ The maintainer asked on 2026-11-19: "it doesn't seem that our models have suppor
 
 ## Open
 
+### Raised by milestone 5 (2026-11-20)
+
+**Q293 👤 Is one agent user per `host` pool machine enough?** (F-015, ADR 0029 as amended, milestone 5's ticket 10). A `host` pool runs every task's processes as `OSTRA_HOST_POOL_AGENT_USER`, and hands each task's folder to that user's group, so two tasks running at once on one machine run as the same user, and one's agent can read the other's worktree while both run. The runner's key, its temp folder and anything it never handed over stay out of reach. Ticket 10's live check says "can't read another task's worktree", which holds only for a worktree the runner kept or removed. *Options:* keep one user and say so on the runner page; or a list of agent users, one per slot, so a running task has its own; or one slot per `host` pool runner. *Recommendation:* one user per slot (`OSTRA_HOST_POOL_AGENT_USER` taking a comma-separated list, the slots capped at its length), since a `host` pool is for machines that can't run containers and its tasks are the same organization's; until then the runner page says the pool's tasks share one user.
+
 ### Raised by milestone 1 (2026-11-19)
 
 Found while building and demonstrating milestone 1 (`specs/m1-first-pr/`: the tickets' closing notes, `demo.md`). Each names the ledger row it blocks, and that row's note names the question back. Q129 to Q133 and Q136 were settled on 2026-11-19 (above). Q134 is research and stays.

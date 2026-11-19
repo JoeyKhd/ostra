@@ -1,6 +1,7 @@
 import { createWriteStream } from "node:fs";
 import type { WriteStream } from "node:fs";
 import { chmod, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   adapterError,
@@ -47,6 +48,15 @@ import type {
 import { gitShaSchema, repoBranchName, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
+import {
+  agentUserMarkerSweep,
+  agentUserProcesses,
+  checkAgentUser,
+  handOverToGroup,
+  hostPoolAgentUser,
+  SAME_USER_DEVELOPMENT,
+} from "./agent-user.ts";
+import type { AgentUser, HandOver, SudoProgram } from "./agent-user.ts";
 import { localProcesses } from "./task-processes.ts";
 import type { TaskProcesses } from "./task-processes.ts";
 import type { Containment, ContainmentProbe, ContainmentUnit } from "./containment.ts";
@@ -80,6 +90,11 @@ import type { RunResult } from "./process.ts";
 // containment by the tree (or a cgroup on Linux, or a Windows job object) instead of a container.
 // The task's unit is made with its folder; the setup script, the agent and the checks join it, and
 // it ends at stop and release (ticket 42).
+//
+// Milestone 5 (ticket 10): a `host` pool runs the agent as a separate OS user (`agent-user.ts`):
+// every process of a task goes through `sudo -n -u <user> --`, the task's folder is handed to that
+// user's group when it's made, and `health()` checks the sudoers rule and that the user can't read
+// the runner's key. A pool on the development switch runs as the runner's own user and says so.
 
 export type HostExecutorOptions = {
   /** The runner's data folder: task roots go in `tasks/`. */
@@ -111,6 +126,33 @@ export type HostExecutorOptions = {
    * runner reports once each is healthy or failed. `prepare` waits for it before the setup script.
    */
   readonly awaitServices?: (spec: TaskSpec, signal: AbortSignal | undefined) => Promise<readonly ServiceHealth[]>;
+  /** Milestone 5 (ticket 10): who a task's processes run as. Default: the runner's own user (a personal runner). */
+  readonly agentUser?: HostAgentUserOptions;
+};
+
+/** A pool's agent user, as the executor runs it (`HostExecutor.startPool` makes it). */
+export type HostAgentUserOptions = {
+  readonly user: AgentUser;
+  /** How `sudo` starts. Default: `/usr/bin/sudo`. */
+  readonly sudo?: SudoProgram;
+  /** How a task's folder is handed to a separate user. Default: nothing (`startPool` gives the agent's group). */
+  readonly handOver?: HandOver;
+  /** What the agent's user must not read, which `health()` checks: the runner's key, its temp folder. */
+  readonly secrets?: readonly string[];
+};
+
+/** `HostExecutor.startPool`'s settings, besides the executor's own. */
+export type HostPoolOptions = {
+  /** `OSTRA_HOST_POOL_AGENT_USER`. */
+  readonly agentUser: string | undefined;
+  /** What the agent's user must not read: the runner's key, its temp folder. */
+  readonly secrets?: readonly string[];
+  readonly sudo?: SudoProgram;
+  /** For tests: the system and the runner's user name. Default: this machine's. */
+  readonly platform?: NodeJS.Platform;
+  readonly runnerUser?: string | null;
+  /** For tests: the agent group's ID, instead of `id -g <user>`. */
+  readonly agentGid?: number;
 };
 
 /**
@@ -257,6 +299,7 @@ export class HostExecutor extends ExecutorAdapter {
   #lfs: boolean | undefined;
   readonly #cacheIdleMs: number;
   readonly #awaitServices: HostExecutorOptions["awaitServices"];
+  readonly #agentUser: HostAgentUserOptions;
   /** One cache update per project at a time: two tasks of a project never fetch one mirror together. */
   readonly #cacheLocks = new Map<string, Promise<unknown>>();
   /** When the idle caches were last swept: at start, then at most hourly as boxes use a cache. */
@@ -271,12 +314,16 @@ export class HostExecutor extends ExecutorAdapter {
     this.#shellProbe =
       options.shellProbe ?? (options.processes === undefined ? localShellProbe(baseEnv(this.#env), this.#dataDir) : undefined);
     this.#containment = options.containment;
-    this.#processes =
+    const processes =
       options.processes ??
       localProcesses(() => {
         this.#containment ??= processTreeContainment();
         return this.#containment;
       });
+    this.#agentUser = options.agentUser ?? { user: { kind: "runner" } };
+    const agentUser = this.#agentUser.user;
+    // Milestone 5 (ticket 10): on a pool, every process of the task as the agent's user.
+    this.#processes = agentUser.kind === "separate" ? agentUserProcesses(agentUser.user, processes, this.#agentUser.sudo) : processes;
     const kind = options.processContainment ?? options.containment?.kind ?? "process-tree";
     this.#cacheIdleMs = (options.cacheIdleDays ?? CACHE_IDLE_DAYS) * 24 * 60 * 60_000;
     this.#awaitServices = options.awaitServices;
@@ -322,6 +369,62 @@ export class HostExecutor extends ExecutorAdapter {
     return executor;
   }
 
+  /**
+   * Milestone 5 (ticket 10, ADR 0029 as amended): a `host` pool runner's executor, or why it
+   * doesn't start: on Windows; without its agent user; or on the development switch in
+   * production. With a separate user, the task's processes run as that user, its folders are handed
+   * to that user's group, the data folder is traversable only, and the containment's marker sweep
+   * lists and ends that user's processes.
+   */
+  static async startPool(
+    options: Omit<HostExecutorOptions, "containment" | "agentUser"> & HostPoolOptions,
+    context?: AdapterContext,
+    probe: Partial<ContainmentProbe> = {},
+  ): Promise<{ readonly ok: true; readonly value: HostExecutor } | { readonly ok: false; readonly reason: string }> {
+    const { agentUser: setting, secrets, sudo, platform, runnerUser, agentGid, ...executorOptions } = options;
+    const resolved = hostPoolAgentUser({
+      agentUser: setting,
+      env: options.env ?? process.env,
+      platform: platform ?? process.platform,
+      runnerUser: runnerUser === undefined ? os.userInfo().username : runnerUser,
+    });
+    if (!resolved.ok) {
+      return resolved;
+    }
+    const user = resolved.value;
+    if (user.kind !== "separate") {
+      context?.logger.warn("host pool runs as the runner's own user", { agentUser: SAME_USER_DEVELOPMENT });
+      return { ok: true, value: await HostExecutor.start({ ...executorOptions, agentUser: { user } }, context, probe) };
+    }
+    let gid = agentGid;
+    if (gid === undefined) {
+      const looked = await runProgram("id", ["-g", user.user], { cwd: "/", env: { PATH: "/usr/bin:/bin", LC_ALL: "C" } });
+      gid = Number(looked.stdout.trim());
+      if (looked.code !== 0 || !Number.isInteger(gid) || gid < 0) {
+        return { ok: false, reason: `the agent's user ${user.user} doesn't exist on this machine` };
+      }
+    }
+    // The data folder and its tasks: traversable only, so the agent reaches its own task's folder
+    // by its path and lists nothing; the runner's key and temp folder stay its own (`secrets`).
+    await mkdir(path.join(executorOptions.dataDir, "tasks"), { recursive: true });
+    await chmod(executorOptions.dataDir, 0o711);
+    await chmod(path.join(executorOptions.dataDir, "tasks"), 0o711);
+    const executor = await HostExecutor.start(
+      {
+        ...executorOptions,
+        agentUser: { user, handOver: handOverToGroup(gid), ...(sudo === undefined ? {} : { sudo }), ...(secrets === undefined ? {} : { secrets }) },
+      },
+      context,
+      { sweep: agentUserMarkerSweep(user.user, { ...(sudo === undefined ? {} : { sudo }), ...(platform === undefined ? {} : { platform }) }), ...probe },
+    );
+    return { ok: true, value: executor };
+  }
+
+  /** Milestone 5 (ticket 10): who this executor's task processes run as. */
+  get agentUser(): AgentUser {
+    return this.#agentUser.user;
+  }
+
   async health(): Promise<HealthReport> {
     const env = baseEnv(this.#env);
     await mkdir(this.#dataDir, { recursive: true });
@@ -337,7 +440,23 @@ export class HostExecutor extends ExecutorAdapter {
     if (shell.code !== 0) {
       return { status: "down", reason: missingShellReason(setupShell.command) };
     }
-    return { status: "ok" };
+    // Milestone 5 (ticket 10): a pool's agent user.
+    const agentUser = this.#agentUser.user;
+    switch (agentUser.kind) {
+      case "runner":
+        return { status: "ok" };
+      case "same-user-development":
+        return { status: "degraded", reason: SAME_USER_DEVELOPMENT };
+      case "separate": {
+        const checked = await checkAgentUser(agentUser.user, this.#agentUser.secrets ?? [], {
+          cwd: this.#dataDir,
+          ...(this.#agentUser.sudo === undefined ? {} : { sudo: this.#agentUser.sudo }),
+        });
+        return checked.ok ? { status: "ok" } : { status: "down", reason: checked.reason };
+      }
+      default:
+        return agentUser satisfies never;
+    }
   }
 
   /** The program that runs setup scripts, found once (Q136, item 9). */
@@ -391,6 +510,10 @@ export class HostExecutor extends ExecutorAdapter {
       await writeFile(path.join(root, UNIT_MARKER_FILE), marker);
       record.unit = await this.#processes.createUnit(`${input.taskId}-${input.boxId}`, marker);
       await this.#writeTaskGitConfig(record);
+      // Milestone 5 (ticket 10): a pool's task folder, made by the runner, handed to the agent's user.
+      if (this.#agentUser.user.kind === "separate") {
+        await this.#agentUser.handOver?.(root);
+      }
     } catch (error) {
       record.state = "failed";
       return adapterError("unavailable", `couldn't make the task's folder (${errorCode(error)})`);
@@ -594,6 +717,12 @@ export class HostExecutor extends ExecutorAdapter {
     await this.#endAgent(record, 0);
     await record.unit?.dispose();
     record.unit = undefined;
+    // Milestone 5 (ticket 10): what the agent's user made, removed as that user, who owns it.
+    if (this.#agentUser.user.kind === "separate") {
+      await this.#processes
+        .run("rm", ["-rf", "--", record.workspaceDir, record.agentDir], { cwd: this.#dataDir, env: baseEnv(this.#env) })
+        .catch(() => undefined);
+    }
     try {
       await rm(record.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch (error) {
