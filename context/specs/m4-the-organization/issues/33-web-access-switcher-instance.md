@@ -1,6 +1,6 @@
 # 33: Web: project access and the instance's accounts
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: 23, 31, 43 (it was also 24, which is `wontfix` since 2026-11-19)
 Features: F-087, F-003, F-002 (the instance admin's reset link)
@@ -17,10 +17,10 @@ Spec: `../spec.md`, sections 3 (steps 2, 12) and 12; targets `project-access`, `
 
 ## Done when
 
-- [ ] Playwright, named `it("F-087: ...")`: a restricted project disappears from an unlisted member's sidebar at once.
-- [ ] Playwright, named `it("F-003: ...")`: the Accounts page and its "Instance" group render for the instance admin only, and the last instance admin's own row has no "Remove".
-- [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
-- [ ] Committed as `✨ add project access and the instance's accounts`.
+- [x] Playwright, named `it("F-087: ...")`: a restricted project disappears from an unlisted member's sidebar at once.
+- [x] Playwright, named `it("F-003: ...")`: the Accounts page and its "Instance" group render for the instance admin only, and the last instance admin's own row has no "Remove".
+- [x] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
+- [x] Committed as `✨ add project access and the instance's accounts`.
 
 ## Decided 2026-11-19
 
@@ -33,3 +33,7 @@ Settled by the target's recommendation, on the maintainer's delegation (ticket 4
 ## Comments
 
 - 2026-11-19, lead: trimmed. The switcher, the Organizations page and the `F-049` Playwright cases for switching moved to ticket 44 (`wontfix`, F-134 after v1). Before that, this ticket's tests were: "a member of two organizations switches and every page follows; a link into the other organization switches with the notice".
+
+- 2026-11-20, builder: a project's Access tab (`/projects/[id]/settings/access`, `components/projects/project-access-view.tsx`), read-only for project members and "not found" for anyone who can't open the project, and the instance's Accounts page (`/instance/accounts`, `components/instance/accounts-view.tsx`) under a sidebar "Instance" group with Storage and Email, for the instance admin alone. Settings now shows for every project member and opens on the first tab they may use. Proved in `apps/web/e2e/11-access.spec.ts`; break-its in `context/proof/F-003.md` and `F-087.md`.
+- 2026-11-20, builder: two API additions rode in `✨ add the panel's reads for accounts and access`: `instance.admins` (the "Instance admins" section), and the stream sending a member who just lost a restricted project that project's next change once (`packages/api/src/stream/subscribe.ts`), since the notice was dropped as out of sight and the sidebar kept the project until a reload. Its test: `packages/api/src/stream/stream.test.ts`.
+- 2026-11-20, builder, by-eye check at 1440 px and Pixel 7 width (the finals are `m4-<screen>-final.png` and `m4-<screen>-phone-final.png` in the builder's scratchpad `ui-check` folder). The panel has no light theme yet (`apps/web/src/app/globals.css` leaves it for later), so each screen was checked dark only. Differences left: the Access list has no `Added` column and the panel no `Created by`, since `projects.access` returns neither.
