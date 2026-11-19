@@ -1,6 +1,6 @@
 # 30: API: reopen and the task's ticket
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 18
 Features: F-032, F-033, F-064, F-031, F-068
@@ -32,8 +32,12 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 
 ## Done when
 
-- [ ] Tests: reopening from each allowed state, once per message ID; refusals with their reasons; `tasks.get` returns every new field and nothing from another organization; a watcher can reopen only when they can read the project.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add reopen and the task's ticket`.
+- [x] Tests: reopening from each allowed state, once per message ID; refusals with their reasons; `tasks.get` returns every new field and nothing from another organization; a watcher can reopen only when they can read the project.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add reopen and the task's ticket`.
 
 ## Comments
+- 2026-11-19, api: done (`✨ add reopen and the task's ticket`, `7a50dc1`). **The reopen cases wait on ticket 18:** `reopenTask` and `dismissNeedsYou` were still stubs on `origin/main`, so the five cases of `task-ticket.test.ts` that go through them skip while they are stubs and run on their own once ticket 18 lands. They passed (all 16) against ticket 18's uncommitted code in `m2-core-b`, copied into this tree for one run and put back; whoever lands 18 should see them go green, or fix them if its behavior differs from the ticket's text. For tickets 18, 36 and 38:
+  - **Procedures:** `tasks.reopen { taskId, clientMessageId, text? }` (any member who can read the project; errors map `merged_reopen_later` to PRECONDITION_FAILED, `ticket-has-task` and `not-reopenable` to CONFLICT, `text-required` to BAD_REQUEST), `tasks.dismissNeedsYou { taskId, itemId }` and `tasks.retrySync { taskId }` (domain `retryTicketWrites`: failed writes back to pending, each with its `ticket.sync` job; keys unchanged). The repo's async-APIs lint refuses a call to anything named `...Sync`, so a test (or web code that calls it directly) reads the procedure into a variable first; `.mutationOptions()` is fine.
+  - **`tasks.get` gained** (all from the task's own rows in its organization): `ticket` (`{ id, key, title, url, status, cachedAt, removed }`), `contextFiles` (from the newest `ticket.files_ready` and the blobs' sizes), `sync` (each write: kind, state, attempts, error words, times; never its text), `sessions` (origin, state, outcome, times, `limit`, and `previousBox` from `session.restored`), `box` (`starting` | `running` | `idle` | `stopped` | `released` | `failed`, `idleStopDueAt` = idle since + `OSTRA_BOX_IDLE_MINUTES`, release reason, runner name), `spend` (`{ unit: "usd" | "tokens", spent, cap, reached }`, priced by `modelTokenPrices` as ticket 19 does), `limit`, `startedAt`, and each repo's `pr.state` (`open` | `merged` | `closed`).
+  - **Capabilities:** `stop` is false in review, merged, done and stopped, and once a limit or a crash ended the session; `reopen` (stopped, in review, done, or needing you for no changes, a stall, the spend cap, a crash, a failed setup, a closed ticket or files outside the repos); `reopenBlocked` says why a task that looks reopenable isn't (`merged_reopen_later`, `ticket_has_task`, `spend_cap`: a task at its cap is refused until the cap is raised); `reopenWithoutText` is the one-click reopen (a stall, the cap, a crash); `retrySync`. `send` and `interrupt` are milestone 1's: a task in review with a warm box is reopened (the dispatch picks `resumed`), since the domain moves a reviewed task to queued on a member's act.
