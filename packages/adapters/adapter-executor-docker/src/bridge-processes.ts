@@ -1,3 +1,5 @@
+import type { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import { newUnitMarker } from "@ostra/adapter-executor-host";
 import type { RunOptions, RunResult, TaskProcesses } from "@ostra/adapter-executor-host";
 import type { Bridge } from "./bridge/bridge-server.ts";
@@ -5,6 +7,9 @@ import type { Bridge } from "./bridge/bridge-server.ts";
 // The host executor's processes seam over a box's bridge (spike 3's `AgentHost`): the agent and the
 // setup script run in the agent's container, as the agent's user, started by the box's init. Git
 // and the task's files stay with the sidecar, on the box's shared task volume.
+
+/** Resolves once the stream has ended, or closed early (the bridge was lost): it never rejects. */
+const drained = (stream: Readable): Promise<void> => finished(stream).catch(() => undefined);
 
 export const bridgeProcesses = (bridge: Bridge): TaskProcesses => ({
   // The agent's container is the unit: the init kills every process of the agent's user.
@@ -64,7 +69,12 @@ export const bridgeProcesses = (bridge: Bridge): TaskProcesses => ({
       void bridge.killTree(started.pid).catch(() => undefined);
     };
     options.signal?.addEventListener("abort", onAbort, { once: true });
-    const exit = await started.exited;
+    // The exit and the end of both streams, as the host's `runProgram` waits for a child's `close`.
+    // The exit alone answers too soon, with output still to come: the init sends it as its child
+    // exits, often before the last output and the eof are on the bridge, and a spawn answer read in
+    // one chunk with its output and exit leaves that output buffered here, flowing to the listeners
+    // above only on a later tick. Either way git's answer (a SHA, a ref list) came back empty.
+    const [exit] = await Promise.all([started.exited, drained(started.stdout), drained(started.stderr)]);
     options.signal?.removeEventListener("abort", onAbort);
     return { code: exit.code, stdout, stderr };
   },

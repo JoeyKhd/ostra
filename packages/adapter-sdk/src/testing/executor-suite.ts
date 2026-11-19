@@ -389,7 +389,9 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         expect(repo.sha).not.toBe(one.value[0]?.sha);
         await adapter.release(first.box, "requested");
         const second = await createAndPrepare(fixture.spec, first.box);
-        await adapter.restoreWorkInProgress({ box: second.box, refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }] });
+        const restored = await adapter.restoreWorkInProgress({ box: second.box, refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }] });
+        // The restore's own answer first: a restore that found no ref, or failed, says so here.
+        expect(restored).toEqual({ ok: true, value: [{ repoId: repo.repoId, outcome: "applied" }] });
         expect(await wip.checkout(second.created).read("turn.txt")).toBe("turn 2");
         await adapter.release(second.box, "requested");
       }, context);
