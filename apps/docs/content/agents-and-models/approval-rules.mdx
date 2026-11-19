@@ -1,11 +1,35 @@
 ---
 title: "Approval rules"
 description: "Which of the agent's actions wait for a member."
+summary: "A rule names a tool and what it matches. Its effect is always to ask a person."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Without a rule, the agent works freely inside its box. An approval rule says what needs a person first: adding a dependency, writing a migration, running a command outside an allowlist, or reaching the network.
+
+> [!WARNING]
+> A rule keeps a person in the loop. It doesn't contain the agent: a command can still write a file an edit rule watches. The box contains it. See [What the box contains](/docs/security/the-box).
 
 ## Rules
 
+Each rule has a name, a tool and a match. Its effect is always to ask.
+
+| Tool | Matches |
+|---|---|
+| **Edit files** | **Path matches** one or more globs, such as `**/migrations/**` or `package.json`, or **Any file** |
+| **Run a command** | **Command starts with** one of a list, **Command outside this allowlist**, or **Any command** |
+| **Fetch a URL** | **Any URL** |
+| **Call an MCP tool** | **Any server**, or **Any server not marked read-only** |
+
+The editor shows sample paths and commands, and which of them the rule asks for, so you can check a glob before you save it. Presets cover the common cases.
+
+ostra writes the rules into the agent's own permission settings, and never relies on the agent's defaults. For OpenCode the rules become its own "ask" permissions. The runner also checks every request against the rules itself, so an agent that asks for everything still asks a person only for what a rule covers.
+
 ## Approving from the panel
+
+When a rule applies, the task shows **Needs you · approval**, in the panel and on the ticket, with what the agent wants to do. Any member who can open the project may answer, not only the task's driver. The first answer wins, and it's an entry in the audit log. The three answers:
+
+- **Approve once:** this request only.
+- **Approve for this task:** this request, and later requests on this task that match a narrow rule made from it, such as the exact path, or a command's program and first argument. The panel shows that rule before you choose.
+- **Deny**, or **Deny and send the reason:** OpenCode's turn ends, and the runner prompts it again with a short message and your reason, so it tries another way. The member's other open approvals in that session close as cancelled.
+
+The agent itself is always answered "once": "for this task" is ostra's rule, not the agent's. The agent can't answer its own approval. See [Approvals](/docs/using-ostra/approvals).

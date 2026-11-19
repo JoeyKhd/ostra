@@ -4,11 +4,25 @@ description: "A ticket or a prompt becomes a task, worked on its own branch."
 summary: "Create a project, type a prompt or pick a Linear ticket, and review the pull request the agent opens."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+A task is ostra's unit of work in one project. It starts from a ticket or from a prompt, runs an agent on its own branch, and opens one pull request for each repo it changes. It lives on after that: any member can [reopen](/docs/using-ostra/reopening) it, any number of times.
 
 ## Start a task
 
+- **From a prompt:** press **New task** in a project, type what you want, and start it.
+- **From a ticket:** pick it in the project's **Inbox**, the open tickets of the project's boards. The agent gets the ticket's title, description, comments, labels and images, its parent and linked tickets, through the project's ticket template.
+- **From Linear:** on an install Linear can reach, hand the ticket to ostra in Linear, and its progress shows there as an agent session.
+- **By an [automation](/docs/using-ostra/automations):** an intake rule or a schedule starts it.
+
+Each task has a [kind](/docs/using-ostra/task-kinds) and an [agent profile](/docs/agents-and-models/agent-profiles). It waits in the queue until a runner in one of the project's pools, or your own personal runner, has room.
+
 ## Follow it
 
+The task page shows the agent's work live: its messages, its thinking, every tool call with its input and output, the files it changed, its plan, and its usage. One member drives the task at a time; everyone else watches, and anyone can **Take over**. See [Steering](/docs/using-ostra/steering).
+
+When the task waits on a person, it shows **Needs you**, in amber, and it's the first thing on the home screen: a question, an approval, a plan to review, a draft, a session that ended without changes, or a pull request ready for review.
+
 ## Review the pull request
+
+When a session ends with changes, ostra runs the environment's checks, and the project's GitHub App opens a pull request in each repo the task changed. Its title holds the ticket's ID, and its body links the ticket, the task and the task's other pull requests. A failing check makes the pull request a draft.
+
+Commits are authored by the App's bot, with a `Co-authored-by` trailer for each member whose prompt led to them. The **Changes** tab shows the diff in the panel, where you can comment on lines and send your comments to the agent together, as one prompt.

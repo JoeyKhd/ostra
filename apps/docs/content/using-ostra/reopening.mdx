@@ -1,11 +1,29 @@
 ---
 title: "Reopening"
 description: "Reopen a finished task, with its branch and its history."
+summary: "Any member reopens any task, on the same branches and pull requests."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+A task is never done for good. Any member who can open the project reopens it and keeps prompting, on the same branches. New commits update the same pull requests.
 
 ## Reopen a task
 
+On a stopped task, write a message and press **Reopen**. Reopening picks a runner, restores the session and keeps the same branches and PRs. Other ways in:
+
+- an `@ostra <prompt>` comment on one of the task's pull requests, by a member with a verified GitHub link (see [Review loops](/docs/using-ostra/review-loops));
+- a follow-up sent from the task's Linear agent session;
+- after an agent crash or a lost box, one action carries on in a fresh box.
+
+After a merge, a reopened task starts on a fresh branch from the base, and says so.
+
 ## What it keeps
+
+After every turn, the box saves three things. It pushes the task's branches. It pushes its unfinished work (uncommitted and untracked files, not ignored ones) to the task's hidden ref, `refs/ostra/wip/<task>`. And it uploads the agent's session archive. So a task can carry on anywhere, in this order:
+
+1. **The same box,** while it's kept. A box with no turn for 15 minutes stops (`OSTRA_BOX_IDLE_MINUTES`).
+2. **A fresh box,** on any runner, by any member: the hidden ref restores the working tree, and the agent imports its session from the archive. This is the usual path.
+3. **The rebuild template,** when the archive can't be restored: a new session starts from the ticket, the pull requests' text, every member and agent message, and the branch's log. ostra puts it together itself, without a model call.
+
+If commits were pushed to the branch since the last turn, and the saved work can't be merged with them, nothing is restored: the agent carries on from the branch's head, and the driver gets a **Needs you · restore conflict** item. The task doesn't stop for it.
+
+To work on a task's branches on your own machine, see `ostra checkout` in the [CLI reference](/docs/reference/cli).

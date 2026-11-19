@@ -1,11 +1,25 @@
 ---
 title: "The three kinds of task"
 description: "What each kind of task does."
+summary: "Refine ends in a ready ticket, code in pull requests, review in a pull request review."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+A task's kind fixes how it ends.
 
 ## The kinds
 
+| Kind | What the agent does | How it ends |
+|---|---|---|
+| **Refine** | Reads the code, answers questions about it and may prototype in its box. It can't push. | A draft for the ticket: its description, acceptance criteria, edge cases, open questions and sub-tickets. A member edits it, then **Update ticket** writes it to the tracker and **Mark ready** moves the ticket on. |
+| **Code** | Changes the project's repos on the task's branch. | One pull request for each repo it changed. |
+| **Review** | Reads a code task's pull request against the ticket's acceptance criteria, read-only. | Its findings, each blocking or a nit, posted as a comment review with line comments. It never approves and never requests changes. |
+
+Refine and review tasks are read-only: their [git proxy](/docs/security/proxies) accepts fetches only. Nothing a refine task writes reaches the tracker until a member sends it.
+
 ## Choosing one
+
+- Start with **refine** when the ticket isn't ready to build: the agent asks the questions and splits the work.
+- Start with **code** when it is.
+- A **review** task starts by itself when a code task's pull request is ready, with the project's default review profile, which may use another model. A project admin can switch AI review off.
+
+Each project picks a default agent profile for each kind.

@@ -1,13 +1,46 @@
 ---
 title: "OpenCode"
 description: "OpenCode, the agent ostra runs at launch."
+summary: "v1's one agent, driven over ACP, pinned in the base image."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+[OpenCode](https://opencode.ai) is the agent ostra runs in v1. More agents come after v1, through the same agent interface: each one is an [adapter](/docs/contributing/adapters) that declares what it can do, and ostra works around what it can't.
 
 ## How ostra runs OpenCode
 
+ostra drives OpenCode over the Agent Client Protocol (ACP), with its own driver on ACP's official SDK. For each task, the runner:
+
+- writes OpenCode a config of its own, in the task's own folder, never in the repo: the model, the permissions from the profile's [approval rules](/docs/agents-and-models/approval-rules), the profile's skills and MCP servers;
+- starts it with an allowlisted environment, at the workspace root, with every repo of the project checked out side by side;
+- turns off the repo's own OpenCode config, so a repo can't widen the agent's permissions or add an MCP server;
+- turns off OpenCode's reading of `.claude/` files and its self-update, so it follows only what ostra and the repo's `AGENTS.md` say, at the version ostra pinned.
+
+OpenCode reads each repo's `AGENTS.md` itself. The profile's instructions are added beside it, never replacing it.
+
+## What OpenCode does, and what ostra does instead
+
+Every feature that touches the agent goes through the agent interface. Where an agent lacks a capability, the interface says so, and ostra takes another path. These are OpenCode's declarations.
+
+| Capability | OpenCode | What it means for you |
+|---|---|---|
+| Steer mid-turn | yes | **Send** reaches the agent at its next model call, without stopping the turn. |
+| Load its own session | yes | Reopening in the same box carries on the same session. |
+| Session archive | yes, for the pinned version | A fresh box imports the last turn's session. On another version, ostra uses the rebuild template. |
+| Native plan | no | ostra shows OpenCode's todo list as the plan. |
+| Carry on after a refusal | no | A denied approval ends the turn, and the runner prompts again with a short message and the reason. |
+| Questions | yes | The agent's questions reach the panel as "Needs you · question". |
+| Model base URL and a placeholder key | yes | Every model call goes through the key proxy. |
+| Permission rules | native | Approval rules become OpenCode's own "ask" permissions. The runner checks every request against the rules as well. |
+| Plan mode | session mode | [Plan first](/docs/agents-and-models/plan-first) switches OpenCode to its read-only plan agent for the first turn. |
+| Skills | yes | A profile's skills are folders OpenCode reads. |
+| MCP | HTTP and stdio | Both kinds of MCP server work, through the sidecar. |
+| Profile over repo config | yes | A profile's permissions and MCP servers win over the repo's. |
+| Memory | through MCP | ostra's [memory](/docs/using-ostra/memory) reaches it as the index and ostra's memory tools. OpenCode has no memory of its own to turn off. |
+
 ## Models
 
+OpenCode uses the model its [agent profile](/docs/agents-and-models/agent-profiles) names, served by a [model provider](/docs/agents-and-models/model-providers) in either API format. ostra writes the provider into OpenCode's config as a base URL that points at the key proxy, with a fake key. A profile's reasoning effort is sent as one of the levels the model has.
+
 ## Updates
+
+OpenCode's version is pinned in ostra's base image, and its binary is checked against a checksum before it runs. A new OpenCode version reaches you with a new ostra release, after the agent contract suite has passed on it. You don't install or update OpenCode yourself.

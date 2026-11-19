@@ -1,11 +1,26 @@
 ---
 title: "Steering"
 description: "Send the agent a message while it works."
+summary: "Send, Interrupt and send, Take over, Stop."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+The task's driver steers it: one member at a time, so two people never prompt the same agent at once. Everyone else who can open the project watches, and can **Take over** in one action.
 
 ## Send a message
 
+Type in the task's composer, then:
+
+- **Send.** For an agent that takes a message mid-turn, as OpenCode does, the message reaches the model at the agent's next call, after any tool step that's running. For an agent that doesn't, the message is queued: everyone sees it in the thread as "queued", and it's delivered when the turn ends. When the session is idle, **Send** starts the next turn.
+- **Interrupt and send.** Stops the current turn and sends the message as the next prompt, on every agent.
+
+When someone else is driving, the composer says so: take over first to send.
+
 ## Stop
+
+**Stop** asks the agent to stop. The task's work is saved, as after every turn: the branches, the unfinished work in a hidden ref, and the agent's session. You can [reopen](/docs/using-ostra/reopening) it later.
+
+ostra also stops a session by itself, and the task shows **Needs you**:
+
+- after its maximum time, 2 hours by default (`OSTRA_SESSION_MAX_MINUTES`);
+- when it stalls, with no agent event for 10 minutes (`OSTRA_SESSION_STALL_MINUTES`);
+- at the task's [spend cap](/docs/using-ostra/budgets).

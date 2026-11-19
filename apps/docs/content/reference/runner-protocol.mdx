@@ -1,11 +1,28 @@
 ---
 title: "Runner protocol"
 description: "The runner protocol's versions, and which a server accepts."
+summary: "A major in the URL, a minor negotiated at hello, and a window of one minor either side."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Runners and the server talk through the runner protocol: a WebSocket, or HTTP requests when a proxy blocks WebSockets. Its messages are schemas that both sides import, and every message but the first refuses fields it doesn't know.
 
 ## Versions
 
+The protocol has two numbers.
+
+- **The major** is in the URL: every runner endpoint is under `/runner/v1/`. A runner of another major is refused.
+- **The minor** is negotiated when a runner connects. The runner's `hello` names its minor, the server's `welcome` answers with the one both will speak: the lower of the two.
+
+Each side keeps a codec for its own minor and the one before, and writes every message in the negotiated minor's shape, leaving out what that minor doesn't know. A newer server never sends an older runner a command it can't read.
+
 ## The window
+
+**A server accepts runners one minor behind it or one minor ahead.** Outside that window the runner is refused at `hello`, with a message that tells it to update, and the server names the window it accepts.
+
+In practice:
+
+- **Upgrade the server first,** then the runners. Runners one minor behind keep working while you roll them.
+- **A runner one minor ahead** also works, so you can try a new runner before the server.
+- A runner joins pinned to its server's version.
+
+`ostra runner status` shows a runner's ID, its server, the version window and its last refusal. `ostra --version` prints the CLI's version. See [Upgrading](/docs/install/upgrading).

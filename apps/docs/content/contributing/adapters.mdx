@@ -1,15 +1,167 @@
 ---
 title: "The adapter guide"
 description: "Write an adapter for a tracker, an agent, a code host or another kind."
+summary: "Extend your kind's base class, declare its capabilities, and pass its contract suite."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Everything ostra connects to is an adapter: one class per tracker, code host, agent, executor, model provider, notification channel, secret store or blob store, behind the interface its kind shares. Core and the runner only ever call the interface, so a new adapter works wherever its kind is used, with no change to them (ADR 0025).
+
+The base classes, the contract suites and the shared plumbing are in `@ostra/adapter-sdk`, under Apache-2.0, like this guide. The adapters ostra ships are in `packages/adapters/`.
 
 ## The eight kinds
 
+| Kind | Base class | Contract suite | Shipped adapters |
+|---|---|---|---|
+| Tracker | `TrackerAdapter` | `defineTrackerContractSuite` | Linear |
+| Code host | `CodeHostAdapter` | `defineCodeHostContractSuite` | GitHub |
+| Agent | `AgentAdapter` | `defineAgentContractSuite` | OpenCode |
+| Executor | `ExecutorAdapter` | `defineExecutorContractSuite` | `docker`, `host` |
+| Model provider | `ModelProviderAdapter` | `defineModelProviderContractSuite` | any base URL and token, in either API format |
+| Notification | `NotificationAdapter` | `defineNotificationContractSuite` | the panel, the ticket, Resend and SMTP email |
+| Secret store | `SecretStoreAdapter` | `defineSecretStoreContractSuite` | built in, encrypted in Postgres |
+| Blob store | `BlobStoreAdapter` | `defineBlobStoreContractSuite` | Postgres, S3-compatible |
+
 ## Base classes
+
+Each adapter extends its kind's abstract base class, one level deep, and nothing else in ostra is a class. A base class gives every adapter of its kind:
+
+- **`kind`**, fixed by the base class, and **`name`**, a kebab-case name you set, unique within its kind in the registry;
+- **`capabilities`**, which you declare (below);
+- **`health()`**, which you write: `{ status: "ok" }`, or `degraded` or `down` with a reason;
+- the kind's operations, abstract where every adapter must have them, and with a default answer of `unsupported` where an adapter may lack one;
+- **`plumbing`**, a protected getter for what every adapter shares: a logger, a clock, retries, rate budgets and idempotency, built from the `AdapterContext` the constructor takes.
+
+**Expected failures are values, never exceptions.** Every operation returns an `AdapterResult`: `ok(value)`, or `adapterError(code, message)` with one of the codes every kind shares, such as `not-found`, `rate-limited`, `unauthorized` or `unsupported`. Throw only for a bug. A message is for a person, and never holds content, a token or a vendor's payload.
+
+**Validate what the vendor sends** with a Zod schema at the boundary, and trust the inferred type after it. A vendor's formats (webhooks, API responses, agent events) are parsed tolerantly, so a new field doesn't break the adapter.
+
+**Log IDs, never content.** Tokens, keys, prompts and ticket bodies stay out of every log line. The SDK's logger redacts anything that looks like a token, as a backstop, not a licence.
+
+## Capabilities
+
+Where adapters of a kind differ, the kind's capabilities type says so, and each adapter declares every field. Core reads them and takes another path where an adapter lacks one. A feature that works for one adapter only, without a declared capability, is a bug.
+
+For example, an agent that can't take a message mid-turn, can't load its own session and has no plan mode declares exactly that:
+
+```ts title="capabilities.ts"
+import type { AgentCapabilities } from "@ostra/adapter-sdk";
+
+export const capabilities = {
+  steerMidTurn: false,
+  sessionLoad: false,
+  nativePlan: false,
+  rejectAndContinue: false,
+  elicitationForm: false,
+  modelBaseUrlAndPlaceholderKey: true,
+  sessionArchive: false,
+  permissionRules: "runner-only",
+  planMode: "none",
+  skills: false,
+  mcp: { http: true, stdio: false },
+  projectConfigOverride: false,
+  memory: "index-only",
+} as const satisfies AgentCapabilities;
+```
+
+ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, and gives it memory's index without the memory tools. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
+
+## The agent kind
+
+An agent adapter writes only what is particular to its agent. ostra drives agents over the Agent Client Protocol (ACP) with one driver, `createAcpDriver`, which the base class uses. An agent adapter provides:
+
+- **`prepareLaunch`:** the command, the environment (an allowlist, never the runner's own) and the config files the agent starts with, from the task's profile: its model at the key proxy's base URL with the placeholder key, its permissions, skills and MCP servers;
+- **`mapUpdate`:** how the agent's ACP updates map to ostra's events: text, thinking, tool calls with their input and output, plans and usage;
+- **`capabilities`**, as above, each one checked by the agent suite.
+
+The agent itself is installed by the base image, pinned and checked, never by the adapter at run time.
 
 ## Contract suites
 
+Each kind has one contract suite, in `@ostra/adapter-sdk/testing`, and every adapter's tests call it. A suite takes a name and a `create` function that builds the adapter and the fakes or fixtures it runs against, once per suite, with an optional `dispose`. Every suite starts with the cases all kinds share: a kebab-case name, the right kind, every capability declared with its type, and a healthy check. Then come the kind's own cases.
+
+The suites run against fakes in CI: a fake Linear, a fake GitHub for reviews and checks, a scripted ACP agent, stub model servers, an in-memory email server. Beside them, an adapter keeps live cases against the vendor itself, skipped when the vendor's credentials aren't in the environment.
+
+Where a case depends on a capability, the suite reads your declaration and checks the path ostra takes without it, such as an `unsupported` answer. So declare what the adapter really does, and never edit a suite to pass it.
+
 ## A worked example
+
+The SDK's own tests run every suite against a tiny adapter of each kind, in `packages/adapter-sdk/src/test-adapters/tiny-adapters.ts`. They're the smallest adapters that pass, and the best place to start. Here is the smallest kind, a secret store, written from scratch: it keeps values in memory.
+
+```ts title="memory-secret-store.ts"
+import { randomUUID } from "node:crypto";
+
+import { SecretStoreAdapter, adapterError, ok, secretRefSchema } from "@ostra/adapter-sdk";
+import type { AdapterResult, HealthReport, SecretRef, SecretScope, SecretStoreCapabilities } from "@ostra/adapter-sdk";
+import type { OrganizationId } from "@ostra/protocol";
+
+type Row = { readonly organizationId: OrganizationId; readonly value: string };
+
+/** A secret store that keeps values in memory: for tests and trying things out, never an install. */
+export class MemorySecretStore extends SecretStoreAdapter {
+  readonly name = "memory-secret-store";
+  readonly capabilities: SecretStoreCapabilities = { rotation: false };
+  readonly #rows = new Map<string, Row>();
+
+  health(): Promise<HealthReport> {
+    return Promise.resolve({ status: "ok" });
+  }
+
+  put(scope: SecretScope, value: string): Promise<AdapterResult<SecretRef>> {
+    // The reference holds nothing of the value: a random ID under the store's own prefix.
+    const id = randomUUID();
+    this.#rows.set(id, { organizationId: scope.organizationId, value });
+    this.plumbing.logger.info("secret stored", { purpose: scope.purpose });
+    return Promise.resolve(ok(secretRefSchema.parse(`memory:${id}`)));
+  }
+
+  get(organizationId: OrganizationId, ref: SecretRef): Promise<AdapterResult<string>> {
+    const row = this.#rows.get(ref.slice("memory:".length));
+    // Another organization's secret answers the same as a missing one.
+    if (row?.organizationId !== organizationId) {
+      return Promise.resolve(adapterError("not-found", "no such secret"));
+    }
+    return Promise.resolve(ok(row.value));
+  }
+
+  delete(organizationId: OrganizationId, ref: SecretRef): Promise<AdapterResult<void>> {
+    const id = ref.slice("memory:".length);
+    if (this.#rows.get(id)?.organizationId !== organizationId) {
+      return Promise.resolve(adapterError("not-found", "no such secret"));
+    }
+    this.#rows.delete(id);
+    return Promise.resolve(ok(undefined));
+  }
+}
+```
+
+Its test is one call to the kind's suite, with the two organizations the suite's fixture asks for:
+
+```ts title="memory-secret-store.test.ts"
+import { defineSecretStoreContractSuite } from "@ostra/adapter-sdk/testing";
+import { organizationIdSchema } from "@ostra/protocol";
+
+import { MemorySecretStore } from "./memory-secret-store.ts";
+
+defineSecretStoreContractSuite({
+  name: "memory secret store",
+  create: () =>
+    Promise.resolve({
+      adapter: new MemorySecretStore(),
+      fixture: {
+        organizationId: organizationIdSchema.parse("org-a"),
+        otherOrganizationId: organizationIdSchema.parse("org-b"),
+      },
+    }),
+});
+```
+
+The suite checks that values round-trip, unicode and newlines included; that each `put` gets its own reference, holding nothing of the value; that one organization never reads or deletes another's; and that a deleted value is `not-found`. A test in ostra's repo compiles both samples on this page against `@ostra/adapter-sdk`, so they stay true to it.
+
+## Ship it
+
+1. Put the adapter in its own package under `packages/adapters/`, named `adapter-<kind>-<name>` or after its vendor, under Apache-2.0.
+2. Call its kind's contract suite from its tests, against a fake of the vendor, and add a live case that runs when the vendor's credentials are in the environment.
+3. Register it, by kind and name, where the server or the runner builds its registry.
+4. Add its settings to `docs/configuration.md` in the same commit, each with a working default, and a page to these docs if a person sets it up.
+
+Read `AGENTS.md` for the code's rules, and agree to the [contributor agreement](/docs/contributing/contributor-agreement) in your pull request.

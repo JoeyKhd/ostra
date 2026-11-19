@@ -1,11 +1,23 @@
 ---
 title: "Budgets"
-description: "Caps on what a task may spend."
+description: "What a task may spend, and the monthly budgets above it."
+summary: "Every task has a spend cap; organizations and projects have monthly budgets."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Spend is counted at the [key proxy](/docs/security/proxies), for every model call a task makes, in four token kinds (fresh input, output, cache reads and cache writes), each priced on its own from the model's prices. Each task, project and organization shows its spend. A figure that had to be estimated, because the endpoint reported no usage, is marked as one.
 
 ## The spend cap
 
+Every task stops at its spend cap: 25 US dollars by default (`OSTRA_TASK_SPEND_CAP_USD`, at most 2,000). At the cap, the key proxy stops the session, the task shows **Needs you**, and its work is saved. Raise the cap to reopen it.
+
 ## The token cap
+
+For a model with no known price, the task's cap is counted in tokens instead: 10,000,000 by default (`OSTRA_TASK_TOKEN_CAP`). The panel says when a task is capped by tokens.
+
+## Monthly budgets
+
+Admins set a monthly budget for the organization and for each project. At 80%, its admins are told once, in the panel and by mail (`OSTRA_BUDGET_WARN_PERCENT`). At 100%, new tasks and automatic rounds wait, as "held", until an admin raises the budget or the month turns. Running tasks finish their current turn.
+
+## Insights
+
+**Insights** shows, for the organization and each project, pull requests opened and merged, the merge rate, the median time to a first pull request, the time spent waiting on people, tokens and spend. It's computed every few minutes, not live.

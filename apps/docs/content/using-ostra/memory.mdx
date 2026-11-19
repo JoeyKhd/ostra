@@ -1,11 +1,25 @@
 ---
 title: "Memory"
-description: "What the agent remembers between tasks."
+description: "What every task should know: notes that members approve."
+summary: "Organization and project notes, read by agents through ostra's tools, and proposed by agents for members to approve."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Memory is a set of notes an organization or a project wants every task to know. Members keep them. An agent reads them and may propose new ones, but nothing it proposes reaches another agent until a member approves it.
 
 ## What it keeps
 
+A note is one fact: a title, a short body, and a kind: convention, command, gotcha, decision, preference or term. It belongs to the organization or to one project, and records its source (a task, a review comment or a member) and its author. Notes are versioned and found with full-text search.
+
+At the start of each session the agent gets a short index: each note's title and one line, within a size limit, and the notes marked **always** in full. It searches and reads the rest through ostra's memory tools, an MCP server in the box's sidecar with a token for that one task. The task page lists the notes a session read. Nothing is written into the repo.
+
+The agent's own memory feature is turned off, so nothing an agent keeps for itself outlives the task.
+
 ## Editing it
+
+The organization and each project have a **Memory** page, where members write, edit, delete and search notes.
+
+- **Proposals.** Agents propose notes while they work, and members propose them with **Remember this** on a review comment or an AI review finding. A proposal waits on the Memory page, as a count, until a member approves it, rejects it, or merges it into another note. A proposal that contradicts a note is shown beside it.
+- **Secrets are refused.** Every note is scanned when it's saved, and a note that holds a credential is refused.
+- **No lost edits.** An edit made from a version that has changed since is refused, and your text is kept.
+
+The index's limits are settings: `OSTRA_MEMORY_INDEX_MAX_NOTES`, `OSTRA_MEMORY_INDEX_MAX_KIB` and `OSTRA_MEMORY_ALWAYS_MAX_KIB`. See the [configuration reference](/docs/reference/configuration).

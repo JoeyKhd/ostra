@@ -1,11 +1,44 @@
 ---
 title: "What the box contains"
 description: "What a task's box isolates, and what it doesn't."
+summary: "On docker and kubernetes, each task gets its own box, and only the box contains the agent."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Ticket text, pull request comments, CI logs and agent output are untrusted. They come from anyone with access to the tracker or the repo, and they reach an agent that runs commands. ostra treats them as data, and the box is what holds the agent when they trick it.
 
 ## The box
 
+On the `docker` and `kubernetes` executors, every task gets a fresh box, never reused for another task. A box is:
+
+- **the agent's container,** where the agent runs, with the task's workspace: the project's repos side by side, on the task's branches;
+- **the sidecar,** ostra's own container, which holds the task's credentials, runs the [key and git proxies](/docs/security/proxies) and the MCP proxy, and drives the agent;
+- **the environment's services,** such as a database for the tests.
+
+On `docker` a box is a set of containers; on `kubernetes` it's a pod. A box can be thrown away at any time: everything worth keeping is pushed or uploaded after every turn.
+
+**Only a box contains the agent.** An agent's own settings bound its file tools, not its shell, and a third of an agent's tool calls are shell commands. [Approval rules](/docs/agents-and-models/approval-rules) keep a person in the loop; they don't contain anything.
+
+> [!NOTE]
+> Run boxes under gVisor where you can. ostra recommends it as the container runtime, and runs every box check with it as well. It isn't required: a one-machine install must work on plain Docker.
+
 ## What it can reach
+
+Inside the agent's container:
+
+- **No credential.** No model key, no GitHub token, no task token. The agent gets a fake key, valid for one task, and the proxies add the real credentials outside its reach.
+- **No Docker socket,** no host folder but the workspace, and a non-root user. On `kubernetes`, the pod mounts no service account token.
+- **No private network.** The egress baseline blocks private address ranges, the cloud metadata address and other boxes. The one exception is the ostra server's own address and port, which the sidecar needs, plus a private endpoint an admin names, such as a model server on your network.
+
+What it can reach:
+
+- **On `docker`,** the agent's container sits on an internal network whose only exit is the sidecar. All of its traffic goes through the proxies.
+- **On `kubernetes`,** every container of a pod shares one network, and a network policy applies to the pod. So the agent's container also reaches public hosts directly, without the sidecar. It still holds no credential. This is a recorded difference between executors.
+- **The environment's own secrets,** which the code under test reads, and so can anything that tricks the agent. Keep environments to development and test credentials, never production ones.
+
+Everything the agent does is on record: the task's event log saves every tool call's input in full, the command and its folder, the paths it read or wrote, the URLs it fetched. A record and a box are two controls, and neither replaces the other.
+
+> [!WARNING]
+> The `docker` executor needs the Docker socket, which is root on its machine. Run pool runners on machines that do nothing else.
+
+> [!CAUTION]
+> The `host` executor has no box. See [The host executor](/docs/security/host-executor).

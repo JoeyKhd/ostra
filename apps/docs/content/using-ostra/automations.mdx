@@ -1,9 +1,20 @@
 ---
 title: "Automations"
 description: "Start tasks on a schedule or from a tracker."
+summary: "Intake rules act on matching tickets; schedules act at set times."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+An automation is a project's rule that starts tasks by itself. A project admin makes them, and a project admin's rule stands behind every task one starts.
 
 ## Make an automation
+
+There are two kinds.
+
+- **An intake rule** turns the tickets that match a condition into tasks: by label, status, assignee, or the tracker's own team or project. It names a task kind, an agent profile, and the runner labels it needs. It starts one task per ticket, once, when the ticket starts to match after the rule exists.
+- **A schedule** acts at set times: it checks a ticket filter, or starts a prompt task, such as "update dependencies every Monday". Each due time starts its tasks once, however many server processes run.
+
+An intake rule's **dry run** lists the tickets it matches right now, with what starting each would do. Tickets that matched before the rule existed don't start by themselves: **Start all** in the dry run starts them.
+
+Every task an automation starts passes the same gates as any other: the queue, the project's share of a pool, and the [budget](/docs/using-ostra/budgets). In the Inbox, a member can also select several tickets and start them in one action.
+
+A ticket with sub-issues starts one task per open sub-issue at the bottom of its tree. The parent ticket never runs code; its page follows its children.

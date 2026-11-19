@@ -1,11 +1,32 @@
 ---
 title: "The host executor"
 description: "What the host executor doesn't isolate."
+summary: "A worktree on the runner's own machine, with no box. The panel labels it not isolated."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+> [!CAUTION]
+> A runner on the `host` executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
 
 ## Not isolated
 
+The `host` executor gives a task a git worktree on the runner's machine, and no box. What that means:
+
+- **The shell reaches what the account reaches.** An agent's shell commands can read any file, and use any credential, that the runner's account (or, on a pool, the agent's own OS user) can.
+- **No egress baseline.** Nothing stops the agent from reaching your private network or a cloud metadata address.
+- **No services and no box sizes.** The `host` executor doesn't start an environment's services, so a task whose environment declares them never goes to it. It counts slots instead of CPU and memory.
+- **Weaker process containment where the machine gives no kernel unit:** always on macOS, on Linux when the runner has no cgroup of its own, and on Windows when a job object can't be made. The runner reports its containment, and the panel says "a process the agent detaches isn't contained".
+
+What still holds on `host`:
+
+- **No credential in the agent's environment.** The key and git proxies run in the runner's own process, so the agent gets a fake key and no GitHub token.
+- **Only the task's refs can be pushed,** through the git proxy.
+- **Everything is on record** in the task's event log.
+
+A member's personal runner can use an organization's model key only when an admin has turned on **Allow on personal runners** for that provider, because a key the key proxy holds on that machine can be read by its member.
+
 ## When to use it
+
+- **A personal runner** on your own machine, for your own tasks. The panel labels it "personal, not isolated".
+- **A machine with no Docker,** for trying ostra out.
+
+A pool uses `host` only when an admin opts in, and on a pool the agent runs as a separate OS user, which the runner starts through `sudo -n -u <user>`. On Windows, a `host` pool runner refuses to start in v1. For tasks from many people, or from tickets anyone can write, use `docker` or `kubernetes`. See [Executors](/docs/runners/executors).

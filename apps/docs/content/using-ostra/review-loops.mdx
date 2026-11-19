@@ -1,11 +1,37 @@
 ---
 title: "Review loops"
-description: "The agent answers review comments on its pull request."
+description: "The agent answers CI, reviews and comments on its pull request."
+summary: "Failing CI, an AI review's findings, changes requested and @ostra comments go back to the agent."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+Once a code task's pull request is open, what happens to it can send the task back to its agent. Each time is a round.
+
+## The rounds
+
+| What happens | What ostra does | Cap |
+|---|---|---|
+| **CI fails** on the pull request | Reopens the task with the failing checks and their logs | 2 rounds |
+| **An AI review** finds blocking findings | Sends them to the agent as one prompt. Nits are only listed. | 2 rounds |
+| **A member requests changes** in a GitHub review | Reopens the task with that review's comments as one prompt | none: a person asked |
+
+CI and findings rounds are automatic turns. A task gets at most 4 of them, counted since a person last acted on it, and then it goes to **Needs you**. Every round also stops at the task's spend cap and at the budget. A question the agent asks in an automatic turn gets a fixed, neutral reply.
 
 ## Comment on the pull request
 
+Comment on the lines of a task's diff in the panel's **Changes** tab. Your comments stay drafts until you send them together, as one prompt. A comment shows as outdated when a later turn changes its line.
+
+On GitHub, a review that requests changes reopens the task, as above. Reviews from people ostra can't match to a member are ignored.
+
 ## Mention @ostra
+
+A comment on a task's pull request that starts with `@ostra`, followed by a prompt, reopens the task with that prompt:
+
+```text
+@ostra rename the helper to parseConfig and update its callers
+```
+
+ostra matches the commenter to a member through their verified GitHub link, which each member sets up in their Account. Comments from anyone else are ignored. Nothing polls pull request comments, so `@ostra` needs the GitHub App's webhook to reach your install.
+
+## Update the branch
+
+**Update branch** on the task page asks the agent, as a new turn, to merge the base branch into the task's branch in each repo that needs it, and fix any conflicts.

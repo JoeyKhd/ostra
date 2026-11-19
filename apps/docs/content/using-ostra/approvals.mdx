@@ -1,11 +1,31 @@
 ---
 title: "Approvals"
 description: "Answer what the agent asks before it goes on."
+summary: "Approvals, questions and plans wait as Needs you. Any member answers an approval; the driver answers the rest."
 ---
-
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
 
 ## What needs you
 
+A task waits on a person for one of these, and shows **Needs you** in amber:
+
+- **an approval:** the agent wants to do something one of its profile's [approval rules](/docs/agents-and-models/approval-rules) holds back;
+- **a question:** the agent asks something it needs to know;
+- **a plan:** with [plan first](/docs/agents-and-models/plan-first), the plan to approve;
+- **a draft:** a refine task's draft of the ticket;
+- **a session that ended without changes**, or files the agent left outside every repo;
+- **a pull request** ready for your review;
+- **a limit:** the session stalled, ran for its maximum time, or the task reached its spend cap.
+
+They're on your home screen first, and on the **Needs you** page. They also reach you as notifications, in the panel, as a comment on the ticket, or by email, as you choose in your notification settings.
+
 ## Approve or refuse
+
+The approval says what the agent asks to do: the file it wants to edit, the command, the address or the tool. **Any member of the project can answer. The first answer wins.**
+
+- **Approve once.**
+- **Approve for this task:** also approves later requests on this task that match the narrow rule the panel shows.
+- **Deny**, or **Deny and send the reason:** denying ends the agent's turn, and it's prompted again with your reason. The other open approvals close as cancelled.
+
+Every answer is in the audit log, and the task's thread shows who answered.
+
+A question is answered by the driver: **Take over to answer** when someone else is driving, then **Send answer**.

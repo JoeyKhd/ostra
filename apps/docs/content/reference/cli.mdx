@@ -1,11 +1,77 @@
 ---
 title: "CLI commands"
 description: "The ostra CLI's commands and flags."
+summary: "One program: the runner, and a member's login, checkout and logout."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+`ostra` is one program: a runner (`ostra runner`), the sidecar inside each `docker` box, and a member's own `login`, `checkout` and `logout`. This page matches what `ostra --help` prints, and a test holds the two together.
 
-## ostra runner
+```sh
+ostra --help
+```
 
-## ostra login
+## Commands
+
+| Command | What it does |
+|---|---|
+| `ostra runner [flags]` | Start a runner: sign in the first time, then take tasks |
+| `ostra runner status [flags]` | Show the runner's ID, server, version window and last refusal |
+| `ostra login [--server <url>]` | Sign in as yourself, with a code you approve in the browser |
+| `ostra checkout <task> [--dir <folder>]` | Put a task's branches in your own clones (ticket key, task ID or URL) |
+| `ostra logout` | Sign out, and revoke the CLI session on the server |
+| `ostra --version` | Print the CLI's version |
+
+### ostra runner
+
+The first start signs the runner in. A pool runner trades its join token (`--join-token` or `--join-token-file`) for its runner key. A personal runner, started without one, shows a device code to approve in the panel. After that, the runner connects and takes tasks. See [Pools and join tokens](/docs/runners/pools) and [Personal runners](/docs/runners/personal).
+
+```sh
+ostra runner --server http://localhost:8787 --executor docker --capacity 2
+```
+
+### ostra login
+
+Signs the CLI in as you, with a device code you approve in the browser. The CLI session lasts 30 days (`OSTRA_CLI_SESSION_DAYS`), and you can revoke it sooner in your Account. It can read a task's branches for `ostra checkout`, and nothing else.
+
+### ostra checkout
+
+Fetches each of a task's branches into your own clones and checks them out. Name the task by its ticket key, its task ID or its URL. Without `--dir`, it looks for your clones from the current folder.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Done |
+| `1` | Failed |
+| `2` | A usage error: an unknown command or flag, or a flag without its value |
+| `3` | The server refused this runner for good: revoked, or a key it doesn't know. Restarting won't help; sign it in again with a new identity |
+
+## Runner flags
+
+Each flag is also an environment variable, and a flag wins over its variable. Values are written `--name value` or `--name=value`.
+
+| Flag | Variable | Default | What it does |
+|---|---|---|---|
+| `--server` | `OSTRA_SERVER_URL` | (required) | The ostra server's core address, such as http://localhost:8787. |
+| `--data-dir` | `OSTRA_RUNNER_DATA_DIR` | ~/.ostra/runner | The runner's folder: its key pair, its spool and the task workspaces. |
+| `--transport` | `OSTRA_RUNNER_TRANSPORT` | websocket | How the runner talks to the server. Milestone 1 has websocket only; auto and http come in milestone 5. |
+| `--executor` | `OSTRA_RUNNER_EXECUTOR` | host | Where tasks run: host (a worktree on this machine, not isolated) or docker (a box per task). |
+| `--capacity` | `OSTRA_RUNNER_CAPACITY` | 1 | How many tasks the runner runs at once. |
+| `--labels` | `OSTRA_RUNNER_LABELS` | (none) | Comma-separated labels that tasks can ask for, such as gpu,macos. |
+| `--name` | `OSTRA_RUNNER_NAME` | the machine's host name | The runner's name in the panel. |
+| `--join-token` | `OSTRA_JOIN_TOKEN` | (none) | A pool runner's join token, used once to register. A personal runner signs in with a device code instead. |
+| `--shell` | `OSTRA_RUNNER_SHELL` | bash | The shell the host executor runs setup scripts with. On Linux and macOS, bash from PATH. On Windows, the bare name bash means Git for Windows' own bin\bash.exe, found from the git on PATH, never WSL's System32\bash.exe; without Git for Windows, set it to a shell's full path. A full path is used as given. |
+| `--join-token-file` | `OSTRA_JOIN_TOKEN_FILE` | (none) | A file holding a pool runner's join token, such as the bootstrap token core writes at first start. --join-token wins. |
+| `--box-base-image` | `OSTRA_BOX_BASE_IMAGE` | ostra/base:&lt;the runner's version&gt; | The docker executor's base image, for an environment that names none. |
+| `--box-runner-image` | `OSTRA_BOX_RUNNER_IMAGE` | ostra/runner:&lt;the runner's version&gt; | The image each docker box's sidecar runs: the ostra CLI. |
+| `--box-server-url` | `OSTRA_BOX_SERVER_URL` | the --server address | Core's address as a docker box's sidecar reaches it, when that differs from --server. |
+
+## Other flags
+
+| Flag | What it does |
+|---|---|
+| `--verbose` | Print debug lines too |
+| `--help`, `-h` | Print the commands and flags |
+| `--version` | Print the CLI's version |
+
+The same runner settings are in the [configuration reference](/docs/reference/configuration), under "The runner".

@@ -1,13 +1,44 @@
 ---
 title: "Model providers"
 description: "Add a model provider by its base URL and token, in either API format."
+summary: "Any endpoint with an API base URL and a token: OpenAI-compatible or Anthropic Messages."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+A model provider is an endpoint your organization adds for models: an API base URL and a token. ostra doesn't pick a vendor for you. A hosted API, a gateway in front of several of them, or a model server on your own network all work the same way.
 
 ## Add a provider
 
+An organization admin adds one under **Models**, with **Add provider**.
+
+1. Give it a **Name**, its **API base URL** and its **Token**.
+2. Press **Test connection**. ostra calls the endpoint, detects its API format and lists the models it serves.
+3. Pick the models you want, and **Save provider**.
+
+The token goes to the secret store and is never shown again. Each provider is one key: an organization may hold several providers that serve the same models, one per client, and each project uses only the providers on its provider list.
+
+> [!NOTE]
+> A base URL that points at a private, loopback or link-local address is refused unless `OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE` is `true`. Cloud metadata hosts are always refused. See the [configuration reference](/docs/reference/configuration).
+
+Two settings on a provider limit where it's used:
+
+- **Sessions at once:** the most sessions that use this provider at the same time. Empty means no cap.
+- **Allow on personal runners:** off by default. A personal runner is a member's own machine, and a key the key proxy holds there can be read by that member.
+
 ## API formats
 
+ostra speaks two API formats, and the connection test detects which one the endpoint speaks.
+
+| Format | What speaks it | How the token is sent |
+|---|---|---|
+| OpenAI-compatible | OpenAI's API, most gateways, and model servers such as vLLM and Ollama | `Authorization: Bearer` |
+| Anthropic Messages | Anthropic's API, and gateways that offer its Messages API | `x-api-key` or `Authorization: Bearer` |
+
+When the detection is wrong, correct the **API format** by hand. The agent never holds the token, in either format: it gets a base URL that points at the [key proxy](/docs/security/proxies) and a fake key for its one task.
+
 ## Models and prices
+
+Names, context sizes, limits and prices come from the [models.dev](https://models.dev) catalog, which core fetches daily (`OSTRA_CATALOG_FETCH`; `false` uses the copy bundled with ostra). A model the catalog doesn't have is shown as **custom**: give it a name and its input and output prices per million tokens, so its spend can be counted.
+
+An agent profile names its model by its model name, not by one provider's listing of it. In each project each model is served by exactly one provider on the project's list. Nothing but an organization admin's save moves a project's model to another provider, and no task ever falls back to another provider by itself.
+
+Spend is counted at the key proxy, call by call, in four token kinds: fresh input, output, cache reads and cache writes, each priced on its own. See [Budgets](/docs/using-ostra/budgets).

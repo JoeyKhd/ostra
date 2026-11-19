@@ -1,11 +1,30 @@
 ---
 title: "The key and git proxies"
 description: "How an agent uses keys and pushes code without holding either."
+summary: "The sidecar holds the task's credentials. The agent gets a fake key and no GitHub token."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+No credential enters the agent's container. The box's sidecar holds them, for one task, and the agent reaches the model and GitHub through two proxies in it. On the `host` executor the runner's own process does the sidecar's work.
 
 ## The key proxy
 
+The agent is given a model base URL that points at the sidecar, and a fake key that's valid for one task.
+
+- **It swaps the key.** The proxy accepts only its task's placeholder, puts the real provider token on the request, and passes the stream through untouched, in both API formats.
+- **It counts.** It records the tokens of every call it carries, in four kinds (fresh input, output, cache reads, cache writes), title generation and other calls without tools included. Its count is within 2% of what the endpoint reports. An endpoint that reports no usage gets an estimate, and the panel says so.
+- **It enforces the spend cap.** At the task's cap the proxy stops the session. See [Budgets](/docs/using-ostra/budgets).
+- **It honours rate limits.** A rate-limit answer stops new dispatches on that provider until its retry time.
+
 ## The git proxy
+
+The agent's own `git` clones, fetches and pushes through the git proxy, which adds a token for one repo.
+
+- **Only the task's refs.** It refuses every ref except the task's branches and its hidden ref, so a push to the default branch, a delete, or a push to another repo is refused before a byte reaches GitHub. A refused push gets git's own `remote rejected` line with the reason.
+- **Read-only tasks fetch only.** A refine or review task's proxy accepts fetches and nothing else.
+- **Git LFS.** The proxy rewrites LFS batch answers so that signed URLs and headers never reach the agent, and drops actions that point anywhere but the code host and its listed hosts (`OSTRA_GITHUB_LFS_HOSTS`).
+
+After every turn, the box commits what's left and pushes the task's branches and its hidden ref. Pull requests are opened by your GitHub App, never by the agent.
+
+## The MCP proxy
+
+A profile's MCP servers are reached through the sidecar's MCP proxy too, which adds each server's headers and secrets, so none of them enters the box. ostra's own MCP tools, such as the pull request text and memory, are served by the sidecar with a token for that one task.

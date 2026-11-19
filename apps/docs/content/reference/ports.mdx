@@ -1,11 +1,28 @@
 ---
 title: "Ports"
 description: "The ports ostra listens on, and who connects to each."
+summary: "3000 for the panel, 8787 for core. Runners and boxes connect out, and listen on nothing public."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+| Port | Process | Who connects | Setting |
+|---|---|---|---|
+| `3000` | The panel (`apps/web`) | Browsers | `OSTRA_WEB_PORT` |
+| `8787` | Core (`apps/core`) | Runners, box sidecars, and the GitHub and Linear webhooks | `OSTRA_CORE_PORT` |
+
+The compose file publishes both. A runner opens no port: it connects out to core.
 
 ## The panel
 
+Port `3000` serves the panel, the setup checklist and the device-code page runners and `ostra login` send you to. Browsers reach it at `OSTRA_PUBLIC_URL` (`http://localhost:3000` by default). Put it behind your own TLS proxy for anything but a demo.
+
 ## Core
+
+Port `8787` serves the runner protocol under `/runner/v1/` and the webhooks. Runners, and each `docker` box's sidecar, reach it at `OSTRA_CORE_PUBLIC_URL` (`http://localhost:8787` by default), or `--box-server-url` when a box reaches it at another address. Webhooks from GitHub and Linear need it reachable from the internet; without that, ostra polls Linear (`OSTRA_TRACKER_POLL_SECONDS`) and checks GitHub on a schedule (`OSTRA_RECONCILE_MINUTES`).
+
+## Inside a box
+
+The sidecar's key proxy, git proxy and MCP proxy listen inside the box only, on ports chosen at start, for the agent's container. Nothing outside the box reaches them.
+
+## Postgres
+
+ostra keeps everything in Postgres, at `DATABASE_URL`. The compose file's Postgres isn't published outside its network. In development, `pnpm db:dev` starts an embedded one on `54329` (`OSTRA_DEV_PG_PORT`).

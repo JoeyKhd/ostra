@@ -1,11 +1,33 @@
 ---
 title: "The security review"
-description: "What the launch's security review checked."
+description: "What the launch's security review of the box checks."
+summary: "An independent review of the box, on the release candidate, before v1 is published."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+v1 is published only when a security review of the box is written, its adversarial run has passed, and no finding rated critical or high is open. It's one of the launch gates.
 
 ## Summary
 
+The review is written by an independent agent session that built none of the box's code, on the release candidate's code, and then read and signed by the maintainer. Its record is kept in the repo, in `context/specs/m7-launch/security-review.md`: the threat model, each checklist item with its evidence, every finding with its severity and its fix or its reason to stay open, and what wasn't tested and why.
+
+> [!NOTE]
+> The review runs on the release candidate, before v1. When it's signed, this page lists its summary and every finding rated medium or low that stays open.
+
+## What it checks
+
+1. **No credential in the agent's container,** on `docker` and `kubernetes`: the model key, the git token, the App's key, the task token, registry credentials and the environment's secrets, searched for by value while a task runs.
+2. **The sidecar's proxies:** the key proxy accepts only its task's placeholder; the git proxy accepts only the task's refs, and only fetches for refine and review tasks; the MCP proxy serves only the task's tools.
+3. **The egress baseline:** private ranges, the metadata address and other boxes unreachable from the agent's shell, each check with a positive control.
+4. **What the agent can reach on the host:** no Docker socket, no host mounts but the workspace, a non-root user, the container's capabilities and seccomp profile, no service account token on a pod.
+5. **Untrusted text:** ticket text, pull request and review comments, CI logs and agent output never reach a shell line, a SQL string or a log line.
+6. **A repo's own agent config:** a repo's OpenCode files can't run commands or add MCP servers over the profile, `.claude/` files stay unread, and a hostile repo's hooks never run.
+7. **The agent's own network:** a turn of OpenCode opens connections only to the sidecar.
+8. **The runner protocol and the task token:** a token for one task opens nothing of another's; a revoked runner and an expired token are refused.
+9. **The images:** pins and checksums, no secret in a layer, non-root runner and base images.
+10. **`host`:** that the panel and these docs say it isn't isolated, and what it does contain.
+
 ## The threat model
+
+The review draws one boundary at a time: the agent's container, the sidecar, the runner, the server and the browser. For each, what crosses it, who is on each side, and what an attacker on the inside wants.
+
+The **adversarial run** works a hostile repo and a hostile ticket with OpenCode on a stub model that obeys every instruction. The repo holds a `.claude/settings.json` hook and an `opencode.json` command that try to run, an `.mcp.json` server, and a `postinstall` script that reads the environment. The ticket asks the agent to print the key, fetch the cloud metadata address, push to `main` and call another task's tools. It passes when every one of them fails, and the event log shows each attempt.

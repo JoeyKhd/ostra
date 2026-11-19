@@ -1,11 +1,21 @@
 ---
 title: "Report a vulnerability"
 description: "How to report a security flaw in ostra."
+summary: "Privately, through GitHub's private vulnerability reporting. Never in a public issue."
 ---
-
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
 
 ## How to report
 
+Report a vulnerability privately, through GitHub's private vulnerability reporting on [ostra's repository](https://github.com/JoeyKhd/ostra/security): **Security**, then **Report a vulnerability**. Please don't open a public issue, a discussion or a pull request for it.
+
+Say what you found, where, and how to reproduce it, with the version you ran. Never include a real key, token or someone else's data: a reproduction on a fresh install with the test values is enough.
+
+**In scope:** anything that breaks what these pages promise. A credential that reaches the agent's container, a push the git proxy should refuse, a box that reaches what the egress baseline blocks, one task reaching another's tools or data, untrusted text that reaches a shell, a SQL string or a log line, and the server's and the panel's own sign-in and access checks.
+
+**Not a vulnerability:** what the `host` executor doesn't isolate, the agent's direct public egress on `kubernetes`, and an environment's own secrets being readable by the code under test. These pages state them as limits.
+
 ## What happens next
+
+The maintainer reads the report, confirms it, and works out a fix with you in the private advisory. The fix ships in a release, and the advisory is published after it, crediting you unless you'd rather it didn't.
+
+`SECURITY.md` at the root of the repository, which comes with the security review before v1, holds the same policy. Where the two differ, `SECURITY.md` counts.

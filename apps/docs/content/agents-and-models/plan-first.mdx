@@ -1,11 +1,23 @@
 ---
 title: "Plan first"
 description: "Have the agent write a plan, and approve it before it changes code."
+summary: "A profile switch: the first turn reads and proposes, and the driver approves before work starts."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+With plan first on, a code task's first turn only proposes a plan. The agent reads the code and never writes. The task's driver approves or edits the plan, and the work starts after that.
 
 ## Turn it on
 
+Plan first is a switch on an [agent profile](/docs/agents-and-models/agent-profiles), off by default. Every task that starts on that profile begins with a plan turn. The profiles table shows it under **Plan first**.
+
+For OpenCode, the plan turn runs on OpenCode's own plan agent, switched with ACP's session mode, and its config makes it read-only for that turn. OpenCode sends no ACP plan, so ostra shows its todo list as the plan.
+
 ## Review a plan
+
+When the plan is ready, the task shows **Needs you · plan**. The driver chooses:
+
+- **Approve plan:** the agent starts the work.
+- **Edit and approve:** change or add steps first; the agent works from your version.
+- **Ask for changes:** say what should change, and **Send to the agent**. It proposes a new plan.
+
+The plan turn writes nothing. The work, and every change to a branch, comes after the approval. The task's other members see the plan; only the driver answers it.

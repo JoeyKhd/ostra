@@ -1,11 +1,29 @@
 ---
 title: "Contributor agreement"
-description: "The agreement a contributor signs once, and why."
+description: "What the contributor agreement asks, and how you agree to it once."
+summary: "You keep your copyright, and give the licensor a license to use your contribution on any terms."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+ostra's server and panel are under the Sustainable Use License, and the adapter SDK, the adapters, the runner and these docs are under Apache-2.0. The licensor can also offer ostra on other terms, such as commercial licenses, and code you contribute can be part of those only if you allow it. The contributor agreement is that permission, and nothing more. Its full text, version 1.1, is in [`CONTRIBUTING.md`](https://github.com/JoeyKhd/ostra/blob/main/CONTRIBUTING.md), and that text is the one that counts.
 
 ## The agreement
 
-## Signing it
+It covers the whole repository, the Apache-2.0 packages included, so code can move between packages. In short:
+
+1. **You keep your copyright.** Nothing transfers ownership, and you can use your contribution anywhere else.
+2. **The licensor may use your contribution on any terms:** a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license, including to license it to others.
+3. **The same goes for patents** you hold that your contribution infringes.
+4. **It's yours to give.** You wrote it, or have the right to contribute it; if your employer or a client has rights in it, you have their permission; and you say which part is someone else's work, and under which license.
+5. **As is,** without warranty, as far as the law allows.
+6. **One yes covers everything** you contribute to ostra, earlier and later.
+
+If the text changes, the new version covers only what you contribute after you agree to it. Why ostra asks for this is in ADR 0048, in the repository's `context/decisions/`.
+
+## Agreeing to it
+
+- **In a pull request:** tick the box in the pull request form, "I agree to the ostra contributor agreement". A check fails the pull request until it's ticked, and your ticked pull request is the record.
+- **With write access:** agree once, in a pull request of your own with the box ticked. That covers what you push afterwards, and the pull requests a bot opens for you.
+- **Only a person agrees, and only for themselves.** A tool or an agent can send your contribution, but it can't say yes for you. The check refuses a pull request a bot opened, whatever its text says, unless the bot is on the check's short list.
+- **Nothing to agree to** for opening issues, commenting and reviewing.
+
+Before you write code, open an issue for anything big, and build and test as [Development](/docs/contributing/development) describes.

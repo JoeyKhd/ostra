@@ -1,6 +1,6 @@
 # 23: Docs: agents, using ostra, security, reference and the adapter guide
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 21
 Features: F-058
@@ -18,8 +18,11 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the agents page
 
 ## Done when
 
-- [ ] Tests named for `F-058`: the adapter guide's code samples typecheck against `packages/adapter-sdk` (extracted and compiled in the test); the CLI reference matches `ostra --help` (break-it: a renamed flag fails).
-- [ ] The pages exist in the built site, each linked from its section.
-- [ ] Committed as `📝 write the agent, security and adapter guides`.
+- [x] Tests named for `F-058`: the adapter guide's code samples typecheck against `packages/adapter-sdk` (extracted and compiled in the test); the CLI reference matches `ostra --help` (break-it: a renamed flag fails).
+- [x] The pages exist in the built site, each linked from its section.
+- [x] Committed as `📝 write the agent, security and adapter guides`.
 
 ## Comments
+
+- 2026-11-19: Written from the code on origin/main: 24 pages under agents-and-models, using-ostra, security, reference and contributing, OpenCode as v1's one agent, with its capability table taken from `opencode-adapter.ts` and what ostra does where it lacks one. Tests: `packages/adapter-sdk/src/adapter-guide-samples.test.ts` takes every `ts` block of the adapter guide, names it by its `title`, and compiles them in memory as files of `@ostra/adapter-sdk` with its own tsconfig (break-it: an unknown capability failed it); `apps/runner/src/cli/cli-docs-reference.test.ts` runs `ostra --help` and checks the CLI page's commands, flags, variables, defaults and words both ways (break-it: `--capacity` renamed on the page, and in the code, each failed it); the export check gained a case that every page of the five sections is built, no longer a skeleton, and linked from its section's navigation. The worked secret store also passed `defineSecretStoreContractSuite` when run by hand.
+- 2026-11-19: Open for ticket 27: the security review page states what the review checks and that its summary and open mediums and lows land there when it's signed; `SECURITY.md` doesn't exist yet, so the reporting page points at GitHub's private vulnerability reporting and names `SECURITY.md` as coming with the review. `--transport`'s words on the CLI page are the help's own ("Milestone 1 has websocket only; auto and http come in milestone 5"), since the page is held to them; changing them is a runner change, not a docs one.

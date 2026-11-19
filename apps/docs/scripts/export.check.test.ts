@@ -82,4 +82,18 @@ describe("the docs site's static export", () => {
       expect(shown, row.name).toBe(expected);
     }
   });
+
+  it("F-058: the agent, using, security, reference and contributing pages are written, built, and linked from their section", async () => {
+    const metaSchema = z.looseObject({ pages: z.array(z.string()) });
+    for (const section of ["agents-and-models", "using-ostra", "security", "reference", "contributing"]) {
+      const { pages } = await readJson(path.join(app, "content", section, "meta.json"), metaSchema);
+      expect(pages.length, section).toBeGreaterThan(1);
+      const first = await readFile(path.join(out, "docs", section, pages[0] ?? "", "index.html"), "utf8");
+      for (const page of pages) {
+        const html = await readFile(path.join(out, "docs", section, page, "index.html"), "utf8");
+        expect(html, `docs/${section}/${page} is still a skeleton`).not.toContain("This page is a skeleton");
+        expect(first, `docs/${section}'s navigation doesn't link ${page}`).toMatch(new RegExp(`href="[^"]*/docs/${section}/${page}/?"`));
+      }
+    }
+  });
 });

@@ -1,11 +1,29 @@
 ---
 title: "Agent profiles"
 description: "An agent, a model and its settings, chosen per task."
+summary: "An agent, its model, and what it works with: instructions, skills, MCP servers and approval rules."
 ---
 
-> [!NOTE]
-> This page is a skeleton. Its words are written for v1, in milestone 7's ticket 23.
+An agent profile is a named setup of an agent: its model, its instructions, its tools, and how much it may do without asking. Every task runs on one profile. Profiles belong to the organization, and an organization admin manages them under **Agent profiles**.
+
+ostra starts with a built-in OpenCode profile, which uses the model you chose as the default under **Models**.
 
 ## Make a profile
 
+Press **New profile** and fill in its sections.
+
+- **Agent and model.** The agent (OpenCode in v1) and the model, picked from the models your providers serve. A profile without a model can't start a task. Set its reasoning effort here too: one of the levels the model has, or Default, which leaves the endpoint's own.
+- **Instructions.** What every task with this profile should know. They're added beside each repo's `AGENTS.md`, never replacing it.
+- **Skills.** A skill is a `SKILL.md` and up to 20 files, at most 1 MiB each, that the agent reads when it needs them. Skills are written to the task's own config folder, never to the repo.
+- **MCP servers.** An HTTP server by its URL and headers, or a stdio command that's in the image. They're reached through the runner's MCP proxy, so no header value or secret enters the box. A server can be marked read-only.
+- **Approval rules.** What waits for a member before the agent does it. See [Approval rules](/docs/agents-and-models/approval-rules).
+- **Plan first.** The first turn only proposes a plan. See [Plan first](/docs/agents-and-models/plan-first).
+- **Who may use it.** Everyone, or only the members you list.
+
+A profile's permissions and MCP servers win over a repo's own agent config. Its instructions and skills sit beside the repo's.
+
+A profile you no longer use can be archived. Archived profiles stay listed under **Show archived profiles**.
+
 ## Defaults per project
+
+Each project picks a default profile for each task kind: refine, code and review. The table on **Agent profiles** shows, under **Default for**, which projects use each one. A member starting a task, and an intake rule, can choose another profile among those they may use.
