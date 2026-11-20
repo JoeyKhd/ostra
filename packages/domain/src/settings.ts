@@ -94,6 +94,7 @@ export const settingNames = [
   "OSTRA_SEARCH_ENTRY_MAX_KIB",
   // Milestone 5 (spec section 5.4).
   "OSTRA_JOIN_TOKEN_DAYS",
+  "OSTRA_BOOTSTRAP_JOIN_TOKEN",
   "OSTRA_PERSONAL_RUNNER_CAPACITY",
   "OSTRA_QUEUE_SWEEP_SECONDS",
   "OSTRA_DEV_HOST_POOL_SAME_USER",
@@ -386,6 +387,11 @@ export const settingFields = {
     default: "30",
     description: "A new join token's lifetime in days, for a pool that names none (F-091). 0: tokens never expire.",
   },
+  OSTRA_BOOTSTRAP_JOIN_TOKEN: {
+    default: "true",
+    description:
+      "Make the bootstrap join token at first start: one token for the default pool, written to OSTRA_DATA_DIR for the compose file's pool runner (F-013). Made once; one an admin revokes stays revoked. false: make none (the Helm chart sets it).",
+  },
   OSTRA_PERSONAL_RUNNER_CAPACITY: {
     default: "2",
     description: "How many tasks a personal runner runs at once, unless its member sets another number on the runner (F-014, F-067).",
@@ -625,6 +631,7 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_SEARCH_ENTRY_MAX_KIB: whole(1, 8).default(8).describe(describe("OSTRA_SEARCH_ENTRY_MAX_KIB")),
   // Milestone 5.
   OSTRA_JOIN_TOKEN_DAYS: whole(0, 3650).default(30).describe(describe("OSTRA_JOIN_TOKEN_DAYS")),
+  OSTRA_BOOTSTRAP_JOIN_TOKEN: flag.default(true).describe(describe("OSTRA_BOOTSTRAP_JOIN_TOKEN")),
   OSTRA_PERSONAL_RUNNER_CAPACITY: whole(1, 64).default(2).describe(describe("OSTRA_PERSONAL_RUNNER_CAPACITY")),
   OSTRA_QUEUE_SWEEP_SECONDS: whole(1, 3600).default(5).describe(describe("OSTRA_QUEUE_SWEEP_SECONDS")),
   OSTRA_DEV_HOST_POOL_SAME_USER: flag.default(false).describe(describe("OSTRA_DEV_HOST_POOL_SAME_USER")),
@@ -744,6 +751,8 @@ export type ServerSettings = {
   readonly searchEntryMaxBytes: number;
   /** OSTRA_JOIN_TOKEN_DAYS; 0: no expiry. */
   readonly joinTokenDays: number;
+  /** OSTRA_BOOTSTRAP_JOIN_TOKEN: whether core makes the bootstrap join token (F-013). */
+  readonly bootstrapJoinToken: boolean;
   /** OSTRA_PERSONAL_RUNNER_CAPACITY. */
   readonly personalRunnerCapacity: number;
   /** OSTRA_QUEUE_SWEEP_SECONDS. */
@@ -972,6 +981,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       projectMaxRepos: value.OSTRA_PROJECT_MAX_REPOS,
       searchEntryMaxBytes: value.OSTRA_SEARCH_ENTRY_MAX_KIB * 1024,
       joinTokenDays: value.OSTRA_JOIN_TOKEN_DAYS,
+      bootstrapJoinToken: value.OSTRA_BOOTSTRAP_JOIN_TOKEN,
       personalRunnerCapacity: value.OSTRA_PERSONAL_RUNNER_CAPACITY,
       queueSweepSeconds: value.OSTRA_QUEUE_SWEEP_SECONDS,
       devHostPoolSameUser: value.OSTRA_DEV_HOST_POOL_SAME_USER,

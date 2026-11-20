@@ -605,6 +605,9 @@ export const startCore = async (
   // The bootstrap join token waits for the first organization (a fresh install has none yet).
   let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
   const bootstrap = async (): Promise<void> => {
+    if (!settings.bootstrapJoinToken) {
+      return;
+    }
     const outcome = await ensureBootstrapJoinToken(db, settings.dataDir, logger).catch((error: unknown) => {
       logger.warn("bootstrap-join-token.failed", { error: error instanceof Error ? error.name : "unknown" });
       return "waiting" as const;

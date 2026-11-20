@@ -155,6 +155,8 @@ spec:
               value: "http://ostra-ostra-server-core:8787"
             - name: OSTRA_DATA_DIR
               value: /var/lib/ostra
+            - name: OSTRA_BOOTSTRAP_JOIN_TOKEN
+              value: "false"
             - name: OSTRA_PUBLIC_URL
               value: "https://ostra.example.com"
             - name: OSTRA_CORE_PUBLIC_URL
@@ -274,6 +276,8 @@ spec:
               value: "http://ostra-ostra-server-core:8787"
             - name: OSTRA_DATA_DIR
               value: /var/lib/ostra
+            - name: OSTRA_BOOTSTRAP_JOIN_TOKEN
+              value: "false"
             - name: OSTRA_PUBLIC_URL
               value: "https://ostra.example.com"
             - name: OSTRA_CORE_PUBLIC_URL

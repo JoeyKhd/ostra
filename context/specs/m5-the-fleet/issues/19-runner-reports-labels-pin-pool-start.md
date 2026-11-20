@@ -35,3 +35,4 @@ Spec: `../spec.md`, section 4 ("What a runner reports", "The pin"); ADR 0034 (am
   - **Break-its,** each failing its test: `integrityMatches` passing anything; no `resume` from `approveRunner`; no `install` in the reports; the dispatcher taking an offer while draining; one slot by default; the tarball packed unbundled, then without the `require` shim.
   - Committed in 2d49827d.
   - **Fixed on the way:** `apps/runner/src/cli/package.test.ts` still expected the image's old `ENTRYPOINT ["node", …]`, which ticket 22 changed to the `ostra` shim.
+- 2026-11-20 (review of apps/core): the pin is proved against the fake registry, but a production core answers `npm: null` on `/runner/v1/info`, so no runner of a real install pins. The CLI's npm name waits for the maintainer (ADR 0046), so F-061's pin row is `partial`, F-061 is `building`, and `docs/configuration.md` says the pin is inactive until milestone 7 publishes the CLI. Commit `🐛 fix review findings in apps/core`.

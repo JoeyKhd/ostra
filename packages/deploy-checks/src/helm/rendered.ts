@@ -271,6 +271,10 @@ export const checkServerRender = (manifests: readonly Manifest[], values: Server
     if (env.get("DATABASE_URL")?.valueFrom?.secretKeyRef === undefined) {
       add("server-deployments", `the ${role} deployment reads DATABASE_URL from a secret`);
     }
+    // Each replica's data folder is its own emptyDir: a bootstrap join token there joins nothing.
+    if (env.get("OSTRA_BOOTSTRAP_JOIN_TOKEN")?.value !== (values.env["OSTRA_BOOTSTRAP_JOIN_TOKEN"] ?? "false")) {
+      add("server-deployments", `the ${role} deployment sets OSTRA_BOOTSTRAP_JOIN_TOKEN=false unless env names it`);
+    }
   }
   if (deployments.size !== 2) {
     add("server-deployments", "the chart has two deployments, web and core");

@@ -90,6 +90,12 @@ describe("the server chart's render", () => {
     expect(await checkRender("ostra-server", await kept("ostra-server", "existing-secrets.yaml"), await exampleValues("ostra-server", "existing-secrets.yaml"))).toEqual([]);
   });
 
+  it("F-091: the server's processes make no bootstrap join token, since each replica's data folder is its own", async () => {
+    const render = await kept("ostra-server", "required-values.yaml");
+    expect(await rulesOf("ostra-server", render)).toEqual([]);
+    expect(await rulesOf("ostra-server", changed(render, /\n\s+- name: OSTRA_BOOTSTRAP_JOIN_TOKEN\n\s+value: "false"/g, ""))).toContain("server-deployments");
+  });
+
   it("F-118: web and core run as their own deployments with their replicas, and the ingress raises the idle timeout", async () => {
     const render = await kept("ostra-server", "ingress.yaml");
     expect(await rulesOf("ostra-server", changed(render, /replicas: 3/, "replicas: 1"), "ingress.yaml")).toContain("server-deployments");

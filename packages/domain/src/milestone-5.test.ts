@@ -69,9 +69,9 @@ describe("milestone 5's settings", () => {
     if (!parsed.ok) {
       return;
     }
-    expect(parsed.settings).toMatchObject({ joinTokenDays: 30, personalRunnerCapacity: 2, queueSweepSeconds: 5, devHostPoolSameUser: false });
-    const set = parseServerSettings({ OSTRA_JOIN_TOKEN_DAYS: "0", OSTRA_PERSONAL_RUNNER_CAPACITY: "3", OSTRA_QUEUE_SWEEP_SECONDS: "10" });
-    expect(set.ok && set.settings).toMatchObject({ joinTokenDays: 0, personalRunnerCapacity: 3, queueSweepSeconds: 10 });
+    expect(parsed.settings).toMatchObject({ joinTokenDays: 30, personalRunnerCapacity: 2, queueSweepSeconds: 5, devHostPoolSameUser: false, bootstrapJoinToken: true });
+    const set = parseServerSettings({ OSTRA_JOIN_TOKEN_DAYS: "0", OSTRA_PERSONAL_RUNNER_CAPACITY: "3", OSTRA_QUEUE_SWEEP_SECONDS: "10", OSTRA_BOOTSTRAP_JOIN_TOKEN: "false" });
+    expect(set.ok && set.settings).toMatchObject({ joinTokenDays: 0, personalRunnerCapacity: 3, queueSweepSeconds: 10, bootstrapJoinToken: false });
     expect(parseServerSettings({ OSTRA_PERSONAL_RUNNER_CAPACITY: "0" }).ok).toBe(false);
   });
 

@@ -166,6 +166,8 @@ spec:
               value: "http://ostra-ostra-server-core:8787"
             - name: OSTRA_DATA_DIR
               value: /var/lib/ostra
+            - name: OSTRA_BOOTSTRAP_JOIN_TOKEN
+              value: "false"
           readinessProbe:
             httpGet:
               path: /
@@ -275,6 +277,8 @@ spec:
               value: "http://ostra-ostra-server-core:8787"
             - name: OSTRA_DATA_DIR
               value: /var/lib/ostra
+            - name: OSTRA_BOOTSTRAP_JOIN_TOKEN
+              value: "false"
           readinessProbe:
             httpGet:
               path: /healthz

@@ -65,6 +65,11 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
   value: {{ printf "http://%s-core:%v" (include "ostra-server.fullname" .) .Values.core.port | quote }}
 - name: OSTRA_DATA_DIR
   value: /var/lib/ostra
+{{- if not (hasKey .Values.env "OSTRA_BOOTSTRAP_JOIN_TOKEN") }}
+{{- /* Each replica's data folder is its own emptyDir, and the runner chart joins with a token from the panel. */}}
+- name: OSTRA_BOOTSTRAP_JOIN_TOKEN
+  value: "false"
+{{- end }}
 {{- with .Values.publicUrl }}
 - name: OSTRA_PUBLIC_URL
   value: {{ . | quote }}
