@@ -1180,16 +1180,21 @@ h3:hover .heading-anchor,
 
 .filter-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  gap: 12px 24px;
   margin: 20px 0 16px;
 }
 
+/* The field is what gives way when the row is tight: the segments never shrink, so "Development 7"
+   is never cut off at the segmented control's edge, and when even a 200px field doesn't fit beside
+   them, the count wraps to its own line instead of running out of the row. */
 .filter-field {
   display: flex;
+  flex: 1 1 200px;
   align-items: center;
   gap: 10px;
-  width: 320px;
+  max-width: 320px;
   height: 36px;
   padding: 0 12px;
   background: var(--surface);
@@ -1220,6 +1225,7 @@ h3:hover .heading-anchor,
 
 .segments {
   display: flex;
+  flex: none;
   height: 36px;
   border: 1px solid var(--control);
   border-radius: 7px;
@@ -2016,10 +2022,6 @@ h3:hover .heading-anchor,
   .row-link {
     display: none;
   }
-
-  .filter-row {
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 900px) {
@@ -2151,7 +2153,8 @@ h3:hover .heading-anchor,
   }
 
   .filter-field {
-    width: 100%;
+    flex-basis: 100%;
+    max-width: none;
   }
 
   .segments {
