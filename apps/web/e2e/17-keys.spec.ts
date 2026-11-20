@@ -319,7 +319,8 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expect(page.getByRole("menu")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    expect(await focusedMark(page)).toBe("user-menu");
+    // Radix moves the focus back in a timer once the menu has unmounted: wait for it.
+    await expect.poll(() => focusedMark(page)).toBe("user-menu");
   });
 
   test("F-081: the live region announces a new needs-you item", async ({ page }) => {
