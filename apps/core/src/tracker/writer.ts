@@ -1,7 +1,12 @@
 import type { AdapterError, AdapterResult, IdempotencyStore, Logger, Ticket, TicketRef, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import {
+  isParentCommentWrite,
+  parentChildrenOf,
+  parentCommentKey,
+  parentTicketUrlOf,
   parseBoardMapping,
+  renderParentProgressComment,
   postgresIdempotencyStore,
   renderProgressComment,
   statusMappingOf,
@@ -110,9 +115,20 @@ export const applyTicketWrite = async (
   }
   const taskId = taskIdSchema.parse(row.task.id);
   const taskUrl = taskUrlOf(deps.publicUrl, taskId);
+  // Milestone 6 (F-077): a write to a sub-issue's parent: its one comment listing the children.
+  const parentTicketId = isParentCommentWrite(row.idempotencyKey) ? row.ticketId : null;
 
+  // An edit superseded by a newer one for the same parent: the newer renders the latest text anyway.
+  if (parentTicketId !== null && payload.data.kind === "comment_update") {
+    const newer = await db.ticketWrite.count({
+      where: { ticketId: parentTicketId, kind: "comment_update", state: "pending", createdAt: { gt: row.createdAt }, idempotencyKey: { startsWith: "ticket-write:parent:" } },
+    });
+    if (newer > 0) {
+      return { outcome: "done", externalId: null, how: "superseded" };
+    }
+  }
   // An edit superseded by a newer one for the same task: the newer renders the latest text anyway.
-  if (payload.data.kind === "comment_update") {
+  if (parentTicketId === null && payload.data.kind === "comment_update") {
     const newer = await db.ticketWrite.count({ where: { taskId, kind: "comment_update", state: "pending", createdAt: { gt: row.createdAt } } });
     if (newer > 0) {
       return { outcome: "done", externalId: null, how: "superseded" };
@@ -183,6 +199,37 @@ export const applyTicketWrite = async (
   };
 
   const data: TicketWritePayload = payload.data;
+  if (parentTicketId !== null && (data.kind === "comment" || data.kind === "comment_update")) {
+    if (ref === null || key === null) return { outcome: "failed", reason: "the write has no ticket" };
+    const parentUrl = parentTicketUrlOf(deps.publicUrl, parentTicketId);
+    // The children's keys, states and PRs as they are now: never a ticket's text.
+    const renderParent = async (): Promise<string> =>
+      renderParentProgressComment({ parentUrl, children: await parentChildrenOf(db, { organizationId: input.organizationId, parentTicketId, publicUrl: deps.publicUrl }) });
+    if (data.kind === "comment") {
+      if (lookupFirst) {
+        const found = await findOwnComment(tracker, board, ref, parentUrl, ownUserId);
+        if (!found.ok) return fail(found.error);
+        if (found.value !== null) return finish(found.value, "found");
+      }
+      const made = await attempt(async () => tracker.comment(board, key, await renderParent()), false);
+      return made.ok ? finish(made.value.commentId, "written") : fail(made.error);
+    }
+    // The parent's comment's ID is what its `comment` row made.
+    const comment = await db.ticketWrite.findUnique({ where: { idempotencyKey: parentCommentKey(parentTicketId) }, select: { state: true, externalId: true } });
+    if (comment?.state === "pending") {
+      await store.release(row.idempotencyKey);
+      return { outcome: "retry", reason: "waiting for the parent's comment to be made" };
+    }
+    if (comment?.state !== "done" || comment.externalId === null) {
+      return finish(null, "found");
+    }
+    if (!tracker.capabilities.commentEdit) {
+      return finish(comment.externalId, "found");
+    }
+    const commentId = comment.externalId;
+    const edited = await attempt(async () => tracker.updateComment(board, ref, commentId, await renderParent()), true);
+    return edited.ok ? finish(commentId, "written") : fail(edited.error);
+  }
   switch (data.kind) {
     case "move": {
       if (ref === null) return { outcome: "failed", reason: "the write has no ticket" };

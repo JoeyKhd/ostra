@@ -6,6 +6,7 @@ import type { JobQueue } from "../ports.ts";
 import { parseBoardMapping } from "./board-mapping.ts";
 import { ticketWriteKey } from "./contracts.ts";
 import type { TicketWritePayload, TicketWriteStep } from "./contracts.ts";
+import { PARENT_COMMENT_MARKER, writeParentProgressInTx } from "./parent-progress.ts";
 
 // The tracker writer's outbox (F-031, F-046, ADR 0037, ticket 15). Each step of ticket sync that a
 // task's change causes is a `TicketWrite` row, written in the same transaction as the change, with
@@ -182,6 +183,11 @@ export const writeTicketStepsInTx = async (
       await deps.jobs.enqueueInTx(deps.tx, "ticket.sync", { organizationId: row.organizationId, ticketWriteId: row.id });
     }
   }
+  // Milestone 6 (F-077): a sub-issue's change edits its parent's comment too, once per change.
+  const edits = planned.filter((write) => write.step.kind === "comment_update" || write.step.kind === "comment");
+  for (const write of edits) {
+    await writeParentProgressInTx(deps, { taskId: input.taskId, revision: write.step.kind === "comment_update" ? write.step.revision : "started" });
+  }
   return written;
 };
 
@@ -275,7 +281,7 @@ export const PROGRESS_COMMENT_MARKER = "<sub>ostra edits this comment as the tas
  * words, never the ticket's: a task's prompt leaves it out, as it would a comment by ostra's app
  * user (an API-key connection has none to filter by).
  */
-export const isProgressComment = (body: string): boolean => body.includes(PROGRESS_COMMENT_MARKER);
+export const isProgressComment = (body: string): boolean => body.includes(PROGRESS_COMMENT_MARKER) || body.includes(PARENT_COMMENT_MARKER);
 
 /**
  * The progress comment's markdown: the task's state, its PRs and its link. It holds no ticket

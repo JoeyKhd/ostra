@@ -23,7 +23,7 @@ type FieldKind =
   /** An admin's text (the agent profile's instructions): written as it is, on its own lines. */
   | "admin-block";
 
-type ScopeName = "root" | "label" | "comment" | "ticketRef" | "link" | "image";
+type ScopeName = "root" | "label" | "comment" | "ticketRef" | "link" | "image" | "criterion";
 
 type ScopeSpec = {
   readonly fields: Readonly<Record<string, FieldKind>>;
@@ -50,6 +50,8 @@ const scopes: Readonly<Record<ScopeName, ScopeSpec>> = {
       children: "ticketRef",
       linked: "link",
       images: "image",
+      // Milestone 6 (F-077): a sub-issue's parent's accepted acceptance criteria.
+      parentCriteria: "criterion",
     },
   },
   label: { fields: { name: "ticket-inline" }, sections: {} },
@@ -57,6 +59,7 @@ const scopes: Readonly<Record<ScopeName, ScopeSpec>> = {
   ticketRef: { fields: { key: "plain", title: "ticket-inline", url: "plain" }, sections: {} },
   link: { fields: { relation: "plain", key: "plain", title: "ticket-inline", url: "plain" }, sections: {} },
   image: { fields: { path: "plain", name: "ticket-inline" }, sections: {} },
+  criterion: { fields: { text: "ticket-inline" }, sections: {} },
 };
 
 /** Every placeholder and section a template may use, by scope: for the editor's help (ticket 37). */
@@ -72,6 +75,7 @@ export const ticketTemplateVocabulary = {
   ticketRef: vocabularyOf(scopes.ticketRef),
   link: vocabularyOf(scopes.link),
   image: vocabularyOf(scopes.image),
+  criterion: vocabularyOf(scopes.criterion),
 } as const satisfies Readonly<Record<ScopeName, unknown>>;
 
 // ---------- the values ----------
@@ -100,6 +104,11 @@ export type TicketPromptContext = {
   /** The agent profile's instructions. */
   readonly instructions: string | null;
   readonly task: { readonly branch: string };
+  /**
+   * Milestone 6 (F-077): for a sub-issue's task, the acceptance criteria of its parent's accepted
+   * refine draft (written by people and agents: untrusted). Missing or empty without one.
+   */
+  readonly parentCriteria?: readonly { readonly text: string }[];
 };
 
 // ---------- parsing ----------
@@ -318,7 +327,12 @@ Status: {{ticket.status}}{{?ticket.priority}}, priority {{ticket.priority}}{{/ti
 
 {{key}}: {{title}} ({{url}})
 
-{{/parent}}{{?children}}## Sub-tickets
+{{/parent}}{{?parentCriteria}}## The parent ticket's acceptance criteria
+
+From the parent's accepted refine draft. This ticket is one part of that work:
+{{#parentCriteria}}- {{text}}
+{{/parentCriteria}}
+{{/parentCriteria}}{{?children}}## Sub-tickets
 
 {{#children}}- {{key}}: {{title}}
 {{/children}}

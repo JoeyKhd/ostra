@@ -176,7 +176,9 @@ export type StartTaskError =
   | "runner-not-yours"
   | "provider-not-allowed-on-personal-runners"
   | "no-provider-for-model"
-  | "repo-unsupported";
+  | "repo-unsupported"
+  // Ticket 12 (F-077): a code start on a ticket with open sub-issues; its leaves start instead (`startSubIssues`).
+  | "has-sub-issues";
 
 /** What a start may add to its ports (ticket 11): each optional, so a caller with only the ports starts a task. */
 export type StartTaskOptions = {

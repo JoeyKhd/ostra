@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Logger, TicketContext, TicketImage } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { appendServerEvent, isProgressComment, markTicketInline, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
+import { appendServerEvent, isProgressComment, markTicketInline, parentCriteriaOf, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
 import type { ChangeNotices, Clock, JobQueue, TicketPromptContext } from "@ostra/domain";
 import type { JobHandler } from "@ostra/jobs";
 import {
@@ -113,7 +113,13 @@ const copyImages = async (
 export const promptContextOf = (
   context: TicketContext,
   images: readonly CopiedImage[],
-  extra: { readonly instructions: string | null; readonly branch: string; readonly ownUserId?: string | null },
+  extra: {
+    readonly instructions: string | null;
+    readonly branch: string;
+    readonly ownUserId?: string | null;
+    /** Milestone 6 (F-077): a sub-issue's parent's accepted acceptance criteria. */
+    readonly parentCriteria?: readonly { readonly text: string }[];
+  },
 ): TicketPromptContext => ({
   ticket: {
     key: context.ticket.key,
@@ -139,6 +145,7 @@ export const promptContextOf = (
   images,
   instructions: extra.instructions,
   task: { branch: extra.branch },
+  parentCriteria: extra.parentCriteria ?? [],
 });
 
 /** The context from the ticket cache's row alone, when the tracker no longer has the ticket. */
@@ -260,6 +267,7 @@ export const fetchContextHandler =
         instructions: profile?.instructions ?? null,
         branch: task.branchName,
         ownUserId: lookup.ok ? lookup.value.ownUserId : null,
+        parentCriteria: await parentCriteriaOf(deps.db, { organizationId: payload.organizationId, parentTicketId: task.parentTicketId }),
       }),
     );
     const failedLine =

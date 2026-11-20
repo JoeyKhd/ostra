@@ -21,6 +21,7 @@ import { noProviderMessage, resolveProfileModelInTx } from "../providers/session
 import { modelNameOfColumns } from "../providers/model-name.ts";
 import { writeTaskSearchEntries } from "../search/entries.ts";
 import { writeTicketOutboxInTx } from "../tickets/ticket-outbox.ts";
+import { openCachedChildrenInTx, writeParentProgressInTx } from "../tickets/parent-progress.ts";
 import { branchNameFor, claimBranchNameInTx } from "../use-cases/branch-claim.ts";
 import type { M6Deps, StartTask, StartTaskError, StartTaskInput, StartTaskResult } from "../use-cases/m6-signatures.ts";
 import { createNeedsYouItemInTx } from "../use-cases/needs-you-items.ts";
@@ -184,6 +185,8 @@ export const enqueueStartWorkInTx = async (deps: { readonly tx: Tx; readonly pub
   await writeTicketOutboxInTx(deps, at, { kind: "move", target: "started" }, { kind: "move", target: "started" });
   await writeTicketOutboxInTx(deps, at, { kind: "comment" }, { kind: "comment", markdown: `ostra is working on this: ${taskUrl}` });
   await writeTicketOutboxInTx(deps, at, { kind: "link_task" }, { kind: "link_task", url: taskUrl, title: `ostra task: ${work.title}`.slice(0, 256), subtitle: null });
+  // A sub-issue's start shows on its parent's comment (F-077).
+  await writeParentProgressInTx({ tx, jobs: deps.jobs }, { taskId: work.taskId, revision: "started" });
   // The prompt is rendered from the ticket's full context, which the job reads: it then dispatches.
   await deps.jobs.enqueueInTx(tx, "ticket.fetch-context", { organizationId: work.organizationId, taskId: work.taskId, sessionId: work.sessionId });
 };
@@ -224,6 +227,12 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
       return refuse("not-found", "That ticket's board is detached, or the ticket left it: no new task starts from it");
     }
     if (input.kind === "code") {
+      // F-077: the parent of open sub-issues never runs code; its leaves start instead
+      // (`startSubIssues`). A refine start refines the parent itself.
+      const children = await openCachedChildrenInTx(tx, row);
+      if (children > 0) {
+        return refuse("has-sub-issues", `${row.key} has ${String(children)} open sub-issues: start them instead`);
+      }
       const existing = await tx.task.findFirst({
         where: { projectId: project.id, organizationId, ticketId: row.id, kind: "code", state: { notIn: [...TERMINAL_TASK_STATES] } },
         select: { id: true },

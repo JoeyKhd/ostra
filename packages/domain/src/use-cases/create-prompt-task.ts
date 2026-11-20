@@ -106,6 +106,7 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
     case "invalid-input":
     case "no-default-profile":
     case "ticket-has-active-task":
+    case "has-sub-issues":
       return refuse("not-found", started.message);
     default:
       return started satisfies never;

@@ -57,7 +57,12 @@ export type TrackerStartResult =
     }
   /** The ticket already has an active code task: the one there is (a delegation of a busy ticket is a follow-up to it). */
   | { readonly ok: false; readonly error: "ticket-has-task"; readonly message: string; readonly taskId: TaskId }
-  | { readonly ok: false; readonly error: "not-found" | "no-agent-profile" | "no-repo" | "no-provider-for-model" | "repo-unsupported" | "forbidden"; readonly message: string };
+  | {
+      readonly ok: false;
+      /** `has-sub-issues` (F-077, ticket 12): a parent ticket, whose leaves start instead; the parent never runs code. */
+      readonly error: "not-found" | "no-agent-profile" | "no-repo" | "no-provider-for-model" | "repo-unsupported" | "forbidden" | "has-sub-issues";
+      readonly message: string;
+    };
 
 export type TrackerStartDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & {
   readonly tx: Tx;

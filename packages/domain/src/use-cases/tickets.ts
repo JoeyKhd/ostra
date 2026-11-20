@@ -96,6 +96,8 @@ export type StartTicketTaskResult =
       | "no-provider-for-model"
       /** A repo's default branch requires signed commits (F-055). */
       | "repo-unsupported"
+      /** Milestone 6 (F-077): the ticket has open sub-issues; `startSubIssues` starts its leaves instead. */
+      | "has-sub-issues"
     >
   /** One active code task per ticket per project: the one there is (spec section 11, item 12). */
   | { readonly ok: false; readonly error: "ticket-has-task"; readonly message: string; readonly taskId: TaskId };
@@ -172,6 +174,7 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
     case "no-agent-profile":
     case "no-repo":
     case "repo-unsupported":
+    case "has-sub-issues":
       return refuseStart(started.error, started.message);
     // A member's ticket start has its ticket and its own profile choice: neither comes back for it.
     case "invalid-input":

@@ -169,6 +169,9 @@ export * from "./automations/intake-enqueue.ts";
 export * from "./automations/manage.ts";
 export * from "./automations/scheduler.ts";
 export * from "./tickets/ticket-outbox.ts";
+// Milestone 6, ticket 12: sub-issues and the parent's progress comment.
+export * from "./starts/sub-issues.ts";
+export * from "./tickets/parent-progress.ts";
 export * from "./starts/origin-labels.ts";
 export * from "./review-loop/ci-verdict.ts";
 export * from "./review-loop/rounds.ts";

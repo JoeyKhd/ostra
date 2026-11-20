@@ -210,6 +210,9 @@ export const startBulkItem = async (deps: StartPorts & BulkOptions, input: Param
         return decide({ state: "skipped", taskId: null, reason: "not-on-a-board" });
       case "forbidden":
         return decide({ state: "skipped", taskId: null, reason: "no-access" });
+      // F-077: a parent never runs code; "Start sub-issues" on its page starts its leaves.
+      case "has-sub-issues":
+        return decide({ state: "skipped", taskId: null, reason: "has-sub-issues" });
       case "invalid-input":
       case "no-default-profile":
       case "no-agent-profile":

@@ -231,6 +231,8 @@ export const tasksRouter = router({
       "no-repo": "PRECONDITION_FAILED",
       "repo-unsupported": "PRECONDITION_FAILED",
       "ticket-has-task": "CONFLICT",
+      // Milestone 6 (F-077): the panel offers "Start sub-issues" for a parent (ticket 25).
+      "has-sub-issues": "PRECONDITION_FAILED",
     });
     return { taskId: created.taskId, sessionId: created.sessionId, branchName: created.branchName };
   }),
