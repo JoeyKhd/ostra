@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { runnerIdSchema } from "@ostra/protocol";
-import type { ProjectId } from "@ostra/protocol";
+import type { AgentProfileId, ProjectId } from "@ostra/protocol";
 
 import { unprotectedRepos, unsupportedRepos } from "@/components/projects/repo-checks-words";
 import type { RepoDetail } from "@/components/projects/repo-checks-words";
@@ -18,6 +18,7 @@ import { POOLS, RunOnPicker, useRunOn } from "@/components/tasks/run-on";
 import { budgetWaitText } from "@/components/tasks/budget-reason";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip, Status } from "@/components/ui/status";
@@ -28,6 +29,8 @@ import { useTRPC, useTRPCClient } from "@/lib/trpc";
 
 import { cacheAge, contextLine, filtered, filtersFrom, filtersToSearch, ledeSource, listInputOf, priorityText, rowAge } from "./inbox-words";
 import type { InboxDetail, InboxFilters, InboxSource, InboxTicket } from "./inbox-words";
+import { BulkStartPanel, SelectionBar, planOf, useBulkStart } from "./bulk-start";
+import type { BulkKind } from "./bulk-start";
 import { SafeMarkdown } from "./safe-markdown";
 import { PriorityIcon, TicketStatusIcon } from "./ticket-icons";
 
@@ -60,22 +63,65 @@ const rowGrid = (several: boolean, tasks: boolean) =>
           : "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
   );
 
+/** F-107: a row's tick for a bulk start, and what a ticked parent's code start starts (F-077). */
+export type RowTick = {
+  readonly ticked: boolean;
+  readonly disabled: boolean;
+  readonly onTick: (range: boolean) => void;
+  /** A ticked parent's "starts N tasks", or `null`. */
+  readonly startsTasks: number | null;
+  /** A parent's page (F-077), for its "N sub-issues" chip. */
+  readonly parentHref: string | null;
+};
+
 /** One ticket: priority, key, title, labels, (board), status, its task, and the age of its last change. */
-export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, now }: { readonly ticket: InboxTicket; readonly several: boolean; readonly tasks?: boolean; readonly selected: boolean; readonly onSelect: () => void; readonly now: number }) => (
-  <li className="border-b border-line" data-ticket={ticket.key} data-selected={selected}>
+export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, now, tick }: { readonly ticket: InboxTicket; readonly several: boolean; readonly tasks?: boolean; readonly selected: boolean; readonly onSelect: () => void; readonly now: number; readonly tick?: RowTick }) => (
+  <li className="flex items-center border-b border-line" data-ticket={ticket.key} data-selected={selected} data-ticked={tick?.ticked === true}>
+    {tick === undefined ? null : (
+      <span className="grid w-9 shrink-0 place-items-center">
+        <Checkbox
+          tone="teal"
+          checked={tick.ticked}
+          disabled={tick.disabled}
+          aria-label={t("bulkStart.tick", { key: ticket.key })}
+          onClick={(event) => {
+            event.preventDefault();
+            tick.onTick(event.shiftKey);
+          }}
+          className="size-4"
+        />
+      </span>
+    )}
     <div
       role="button"
       tabIndex={0}
       aria-pressed={selected}
       onClick={onSelect}
-      onKeyDown={(event) => { if (event.key === "Enter") onSelect(); }}
-      className={cn(rowGrid(several, tasks), "cursor-default rounded-md px-2 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", selected && "bg-sel hover:bg-sel")}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onSelect();
+        if (event.key === "x" && tick !== undefined && !tick.disabled) {
+          event.preventDefault();
+          tick.onTick(false);
+        }
+      }}
+      className={cn(rowGrid(several, tasks), "min-w-0 flex-1 cursor-default rounded-md px-2 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", (selected || tick?.ticked === true) && "bg-sel hover:bg-sel")}
     >
       <span title={priorityText(ticket.priority)} className="text-muted">
         <PriorityIcon priority={ticket.priority} />
       </span>
       <span className="font-mono text-ui text-faint">{ticket.key}</span>
-      <span className="truncate text-body text-text">{ticket.title}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-body text-text">{ticket.title}</span>
+        {ticket.subIssues > 0 ? (
+          tick?.parentHref === null || tick?.parentHref === undefined ? (
+            <Chip className="shrink-0 text-faint">{plural(ticket.subIssues, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other")}</Chip>
+          ) : (
+            <Link href={tick.parentHref} onClick={(event) => { event.stopPropagation(); }} className="shrink-0" data-testid="parent-link">
+              <Chip className="text-faint hover:text-text">{plural(ticket.subIssues, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other")}</Chip>
+            </Link>
+          )
+        ) : null}
+      </span>
       <span className="hidden min-w-0 items-center gap-1.5 md:flex">
         {ticket.labels.slice(0, 2).map((label) => (
           <Chip key={label} className="max-w-[100px] truncate">{label}</Chip>
@@ -87,7 +133,11 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
         <TicketStatusIcon category={ticket.status.category} className="shrink-0" />
         <span className="truncate">{ticket.status.name ?? "–"}</span>
       </span>
-      {tasks ? <span className="hidden min-w-0 xl:block">{ticket.task?.active === true ? <TaskMark task={ticket.task} /> : null}</span> : null}
+      {tasks ? (
+        <span className="hidden min-w-0 xl:block">
+          {ticket.task?.active === true ? <TaskMark task={ticket.task} /> : tick?.startsTasks === null || tick?.startsTasks === undefined ? null : <span className="text-ui text-muted">{t("bulkStart.startsTasks", { n: tick.startsTasks })}</span>}
+        </span>
+      ) : null}
       <span className="text-right font-mono text-xs text-faint">{rowAge(ticket.updatedAt, now)}</span>
     </div>
   </li>
@@ -207,6 +257,8 @@ export type StartFormProps = {
   readonly error: string | null;
   /** F-037: why the task would wait at the budget gate, before Start; it still starts, queued. */
   readonly budgetWait?: string | null;
+  /** F-077: a parent's code start starts one task per sub-issue, as its page's start does. */
+  readonly subIssues?: { readonly tasks: number; readonly href: string } | null;
 };
 
 /** The selected ticket: its rows, its description, and Start a task (or its active task). */
@@ -269,6 +321,12 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
             <InfoIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
             {contextLine(detail)}
           </p>
+          {start.subIssues === undefined || start.subIssues === null ? null : (
+            <p className="mt-2 text-ui text-text" data-testid="starts-sub-issues">
+              {plural(start.subIssues.tasks, "bulkStart.startsSubIssues.one", "bulkStart.startsSubIssues.other")}{" "}
+              <Link href={start.subIssues.href} className="text-teal hover:underline">{t("bulkStart.openParent")}</Link>
+            </p>
+          )}
           {blocked === undefined ? null : (
             <p id="inbox-repo-block" className="mt-2 flex items-start gap-2 text-xs text-muted">
               <CircleAlertIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75] text-red" />
@@ -313,7 +371,11 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
             {...(blocked === undefined ? {} : { "aria-describedby": "inbox-repo-block" })}
           >
             {start.starting ? <LoaderCircleIcon aria-hidden className="size-[13px] animate-spin" /> : <ArrowUpIcon aria-hidden />}
-            {start.starting ? t("inbox.panel.starting") : t("inbox.panel.startTask")}
+            {start.starting
+              ? t("inbox.panel.starting")
+              : start.subIssues === undefined || start.subIssues === null
+                ? t("inbox.panel.startTask")
+                : plural(start.subIssues.tasks, "bulkStart.start.one", "bulkStart.start.other")}
           </Button>
           {start.error === null ? null : (
             <p role="alert" className="mt-2 flex items-start gap-1.5 text-ui text-red">
@@ -408,6 +470,55 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const now = pages.dataUpdatedAt === 0 ? mounted : pages.dataUpdatedAt;
   const end = useRef<HTMLDivElement>(null);
 
+  // F-107: the ticked tickets, the kind and profile for all, and the bulk start they become.
+  const [ticked, setTicked] = useState<ReadonlyMap<string, InboxTicket>>(new Map());
+  const [lastTicked, setLastTicked] = useState<number | null>(null);
+  const [bulkKind, setBulkKind] = useState<BulkKind>("code");
+  const [bulkProfile, setBulkProfile] = useState<AgentProfileId | null>(null);
+  const bulk = useBulkStart(projectId);
+  const limits = useQuery(trpc.automations.list.queryOptions({ projectId }));
+  const bulkMax = limits.data?.limits.bulkStartMax ?? 50;
+  const tickedList = [...ticked.keys()].flatMap((id) => {
+    const ticket = tickets.find((one) => String(one.id) === id) ?? ticked.get(id);
+    return ticket === undefined ? [] : [ticket];
+  });
+  const selecting = tickedList.length > 0;
+  const busy = bulk.pressed !== null && !bulk.done;
+  const toggleTick = (index: number, range: boolean) => {
+    const ticket = tickets[index];
+    if (ticket === undefined || busy) return;
+    setTicked((current) => {
+      const next = new Map(current);
+      const on = !next.has(String(ticket.id));
+      const from = range && lastTicked !== null ? Math.min(lastTicked, index) : index;
+      const to = range && lastTicked !== null ? Math.max(lastTicked, index) : index;
+      for (const one of tickets.slice(from, to + 1)) {
+        if (on) next.set(String(one.id), one);
+        else next.delete(String(one.id));
+      }
+      return next;
+    });
+    setLastTicked(index);
+  };
+  const clearTicks = () => {
+    if (busy) return;
+    setTicked(new Map());
+    setLastTicked(null);
+    bulk.reset();
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      if (event.key === "Escape" && ticked.size > 0 && !typing) clearTicks();
+      if ((event.metaKey || event.ctrlKey) && event.key === "a" && !typing && tickets.length > 0 && !busy) {
+        event.preventDefault();
+        setTicked(new Map(tickets.map((ticket) => [String(ticket.id), ticket] as const)));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  });
+
   const navigate = (next: InboxFilters, keep: URLSearchParams = new URLSearchParams(params.toString())) => {
     keep.delete("ticket");
     router.replace(`${pathname}${filtersToSearch(next, keep)}`, { scroll: false });
@@ -437,6 +548,15 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
     return () => { observer.disconnect(); };
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  const startParent = useMutation(
+    trpc.tickets.startSubIssues.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: trpc.inbox.pathKey() });
+        await queryClient.invalidateQueries({ queryKey: trpc.projects.pathKey() });
+      },
+    }),
+  );
+  const [parentKey] = useState(() => crypto.randomUUID());
   const start = useMutation(
     trpc.tasks.startFromTicket.mutationOptions({
       onSuccess: async () => {
@@ -454,8 +574,22 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   ];
   const empty: "no-connection" | "no-boards" | "nothing-open" | null =
     source === undefined ? null : source.connection === null ? "no-connection" : source.boards.length === 0 ? "no-boards" : tickets.length === 0 && !filtered(filters) ? "nothing-open" : null;
-  const panel =
-    selected === undefined || empty !== null ? undefined : detail.data === undefined ? (
+  const parentOf = (ticket: { readonly subIssues: number; readonly codeStart: { readonly tasks: number; readonly overLimit: boolean }; readonly id: string }) =>
+    ticket.subIssues > 0 && ticket.codeStart.tasks > 0 && !ticket.codeStart.overLimit ? { tasks: ticket.codeStart.tasks, href: `/projects/${projectId}/tickets/${ticket.id}` } : null;
+  const panel = selecting ? (
+    <BulkStartPanel
+      ticked={tickedList}
+      max={bulkMax}
+      kind={bulkKind}
+      profile={bulkProfile}
+      projectId={projectId}
+      bulk={bulk}
+      onKind={(kind) => { setBulkKind(kind); setBulkProfile(null); }}
+      onProfile={setBulkProfile}
+      onStart={() => void bulk.start(tickedList, bulkKind, bulkProfile)}
+      onDone={clearTicks}
+    />
+  ) : selected === undefined || empty !== null ? undefined : detail.data === undefined ? (
       <div className="space-y-3" aria-busy>
         {[0, 1, 2, 3, 4].map((i) => (
           <Skeleton key={i} className="w-[220px]" />
@@ -474,10 +608,15 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
               <ProfilePicker options={profiles.options} chosen={profiles.chosen} onPick={profiles.pick} disabled={start.isPending} className="-ml-2" />
             ),
           runOn: <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={start.isPending} choices={choices.data} project={project.data?.name ?? ""} />,
-          starting: start.isPending,
-          error: errorText(start.error),
+          starting: start.isPending || startParent.isPending,
+          error: errorText(start.error) ?? errorText(startParent.error),
           budgetWait,
+          subIssues: parentOf(detail.data),
           onStart: () => {
+            if (parentOf(detail.data) !== null) {
+              startParent.mutate({ ticketId: detail.data.id, requestKey: `${parentKey}:${String(detail.data.id)}`, agentProfileId: profiles.chosen?.profileId ?? null });
+              return;
+            }
             start.mutate({
               projectId,
               ticketId: detail.data.id,
@@ -496,6 +635,21 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
         <InboxEmpty kind={empty} board={null} projectId={projectId} admin={empty === "no-connection" ? admin : project.data?.role === "admin"} />
       ) : (
         <>
+          {selecting ? (
+            <SelectionBar
+              ticked={tickedList}
+              allTicked={tickedList.length === tickets.length}
+              max={bulkMax}
+              kind={bulkKind}
+              profile={bulkProfile}
+              projectId={projectId}
+              bulk={bulk}
+              onKind={(kind) => { setBulkKind(kind); setBulkProfile(null); }}
+              onProfile={setBulkProfile}
+              onClear={clearTicks}
+              onStart={() => void bulk.start(tickedList, bulkKind, bulkProfile)}
+            />
+          ) : (
           <div className="mt-[18px] flex flex-wrap items-center gap-2" data-testid="inbox-filters">
             <label className="relative w-full sm:w-[240px]">
               <SearchIcon aria-hidden className="absolute left-2.5 top-1/2 size-[14px] -translate-y-1/2 stroke-[1.75] text-faint" />
@@ -523,6 +677,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
             />
             {first === undefined ? null : <span className="ml-auto font-mono text-xs text-faint">{plural(first.total, "inbox.filter.total.one", "inbox.filter.total.other")}</span>}
           </div>
+          )}
           {pages.isError ? (
             <p role="alert" className="mt-4 text-ui text-red">{errorText(pages.error)}</p>
           ) : pages.data === undefined ? (
@@ -540,9 +695,28 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
             </p>
           ) : (
             <ul className="mt-3.5" data-testid="inbox-list">
-              {tickets.map((ticket) => (
-                <TicketRow key={ticket.id} ticket={ticket} several={several} tasks={withTasks} selected={ticket.id === selected?.id} onSelect={() => { select(ticket); }} now={now} />
-              ))}
+              {tickets.map((ticket, index) => {
+                const isTicked = ticked.has(String(ticket.id));
+                const plan = planOf(ticket, bulkKind);
+                return (
+                  <TicketRow
+                    key={ticket.id}
+                    ticket={ticket}
+                    several={several}
+                    tasks={withTasks || tickedList.some((one) => planOf(one, bulkKind).kind === "sub-issues")}
+                    selected={!selecting && ticket.id === selected?.id}
+                    onSelect={() => { select(ticket); }}
+                    now={now}
+                    tick={{
+                      ticked: isTicked,
+                      disabled: busy,
+                      onTick: (range) => { toggleTick(index, range); },
+                      startsTasks: isTicked && plan.kind === "sub-issues" ? plan.tasks : null,
+                      parentHref: ticket.subIssues > 0 ? `/projects/${projectId}/tickets/${ticket.id}` : null,
+                    }}
+                  />
+                );
+              })}
             </ul>
           )}
           <div ref={end} />

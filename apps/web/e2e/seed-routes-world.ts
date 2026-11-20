@@ -267,6 +267,39 @@ const automation =
     },
   }));
 
+// Milestone 6 (ticket 32): a parent ticket with one sub-issue on a board of the project, for its page.
+const linear =
+  (await db.connection.findFirst({ where: { organizationId, kind: "linear" } })) ??
+  (await db.connection.create({ data: { organizationId, kind: "linear", appId: "e2e-routes-linear", state: "active", credentialKind: "api_key", externalWorkspaceKey: "ostra-test" } }));
+const board =
+  (await db.board.findFirst({ where: { organizationId, projectId: project.id } })) ??
+  (await db.board.create({
+    data: { organizationId, projectId: project.id, connectionId: linear.id, externalId: `routes-team-${args.tag}`, name: data("Routes board"), key: "RTE", statusMap: { open: ["s-todo"], started: "s-progress", inReview: "s-review", done: "s-done", doneBy: "ostra", magicWord: "Closes" } },
+  }));
+const cachedTicket = async (key: string, title: string, parentExternalId: string | null) =>
+  (await db.ticket.findFirst({ where: { organizationId, boardId: board.id, key } })) ??
+  (await db.ticket.create({
+    data: {
+      organizationId,
+      projectId: project.id,
+      boardId: board.id,
+      connectionId: linear.id,
+      externalId: `routes-${key}-${args.tag}`,
+      key,
+      title: data(title),
+      statusId: "s-todo",
+      statusName: "Todo",
+      statusCategory: "open",
+      labels: [],
+      url: `https://linear.app/ostra-test/issue/${key}`,
+      open: true,
+      trackerUpdatedAt: new Date(),
+      parentExternalId,
+    },
+  }));
+const parentTicket = await cachedTicket("RTE-1", "Show the app's version", null);
+await cachedTicket("RTE-2", "Add a version endpoint", parentTicket.externalId);
+
 // A pending invitation, for the invitation page a new member opens.
 const invitation = await db.invitation.create({
   data: { id: randomUUID(), organizationId, email: data(`routes-${args.tag}@example.com`), role: "member", expiresAt: new Date(Date.now() + 7 * 86_400_000), inviterId: admin.userId },
@@ -286,6 +319,7 @@ process.stdout.write(
     profileId: profile.id,
     invitationId: invitation.id,
     automationId: automation.id,
+    parentTicketId: parentTicket.id,
     username,
     memberUsername,
     userData: [...userData],

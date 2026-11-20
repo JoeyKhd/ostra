@@ -5210,5 +5210,157 @@
       "noProvider": "no key has the profile's model",
       "other": "it couldn't start ({code})"
     }
+  },
+  "bulkStart": {
+    "tick": "Select {key}",
+    "toolbar": {
+      "one": "{n} ticket selected",
+      "other": "{n} tickets selected"
+    },
+    "selected": "{n} selected",
+    "overMax": "Up to {max} at once",
+    "clear": "Clear",
+    "kind": "Kind",
+    "code": "Code",
+    "refine": "Refine",
+    "profile": "Profile",
+    "defaultProfile": "Project default",
+    "runOn": "Run on",
+    "pools": "The project's pools",
+    "startGroup": "Start",
+    "whatEach": "What each one does",
+    "lede": "Each ticket starts on its own. One that can't start doesn't stop the others.",
+    "tickets": {
+      "one": "{n} ticket",
+      "other": "{n} tickets"
+    },
+    "tasks": {
+      "one": "{n} task",
+      "other": "{n} tasks"
+    },
+    "start": {
+      "one": "Start {n} task",
+      "other": "Start {n} tasks"
+    },
+    "starting": "Starting… {done} of {n}",
+    "startingHead": {
+      "one": "Starting {n} task",
+      "other": "Starting {n} tasks"
+    },
+    "doneHead": "Started {n} tasks from {m} tickets.",
+    "doneSkipped": "{n} skipped.",
+    "done": "Done",
+    "footnote": "Up to {max} tickets at once. Each goes through the queue and the budget like any start.",
+    "subIssueChip": {
+      "one": "{n} sub-issue",
+      "other": "{n} sub-issues"
+    },
+    "startsTasks": "starts {n} tasks",
+    "startsSubIssues": {
+      "one": "This starts {n} task, one for each sub-issue.",
+      "other": "This starts {n} tasks, one for each sub-issue."
+    },
+    "openParent": "Open the parent",
+    "plan": {
+      "start": "Starts a task",
+      "startReason": "On one of the project's pools, through the queue and the budget",
+      "refineReason": "A refine task: it reads the code and pushes nothing",
+      "subIssues": "Starts {n} tasks",
+      "subIssuesReason": "one for each sub-issue on this project's boards",
+      "skipped": "Skipped",
+      "hasTask": "It already has a task,"
+    },
+    "reason": {
+      "overLimit": "It has {n} sub-issues, over the limit of {max}",
+      "noLeaf": "None of its sub-issues is on this project's boards"
+    },
+    "result": {
+      "pending": "Starting…",
+      "started": {
+        "one": "Started",
+        "other": "Started {n} tasks"
+      },
+      "failed": "Failed"
+    }
+  },
+  "ticketParent": {
+    "title": "Parent ticket",
+    "keyLine": "{key} · from Linear · parent ticket",
+    "statusLine": {
+      "one": "{n} sub-issue on {project}'s boards",
+      "other": "{n} sub-issues on {project}'s boards"
+    },
+    "started": {
+      "one": "{n} task started",
+      "other": "{n} tasks started"
+    },
+    "noneStarted": "none started yet",
+    "allMerged": "all merged",
+    "openInLinear": "Open in Linear",
+    "overLimit": "{key} has {n} sub-issues on {project}'s boards. ostra starts at most {max} at once: split the ticket, or start the sub-issues one by one.",
+    "progress": "Progress",
+    "merged": "{n} of {total} merged",
+    "part": {
+      "merged": "{n} merged",
+      "moving": "{n} in review or running",
+      "needsYou": "{n} needs you",
+      "queued": "{n} queued",
+      "stopped": "{n} stopped",
+      "notStarted": "{n} not started"
+    },
+    "subIssues": "Sub-issues",
+    "noneHere": "None of {key}'s sub-issues are on {project}'s boards.",
+    "col": {
+      "ticket": "Ticket",
+      "title": "Title",
+      "task": "Task",
+      "now": "Now",
+      "prs": "PRs"
+    },
+    "noTask": "No task",
+    "now": {
+      "closed": "Closed on Linear",
+      "parent": "Has sub-issues of its own",
+      "addedAfter": "Added after the start",
+      "notStarted": "Not started yet",
+      "awaitingApproval": "Waiting for a member's approval",
+      "queued": "Waiting for a runner",
+      "running": "Working on it",
+      "needsYou": "Waiting for you",
+      "inReview": "Waiting for a reviewer",
+      "merged": "Merged",
+      "done": "Done",
+      "stopped": "Stopped before it merged"
+    },
+    "start": "Start",
+    "open": "Open",
+    "startSubIssues": {
+      "one": "Start {n} sub-issue",
+      "other": "Start {n} sub-issues"
+    },
+    "starting": "Starting…",
+    "elsewhere": "Not on {project}'s boards",
+    "elsewhereNote": "Listed, never started here. Start it from its own project.",
+    "refined": "Refined",
+    "refineTask": "Refine task",
+    "openTask": "Open task",
+    "tryAgain": "Try again",
+    "fromCache": "Read from ostra's copy of the tickets: Linear didn't answer.",
+    "fromTracker": "Read from Linear just now.",
+    "panel": {
+      "ticket": "Ticket",
+      "key": "Key",
+      "status": "Status",
+      "board": "Board",
+      "subIssues": "Sub-issues",
+      "onBoards": "On this board",
+      "tasks": "Tasks",
+      "elsewhere": "Elsewhere",
+      "depth": "Depth",
+      "levels": {
+        "one": "{n} level",
+        "other": "{n} levels"
+      }
+    }
   }
 }

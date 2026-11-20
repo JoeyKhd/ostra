@@ -15,8 +15,9 @@ const run = promisify(execFile);
 const shots = process.env["OSTRA_E2E_SHOTS"];
 
 const seed = async (args: object): Promise<unknown> => {
-  const { databaseUrl } = await readStack();
-  const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-m6.ts"), JSON.stringify({ databaseUrl, password: e2eAdmin.password, ...args })], {
+  const { databaseUrl, dataDir, linear } = await readStack();
+  if (dataDir === null) throw new Error("the milestone 6 seeds need the stack's data folder, for its secrets key");
+  const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-m6.ts"), JSON.stringify({ databaseUrl, dataDir, linear, password: e2eAdmin.password, ...args })], {
     cwd: path.resolve(import.meta.dirname, ".."),
   });
   return JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}");
@@ -29,6 +30,15 @@ export const seedAutomationsWorld = async (username: string) => automationsSchem
 const pausedSchema = z.object({ automationId: z.string(), projectId: z.string() });
 /** A rule of `e2e-auto` its hourly limit paused (`paused`). */
 export const seedPausedRule = async (name: string) => pausedSchema.parse(await seed({ scenario: "paused", name }));
+
+const inboxSchema = z.object({
+  projectId: z.string(),
+  parentTicketId: z.string(),
+  keys: z.object({ one: z.string(), two: z.string(), three: z.string(), four: z.string(), held: z.string(), parent: z.string(), childA: z.string(), childB: z.string() }),
+});
+export type BulkWorld = z.infer<typeof inboxSchema>;
+/** The project `e2e-bulk`, its tickets on the fake Linear, one with a task, and a parent with two sub-issues (`inbox`). */
+export const seedBulkWorld = async () => inboxSchema.parse(await seed({ scenario: "inbox" }));
 
 /** The final screenshot of a screen, for the by-eye check against its target (`m6-<screen>-final.png`). */
 export const shootM6 = async (page: Page, name: string): Promise<void> => {

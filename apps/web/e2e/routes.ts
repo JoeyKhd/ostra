@@ -27,6 +27,7 @@ const worldSchema = z.object({
   profileId: z.string(),
   invitationId: z.string(),
   automationId: z.string(),
+  parentTicketId: z.string(),
   /** The member who opens the routes, an organization and instance admin (its password: `e2eAdmin.password`). */
   username: z.string(),
   /** A member of the organization who isn't an admin (the same password). */
@@ -94,6 +95,7 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/projects/[project-id]/memory/[note-id]", path: `/projects/${p}/memory/${world.projectNoteId}` },
     { pattern: "/projects/[project-id]/repos", path: `/projects/${p}/repos` },
     { pattern: "/projects/[project-id]/settings", path: `/projects/${p}/settings` },
+    { pattern: "/projects/[project-id]/tickets/[ticket-id]", path: `/projects/${p}/tickets/${world.parentTicketId}` },
     { pattern: "/projects/[project-id]/settings/access", path: `/projects/${p}/settings/access` },
     { pattern: "/projects/[project-id]/settings/audit", path: `/projects/${p}/settings/audit` },
     { pattern: "/projects/[project-id]/settings/models", path: `/projects/${p}/settings/models` },
