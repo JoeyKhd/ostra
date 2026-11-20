@@ -1,6 +1,7 @@
 # 32: The end-to-end demo and the ledger
 
-Status: ready-for-agent
+Status: needs-triage
+Held: until the maintainer says it is time for the launch gate. The maintainer, 2026-11-20: "make sure you skip the things that you might need to redo later. for example i might add more features in between. so perhaps a security review should come at the absolute end when i tell you it's time to do it?"
 Builder: core (lead), with each builder on call for their part
 Blocked by: 03, 04, 11, 13, 16 to 24, 36 (it was also 06 to 10, 14, 15, 31, 35, 37 and 38, which are `wontfix` since 2026-11-19)
 Features: every F-ID in the spec's section 2
@@ -26,3 +27,4 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the demo runs o
 - [ ] Committed as `✅ add the milestone 7 end-to-end demo`, and the record and ledger as `📝 set milestone 7's ledger statuses`.
 
 ## Comments
+- 2026-11-20: held for the launch gate, on the maintainer's word; set back to `ready-for-agent` when they call it.

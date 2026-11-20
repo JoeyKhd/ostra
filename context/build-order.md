@@ -16,6 +16,8 @@ These aren't a milestone of their own. Every milestone is built on them, and the
 
 ## Milestones
 
+**The launch gate waits for the maintainer (2026-11-20).** Milestone 7's whole-product checks run last, only when the maintainer says it's time, so features added in between don't force a redo: the load test as the gate (ticket 26), the security review (27, 28), the launch's end-to-end demo and ledger (32), the 30-minute measure (25) and the launch itself (33). Each milestone's own demo, review and fixes still run as it finishes. The maintainer: "make sure you skip the things that you might need to redo later ... a security review should come at the absolute end when i tell you it's time to do it".
+
 | # | Milestone | Features | Ends with |
 |---|---|---|---|
 | 0 | Spikes | None. Ten throwaway experiments (below), whose findings go into `research/` | Every assumption the plan rests on has been tried for real. **Done 2026-11-19:** all ten ran and have a finding. The checks that need a Linux host with Docker, a Mac or a person wait in "Where the spikes stand" |

@@ -1,6 +1,7 @@
 # 27: Security review: the threat model, the checklist and the findings
 
-Status: ready-for-agent
+Status: needs-triage
+Held: until the maintainer says it is time for the launch gate. The maintainer, 2026-11-20: "make sure you skip the things that you might need to redo later. for example i might add more features in between. so perhaps a security review should come at the absolute end when i tell you it's time to do it?"
 Builder: an independent session that built none of the box's code (core assigns it), then the maintainer's signature
 Blocked by: 28, 29 (it was also 07, 08, 31, 35 and 38, which are `wontfix` since 2026-11-19)
 Features: none (a launch gate, ADR 0064)
@@ -27,3 +28,4 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the review cove
 - [ ] Committed as `📝 record the security review of the box`.
 
 ## Comments
+- 2026-11-20: held for the launch gate, on the maintainer's word; set back to `ready-for-agent` when they call it.

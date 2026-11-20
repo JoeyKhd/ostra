@@ -1,6 +1,7 @@
 # 28: Security review: the adversarial run
 
-Status: ready-for-agent
+Status: needs-triage
+Held: until the maintainer says it is time for the launch gate. The maintainer, 2026-11-20: "make sure you skip the things that you might need to redo later. for example i might add more features in between. so perhaps a security review should come at the absolute end when i tell you it's time to do it?"
 Builder: runner
 Blocked by: none (it was 07, 08, 35 and 38, which are `wontfix` since 2026-11-19)
 Features: none (a launch gate, ADR 0064); F-116, F-090, F-089 and F-019 (their cases)
@@ -25,3 +26,4 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the run is on O
 - [ ] Committed as `✅ add the adversarial run`.
 
 ## Comments
+- 2026-11-20: held for the launch gate, on the maintainer's word; set back to `ready-for-agent` when they call it.

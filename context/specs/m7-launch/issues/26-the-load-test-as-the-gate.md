@@ -1,6 +1,7 @@
 # 26: The load test as the gate
 
-Status: ready-for-agent
+Status: needs-triage
+Held: until the maintainer says it is time for the launch gate. The maintainer, 2026-11-20: "make sure you skip the things that you might need to redo later. for example i might add more features in between. so perhaps a security review should come at the absolute end when i tell you it's time to do it?"
 Builder: core
 Blocked by: none (it was 07, which is `wontfix` since 2026-11-19)
 Features: F-117
@@ -21,3 +22,4 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the mix stays m
 - [ ] Committed as `📝 record the load test gate`.
 
 ## Comments
+- 2026-11-20: held for the launch gate, on the maintainer's word; set back to `ready-for-agent` when they call it.
