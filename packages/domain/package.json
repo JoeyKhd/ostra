@@ -10,6 +10,7 @@
     "./accounts": "./src/accounts.ts",
     "./branch-name": "./src/branch-name.ts",
     "./palette": "./src/palette/actions.ts",
+    "./theme": "./src/use-cases/theme.ts",
     "./ticket-template": "./src/tickets/ticket-template.ts",
     "./testing": "./src/testing/index.ts"
   },
