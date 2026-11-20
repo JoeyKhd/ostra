@@ -1,0 +1,260 @@
+# What OpenCode 2.3.2 sends over ACP for subagents, 2026-11-20 (context/research/opencode-subagents.md)
+# Windows 11, Node 24, OpenCode 2.3.2 (the pinned @opencode/cli, checksum-checked), launched with ostra's own per-task config
+# (OpenCodeAdapter.prepareLaunch), plus an approval rule in run I. Runs A to G and I: the stub model of
+# @ostra/adapter-sdk/testing, scripted per session by a [[stub:...]] marker. Run H: the development endpoint of model.env
+# through a key-proxy stand-in. A raw JSON-RPC client recorded every message; times are ms from the client's start.
+# Message chunks are joined per message. Paths are replaced by <workspace>; no URL, key or model ID of the endpoint is kept.
+# The probe was a throwaway vitest file in packages/adapters/adapter-opencode, not committed; the research file names its scenarios.
+
+## A: two subagents (general, explore) at once; the parent waits for them with a shell sleep (a-projected; the client's _meta["opencode/child-session-updates"]: not sent, as ostra's driver)
+# Child updates arrive inline on the parent's session while the turn that started them runs.
+   666 ms  -> session/prompt
+  1999 ms  session/update tool_call toolCallId=toolu_922a8e28_0 status=pending kind=think title="subagent"
+  2001 ms  session/update tool_call_update toolCallId=toolu_922a8e28_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}
+  2001 ms  session/update tool_call toolCallId=toolu_922a8e28_1 status=pending kind=think title="subagent"
+  2001 ms  session/update tool_call_update toolCallId=toolu_922a8e28_1 status=in_progress kind=think title="subagent" rawInput={"agent":"explore","description":"find the version","prompt":"[[stub:sa-explore]] find the version"}
+  2038 ms  session/update tool_call_update toolCallId=toolu_922a8e28_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}
+  2038 ms  session/update tool_call_update toolCallId=toolu_922a8e28_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a5ccaaffewIEvTihOUGOwza","status":"running","truncated":false}
+  2038 ms  session/update tool_call_update toolCallId=toolu_922a8e28_1 status=in_progress kind=think title="subagent" rawInput={"agent":"explore","description":"find the version","prompt":"[[stub:sa-explore]] find the version"}
+  2038 ms  session/update tool_call_update toolCallId=toolu_922a8e28_1 status=completed rawOutput.metadata={"sessionID":"ses_e06a5cca9ffeKICj5PewIEGQL1","status":"running","truncated":false}
+  2055 ms  session/update tool_call toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_5d5a13ef_0 status=pending kind=read title="inspect readme: read"  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2056 ms  session/update tool_call_update toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_5d5a13ef_0 status=in_progress kind=read title="inspect readme: read"  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2056 ms  session/update tool_call toolCallId=toolu_91bf3621_0 status=pending kind=execute title="shell"
+  2060 ms  session/update tool_call_update toolCallId=toolu_91bf3621_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2060 ms  session/update tool_call toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_665aad28_0 status=pending kind=search title="find the version: grep"  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2060 ms  session/update tool_call_update toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_665aad28_0 status=in_progress kind=search title="find the version: grep"  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2118 ms  session/update tool_call_update toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_5d5a13ef_0 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2129 ms  session/update tool_call toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_b7a0dc89_0 status=pending kind=execute title="inspect readme: shell"  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2130 ms  session/update tool_call_update toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_b7a0dc89_0 status=in_progress kind=execute title="inspect readme: node -e \"console.log('probe-ask')\""  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2300 ms  session/update tool_call_update toolCallId=toolu_91bf3621_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2300 ms  session/update tool_call_update toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_b7a0dc89_0 status=in_progress kind=execute title="inspect readme: node -e \"console.log('probe-ask')\""  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2328 ms  session/update tool_call_update toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_665aad28_0 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2337 ms  session/update tool_call toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_6112b0ef_0 status=pending kind=execute title="find the version: shell"  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2339 ms  session/update tool_call_update toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_6112b0ef_0 status=in_progress kind=execute title="find the version: node -e \"console.log('probe-ask')\""  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2346 ms  session/update tool_call_update toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_6112b0ef_0 status=in_progress kind=execute title="find the version: node -e \"console.log('probe-ask')\""  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2491 ms  session/update tool_call_update toolCallId=ses_e06a5ccaaffewIEvTihOUGOwza:toolu_b7a0dc89_0 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2508 ms  session/update tool_call_update toolCallId=ses_e06a5cca9ffeKICj5PewIEGQL1:toolu_6112b0ef_0 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  2508 ms  session/update agent_message_chunk text="child answer: the README says hello"  _meta["opencode/child-session"]={"id":"ses_e06a5ccaaffewIEvTihOUGOwza","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"inspect readme"}
+  2528 ms  session/update agent_message_chunk text="explore answer: version is 1.0.0"  _meta["opencode/child-session"]={"id":"ses_e06a5cca9ffeKICj5PewIEGQL1","parentID":"ses_e06a5d1eeffe0nsF5UWL13kOec","depth":1,"title":"find the version"}
+  9433 ms  session/update tool_call_update toolCallId=toolu_91bf3621_0 status=completed
+  9444 ms  session/update agent_message_chunk text="parent done at step 2"
+  9450 ms  session/update usage_update used=6597 size=128000 cost={"amount":0,"currency":"USD"}
+  9450 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":11410,"outputTokens":97,"totalTokens":19111,"cachedReadTokens":7604}
+model calls: 10, of them a subagent's (its first message "You are a subagent spawned by another session."): 6; tools offered per call, in order (M main, S subagent): M0 M13 M13 S13 S13 S13 S13 S13 S13 M13
+
+## B: the same, with the child-session-updates capability (b-child-updates; the client's _meta["opencode/child-session-updates"]: true)
+# Child updates move to the extension notification, with created, running and completed statuses.
+   645 ms  -> session/prompt
+  1985 ms  session/update tool_call toolCallId=toolu_1ad4175f_0 status=pending kind=think title="subagent"
+  1988 ms  session/update tool_call_update toolCallId=toolu_1ad4175f_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}
+  1988 ms  session/update tool_call toolCallId=toolu_1ad4175f_1 status=pending kind=think title="subagent"
+  1988 ms  session/update tool_call_update toolCallId=toolu_1ad4175f_1 status=in_progress kind=think title="subagent" rawInput={"agent":"explore","description":"find the version","prompt":"[[stub:sa-explore]] find the version"}
+  2003 ms  opencode/session/child_update type=status status=created child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme"
+  2003 ms  session/update tool_call_update toolCallId=toolu_1ad4175f_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}
+  2003 ms  session/update tool_call_update toolCallId=toolu_1ad4175f_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a599a2ffe3roTxdrHlkdnL1","status":"running","truncated":false}
+  2023 ms  opencode/session/child_update type=status status=running child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme"
+  2023 ms  opencode/session/child_update type=status status=created child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version"
+  2023 ms  session/update tool_call_update toolCallId=toolu_1ad4175f_1 status=in_progress kind=think title="subagent" rawInput={"agent":"explore","description":"find the version","prompt":"[[stub:sa-explore]] find the version"}
+  2023 ms  session/update tool_call_update toolCallId=toolu_1ad4175f_1 status=completed rawOutput.metadata={"sessionID":"ses_e06a599a1ffermAEZkQ7r0u902","status":"running","truncated":false}
+  2026 ms  opencode/session/child_update type=status status=running child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version"
+  2033 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_a745bf71_0 status=pending title="inspect readme: read"
+  2033 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call_update toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_a745bf71_0 status=in_progress title="inspect readme: read"
+  2039 ms  session/update tool_call toolCallId=toolu_c4d7eca0_0 status=pending kind=execute title="shell"
+  2043 ms  session/update tool_call_update toolCallId=toolu_c4d7eca0_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2043 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_61709bd1_0 status=pending title="find the version: grep"
+  2043 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call_update toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_61709bd1_0 status=in_progress title="find the version: grep"
+  2098 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call_update toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_a745bf71_0 status=completed
+  2124 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_04dfdf26_0 status=pending title="inspect readme: shell"
+  2125 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call_update toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_04dfdf26_0 status=in_progress title="inspect readme: node -e \"console.log('probe-ask')\""
+  2326 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call_update toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_61709bd1_0 status=completed
+  2327 ms  session/update tool_call_update toolCallId=toolu_c4d7eca0_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2336 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_fad48102_0 status=pending title="find the version: shell"
+  2336 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call_update toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_04dfdf26_0 status=in_progress title="inspect readme: node -e \"console.log('probe-ask')\""
+  2336 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call_update toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_fad48102_0 status=in_progress title="find the version: node -e \"console.log('probe-ask')\""
+  2347 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call_update toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_fad48102_0 status=in_progress title="find the version: node -e \"console.log('probe-ask')\""
+  2494 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: tool_call_update toolCallId=ses_e06a599a2ffe3roTxdrHlkdnL1:toolu_04dfdf26_0 status=completed
+  2506 ms  opencode/session/child_update type=update child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme" update: agent_message_chunk text="child answer: the README says hello"
+  2509 ms  opencode/session/child_update type=status status=completed child=ses_e06a599a2ffe3roTxdrHlkdnL1 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="inspect readme"
+  2520 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: tool_call_update toolCallId=ses_e06a599a1ffermAEZkQ7r0u902:toolu_fad48102_0 status=completed
+  2532 ms  opencode/session/child_update type=update child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version" update: agent_message_chunk text="explore answer: version is 1.0.0"
+  2532 ms  opencode/session/child_update type=status status=completed child=ses_e06a599a1ffermAEZkQ7r0u902 parent=ses_e06a59eefffeceBHdCXmMhqeZ4 depth=1 title="find the version"
+  9498 ms  session/update tool_call_update toolCallId=toolu_c4d7eca0_0 status=completed
+  9515 ms  session/update agent_message_chunk text="parent done at step 2"
+  9522 ms  session/update usage_update used=6600 size=128000 cost={"amount":0,"currency":"USD"}
+  9522 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":11416,"outputTokens":97,"totalTokens":19120,"cachedReadTokens":7607}
+model calls: 10, of them a subagent's (its first message "You are a subagent spawned by another session."): 6; tools offered per call, in order (M main, S subagent): M0 M13 S13 M13 S13 S13 S13 S13 S13 M13
+
+## C: the parent ends its turn while its subagent works (c-bg-projected; the client's _meta["opencode/child-session-updates"]: not sent, as ostra's driver)
+# After the answer to session/prompt the subagent's updates never arrive; the parent's wake-up text arrives with no prompt in flight.
+   978 ms  -> session/prompt
+  2361 ms  session/update tool_call toolCallId=toolu_89a0e6fb_0 status=pending kind=think title="subagent"
+  2362 ms  session/update tool_call_update toolCallId=toolu_89a0e6fb_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"slow child","prompt":"[[stub:sa-slow]] take your time"}
+  2390 ms  session/update tool_call_update toolCallId=toolu_89a0e6fb_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"slow child","prompt":"[[stub:sa-slow]] take your time"}
+  2391 ms  session/update tool_call_update toolCallId=toolu_89a0e6fb_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a5657cffe9hrcu6IRDxWmUv","status":"running","truncated":false}
+  2409 ms  session/update agent_message_chunk text="launched a subagent, ending my turn"
+  2415 ms  session/update usage_update used=6227 size=128000 cost={"amount":0,"currency":"USD"}
+  2415 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":7347,"outputTokens":34,"totalTokens":12278,"cachedReadTokens":4897}
+  7812 ms  session/update agent_message_chunk text="parent woken at step 2"
+model calls: 6, of them a subagent's (its first message "You are a subagent spawned by another session."): 2; tools offered per call, in order (M main, S subagent): M0 M13 M13 S13 S13 M13
+
+## D: the same, with the child-session-updates capability (d-bg-child-updates; the client's _meta["opencode/child-session-updates"]: true)
+# The subagent's updates and its completed status arrive after the turn ended.
+  1049 ms  -> session/prompt
+  2440 ms  session/update tool_call toolCallId=toolu_ec02fba8_0 status=pending kind=think title="subagent"
+  2443 ms  session/update tool_call_update toolCallId=toolu_ec02fba8_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"slow child","prompt":"[[stub:sa-slow]] take your time"}
+  2482 ms  opencode/session/child_update type=status status=created child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child"
+  2482 ms  session/update tool_call_update toolCallId=toolu_ec02fba8_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"slow child","prompt":"[[stub:sa-slow]] take your time"}
+  2488 ms  session/update tool_call_update toolCallId=toolu_ec02fba8_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a52b07ffeCw5LI2UM1lUXcg","status":"running","truncated":false}
+  2489 ms  opencode/session/child_update type=status status=running child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child"
+  2503 ms  session/update agent_message_chunk text="launched a subagent, ending my turn"
+  2513 ms  session/update usage_update used=6230 size=128000 cost={"amount":0,"currency":"USD"}
+  2513 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":7351,"outputTokens":34,"totalTokens":12284,"cachedReadTokens":4899}
+  2514 ms  opencode/session/child_update type=update child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child" update: tool_call toolCallId=ses_e06a52b07ffeCw5LI2UM1lUXcg:toolu_22bc9d9d_0 status=pending title="slow child: shell"
+  2514 ms  opencode/session/child_update type=update child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child" update: tool_call_update toolCallId=ses_e06a52b07ffeCw5LI2UM1lUXcg:toolu_22bc9d9d_0 status=in_progress title="slow child: node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 5000 probe-sleep"
+  2663 ms  opencode/session/child_update type=update child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child" update: tool_call_update toolCallId=ses_e06a52b07ffeCw5LI2UM1lUXcg:toolu_22bc9d9d_0 status=in_progress title="slow child: node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 5000 probe-sleep"
+  7883 ms  opencode/session/child_update type=update child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child" update: tool_call_update toolCallId=ses_e06a52b07ffeCw5LI2UM1lUXcg:toolu_22bc9d9d_0 status=completed
+  8041 ms  opencode/session/child_update type=update child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child" update: agent_message_chunk text="slow child done"
+  8042 ms  opencode/session/child_update type=status status=completed child=ses_e06a52b07ffeCw5LI2UM1lUXcg parent=ses_e06a53084ffemzpyLhd8o70D2H depth=1 title="slow child"
+  8069 ms  session/update agent_message_chunk text="parent woken at step 2"
+model calls: 6, of them a subagent's (its first message "You are a subagent spawned by another session."): 2; tools offered per call, in order (M main, S subagent): M0 M13 M13 S13 S13 M13
+
+## E: a subagent tries to start a subagent, with ostra's config (experimental.subagent_depth unset, so 1) (e-nested-default; the client's _meta["opencode/child-session-updates"]: true)
+   851 ms  -> session/prompt
+  2395 ms  session/update tool_call toolCallId=toolu_dbaa1582_0 status=pending kind=think title="subagent"
+  2398 ms  session/update tool_call_update toolCallId=toolu_dbaa1582_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"middle agent","prompt":"[[stub:sa-mid]] start a leaf"}
+  2446 ms  opencode/session/child_update type=status status=created child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent"
+  2446 ms  session/update tool_call_update toolCallId=toolu_dbaa1582_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"middle agent","prompt":"[[stub:sa-mid]] start a leaf"}
+  2447 ms  session/update tool_call_update toolCallId=toolu_dbaa1582_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a4f06bffe5CxfylxZZkCdTF","status":"running","truncated":false}
+  2447 ms  opencode/session/child_update type=status status=running child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent"
+  2467 ms  session/update tool_call toolCallId=toolu_c1fa1635_0 status=pending kind=execute title="shell"
+  2473 ms  session/update tool_call_update toolCallId=toolu_c1fa1635_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 9000 probe-sleep"
+  2473 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_d6107c9c_0 status=pending title="middle agent: subagent"
+  2474 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_d6107c9c_0 status=in_progress title="middle agent: subagent"
+  2495 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_d6107c9c_0 status=failed title="middle agent: subagent"
+  2509 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_868be790_0 status=pending title="middle agent: shell"
+  2510 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_868be790_0 status=in_progress title="middle agent: node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 4000 probe-sleep"
+  2660 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_868be790_0 status=in_progress title="middle agent: node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 4000 probe-sleep"
+  2661 ms  session/update tool_call_update toolCallId=toolu_c1fa1635_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 9000 probe-sleep"
+  6910 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a4f06bffe5CxfylxZZkCdTF:toolu_868be790_0 status=completed
+  6929 ms  opencode/session/child_update type=update child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent" update: agent_message_chunk text="mid done at step 2"
+  6931 ms  opencode/session/child_update type=status status=completed child=ses_e06a4f06bffe5CxfylxZZkCdTF parent=ses_e06a4f681ffexfjp1TNut6olrd depth=1 title="middle agent"
+ 11909 ms  session/update tool_call_update toolCallId=toolu_c1fa1635_0 status=completed
+ 11922 ms  session/update agent_message_chunk text="nested parent done at step 2"
+ 11929 ms  session/update usage_update used=6358 size=128000 cost={"amount":0,"currency":"USD"}
+ 11930 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":11160,"outputTokens":63,"totalTokens":18662,"cachedReadTokens":7439}
+model calls: 7, of them a subagent's (its first message "You are a subagent spawned by another session."): 3; tools offered per call, in order (M main, S subagent): M0 M13 M13 S13 S13 S13 M13
+
+## F: the same with experimental.subagent_depth 2 and general allowed to start subagents (f-nested-depth2-child-updates; the client's _meta["opencode/child-session-updates"]: true)
+   949 ms  -> session/prompt
+  2332 ms  session/update tool_call toolCallId=toolu_989944d1_0 status=pending kind=think title="subagent"
+  2336 ms  session/update tool_call_update toolCallId=toolu_989944d1_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"middle agent","prompt":"[[stub:sa-mid]] start a leaf"}
+  2374 ms  opencode/session/child_update type=status status=created child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent"
+  2374 ms  session/update tool_call_update toolCallId=toolu_989944d1_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"middle agent","prompt":"[[stub:sa-mid]] start a leaf"}
+  2374 ms  session/update tool_call_update toolCallId=toolu_989944d1_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a47933ffengmXIxxhSMt72F","status":"running","truncated":false}
+  2374 ms  opencode/session/child_update type=status status=running child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent"
+  2396 ms  session/update tool_call toolCallId=toolu_e51d299d_0 status=pending kind=execute title="shell"
+  2403 ms  session/update tool_call_update toolCallId=toolu_e51d299d_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 9000 probe-sleep"
+  2409 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_9a72cfb3_0 status=pending title="middle agent: subagent"
+  2414 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_9a72cfb3_0 status=in_progress title="middle agent: subagent"
+  2451 ms  opencode/session/child_update type=status status=created child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent"
+  2451 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_9a72cfb3_0 status=in_progress title="middle agent: subagent"
+  2452 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_9a72cfb3_0 status=completed
+  2461 ms  opencode/session/child_update type=status status=running child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent"
+  2485 ms  opencode/session/child_update type=update child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent" update: tool_call toolCallId=ses_e06a478e5ffeiVkpjji6lHIYdh:toolu_0467cbb4_0 status=pending title="leaf agent: read"
+  2485 ms  opencode/session/child_update type=update child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent" update: tool_call_update toolCallId=ses_e06a478e5ffeiVkpjji6lHIYdh:toolu_0467cbb4_0 status=in_progress title="leaf agent: read"
+  2485 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_c43cde63_0 status=pending title="middle agent: shell"
+  2486 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_c43cde63_0 status=in_progress title="middle agent: node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 4000 probe-sleep"
+  2515 ms  opencode/session/child_update type=update child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent" update: tool_call_update toolCallId=ses_e06a478e5ffeiVkpjji6lHIYdh:toolu_0467cbb4_0 status=completed
+  2534 ms  opencode/session/child_update type=update child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent" update: agent_message_chunk text="leaf done"
+  2538 ms  opencode/session/child_update type=status status=completed child=ses_e06a478e5ffeiVkpjji6lHIYdh parent=ses_e06a47933ffengmXIxxhSMt72F depth=2 title="leaf agent"
+  2639 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_c43cde63_0 status=in_progress title="middle agent: node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 4000 probe-sleep"
+  2640 ms  session/update tool_call_update toolCallId=toolu_e51d299d_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 9000 probe-sleep"
+  6843 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: tool_call_update toolCallId=ses_e06a47933ffengmXIxxhSMt72F:toolu_c43cde63_0 status=completed
+  6852 ms  opencode/session/child_update type=update child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent" update: agent_message_chunk text="mid done at step 2"
+  6856 ms  opencode/session/child_update type=status status=completed child=ses_e06a47933ffengmXIxxhSMt72F parent=ses_e06a47ea9ffehbwgdv1dfUeJTP depth=1 title="middle agent"
+ 11841 ms  session/update tool_call_update toolCallId=toolu_e51d299d_0 status=completed
+ 11854 ms  session/update agent_message_chunk text="nested parent done at step 2"
+ 11860 ms  session/update usage_update used=6368 size=128000 cost={"amount":0,"currency":"USD"}
+ 11861 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":11178,"outputTokens":63,"totalTokens":18692,"cachedReadTokens":7451}
+model calls: 9, of them a subagent's (its first message "You are a subagent spawned by another session."): 5; tools offered per call, in order (M main, S subagent): M0 M13 M13 S13 S13 S13 S13 S13 M13
+
+## I: an approval rule (command prefix `node -e`) asks for the parent's commands and the subagent's (i-asks; the client's _meta["opencode/child-session-updates"]: not sent, as ostra's driver)
+   518 ms  -> session/prompt
+  1848 ms  session/update tool_call toolCallId=toolu_2b19817e_0 status=pending kind=execute title="shell"
+  1850 ms  session/update tool_call_update toolCallId=toolu_2b19817e_0 status=in_progress kind=execute title="node -e \"console.log('probe-ask')\""
+  1850 ms  session/request_permission sessionId=ses_e06a1b02dffefrzvqJP617mDRo toolCallId=toolu_2b19817e_0 title="node -e \"console.log('probe-ask')\""
+  1987 ms  session/update tool_call_update toolCallId=toolu_2b19817e_0 status=in_progress kind=execute title="node -e \"console.log('probe-ask')\""
+  2144 ms  session/update tool_call_update toolCallId=toolu_2b19817e_0 status=completed
+  2153 ms  session/update tool_call toolCallId=toolu_730a4643_0 status=pending kind=think title="subagent"
+  2154 ms  session/update tool_call_update toolCallId=toolu_730a4643_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}
+  2177 ms  session/update tool_call_update toolCallId=toolu_730a4643_0 status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}
+  2177 ms  session/update tool_call_update toolCallId=toolu_730a4643_0 status=completed rawOutput.metadata={"sessionID":"ses_e06a1a9bdffe6pqynSO93G9xg9","status":"running","truncated":false}
+  2184 ms  session/update tool_call toolCallId=toolu_fca31dc8_0 status=pending kind=execute title="shell"
+  2190 ms  session/update tool_call_update toolCallId=toolu_fca31dc8_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2193 ms  session/update tool_call toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_0249150a_0 status=pending kind=read title="inspect readme: read"  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2193 ms  session/update tool_call_update toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_0249150a_0 status=in_progress kind=read title="inspect readme: read"  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2193 ms  session/request_permission sessionId=ses_e06a1b02dffefrzvqJP617mDRo toolCallId=toolu_fca31dc8_0 title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2202 ms  session/update tool_call_update toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_0249150a_0 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2210 ms  session/update tool_call toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_d019a455_0 status=pending kind=execute title="inspect readme: shell"  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2211 ms  session/update tool_call_update toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_d019a455_0 status=in_progress kind=execute title="inspect readme: node -e \"console.log('probe-ask')\""  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2211 ms  session/request_permission sessionId=ses_e06a1b02dffefrzvqJP617mDRo toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_d019a455_0 title="node -e \"console.log('probe-ask')\""  toolCall._meta={"opencode/child-session":{"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}}
+  2215 ms  session/update tool_call_update toolCallId=toolu_fca31dc8_0 status=in_progress kind=execute title="node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep"
+  2240 ms  session/update tool_call_update toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_d019a455_0 status=in_progress kind=execute title="inspect readme: node -e \"console.log('probe-ask')\""  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2386 ms  session/update tool_call_update toolCallId=ses_e06a1a9bdffe6pqynSO93G9xg9:toolu_d019a455_0 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  2397 ms  session/update agent_message_chunk text="child answer: the README says hello"  _meta["opencode/child-session"]={"id":"ses_e06a1a9bdffe6pqynSO93G9xg9","parentID":"ses_e06a1b02dffefrzvqJP617mDRo","depth":1,"title":"inspect readme"}
+  9368 ms  session/update tool_call_update toolCallId=toolu_fca31dc8_0 status=completed
+  9387 ms  session/update agent_message_chunk text="ask parent done at step 3"
+  9396 ms  session/update usage_update used=6433 size=128000 cost={"amount":0,"currency":"USD"}
+  9396 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":14903,"outputTokens":90,"totalTokens":24925,"cachedReadTokens":9932}
+model calls: 8, of them a subagent's (its first message "You are a subagent spawned by another session."): 3; tools offered per call, in order (M main, S subagent): M0 M13 M13 M13 S13 S13 S13 M13
+
+## H: the real development model, asked for an explore and a general subagent in parallel (h-live; the client's _meta["opencode/child-session-updates"]: not sent, as ostra's driver)
+# The model launched both and ended its turn at once; the parent went on after the answer.
+   609 ms  -> session/prompt
+  2620 ms  session/update agent_thought_chunk text="The user wants me to spawn two subagents in parallel in one step. Let me do that with two subagent calls in the same block.\n\nNote: the tool description says subagents run in background and return immediately with sess…
+  2747 ms  session/update tool_call toolCallId=chatcmpl-tool-80525a014f414a599176c4fee8f8503a status=pending kind=think title="subagent"
+  2752 ms  session/update tool_call toolCallId=chatcmpl-tool-495b3a879c584c9393bc86bdd6cd172f status=pending kind=think title="subagent"
+  2791 ms  session/update tool_call_update toolCallId=chatcmpl-tool-80525a014f414a599176c4fee8f8503a status=in_progress kind=think title="subagent" rawInput={"agent":"explore","description":"List files in folder","prompt":"List all files and directories in the working directory <workspace> (…
+  2791 ms  session/update tool_call_update toolCallId=chatcmpl-tool-495b3a879c584c9393bc86bdd6cd172f status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"Read README version","prompt":"In the working directory <workspace>, read the file README.md and repo…
+  2819 ms  session/update tool_call_update toolCallId=chatcmpl-tool-80525a014f414a599176c4fee8f8503a status=in_progress kind=think title="subagent" rawInput={"agent":"explore","description":"List files in folder","prompt":"List all files and directories in the working directory <workspace> (…
+  2819 ms  session/update tool_call_update toolCallId=chatcmpl-tool-80525a014f414a599176c4fee8f8503a status=completed rawOutput.metadata={"sessionID":"ses_e06a10f11ffemDQ783Cr0xAVmi","status":"running","truncated":false}
+  2851 ms  session/update tool_call_update toolCallId=chatcmpl-tool-495b3a879c584c9393bc86bdd6cd172f status=in_progress kind=think title="subagent" rawInput={"agent":"general","description":"Read README version","prompt":"In the working directory <workspace>, read the file README.md and repo…
+  2851 ms  session/update tool_call_update toolCallId=chatcmpl-tool-495b3a879c584c9393bc86bdd6cd172f status=completed rawOutput.metadata={"sessionID":"ses_e06a10f11ffdw7Hwl7h321owWQ","status":"running","truncated":false}
+  3383 ms  session/update agent_thought_chunk text="The user asks for a non-recursive listing of the working directory. I can use the read tool on the directory."  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffemDQ783Cr0xAVmi","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"List files in folder"}
+  3383 ms  session/update tool_call toolCallId=ses_e06a10f11ffemDQ783Cr0xAVmi:chatcmpl-tool-fb345caf6eca424c960aa3a07e494f0a status=pending kind=read title="List files in folder: read"  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffemDQ783Cr0xAVmi","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"List files in folder"}
+  3406 ms  session/update tool_call_update toolCallId=ses_e06a10f11ffemDQ783Cr0xAVmi:chatcmpl-tool-fb345caf6eca424c960aa3a07e494f0a status=in_progress kind=read title="List files in folder: read"  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffemDQ783Cr0xAVmi","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"List files in folder"}
+  3418 ms  session/update tool_call_update toolCallId=ses_e06a10f11ffemDQ783Cr0xAVmi:chatcmpl-tool-fb345caf6eca424c960aa3a07e494f0a status=completed  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffemDQ783Cr0xAVmi","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"List files in folder"}
+  3855 ms  session/update tool_call toolCallId=ses_e06a10f11ffdw7Hwl7h321owWQ:call-9f51c9f0-1fce-4d99-b6e4-eaa052e91772 status=pending kind=read title="Read README version: read"  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffdw7Hwl7h321owWQ","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"Read README version"}
+  3968 ms  session/update agent_message_chunk text="I launched both subagents in parallel — an `explore` agent listing the folder contents and a `general` agent reading README.md for its version — and I'll answer in one sentence once both report back."
+  3973 ms  session/update tool_call_update toolCallId=ses_e06a10f11ffdw7Hwl7h321owWQ:call-9f51c9f0-1fce-4d99-b6e4-eaa052e91772 status=in_progress kind=read title="Read README version: read"  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffdw7Hwl7h321owWQ","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"Read README version"}
+  3982 ms  session/update tool_call_update toolCallId=ses_e06a10f11ffdw7Hwl7h321owWQ:call-9f51c9f0-1fce-4d99-b6e4-eaa052e91772 status=completed  _meta["opencode/child-session"]={"id":"ses_e06a10f11ffdw7Hwl7h321owWQ","parentID":"ses_e06a117b1ffeDelsLRDHHtSYkN","depth":1,"title":"Read README version"}
+  4165 ms  session/update usage_update used=6631 size=128000 cost={"amount":0.00444856,"currency":"USD"}
+  4165 ms  <- session/prompt answered: stopReason=end_turn usage={"inputTokens":5494,"outputTokens":328,"totalTokens":12973,"thoughtTokens":111,"cachedReadTokens":7040}
+  5746 ms  session/update agent_thought_chunk text="One subagent reported. Wait for the other. The instruction says do not sleep or poll. I should acknowledge briefly and end response.\n\nActually, I should just wait. Let me respond briefly."
+  5848 ms  session/update agent_message_chunk text="The `general` subagent has reported: README.md exists and states version 1.0.0. Still waiting on the `explore` subagent's file listing before I give the one-sentence answer."
+ 11976 ms  session/update agent_message_chunk text="The folder contains only README.md, which states version 1.0.0."
+model calls: 10, of them a subagent's (its first message "You are a subagent spawned by another session."): 5
+the endpoint's own cost in each answer's usage, summed: main agent $0.005239, subagents $0.008578, all $0.013816; OpenCode's usage_update at the prompt's answer said $0.00444856
+
+## G: what ostra's OpenCodeAdapter stores today for run A's scenario (its TaskEvents, in order)
+{"kind":"turn.started","turnId":"probe-turn-1"}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"toolu_58c24fac_0","toolKind":"think","title":"subagent","input":{"agent":"general","description":"inspect readme","prompt":"[[stub:sa-child]] look at README.md"}}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"toolu_58c24fac_1","toolKind":"think","title":"subagent","input":{"agent":"explore","description":"find the version","prompt":"[[stub:sa-explore]] find the version"}}
+{"kind":"tool.completed","toolCallId":"toolu_58c24fac_0","output":{"metadata":{"sessionID":"ses_e06a43d03ffesrsjW0XarmnXAx","status":"running","truncated":false}}}
+{"kind":"tool.completed","toolCallId":"toolu_58c24fac_1","output":{"metadata":{"sessionID":"ses_e06a43d02ffe0IecG8IERGr8sn","status":"running","truncated":false}}}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"ses_e06a43d03ffesrsjW0XarmnXAx:toolu_88f7ff69_0","toolKind":"read","title":"inspect readme: read","input":{"path":"README.md"}}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"ses_e06a43d02ffe0IecG8IERGr8sn:toolu_825eba6e_0","toolKind":"search","title":"find the version: grep","input":{"pattern":"hello"}}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"toolu_9263cd4e_0","toolKind":"execute","title":"node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000 probe-sleep","input":{"command":"node -e \"setTimeout(()=>{},Number(process.argv[1]))\" 7000
+{"kind":"tool.completed","toolCallId":"ses_e06a43d03ffesrsjW0XarmnXAx:toolu_88f7ff69_0","output":{"lineCount":3}}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"ses_e06a43d03ffesrsjW0XarmnXAx:toolu_c83c9fa7_0","toolKind":"execute","title":"inspect readme: node -e \"console.log('probe-ask')\"","input":{"command":"node -e \"console.log('probe-ask')\"","cwd":"."
+{"kind":"tool.completed","toolCallId":"ses_e06a43d02ffe0IecG8IERGr8sn:toolu_825eba6e_0","output":{"metadata":{"matches":1,"truncated":false}}}
+{"kind":"tool.called","turnId":"probe-turn-1","toolCallId":"ses_e06a43d02ffe0IecG8IERGr8sn:toolu_45d3dfc8_0","toolKind":"execute","title":"find the version: node -e \"console.log('probe-ask')\"","input":{"command":"node -e \"console.log('probe-ask')\"","cwd":"
+{"kind":"tool.completed","toolCallId":"ses_e06a43d03ffesrsjW0XarmnXAx:toolu_c83c9fa7_0","output":{"output":"probe-ask\n","truncated":false,"exitCode":0}}
+{"kind":"tool.completed","toolCallId":"ses_e06a43d02ffe0IecG8IERGr8sn:toolu_45d3dfc8_0","output":{"output":"probe-ask\n","truncated":false,"exitCode":0}}
+{"kind":"agent.message","turnId":"probe-turn-1","segmentId":"probe-turn-1-s1","text":"child answer: the README says hello"}
+{"kind":"tool.completed","toolCallId":"toolu_9263cd4e_0","output":{"output":"(no output)","truncated":false,"exitCode":0}}
+{"kind":"agent.message","turnId":"probe-turn-1","segmentId":"probe-turn-1-s2","text":"explore answer: version is 1.0.0"}
+{"kind":"agent.message","turnId":"probe-turn-1","segmentId":"probe-turn-1-s3","text":"parent done at step 2"}
+{"kind":"session.usage","contextUsed":6594,"contextSize":128000}
+{"kind":"turn.ended","turnId":"probe-turn-1","stopReason":"end_turn"}
+approval requests: 0
