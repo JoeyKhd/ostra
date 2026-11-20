@@ -31,6 +31,8 @@ export type FindingActions = {
   readonly proposalHref: string | null;
   readonly projectName: string;
   readonly canAct: boolean;
+  /** The finding's PR is open: on a merged or closed one, "Fix this" is hidden (review-screen.md). */
+  readonly prOpen: boolean;
   readonly fixing: boolean;
   readonly remembering: boolean;
   readonly error: string | null;
@@ -66,7 +68,7 @@ export const FindingBlock = ({ finding, actions }: { readonly finding: ReviewFin
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2 pb-1">
-        {open ? (
+        {open && actions.prOpen ? (
           actions.fixed ? (
             <span className="flex items-center gap-1 text-xs text-faint" data-testid="finding-fixed"><CheckIcon aria-hidden className="size-3" /> {t("review.finding.added")}</span>
           ) : (

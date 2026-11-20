@@ -231,6 +231,7 @@ export const ReviewScreen = ({ taskId }: { readonly taskId: TaskId }) => {
           proposalHref: proposal === undefined || task.data === undefined ? null : `/projects/${task.data.projectId}/memory/proposals?proposal=${encodeURIComponent(proposal)}`,
           projectName,
           canAct: true,
+          prOpen: pr?.state === "pr_open",
           fixing: fix.isPending && fix.variables.findingId === finding.findingId,
           remembering: remember.isPending && remember.variables.findingId === finding.findingId,
           error: errors.get(finding.findingId) ?? null,
