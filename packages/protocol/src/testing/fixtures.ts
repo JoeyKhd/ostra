@@ -29,6 +29,7 @@ import {
   segmentIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
+  subagentIdSchema,
   taskApprovalRuleIdSchema,
   taskIdSchema,
   ticketKeySchema,
@@ -125,6 +126,10 @@ export const fixtureIds = {
   codeTask: taskIdSchema.parse("0196f1a0-0000-7000-8000-000000000026"),
   ciLogBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000027"),
   subTicketKey: ticketKeySchema.parse("OST-13"),
+  // Minor 6 (milestone 7, F-138).
+  subagent: subagentIdSchema.parse("ses_e06a5ccaaffewIEvTihOUGOwza"),
+  nestedSubagent: subagentIdSchema.parse("ses_e06a478e5ffeiVkpjji6lHIYdh"),
+  subagentCall: toolCallIdSchema.parse("toolu_922a8e28_0"),
 } as const;
 
 const ids = fixtureIds;
@@ -426,6 +431,17 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     logins: ["ostra-test-reviewer"],
   },
   "environment.proposed": { kind: "environment.proposed", proposalId: ids.environmentProposal },
+  // Minor 6 (milestone 7, F-138).
+  "subagent.started": {
+    kind: "subagent.started",
+    toolCallId: ids.subagentCall,
+    subagentId: ids.subagent,
+    depth: 1,
+    type: "general",
+    description: "inspect readme",
+    prompt: "Look at README.md and say what it says.",
+  },
+  "subagent.status": { kind: "subagent.status", subagentId: ids.subagent, status: "failed", error: "the model endpoint returned 500" },
 };
 
 /**
@@ -1221,3 +1237,28 @@ export const minor5HttpFixtures = {
     { code: "invalid" },
   ] satisfies readonly EnvironmentProposalResponse[],
 } as const;
+
+/**
+ * Minor 6's fields on the events that grew (F-138): the agent's output and an approval's request,
+ * each a subagent's, and a nested subagent's start. `eventFixtures` holds the same kinds without
+ * them, as a minor-5 peer sends them.
+ */
+export const minor6FieldFixtures = {
+  "agent.message": { ...eventFixtures["agent.message"], subagentId: ids.subagent },
+  "agent.thought": { ...eventFixtures["agent.thought"], subagentId: ids.subagent },
+  "tool.called": { ...eventFixtures["tool.called"], subagentId: ids.subagent },
+  "plan.updated": { ...eventFixtures["plan.updated"], subagentId: ids.subagent },
+  "approval.requested": { ...eventFixtures["approval.requested"], subagentId: ids.subagent },
+} as const satisfies { readonly [K in "agent.message" | "agent.thought" | "tool.called" | "plan.updated" | "approval.requested"]: TaskEventOf<K> };
+
+/** A nested subagent's start (OpenCode's run F, `experimental.subagent_depth` 2): its parent and depth 2. */
+export const nestedSubagentStartFixture: TaskEventOf<"subagent.started"> = {
+  kind: "subagent.started",
+  toolCallId: toolCallIdSchema.parse("ses_e06a5ccaaffewIEvTihOUGOwza:toolu_9a72cfb3_0"),
+  subagentId: ids.nestedSubagent,
+  parentSubagentId: ids.subagent,
+  depth: 2,
+  type: "explore",
+  description: "leaf agent",
+  prompt: "Find the version.",
+};

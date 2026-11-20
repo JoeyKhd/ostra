@@ -122,17 +122,19 @@ const decoded = (text: string): Record<string, unknown> => {
 };
 
 describe("the version", () => {
-  it("F-061: is minor 5; a minor-4 peer is inside the window and a minor-3 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(5);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 4, max: 6 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
+  it("F-061: a minor-5 server took minors 4 to 6, and minor 5 stays in the codecs after minor 6", () => {
+    // Milestone 7 moved the build to minor 6 (`minor-6.test.ts`); a minor-5 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(6);
+    expect(minorWindow(5)).toEqual({ min: 4, max: 6 });
+    expect(negotiate(5, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
+    expect(negotiate(5, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
+    expect(negotiate(5, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 5 });
+    expect(negotiate(5, PROTOCOL_MAJOR, 3)).toEqual({ ok: false, reason: "minor", window: { min: 4, max: 6 } });
+    // A minor-5 runner against a minor-4 server speaks minor 4, and against today's server minor 5.
+    expect(negotiate(4, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 4 });
     expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 5 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 3)).toEqual({ ok: false, reason: "minor", window: { min: 4, max: 6 } });
-    // A minor-5 runner against a minor-4 server speaks minor 4.
-    expect(negotiate(4, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 4 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(upFrameCodec.minors).toContain(5);
+    expect(downFrameCodec.minors).toContain(5);
   });
 });
 

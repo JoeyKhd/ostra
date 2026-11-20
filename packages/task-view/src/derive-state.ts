@@ -271,6 +271,8 @@ export const deriveTaskState = (
       case "review.posted":
       case "reviewers.updated":
       case "environment.proposed":
+      case "subagent.started":
+      case "subagent.status":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

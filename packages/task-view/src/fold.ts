@@ -902,6 +902,10 @@ export const foldTaskEvents = (
       case "environment.proposed":
         // Protocol minor 5. No row until the milestone 6 task page draws them (tickets 30 to 36).
         break;
+      case "subagent.started":
+      case "subagent.status":
+        // Protocol minor 6 (F-138): the turn's subagent tree.
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

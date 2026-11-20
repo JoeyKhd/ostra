@@ -188,6 +188,10 @@ export const runnerLimits = {
   commitFilteredPathsMax: 50,
   /** ADR 0038, F-113: the most paths or globs a task may commit (`commitPaths`). */
   commitPathsMax: 50,
+  /** F-138 (minor 6): what a subagent was asked, in `subagent.started`, in characters; longer is cut. */
+  subagentPromptMaxChars: 32_768,
+  /** F-138 (minor 6): a subagent's description, OpenCode's 3-to-5-word label, in characters. */
+  subagentDescriptionMaxChars: 500,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;

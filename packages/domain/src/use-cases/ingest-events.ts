@@ -615,6 +615,10 @@ const applyEffects = async (
       case "review.posted":
       case "reviewers.updated":
       case "environment.proposed":
+      // Protocol minor 6 (milestone 7, F-138): a subagent's start and its states, stored for the
+      // task page's tree; the turn's wait for them is the runner's (ADR 0067), so nothing moves here.
+      case "subagent.started":
+      case "subagent.status":
         // Stored for the task page; nothing else moves.
         break;
       default:

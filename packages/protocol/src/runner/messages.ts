@@ -20,6 +20,7 @@ import {
   runnerEventSchemaV2,
   runnerEventSchemaV3,
   runnerEventSchemaV4,
+  runnerEventSchemaV5,
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
@@ -43,6 +44,9 @@ import type { FrameParse } from "./version.ts";
 // discriminated on `type`. ostra owns the format, so every frame is a strict object except
 // `hello`, the negotiation, which tolerates unknown fields. Ported from
 // spikes/runner-transport/src/protocol/messages.ts.
+//
+// Minor 6 (milestone 7, F-138) adds the subagent events and the subagent on the agent's output:
+// minor 5's codec refuses them, and its encode drops the field.
 //
 // Minor 1 (milestone 2) adds event kinds and fields, and the `release` command. Minor 0's codec
 // stays beside it: its `decode` refuses what minor 1 added, and its `encode` drops the new fields.
@@ -186,6 +190,11 @@ export const eventsFrameSchema = z.strictObject({
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
 
+/** Minor 5's `events` frame: its events refuse minor 6's kinds and the subagent on the agent's output. */
+const eventsFrameSchemaV5 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV5).min(1).max(runnerLimits.eventsPerFrameMax),
+});
+
 /** Minor 4's `events` frame: its events refuse minor 5's kinds and intents. */
 const eventsFrameSchemaV4 = eventsFrameSchema.extend({
   events: z.array(runnerEventSchemaV4).min(1).max(runnerLimits.eventsPerFrameMax),
@@ -296,9 +305,17 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV5 = z.discriminatedUnion("type", [
+const upFrameV6 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
+const upFrameV5 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV5,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
@@ -342,7 +359,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV5>;
+export type UpFrame = z.infer<typeof upFrameV6>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -579,7 +596,8 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 2, decode: upFrameV2, encode: encodeUpFrameFor(2) },
   { minor: 3, decode: upFrameV3, encode: encodeUpFrameFor(3) },
   { minor: 4, decode: upFrameV4, encode: encodeUpFrameFor(4) },
-  { minor: 5, decode: upFrameV5, encode: (frame) => frame },
+  { minor: 5, decode: upFrameV5, encode: encodeUpFrameFor(5) },
+  { minor: 6, decode: upFrameV6, encode: (frame) => frame },
 ]);
 
 /**
@@ -588,7 +606,8 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
  * Minor 3 added `set-effort` (F-137), which minor 2's decode refuses and the outbox never sends
  * it (`commandKindSupportedAt`). Minor 4 added `resume`, the dispatch's `box` and the snapshot
  * build's `push` and `builder`. Minor 5 added the dispatch's and the steer's `automatic` and
- * the steer's four new intents, which minor 4's encode drops and its decode refuses.
+ * the steer's four new intents, which minor 4's encode drops and its decode refuses. Minor 6
+ * (F-138) adds events only: its down frames are minor 5's.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
@@ -597,6 +616,7 @@ export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 3, decode: downFrameV3, encode: encodeDownFrameFor(3) },
   { minor: 4, decode: downFrameV4, encode: encodeDownFrameFor(4) },
   { minor: 5, decode: downFrameV5, encode: (frame) => frame },
+  { minor: 6, decode: downFrameV5, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

@@ -90,4 +90,7 @@ export const foldCoverage = {
   "review.posted": "no row (milestone 6)",
   "reviewers.updated": "no row (milestone 6)",
   "environment.proposed": "no row (milestone 6)",
+  // Protocol minor 6 (F-138): the turn's subagents, drawn as its badge and window.
+  "subagent.started": "the turn's subagent tree",
+  "subagent.status": "the turn's subagent tree",
 } as const satisfies Record<TaskEventKind, string>;

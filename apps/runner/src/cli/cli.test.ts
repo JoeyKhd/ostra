@@ -229,7 +229,7 @@ describe("ostra runner: refusals", () => {
   });
 
   it("refuses a server whose version window excludes this runner, with the fix", async () => {
-    const fake = await start({ info: { serverMinor: 7, supported: { min: 6, max: 8 }, serverVersion: "0.6.0" } });
+    const fake = await start({ info: { serverMinor: 8, supported: { min: 7, max: 9 }, serverVersion: "0.6.0" } });
     const result = await runner(fake);
     expect(result.code).toBe(exitCodes.failed);
     expect(result.lines.join("")).toContain("Install ostra 0.6.0");
@@ -237,7 +237,7 @@ describe("ostra runner: refusals", () => {
     expect(fake.requests.some((line) => line.includes("/api/auth/device/"))).toBe(false);
 
     const status = await run(["runner", "status", "--data-dir", dataDir]);
-    expect(status.lines.join("")).toContain("protocol 1.6 to 1.8 (server ostra 0.6.0)");
+    expect(status.lines.join("")).toContain("protocol 1.7 to 1.9 (server ostra 0.6.0)");
     expect(status.lines.join("")).toContain("version-unsupported");
   });
 

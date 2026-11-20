@@ -41,7 +41,7 @@ describe("build-runner-at (F-061)", () => {
 
   it("F-061: reads the protocol minor a build speaks from its source", async () => {
     const today = await readFile(path.join(root, "packages", "protocol", "src", "runner", "version.ts"), "utf8");
-    expect(protocolMinorOf(today)).toBe(5);
+    expect(protocolMinorOf(today)).toBe(6);
     expect(protocolMinorOf("export const PROTOCOL_MINOR = 2;")).toBe(2);
     expect(protocolMinorOf("nothing here")).toBeNull();
   });

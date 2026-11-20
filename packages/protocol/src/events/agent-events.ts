@@ -25,6 +25,7 @@ import {
   segmentIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
+  subagentIdSchema,
   taskApprovalRuleIdSchema,
   taskIdSchema,
   ticketKeySchema,
@@ -404,7 +405,8 @@ const approvalRequestedV1 = z.strictObject({
   options: z.array(approvalOptionSchema).min(1),
 });
 
-const approvalRequested = approvalRequestedV1.extend({
+/** `approval.requested` at minors 2 to 5: minor 1's, with the rule and the subject. */
+const approvalRequestedV5 = approvalRequestedV1.extend({
   /** Minor 2: the rule that asked, or `null` when the agent asked on its own. */
   rule: approvalRuleRefSchema.nullable().optional(),
   /** Minor 2: what the request touches, which the card shows and "for this task" narrows. Never logged. */
@@ -861,6 +863,93 @@ const minor5NewEventOptions = [
   z.strictObject({ kind: z.literal("environment.proposed"), proposalId: environmentProposalIdSchema }),
 ] as const;
 
+// ---------- protocol minor 6's vocabularies (milestone 7, F-138) ----------
+
+/**
+ * A subagent's state, as its agent reports it (OpenCode's child-session states, ADR 0067):
+ * `created` and `running` while it works, then `completed`, `failed` (with its error) or
+ * `interrupted` (stopped by a cancel, the turn's wait, or the box's end).
+ */
+export const subagentStatusSchema = z.enum(["created", "running", "completed", "failed", "interrupted"]);
+export type SubagentStatus = z.infer<typeof subagentStatusSchema>;
+
+/**
+ * Minor 6: the subagent whose work an event is, on `agent.message`, `agent.thought`, `tool.called`,
+ * `plan.updated` and `approval.requested`. Missing means the main agent's own: what every event of
+ * a peer below minor 6 is, so the page shows its calls flat.
+ */
+const subagentField = { subagentId: subagentIdSchema.optional() };
+
+// ---------- the events whose shape changed in minor 6 ----------
+
+const agentMessageV5 = z.strictObject({
+  kind: z.literal("agent.message"),
+  turnId: turnIdSchema,
+  segmentId: segmentIdSchema,
+  text: z.string(),
+});
+const agentMessage = agentMessageV5.extend(subagentField);
+
+const agentThoughtV5 = z.strictObject({
+  kind: z.literal("agent.thought"),
+  turnId: turnIdSchema,
+  segmentId: segmentIdSchema,
+  text: z.string(),
+});
+const agentThought = agentThoughtV5.extend(subagentField);
+
+// ---- tool calls, by ACP's tool kind ----
+const toolCalledV5 = z.strictObject({
+  kind: z.literal("tool.called"),
+  turnId: turnIdSchema,
+  toolCallId: toolCallIdSchema,
+  toolKind: toolKindSchema,
+  title: z.string().max(2000),
+  input: z.json(),
+});
+const toolCalled = toolCalledV5.extend(subagentField);
+
+const planUpdatedV5 = z.strictObject({ kind: z.literal("plan.updated"), turnId: turnIdSchema, entries: z.array(planEntrySchema) });
+const planUpdated = planUpdatedV5.extend(subagentField);
+
+/** `approval.requested` at the current minor (6): minor 2's, with the subagent whose call asks. */
+const approvalRequested = approvalRequestedV5.extend(subagentField);
+
+/** The agent's output at minors 0 to 5, without the subagent. */
+const agentOutputOptionsV5 = [agentMessageV5, agentThoughtV5, toolCalledV5, planUpdatedV5] as const;
+/** The agent's output at the current minor (6). */
+const agentOutputOptions = [agentMessage, agentThought, toolCalled, planUpdated] as const;
+
+// ---------- the events new in minor 6 ----------
+
+const minor6NewEventOptions = [
+  // ---- subagents (F-138, ADR 0067) ----
+  /**
+   * The agent started a subagent: the call that started it (the main agent's, or its parent
+   * subagent's), its ID, its parent (missing: the main agent), its depth from 1, and its type,
+   * description and prompt as the starting call gave them. The agent's own words: data, never
+   * logged. A second start of the same `subagentId` is a follow-up round.
+   */
+  z.strictObject({
+    kind: z.literal("subagent.started"),
+    toolCallId: toolCallIdSchema,
+    subagentId: subagentIdSchema,
+    parentSubagentId: subagentIdSchema.optional(),
+    depth: z.number().int().positive().max(64),
+    /** The agent's own name for the subagent's kind (OpenCode's `explore`, `general`). */
+    type: z.string().min(1).max(200),
+    description: z.string().max(runnerLimits.subagentDescriptionMaxChars),
+    prompt: z.string().max(runnerLimits.subagentPromptMaxChars),
+  }),
+  /** A subagent's state changed, with its error when it `failed`. The time is the event's `at`. */
+  z.strictObject({
+    kind: z.literal("subagent.status"),
+    subagentId: subagentIdSchema,
+    status: subagentStatusSchema,
+    error: z.string().max(4000).optional(),
+  }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -869,30 +958,11 @@ const sharedEventOptions = [
   z.strictObject({ kind: z.literal("turn.failed"), turnId: turnIdSchema, error: z.string().max(4000) }),
   z.strictObject({ kind: z.literal("turn.cancel_requested"), memberId: memberIdSchema }),
 
-  // ---- the agent's output ----
-  z.strictObject({
-    kind: z.literal("agent.message"),
-    turnId: turnIdSchema,
-    segmentId: segmentIdSchema,
-    text: z.string(),
-  }),
-  z.strictObject({
-    kind: z.literal("agent.thought"),
-    turnId: turnIdSchema,
-    segmentId: segmentIdSchema,
-    text: z.string(),
-  }),
+  // ---- the agent's output (`agent.message`, `agent.thought` and `tool.called` grew in minor 6:
+  // `agentOutputOptions` and `agentOutputOptionsV5` above) ----
   z.strictObject({ kind: z.literal("agent.content"), turnId: turnIdSchema, block: contentBlockSchema }),
 
   // ---- tool calls, by ACP's tool kind ----
-  z.strictObject({
-    kind: z.literal("tool.called"),
-    turnId: turnIdSchema,
-    toolCallId: toolCallIdSchema,
-    toolKind: toolKindSchema,
-    title: z.string().max(2000),
-    input: z.json(),
-  }),
   z.strictObject({ kind: z.literal("tool.progress"), toolCallId: toolCallIdSchema, output: z.json() }),
   z.strictObject({ kind: z.literal("tool.completed"), toolCallId: toolCallIdSchema, output: z.json() }),
   z.strictObject({ kind: z.literal("tool.failed"), toolCallId: toolCallIdSchema, error: z.string().max(4000) }),
@@ -927,8 +997,7 @@ const sharedEventOptions = [
     reason: z.enum(["cancelled", "expired", "declined"]),
   }),
 
-  // ---- the session ----
-  z.strictObject({ kind: z.literal("plan.updated"), turnId: turnIdSchema, entries: z.array(planEntrySchema) }),
+  // ---- the session (`plan.updated` grew in minor 6) ----
   z.strictObject({
     kind: z.literal("compaction.updated"),
     turnId: turnIdSchema,
@@ -1001,7 +1070,7 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (5). */
+/** The event union at the current minor (6). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
   userMessageV5,
   sessionRestoredV2,
@@ -1019,6 +1088,33 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
   ...minor3NewEventOptions,
   ...minor4NewEventOptions,
   ...minor5NewEventOptions,
+  ...minor6NewEventOptions,
+  ...agentOutputOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 5's event union, kept for the codecs (ADR 0034): a minor-5 peer's events parse with it,
+ * and it refuses minor 6's kinds and the subagent on the agent's output.
+ */
+export const taskEventSchemaV5 = z.discriminatedUnion("kind", [
+  userMessageV5,
+  sessionRestoredV2,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReadyV2,
+  workspaceFilesOutsideRepos,
+  turnStarted,
+  usageRecorded,
+  approvalRequestedV5,
+  approvalAnswered,
+  setupFinished,
+  ...minor2NewEventOptions,
+  ...minor3NewEventOptions,
+  ...minor4NewEventOptions,
+  ...minor5NewEventOptions,
+  ...agentOutputOptionsV5,
   ...sharedEventOptions,
 ]);
 
@@ -1036,12 +1132,13 @@ export const taskEventSchemaV4 = z.discriminatedUnion("kind", [
   workspaceFilesOutsideRepos,
   turnStarted,
   usageRecorded,
-  approvalRequested,
+  approvalRequestedV5,
   approvalAnswered,
   setupFinished,
   ...minor2NewEventOptions,
   ...minor3NewEventOptions,
   ...minor4NewEventOptions,
+  ...agentOutputOptionsV5,
   ...sharedEventOptions,
 ]);
 
@@ -1059,11 +1156,12 @@ export const taskEventSchemaV3 = z.discriminatedUnion("kind", [
   workspaceFilesOutsideRepos,
   turnStarted,
   usageRecorded,
-  approvalRequested,
+  approvalRequestedV5,
   approvalAnswered,
   setupFinished,
   ...minor2NewEventOptions,
   ...minor3NewEventOptions,
+  ...agentOutputOptionsV5,
   ...sharedEventOptions,
 ]);
 
@@ -1081,10 +1179,11 @@ export const taskEventSchemaV2 = z.discriminatedUnion("kind", [
   workspaceFilesOutsideRepos,
   turnStartedV2,
   usageRecordedV2,
-  approvalRequested,
+  approvalRequestedV5,
   approvalAnswered,
   setupFinished,
   ...minor2NewEventOptions,
+  ...agentOutputOptionsV5,
   ...sharedEventOptions,
 ]);
 
@@ -1105,6 +1204,7 @@ export const taskEventSchemaV1 = z.discriminatedUnion("kind", [
   approvalRequestedV1,
   approvalAnsweredV1,
   setupFinishedV1,
+  ...agentOutputOptionsV5,
   ...sharedEventOptions,
 ]);
 
@@ -1121,6 +1221,7 @@ export const taskEventSchemaV0 = z.discriminatedUnion("kind", [
   approvalRequestedV1,
   approvalAnsweredV1,
   setupFinishedV1,
+  ...agentOutputOptionsV5,
   ...sharedEventOptions,
 ]);
 
@@ -1181,8 +1282,19 @@ export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEv
   "box.scheduled",
 ]);
 
+/**
+ * The kinds minor 6 added (milestone 7, F-138): a subagent's start and its states. A minor-6 runner
+ * talking to a minor-5 server sends neither, and its subagents' calls go flat.
+ */
+export const minor6EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor6NewEventOptions.map((option) => option.shape.kind.value),
+);
+
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor6EventKinds.has(kind)) {
+    return 6;
+  }
   if (minor5EventKinds.has(kind)) {
     return 5;
   }
@@ -1212,6 +1324,21 @@ const sessionSavedStripV1 = z.object(sessionSaved.shape);
 const sessionRestoredStripV1 = z.object(sessionRestored.shape);
 const ticketFilesReadyStripV1 = z.object(ticketFilesReady.shape);
 const setupFinishedStripV1 = z.object(setupFinishedV1.shape);
+
+/**
+ * An event without what minor 6 added to an existing kind: the subagent on the agent's output and
+ * on an approval's request. A minor-5 reader shows the call as the main agent's, flat.
+ */
+const dropMinor6Fields = (event: TaskEvent): TaskEvent => {
+  const grown =
+    event.kind === "agent.message" || event.kind === "agent.thought" || event.kind === "tool.called" || event.kind === "plan.updated" || event.kind === "approval.requested";
+  if (!grown || event.subagentId === undefined) {
+    return event;
+  }
+  const minor5 = { ...event };
+  Reflect.deleteProperty(minor5, "subagentId");
+  return minor5;
+};
 
 /**
  * An event without what minor 5 added to an existing kind: a `user.message` whose intent is one of
@@ -1273,14 +1400,19 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
 /**
  * An event as a peer at `minor` reads it: below minor 2, the fields minor 2 added are dropped;
  * below minor 1, minor 1's too. Below minor 3, `turn.started` loses its level and
- * `usage.recorded` its reasoning tokens (F-137). A kind the minor lacks is returned as it is, and
+ * `usage.recorded` its reasoning tokens (F-137). Below minor 6, the agent's output and an
+ * approval's request lose their subagent (F-138). A kind the minor lacks is returned as it is, and
  * that peer refuses it: senders check `eventKindSupportedAt` first.
  */
 export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
-  if (minor >= 5) {
+  if (minor >= 6) {
     return event;
   }
-  const v4 = dropMinor5Fields(event);
+  const v5 = dropMinor6Fields(event);
+  if (minor >= 5) {
+    return v5;
+  }
+  const v4 = dropMinor5Fields(v5);
   if (minor >= 3) {
     return v4;
   }
@@ -1418,6 +1550,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 5's `runnerEventSchema`, for the up codec of a minor-5 peer. */
+export const runnerEventSchemaV5 = runnerEventSchema.extend({
+  event: taskEventSchemaV5.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 4's `runnerEventSchema`, for the up codec of a minor-4 peer. */
 export const runnerEventSchemaV4 = runnerEventSchema.extend({

@@ -156,6 +156,13 @@ export type SegmentId = z.infer<typeof segmentIdSchema>;
 export const toolCallIdSchema = idBase.brand<"ToolCallId">();
 export type ToolCallId = z.infer<typeof toolCallIdSchema>;
 
+/**
+ * The ID the agent gives a subagent it started (protocol minor 6, F-138): OpenCode's child
+ * session ID. Unique within the session that started it, nested subagents included.
+ */
+export const subagentIdSchema = idBase.max(200).brand<"SubagentId">();
+export type SubagentId = z.infer<typeof subagentIdSchema>;
+
 /** The ID of a question the agent asked (an ACP elicitation). */
 export const questionIdSchema = idBase.brand<"QuestionId">();
 export type QuestionId = z.infer<typeof questionIdSchema>;

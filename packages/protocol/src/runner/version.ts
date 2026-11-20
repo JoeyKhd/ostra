@@ -39,9 +39,13 @@ export const PROTOCOL_MAJOR = 1;
  * environment-proposal endpoints. A minor-4 peer still works inside the window: it's never sent
  * the new spec sections, `automatic` or a new intent, and it's never offered a refine, review or
  * onboarding task or an automatic round (`isTaskOfferable`). A minor-3 peer is outside the window
- * and refused at `hello`.
+ * and refused at `hello`. Milestone 7 ships minor 6 (F-138): an agent's subagents, as
+ * `subagent.started` and `subagent.status`, and the subagent on `agent.message`, `agent.thought`,
+ * `tool.called`, `plan.updated` and `approval.requested`. A minor-5 peer still works inside the
+ * window: a minor-6 runner sends it neither event and no subagent field, so its subagents' calls
+ * show flat, and a minor-5 runner sends none. A minor-4 peer is outside the window.
  */
-export const PROTOCOL_MINOR = 5;
+export const PROTOCOL_MINOR = 6;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;
