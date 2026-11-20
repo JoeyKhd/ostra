@@ -6,7 +6,9 @@ import { EGRESS_BLOCKED_V4, EGRESS_BLOCKED_V6, hostCidr, isIpv6, METADATA_ADDRES
 // sidecar. Each sidecar is on the shared egress network, with inter-container traffic off, and
 // these host rules stop it reaching the baseline's ranges (`EGRESS_BLOCKED_V4`, `EGRESS_BLOCKED_V6`,
 // the one list the `kubernetes` NetworkPolicy is built from too) and the host itself, except the
-// ostra server's address and `OSTRA_EGRESS_ALLOW`, the only accepts.
+// ostra server's address on its port (TCP only, as `kubernetes`' policy has it: on compose that
+// address is the Docker host's gateway, and any other port on it is the pool host's own services)
+// and `OSTRA_EGRESS_ALLOW` (addresses, on every port), the only accepts.
 //
 // - `DOCKER-USER` (traffic the host forwards): the accepts, then a reject for each range.
 // - `INPUT` (traffic to the host itself, which is how a container reaches its network's gateway and
@@ -28,8 +30,10 @@ export type EgressInput = {
   readonly egressSubnet: string;
   /** Its IPv6 subnet, when the network has one: the `ip6tables` rules are only made with it. */
   readonly egressSubnetV6?: string;
-  /** The ostra server's address as the sidecars reach it: the baseline's one exception. */
+  /** The ostra server's address as the sidecars reach it: the baseline's one exception, on `serverPort` only. */
   readonly server: string;
+  /** The server's TCP port there (core's, such as compose's `8787`): the only port the server's address is open on. */
+  readonly serverPort: number;
   /** `OSTRA_EGRESS_ALLOW`: addresses or CIDRs in the blocked ranges an admin allows, such as a private model endpoint. */
   readonly allow: readonly string[];
 };
@@ -39,16 +43,26 @@ export type EgressRule = { readonly program: "iptables" | "ip6tables"; readonly 
 
 const REJECT = { iptables: "icmp-admin-prohibited", ip6tables: "icmp6-adm-prohibited" } as const;
 
+/** An accept: the server's address on its TCP port, or an allowed address on every port. */
+type Accept = { readonly address: string; readonly tcpPort?: number };
+
+const acceptBody = (subnet: string, accept: Accept): string[] => [
+  "-s",
+  subnet,
+  "-d",
+  hostCidr(accept.address),
+  ...(accept.tcpPort === undefined ? [] : ["-p", "tcp", "--dport", String(accept.tcpPort)]),
+  "-j",
+  "ACCEPT",
+];
+
 /** One family's rules, each inserted at its position, ahead of what Docker and the host keep after them. */
-const family = (program: EgressRule["program"], subnet: string, accepts: readonly string[], ranges: readonly string[]): readonly EgressRule[] => {
+const family = (program: EgressRule["program"], subnet: string, accepts: readonly Accept[], ranges: readonly string[]): readonly EgressRule[] => {
   const forward: string[][] = [
-    ...accepts.map((address) => ["-s", subnet, "-d", hostCidr(address), "-j", "ACCEPT"]),
+    ...accepts.map((accept) => acceptBody(subnet, accept)),
     ...ranges.map((range) => ["-s", subnet, "-d", range, "-j", "REJECT", "--reject-with", REJECT[program]]),
   ];
-  const input: string[][] = [
-    ...accepts.map((address) => ["-s", subnet, "-d", hostCidr(address), "-j", "ACCEPT"]),
-    ["-s", subnet, "-j", "REJECT", "--reject-with", REJECT[program]],
-  ];
+  const input: string[][] = [...accepts.map((accept) => acceptBody(subnet, accept)), ["-s", subnet, "-j", "REJECT", "--reject-with", REJECT[program]]];
   return [
     ...forward.map((body, index) => ({ program, args: ["-I", "DOCKER-USER", String(index + 1), ...body] })),
     ...input.map((body, index) => ({ program, args: ["-I", "INPUT", String(index + 1), ...body] })),
@@ -57,10 +71,10 @@ const family = (program: EgressRule["program"], subnet: string, accepts: readonl
 
 /** Every rule of the baseline, `iptables` then `ip6tables`, in the order `deploy/egress-baseline.sh` applies them. */
 export const egressRuleSet = (input: EgressInput): readonly EgressRule[] => {
-  const accepts = [input.server, ...input.allow];
+  const accepts: readonly Accept[] = [{ address: input.server, tcpPort: input.serverPort }, ...input.allow.map((address) => ({ address }))];
   return [
-    ...family("iptables", input.egressSubnet, accepts.filter((address) => !isIpv6(address)), EGRESS_BLOCKED_V4),
-    ...(input.egressSubnetV6 === undefined ? [] : family("ip6tables", input.egressSubnetV6, accepts.filter(isIpv6), EGRESS_BLOCKED_V6)),
+    ...family("iptables", input.egressSubnet, accepts.filter((accept) => !isIpv6(accept.address)), EGRESS_BLOCKED_V4),
+    ...(input.egressSubnetV6 === undefined ? [] : family("ip6tables", input.egressSubnetV6, accepts.filter((accept) => isIpv6(accept.address)), EGRESS_BLOCKED_V6)),
   ];
 };
 

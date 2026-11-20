@@ -19,6 +19,7 @@ const input: EgressInput = {
   egressSubnet: "172.30.0.0/16",
   egressSubnetV6: "fd00:ab::/64",
   server: "172.17.0.1",
+  serverPort: 8787,
   allow: ["10.20.0.5", "fd00:cafe::7"],
 };
 
@@ -27,7 +28,7 @@ const chainOf = (rule: EgressRule): string | undefined => rule.args[1];
 const target = (rule: EgressRule): string | undefined => rule.args[rule.args.indexOf("-j") + 1];
 
 describe("docker's egress rules (F-116)", () => {
-  it("F-116: the rules are built from the baseline's one list: a reject per range in IPv4 and IPv6, the metadata address and the host closed, the server and OSTRA_EGRESS_ALLOW the only accepts", () => {
+  it("F-116: the rules are built from the baseline's one list: a reject per range in IPv4 and IPv6, the metadata address and the host closed, the server on its port and OSTRA_EGRESS_ALLOW the only accepts", () => {
     const rules = egressRuleSet(input);
     const rejected = (program: EgressRule["program"]) =>
       rules.filter((rule) => rule.program === program && chainOf(rule) === "DOCKER-USER" && target(rule) === "REJECT").map(destinationOf);
@@ -43,6 +44,19 @@ describe("docker's egress rules (F-116)", () => {
     const accepted = rules.filter((rule) => target(rule) === "ACCEPT");
     expect(new Set(accepted.map(destinationOf))).toEqual(new Set(["172.17.0.1/32", "10.20.0.5/32", "fd00:cafe::7/128"]));
     expect(accepted.every((rule) => (rule.program === "ip6tables") === (destinationOf(rule)?.includes(":") ?? false))).toBe(true);
+    // The server's address is open on its TCP port only, in both chains, as on `kubernetes` (ADR 0029,
+    // Q239; ADR 0060): on compose it is the Docker host's gateway, whose other ports are the host's
+    // own services. The allowed addresses stay port-less.
+    const serverAccepts = accepted.filter((rule) => destinationOf(rule) === "172.17.0.1/32");
+    expect(serverAccepts.map((rule) => [chainOf(rule), ...rule.args.slice(3)])).toEqual(
+      ["DOCKER-USER", "INPUT"].map((chain) => [chain, "-s", "172.30.0.0/16", "-d", "172.17.0.1/32", "-p", "tcp", "--dport", "8787", "-j", "ACCEPT"]),
+    );
+    expect(accepted.filter((rule) => destinationOf(rule) !== "172.17.0.1/32").every((rule) => !rule.args.includes("-p") && !rule.args.includes("--dport"))).toBe(true);
+    // An IPv6 server is open on its port in ip6tables, the same way.
+    const v6Server = egressRuleSet({ ...input, server: "fd00:ab::1", allow: [] }).filter((rule) => target(rule) === "ACCEPT");
+    expect(v6Server.map((rule) => [rule.program, chainOf(rule), ...rule.args.slice(3)])).toEqual(
+      ["DOCKER-USER", "INPUT"].map((chain) => ["ip6tables", chain, "-s", "fd00:ab::/64", "-d", "fd00:ab::1/128", "-p", "tcp", "--dport", "8787", "-j", "ACCEPT"]),
+    );
     // Every accept comes before every reject of its chain; each rule is inserted at its own position.
     for (const program of ["iptables", "ip6tables"] as const) {
       for (const chain of ["DOCKER-USER", "INPUT"]) {
@@ -67,9 +81,9 @@ describe("docker's egress rules (F-116)", () => {
     // Every rule is from the egress subnet: nothing else on the host is touched.
     expect(rules.every((rule) => rule.args[rule.args.indexOf("-s") + 1] === (rule.program === "iptables" ? input.egressSubnet : input.egressSubnetV6))).toBe(true);
     // Without an IPv6 subnet, no ip6tables rule; milestone 1's shape is the iptables rules' arguments.
-    const v4Only = egressRuleSet({ egressSubnet: input.egressSubnet, server: input.server, allow: [] });
+    const v4Only = egressRuleSet({ egressSubnet: input.egressSubnet, server: input.server, serverPort: input.serverPort, allow: [] });
     expect(v4Only.every((rule) => rule.program === "iptables")).toBe(true);
-    expect(egressRules({ egressSubnet: input.egressSubnet, server: input.server, allow: [] })).toEqual(v4Only.map((rule) => rule.args));
+    expect(egressRules({ egressSubnet: input.egressSubnet, server: input.server, serverPort: input.serverPort, allow: [] })).toEqual(v4Only.map((rule) => rule.args));
   });
 });
 
@@ -104,17 +118,30 @@ describe("deploy/egress-baseline.sh (F-116)", () => {
       });
     });
 
-  it("F-116: the script applies exactly the rules egressRuleSet builds, in order, and refuses anything that isn't an address", async () => {
-    const ran = await runScript([input.egressSubnet, input.server, ...input.allow], { EGRESS_SUBNET_V6: input.egressSubnetV6 ?? "" });
+  it("F-116: the script applies exactly the rules egressRuleSet builds, in order, and refuses anything that isn't an address or a port", async () => {
+    const ran = await runScript([input.egressSubnet, input.server, String(input.serverPort), ...input.allow], { EGRESS_SUBNET_V6: input.egressSubnetV6 ?? "" });
     expect(ran.code).toBe(0);
     const lines = ran.log.split("\n").filter((line) => line.trim() !== "");
     expect(lines).toEqual(egressRuleSet(input).map((rule) => [rule.program, ...rule.args].join(" ")));
-    const v4Only = await runScript([input.egressSubnet, input.server], { EGRESS_SUBNET_V6: "" });
+    const v4Only = await runScript([input.egressSubnet, input.server, String(input.serverPort)], { EGRESS_SUBNET_V6: "" });
     expect(v4Only.log.split("\n").filter((line) => line.trim() !== "")).toEqual(
-      egressRuleSet({ egressSubnet: input.egressSubnet, server: input.server, allow: [] }).map((rule) => [rule.program, ...rule.args].join(" ")),
+      egressRuleSet({ egressSubnet: input.egressSubnet, server: input.server, serverPort: input.serverPort, allow: [] }).map((rule) => [rule.program, ...rule.args].join(" ")),
     );
-    const refused = await runScript([input.egressSubnet, "10.0.0.1;reboot"], {});
+    const v6Server = await runScript([input.egressSubnet, "fd00:ab::1", String(input.serverPort)], { EGRESS_SUBNET_V6: input.egressSubnetV6 ?? "" });
+    expect(v6Server.log.split("\n").filter((line) => line.trim() !== "")).toEqual(
+      egressRuleSet({ ...input, server: "fd00:ab::1", allow: [] }).map((rule) => [rule.program, ...rule.args].join(" ")),
+    );
+    const refused = await runScript([input.egressSubnet, "10.0.0.1;reboot", "8787"], {});
     expect(refused.code).toBe(64);
     expect(refused.log).toBe("");
-  }, 60_000);
+    // The server's port is a port, nothing else: never a missing one (which would open every port).
+    for (const port of ["", "0", "65536", "8787;reboot", "-1", "08787"]) {
+      const badPort = await runScript([input.egressSubnet, input.server, port], {});
+      expect(badPort.code, port).not.toBe(0);
+      expect(badPort.log, port).toBe("");
+    }
+    const noPort = await runScript([input.egressSubnet, input.server], {});
+    expect(noPort.code).not.toBe(0);
+    expect(noPort.log).toBe("");
+  }, 120_000);
 });

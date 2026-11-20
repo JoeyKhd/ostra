@@ -5,14 +5,15 @@ import { baselineEgressPolicy } from "./egress.ts";
 
 // Milestone 5's ticket 24 (F-116): the two executors' baselines from the one list. `docker`'s host
 // rules (`egressRuleSet`) and the NetworkPolicy the runner chart renders (`baselineEgressPolicy`)
-// close the same ranges, which are the list's, and each has the server's address and
+// close the same ranges, which are the list's, and each has the server's address on its port and
 // `OSTRA_EGRESS_ALLOW` as its only exceptions (DNS too on `kubernetes`, ADR 0060).
 
 describe("the egress baseline on both executors (F-116)", () => {
-  it("F-116: docker's rules and the kubernetes NetworkPolicy are built from the one list and close the same ranges, with the server's address and OSTRA_EGRESS_ALLOW as their only exceptions", () => {
+  it("F-116: docker's rules and the kubernetes NetworkPolicy are built from the one list and close the same ranges, with the server's address on the same port and OSTRA_EGRESS_ALLOW as their only exceptions", () => {
     const allow = ["10.20.0.5"];
-    const rules = egressRuleSet({ egressSubnet: "172.30.0.0/16", egressSubnetV6: "fd00:ab::/64", server: "10.96.0.10", allow });
-    const policy = baselineEgressPolicy({ namespace: "ostra-boxes", server: { kind: "cidr", cidr: "10.96.0.10", port: 8787 }, allow });
+    const serverPort = 8787;
+    const rules = egressRuleSet({ egressSubnet: "172.30.0.0/16", egressSubnetV6: "fd00:ab::/64", server: "10.96.0.10", serverPort, allow });
+    const policy = baselineEgressPolicy({ namespace: "ostra-boxes", server: { kind: "cidr", cidr: "10.96.0.10", port: serverPort }, allow });
     const egress = policy.spec?.egress ?? [];
 
     // The ranges: docker's rejects, the policy's carve-outs, and the list, all the same.
@@ -36,6 +37,20 @@ describe("the egress baseline on both executors (F-116)", () => {
     expect(policyAccepts).toEqual(dockerAccepts);
     const selectorPeers = policyPeers.filter((peer) => peer.ipBlock === undefined);
     expect(selectorPeers).toEqual([{ namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "kube-system" } } }]);
-    expect(egress.find((rule) => rule.to?.[0]?.ipBlock?.cidr === "10.96.0.10/32")?.ports).toEqual([{ protocol: "TCP", port: 8787 }]);
+    // The server's exception names the same port on both, TCP only (ADR 0029, Q239; ADR 0060); the
+    // allowed addresses are port-less on both.
+    const policyServerPorts = egress.find((rule) => rule.to?.[0]?.ipBlock?.cidr === "10.96.0.10/32")?.ports;
+    expect(policyServerPorts).toEqual([{ protocol: "TCP", port: serverPort }]);
+    const dockerServerRules = rules.filter((rule) => rule.args.includes("ACCEPT") && rule.args[rule.args.indexOf("-d") + 1] === "10.96.0.10/32");
+    expect(dockerServerRules.map((rule) => rule.args[1])).toEqual(["DOCKER-USER", "INPUT"]);
+    const dockerServerPorts = dockerServerRules.map((rule) => ({
+      protocol: rule.args.includes("-p") ? rule.args[rule.args.indexOf("-p") + 1]?.toUpperCase() : undefined,
+      port: rule.args.includes("--dport") ? Number(rule.args[rule.args.indexOf("--dport") + 1]) : undefined,
+    }));
+    expect(dockerServerPorts).toEqual([policyServerPorts?.[0], policyServerPorts?.[0]]);
+    const dockerAllowRules = rules.filter((rule) => rule.args.includes("ACCEPT") && rule.args[rule.args.indexOf("-d") + 1] === "10.20.0.5/32");
+    expect(dockerAllowRules.length).toBe(2);
+    expect(dockerAllowRules.every((rule) => !rule.args.includes("--dport"))).toBe(true);
+    expect(egress.find((rule) => rule.to?.[0]?.ipBlock?.cidr === "10.20.0.5/32")?.ports).toBeUndefined();
   });
 });
