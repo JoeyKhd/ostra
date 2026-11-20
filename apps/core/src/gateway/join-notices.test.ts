@@ -296,6 +296,25 @@ describe("join tokens", () => {
     expect(await updatePool(deps(), admin(), { poolId, requiresApproval: false })).toMatchObject({ ok: true });
   });
 
+  it("F-091: turning approval on keeps the pool's working runners taking tasks; only a runner still joining waits", async () => {
+    const poolId = await api.test.db.$transaction((tx) => ensureDefaultPool(tx, organizationId));
+    const token = await tokenFor(poolId);
+    const working = await joined(token.token, "already-working");
+    await connected(working);
+    const waiting = await joined(token.token, "not-yet-connected");
+    expect(await api.test.db.runner.findUniqueOrThrow({ where: { id: working.runnerId } })).toMatchObject({ state: "online", approvedAt: null });
+
+    expect(await updatePool(deps(), admin(), { poolId, requiresApproval: true })).toMatchObject({ ok: true });
+    const task = await seedQueuedTask(api.test.db, world, api.fixture.a.admin, null);
+    expect(await dispatch(dispatchPayload(task))).toMatchObject({ ok: true, runnerId: working.runnerId });
+    expect(await api.test.db.runner.findUniqueOrThrow({ where: { id: working.runnerId } })).toMatchObject({ approvedByMemberId: api.fixture.a.admin.id });
+    expect((await api.test.db.runner.findUniqueOrThrow({ where: { id: working.runnerId } })).approvedAt).not.toBeNull();
+    expect(await api.test.db.runner.findUniqueOrThrow({ where: { id: waiting.runnerId } })).toMatchObject({ state: "joining", approvedAt: null });
+    // Out of the default pool's offers for the other cases.
+    await api.test.db.runner.updateMany({ where: { id: { in: [working.runnerId, waiting.runnerId] } }, data: { state: "revoked", revokedAt: new Date() } });
+    expect(await updatePool(deps(), admin(), { poolId, requiresApproval: false })).toMatchObject({ ok: true });
+  });
+
   it("F-091: a joining runner hears in its welcome that it waits for approval in its pool, and a resume when an admin approves it", async () => {
     const pool = await newPool("needs-a-yes", { requiresApproval: true });
     const runner = await joined(pool.joinToken.token, "waiting-one");

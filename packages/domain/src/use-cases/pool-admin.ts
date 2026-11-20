@@ -194,6 +194,15 @@ export const updatePool = (async (deps: PoolAdminDeps, scope: MemberScope, input
         updatedByMemberId: scope.memberId,
       },
     });
+    if (input.requiresApproval === true && !pool.requiresApproval) {
+      // Runners that joined while approval was off are working already: they count as approved,
+      // so turning approval on doesn't stop them. Only joins from now on, and a runner still
+      // `joining`, wait for an admin.
+      await tx.runner.updateMany({
+        where: { organizationId, poolId: pool.id, revokedAt: null, approvedAt: null, state: { not: "joining" } },
+        data: { approvedAt: new Date(deps.clock.now()), approvedByMemberId: scope.memberId },
+      });
+    }
     await deps.audit.recordInTx(tx, {
       organizationId,
       projectId: null,
