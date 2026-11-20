@@ -164,13 +164,14 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(harness.fakes.jobs.jobs.filter((job) => job.job === "draft.apply")).toMatchObject([{ payload: { version: 2 } }]);
     expect(await harness.test.db.auditEntry.count({ where: { entityId: applied.taskId, action: "draft.applied", actorId: harness.fixture.a.member.id } })).toBe(1);
     expect((await member.drafts.get({ taskId: applied.taskId, version: null })).done).toBe(true);
+    // Each called in turn, so no refusal is left unawaited.
     for (const again of [
-      member.drafts.updateTicket({ taskId: applied.taskId, version: 2 }),
-      member.drafts.markReady({ taskId: applied.taskId }),
-      member.drafts.save({ taskId: applied.taskId, baseVersion: 2, fields: draft() }),
-      member.drafts.addImage({ taskId: applied.taskId, name: "late.png", contentType: "image/png", data: png(16) }),
+      () => member.drafts.updateTicket({ taskId: applied.taskId, version: 2 }),
+      () => member.drafts.markReady({ taskId: applied.taskId }),
+      () => member.drafts.save({ taskId: applied.taskId, baseVersion: 2, fields: draft() }),
+      () => member.drafts.addImage({ taskId: applied.taskId, name: "late.png", contentType: "image/png", data: png(16) }),
     ]) {
-      expect(await codeOf(again)).toBe("PRECONDITION_FAILED");
+      expect(await codeOf(again())).toBe("PRECONDITION_FAILED");
     }
     expect(harness.fakes.jobs.jobs.filter((job) => job.job === "draft.apply")).toHaveLength(1);
     expect(await harness.test.db.auditEntry.count({ where: { entityId: applied.taskId, action: "draft.applied" } })).toBe(1);
