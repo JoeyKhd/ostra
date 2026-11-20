@@ -589,28 +589,28 @@ export abstract class AgentAdapter {
     const connected = await this.#driver.connect(
       input.io,
       {
-      onReplay: () => {
-        replayed += 1;
-      },
-      onUpdate: (_agentSessionId, update) => {
-        const turnId = this.#turns.get(sessionKey);
-        if (turnId === undefined) {
-          // Before the first turn there's nothing to attach an update to: a load's replay that the
-          // driver didn't mark is counted as one too, and never stored.
+        onReplay: () => {
           replayed += 1;
-          return;
-        }
-        const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId, cwd: input.cwd };
-        const own = this.mapUpdate(update, context);
-        const events = own.handled ? own.events : this.#driver.mapUpdate(own.update ?? update, context);
-        if (events.length > 0) {
-          input.onEvents(events);
-        }
-      },
-      // The request goes on with its subject, read once here, for the runner's rules.
-      onPermission: (agentSessionId, request, signal) =>
-        input.onPermission(agentSessionId, { ...request, subject: this.describePermission(request, input.cwd) }, signal),
-      onQuestion: input.onQuestion,
+        },
+        onUpdate: (_agentSessionId, update) => {
+          const turnId = this.#turns.get(sessionKey);
+          if (turnId === undefined) {
+            // Before the first turn there's nothing to attach an update to: a load's replay that the
+            // driver didn't mark is counted as one too, and never stored.
+            replayed += 1;
+            return;
+          }
+          const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId, cwd: input.cwd };
+          const own = this.mapUpdate(update, context);
+          const events = own.handled ? own.events : this.#driver.mapUpdate(own.update ?? update, context);
+          if (events.length > 0) {
+            input.onEvents(events);
+          }
+        },
+        // The request goes on with its subject, read once here, for the runner's rules.
+        onPermission: (agentSessionId, request, signal) =>
+          input.onPermission(agentSessionId, { ...request, subject: this.describePermission(request, input.cwd) }, signal),
+        onQuestion: input.onQuestion,
       },
       { subagents: this.capabilities.subagents },
     );
