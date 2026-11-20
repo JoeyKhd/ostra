@@ -1,4 +1,4 @@
-import { revokeCliSession, unlinkGitHubUser } from "@ostra/domain";
+import { revokeCliSession, setTheme, setThemeInputSchema, themeCookie, themePreferenceSchema, unlinkGitHubUser } from "@ostra/domain";
 import { cliSessionIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -85,4 +85,20 @@ export const accountRouter = router({
     }
     return { purpose: row.purpose, machineName: row.machineName };
   }),
+
+  /**
+   * F-082 (milestone 7, ticket 11): the member's own theme, saved on their account and set in the
+   * cookie the panel reads before first paint. There is no way to name another account: the input
+   * is the theme alone, and the account is the session's.
+   */
+  setTheme: memberProcedure
+    .input(setThemeInputSchema)
+    .output(z.object({ theme: themePreferenceSchema, changed: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports, settings } = ctx.deps;
+      const result = await db.$transaction((tx) => setTheme({ tx, audit: ports.audit, scope: ctx.scope, userId: ctx.user.userId }, input));
+      const saved = unwrap(result, { "invalid-input": "BAD_REQUEST" });
+      ctx.resHeaders.append("set-cookie", themeCookie(saved.theme, settings.publicUrl.startsWith("https:")));
+      return { theme: saved.theme, changed: saved.changed };
+    }),
 });

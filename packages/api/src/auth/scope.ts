@@ -1,4 +1,5 @@
-import type { MemberScope, ProjectRole } from "@ostra/domain";
+import { themeFromCookie } from "@ostra/domain";
+import type { MemberScope, ProjectRole, ThemePreference } from "@ostra/domain";
 import type { Db } from "@ostra/db";
 import { memberIdSchema, organizationIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
@@ -33,12 +34,20 @@ export type SessionUser = {
   readonly sessionOrganizationId: string | null;
   /** The account still has the default password it was seeded with (F-001). */
   readonly mustChangePassword: boolean;
+  /** F-082: the member's theme, as the session carries it. */
+  readonly theme: ThemePreference;
 };
 
 /** A signed-in account's membership of one organization, with the scope every query takes. */
 export type MemberContext = {
   readonly scope: MemberScope;
   readonly userId: UserId;
+};
+
+/** The theme a session's user carries, or dark for none it knows (F-082). */
+const themeOf = (user: object): ThemePreference => {
+  const theme: unknown = Reflect.get(user, "theme");
+  return themeFromCookie(typeof theme === "string" ? theme : undefined);
 };
 
 /** The session behind a request's cookie or bearer token, or `null`. */
@@ -60,6 +69,7 @@ export const resolveSession = async (auth: OstraAuth, headers: Headers): Promise
     instanceAdmin: role === "admin",
     sessionOrganizationId: typeof active === "string" && active !== "" ? active : null,
     mustChangePassword: mustChangePasswordOf(user),
+    theme: themeOf(user),
   };
 };
 

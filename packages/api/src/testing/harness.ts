@@ -230,6 +230,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       instanceAdmin: account.role === "admin",
       sessionOrganizationId: member.organizationId,
       mustChangePassword: account.mustChangePassword,
+      theme: account.theme,
     };
     // A revoked membership shows here as it does in production: the member row is read again.
     return {

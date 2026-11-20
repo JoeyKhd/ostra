@@ -265,6 +265,9 @@ export const createAuth = (input: CreateAuthInput) => {
         // F-001: set only by the seed, for the default password; cleared by a password change.
         // `input: false`: no sign-up or profile update can set it.
         mustChangePassword: { type: "boolean", required: false, defaultValue: false, input: false },
+        // F-082 (milestone 7): the member's theme, in the session's payload. `input: false`: only
+        // `account.setTheme` writes it.
+        theme: { type: "string", required: false, defaultValue: "dark", input: false },
       },
     },
 

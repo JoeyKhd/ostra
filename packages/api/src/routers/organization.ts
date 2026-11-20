@@ -52,6 +52,8 @@ export const meRouter = router({
        * panel works, with a warning until it changes. `none`: its own password.
        */
       passwordChange: passwordChangeOf(user.mustChangePassword, ctx.deps.settings.allowDefaultPassword),
+      /** F-082: dark, light or system; the root layout applies it from the cookie before first paint. */
+      theme: user.theme,
       memberId: member === null ? null : member.scope.memberId,
       organization:
         member === null || organization === null

@@ -59,6 +59,7 @@ const withoutOrganization = async () => {
       instanceAdmin: false,
       sessionOrganizationId: null,
       mustChangePassword: false,
+      theme: "dark",
     },
     member: null,
     revalidate: () => Promise.resolve(null),
