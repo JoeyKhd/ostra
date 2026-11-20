@@ -74,7 +74,8 @@ test("Connect a runner: the command, the device approval, the runner online and 
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByTestId("device-confirm")).toContainText("Personal, not isolated");
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByRole("status")).toContainText("Approved");
+  // The device page's own status line: the shell's toast region is a status too.
+  await expect(page.getByTestId("device-confirm").getByRole("status")).toContainText("Approved");
   await runner.signedIn;
 
   // It shows online, labelled "personal, not isolated".
@@ -91,20 +92,22 @@ test("Connect a runner: the command, the device approval, the runner online and 
   await expect(page.locator('[data-step="first-task"]')).toHaveAttribute("data-done", "false");
 });
 
-test("F-076: with the runner online, the checklist's last step starts the first task from a prompt, and setup is done", async ({ page }) => {
+test("F-076: with the runner online, the checklist's last step starts the first task from a prompt, and setup is done without Linear", async ({ page }) => {
   await signIn(page);
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");
   await expect(checklist).toBeVisible();
-  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "project", "runner", "first-task", "linear"]);
-  await expect(page.getByText("5 of 6", { exact: true })).toBeVisible();
+  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "linear", "project", "runner", "first-task"]);
+  await expect(page.getByText("5 of 7", { exact: true })).toBeVisible();
   for (const step of ["admin", "model-provider", "github", "project", "runner"]) {
     await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute("data-done", "true");
-    // A step that's done has nothing left to click.
-    await expect(page.locator(`[data-step="${step}"]`).getByRole("link")).toHaveCount(0);
+    // A step that's done has nothing left to click but its page in the docs.
+    await expect(page.locator(`[data-step="${step}"] a:not([data-docs])`)).toHaveCount(0);
   }
+  // Linear is neither connected nor skipped: it's the next step, and the first task is still open.
+  await expect(page.locator('[data-step="linear"]')).toHaveAttribute("data-next", "true");
   const firstTask = page.locator('[data-step="first-task"]');
-  await expect(firstTask).toHaveAttribute("data-next", "true");
+  await expect(firstTask).toHaveAttribute("data-done", "false");
 
   // The checklist's button opens New task; a prompt starts the task on the admin's runner.
   await firstTask.getByRole("link", { name: "New task" }).click();
@@ -114,7 +117,7 @@ test("F-076: with the runner online, the checklist's last step starts the first 
   await page.getByRole("button", { name: "Start task" }).click();
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/);
 
-  // Every step is done: Home drops the checklist for Needs you. The right panel shows only once
+  // Every step but the optional Linear is done (F-076, ticket 24): Home drops the checklist for Needs you. The right panel shows only once
   // setup.status has loaded as done, so the page is past its loading state when Needs you is checked.
   await page.goto("/");
   await expect(page.getByTestId("home-panel").first()).toBeVisible();

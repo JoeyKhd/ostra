@@ -203,6 +203,8 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "search.suggest": { input: () => ({ query: "" }), about: "organization" },
   "search.tasks": { input: () => ({ query: "" }), about: "organization" },
   "setup.status": { input: none, about: "organization" },
+  // The instance admin's (ticket 24): the install's first organization, whoever asks.
+  "setup.timeline": { input: () => ({ start: 0 }), about: "organization" },
   "spend.currentMonth": { input: none, about: "organization" },
   "spend.modelPrice": { input: (target) => ({ modelId: row(target, "Model"), month: currentMonth() }), about: "organization" },
   "spend.month": { input: () => ({ month: currentMonth() }), about: "organization" },
@@ -599,6 +601,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "search.suggest": ["ok", "ok", "ok", "ok", "ok"],
   "search.tasks": ["ok", "ok", "ok", "ok", "ok"],
   "setup.status": ["ok", "ok", "ok", "ok", "ok"],
+  "setup.timeline": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "spend.currentMonth": ["ok", "ok", "ok", "ok", "ok"],
   "spend.modelPrice": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "spend.month": ["ok", "ok", "ok", "ok", "ok"],

@@ -22,6 +22,7 @@ import {
   currentResetLinkSink,
   INVITATION_HEADER,
   recordResetLinkInTx,
+  recordPasswordChangedInTx,
   recordResetUsedInTx,
   refusingJobQueue,
   transactionStorage,
@@ -408,13 +409,18 @@ export const createAuth = (input: CreateAuthInput) => {
           return;
         }
         // A changed password ends the default one: the flag goes, and with it the forced step and
-        // the panel's warning (F-001).
+        // the panel's warning (F-001). The change is an audit entry, which setup's timeline reads
+        // (F-076, ticket 24).
         if (ctx.path !== "/change-password" || isAPIError(ctx.context.returned)) {
           return;
         }
         const changed = changedPasswordSchema.safeParse(ctx.context.returned);
         if (changed.success) {
-          await db.user.updateMany({ where: { id: changed.data.user.id, mustChangePassword: true }, data: { mustChangePassword: false } });
+          const userId = userIdSchema.parse(changed.data.user.id);
+          await db.$transaction(async (tx) => {
+            const ended = await tx.user.updateMany({ where: { id: userId, mustChangePassword: true }, data: { mustChangePassword: false } });
+            await recordPasswordChangedInTx(accounts, tx, userId, ended.count > 0);
+          });
         }
       }),
     },

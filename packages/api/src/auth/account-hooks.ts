@@ -174,3 +174,22 @@ export const recordResetUsedInTx = async (ports: Pick<AccountPorts, "audit" | "c
     });
   }
 };
+
+/**
+ * A member changed their own password (F-001's first sign-in, or later on Account): an entry in each
+ * of the account's organizations. Setup's timeline reads the first admin's as the checklist's first
+ * step (F-076, ticket 24). IDs only: never the password.
+ */
+export const recordPasswordChangedInTx = async (ports: Pick<AccountPorts, "audit">, tx: Tx, userId: UserId, wasDefault: boolean): Promise<void> => {
+  for (const { organizationId, memberId } of await organizationsOfAccount(tx, userId)) {
+    await ports.audit.recordInTx(tx, {
+      organizationId,
+      projectId: null,
+      actor: { kind: "member", id: memberId },
+      action: "password.changed",
+      entity: "user",
+      entityId: userId,
+      data: { wasDefault },
+    });
+  }
+};

@@ -48,8 +48,9 @@ export const HomeView = () => {
   const projects = (overview.data?.projects.rows ?? []).map((row) => ({ id: row.id, name: row.name }));
   const organization = me.data?.organization;
   const admin = organization?.role === "admin";
-  const setupDone = setup.data?.next === null;
-  const firstRun = setup.data !== undefined && setup.data.next !== null;
+  // Linear is optional: setup is done once every other step is (F-076).
+  const setupDone = setup.data?.complete === true;
+  const firstRun = setup.data !== undefined && !setup.data.complete;
 
   const load = <T,>(pick: (data: Overview) => T): Load<T> =>
     overview.data !== undefined

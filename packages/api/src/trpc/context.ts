@@ -45,6 +45,8 @@ export type ApiSettings = Pick<
   // Milestone 5: a new join token's lifetime (ticket 25); the `host` pool's development-only line (ticket 26).
   | "joinTokenDays"
   | "devHostPoolSameUser"
+  // Milestone 7: the setup checklist's links to the docs (ticket 24).
+  | "docsUrl"
 >;
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */

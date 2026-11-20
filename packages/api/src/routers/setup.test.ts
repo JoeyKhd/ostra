@@ -17,7 +17,8 @@ describe("setup.status", () => {
   it("derives the checklist from the tables, in order", async () => {
     const { a, b } = harness.fixture;
     const caller = await harness.as(a.admin);
-    expect(await caller.setup.status()).toEqual({
+    const status = await caller.setup.status();
+    expect({ steps: status.steps.map(({ id, state }) => ({ id, state })), next: status.next, complete: status.complete }).toEqual({
       steps: [
         { id: "admin", state: "done" },
         { id: "model-provider", state: "open" },
@@ -28,6 +29,7 @@ describe("setup.status", () => {
         { id: "first-task", state: "open" },
       ],
       next: "model-provider",
+      complete: false,
     });
     // Organization B has a project too, and nothing of A's counts for it.
     expect((await (await harness.as(b.admin)).setup.status()).steps.find((step) => step.id === "project")?.state).toBe("done");

@@ -4,7 +4,7 @@ description: "Add a model provider and the GitHub App, in the checklist's order.
 summary: "Sign in as demo, choose a password, then add a model provider and the GitHub App, in the checklist's order."
 ---
 
-After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest.
+After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Each row also links to its part of these docs (**Docs**), which follow the docs address the server is set to (`OSTRA_DOCS_URL`). Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest.
 
 ## 1. Create the first admin
 
@@ -53,4 +53,4 @@ To add more: a server joins a pool with a join token ([Pools and join tokens](/d
 
 **New task**: pick the project, type a prompt, and start it. The task's page shows the agent's work as it happens. You can steer it with a message, answer its questions and approve what its rules hold back. When its checks pass, it pushes its branch and opens a pull request for each repo it changed, linked from the task.
 
-The checklist's last row ticks, and Home shows your projects, what needs you, and the runners.
+The checklist's last row ticks, and Home shows your projects, what needs you, and the runners. Linear doesn't hold setup back: once every other row is done, the checklist goes, whether Linear is connected, skipped or neither. Connect it later from Organization › Linear.

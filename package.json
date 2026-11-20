@@ -39,6 +39,7 @@
     "e2e:m4": "node e2e/m4-the-organization/src/demo.ts",
     "e2e:m5": "node e2e/m5-the-fleet/src/demo/demo.ts",
     "load:run": "node e2e/load/src/run.ts",
+    "measure:setup": "node packages/api/scripts/measure-setup.ts",
     "ostra": "node apps/runner/src/main.ts"
   },
   "devDependencies": {

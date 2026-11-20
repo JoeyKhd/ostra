@@ -48,7 +48,8 @@ test("F-001: a fresh install signs in as demo@demo.com / demo, and must choose a
   await page.goto("/");
   await expect(page.getByTestId("setup-checklist")).toBeVisible();
   await expect(page.locator('[data-step="admin"]')).toHaveAttribute("data-done", "true");
-  await expect(page.locator('[data-step="linear"]')).toContainText("milestone 2");
+  // Linear is live since milestone 2, and optional: offered with "Skip for now".
+  await expect(page.locator('[data-step="linear"]').getByRole("button", { name: "Skip for now" })).toBeVisible();
   expect(origins.foreign()).toEqual([]);
 });
 

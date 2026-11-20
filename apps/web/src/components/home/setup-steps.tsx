@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowRightIcon, BookOpenIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -10,14 +10,16 @@ import type { StepLook } from "@/components/ui/step-tick";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 import type { MessageKey } from "@/lib/messages";
+import type { RouterOutputs } from "@/lib/trpc";
 
 // The first-run checklist's rows (home-first-run.md, F-076), with the Linear step live. The shape
 // is `setup.status`'s from ticket 27: each step `done`, `skipped` or `open`, and the Linear step
-// also `pending` or `failed` from its connection.
+// also `pending` or `failed` from its connection. Milestone 7 (ticket 24): each row links to its
+// page in the docs (`OSTRA_DOCS_URL`), in a new tab.
 
-export type SetupStepId = "admin" | "model-provider" | "github" | "linear" | "project" | "runner" | "first-task";
-export type SetupStepState = "done" | "skipped" | "open" | "pending" | "failed";
-export type SetupStep = { readonly id: SetupStepId; readonly state: SetupStepState };
+export type SetupStep = RouterOutputs["setup"]["status"]["steps"][number];
+export type SetupStepId = SetupStep["id"];
+export type SetupStepState = SetupStep["state"];
 
 type StepCopy = { readonly title: MessageKey; readonly body: MessageKey; readonly href: string; readonly action: MessageKey };
 
@@ -89,7 +91,20 @@ export const SetupSteps = ({ steps, next, admin, skip }: SetupStepsProps) => (
             <div className={cn("font-medium", settled && "text-muted")}>{t(view.title)}</div>
             <div className="flex items-start gap-1.5 text-sm text-muted">
               {failed ? <TriangleAlertIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75] text-red" /> : null}
-              <span>{t(bodyOf(step))}</span>
+              <span>
+                {t(bodyOf(step))}{" "}
+                <a
+                  href={step.docs}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-docs
+                  aria-label={t("checklist.docsLabel", { step: t(view.title) })}
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-muted underline-offset-2 hover:text-text hover:underline"
+                >
+                  <BookOpenIcon aria-hidden className="size-[12px] stroke-[1.75]" />
+                  {t("checklist.docs")}
+                </a>
+              </span>
             </div>
           </div>
           {!canAct || step.state === "done" ? null : step.state === "skipped" ? (

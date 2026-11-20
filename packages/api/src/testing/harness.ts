@@ -161,6 +161,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       resetLinkHours,
       joinTokenDays: 30,
       devHostPoolSameUser: options.devHostPoolSameUser ?? false,
+      docsUrl: "https://docs.example.com/ostra/",
     },
     blobStore: {
       name: "postgres",

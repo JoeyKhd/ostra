@@ -13,8 +13,9 @@ test("F-076: a new organization's Home shows the checklist in its order, and its
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");
   await expect(checklist).toBeVisible();
-  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "project", "runner", "first-task", "linear"]);
-  await expect(page.getByText("1 of 6", { exact: true })).toBeVisible();
+  const order = ["admin", "model-provider", "github", "linear", "project", "runner", "first-task"];
+  expect(await checklistSteps(page)).toEqual(order);
+  await expect(page.getByText("1 of 7", { exact: true })).toBeVisible();
   await expect(page.locator('[data-step="admin"]')).toHaveAttribute("data-done", "true");
   // The next step is the model provider, the one primary button; GitHub and the rest wait.
   await expect(checklist.locator('[data-next="true"]')).toHaveCount(1);
@@ -22,11 +23,18 @@ test("F-076: a new organization's Home shows the checklist in its order, and its
   for (const step of ["model-provider", "github", "project", "runner", "first-task"]) {
     await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute("data-done", "false");
   }
-  // Linear comes last, as an optional step this milestone skips: no action, and not counted.
+  // Linear is optional (milestone 2's step, live): offered with "Skip for now", and never what
+  // holds setup back (03-first-run finishes setup without it).
   const linear = page.locator('[data-step="linear"]');
   await expect(linear).toContainText("Connect Linear");
-  await expect(linear).toContainText("milestone 2");
-  await expect(linear.getByRole("link")).toHaveCount(0);
+  await expect(linear.getByRole("button", { name: "Skip for now" })).toBeVisible();
+  await expect(linear.getByRole("link", { name: "Connect Linear", exact: true })).toHaveAttribute("href", "/organization/linear");
+  // Milestone 7 (ticket 24): every step links to its page in the docs (OSTRA_DOCS_URL), in a new tab.
+  for (const step of order) {
+    const docs = page.locator(`[data-step="${step}"] a[data-docs]`);
+    await expect(docs).toHaveAttribute("href", /^https:\/\/joeykhd\.github\.io\/ostra\/docs\/[a-z-]+\/[a-z-]+\/(#[a-z0-9-]+)?$/);
+    await expect(docs).toHaveAttribute("target", "_blank");
+  }
 
   // The checklist's own button opens the step's page, in the panel.
   await page.locator('[data-step="model-provider"]').getByRole("link", { name: "Add a provider" }).click();
