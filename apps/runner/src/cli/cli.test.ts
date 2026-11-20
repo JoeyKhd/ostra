@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PROTOCOL_MINOR } from "@ostra/protocol";
@@ -62,6 +62,22 @@ const runnerWithClock = (fake: FakeServer, offsetMs: number): Promise<Run> =>
   run(["runner", "--server", fake.url, "--data-dir", dataDir, "--name", "laptop"], {}, () => Date.now() + offsetMs);
 
 const HOUR = 3_600_000;
+
+describe("ostra internal build-step", () => {
+  it("F-120: a kubernetes snapshot build's step, as its pod runs it, goes to the build's steps: the context is staged from the plan", async () => {
+    const plan = path.join(dataDir, "plan.json");
+    const context = path.join(dataDir, "context");
+    await writeFile(plan, JSON.stringify({ repos: [], dockerfile: "FROM scratch\n", contextFiles: [{ path: "setup.sh", content: "echo ready\n" }] }));
+    const staged = await run(["internal", "build-step", "context"], { OSTRA_BUILD_PLAN: plan, OSTRA_BUILD_CONTEXT: context });
+    expect(staged.code).toBe(0);
+    expect(staged.lines.join("")).toContain("ostra-context: 0 repos and 1 files staged");
+    expect(await readFile(path.join(context, "Dockerfile"), "utf8")).toBe("FROM scratch\n");
+    const unknown = await run(["internal", "build-step", "bogus"]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.lines.join("")).toContain("ostra-build: no step bogus");
+    expect((await run(["internal", "other"])).code).toBe(exitCodes.usage);
+  });
+});
 
 describe("ostra runner: the first sign-in", () => {
   it("runs the device flow, registers, stores the key, and the server revokes the session", async () => {

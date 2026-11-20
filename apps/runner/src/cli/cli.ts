@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { runBuildStep } from "@ostra/adapter-executor-kubernetes";
 import { parseRunnerConfig, runnerConfigFields } from "@ostra/protocol";
 import type { RunnerConfig, RunnerInstall } from "@ostra/protocol";
 import { fallbackReasonWords } from "../connection/http-carrier.ts";
@@ -275,6 +276,16 @@ export const runCli = async (args: readonly string[], deps: CliDeps): Promise<nu
       return exitCodes.usage;
     case "sidecar":
       return deps.runSidecar({ env: deps.env, terminal: deps.terminal, signal: deps.signal });
+    case "internal":
+      // The runner image's own steps, which no person types: `internal build-step <step>` runs one
+      // step of a `kubernetes` snapshot build in its pod (F-120, milestone 5's ticket 08).
+      if (sub === "build-step" && rest.length === 1 && rest[0] !== undefined) {
+        return runBuildStep(rest[0], { ...deps.env }, (line) => {
+          deps.terminal.say(line);
+        });
+      }
+      deps.terminal.warn("ostra internal: only `ostra internal build-step <step>`, which a snapshot build's pod runs.");
+      return exitCodes.usage;
     case "login":
     case "logout":
     case "checkout": {
