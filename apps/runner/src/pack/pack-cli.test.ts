@@ -7,7 +7,8 @@ import { z } from "zod";
 import { startFakeServer } from "../testing/fake-server.ts";
 import type { FakeServer } from "../testing/fake-server.ts";
 import { RUNNER_VERSION } from "../version.ts";
-import { packCli } from "./pack-cli.ts";
+import { LICENSOR, REPOSITORY_URL } from "../../../../scripts/licensor.ts";
+import { cliManifest, packCli } from "./pack-cli.ts";
 
 // Ticket 19 (F-013, ADR 0046): the npm CLI. Its tarball installs with npm on its own, with nothing
 // to fetch, and the program it installs is `ostra runner`, which signs in against a server.
@@ -82,4 +83,22 @@ describe("the npm CLI (F-013)", () => {
     const status = await exec(process.execPath, [program, "runner", "status", "--data-dir", dataDir], dir, env);
     expect(status.stdout).toContain(`This runner     ostra ${RUNNER_VERSION} (from npm)`);
   }, 180_000);
+});
+
+// Milestone 7's ticket 30 (F-039's publishing): the manifest packCli writes is what npm publishes.
+describe("the CLI's published package", () => {
+  it("F-039: the CLI publishes its bundle and LICENSE only, public, with npm's provenance, the repository and the licensor", () => {
+    expect(cliManifest("ostra", { version: "1.0.0", license: "Apache-2.0", engines: { node: ">=24.5" } })).toMatchObject({
+      name: "ostra",
+      version: "1.0.0",
+      license: "Apache-2.0",
+      author: LICENSOR,
+      repository: { type: "git", url: REPOSITORY_URL, directory: "apps/runner" },
+      type: "module",
+      bin: { ostra: "dist/ostra.js" },
+      files: ["dist", "LICENSE"],
+      engines: { node: ">=24.5" },
+      publishConfig: { access: "public", provenance: true },
+    });
+  });
 });

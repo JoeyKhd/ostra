@@ -1,0 +1,137 @@
+# The npm half of release.yml's dry run, by hand on Windows 11 (no Docker), 2026-11-20T14:31Z
+# Node v24.14.0, npm 11.9.0, pnpm 11.28.2, commit c45b6d23 plus ticket 30's uncommitted change
+# The images half (build, check, push to the job's registry) runs only in release.yml on ubuntu-24.04.
+$ node scripts/version.ts 1.0.0-rc.0
+version: 1.0.0-rc.0 in 36 package.json files
+$ pnpm check:release
+check:release: the published packages, the private ones and the licensor line hold
+$ pnpm turbo run build (the 16 published libraries)
+ Tasks:    16 successful, 16 total
+$ pnpm pack, each library
+packed packages/protocol
+packed packages/adapter-sdk
+packed packages/adapters/adapter-blob-postgres
+packed packages/adapters/adapter-blob-s3
+packed packages/adapters/adapter-email-resend
+packed packages/adapters/adapter-email-smtp
+packed packages/adapters/adapter-executor-docker
+packed packages/adapters/adapter-executor-host
+packed packages/adapters/adapter-executor-kubernetes
+packed packages/adapters/adapter-github
+packed packages/adapters/adapter-linear
+packed packages/adapters/adapter-model-endpoint
+packed packages/adapters/adapter-notify-panel
+packed packages/adapters/adapter-notify-tracker
+packed packages/adapters/adapter-opencode
+packed packages/adapters/adapter-secret-store-builtin
+$ OSTRA_CLI_PACKAGE=ostra pnpm --filter @ostra/runner pack:cli
+.\apps\runner\dist\npm\ostra-1.0.0-rc.0.tgz
+$ the packages and versions
+ostra@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-blob-postgres@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-blob-s3@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-email-resend@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-email-smtp@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-executor-docker@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-executor-host@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-executor-kubernetes@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-github@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-linear@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-model-endpoint@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-notify-panel@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-notify-tracker@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-opencode@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-sdk@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/adapter-secret-store-builtin@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+@ostra/protocol@1.0.0-rc.0 files=["dist","LICENSE"] access=public provenance=true deps=no workspace: left
+$ npm publish <tarball> --tag next --dry-run --provenance=false, each (1.0.0-rc.0 is a candidate, so the "next" tag)
+npm notice name: ostra
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-1.0.0-rc.0.tgz
+npm notice total files: 4
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-blob-postgres
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-blob-postgres-1.0.0-rc.0.tgz
+npm notice total files: 8
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice 371B dist/s3-errors.d.ts
+npm notice 2.9kB dist/s3-errors.js
+npm notice name: @ostra/adapter-blob-s3
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-blob-s3-1.0.0-rc.0.tgz
+npm notice total files: 12
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-email-resend
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-email-resend-1.0.0-rc.0.tgz
+npm notice total files: 7
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-email-smtp
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-email-smtp-1.0.0-rc.0.tgz
+npm notice total files: 9
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-executor-docker
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-executor-docker-1.0.0-rc.0.tgz
+npm notice total files: 38
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-executor-host
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-executor-host-1.0.0-rc.0.tgz
+npm notice total files: 26
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-executor-kubernetes
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-executor-kubernetes-1.0.0-rc.0.tgz
+npm notice total files: 40
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice 1.3kB dist/errors.d.ts
+npm notice 5.3kB dist/errors.js
+npm notice name: @ostra/adapter-github
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-github-1.0.0-rc.0.tgz
+npm notice total files: 16
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-linear
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-linear-1.0.0-rc.0.tgz
+npm notice total files: 26
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-model-endpoint
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-model-endpoint-1.0.0-rc.0.tgz
+npm notice total files: 12
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-notify-panel
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-notify-panel-1.0.0-rc.0.tgz
+npm notice total files: 9
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-notify-tracker
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-notify-tracker-1.0.0-rc.0.tgz
+npm notice total files: 9
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-opencode
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-opencode-1.0.0-rc.0.tgz
+npm notice total files: 23
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-sdk
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-sdk-1.0.0-rc.0.tgz
+npm notice total files: 182
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/adapter-secret-store-builtin
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-adapter-secret-store-builtin-1.0.0-rc.0.tgz
+npm notice total files: 6
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+npm notice name: @ostra/protocol
+npm notice version: 1.0.0-rc.0
+npm notice filename: ostra-protocol-1.0.0-rc.0.tgz
+npm notice total files: 62
+npm notice Publishing to https://registry.npmjs.org/ with tag next and public access (dry-run)
+$ restore every package.json to the checkout's version

@@ -1,0 +1,180 @@
+name: Release
+
+# The release (milestone 7's ticket 30, ADR 0064, ADR 0045): every check, the three images built,
+# checked and pushed by digest, the npm packages published through npm's trusted publishing (no npm
+# token: npm trusts this workflow by its OIDC identity, `id-token: write`), the GitHub release with
+# the changelog, the digests and the versions, then the docs (docs.yml).
+#
+# By hand only, by the maintainer: `gh workflow run Release -f version=1.0.0 -f dry-run=false`.
+# Never on push, a tag or a schedule, and never in ci.yml (the maintainer's CI scope, 2026-11-19).
+#
+# The dry run (`dry-run: true`, the default) pushes the images to a registry inside this job and
+# runs `npm publish --dry-run`; nothing leaves the job. Its log is kept in
+# context/specs/m7-launch/demo/release-dry-run.log.
+#
+# The names are the maintainer's (Q80, Q82; ticket 34, step 4): the real run needs the repository
+# variables OSTRA_CLI_PACKAGE (the CLI's npm name) and OSTRA_IMAGE_NAMESPACE (where the images go,
+# such as ghcr.io/joeykhd), and refuses to start without them. Until then the CLI's name is the
+# placeholder `ostra`, which the dry run packs and never publishes.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The release's version: 1.0.0, or 1.0.0-rc.1 for a candidate"
+        type: string
+        required: true
+      dry-run:
+        description: "Dry run: the images go to the job's own registry, and npm publishes nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+# One release at a time; a second run waits rather than cancelling one that is publishing.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      # The dry run's registry: the images are pushed here, by digest, and never leave the job.
+      registry:
+        image: registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e
+        ports:
+          - 5000:5000
+    env:
+      VERSION: ${{ inputs.version }}
+      DRY_RUN: ${{ inputs.dry-run }}
+      CLI_PACKAGE: ${{ inputs.dry-run && 'ostra' || vars.OSTRA_CLI_PACKAGE }}
+      IMAGE_NAMESPACE: ${{ inputs.dry-run && 'localhost:5000/ostra' || vars.OSTRA_IMAGE_NAMESPACE }}
+      OUT: ${{ github.workspace }}/release-out
+    steps:
+      - name: The version is a version, and a real run has the maintainer's names
+        run: |
+          set -eu
+          printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "::error::\"$VERSION\" isn't a version"; exit 1; }
+          if [ "$DRY_RUN" != "true" ] && { [ -z "$CLI_PACKAGE" ] || [ -z "$IMAGE_NAMESPACE" ]; }; then
+            echo "::error::A real release needs the repository variables OSTRA_CLI_PACKAGE and OSTRA_IMAGE_NAMESPACE (ticket 34, step 4)"
+            exit 1
+          fi
+          mkdir -p "$OUT/npm"
+          echo "release $VERSION, dry run: $DRY_RUN, CLI package: $CLI_PACKAGE, images: $IMAGE_NAMESPACE"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The changelog is the commits since the previous tag.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # One version on every package.json: the root's tags the images, the CLI's is `ostra --version`.
+      - run: node scripts/version.ts "$VERSION"
+
+      # Every check, on the release's own tree.
+      - run: pnpm turbo run generate
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm check:licenses
+      - run: pnpm check:proof
+      - run: pnpm check:release
+      - run: pnpm check:images
+      - run: pnpm check:helm
+
+      # The three images, built from this tree, started and checked, then pushed by digest.
+      - run: pnpm images:build
+      - name: Start and check each image
+        run: |
+          set -eu
+          test "$(docker run --rm "ostra/runner:$VERSION" --version)" = "$VERSION"
+          docker run --rm --entrypoint sh "ostra/base:$VERSION" -c 'opencode --version'
+          docker run --rm --entrypoint sh "ostra/runner:$VERSION" -c '! ls /app/node_modules/.pnpm | grep "^@opencode+cli"'
+          for name in server runner base; do
+            docker run --rm --entrypoint sh "ostra/$name:$VERSION" -c 'grep -c "^Package: " /usr/share/doc/ostra/THIRD_PARTY_NOTICES'
+          done
+      - if: ${{ !inputs.dry-run }}
+        name: Sign in to the image registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login "${IMAGE_NAMESPACE%%/*}" --username "$GITHUB_ACTOR" --password-stdin
+      - name: Push each image and keep its digest
+        run: |
+          set -eu
+          : > "$OUT/digests.txt"
+          for name in server runner base; do
+            target="$IMAGE_NAMESPACE/$name:$VERSION"
+            docker tag "ostra/$name:$VERSION" "$target"
+            docker push "$target"
+            docker image inspect --format '{{index .RepoDigests 0}}' "$target" >> "$OUT/digests.txt"
+          done
+          cat "$OUT/digests.txt"
+
+      # The npm packages: each library from its build, the CLI from its pack, then published by
+      # npm's trusted publishing with provenance (npm 11.5.1 or later), or, in the dry run, not.
+      - run: pnpm turbo run build --filter "./packages/protocol" --filter "./packages/adapter-sdk" --filter "./packages/adapters/*"
+      - name: Pack every published package
+        run: |
+          set -eu
+          for dir in packages/protocol packages/adapter-sdk packages/adapters/*; do
+            (cd "$dir" && pnpm pack --pack-destination "$OUT/npm")
+          done
+          OSTRA_CLI_PACKAGE="$CLI_PACKAGE" pnpm --filter @ostra/runner pack:cli
+          cp apps/runner/dist/npm/*.tgz "$OUT/npm/"
+          : > "$OUT/packages.txt"
+          for tarball in "$OUT"/npm/*.tgz; do
+            tar -xzOf "$tarball" package/package.json | node -e 'const p = JSON.parse(require("node:fs").readFileSync(0, "utf8")); console.log(`${p.name}@${p.version}`)' >> "$OUT/packages.txt"
+          done
+          cat "$OUT/packages.txt"
+      - name: Publish to npm
+        run: |
+          set -eu
+          npm --version
+          # A candidate (1.0.0-rc.1) goes out under the "next" tag, so "latest" stays the last release.
+          case "$VERSION" in *-*) tag=next ;; *) tag=latest ;; esac
+          for tarball in "$OUT"/npm/*.tgz; do
+            if [ "$DRY_RUN" = "true" ]; then
+              npm publish "$tarball" --tag "$tag" --dry-run --provenance=false
+            else
+              npm publish "$tarball" --tag "$tag" --access public --provenance
+            fi
+          done
+
+      # The GitHub release: the changelog since the previous tag, the digests and the versions.
+      - name: Write the release notes
+        run: |
+          set -eu
+          since="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          node scripts/release-notes.ts --version "$VERSION" --digests "$OUT/digests.txt" --packages "$OUT/packages.txt" --since "$since" > "$OUT/notes.md"
+          cat "$OUT/notes.md"
+      - if: ${{ !inputs.dry-run }}
+        name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; *) prerelease="" ;; esac
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ostra $VERSION" --notes-file "$OUT/notes.md" $prerelease
+
+  # The docs of the release, after it's published (docs.yml, ADR 0063). A release made with this
+  # workflow's token starts no other workflow by its event, so this job calls docs.yml itself.
+  docs:
+    needs: release
+    if: ${{ !inputs.dry-run }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+    with:
+      deploy: true
+      version: v${{ inputs.version }}

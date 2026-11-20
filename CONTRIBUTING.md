@@ -5,8 +5,31 @@ ostra is source-available ([`LICENSE`](LICENSE), [`NOTICE`](NOTICE)) and built i
 ## Before you write code
 
 - **Open an issue first for anything big.** ostra is still on its way to v1 ([status](README.md#status)), and the plan in [`context/`](context/README.md) decides what's built when. A small fix can go straight to a pull request.
-- **Build and test** as [`docs/development.md`](docs/development.md) describes: `pnpm install`, then `pnpm typecheck`, `pnpm lint` and `pnpm test`.
 - **The code's rules** are in [`AGENTS.md`](AGENTS.md), under "Code" and "Boundaries". They hold for people and for coding agents.
+
+## Build and test
+
+You need Node 24.2 or newer and pnpm 11 (`corepack enable` picks up the pinned version). [`docs/development.md`](docs/development.md) has the rest: the dev stack, the test workspaces and where local secrets live, outside the repo.
+
+```
+pnpm install --frozen-lockfile   # every workspace package, from the lockfile
+pnpm typecheck                   # strict TypeScript in every package
+pnpm lint                        # ESLint, strict-type-checked, no warnings
+pnpm test                        # Vitest in every package, and the repo's own scripts
+pnpm check:licenses              # the license line: no Apache-2.0 package reaches a restricted one
+```
+
+Those run in CI on every pull request. Before you push a change, also run what applies to it:
+
+- `pnpm check:proof`, when you change a feature's status, a proof file or a test a proof cites;
+- `pnpm check:images` and `pnpm check:helm`, when you change `deploy/` or a dependency (each image's third-party notices are made from the install);
+- `pnpm check:release`, when you change a published package (`@ostra/protocol`, `@ostra/adapter-sdk`, the adapters, the CLI) or any `package.json`.
+
+A change to a `package.json` goes in the same commit as the updated `pnpm-lock.yaml`.
+
+## The proof rule
+
+A feature is done only when every condition of its "done when" ([`context/features.md`](context/features.md)) has a proof in [`context/proof/`](context/proof/README.md): a test that runs the real code path, names the feature's ID (`F-039: ...`), and would fail if the feature broke. Check that it would: break the code on purpose, watch the test fail, and write what you broke in the proof file's break-it column. Where a condition needs a machine or an account CI doesn't have, its proof is live evidence kept in the repo, with an honest note of what hasn't run yet. `pnpm check:proof` fails a `done` row without its proof.
 
 ## The contributor agreement
 

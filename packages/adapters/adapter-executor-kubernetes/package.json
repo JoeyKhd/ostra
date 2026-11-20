@@ -2,14 +2,38 @@
   "name": "@ostra/adapter-executor-kubernetes",
   "version": "0.0.0",
   "description": "The kubernetes executor: a box per task as a pod, with the sidecar as a native sidecar (ADR 0029, ADR 0060)",
-  "private": true,
   "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapters/adapter-executor-kubernetes"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing/index.ts"
   },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4"

@@ -2,14 +2,38 @@
   "name": "@ostra/adapter-email-smtp",
   "version": "0.0.0",
   "description": "The SMTP email adapter, on nodemailer (ADR 0007, ADR 0050)",
-  "private": true,
   "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapters/adapter-email-smtp"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./read-mail": "./src/read-mail.ts"
   },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./read-mail": {
+        "types": "./dist/read-mail.d.ts",
+        "default": "./dist/read-mail.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4"
@@ -17,7 +41,8 @@
   "dependencies": {
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/protocol": "workspace:*",
-    "nodemailer": "10.3.1"
+    "nodemailer": "10.3.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "vitest": "5.1.1"

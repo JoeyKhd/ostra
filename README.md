@@ -102,7 +102,7 @@ Every integration is an adapter with a shared contract: trackers, code hosts, ag
 
 ## Contributing
 
-Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues), and code in pull requests. ostra is still on its way to v1, so open an issue before a big change.
+Ideas and questions are welcome in [issues](https://github.com/JoeyKhd/ostra/issues), and code in pull requests. ostra is still on its way to v1, so open an issue before a big change. How to build and test, and the proof rule every feature meets, are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 A pull request needs one tick: its author agrees to the short contributor agreement in [`CONTRIBUTING.md`](CONTRIBUTING.md). You keep your copyright, and you let the licensor license your contribution on any terms. That lets commercial licenses include contributed code.
 

@@ -2,15 +2,43 @@
   "name": "@ostra/adapter-sdk",
   "version": "0.0.0",
   "description": "The adapter base classes, their contract test suites and shared plumbing (ADR 0025)",
-  "private": true,
   "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapter-sdk"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing/index.ts",
     "./testing/net": "./src/testing/net/index.ts"
   },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      },
+      "./testing/net": {
+        "types": "./dist/testing/net/index.d.ts",
+        "default": "./dist/testing/net/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4"
@@ -27,5 +55,13 @@
     "@types/ws": "8.18.2",
     "vitest": "5.1.1",
     "ws": "8.23.0"
+  },
+  "peerDependencies": {
+    "vitest": "5.1.1"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
   }
 }

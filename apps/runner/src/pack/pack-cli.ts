@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { z } from "zod";
 
+import { LICENSOR, REPOSITORY_URL } from "../../../../scripts/licensor.ts";
+
 // The npm CLI (ADR 0046, milestone 5's ticket 19, F-013): `pnpm --filter @ostra/runner pack:cli`
 // bundles the `ostra` program and everything it imports into one file, `dist/npm/dist/ostra.js`,
 // beside a package.json with no dependencies, the `ostra` bin and `engines` (Node 24.5 or later,
@@ -19,7 +21,25 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 
 const runnerPackageSchema = z.looseObject({ version: z.string().min(1), license: z.string().min(1), engines: z.looseObject({ node: z.string().min(1) }) });
 
-export type PackedCli = { readonly tarball: string; readonly name: string; readonly version: string; readonly folder: string };
+/**
+ * The CLI package's manifest (milestone 7's ticket 30): the bundle and its LICENSE only, public,
+ * with npm's provenance, the repository and the licensor as its author (`scripts/licensor.ts`).
+ */
+export const cliManifest = (name: string, runner: z.infer<typeof runnerPackageSchema>): Record<string, unknown> => ({
+  name,
+  version: runner.version,
+  description: "The ostra CLI: a runner for ostra's coding agents, its sidecar, and a member's login and checkout",
+  license: runner.license,
+  author: LICENSOR,
+  repository: { type: "git", url: REPOSITORY_URL, directory: "apps/runner" },
+  type: "module",
+  bin: { ostra: "dist/ostra.js" },
+  files: ["dist", "LICENSE"],
+  engines: { node: runner.engines.node },
+  publishConfig: { access: "public", provenance: true },
+});
+
+export type PackedCli ={ readonly tarball: string; readonly name: string; readonly version: string; readonly folder: string };
 
 /** npm's own CLI, run by this Node with no shell: beside `node` on Windows, under `lib/` elsewhere. */
 const npmCli = async (): Promise<readonly string[]> => {
@@ -65,17 +85,7 @@ export const packCli = async (options: { readonly outDir?: string; readonly name
     legalComments: "linked",
     logLevel: "warning",
   });
-  const manifest = {
-    name,
-    version: runner.version,
-    description: "The ostra CLI: a runner for ostra's coding agents, its sidecar, and a member's login and checkout",
-    license: runner.license,
-    type: "module",
-    bin: { ostra: "dist/ostra.js" },
-    files: ["dist"],
-    engines: { node: runner.engines.node },
-  };
-  await writeFile(path.join(folder, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(path.join(folder, "package.json"), `${JSON.stringify(cliManifest(name, runner), null, 2)}\n`);
   await writeFile(path.join(folder, "LICENSE"), await readFile(path.join(packageRoot, "LICENSE"), "utf8"));
   const packed = await run(["pack", "--json", "--pack-destination", folder], folder);
   const filename = z.array(z.looseObject({ filename: z.string().min(1) })).min(1).parse(JSON.parse(packed))[0]?.filename ?? "";

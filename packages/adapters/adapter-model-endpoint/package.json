@@ -2,13 +2,33 @@
   "name": "@ostra/adapter-model-endpoint",
   "version": "0.0.0",
   "description": "The model provider adapter: any base URL and token, in OpenAI-compatible or Anthropic Messages format, matched to the models.dev catalog",
-  "private": true,
   "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapters/adapter-model-endpoint"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4",

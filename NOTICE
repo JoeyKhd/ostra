@@ -10,10 +10,12 @@ Which license applies where
 Apache-2.0. Each of these directories has its own LICENSE file:
 
   apps/runner
+  apps/docs
   packages/protocol
   packages/adapter-sdk
   packages/adapters/*
   packages/tooling
+  packages/deploy-checks
 
 Sustainable Use License, version 1.0. The full text is in the LICENSE file at
 the root of this repository. It applies to everything else, including:
@@ -43,7 +45,8 @@ Third-party components
 ----------------------
 
 Third-party components, such as dependencies, keep the licenses of their
-owners.
+owners. Each of ostra's images lists the third-party packages it carries, each
+with its license, in /usr/share/doc/ostra/THIRD_PARTY_NOTICES.
 
 The text of the "Sustainable Use License" section, version 1.0, was written by
 n8n and is reproduced unchanged from

@@ -1,6 +1,6 @@
 # 30: Release: versions, `release.yml` and its dry run, `SECURITY.md`, `CONTRIBUTING.md`
 
-Status: ready-for-agent
+Status: in-progress
 Builder: core
 Blocked by: 29, and ticket 34's yes for Changesets (or the fallback)
 Features: F-039 (its publishing)
@@ -18,9 +18,18 @@ Spec: `../spec.md`, section 4; ADR 0045 (amended), ADR 0064 ("The release")
 
 ## Done when
 
-- [ ] Tests: every published package has its license, files and provenance; no server package is publishable (break-it: one made public fails); the version script sets one version everywhere; every licensor line matches (break-it: one `LICENSE` changed fails); the pull request template's box matches the agreement check's pattern (break-it: a reworded box fails).
+- [x] Tests: every published package has its license, files and provenance; no server package is publishable (break-it: one made public fails); the version script sets one version everywhere; every licensor line matches (break-it: one `LICENSE` changed fails); the pull request template's box matches the agreement check's pattern (break-it: a reworded box fails).
 - [ ] The dry run passed by hand, its log kept.
-- [ ] `CONTRIBUTING.md` has how to build and test and the proof rule beside the agreement, and the README links it.
-- [ ] Committed as `🔧 add the release workflow`.
+- [x] `CONTRIBUTING.md` has how to build and test and the proof rule beside the agreement, and the README links it.
+- [x] Committed as `🔧 add the release workflow`.
 
 ## Comments
+
+- 2026-11-20, core: built in `🔧 add the release workflow` (the commit is named in the next comment).
+  - **Versions: the fallback, `scripts/version.ts`.** Ticket 34's step 2 (the maintainer's own review of Changesets) is still open, so the ticket's "until then" holds. The release's version is `release.yml`'s `version` input either way, and the script sets it on every `package.json`: the root (which tags the images), the CLI's (`ostra --version`) and every other package's, changing only the version line. Changesets can replace it later without changing the workflow's inputs.
+  - **What's published:** the 16 libraries (`@ostra/protocol`, `@ostra/adapter-sdk` and every adapter), each built by its new `tsconfig.build.json` into `dist` (`rewriteRelativeImportExtensions`, declarations), `files` `["dist", "LICENSE"]`, `publishConfig` with `access: public`, `provenance: true` and `exports` pointing at the build (pnpm rewrites them, and `workspace:*`, when it packs), `repository` and `author` (the licensor). The CLI's manifest (`pack-cli.ts`, `cliManifest`) gets the same. Every other workspace package stays `private: true`. `@ostra/adapter-sdk` declares `vitest` as an optional peer, since its contract suites import it. **Found and fixed:** `@ostra/adapter-email-smtp` imported `zod` without declaring it, which a user's install would have broken; `check:release` now fails any published package that imports what it doesn't declare. The scope stays `@ostra` (Q80 is open): a different scope is a rename of the packages, not a publish setting.
+  - **`release.yml`:** `workflow_dispatch` with `version` and `dry-run` (the default), actions pinned by SHA, `contents`, `packages` and `id-token` write. Every check (typecheck, lint, test, `check:licenses`, `check:proof`, `check:release`, `check:images`, `check:helm`), the images built, started and checked (the runner's version, OpenCode in the base image, no OpenCode in the runner, the notices) and pushed by digest, the packages packed and published with `npm publish --provenance` (trusted publishing, no npm token; a candidate under the `next` tag, which npm requires and the local dry run found), the GitHub release with `scripts/release-notes.ts`, and docs.yml, which now also takes `workflow_call`, since a release made with the workflow's token starts no workflow by its event. The real run refuses to start without the repository variables `OSTRA_CLI_PACKAGE` and `OSTRA_IMAGE_NAMESPACE` (the names, ticket 34 step 4). The dry run's registry is `registry:3.0.0` pinned by digest (the same image the live Docker job uses), not `registry:2`. Not in ci.yml.
+  - **`pnpm check:release`** (`scripts/release.ts`): the published manifests and their undeclared imports, the private server packages, the licensor line (`scripts/licensor.ts`, the one place: the root LICENSE's two lines, NOTICE's, any LICENSE naming a holder, every published `author`), NOTICE current, and the workflow's shape. **NOTICE was stale:** `apps/docs` and `packages/deploy-checks` are Apache-2.0 and weren't listed; they are now, the root LICENSE's first sentence names the docs site, and NOTICE points at each image's THIRD_PARTY_NOTICES.
+  - **The dry run: not yet.** It needs GitHub's `ubuntu-24.04` (Docker) and `gh`, which this machine lacks: `gh workflow run Release -f version=1.0.0-rc.0` (the dry run is the default), then its log saved as `context/specs/m7-launch/demo/release-dry-run.log`. Its npm half ran by hand here at `1.0.0-rc.0`: `version.ts`, `check:release`, the 16 builds, every pack, and `npm publish --dry-run` passing for all 17 packages (`context/specs/m7-launch/demo/release-dry-run-local.log`). That box stays open, and the ticket `in-progress`.
+  - **CONTRIBUTING.md** gains "Build and test" and "The proof rule"; the agreement's text is unchanged. The README's Contributing section links them.
+  - **Tests** (F-039) and break-its are in `context/proof/F-039.md`.

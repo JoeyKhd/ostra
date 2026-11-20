@@ -2,14 +2,38 @@
   "name": "@ostra/adapter-executor-docker",
   "version": "0.0.0",
   "description": "The docker executor: a box per task, the agent's container and the sidecar on a private network (ADR 0029)",
-  "private": true,
   "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapters/adapter-executor-docker"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing/fake-engine.ts"
   },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing/fake-engine.d.ts",
+        "default": "./dist/testing/fake-engine.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4"

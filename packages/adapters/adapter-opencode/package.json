@@ -2,14 +2,38 @@
   "name": "@ostra/adapter-opencode",
   "version": "0.0.0",
   "description": "The OpenCode agent adapter: the per-task config, the pinned binary and its ACP quirks",
-  "private": true,
   "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapters/adapter-opencode"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./effort": "./src/effort.ts"
   },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./effort": {
+        "types": "./dist/effort.d.ts",
+        "default": "./dist/effort.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4"
