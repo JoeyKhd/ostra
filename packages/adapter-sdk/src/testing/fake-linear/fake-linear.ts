@@ -450,6 +450,8 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
   let githubIntegration = false;
   let webhooksPaused = false;
   let base = "";
+  /** Milestone 6: files put through `fileUpload`'s signed URL, by their asset path. */
+  const uploads = new Map<string, { readonly contentType: string; readonly size: number; bytes: Uint8Array | null }>();
 
   const countCall = (name: string): void => {
     calls.set(name, (calls.get(name) ?? 0) + 1);
@@ -1171,6 +1173,29 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         }
         return { success: true, attachment: attachmentJson(linkAttachment(stringArg(args["issueId"]) ?? "", url, "GitHub pull request", null)) };
       }
+      case "fileUpload": {
+        // Milestone 6 (ticket 07): Linear's upload: a signed URL to PUT the bytes to, with the
+        // headers it must carry, and the asset URL the file is then read at
+        // (linear.app/developers/how-to-upload-a-file-to-linear).
+        const contentType = stringArg(args["contentType"]);
+        const filename = stringArg(args["filename"]);
+        const size = numberArg(args["size"]);
+        if (contentType === undefined || filename === undefined || size === undefined || size < 0) throw invalid("contentType, filename and size are required");
+        const id = randomUUID();
+        const assetPath = `/uploads/${id}/${encodeURIComponent(filename)}`;
+        uploads.set(assetPath, { contentType, size, bytes: null });
+        return {
+          success: true,
+          uploadFile: {
+            filename,
+            contentType,
+            size,
+            uploadUrl: `${base}/upload-target${assetPath}`,
+            assetUrl: `${base}${assetPath}`,
+            headers: [{ key: "x-goog-meta-fake", value: id }],
+          },
+        };
+      }
       case "agentActivityCreate":
         return createActivity(principal, input);
       case "agentSessionUpdate":
@@ -1397,8 +1422,41 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       sendJson(response, 401, { error: "unauthorized" });
       return;
     }
+    const uploaded = uploads.get(new URL(request.url ?? "/", "http://fake-linear.invalid").pathname);
+    if (uploaded?.bytes !== null && uploaded?.bytes !== undefined) {
+      response.writeHead(200, { "content-type": uploaded.contentType, "content-length": String(uploaded.bytes.length) });
+      response.end(Buffer.from(uploaded.bytes));
+      return;
+    }
     response.writeHead(200, { "content-type": "image/png", "content-length": String(PNG_BYTES.length) });
     response.end(Buffer.from(PNG_BYTES));
+  };
+
+  /**
+   * Milestone 6: the signed upload URL (`fileUpload`'s `uploadUrl`): a PUT of exactly the declared
+   * size, with the declared content type and the signed headers, and no Linear credential (it's a
+   * storage bucket's URL, which the token must never reach).
+   */
+  const handleUploadTarget = async (request: IncomingMessage, response: ServerResponse, assetPath: string): Promise<void> => {
+    countCall("upload-target");
+    const target = uploads.get(assetPath);
+    const bytes = await readBody(request);
+    if (target?.bytes !== null) {
+      sendJson(response, 404, { error: "no such upload" });
+      return;
+    }
+    if (request.headers.authorization !== undefined) {
+      sendJson(response, 400, { error: "a signed URL takes no Authorization header" });
+      return;
+    }
+    const signedId = assetPath.split("/")[2] ?? "";
+    if (request.headers["content-type"] !== target.contentType || request.headers["x-goog-meta-fake"] !== signedId || bytes.length !== target.size) {
+      sendJson(response, 403, { error: "SignatureDoesNotMatch" });
+      return;
+    }
+    target.bytes = new Uint8Array(bytes);
+    response.writeHead(200);
+    response.end();
   };
 
   const server: Server = createServer((request, response) => {
@@ -1415,6 +1473,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         response.writeHead(200);
         response.end();
       } else if (request.method === "GET" && url.pathname.startsWith("/uploads/")) handleUpload(request, response);
+      else if (request.method === "PUT" && url.pathname.startsWith("/upload-target/uploads/")) await handleUploadTarget(request, response, url.pathname.slice("/upload-target".length));
       else sendJson(response, 404, { error: "not-found" });
     };
     run().catch((error: unknown) => {
