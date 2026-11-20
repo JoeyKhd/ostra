@@ -1,8 +1,28 @@
 # Milestone 4 demo: the organization
 
-Ticket 41 runs spec section 3 and records it here. This is the scripted run (`pnpm e2e:m4`, `e2e/m4-the-organization/`), live on the `host` executor against the test workspaces. The manual run in three real browsers, with Resend and the reviewer user, is still the maintainer's (see "What's missing").
+Ticket 41 runs spec section 3 and records it here: the final check first, then run 6, the scripted run (`pnpm e2e:m4`, `e2e/m4-the-organization/`), live on the `host` executor against the test workspaces. The manual run in three real browsers, with Resend and the reviewer user, is still the maintainer's (see "What's missing").
 
-## The run, 2026-11-20
+## The final check, 2026-11-20 (ticket 41)
+
+**161 of 161 checks passed**, in one run of `pnpm e2e:m4` from a fresh `git clone` of `origin/main` at `03fb2cd3` (`C:/Users/santi/ow/m4-fc`), with `pnpm install` and an empty data folder (the clone's own `.ostra-dev`, the runners' temp folders deleted). Its steps took 31 minutes, ending at 18:15 local time, against the stack on ports 3860, 9460 and 55060 with `OSTRA_ALLOW_DEFAULT_PASSWORD=true`, `OSTRA_INSIGHTS_INTERVAL_MINUTES=1`, `OSTRA_BOX_IDLE_MINUTES=2`, `OSTRA_RECONCILE_MINUTES=2` and `OSTRA_EMAIL_DELAY_SECONDS=0`; a Cloudflare quick tunnel to core for Linear's webhook; ticket 40's mail sink for every mail; Demo's and Sam's personal runners on `host`; `model.env`'s endpoint (DeepSeek V4.1 Flash on OpenRouter) as `client-a`, and the same endpoint and key again as `client-b`. Every check, with its detail, the step timings and the run's notes, is in [`demo/checks-final.json`](demo/checks-final.json). The screenshots under [`demo/`](demo/) are this run's: it overwrote run 6's, file for file.
+
+What this run showed, beyond run 6 below (whose step-by-step table still describes each step):
+- **Every step ran to its end, and nothing failed.** The script's fixes after run 6 (its reads of the `vault` page, the palette's ranking, the task pages' "Key · …", step 17's wording and step 18's Effort list) all held; no product bug turned up.
+- **Step 4:** OST-196, one branch in both repos, [test1#220](https://github.com/ostra-test/test1/pull/220) and [test2#85](https://github.com/ostra-test/test2/pull/85), each naming the other under "Related", both on the ticket.
+- **Step 5:** both PRs carried `ostra/independent-review` as `in_progress`, "Waiting for an independent reviewer"; the reopen's new head (`1d6cf0d` → `68f6e96`) waited again; the merge moved the task to merged and OST-196 to Done. Branch protection was refused to the App's token, and the approvals weren't run (no `GITHUB_TEST_TOKEN` or `GITHUB_TEST_REVIEWER_TOKEN`, ticket 42).
+- **Step 6:** Spend's total equalled the turns' and the tasks' ($1.6631 three ways); the 80% notice came 2 s after the save, in the panel and by mail; the plan turn crossed 100% by itself, so the approved plan's build turn was held; the held message, the queued task and the New task reason showed, a task in `test2` still started, and raising the budget released both. Spend showed $3.4586 of $3.1100, $0.3486 over.
+- **Steps 7 to 9:** the token note was refused; Sam approved "Settings keys"; Sam's task used the always note and two index notes, read two of them, ran `node --check`, and Demo merged Sam's "Remember this" into the command note as version 2 with the diff comment as its source.
+- **Steps 10 to 14:** the audit filters and CSV (4 budget rows), 7 tasks each with `task.credentials-issued`, search with its filters and the vault's text hidden from Sam, Rae's join and removal ("You're no longer a member of any organization", "Rae (removed)"), Sam's reset by mail signing the other browser out, and the instance admin's reset link working once.
+- **Step 13:** 7 PRs opened, 3 merged, merge rate 100%, 1 min to a first PR, 1 min waiting on people, $6.28.
+- **Steps 15 to 18:** as in run 6, step 15's live half on `ostra-test` only; each session on its project's key, with spend by key `client-a` $6.58 and `client-b` $0.06; no key held the message and showed the needs-you to Demo only, and putting `client-a` back started the turn on it; effort High then Low (279 reasoning tokens in all), and Sam without a control.
+- **After:** the sweeps as Sam (20 reads) and Rae (16) named nothing of `vault`; nothing leaked (11 values searched in 391 files and 991 events); no note's text in a repo; the clean-up closed 8 PRs, deleted 26 refs and archived 2 tickets.
+- **Seen again:** the reset-link screenshot was taken while the Accounts list was still loading, so it shows no link (the check read the link itself); the Invitations row's "Copy link" still overlaps its "expires" text at 1440 px.
+
+**The whole repo's checks** ran before the run, at `--concurrency 2`, on the worktree that became `03fb2cd3`: typecheck, lint, `check:licenses` and `check:proof` (24 `done` rows, every one fully proved) passed. `turbo run test` passed in 64 of 65 packages; core's one failure was `measures the time to the 200 over 200 deliveries` (`apps/core/src/webhooks/inbox.test.ts`, a 503 under the machine's load from three milestones' agents), which passed on its own right after.
+
+**The ledger** (`03fb2cd3`): F-002, F-037, F-109, F-110 and F-115 are now `done`, beside F-003, F-049, F-073, F-080, F-087, F-108 and F-137. F-098, F-104, F-111, F-135 and F-136 stay `building`, each with a dated note saying what's left (below).
+
+## Run 6, 2026-11-20
 
 **Where.** A worktree of `origin/main` (`ow/m4-integrate`), `pnpm install`, an empty data folder (`.ostra-dev` and the runners' folders deleted), and a fresh dev stack on ports 3830, 9430 and 55030 with `OSTRA_ALLOW_DEFAULT_PASSWORD=true`, `OSTRA_INSIGHTS_INTERVAL_MINUTES=1`, `OSTRA_BOX_IDLE_MINUTES=2` and `OSTRA_RECONCILE_MINUTES=2`. Windows 11, Node 24. Two personal runners on `host` in processes of their own: Demo's `m4-runner`, and Sam's `m4-runner-2`, which Sam approved once Sam had joined. Core was reached through a Cloudflare quick tunnel, for Linear's webhook. Mail went over SMTP to ticket 40's sink (`pnpm dev:mail-sink`), and the script read the invitation, verification and reset links from it.
 
@@ -80,13 +100,14 @@ The script's own fixes are `63ea82b1`, `f27b71da` and `0b17ba9d`:
 ## What's missing
 
 - **The manual run** (ticket 41, the maintainer's): three real browsers, mail through Resend to the maintainer's own and plus addresses, and the reviewer user linked to Sam through the App's OAuth. This machine has no `email.env` and no reviewer token.
-- **Step 5's other half** (ticket 42): branch protection requiring `ostra/independent-review`, the merge refused while it waits, the maintainer's approval as the driver's ("Only drivers approved"), the reviewer's approval ("Approved by Sam"), the dismissal, and so **which of `in_progress` or `action_required` blocks the merge**. ADR 0040's amendment waits on it. Needs `GITHUB_TEST_TOKEN` and `GITHUB_TEST_REVIEWER_TOKEN`.
-- **Steps 15 to 17 with a second GitHub organization and a second model key** (ticket 55): `ostra-test-b` with `testb1`, a public App, a client's own App, `portal` across two organizations with a bot per repo, and `client-b`'s own key. Here they ran on one org and one key, and the rest on the fakes.
-- **The runner's side of a bot per repo** (no ticket yet): `apps/runner/src/task-host/task-run.ts` still commits every repo as the spec's top-level identity, so F-136's "Each repo's commits and PR are authored by the bot of its own App" stays partial.
-- **Ticket 41's own boxes:**
-  - `pnpm e2e:m4` hasn't passed twice in a row from an empty data folder. Run 6 passed 133 of 143 checks, and every failure is accounted for above.
-  - The whole repo's checks weren't run as one; each fix ran its packages' checks.
-  - The ledger statuses of section 2 aren't set: several rows still have partial proofs (`pnpm check:proof`), most waiting on the live half above.
+- **Step 5's other half** (ticket 42): branch protection requiring `ostra/independent-review`, the merge refused while it waits, the driver's approval ("Only drivers approved"), the reviewer's ("Approved by Sam"), the dismissal, and so **which of `in_progress` or `action_required` blocks the merge**. ADR 0040's amendment and F-104 wait on it. Needs `GITHUB_TEST_TOKEN` and `GITHUB_TEST_REVIEWER_TOKEN`.
+- **Steps 15 to 17 with a second GitHub organization and a second model key** (ticket 55): `ostra-test-b` with `testb1`, a public App, a client's own App, `portal` across two organizations, and `client-b`'s own key. Here they ran on one org and one key, and the rest is proved on the fakes and stub endpoints.
+- **Gaps in the code that keep rows `building`:**
+  - F-136: the runner still commits every repo as the spec's top-level identity, not `repos[].gitIdentity` (`apps/runner/src/task-host/task-run.ts`; no ticket yet), so a task across two Apps' repos isn't authored per repo.
+  - F-135: an automation's occurrence whose project has no key makes no task (`startTask` refuses it, and the next occurrence tries again), where the "done when" wants a task queued with the reason; and Spend has no grouping by key (the API's `spend.month` has `byProvider`, and Models shows each key's month).
+  - F-098: the Checks tab keeps every check in one list, and no case runs a check per repo.
+  - F-111: "Remember this" on an AI review finding needs milestone 6's button.
+- **Ticket 41's first box:** `pnpm e2e:m4` passed once from an empty data folder here (161 of 161); it hasn't been run twice in a row, to keep this shared machine's load down.
 
 ---
 

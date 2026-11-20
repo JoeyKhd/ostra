@@ -1,0 +1,1015 @@
+{
+  "run": "2026-11-20, fresh clone of origin/main at 03fb2cd3",
+  "timings": {
+    "setup": 137,
+    "invitation": 14,
+    "roles": 22,
+    "second-repo": 6,
+    "across-repos": 67,
+    "review-check": 145,
+    "merge": 106,
+    "budget": 297,
+    "notes": 28,
+    "proposal": 154,
+    "next-task": 85,
+    "audit": 10,
+    "search": 47,
+    "third": 18,
+    "insights": 6,
+    "removal": 13,
+    "github-orgs": 2,
+    "two-keys": 367,
+    "no-key": 194,
+    "effort": 108,
+    "after": 2,
+    "clean-up": 42
+  },
+  "notes": {
+    "fixtures-reset": "test1/config/settings.json, test2/CHANGELOG.md, test1/README.md",
+    "prices": "deepseek/deepseek-v4.1-flash-1017 priced at 20 input, 60 output, 2 cache read and 20 cache write, in dollars per million tokens",
+    "linearWebhook": "3e1ead97-e799-4ac1-86d3-dc1ea99b270a",
+    "step5-check-test1": "in_progress/none: Waiting for an independent reviewer",
+    "step5-check-test2": "in_progress/none: Waiting for an independent reviewer",
+    "step5-protection": "refused to the App's token (Resource not accessible by integration - https://docs.github.com/rest/branches/b)",
+    "step5-approvals": "not run: no GITHUB_TEST_TOKEN or GITHUB_TEST_REVIEWER_TOKEN (ticket 42); the evaluator's cases are core's tests",
+    "step6-spent-before": "$1.2624",
+    "step6-budget-1": "$1.39",
+    "step6-reached": "crossed by the plan turn's spend, before the build turn",
+    "step8-asked": "the agent declined the ticket's request (ticket text isn't an instruction, and apiVersion isn't one lowercase word); Demo asked in the task",
+    "step8-merged": "merged",
+    "step13-figures": "{\"prs-opened\":\"7\",\"prs-merged\":\"3\",\"merge-rate\":\"100%\",\"first-pr\":\"1 min\",\"waiting\":\"1 min\",\"spend\":\"$6.28\"}",
+    "step15": "live: the linked installation and the private App's line; the second organization's half ran on the fake GitHub (ticket 55 is the live run)",
+    "step16-portal-prs": "",
+    "step17-released": "2",
+    "step17-state": "needs_you",
+    "step18-demo-project": "01a1f9e9-d23c-715c-8663-5ded5abd432b"
+  },
+  "checks": [
+    {
+      "step": "setup",
+      "name": "setup: the step ran to its end",
+      "ok": true,
+      "detail": "137 s"
+    },
+    {
+      "step": "invitation",
+      "name": "sam's invitation: the link is shown once, with Copy link and Send it privately",
+      "ok": true,
+      "detail": "the sheet's actions"
+    },
+    {
+      "step": "invitation",
+      "name": "sam's invitation mail names the organization and who invited, with the link",
+      "ok": true,
+      "detail": "subject \"demo invited you to Demo on ostra\""
+    },
+    {
+      "step": "invitation",
+      "name": "sam's invitation page: the address is locked",
+      "ok": true,
+      "detail": "read-only"
+    },
+    {
+      "step": "invitation",
+      "name": "sam sees Check your inbox",
+      "ok": true,
+      "detail": "after Join"
+    },
+    {
+      "step": "invitation",
+      "name": "sam's verification mail arrives with a link",
+      "ok": true,
+      "detail": "subject \"Confirm your address for Demo on ostra\""
+    },
+    {
+      "step": "invitation",
+      "name": "sam lands on Home in Demo",
+      "ok": true,
+      "detail": "/"
+    },
+    {
+      "step": "invitation",
+      "name": "step 1: Members lists Sam, and the invitation as accepted",
+      "ok": true,
+      "detail": "invitation accepted"
+    },
+    {
+      "step": "invitation",
+      "name": "step 1: the audit log has the invitation's creation, its acceptance and the verification",
+      "ok": true,
+      "detail": "invitation.created, invitation.accepted, member.verified"
+    },
+    {
+      "step": "invitation",
+      "name": "invitation: the step ran to its end",
+      "ok": true,
+      "detail": "14 s"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: test2's Access lists Sam as a project member",
+      "ok": true,
+      "detail": "S\nsam\nsam@demo.test\nMember\nRemove"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: Sam's sidebar shows test1 and test2 and not vault",
+      "ok": true,
+      "detail": "the sidebar's projects"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: vault's URL shows not found to Sam",
+      "ok": true,
+      "detail": "There's nothing here, or you can't see it.\n\nPrompt\nRun on\nThe project's pools\nTh"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: projects.get for vault as Sam is NOT_FOUND",
+      "ok": true,
+      "detail": "NOT_FOUND"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: members.invite as Sam is FORBIDDEN",
+      "ok": true,
+      "detail": "FORBIDDEN"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: Sam sees no admin page under Organization",
+      "ok": true,
+      "detail": "Runners Box sizes Agent profiles Insights Memory Members S sam"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: Sam's save of test2's environment is FORBIDDEN",
+      "ok": true,
+      "detail": "FORBIDDEN"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: Sam's next save goes through",
+      "ok": true,
+      "detail": "saved"
+    },
+    {
+      "step": "roles",
+      "name": "step 2: each change is an audit entry",
+      "ok": true,
+      "detail": "project.created, environment.saved, project.access-changed, runner.registered, task.created, task.credentials-issued, project.member-set, environment.saved"
+    },
+    {
+      "step": "roles",
+      "name": "roles: the step ran to its end",
+      "ok": true,
+      "detail": "22 s"
+    },
+    {
+      "step": "second-repo",
+      "name": "step 3: the project lists both repos, in order",
+      "ok": true,
+      "detail": "ostra-test/test1, ostra-test/test2"
+    },
+    {
+      "step": "second-repo",
+      "name": "step 3: the environment shows a section per repo",
+      "ok": true,
+      "detail": "both repos named on the environment page"
+    },
+    {
+      "step": "second-repo",
+      "name": "second-repo: the step ran to its end",
+      "ok": true,
+      "detail": "6 s"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: one session checks both repos out side by side",
+      "ok": true,
+      "detail": "workspace holds test1, test2"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: one branch name in both repos",
+      "ok": true,
+      "detail": "2 repos, branches ostra/ost-196-a41d0d87-set-the-api-version-in-test1-and-log-it"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: two PRs open, one per repo",
+      "ok": true,
+      "detail": "https://github.com/ostra-test/test1/pull/220, https://github.com/ostra-test/test2/pull/85"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: test1's PR has a Related section naming the other",
+      "ok": true,
+      "detail": "https://github.com/ostra-test/test1/pull/220: names the other"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: test2's PR has a Related section naming the other",
+      "ok": true,
+      "detail": "https://github.com/ostra-test/test2/pull/85: names the other"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: the ticket links both PRs",
+      "ok": true,
+      "detail": "3 attachments"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: the task is in review",
+      "ok": true,
+      "detail": "in_review"
+    },
+    {
+      "step": "across-repos",
+      "name": "step 4: the Changes tab shows each repo on its own",
+      "ok": true,
+      "detail": "both repos on the Changes tab"
+    },
+    {
+      "step": "across-repos",
+      "name": "across-repos: the step ran to its end",
+      "ok": true,
+      "detail": "67 s"
+    },
+    {
+      "step": "review-check",
+      "name": "step 5: test1's PR shows ostra/independent-review waiting",
+      "ok": true,
+      "detail": "in_progress : Waiting for an independent reviewer"
+    },
+    {
+      "step": "review-check",
+      "name": "step 5: test2's PR shows ostra/independent-review waiting",
+      "ok": true,
+      "detail": "in_progress : Waiting for an independent reviewer"
+    },
+    {
+      "step": "review-check",
+      "name": "step 5: the task page shows the check waiting on both PRs",
+      "ok": true,
+      "detail": "Waiting for an independent reviewer | Waiting for an independent reviewer"
+    },
+    {
+      "step": "review-check",
+      "name": "step 5: after the reopen, the new head's check waits again",
+      "ok": true,
+      "detail": "1d6cf0d → 68f6e96: in_progress, Waiting for an independent reviewer"
+    },
+    {
+      "step": "review-check",
+      "name": "review-check: the step ran to its end",
+      "ok": true,
+      "detail": "145 s"
+    },
+    {
+      "step": "merge",
+      "name": "step 5: the task is merged",
+      "ok": true,
+      "detail": "merged"
+    },
+    {
+      "step": "merge",
+      "name": "step 5: the ticket moves to done",
+      "ok": true,
+      "detail": "Done"
+    },
+    {
+      "step": "merge",
+      "name": "merge: the step ran to its end",
+      "ok": true,
+      "detail": "106 s"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: test1's page shows the month's spend",
+      "ok": true,
+      "detail": "$1.26"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the organization's total equals the sum of its tasks' spend this month",
+      "ok": true,
+      "detail": "Spend $1.6631, turns $1.6631, tasks $1.6631; 2 projects, 1 models"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the 80% notice is written at once",
+      "ok": true,
+      "detail": "sent 2 s after the save"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: Demo's Needs you says test1 is at its budget's share",
+      "ok": true,
+      "detail": "test1 is at 90% of its budget"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the 80% mail reaches Demo",
+      "ok": true,
+      "detail": "subject \"test1 is at 90% of its budget\""
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the plan turn ends as Needs you · plan",
+      "ok": true,
+      "detail": "needs_you · plan"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: past 100% after the plan turn, the approved plan's build turn is held",
+      "ok": true,
+      "detail": "held at the approval: the plan turn's spend crossed the line, so there was no build turn to lower the budget under"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: test1 reached its budget: the notice is written",
+      "ok": true,
+      "detail": "written"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the 100% mail reaches Demo",
+      "ok": true,
+      "detail": "subject \"test1 reached its budget\""
+    },
+    {
+      "step": "budget",
+      "name": "step 6: Demo's message is held, and the thread says why",
+      "ok": true,
+      "detail": "Held: test1’s budget for November is reached"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the New task form shows the budget's reason before Start",
+      "ok": true,
+      "detail": "test1’s budget for November is reached. The task starts queued, and goes once an admin raises the budget or the month ends. Spend"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the new task in test1 waits, queued, with the reason",
+      "ok": true,
+      "detail": "queued: {\"code\":\"budget-reached\",\"scope\":\"project\"}"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: a task in test2 still starts",
+      "ok": true,
+      "detail": "its first turn started"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: raising the budget releases the held message",
+      "ok": true,
+      "detail": "released"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the held message starts its turn",
+      "ok": true,
+      "detail": "2 turns"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: the waiting task starts",
+      "ok": true,
+      "detail": "running"
+    },
+    {
+      "step": "budget",
+      "name": "step 6: Spend shows the overshoot past 100%",
+      "ok": true,
+      "detail": "spent $3.4586 of $3.1100, $0.3486 over"
+    },
+    {
+      "step": "budget",
+      "name": "budget: the step ran to its end",
+      "ok": true,
+      "detail": "297 s"
+    },
+    {
+      "step": "notes",
+      "name": "step 7: the organization's note is a convention, always on",
+      "ok": true,
+      "detail": "{\"scope\":\"organization\",\"kind\":\"convention\",\"always\":true}"
+    },
+    {
+      "step": "notes",
+      "name": "step 7: test1's note is a command",
+      "ok": true,
+      "detail": "{\"scope\":\"project\",\"kind\":\"command\",\"projectId\":\"01a1f9d9-d524-7162-a863-f15df54b7f07\"}"
+    },
+    {
+      "step": "notes",
+      "name": "step 7: a note holding the fake GitHub token is refused",
+      "ok": true,
+      "detail": "This note holds a GitHub token. Memory never holds credentials. Nothing was saved. A token belongs in test1’s environmen"
+    },
+    {
+      "step": "notes",
+      "name": "step 7: searching test1's Memory for node finds the command note",
+      "ok": true,
+      "detail": "1 match"
+    },
+    {
+      "step": "notes",
+      "name": "notes: the step ran to its end",
+      "ok": true,
+      "detail": "28 s"
+    },
+    {
+      "step": "proposal",
+      "name": "step 8: the event log shows the agent's memory_propose call",
+      "ok": true,
+      "detail": "44 tool events"
+    },
+    {
+      "step": "proposal",
+      "name": "step 8: the agent's proposal is stored, from that task",
+      "ok": true,
+      "detail": "\"Settings keys\" proposed"
+    },
+    {
+      "step": "proposal",
+      "name": "step 8: test1's Memory shows 1 proposal",
+      "ok": true,
+      "detail": "Proposals1"
+    },
+    {
+      "step": "proposal",
+      "name": "step 8: Sam's approval makes it a note",
+      "ok": true,
+      "detail": "approved"
+    },
+    {
+      "step": "proposal",
+      "name": "step 8: the audit log has the decision",
+      "ok": true,
+      "detail": "memory.proposal-approved"
+    },
+    {
+      "step": "proposal",
+      "name": "proposal: the step ran to its end",
+      "ok": true,
+      "detail": "154 s"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: the session's instructions hold the index and the always note, outside the repos",
+      "ok": true,
+      "detail": "38 files in the task's folder"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: no repo has a memory file",
+      "ok": true,
+      "detail": "git status clean of it in both repos"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: the agent runs node --check scripts/print-release.js",
+      "ok": true,
+      "detail": "24 tool events"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: the changelog line's date reads YYYY-MM-DD",
+      "ok": true,
+      "detail": "a YYYY-MM-DD date near the top"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: the task records the notes the session used, and how",
+      "ok": true,
+      "detail": "Dates are written YYYY-MM-DD (always), Check JavaScript with node (index), Settings keys (index), Settings keys (read), Check JavaScript with node (read)"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: Sam's comment on a line goes to the agent",
+      "ok": true,
+      "detail": "on scripts/print-release.js:1"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: Remember this on that comment makes a proposal",
+      "ok": true,
+      "detail": "proposed"
+    },
+    {
+      "step": "next-task",
+      "name": "step 9: Demo merges it into the command note, which becomes version 2 with the comment as its source",
+      "ok": true,
+      "detail": "merged: version 2, source diff_comment"
+    },
+    {
+      "step": "next-task",
+      "name": "next-task: the step ran to its end",
+      "ok": true,
+      "detail": "85 s"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: filtered by Sam: the acceptance, the task start, the environment save, the proposal's approval",
+      "ok": true,
+      "detail": "invitation.accepted, member.verified, runner.registered, task.created, environment.saved, memory.proposal-approved, task.reopened, diff.comments-sent, memory.proposal-created"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: filtered by budget.*: each budget change",
+      "ok": true,
+      "detail": "4 entries on the page, 4 stored"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: each task that ran has its task.credentials-issued",
+      "ok": true,
+      "detail": "7 tasks ran, 12 tasks, 0 without"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: Export CSV downloads the filtered view",
+      "ok": true,
+      "detail": "4 rows"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: step 4's event log lists its tool calls",
+      "ok": true,
+      "detail": "22 rows shown, 27 tool calls stored"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: Sam sees test2's entries in its settings",
+      "ok": true,
+      "detail": "10 rows"
+    },
+    {
+      "step": "audit",
+      "name": "step 10: Sam sees none of the organization's",
+      "ok": true,
+      "detail": "FORBIDDEN"
+    },
+    {
+      "step": "audit",
+      "name": "audit: the step ran to its end",
+      "ok": true,
+      "detail": "10 s"
+    },
+    {
+      "step": "search",
+      "name": "step 11: apiVersion finds step 4's task first for Sam",
+      "ok": true,
+      "detail": "3 results"
+    },
+    {
+      "step": "search",
+      "name": "step 11: repo:test2 status:merged keeps it",
+      "ok": true,
+      "detail": "2 results"
+    },
+    {
+      "step": "search",
+      "name": "step 11: by:sam drops it",
+      "ok": true,
+      "detail": "0 results"
+    },
+    {
+      "step": "search",
+      "name": "step 11: VAULT-ONLY-7731 finds nothing for Sam",
+      "ok": true,
+      "detail": "0 results"
+    },
+    {
+      "step": "search",
+      "name": "step 11: VAULT-ONLY-7731 finds the vault task for Demo",
+      "ok": true,
+      "detail": "1 results"
+    },
+    {
+      "step": "search",
+      "name": "step 11: search.tasks as Sam returns no vault task",
+      "ok": true,
+      "detail": "0 results"
+    },
+    {
+      "step": "search",
+      "name": "search: the step ran to its end",
+      "ok": true,
+      "detail": "47 s"
+    },
+    {
+      "step": "third",
+      "name": "rae's invitation: the link is shown once, with Copy link and Send it privately",
+      "ok": true,
+      "detail": "the sheet's actions"
+    },
+    {
+      "step": "third",
+      "name": "rae's invitation mail names the organization and who invited, with the link",
+      "ok": true,
+      "detail": "subject \"demo invited you to Demo on ostra\""
+    },
+    {
+      "step": "third",
+      "name": "rae's invitation page: the address is locked",
+      "ok": true,
+      "detail": "read-only"
+    },
+    {
+      "step": "third",
+      "name": "rae sees Check your inbox",
+      "ok": true,
+      "detail": "after Join"
+    },
+    {
+      "step": "third",
+      "name": "rae's verification mail arrives with a link",
+      "ok": true,
+      "detail": "subject \"Confirm your address for Demo on ostra\""
+    },
+    {
+      "step": "third",
+      "name": "rae lands on Home in Demo",
+      "ok": true,
+      "detail": "/"
+    },
+    {
+      "step": "third",
+      "name": "step 12: Rae sees test1, and not the restricted test2 or vault",
+      "ok": true,
+      "detail": "Rae's sidebar"
+    },
+    {
+      "step": "third",
+      "name": "step 12: Accounts finds Demo, Sam and Rae by username or address",
+      "ok": true,
+      "detail": "found 3 of 3"
+    },
+    {
+      "step": "third",
+      "name": "step 12: Demo makes Sam an instance admin",
+      "ok": true,
+      "detail": "admin"
+    },
+    {
+      "step": "third",
+      "name": "step 12: then removes the role again",
+      "ok": true,
+      "detail": "revoked"
+    },
+    {
+      "step": "third",
+      "name": "step 12: with Demo the only instance admin, Demo's own row has no Remove",
+      "ok": true,
+      "detail": "1 admin rows, 0 Remove buttons"
+    },
+    {
+      "step": "third",
+      "name": "step 12: the sidebar's organization row reads Demo, the install's one organization",
+      "ok": true,
+      "detail": "1 organization"
+    },
+    {
+      "step": "third",
+      "name": "after: the sweep of list procedures as Rae returns none of vault's IDs",
+      "ok": true,
+      "detail": "14 of 16 reads answered, none name vault"
+    },
+    {
+      "step": "third",
+      "name": "third: the step ran to its end",
+      "ok": true,
+      "detail": "18 s"
+    },
+    {
+      "step": "insights",
+      "name": "step 13: the organization's Insights show the figures, computed minutes ago",
+      "ok": true,
+      "detail": "Computed 1 min ago; {\"prs-opened\":\"7\",\"prs-merged\":\"3\",\"merge-rate\":\"100%\",\"first-pr\":\"1 min\",\"waiting\":\"1 min\",\"spend\":\"$6.28\"}"
+    },
+    {
+      "step": "insights",
+      "name": "step 13: Sam's Insights show vault's share as Other projects",
+      "ok": true,
+      "detail": "Other projects shown"
+    },
+    {
+      "step": "insights",
+      "name": "insights: the step ran to its end",
+      "ok": true,
+      "detail": "6 s"
+    },
+    {
+      "step": "removal",
+      "name": "step 14: Rae's open page says Rae is no longer a member of any organization",
+      "ok": true,
+      "detail": "You're no longer a member of any organization An admin removed you, so this account opens nothing on this install. It st"
+    },
+    {
+      "step": "removal",
+      "name": "step 14: the audit log shows Rae (removed)",
+      "ok": true,
+      "detail": "Rae (removed)"
+    },
+    {
+      "step": "removal",
+      "name": "step 14: Sam gets the reset mail",
+      "ok": true,
+      "detail": "subject \"Reset your ostra password\""
+    },
+    {
+      "step": "removal",
+      "name": "step 14: Sam's other browser is signed out",
+      "ok": true,
+      "detail": "/sign-in"
+    },
+    {
+      "step": "removal",
+      "name": "step 14: the instance admin switches email off",
+      "ok": true,
+      "detail": "off"
+    },
+    {
+      "step": "removal",
+      "name": "step 14: the reset link works",
+      "ok": true,
+      "detail": "Password changed"
+    },
+    {
+      "step": "removal",
+      "name": "step 14: its second use is refused",
+      "ok": true,
+      "detail": "This reset link has been used"
+    },
+    {
+      "step": "removal",
+      "name": "removal: the step ran to its end",
+      "ok": true,
+      "detail": "13 s"
+    },
+    {
+      "step": "github-orgs",
+      "name": "step 15: GitHub lists the App's installation on the test org, linked",
+      "ok": true,
+      "detail": "ostra-test: linked"
+    },
+    {
+      "step": "github-orgs",
+      "name": "step 15: the page shows the install link to send, or why a private App can't be installed elsewhere",
+      "ok": true,
+      "detail": "the private App's line, with the link to its settings"
+    },
+    {
+      "step": "github-orgs",
+      "name": "github-orgs: the step ran to its end",
+      "ok": true,
+      "detail": "2 s"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: Models lists client-a on the default list",
+      "ok": true,
+      "detail": "1 default-list entry"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: client-b is on no list, so no project can use it",
+      "ok": true,
+      "detail": "0 list entries"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: calculator's own list is client-a, portal's is client-b",
+      "ok": true,
+      "detail": "ok, ok"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: Builder is calculator's default",
+      "ok": true,
+      "detail": "set"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: Builder B is portal's default",
+      "ok": true,
+      "detail": "set"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: the task pages show Key · client-a and Key · client-b",
+      "ok": true,
+      "detail": "Key · client-a | Key · client-b"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: each session ran on its project's key",
+      "ok": true,
+      "detail": "client-a, client-b"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: Spend by key: client-a's month holds calculator's task, client-b's holds portal's alone",
+      "ok": true,
+      "detail": "by key {\"client-a\":6584948,\"client-b\":58873}"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: adding client-b to calculator's list: the preview says nothing moves",
+      "ok": true,
+      "detail": "0 lines move"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: a new task there shows Key · client-a",
+      "ok": true,
+      "detail": "Key · client-a"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: Demo takes client-b off again",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: Sam sees calculator's providers by name, no token and no edit",
+      "ok": true,
+      "detail": "0 edit buttons"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: projects.setProviders as Sam on calculator is FORBIDDEN",
+      "ok": true,
+      "detail": "FORBIDDEN"
+    },
+    {
+      "step": "two-keys",
+      "name": "step 16: projects.setProviders as Sam on test2 is FORBIDDEN",
+      "ok": true,
+      "detail": "FORBIDDEN"
+    },
+    {
+      "step": "two-keys",
+      "name": "two-keys: the step ran to its end",
+      "ok": true,
+      "detail": "367 s"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: the preview says the model has no key in calculator",
+      "ok": true,
+      "detail": "{\"released\":{\"count\":2,\"providers\":[{\"providerId\":\"01a1f9d8-4abc-75c3-8eca-40a558da3527\",\"name\":\"client-a\"}]},\"waiting\":{\"count\":2,\"models\":[{\"text\":\"ambient/deepseek/deepseek-v4.1-flash-1017\",\"displayName\":\"DeepSeek V4.1 Flash 1017\"}]}}"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: the save goes through",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: the message is held, and the thread says there's no key",
+      "ok": true,
+      "detail": "no key for DeepSeek V4.1 Flash 1017 in calculator. An organization admin picks one in Models and keys."
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: Home's needs-you shows it to Demo and not to Sam",
+      "ok": true,
+      "detail": "Demo sees it, Sam doesn't"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: a new task in calculator shows no key before Start",
+      "ok": true,
+      "detail": "{\"kind\":\"wait\",\"reason\":\"no-provider\",\"modelName\":\"ambient/deepseek/deepseek-v4.1-flash-1017\",\"provider\":{\"name\":\"client-a\",\"reason\":\"not-allowed\"},\"message\":\"T"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: Demo puts client-a back",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: the held message starts its turn",
+      "ok": true,
+      "detail": "2 turns"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: on client-a",
+      "ok": true,
+      "detail": "client-a"
+    },
+    {
+      "step": "no-key",
+      "name": "step 17: the audit log has each change to the lists",
+      "ok": true,
+      "detail": "project.providers-changed, project.providers-changed"
+    },
+    {
+      "step": "no-key",
+      "name": "no-key: the step ran to its end",
+      "ok": true,
+      "detail": "194 s"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: the profile's Effort offers the model's levels, Default first",
+      "ok": true,
+      "detail": "default, low, high, max"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: High saves, with an audit entry",
+      "ok": true,
+      "detail": "high, audit written"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: the task page shows Effort · High",
+      "ok": true,
+      "detail": "high"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: Demo, the driver, picks Low while the turn runs",
+      "ok": true,
+      "detail": "changed, during the turn"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: the running turn finishes at High",
+      "ok": true,
+      "detail": "high"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: the next turn runs at Low",
+      "ok": true,
+      "detail": "high, low; 279 reasoning tokens in all"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: Sam sees Effort · Low with no control",
+      "ok": true,
+      "detail": "low, 0 controls"
+    },
+    {
+      "step": "effort",
+      "name": "step 18: tasks.setEffort as Sam is FORBIDDEN",
+      "ok": true,
+      "detail": "FORBIDDEN"
+    },
+    {
+      "step": "effort",
+      "name": "effort: the step ran to its end",
+      "ok": true,
+      "detail": "108 s"
+    },
+    {
+      "step": "after",
+      "name": "after: the sweep of list procedures as Sam returns none of vault's IDs",
+      "ok": true,
+      "detail": "20 of 20 reads answered, none name vault"
+    },
+    {
+      "step": "after",
+      "name": "after: nothing leaked (logs, events, notes, audit, worktrees, searched by value)",
+      "ok": true,
+      "detail": "11 values, 391 files, 991 events"
+    },
+    {
+      "step": "after",
+      "name": "after: no note's text is in a repo",
+      "ok": true,
+      "detail": "no worktree file holds a note's body"
+    },
+    {
+      "step": "after",
+      "name": "after: the step ran to its end",
+      "ok": true,
+      "detail": "2 s"
+    },
+    {
+      "step": "clean-up",
+      "name": "after: the clean-up closed this run's PRs, deleted its refs and archived its tickets",
+      "ok": true,
+      "detail": "8 PRs closed, 26 refs deleted, 2 tickets archived"
+    },
+    {
+      "step": "clean-up",
+      "name": "clean-up: the step ran to its end",
+      "ok": true,
+      "detail": "42 s"
+    }
+  ]
+}
