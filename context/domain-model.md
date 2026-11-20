@@ -203,7 +203,8 @@ A turn that waits on a person follows the box's idle timer: after 15 minutes *(w
 - a member answers it, or dismisses one that sits beside the task (a restore conflict, files outside the repos);
 - a member's message that starts the task's next turn answers what the last turn's end raised: no changes, a stall, the spend cap, a crash, a failed setup, a closed ticket, a draft, a round cap. An approval, a question and a plan wait on their own answer;
 - a reopen answers what the task needed;
-- the task stops, merges or is done: its open items are dismissed with it, with nobody's answer.
+- the task stops, merges or is done: its open items are dismissed with it, with nobody's answer;
+- a newer item of the same reason on the same task supersedes it (2026-11-20): the older is dismissed by ostra, its notifications closed, and the newer is the moment, with its own notifications. A task that ends three turns without changes needs you once, with the last turn's summary. Approvals, questions and plans don't supersede: each waits on its own request's answer, and so does a runner's approval. Core's clean-up collapses the duplicates older releases left, keeping the newest.
 
 What waits on a member is one rule, read the same everywhere: Home's needs-you section and its total, the Needs you page's Open tab and its count, and the sidebar's count all count the open items the member is the audience of or can answer, so they never disagree. Whether the member has read an item is their notification's business, and changes only the page's unread marks.
 

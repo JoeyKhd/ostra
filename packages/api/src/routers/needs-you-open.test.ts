@@ -36,12 +36,19 @@ type Member = typeof harness.fixture.a.member;
 const raise = async (
   task: SeededTask,
   projectId: ProjectId,
-  item: { readonly reason: DbEnum.NeedsYouReason; readonly audience: DbEnum.NeedsYouAudience; readonly organizationId?: OrganizationId },
+  item: { readonly reason: DbEnum.NeedsYouReason; readonly audience: DbEnum.NeedsYouAudience; readonly organizationId?: OrganizationId; readonly summary?: string },
   fanOut = true,
 ): Promise<NeedsYouItemId> => {
   const organizationId = item.organizationId ?? orgA;
   const itemId = await harness.test.db.$transaction((tx) =>
-    createNeedsYouItemInTx(harness.deps.ports, tx, { organizationId, projectId, taskId: task.taskId, reason: item.reason, audience: item.audience }),
+    createNeedsYouItemInTx(harness.deps.ports, tx, {
+      organizationId,
+      projectId,
+      taskId: task.taskId,
+      reason: item.reason,
+      audience: item.audience,
+      ...(item.summary === undefined ? {} : { summary: item.summary }),
+    }),
   );
   if (fanOut) {
     await fanOutNotification({ db: harness.test.db, ...harness.deps.ports }, { itemId, change: "created" });
@@ -148,6 +155,54 @@ describe("one rule for what waits", () => {
     expect(after.pageRows).not.toContain(noChanges);
     expect(after.pageRows).toContain(approval);
     expect(after.homeTotal).toBe(after.pageTotal);
+  });
+
+  it("F-036, F-062, F-065: a second no-changes ending on a task supersedes the first: one open item, the newer, and Home, the page and the sidebar show one row", async () => {
+    const { member } = harness.fixture.a;
+    // Before the task: a task in needs you with no item yet is a row of its own.
+    const baseline = await surfaces(member);
+    const task = await seedTask(harness, { organizationId: orgA, projectId: open, title: "two empty turns", state: "needs_you", driverMemberId: member.id, sessionState: "idle" });
+    await harness.test.db.task.update({ where: { id: task.taskId }, data: { needsYouReason: "no_changes" } });
+    const first = await raise(task, open, { reason: "no_changes", audience: "driver", summary: "Turn 1: the tests already pass." });
+    const second = await raise(task, open, { reason: "no_changes", audience: "driver", summary: "Turn 2: still nothing to change." });
+
+    // The newer moment stands; the older is dismissed by ostra, its fan-out owed so its notification closes.
+    expect(await harness.test.db.needsYouItem.findUniqueOrThrow({ where: { id: first } })).toMatchObject({ state: "dismissed", resolvedByMemberId: null });
+    expect(await harness.test.db.needsYouItem.findUniqueOrThrow({ where: { id: second } })).toMatchObject({ state: "open", summary: "Turn 2: still nothing to change." });
+    expect(await harness.test.db.needsYouItem.count({ where: { taskId: task.taskId, state: "open" } })).toBe(1);
+    const fanouts = harness.fakes.jobs.jobs.filter((job) => job.job === "notify.fanout" && JSON.stringify(job.payload).includes(first)).map((job) => JSON.stringify(job.payload));
+    expect(fanouts.some((payload) => payload.includes("dismissed"))).toBe(true);
+    await fanOutNotification({ db: harness.test.db, ...harness.deps.ports }, { itemId: first, change: "dismissed" });
+
+    const seen = await surfaces(member);
+    const mine = (keys: readonly string[]) => keys.filter((key) => key === first || key === second);
+    expect(mine(seen.listRows)).toEqual([second]);
+    expect(mine(seen.pageRows)).toEqual([second]);
+    expect(mine(seen.homeRows)).toEqual([second]);
+    expect(seen.homeTotal).toBe(baseline.homeTotal + 1);
+    expect(seen.pageTotal).toBe(baseline.pageTotal + 1);
+    expect(seen.sidebar).toBe(baseline.sidebar + 1);
+    const caller = await harness.as(member);
+    expect(await caller.tasks.stop({ taskId: task.taskId })).toEqual({ stopped: true });
+  });
+
+  it("F-036, F-062: approvals, questions and plans wait on their own requests: two of each on one task all stay open, beside one no-changes item", async () => {
+    const { member } = harness.fixture.a;
+    const baseline = await surfaces(member);
+    const task = await seedTask(harness, { organizationId: orgA, projectId: open, title: "many asks", state: "needs_you", driverMemberId: member.id, sessionState: "waiting" });
+    const stacked: NeedsYouItemId[] = [];
+    for (const reason of ["approval", "question", "plan", "approval", "question", "plan"] as const) {
+      stacked.push(await raise(task, open, { reason, audience: "driver" }));
+    }
+    const noChanges = await raise(task, open, { reason: "no_changes", audience: "driver" });
+    const openItems = await harness.test.db.needsYouItem.findMany({ where: { taskId: task.taskId, state: "open" }, select: { id: true } });
+    expect(openItems.map((item) => item.id).sort()).toEqual([...stacked, noChanges].sort());
+    const seen = await surfaces(member);
+    expect(seen.listRows).toEqual(expect.arrayContaining([...stacked, noChanges]));
+    expect(seen.homeTotal).toBe(baseline.homeTotal + 7);
+    expect(seen.sidebar).toBe(baseline.sidebar + 7);
+    const caller = await harness.as(member);
+    expect(await caller.tasks.stop({ taskId: task.taskId })).toEqual({ stopped: true });
   });
 
   it("F-062, F-036: for every mix of item and task states, Home's total and rows, the page's Open tab and its count, and the sidebar's count agree", async () => {

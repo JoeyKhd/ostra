@@ -80,8 +80,54 @@ export type NewNeedsYouItem = {
   readonly planTurnId?: string | null;
 };
 
-/** Creates an item and owes its fan-out, in the caller's transaction. */
+/**
+ * Whether a new item of this reason supersedes the task's open one of the same reason (2026-11-20).
+ * A moment about where the task stands (a turn's end, a limit, a crash, a closed ticket, a draft, a
+ * round cap, a reviewer's wait, a proposal, an outside task's approval to run, what sits beside the
+ * task) has one open item per task, the newest: a task that ends three turns without changes needs
+ * you once, with the last summary.
+ * An approval, a question and a plan each wait on their own request's answer, and a runner's
+ * approval on its runner's, so they stack.
+ */
+const supersedesOpen = {
+  no_changes: true,
+  stalled: true,
+  spend_cap: true,
+  crashed: true,
+  setup_failed: true,
+  ticket_closed: true,
+  draft_ready: true,
+  round_cap: true,
+  waiting_for_reviewer: true,
+  environment_proposal: true,
+  restore_conflict: true,
+  unstorable_event: true,
+  files_outside_repos: true,
+  no_provider_for_model: true,
+  // F-040: a task from outside has one approval to run, so the newer request stands.
+  awaiting_approval: true,
+  question: false,
+  approval: false,
+  plan: false,
+  runner_awaiting_approval: false,
+} satisfies Record<DbEnum.NeedsYouReason, boolean>;
+
+const isSupersedeReason = (value: string): value is DbEnum.NeedsYouReason => value in supersedesOpen;
+
+/** The reasons a new item supersedes, from the record above: one open item per task each. */
+export const supersedingReasons: readonly DbEnum.NeedsYouReason[] = Object.entries(supersedesOpen).flatMap(([reason, supersedes]) =>
+  supersedes && isSupersedeReason(reason) ? [reason] : [],
+);
+
+/**
+ * Creates an item and owes its fan-out, in the caller's transaction. A reason that supersedes
+ * (`supersedesOpen`) first dismisses the task's open item of that reason, by ostra, its fan-out owed
+ * so its notifications close too; the new item is the new moment, with its own notifications.
+ */
 export const createNeedsYouItemInTx = async (deps: { readonly jobs: JobQueue }, tx: Tx, item: NewNeedsYouItem): Promise<NeedsYouItemId> => {
+  if (supersedesOpen[item.reason]) {
+    await resolveNeedsYouItemsInTx(deps, tx, { taskId: item.taskId, reason: item.reason }, { state: "dismissed", at: new Date(), byMemberId: null });
+  }
   const row = await tx.needsYouItem.create({
     data: {
       organizationId: item.organizationId,
@@ -244,18 +290,42 @@ export const answerNextTurnItemsInTx = (
 /** How many tasks one pass of the clean-up reads at a time. */
 const STALE_BATCH = 200;
 
-/**
- * Closes the items left open on tasks that already ended, as releases before stopping closed them
- * left them (and any a late writer raises after the end): core runs it once at start and in the
- * daily clean-up. Each task in its own transaction, under its row's lock and read again, so a task
- * reopened meanwhile keeps its items. Each close owes its fan-out. Returns how many items it closed.
- */
-export const closeStaleNeedsYouItems = async (deps: {
+type CleanupDeps = {
   readonly db: Db;
   readonly jobs: JobQueue;
   readonly notices: ChangeNotices;
   readonly clock: Clock;
-}): Promise<number> => {
+};
+
+/**
+ * One task's share of the clean-up, in its own transaction, under its row's lock and read again,
+ * so what changed meanwhile is seen. The task's page hears of what it closed. Returns how many.
+ */
+const cleanTaskUnderLock = (
+  deps: CleanupDeps,
+  taskId: string,
+  work: (tx: Tx, state: DbEnum.TaskState) => Promise<readonly NeedsYouItemId[]>,
+): Promise<number> =>
+  deps.db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM "task" WHERE "id" = ${taskId} FOR UPDATE`;
+    const task = await tx.task.findUnique({ where: { id: taskId }, select: { state: true, organizationId: true, projectId: true } });
+    if (task === null) {
+      return 0;
+    }
+    const ids = await work(tx, task.state);
+    if (ids.length > 0) {
+      await deps.notices.emitInTx(tx, {
+        organizationId: organizationIdSchema.parse(task.organizationId),
+        projectId: projectIdSchema.parse(task.projectId),
+        entity: "task",
+        entityId: taskIdSchema.parse(taskId),
+      });
+    }
+    return ids.length;
+  });
+
+/** The items left open on tasks that already ended; a task reopened meanwhile keeps its items. */
+const closeItemsOfEndedTasks = async (deps: CleanupDeps): Promise<number> => {
   let closed = 0;
   for (;;) {
     const stale = await deps.db.needsYouItem.findMany({
@@ -266,23 +336,9 @@ export const closeStaleNeedsYouItems = async (deps: {
     });
     let pass = 0;
     for (const { taskId } of stale) {
-      pass += await deps.db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT 1 FROM "task" WHERE "id" = ${taskId} FOR UPDATE`;
-        const task = await tx.task.findUnique({ where: { id: taskId }, select: { state: true, organizationId: true, projectId: true } });
-        if (task === null || !isEndedTaskState(task.state)) {
-          return 0;
-        }
-        const ids = await closeItemsOfEndedTaskInTx(deps, tx, taskId, { at: new Date(deps.clock.now()), byMemberId: null });
-        if (ids.length > 0) {
-          await deps.notices.emitInTx(tx, {
-            organizationId: organizationIdSchema.parse(task.organizationId),
-            projectId: projectIdSchema.parse(task.projectId),
-            entity: "task",
-            entityId: taskIdSchema.parse(taskId),
-          });
-        }
-        return ids.length;
-      });
+      pass += await cleanTaskUnderLock(deps, taskId, (tx, state) =>
+        isEndedTaskState(state) ? closeItemsOfEndedTaskInTx(deps, tx, taskId, { at: new Date(deps.clock.now()), byMemberId: null }) : Promise.resolve([]),
+      );
     }
     closed += pass;
     // Done when nothing is left, or when a pass closed nothing (every task found was reopened meanwhile).
@@ -290,6 +346,52 @@ export const closeStaleNeedsYouItems = async (deps: {
       return closed;
     }
   }
+};
+
+/**
+ * The older open items of a superseding reason (`supersedesOpen`) on one task, as releases before
+ * the rule left them: the newest stays open, and the rest are dismissed by ostra.
+ */
+const dismissSupersededItems = async (deps: CleanupDeps): Promise<number> => {
+  let closed = 0;
+  for (;;) {
+    const doubled = await deps.db.needsYouItem.groupBy({
+      by: ["taskId", "reason"],
+      where: { state: "open", reason: { in: [...supersedingReasons] } },
+      having: { id: { _count: { gt: 1 } } },
+      orderBy: [{ taskId: "asc" }, { reason: "asc" }],
+      take: STALE_BATCH,
+    });
+    let pass = 0;
+    for (const { taskId, reason } of doubled) {
+      pass += await cleanTaskUnderLock(deps, taskId, async (tx) => {
+        const open = await tx.needsYouItem.findMany({ where: { taskId, reason, state: "open" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+        const at = new Date(deps.clock.now());
+        const dismissed: NeedsYouItemId[] = [];
+        for (const older of open.slice(1)) {
+          dismissed.push(...(await resolveNeedsYouItemsInTx(deps, tx, { id: older.id }, { state: "dismissed", at, byMemberId: null })));
+        }
+        return dismissed;
+      });
+    }
+    closed += pass;
+    // Done when nothing is left, or when a pass closed nothing (another writer collapsed them meanwhile).
+    if (doubled.length < STALE_BATCH || pass === 0) {
+      return closed;
+    }
+  }
+};
+
+/**
+ * Closes what older releases left open: the items on tasks that already ended (and any a late
+ * writer raises after the end), and the older duplicates of a superseding reason on one task, the
+ * newest kept. Core runs it once at start and in the daily clean-up. Each task in its own
+ * transaction, under its row's lock. Each close owes its fan-out. Returns how many items it closed.
+ */
+export const closeStaleNeedsYouItems = async (deps: CleanupDeps): Promise<number> => {
+  const ended = await closeItemsOfEndedTasks(deps);
+  const superseded = await dismissSupersededItems(deps);
+  return ended + superseded;
 };
 
 /** Rewrites an open item's summary. Not a moment: it enqueues nothing. */

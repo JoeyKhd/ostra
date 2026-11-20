@@ -115,13 +115,20 @@ export const actionHref = (reason: NeedsYouReason, projectId: string, taskId: st
   reason === "no_provider_for_model" ? `/projects/${projectId}/settings/models` : `/tasks/${taskId}`;
 
 /**
- * Amber once (home.md): only the approval that has waited longest gets the filled amber button.
- * `null` when no row is an approval: then no button is amber.
+ * A needs-you row's identity: its item, or its task for a task in needs you from before items. A
+ * task can wait on several items at once (an approval and a question), so never the task alone.
  */
-export const amberRow = (rows: readonly NeedsYouRow[]): NeedsYouRow["taskId"] | null => {
+export const needsYouRowKey = (row: Pick<NeedsYouRow, "itemId" | "taskId">): string => row.itemId ?? row.taskId;
+
+/**
+ * Amber once (home.md): only the approval that has waited longest gets the filled amber button.
+ * `null` when no row is an approval: then no button is amber. The row's key (`needsYouRowKey`), so
+ * a second item on the same task stays outlined.
+ */
+export const amberRow = (rows: readonly NeedsYouRow[]): string | null => {
   const approvals = rows.filter((row) => row.detail.reason === "approval");
   if (approvals.length === 0) return null;
-  return approvals.reduce((oldest, row) => (row.since < oldest.since ? row : oldest)).taskId;
+  return needsYouRowKey(approvals.reduce((oldest, row) => (row.since < oldest.since ? row : oldest)));
 };
 
 export type ActivityIcon = "pr" | "stopped" | "runner" | "project" | "provider" | "github" | "approval" | "plan" | "driver" | "comment";

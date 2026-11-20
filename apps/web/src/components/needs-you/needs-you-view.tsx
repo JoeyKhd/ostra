@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { approvalIdSchema, notificationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalDecision } from "@ostra/protocol";
 
+import { needsYouRowKey } from "@/components/home/home-words";
 import { RunnerApproval } from "@/components/runners/runner-approval";
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { BudgetNoticeRows, useBudgetNotices } from "@/components/spend/budget-notices";
@@ -96,7 +97,7 @@ const askOf = (view: ApiView, me: string | null): InlineAsk | null => {
 export const notificationViewOf = (row: ApiRow, me: string | null): NotificationView => {
   const failed = row.failedDeliveries.find((delivery) => delivery.state === "failed") ?? null;
   return {
-    id: row.view.itemId ?? row.view.taskId,
+    id: needsYouRowKey(row.view),
     notificationId: row.notificationId,
     taskId: row.view.taskId,
     key: row.view.key,

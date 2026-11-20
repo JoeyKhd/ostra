@@ -319,4 +319,49 @@ describe("needs-you items that outlived their task (F-036, F-062)", () => {
     // Nothing is left for the next run.
     expect((await runRetention(cleanupDeps())).itemsClosed).toBe(0);
   });
+
+  it("F-036, F-062, F-065: the clean-up keeps the newest open item of a superseding reason on each task, dismisses the older with their fan-out, and leaves approvals, questions and plans stacked", async () => {
+    const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
+    await test.db.task.update({ where: { id: task.taskId }, data: { state: "needs_you", needsYouReason: "no_changes" } });
+    const other = await seedQueuedTask(test.db, otherWorld, fixture.b.admin, null);
+    await test.db.task.update({ where: { id: other.taskId }, data: { state: "needs_you", needsYouReason: "crashed" } });
+    /** An open item as a release before the rule raised it: beside the older ones, never instead. */
+    const raw = async (target: World, taskId: string, reason: "no_changes" | "crashed" | "approval" | "question" | "plan", minute: number) =>
+      (
+        await test.db.needsYouItem.create({
+          data: { organizationId: target.organizationId, projectId: target.projectId, taskId, reason, audience: "driver", summary: `${reason} ${String(minute)}`, createdAt: new Date(Date.UTC(2026, 10, 19, 10, minute)) },
+        })
+      ).id;
+    // As the maintainer's instance had it: three no-changes items, one per turn that ended without changes.
+    const noChanges = [await raw(world, task.taskId, "no_changes", 1), await raw(world, task.taskId, "no_changes", 3), await raw(world, task.taskId, "no_changes", 2)];
+    const crashed = [await raw(otherWorld, other.taskId, "crashed", 4), await raw(otherWorld, other.taskId, "crashed", 5)];
+    const stacked = [
+      await raw(world, task.taskId, "approval", 6),
+      await raw(world, task.taskId, "approval", 7),
+      await raw(world, task.taskId, "question", 8),
+      await raw(world, task.taskId, "question", 9),
+      await raw(world, task.taskId, "plan", 10),
+      await raw(world, task.taskId, "plan", 11),
+    ];
+    const [olderNoChanges, newestNoChanges, middleNoChanges] = noChanges;
+    const [olderCrash, newestCrash] = crashed;
+
+    const first = await runRetention(cleanupDeps());
+    expect(first.itemsClosed).toBe(3);
+    for (const id of [olderNoChanges, middleNoChanges, olderCrash]) {
+      const item = await test.db.needsYouItem.findUniqueOrThrow({ where: { id: id ?? "" } });
+      expect(item).toMatchObject({ state: "dismissed", resolvedByMemberId: null });
+      expect(item.resolvedAt).not.toBeNull();
+      // Its notifications close through the fan-out, as any dismissal's.
+      expect(await fanoutChangesOf(test.db, id ?? "")).toEqual(["dismissed"]);
+    }
+    // The newest of each stays open, and every approval, question and plan waits on its own answer.
+    for (const id of [newestNoChanges, newestCrash, ...stacked]) {
+      expect(await test.db.needsYouItem.findUniqueOrThrow({ where: { id: id ?? "" } })).toMatchObject({ state: "open", resolvedAt: null });
+      expect(await fanoutChangesOf(test.db, id ?? "")).toEqual([]);
+    }
+    expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId, state: "open" } })).toBe(7);
+    // Nothing is left for the next run.
+    expect((await runRetention(cleanupDeps())).itemsClosed).toBe(0);
+  });
 });

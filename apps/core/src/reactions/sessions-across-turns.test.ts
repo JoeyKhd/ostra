@@ -243,6 +243,29 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     await untouched(other);
   });
 
+  it("F-065, F-036, F-062: two turns that end without changes leave one open no-changes item, the second's, and dismiss the first with its fan-out", async () => {
+    const task = await runningTask();
+    await turn(task, 1, false);
+    const first = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "no_changes" } });
+    expect(first).toMatchObject({ state: "open", summary: "turn 1 done" });
+
+    // The next turn starts with nobody answering the item, as an automatic turn will (milestone 6).
+    await test.db.$transaction(async (tx) => {
+      await moveTaskInTx({ tx, notices: postgresChangeNotices, jobs }, mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.taskId } })), { type: "member_acted", boxWarm: true });
+    });
+    await turn(task, 2, false);
+    expect(await state(task)).toMatchObject({ state: "needs_you", needsYouReason: "no_changes" });
+
+    // One open item, the newer moment with the newer summary; the older is dismissed by ostra.
+    const open = await test.db.needsYouItem.findMany({ where: { taskId: task.taskId, state: "open" } });
+    expect(open.map((item) => ({ reason: item.reason, summary: item.summary }))).toEqual([{ reason: "no_changes", summary: "turn 2 done" }]);
+    const second = open[0]?.id ?? "";
+    expect(await test.db.needsYouItem.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({ state: "dismissed", resolvedByMemberId: null });
+    // Each change owes its fan-out: the older's notifications close, the newer's open.
+    expect(await fanoutChangesOf(test.db, first.id)).toEqual(["created", "dismissed"]);
+    expect(await fanoutChangesOf(test.db, second)).toEqual(["created"]);
+  });
+
   it("keeps milestone 1's meaning for a minor-0 runner's session.ended: the PR opens on it", async () => {
     const other = await otherTask();
     const task = await runningTask();

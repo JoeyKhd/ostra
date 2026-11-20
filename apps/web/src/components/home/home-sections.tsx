@@ -28,7 +28,7 @@ import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { actionHref, actionKey, activityIcon, activityParts, amberRow, formatSpend, monthShort, reasonParts } from "./home-words";
+import { actionHref, actionKey, activityIcon, activityParts, amberRow, formatSpend, monthShort, needsYouRowKey, reasonParts } from "./home-words";
 import type { ActivityIcon, ActivityRow, NeedsYouRow, Part } from "./home-words";
 
 type Overview = RouterOutputs["home"]["overview"];
@@ -83,6 +83,7 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
       className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:grid-cols-[76px_minmax(0,1fr)_124px_212px_36px_100px] md:py-0"
       data-testid="needs-you-row"
       data-task={row.taskId}
+      data-item={needsYouRowKey(row)}
     >
       <div className="col-span-2 flex min-w-0 items-center gap-2 md:contents">
         <span className="shrink-0 font-mono text-sm text-faint">{row.key}</span>
@@ -133,7 +134,7 @@ export const NeedsYouSection = ({ load, now, budget }: {
           {load.data.rows.length === 0 ? null : (
             <ul className="rows" data-testid="needs-you">
               {load.data.rows.map((row) => (
-                <NeedsYouLine key={row.taskId} row={row} amber={row.taskId === amberRow(load.data.rows)} now={now} />
+                <NeedsYouLine key={needsYouRowKey(row)} row={row} amber={needsYouRowKey(row) === amberRow(load.data.rows)} now={now} />
               ))}
             </ul>
           )}
