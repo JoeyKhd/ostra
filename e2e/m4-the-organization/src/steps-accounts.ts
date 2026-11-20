@@ -20,7 +20,9 @@ export const third = async (d: Demo): Promise<void> => {
   await rae.waitForLoadState("networkidle");
   const nav = rae.getByRole("navigation", { name: "Navigation" });
   const sees = async (name: string) => (await nav.innerText()).split(/\r?\n/).some((line) => line.trim() === name);
-  d.check("step 12: Rae sees test1 and test2 and not vault", (await sees("test1")) && (await sees("test2")) && !(await sees("vault")), "Rae's sidebar");
+  // The spec says Rae sees test1 and test2, but step 1 made test2 restricted, listing Sam only, and
+  // Rae is invited with no restricted project: Rae sees test1, and neither test2 nor vault.
+  d.check("step 12: Rae sees test1, and not the restricted test2 or vault", (await sees("test1")) && !(await sees("test2")) && !(await sees("vault")), "Rae's sidebar");
   await d.shot(rae, "step12-rae-sidebar");
   await demo.goto("/instance/accounts");
   await demo.getByRole("heading", { level: 1, name: "Accounts" }).waitFor();
@@ -65,8 +67,9 @@ export const removalAndResets = async (d: Demo): Promise<void> => {
   const raeMember = await d.db.member.findFirstOrThrow({ where: { user: { username: settings.rae.username } }, select: { id: true, state: true } });
   if (raeMember.state !== "removed") {
     await demo.goto("/organization/members");
-    await demo.getByTestId("member-row").filter({ hasText: settings.rae.username }).first().click();
-    await demo.getByRole("button", { name: /Remove from/ }).first().click();
+    // The row menu: the role, then "Remove from Demo".
+    await demo.getByRole("button", { name: `Actions for ${settings.rae.username}` }).first().click();
+    await demo.getByRole("menuitem", { name: /Remove from/ }).first().click();
     await d.shot(demo, "step14-remove-rae");
     await demo.getByRole("alertdialog").getByRole("button", { name: /Remove/ }).last().click();
     await demo.waitForTimeout(2500);
@@ -77,7 +80,7 @@ export const removalAndResets = async (d: Demo): Promise<void> => {
   const raeText = await rae.locator("body").innerText();
   d.check("step 14: Rae's open page says Rae is no longer a member of any organization", /no longer a member|not a member of any/i.test(raeText), raeText.replace(/\s+/g, " ").slice(0, 120));
   await d.shot(rae, "step14-rae-removed");
-  await demo.goto(`/organization/audit?actor=${raeMember.id}&period=any`);
+  await demo.goto(`/organization/audit?actor=${raeMember.id}&period=all`);
   await demo.getByTestId("audit-row").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   const raeEntries = await demo.locator("main").innerText();
   d.check("step 14: the audit log shows Rae (removed)", raeEntries.includes("(removed)"), raeEntries.includes("(removed)") ? "Rae (removed)" : "no (removed) mark");

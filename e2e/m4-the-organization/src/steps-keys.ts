@@ -54,13 +54,14 @@ const addClientB = async (d: Demo): Promise<string> => {
   const made = await d.mutate(d.demo, "providers.create", {
     name: CLIENT_B,
     baseUrl: d.settings.modelBaseUrl,
-    apiFormat: a.apiFormat,
-    authScheme: a.authScheme,
+    // The database spells the format with an underscore; the API with a hyphen.
+    apiFormat: a.apiFormat.replaceAll("_", "-"),
+    authScheme: a.authScheme.replaceAll("_", "-"),
     sessionsAtOnce: null,
     allowOnPersonalRunners: true,
     token: d.settings.modelApiKey,
   });
-  if (!made.ok) throw new Error(`adding client-b: ${made.code}`);
+  if (!made.ok) throw new Error(`adding client-b: ${made.code} ${made.message.slice(0, 160)}`);
   const row = await d.db.modelProvider.findFirstOrThrow({ where: { name: CLIENT_B }, select: { id: true } });
   return row.id;
 };

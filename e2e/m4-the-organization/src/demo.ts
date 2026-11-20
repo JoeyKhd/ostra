@@ -22,6 +22,7 @@ import type { Demo } from "./context.ts";
 import { removalAndResets, third } from "./steps-accounts.ts";
 import { audit, search } from "./steps-audit.ts";
 import { effort } from "./steps-effort.ts";
+import { githubOrganizations } from "./steps-github.ts";
 import { noKey, twoKeys } from "./steps-keys.ts";
 import { notes, proposal, reachesNextTask } from "./steps-memory.ts";
 import { budget, insights } from "./steps-money.ts";
@@ -55,6 +56,7 @@ const steps: readonly Step[] = [
   },
   { name: "insights", run: insights, once: true },
   { name: "removal", run: removalAndResets, once: true },
+  { name: "github-orgs", run: githubOrganizations, once: true },
   { name: "two-keys", run: twoKeys, once: true },
   { name: "no-key", run: noKey, once: true },
   { name: "effort", run: effort, once: true },

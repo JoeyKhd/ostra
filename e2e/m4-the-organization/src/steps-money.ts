@@ -233,7 +233,7 @@ export const insights = async (d: Demo): Promise<void> => {
   await sam.goto("/organization/insights?period=7d");
   await sam.waitForLoadState("networkidle");
   await sam.waitForTimeout(1500);
-  const text = await sam.locator("main").innerText();
+  const text = await sam.locator("body").innerText();
   d.check("step 13: Sam's Insights show vault's share as Other projects", text.includes("Other projects") && !text.includes("vault"), text.includes("Other projects") ? "Other projects shown" : "no Other projects line");
   await d.shot(sam, "step13-sam-insights");
 };

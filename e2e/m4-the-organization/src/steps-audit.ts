@@ -31,10 +31,10 @@ export const audit = async (d: Demo): Promise<void> => {
     ["invitation.accepted", "task.created", "environment.saved", "memory.proposal-approved"].every((action) => samActions.has(action)),
     [...samActions].join(", "),
   );
-  const samView = await rowCount(d, `actor=${sam}&period=any`);
+  const samView = await rowCount(d, `actor=${sam}&period=all`);
   await d.shot(demo, "step10-audit-by-sam");
   say(`step 10: by Sam: ${samView.count}`);
-  const budgets = await rowCount(d, "action=budget.*&period=any");
+  const budgets = await rowCount(d, "action=budget.&period=all");
   const budgetRows = await d.db.auditEntry.count({ where: { action: { startsWith: "budget." } } });
   d.check("step 10: filtered by budget.*: each budget change", budgetRows >= 4 && budgets.count.startsWith(String(budgetRows)), `${budgets.count} on the page, ${String(budgetRows)} stored`);
   await d.shot(demo, "step10-audit-budgets");
@@ -44,10 +44,10 @@ export const audit = async (d: Demo): Promise<void> => {
   const started = await d.db.turn.findMany({ distinct: ["taskId"], select: { taskId: true } });
   const missing = started.filter((turn) => !withIssue.has(turn.taskId));
   d.check("step 10: each task that ran has its task.credentials-issued", missing.length === 0, `${String(started.length)} tasks ran, ${String(tasks.length)} tasks, ${String(missing.length)} without`);
-  await rowCount(d, "action=task.credentials-issued&period=any");
+  await rowCount(d, "action=task.credentials-issued&period=all");
   await d.shot(demo, "step10-audit-credentials");
   // Export CSV downloads the filtered view.
-  await demo.goto("/organization/audit?action=budget.*&period=any");
+  await demo.goto("/organization/audit?action=budget.&period=all");
   const href = (await demo.getByTestId("audit-export").getAttribute("href").catch(() => null)) ?? "";
   const csv = href === "" ? "" : await (await demo.request.get(href)).text();
   const lines = csv.split("\n").filter((line) => line.trim() !== "");

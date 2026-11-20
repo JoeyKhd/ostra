@@ -129,7 +129,7 @@ const contentSchema = z.object({ sha: z.string(), content: z.string() });
 /**
  * The test repos as the demo's tickets expect them (an earlier run merged its PRs on `main`):
  * test1's `config/settings.json` holds `releaseName` and no `apiVersion`, test2's changelog has no
- * "API version is now 2" line, and no file a task adds is there. One commit per file, by the App,
+ * "API version is now 2" line, test1's README doesn't name `apiVersion`, and no file a task adds is there. One commit per file, by the App,
  * on the test repos only, once per data folder.
  */
 const resetFixtures = async (d: Demo): Promise<void> => {
@@ -162,6 +162,12 @@ const resetFixtures = async (d: Demo): Promise<void> => {
   if (changelog?.text.includes(API_LINE) === true) {
     await write(settings.githubOtherRepo, "CHANGELOG.md", changelog.sha, changelog.text.split("\n").filter((line) => !line.includes(API_LINE)).join("\n"));
     done.push(`${settings.githubOtherRepo}/CHANGELOG.md`);
+  }
+  // Step 5's reopen asks for `apiVersion` in test1's README: an earlier run's line is taken out.
+  const readme = await read(settings.githubRepo, "README.md");
+  if (readme?.text.includes("apiVersion") === true) {
+    await write(settings.githubRepo, "README.md", readme.sha, readme.text.split("\n").filter((line) => !line.includes("apiVersion")).join("\n"));
+    done.push(`${settings.githubRepo}/README.md`);
   }
   for (const [repo, files] of Object.entries(ADDED_FILES)) {
     for (const file of files) {
