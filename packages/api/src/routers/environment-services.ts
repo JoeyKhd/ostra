@@ -1,16 +1,18 @@
 import type { SecretRef } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { runnerStartsServices, serviceVariablesFromDb, serviceVariablesSchema, snapshotFailureFromDb } from "@ostra/domain";
+import { registryHostOf, registryImageByDigest, runnerStartsServices, serviceVariablesFromDb, serviceVariablesSchema, snapshotFailureFromDb } from "@ostra/domain";
 import type { AuditAction, MemberScope, Ports, ServiceVariable } from "@ostra/domain";
 import {
   checkIdSchema,
   envNameSchema,
   environmentIdSchema,
   executorKindSchema,
+  imageDigestSchema,
   memberIdSchema,
   poolIdSchema,
   projectIdSchema,
   repoIdSchema,
+  runnerIdSchema,
   runnerLimits,
   serviceIdSchema,
   serviceNameSchema,
@@ -494,6 +496,12 @@ const snapshotViewSchema = z.object({
       reason: snapshotReasonSchema,
       requestedBy: z.string().nullable(),
       secretScan: z.enum(["passed", "failed"]).nullable(),
+      /** Milestone 5 (F-120, ticket 28): the runner it was built on. */
+      runnerId: runnerIdSchema.nullable(),
+      /** What built it: `docker` on a host, `buildkit` in a pool's build pod; `null` before milestone 5. */
+      builder: z.enum(["docker", "buildkit"]).nullable(),
+      /** Where it was pushed, by digest, when the organization's registry holds it; `null` for a host's own image. */
+      registry: z.object({ ref: z.string(), pushedAt: z.number().int() }).nullable(),
     })
     .nullable(),
   /** A build queued or under way. */
@@ -549,6 +557,19 @@ const requestedByOf = async (db: Db, organizationId: OrganizationId, projectId: 
   return member?.user.name ?? null;
 };
 
+/** A snapshot's place in the organization's registry, by digest, when it was pushed there (F-120). */
+const registryOf = (
+  projectId: ProjectId,
+  snapshot: { readonly digest: string | null; readonly pushedAt: Date | null; readonly registry: { readonly url: string; readonly repositoryPrefix: string } | null },
+): { readonly ref: string; readonly pushedAt: number } | null => {
+  const digest = imageDigestSchema.safeParse(snapshot.digest);
+  if (snapshot.registry === null || snapshot.pushedAt === null || !digest.success) {
+    return null;
+  }
+  const place = { url: registryHostOf(snapshot.registry.url), repositoryPrefix: snapshot.registry.repositoryPrefix };
+  return { ref: registryImageByDigest(place, projectId, digest.data), pushedAt: snapshot.pushedAt.getTime() };
+};
+
 const snapshotRouter = router({
   /** The ready snapshot, the build under way, the last failure, and what `host` uses instead. */
   get: projectProcedure("read", projectInput)
@@ -558,7 +579,7 @@ const snapshotRouter = router({
       const organizationId = ctx.scope.organizationId;
       await environmentOf(db, organizationId, input.projectId);
       const scope = { projectId: input.projectId, organizationId };
-      const include = { runner: { select: { name: true } } } as const;
+      const include = { runner: { select: { name: true } }, registry: { select: { url: true, repositoryPrefix: true } } } as const;
       const ready = await db.snapshot.findFirst({ where: { ...scope, state: "ready" }, orderBy: { readyAt: "desc" }, include });
       const pending = await db.snapshot.findFirst({ where: { ...scope, state: { in: ["queued", "building"] } }, orderBy: { createdAt: "desc" }, include });
       const failed = await db.snapshot.findFirst({
@@ -589,6 +610,9 @@ const snapshotRouter = router({
                 reason: reasonOf(ready.reason),
                 requestedBy: await requestedByOf(db, organizationId, input.projectId, ready),
                 secretScan: ready.secretScan,
+                runnerId: ready.runnerId === null ? null : runnerIdSchema.parse(ready.runnerId),
+                builder: ready.builder,
+                registry: registryOf(input.projectId, ready),
               },
         pending:
           pending === null

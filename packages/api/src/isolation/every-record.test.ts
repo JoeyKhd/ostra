@@ -191,6 +191,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "providers.list": { input: none, about: "organization" },
   "providers.previewDefaultList": { input: (target) => ({ providerIds: [row(target, "ModelProvider")] }), about: "organization" },
   "providers.models": { input: (target) => ({ providerId: row(target, "ModelProvider") }), about: "organization" },
+  "registry.get": { input: none, about: "organization" },
   "runners.get": { input: (target) => ({ runnerId: row(target, "Runner") }), about: "organization" },
   "runners.list": { input: none, about: "organization" },
   "runners.mine": { input: none, about: "organization" },
@@ -242,7 +243,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   EnvironmentEntry: ["environments.get"],
   Service: ["environments.services.list"],
   Check: ["environments.checks.list", "tasks.checks"],
-  Snapshot: ["environments.snapshot.get"],
+  Snapshot: ["environments.snapshot.get", "registry.get"],
   Automation: [],
   Task: ["tasks.list", "tasks.get", "home.board", "home.overview"],
   TaskRepo: ["tasks.get", "diff.get"],
@@ -291,7 +292,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ModelChoice: ["providers.list", "projects.get", "projects.providers", "projects.previewProviders", "providers.choicesToConfirm"],
   // Milestone 5 (its ticket 04): no procedure reads them yet; tickets 27 and 28 add theirs.
   BoxSize: ["boxSizes.list"],
-  Registry: [],
+  Registry: ["registry.get"],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */
@@ -567,6 +568,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "providers.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "providers.previewDefaultList": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "providers.models": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "registry.get": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "runners.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "runners.get": ["ok", "NOT_FOUND", "NOT_FOUND", "NOT_FOUND", "NOT_FOUND"],
   "runners.mine": ["ok", "ok", "ok", "ok", "ok"],
