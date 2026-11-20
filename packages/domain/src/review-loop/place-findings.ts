@@ -53,7 +53,13 @@ export const placeFindings = (findings: readonly Finding[], diffLines: readonly 
   return { lineComments, inBody };
 };
 
-/** The review's body: the counts, the summary as the agent wrote it, and the findings off the diff. */
+/**
+ * The most a review's body holds: GitHub refuses one over 65,536 characters, and 30 findings of
+ * 4 KiB off the diff with an 8 KiB summary can reach twice that. Kept under it with room to spare.
+ */
+export const REVIEW_BODY_MAX_CHARS = 60_000;
+
+/** The review's body: the counts, the summary as the agent wrote it, and the findings off the diff that fit. */
 export const reviewBody = (input: { readonly summary: string; readonly findings: readonly Finding[]; readonly inBody: readonly number[] }): string => {
   const blocking = input.findings.filter((finding) => finding.severity === "blocking").length;
   const nits = input.findings.length - blocking;
@@ -61,19 +67,27 @@ export const reviewBody = (input: { readonly summary: string; readonly findings:
     input.findings.length === 0
       ? "ostra's AI review found nothing to change."
       : `ostra's AI review: ${String(blocking)} blocking, ${String(nits)} nit${nits === 1 ? "" : "s"}.`;
-  const parts = [counts, input.summary.trim()];
+  const closing = "_This review comments only: it doesn't approve or request changes._";
+  const head = [counts, input.summary.trim()].filter((part) => part !== "").join("\n\n");
   const off = input.inBody.flatMap((index) => {
     const finding = input.findings[index];
     return finding === undefined ? [] : [finding];
   });
-  if (off.length > 0) {
-    parts.push(
-      [
-        "Outside the diff:",
-        ...off.map((finding) => `- \`${finding.path}:${String(finding.line)}\` ${severityWords(finding)}: ${finding.title.replaceAll(/[\r\n]+/g, " ")}\n\n${finding.body}`),
-      ].join("\n\n"),
-    );
+  if (off.length === 0) {
+    return `${head}\n\n${closing}`;
   }
-  parts.push("_This review comments only: it doesn't approve or request changes._");
-  return parts.filter((part) => part !== "").join("\n\n");
+  const entries = off.map((finding) => `- \`${finding.path}:${String(finding.line)}\` ${severityWords(finding)}: ${finding.title.replaceAll(/[\r\n]+/g, " ")}\n\n${finding.body}`);
+  // The findings that fit, in order; the rest are counted, and every one is on ostra's review screen.
+  let length = head.length + closing.length + 400;
+  const kept: string[] = [];
+  for (const entry of entries) {
+    if (length + entry.length + 2 > REVIEW_BODY_MAX_CHARS) {
+      break;
+    }
+    kept.push(entry);
+    length += entry.length + 2;
+  }
+  const left = entries.length - kept.length;
+  const more = left === 0 ? [] : [`- And ${String(left)} more outside the diff, too long to list here: each is on the task's review screen in ostra.`];
+  return [head, ["Outside the diff:", ...kept, ...more].join("\n\n"), closing].join("\n\n");
 };

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { ciVerdict, failingChecks } from "./ci-verdict.ts";
 import { ownersFor, ownersOf, parseCodeOwners, patternMatcher } from "./codeowners.ts";
-import { findingCommentBody, placeFindings, reviewBody } from "./place-findings.ts";
+import { findingCommentBody, placeFindings, REVIEW_BODY_MAX_CHARS, reviewBody } from "./place-findings.ts";
 import { countRound, NO_ROUNDS, resetOnPersonAction, roundAllowed } from "./rounds.ts";
 import type { RoundCounters } from "./rounds.ts";
 
@@ -134,6 +134,24 @@ describe("placing findings on a PR", () => {
     expect(body).toContain("`src/pay.ts:40`");
     expect(body).toContain("`README.md:1`");
     expect(body).toContain("doesn't approve or request changes");
+  });
+
+  it("F-100: a review's body stays under what GitHub takes, however long the findings off the diff, and counts the ones left out", () => {
+    const long = "x".repeat(4096);
+    const findings = Array.from({ length: 30 }, (_, index) => finding({ path: `docs/f${String(index)}.md`, line: 1, title: `Finding ${String(index)}`, body: long }));
+    const placed = placeFindings(findings, diff);
+    expect(placed.inBody).toHaveLength(30);
+    const body = reviewBody({ summary: "s".repeat(8192), findings, inBody: placed.inBody });
+    expect(body.length).toBeLessThanOrEqual(REVIEW_BODY_MAX_CHARS);
+    expect(REVIEW_BODY_MAX_CHARS).toBeLessThan(65_536);
+    expect(body).toContain("`docs/f0.md:1`");
+    expect(body).not.toContain("`docs/f29.md:1`");
+    expect(body).toMatch(/And \d+ more outside the diff/);
+    expect(body.endsWith("doesn't approve or request changes._")).toBe(true);
+    // A short one is whole.
+    const short = reviewBody({ summary: "One.", findings: findings.slice(0, 2), inBody: [0, 1] });
+    expect(short).toContain("`docs/f1.md:1`");
+    expect(short).not.toContain("more outside the diff");
   });
 
   it("F-100: keeps at most 30 findings, and fences a suggestion so it can't close itself", () => {
