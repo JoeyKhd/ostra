@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 
 import type { TaskDataPart, TaskUIMessage, TaskUIPart } from "@ostra/task-view";
 
+import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
+
 // The typed parts of the thread, in a small store of their own (ADR 0036, spike 7): every row
 // subscribes to its own part, and re-renders only when that part changed. The fold keeps the
 // identity of what didn't change, so a flush of a long log costs the rows that changed, not every
@@ -84,6 +86,8 @@ export type TaskContextValue = {
   readonly approvalReceipt?: (approvalId: string) => string | null;
   /** The answerable form of an open question, or `null` to keep the read-only note. */
   readonly questionCard?: (questionId: string) => ReactNode;
+  /** F-111: "Remember this" on an accepted `@ostra` comment, by its event's seq; absent where the page can't propose. */
+  readonly rememberPrComment?: (seq: number, draft: { readonly title: string; readonly body: string }) => Promise<RememberResult>;
 };
 
 export const TaskContext = createContext<TaskContextValue | null>(null);

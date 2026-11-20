@@ -21,6 +21,7 @@ import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
 import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 
+import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
@@ -254,6 +255,7 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
   const previous = useRef<readonly TaskUIMessage[]>([]);
   const send = useMutation(trpc.tasks.send.mutationOptions());
   const reopen = useMutation(trpc.tasks.reopen.mutationOptions());
+  const remember = useMutation(trpc.memory.rememberThis.mutationOptions());
 
   // F-080 (ticket 35): `?event={seq}` opens the thread at the message holding that event (a search hit).
   const focusParam = Number.parseInt(useSearchParams().get("event") ?? "", 10);
@@ -315,18 +317,32 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
   }, [index, store]);
   const agentName = agent.name;
   const agentModel = agent.model;
+  const { mutateAsync: rememberAsync } = remember;
+  // F-111: "Remember this" on an accepted `@ostra` comment, by its event, with the member's words.
+  const rememberPrComment = useCallback(
+    async (seq: number, draft: { readonly title: string; readonly body: string }): Promise<RememberResult> => {
+      try {
+        await rememberAsync({ source: { taskId, prCommentEventSeq: seq }, title: draft.title, body: draft.body });
+        return { kind: "proposed" };
+      } catch (cause) {
+        return { kind: "refused", message: errorText({ message: cause instanceof Error ? cause.message : "", data: null }) ?? t("errors.unknown") };
+      }
+    },
+    [rememberAsync, taskId],
+  );
   const context = useMemo<TaskContextValue>(
     () => ({
       store,
       memberName,
       agent: { name: agentName, model: agentModel },
       approvalSummary,
+      rememberPrComment,
       ...(approvalCard === undefined ? {} : { approvalCard }),
       ...(approvalReceipt === undefined ? {} : { approvalReceipt }),
       ...(questionCard === undefined ? {} : { questionCard }),
       ...(projectName === undefined ? {} : { projectName }),
     }),
-    [store, memberName, agentName, agentModel, approvalSummary, approvalCard, approvalReceipt, questionCard, projectName],
+    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, approvalCard, approvalReceipt, questionCard, projectName],
   );
 
   useEffect(() => {

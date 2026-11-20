@@ -3,6 +3,8 @@
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
   ArchiveIcon,
+  BookmarkPlusIcon,
+  MessageSquareIcon,
   BrainIcon,
   HistoryIcon,
   LayersIcon,
@@ -31,6 +33,10 @@ import { approvalMetadataSchema } from "@ostra/task-view";
 import type { TaskDataPart } from "@ostra/task-view";
 
 import { monthWord } from "@/components/tasks/budget-reason";
+import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input, Textarea } from "@/components/ui/input";
 import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
@@ -517,6 +523,8 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           </Line>
         </div>
       );
+    case "data-pr-comment":
+      return <PrCommentRow data={part.data} />;
     case "data-ticket-files":
       return (
         <div data-part="ticket-files">
@@ -612,6 +620,69 @@ const HeldRow = ({ at, scope }: { readonly at: number; readonly scope: "organiza
       <Line icon={<PauseIcon />} tone="muted">
         {scope === "project" && projectName !== undefined ? t("task.heldProject", { project: projectName, month }) : t("task.heldOrganization", { month })}
       </Line>
+    </div>
+  );
+};
+
+type PrCommentData = Extract<TaskDataPart, { type: "data-pr-comment" }>["data"];
+
+/**
+ * An accepted `@ostra` comment on the task's PR (F-053), with "Remember this" (F-111): the member
+ * writes the proposal in their own words, since the comment's text is untrusted and stays in the
+ * member message. The proposal waits in Memory, Proposals for a decision.
+ */
+export const PrCommentRow = ({ data }: { readonly data: PrCommentData }) => {
+  const { rememberPrComment } = useTaskContext();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [state, setState] = useState<RememberResult | "pending" | null>(null);
+  const where = data.path === null ? null : data.line === null ? data.path : `${data.path}:${String(data.line)}`;
+  const proposed = state !== null && state !== "pending" && state.kind === "proposed";
+  const refused = state !== null && state !== "pending" && state.kind === "refused" ? state.message : null;
+  const fieldId = `pr-comment-${String(data.seq)}`;
+  return (
+    <div data-part="pr-comment" data-seq={data.seq}>
+      <Line icon={<MessageSquareIcon />} tone="muted">
+        <span>{t("task.prComment", { login: data.login })}</span>
+        {where === null ? null : <span className="min-w-0 truncate font-mono text-sm text-faint">{where}</span>}
+        <SafeLink href={data.url}>{t("task.prCommentOpen")}</SafeLink>
+        {rememberPrComment === undefined || open ? null : proposed ? (
+          <span className="text-sm text-muted" data-testid="remembered">{t("changes.remembered")}</span>
+        ) : (
+          <button type="button" data-action="remember-this" className="inline-flex items-center gap-1 text-sm text-teal hover:underline" onClick={() => { setOpen(true); }}>
+            <BookmarkPlusIcon aria-hidden className="size-[13px]" />
+            {t("changes.rememberThis")}
+          </button>
+        )}
+      </Line>
+      {open && rememberPrComment !== undefined ? (
+        <form
+          className="mb-2 ml-8 mt-1 max-w-[560px] rounded-md border border-line-2 bg-surface p-3"
+          data-testid="pr-comment-remember"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setState("pending");
+            void rememberPrComment(data.seq, { title: title.trim(), body: body.trim() }).then((result) => {
+              setState(result);
+              if (result.kind === "proposed") setOpen(false);
+            });
+          }}
+        >
+          <Field id={`${fieldId}-title`} label={t("task.prCommentTitle")}>
+            <Input id={`${fieldId}-title`} value={title} maxLength={120} onChange={(event) => { setTitle(event.target.value); }} />
+          </Field>
+          <Field id={`${fieldId}-body`} label={t("task.prCommentBody")} help={t("task.prCommentHelp")} error={refused}>
+            <Textarea id={`${fieldId}-body`} value={body} rows={3} maxLength={4096} onChange={(event) => { setBody(event.target.value); }} />
+          </Field>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" variant="primary" disabled={state === "pending" || title.trim() === "" || body.trim() === ""}>
+              {state === "pending" ? t("task.prCommentProposing") : t("task.prCommentPropose")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setOpen(false); setState(null); }}>{t("common.cancel")}</Button>
+          </div>
+        </form>
+      ) : null}
     </div>
   );
 };

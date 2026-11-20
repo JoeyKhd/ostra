@@ -42,13 +42,30 @@ export const adminLede = (organization: string, members: number, admins: number,
     pending: pending === 0 ? "" : plural(pending, "members.pendingOne", "members.pendingOther"),
   });
 
-/** What removal ends (ADR 0053's transaction), one line per effect, before it runs. */
-export const removalLines = (organization: string): readonly string[] => [
+/** What removing a member ends, as `members.list` counts it for an admin (members.md, "On their behalf"). */
+export type RemovalCounts = {
+  readonly personalRunners: number;
+  readonly cliSessions: number;
+  readonly drivingTasks: number;
+  readonly draftComments: number;
+  readonly invitationsSent: number;
+};
+
+/**
+ * What removal ends (ADR 0053's transaction), before it runs: the access line always, then one line
+ * per effect whose count isn't zero (members.md, "Removing"). Without counts, only the access line.
+ */
+export const removalLines = (organization: string, counts: RemovalCounts | null): readonly string[] => [
   t("members.removeAccess", { organization }),
-  t("members.removeRunners"),
-  t("members.removeDriving"),
-  t("members.removeDrafts"),
-  t("members.removeInvitations"),
+  ...(counts === null
+    ? []
+    : [
+        counts.personalRunners === 0 ? null : plural(counts.personalRunners, "members.removeRunnersOne", "members.removeRunnersOther"),
+        counts.cliSessions === 0 ? null : plural(counts.cliSessions, "members.removeCliOne", "members.removeCliOther"),
+        counts.drivingTasks === 0 ? null : plural(counts.drivingTasks, "members.removeDrivingOne", "members.removeDrivingOther"),
+        counts.draftComments === 0 ? null : t("members.removeDrafts"),
+        counts.invitationsSent === 0 ? null : plural(counts.invitationsSent, "members.removeInvitationsOne", "members.removeInvitationsOther"),
+      ].filter((line) => line !== null)),
 ];
 
 /** A loose check of an address before the server's: something, an `@`, something, a dot. */
@@ -57,3 +74,7 @@ export const addressProblem = (address: string): "empty" | "invalid" | null => {
   if (value === "") return "empty";
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : "invalid";
 };
+
+/** A removed member's last column: `removed 14 Nov by Alex Kim`, or without the remover when unknown. */
+export const removedText = (removedAt: number, removedBy: string | null): string =>
+  removedBy === null ? t("members.removedOn", { date: shortDate(removedAt) }) : t("members.removedOnBy", { date: shortDate(removedAt), name: removedBy });

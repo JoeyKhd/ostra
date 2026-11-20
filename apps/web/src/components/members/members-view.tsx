@@ -31,7 +31,7 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { InviteSheet } from "./invite-sheet";
-import { adminLede, expiryText, lastActiveText, removalLines, shortDate } from "./member-words";
+import { adminLede, expiryText, lastActiveText, removalLines, removedText, shortDate } from "./member-words";
 
 type Member = RouterOutputs["members"]["list"][number];
 type Invitation = RouterOutputs["members"]["invitations"][number];
@@ -145,7 +145,7 @@ const RowMenu = ({ member, organization, self, onlyAdmin, onRole, onRemove }: Ro
 };
 
 /** The selected member (members.md, "Properties panel"): organization, projects, what removal ends. */
-const MemberProperties = ({ member, now }: { readonly member: Member; readonly now: number }) => (
+export const MemberProperties = ({ member, now }: { readonly member: Member; readonly now: number }) => (
   <div>
     <div className="mb-4 border-b border-line pb-4">
       <div className="text-xs font-medium text-faint">{t("members.panelEyebrow")}</div>
@@ -160,6 +160,7 @@ const MemberProperties = ({ member, now }: { readonly member: Member; readonly n
     <PropGroup title={t("members.panelOrganization")}>
       <PropRow label={t("members.panelRole")} labelWidth={96}>{roleWord(member.role)}</PropRow>
       <PropRow label={t("members.panelJoined")} labelWidth={96}>{shortDate(member.joinedAt)}</PropRow>
+      <PropRow label={t("members.panelInvitedBy")} labelWidth={96}><span data-testid="invited-by">{member.invitedBy ?? "—"}</span></PropRow>
       <PropRow label={t("members.panelLastActive")} labelWidth={96}>
         <span className="font-mono">{member.lastActiveAt === null ? "—" : lastActiveText(member.lastActiveAt, now)}</span>
       </PropRow>
@@ -190,6 +191,13 @@ const MemberProperties = ({ member, now }: { readonly member: Member; readonly n
         </>
       )}
     </div>
+    {member.onBehalf === null ? null : (
+      <PropGroup title={t("members.panelOnBehalf")}>
+        <PropRow label={t("members.panelRunners")} labelWidth={132}><span className="font-mono" data-testid="on-behalf-runners">{member.onBehalf.personalRunners}</span></PropRow>
+        <PropRow label={t("members.panelCliSessions")} labelWidth={132}><span className="font-mono" data-testid="on-behalf-cli">{member.onBehalf.cliSessions}</span></PropRow>
+        <PropRow label={t("members.panelDriving")} labelWidth={132}><span className="font-mono" data-testid="on-behalf-driving">{member.onBehalf.drivingTasks}</span></PropRow>
+      </PropGroup>
+    )}
   </div>
 );
 
@@ -444,7 +452,7 @@ export const MembersView = ({ admin, emailOn, invitationDays }: { readonly admin
       <span className="hidden md:block" />
       <span className="hidden md:block" />
       <span className="col-span-full pl-[43px] text-sm text-faint md:col-span-2 md:pl-0">
-        {t("members.removedOn", { date: shortDate(person.removedAt ?? person.joinedAt) })}
+        {removedText(person.removedAt ?? person.joinedAt, person.removedBy)}
       </span>
     </li>
   );
@@ -553,7 +561,7 @@ export const MembersView = ({ admin, emailOn, invitationDays }: { readonly admin
               <>
                 <p>{t("members.removeBody")}</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  {removalLines(organization).map((line) => <li key={line}>{line}</li>)}
+                  {removalLines(organization, removing.onBehalf).map((line) => <li key={line}>{line}</li>)}
                 </ul>
               </>
             }

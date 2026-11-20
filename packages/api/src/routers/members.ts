@@ -53,6 +53,23 @@ export const memberViewSchema = z.object({
   /** Their newest sign-in's last activity, epoch ms; `null` when they have none. */
   lastActiveAt: z.number().int().nullable(),
   removedAt: z.number().int().nullable(),
+  /** Admins only: who invited them, from the invitation they accepted; `null` for the first admin. */
+  invitedBy: z.string().nullable(),
+  /** Admins only: the admin who removed them; `null` while they're a member. */
+  removedBy: z.string().nullable(),
+  /**
+   * Admins only (members.md, "On their behalf"): what removal would end, counted with the filters of
+   * `removeMember`'s transaction. `null` in a member's view and for a removed membership.
+   */
+  onBehalf: z
+    .object({
+      personalRunners: z.number().int(),
+      cliSessions: z.number().int(),
+      drivingTasks: z.number().int(),
+      draftComments: z.number().int(),
+      invitationsSent: z.number().int(),
+    })
+    .nullable(),
 });
 export type MemberView = z.infer<typeof memberViewSchema>;
 
@@ -73,6 +90,7 @@ export const loadMembers = async (db: DbOrTx, scope: MemberScope, input: { reado
       state: true,
       createdAt: true,
       removedAt: true,
+      removedByMemberId: true,
       user: { select: { name: true, username: true, email: true } },
       projectMemberships: { select: { role: true, project: { select: { id: true, name: true, access: true } } } },
     },
@@ -80,6 +98,7 @@ export const loadMembers = async (db: DbOrTx, scope: MemberScope, input: { reado
   const sessions = await db.authSession.groupBy({ by: ["userId"], where: { userId: { in: rows.map((row) => row.userId) } }, _max: { updatedAt: true } });
   const lastActive = new Map(sessions.map((row) => [row.userId, row._max.updatedAt] as const));
   const isAdmin = scope.role === "admin";
+  const extras = isAdmin ? await adminExtras(db, organizationId, rows) : null;
   return rows.map((row) => {
     const listed = visibleProjects(
       scope,
@@ -103,8 +122,67 @@ export const loadMembers = async (db: DbOrTx, scope: MemberScope, input: { reado
       joinedAt: row.createdAt.getTime(),
       lastActiveAt: lastActive.get(row.userId)?.getTime() ?? null,
       removedAt: row.removedAt?.getTime() ?? null,
+      invitedBy: extras?.invitedBy.get(row.userId) ?? null,
+      removedBy: row.removedByMemberId === null ? null : (extras?.removers.get(row.removedByMemberId) ?? null),
+      onBehalf: extras === null || row.state === "removed" ? null : extras.onBehalfOf(row.id, row.userId),
     };
   });
+};
+
+const countsBy = (rows: readonly { readonly key: string | null; readonly n: number }[]): ReadonlyMap<string, number> =>
+  new Map(rows.flatMap((row) => (row.key === null ? [] : [[row.key, row.n] as const])));
+
+/**
+ * What only an admin's list holds (members.md): who invited each member, who removed one, and what
+ * removing them would end, with the filters of `removeMember`'s transaction (`@ostra/domain`).
+ */
+const adminExtras = async (
+  db: DbOrTx,
+  organizationId: string,
+  rows: readonly { readonly id: string; readonly userId: string; readonly removedByMemberId: string | null }[],
+) => {
+  const memberIds = rows.map((row) => row.id);
+  const userIds = rows.map((row) => row.userId);
+  const removerIds = rows.flatMap((row) => (row.removedByMemberId === null ? [] : [row.removedByMemberId]));
+  const [accepted, removers, runners, cliSessions, driving, drafts, invitations] = await Promise.all([
+    db.invitation.findMany({
+      where: { organizationId, acceptedUserId: { in: userIds }, acceptedAt: { not: null } },
+      orderBy: { acceptedAt: "asc" },
+      select: { acceptedUserId: true, user: { select: { name: true } } },
+    }),
+    db.member.findMany({ where: { organizationId, id: { in: removerIds } }, select: { id: true, user: { select: { name: true } } } }),
+    db.runner.groupBy({
+      by: ["ownerMemberId"],
+      where: { organizationId, kind: "personal", ownerMemberId: { in: memberIds }, revokedAt: null, state: { not: "revoked" } },
+      _count: { _all: true },
+    }),
+    db.cliSession.groupBy({ by: ["memberId"], where: { organizationId, memberId: { in: memberIds }, revokedAt: null }, _count: { _all: true } }),
+    db.task.groupBy({ by: ["driverMemberId"], where: { organizationId, driverMemberId: { in: memberIds } }, _count: { _all: true } }),
+    db.diffComment.groupBy({ by: ["memberId"], where: { organizationId, memberId: { in: memberIds }, state: "draft" }, _count: { _all: true } }),
+    db.invitation.groupBy({
+      by: ["inviterId"],
+      where: { organizationId, inviterId: { in: userIds }, status: "pending", acceptedAt: null, revokedAt: null },
+      _count: { _all: true },
+    }),
+  ]);
+  // The newest accepted invitation wins: someone removed and invited again was invited by the second.
+  const invitedBy = new Map(accepted.flatMap((row) => (row.acceptedUserId === null ? [] : [[row.acceptedUserId, row.user.name] as const])));
+  const runnersBy = countsBy(runners.map((row) => ({ key: row.ownerMemberId, n: row._count._all })));
+  const cliBy = countsBy(cliSessions.map((row) => ({ key: row.memberId, n: row._count._all })));
+  const drivingBy = countsBy(driving.map((row) => ({ key: row.driverMemberId, n: row._count._all })));
+  const draftsBy = countsBy(drafts.map((row) => ({ key: row.memberId, n: row._count._all })));
+  const invitationsBy = countsBy(invitations.map((row) => ({ key: row.inviterId, n: row._count._all })));
+  return {
+    invitedBy,
+    removers: new Map(removers.map((row) => [row.id, row.user.name] as const)),
+    onBehalfOf: (memberId: string, userId: string) => ({
+      personalRunners: runnersBy.get(memberId) ?? 0,
+      cliSessions: cliBy.get(memberId) ?? 0,
+      drivingTasks: drivingBy.get(memberId) ?? 0,
+      draftComments: draftsBy.get(memberId) ?? 0,
+      invitationsSent: invitationsBy.get(userId) ?? 0,
+    }),
+  };
 };
 
 /** How many past invitations the page lists after the pending ones. */

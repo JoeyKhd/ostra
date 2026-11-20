@@ -184,6 +184,9 @@ export type ReleasedData = { readonly at: number };
 /** Minor 3 (F-111): the agent proposed a note for memory (`memory.proposed`); nothing reaches an agent until a member decides. */
 export type MemoryProposedData = { readonly proposalId: string; readonly title: string };
 
+/** Minor 2 (F-053, F-111): an accepted `@ostra` PR comment (`pr.comment_received`), by its seq; its text is the member message's. */
+export type PrCommentData = { readonly seq: number; readonly url: string; readonly login: string; readonly path: string | null; readonly line: number | null };
+
 /** The ticket's files, written into the workspace for the agent (`ticket.files_ready`). */
 export type TicketFilesData = { readonly paths: readonly string[] };
 
@@ -204,6 +207,7 @@ export type TaskDataParts = {
   held: HeldData;
   released: ReleasedData;
   "memory-proposed": MemoryProposedData;
+  "pr-comment": PrCommentData;
   "ticket-files": TicketFilesData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };

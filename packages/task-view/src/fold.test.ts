@@ -331,6 +331,7 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "pr.comment_received": {
     prefix: [],
     check: (m) => {
+      expect(typesOf(m)).toContain("data-pr-comment");
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
@@ -1067,5 +1068,16 @@ describe("memory proposals (F-111)", () => {
       expect.objectContaining({ data: { proposalId: f["memory.proposed"].proposalId, title: f["memory.proposed"].title } }),
     ]);
     expect(parts.some((part) => part.type === "data-system")).toBe(false);
+  });
+});
+
+describe("an accepted @ostra comment (F-111)", () => {
+  it("F-111: pr.comment_received is a row with its seq, URL, login and line, for Remember this, and its neighbours draw none", () => {
+    const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e5");
+    const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d5", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
+    const parts = foldTaskEvents([stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }), stored(5, f["diff.comments_sent"]), stored(6, f["ticket.closed"]), stored(7, f["pr.comment_received"])], []).flatMap((message) => message.parts);
+    expect(parts.filter((part) => part.type === "data-pr-comment")).toEqual([
+      expect.objectContaining({ id: "pr-comment:7", data: { seq: 7, url: f["pr.comment_received"].url, login: "ostra-test-member", path: "src/add.ts", line: 12 } }),
+    ]);
   });
 });

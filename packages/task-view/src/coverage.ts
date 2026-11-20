@@ -58,7 +58,7 @@ export const foldCoverage = {
   "service.failed": "no row (milestone 3, ticket 43)",
   "diff.comments_sent": "no row (milestone 3, ticket 43)",
   "ticket.closed": "no row (milestone 3, ticket 43)",
-  "pr.comment_received": "no row (milestone 3, ticket 43)",
+  "pr.comment_received": "accepted @ostra comment row (F-111)",
   // Protocol minor 3: no row until the milestone 4 task page draws them.
   "memory.used": "no row (milestone 4)",
   "memory.proposed": "memory proposal row (F-111)",

@@ -394,3 +394,51 @@ describe("members.list", () => {
     expect(ids).not.toContain(harness.fixture.b.admin.id);
   });
 });
+
+describe("members.list for the panel (members.md)", () => {
+  it("F-002: an admin sees who invited a member, what removing them ends, and who removed them; a member sees none of it", async () => {
+    const { a } = harness.fixture;
+    const db = harness.test.db;
+    const joiner = await seedMember(orgA, "member", label("joiner"));
+    // Invited by the admin, accepted by the joiner; an older, revoked invitation of the same account counts for nothing.
+    await db.invitation.create({
+      data: { id: randomUUID(), organizationId: orgA, email: `${label("old")}@example.com`, role: "member", status: "canceled", expiresAt: new Date(Date.now() + 86_400_000), inviterId: a.member.userId, revokedAt: new Date() },
+    });
+    await db.invitation.create({
+      data: { id: randomUUID(), organizationId: orgA, email: `${label("joined")}@example.com`, role: "member", status: "accepted", expiresAt: new Date(Date.now() + 86_400_000), inviterId: a.admin.userId, acceptedAt: new Date(), acceptedUserId: joiner.userId },
+    });
+    // What removal would end: two runners (one already revoked doesn't count), a CLI session, a task they drive, an invitation they sent.
+    await seedPersonalRunner(harness, joiner.id, label("laptop"));
+    await seedPersonalRunner(harness, joiner.id, label("desktop"));
+    const gone = await seedPersonalRunner(harness, joiner.id, label("old-laptop"));
+    await db.runner.update({ where: { id: gone }, data: { state: "revoked", revokedAt: new Date() } });
+    await db.cliSession.create({
+      data: { organizationId: orgA, memberId: joiner.id, userId: joiner.userId, tokenHash: hashCliToken(randomUUID()), name: "laptop", expiresAt: new Date(Date.now() + 86_400_000) },
+    });
+    await db.cliSession.create({
+      data: { organizationId: orgA, memberId: joiner.id, userId: joiner.userId, tokenHash: hashCliToken(randomUUID()), name: "old", expiresAt: new Date(Date.now() + 86_400_000), revokedAt: new Date() },
+    });
+    await seedTask(harness, { organizationId: orgA, projectId: projectIdSchema.parse(a.openProject.id), driverMemberId: joiner.id, creatorMemberId: joiner.id });
+    await db.invitation.create({
+      data: { id: randomUUID(), organizationId: orgA, email: `${label("theirs")}@example.com`, role: "member", status: "pending", expiresAt: new Date(Date.now() + 86_400_000), inviterId: joiner.userId },
+    });
+
+    const adminName = (await db.user.findUniqueOrThrow({ where: { id: a.admin.userId }, select: { name: true } })).name;
+    const admin = await harness.as(a.admin);
+    const seen = (await admin.members.list()).find((member) => member.memberId === joiner.id);
+    expect(seen?.invitedBy).toBe(adminName);
+    expect(seen?.onBehalf).toEqual({ personalRunners: 2, cliSessions: 1, drivingTasks: 1, draftComments: 0, invitationsSent: 1 });
+    expect(seen?.removedBy).toBeNull();
+    // The first admin joined without an invitation.
+    expect((await admin.members.list()).find((member) => member.memberId === a.admin.id)?.invitedBy).toBeNull();
+
+    const asMember = (await (await harness.as(a.member)).members.list()).find((member) => member.memberId === joiner.id);
+    expect(asMember).toMatchObject({ invitedBy: null, onBehalf: null, removedBy: null });
+
+    // The counts are what the removal then ends.
+    const removed = await admin.members.remove({ memberId: joiner.id });
+    expect(removed.counts).toMatchObject({ runnersRevoked: 2, cliSessionsRevoked: 1, tasksUndriven: 1, invitationsRevoked: 1 });
+    const after = (await admin.members.list({ includeRemoved: true })).find((member) => member.memberId === joiner.id);
+    expect(after).toMatchObject({ state: "removed", removedBy: adminName, onBehalf: null });
+  });
+});

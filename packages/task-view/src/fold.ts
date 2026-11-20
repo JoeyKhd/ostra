@@ -844,8 +844,11 @@ export const foldTaskEvents = (
       case "service.failed":
       case "diff.comments_sent":
       case "ticket.closed":
-      case "pr.comment_received":
         // Protocol minor 2. No row until the milestone 3 task page (tickets 43, 46, 47) draws them.
+        break;
+      case "pr.comment_received":
+        // F-111 (m4 ticket 38): an accepted `@ostra` comment is a row, with "Remember this" by its seq.
+        row(seq, sessionId, { type: "data-pr-comment", id: `pr-comment:${String(seq)}`, data: { seq, url: event.url, login: event.login, path: event.path, line: event.line } });
         break;
       case "turn.held": {
         row(seq, sessionId, { type: "data-held", id: `held:${String(seq)}`, data: { origin: event.origin, scope: event.scope, at: stored.at } });
