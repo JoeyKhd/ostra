@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { t } from "@/lib/messages";
 
-import { TAIL_LINES, durationOf, fixHint, formatCheckDuration, markerOf, outputLabel, plainOutput, prLineWords, propertyOf, shownLines, statusWord, summaryOf, turnTotalMs } from "./check-words";
+import { TAIL_LINES, durationOf, fixHint, formatCheckDuration, markerOf, outputLabel, plainOutput, prLineWords, propertyOf, repoSectionsOf, shownLines, statusWord, summaryOf, turnTotalMs } from "./check-words";
 import type { CheckRunView, TurnChecksView } from "./check-words";
 import { ChecksBody, ChecksTabMarker, FixRow, PrDraftRow, TurnSection } from "./task-checks";
 import type { ChecksBodyProps } from "./task-checks";
@@ -28,6 +28,7 @@ const turn3: TurnChecksView = {
   turn: 3,
   at: Date.UTC(2026, 10, 19, 9, 41),
   sha: "7d41e0a9c1",
+  heads: [],
   checks: [
     check({ checkId: "c1", name: "whitespace", status: "passed", durationMs: 1200, outputTail: "ok\n" }),
     check({ checkId: "c2", name: "settings-json", status: "failed", exitCode: 1, durationMs: 400, outputTail: "\u001B[31mSyntaxError: Expected double-quoted property name\u001B[0m\r\n    at JSON.parse (<anonymous>)\n<script>alert(1)</script>\n" }),
@@ -38,6 +39,7 @@ const turn1: TurnChecksView = {
   turn: 1,
   at: Date.UTC(2026, 10, 19, 8, 47),
   sha: "a41c9d2",
+  heads: [],
   checks: [check({ checkId: "d1", name: "whitespace", status: "passed", durationMs: 0 }), check({ checkId: "d2", name: "e2e", status: "timed-out", durationMs: null, timeoutMs: 600_000 })],
 };
 const noop = () => undefined;
@@ -80,7 +82,7 @@ describe("a check's words", () => {
 describe("the output", () => {
   it("F-054: is plain text: ANSI stripped, never interpreted as HTML", () => {
     expect(plainOutput(turn3.checks[1]?.outputTail ?? "")).toEqual(["SyntaxError: Expected double-quoted property name", "    at JSON.parse (<anonymous>)", "<script>alert(1)</script>"]);
-    const html = renderToStaticMarkup(<TurnSection turn={turn3} newest now={now} fix={fix} />);
+    const html = renderToStaticMarkup(<TurnSection turn={turn3} newest now={now} repos={[]} fix={fix} />);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("\u001B");
@@ -94,7 +96,7 @@ describe("the output", () => {
     expect(outputLabel(55)).toBe(t("checks.outputLast"));
     expect(outputLabel(3)).toBe("Output, 3 lines");
     const long = { ...turn3, checks: [check({ checkId: "f", name: "lint", status: "failed", exitCode: 2, outputTail: lines.join("\n") })] };
-    const html = renderToStaticMarkup(<TurnSection turn={long} newest now={now} fix={fix} />);
+    const html = renderToStaticMarkup(<TurnSection turn={long} newest now={now} repos={[]} fix={fix} />);
     expect(html).toContain("Show all 55 lines");
     expect(html).not.toContain("line 15\n");
     expect(html).toContain("line 55");
@@ -103,7 +105,7 @@ describe("the output", () => {
 
 describe("a turn", () => {
   it("F-054: the newest turn opens with its failed check's output and the fix row; passes stay folded", () => {
-    const html = renderToStaticMarkup(<TurnSection turn={turn3} newest now={now} fix={fix} />);
+    const html = renderToStaticMarkup(<TurnSection turn={turn3} newest now={now} repos={[]} fix={fix} />);
     expect(html).toContain("Turn 3");
     expect(html).toContain("7d41e0a");
     expect(html).toContain('data-status="failed"');
@@ -114,10 +116,8 @@ describe("a turn", () => {
     expect(html).toContain('href="/api/checks/c2/output"');
   });
 
-  it("F-054: an older turn is folded, and a repo's check carries its chip", () => {
-    expect(renderToStaticMarkup(<TurnSection turn={turn1} newest={false} now={now} fix={null} />)).not.toContain('data-check="e2e"');
-    const html = renderToStaticMarkup(<TurnSection turn={{ ...turn3, checks: [check({ checkId: "r", name: "api-tests", status: "passed", repo: "calculator-api" })] }} newest now={now} fix={null} />);
-    expect(html).toContain("calculator-api");
+  it("F-054: an older turn is folded", () => {
+    expect(renderToStaticMarkup(<TurnSection turn={turn1} newest={false} now={now} repos={[]} fix={null} />)).not.toContain('data-check="e2e"');
   });
 
   it("F-054: the fix hint follows the composer's rule, and a non-driver can't press it", () => {
@@ -146,14 +146,100 @@ describe("the tab", () => {
   it("F-054: each state of the tab's body", () => {
     expect(body({ kind: "loading" })).toContain('aria-busy="true"');
     expect(body({ kind: "error", message: "nope", retry: noop })).toContain("The checks couldn&#x27;t be loaded: nope");
-    expect(body({ kind: "ready", configured: false, supported: true, turns: [], prLines: [] })).toContain(t("checks.none"));
-    expect(body({ kind: "ready", configured: true, supported: false, turns: [], prLines: [] })).toContain(esc(t("checks.oldRunner")));
-    expect(body({ kind: "ready", configured: true, supported: true, turns: [], prLines: [] })).toContain(t("checks.notYet"));
-    const full = body({ kind: "ready", configured: true, supported: true, turns: [turn3, turn1], prLines: [{ number: 483, repo: null, url: "u", state: "draft-by-ostra", turn: 3 }] });
+    expect(body({ kind: "ready", configured: false, supported: true, turns: [], prLines: [], repos: [] })).toContain(t("checks.none"));
+    expect(body({ kind: "ready", configured: true, supported: false, turns: [], prLines: [], repos: [] })).toContain(esc(t("checks.oldRunner")));
+    expect(body({ kind: "ready", configured: true, supported: true, turns: [], prLines: [], repos: [] })).toContain(t("checks.notYet"));
+    const full = body({ kind: "ready", configured: true, supported: true, turns: [turn3, turn1], prLines: [{ number: 483, repo: null, url: "u", state: "draft-by-ostra", turn: 3 }], repos: [] });
     expect(full.indexOf("Turn 3")).toBeLessThan(full.indexOf("Turn 1"));
     expect(full).toContain('data-pr="483"');
     expect(full).toContain(t("checks.edit"));
     // Only the newest turn with a failure offers the fix.
     expect(full.match(/data-action="fix-checks"/g)).toHaveLength(1);
+  });
+});
+
+describe("a task across several repos (F-098)", () => {
+  const web = "ostra-test/calculator-web";
+  const api = "ostra-test/calculator-api";
+  const repos = [web, api] as const;
+  const turn4: TurnChecksView = {
+    turn: 4,
+    at: Date.UTC(2026, 10, 19, 9, 45),
+    sha: "aaaaaaa11112222",
+    heads: [
+      { repo: api, sha: "b0b0b0b0b0b0b0" },
+      { repo: web, sha: "c1c1c1c1c1c1c1" },
+    ],
+    checks: [
+      check({ checkId: "a1", name: "api-tests", status: "failed", exitCode: 1, repo: api, outputTail: "1 failing\n" }),
+      check({ checkId: "w1", name: "web-tests", status: "passed", repo: web }),
+      check({ checkId: "r1", name: "whitespace", status: "passed", repo: null }),
+      check({ checkId: "w2", name: "web-lint", status: "failed", exitCode: 2, repo: web, outputTail: "lint error\n" }),
+    ],
+  };
+  const at = (html: string, marker: string): number => {
+    const index = html.indexOf(marker);
+    expect(index, marker).toBeGreaterThanOrEqual(0);
+    return index;
+  };
+
+  it("F-098: a turn has a section per repo in the project's order, each with the commit its checks ran on there and its own summary, then the workspace root's", () => {
+    expect(repoSectionsOf(turn4, repos)?.map((section) => [section.repo, section.sha, section.checks.map((one) => one.name)])).toEqual([
+      [web, "c1c1c1c1c1c1c1", ["web-tests", "web-lint"]],
+      [api, "b0b0b0b0b0b0b0", ["api-tests"]],
+      [null, null, ["whitespace"]],
+    ]);
+    const html = renderToStaticMarkup(<TurnSection turn={turn4} newest now={now} repos={repos} fix={fix} />);
+    expect(at(html, `data-repo-section="${web}"`)).toBeLessThan(at(html, 'data-check="web-tests"'));
+    expect(at(html, 'data-check="web-lint"')).toBeLessThan(at(html, `data-repo-section="${api}"`));
+    expect(at(html, `data-repo-section="${api}"`)).toBeLessThan(at(html, 'data-check="api-tests"'));
+    expect(at(html, 'data-check="api-tests"')).toBeLessThan(at(html, 'data-repo-section="workspace-root"'));
+    expect(at(html, 'data-repo-section="workspace-root"')).toBeLessThan(at(html, 'data-check="whitespace"'));
+    expect(html).toContain(t("checks.workspaceRoot"));
+    // Each section names its repo's commit; the turn's header names none of them.
+    const webHeading = html.slice(at(html, `data-repo-section="${web}"`), at(html, 'data-check="web-tests"'));
+    expect(webHeading).toContain("c1c1c1c");
+    expect(webHeading).toContain("1 failed");
+    expect(webHeading).toContain("1 passed");
+    const apiHeading = html.slice(at(html, `data-repo-section="${api}"`), at(html, 'data-check="api-tests"'));
+    expect(apiHeading).toContain("b0b0b0b");
+    expect(apiHeading).not.toContain("passed");
+    expect(html).not.toContain("aaaaaaa");
+    // The fix row follows the last failing check as the sections show it, and sends both.
+    expect(html.match(/data-action="fix-checks"/g)).toHaveLength(1);
+    expect(at(html, 'data-check="api-tests"')).toBeLessThan(at(html, 'data-action="fix-checks"'));
+    expect(at(html, 'data-action="fix-checks"')).toBeLessThan(at(html, 'data-repo-section="workspace-root"'));
+    expect(html).toContain(esc(t("checks.fix.several", { n: 2, agent: "OpenCode" })));
+  });
+
+  it("F-098: a task with one repo keeps one list, with the turn's commit in its header", () => {
+    expect(repoSectionsOf(turn4, [web])).toBeNull();
+    const html = renderToStaticMarkup(<TurnSection turn={turn4} newest now={now} repos={[web]} fix={null} />);
+    expect(html).not.toContain("data-repo-section");
+    expect(html).toContain("aaaaaaa");
+  });
+
+  it("F-098: the tab gives each turn the task's repos, and names each repo's PR", () => {
+    const html = renderToStaticMarkup(
+      <ChecksBody
+        load={{
+          kind: "ready",
+          configured: true,
+          supported: true,
+          turns: [turn4],
+          prLines: [
+            { number: 12, repo: web, url: "https://github.com/ostra-test/calculator-web/pull/12", state: "draft-by-ostra", turn: 4 },
+            { number: 12, repo: api, url: "https://github.com/ostra-test/calculator-api/pull/12", state: "draft-by-ostra", turn: 4 },
+          ],
+          repos,
+        }}
+        now={now}
+        environmentHref={null}
+        fix={fix}
+      />,
+    );
+    expect(html).toContain(`data-repo-section="${api}"`);
+    expect(html).toContain(`PR #12 in ${web} is a draft`);
+    expect(html).toContain(`PR #12 in ${api} is a draft`);
   });
 });

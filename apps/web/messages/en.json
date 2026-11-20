@@ -3068,6 +3068,7 @@
     "add": "Add checks",
     "notYet": "Checks run after the first turn that changes the code.",
     "oldRunner": "This task's runner doesn't run checks. Update the runner to get them.",
+    "workspaceRoot": "Workspace root",
     "loadFailed": "The checks couldn't be loaded: {error}",
     "tryAgain": "Try again"
   },

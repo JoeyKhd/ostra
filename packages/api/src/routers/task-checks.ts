@@ -31,7 +31,7 @@ export const loadChecksView = async (deps: ApiDeps, task: { readonly id: TaskId;
     db.taskRepo.findMany({
       where: { taskId: task.id, organizationId },
       orderBy: { createdAt: "asc" },
-      select: { id: true, repoId: true, repo: { select: { fullName: true } }, pullRequests: { orderBy: { openedAt: "desc" } } },
+      select: { id: true, repoId: true, repo: { select: { fullName: true, position: true } }, pullRequests: { orderBy: { openedAt: "desc" } } },
     }),
     db.turn.findMany({ where: { taskId: task.id, organizationId }, orderBy: [{ startSeq: "asc" }], select: { sessionId: true, ordinal: true } }),
     db.lease.findFirst({ where: { taskId: task.id, organizationId, state: "active" }, select: { runnerId: true } }),
@@ -169,6 +169,10 @@ export const loadChecksView = async (deps: ApiDeps, task: { readonly id: TaskId;
   return {
     /** The project's environment names checks. */
     configured: definitions.length > 0,
+    /** Milestone 4 (F-098): the task's repos in the project's order, which the tab's sections per repo follow. */
+    repos: [...taskRepos]
+      .sort((a, b) => a.repo.position - b.repo.position)
+      .map((row) => ({ repoId: repoIdSchema.parse(row.repoId), repo: row.repo.fullName })),
     checks: definitions.map((check) => ({
       checkId: checkIdSchema.parse(check.id),
       name: check.name,

@@ -26,8 +26,8 @@ import { cn } from "@/lib/cn";
 import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
-import { durationOf, fixHint, formatCheckDuration, isFailing, outputLabel, plainOutput, prLineWords, shownLines, statusWord, summaryOf, turnRunning, turnTotalMs } from "./check-words";
-import type { CheckRunView, CheckState, ChecksMarker, FixDelivery, PrDraftLine, TurnChecksView } from "./check-words";
+import { durationOf, fixHint, formatCheckDuration, isFailing, outputLabel, plainOutput, prLineWords, repoSectionsOf, shownLines, statusWord, summaryOf, turnRunning, turnTotalMs } from "./check-words";
+import type { CheckRunView, CheckState, ChecksMarker, FixDelivery, PrDraftLine, RepoChecksSection, TurnChecksView } from "./check-words";
 
 // The Checks tab (task-checks.md, F-054, ADR 0052): each turn's checks, newest first, with their
 // output as plain text, "Ask the agent to fix" on the newest turn's failures, and the PR's draft
@@ -209,7 +209,38 @@ export const FixRow = ({ failing, agent, delivery, state, downloadUrl, onFix, on
 const Chevron = ({ open }: { readonly open: boolean }) =>
   open ? <ChevronDownIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-muted" /> : <ChevronRightIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-muted" />;
 
-/** One check's 40px row: chevron, status, name (and repo chip), command, word and duration. */
+/** A summary's parts: failures first in red, passes in green, joined by faint dots. */
+const SummaryParts = ({ checks }: { readonly checks: readonly CheckRunView[] }) =>
+  summaryOf(checks).map((part, i) => (
+    <Fragment key={part.text}>
+      {i > 0 ? <span className="text-faint">·</span> : null}
+      <span className={part.tone === "red" ? "text-red" : "text-green"}>{part.text}</span>
+    </Fragment>
+  ));
+
+/**
+ * A repo's heading in a turn of a task with several repos (F-098), as the Changes tab heads its
+ * repos: the repo's name in mono, the commit its checks ran on, and its own summary. The checks
+ * that ran at the workspace root come last, under their own heading.
+ */
+const RepoSectionHeading = ({ section }: { readonly section: RepoChecksSection }) => (
+  <div className="flex h-8 items-center gap-2.5 border-t border-line" data-repo-section={section.repo ?? "workspace-root"}>
+    <span aria-hidden className="w-4 shrink-0" />
+    {section.repo === null ? (
+      <span className="text-xs text-muted">{t("checks.workspaceRoot")}</span>
+    ) : (
+      <span className="min-w-0 truncate font-mono text-[12.5px] text-text" title={section.repo}>
+        {section.repo}
+      </span>
+    )}
+    {section.sha === null ? null : <span className="shrink-0 font-mono text-xs text-faint">{section.sha.slice(0, 7)}</span>}
+    <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs">
+      <SummaryParts checks={section.checks} />
+    </span>
+  </div>
+);
+
+/** One check's 40px row: chevron, status, name, command, word and duration. With several repos, its section names the repo. */
 const CheckRowLine = ({ check, open, now }: { readonly check: CheckRunView; readonly open: boolean | null; readonly now: number }) => {
   const duration = durationOf(check, now);
   return (
@@ -220,7 +251,6 @@ const CheckRowLine = ({ check, open, now }: { readonly check: CheckRunView; read
         <span className="truncate font-mono text-[12.5px] text-text" title={check.name}>
           {check.name}
         </span>
-        {check.repo === null ? null : <span className="inline-flex h-5 shrink-0 items-center rounded-sm border border-line-2 px-1.5 text-xs text-muted">{check.repo}</span>}
       </span>
       <span className="hidden min-w-0 flex-1 truncate font-mono text-xs text-faint md:block" title={check.command}>
         {check.command}
@@ -235,18 +265,58 @@ export type TurnSectionProps = {
   readonly turn: TurnChecksView;
   readonly newest: boolean;
   readonly now: number;
+  /** Milestone 4 (F-098): the task's repos in the project's order; with several, the turn has a section per repo. */
+  readonly repos: readonly string[];
   /** Only the newest turn with a failure gets the fix row. */
   readonly fix: Omit<FixRowProps, "failing" | "downloadUrl"> | null;
 };
 
-/** One turn: its header (the fold's button) and, open, its check rows. */
-export const TurnSection = ({ turn, newest, now, fix }: TurnSectionProps) => {
+/** One turn: its header (the fold's button) and, open, its check rows, in a section per repo when the task has several. */
+export const TurnSection = ({ turn, newest, now, repos, fix }: TurnSectionProps) => {
   const [open, setOpen] = useState(newest);
   const running = turnRunning(turn);
-  const failing = turn.checks.filter((check) => isFailing(check.status));
+  const sections = repoSectionsOf(turn, repos);
+  // The rows in the order they show: the fix row follows the last failing one there.
+  const shown = sections === null ? turn.checks : sections.flatMap((section) => section.checks);
+  const failing = shown.filter((check) => isFailing(check.status));
   const lastFailing = failing.at(-1)?.checkId ?? null;
   const [openChecks, setOpenChecks] = useState<ReadonlySet<string>>(() => new Set(failing.map((check) => check.checkId)));
-  const summary = summaryOf(turn.checks);
+  const rowsOf = (checks: readonly CheckRunView[]) =>
+    checks.map((check) => {
+      const hasOutput = check.status !== "waiting" && check.status !== "running";
+      const checkOpen = openChecks.has(check.checkId);
+      const showFix = fix !== null && check.checkId === lastFailing;
+      const row = (
+        <div className="flex h-10 items-center gap-2.5" data-check={check.name} data-status={check.status}>
+          <CheckRowLine check={check} open={hasOutput ? checkOpen : null} now={now} />
+        </div>
+      );
+      return (
+        <div key={check.checkId} className="border-t border-line">
+          {hasOutput ? (
+            <Collapsible.Root
+              open={checkOpen}
+              onOpenChange={(next) => {
+                setOpenChecks((current) => {
+                  const updated = new Set(current);
+                  if (next) updated.add(check.checkId);
+                  else updated.delete(check.checkId);
+                  return updated;
+                });
+              }}
+            >
+              <Collapsible.Trigger className="w-full text-left">{row}</Collapsible.Trigger>
+              <Collapsible.Content>
+                <CheckOutput check={check} />
+              </Collapsible.Content>
+            </Collapsible.Root>
+          ) : (
+            row
+          )}
+          {showFix ? <FixRow {...fix} failing={failing.length} downloadUrl={check.downloadUrl} /> : null}
+        </div>
+      );
+    });
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="border-b border-line" data-turn={turn.turn}>
       <Collapsible.Trigger className="flex h-10 w-full items-center gap-2.5 text-left">
@@ -256,65 +326,29 @@ export const TurnSection = ({ turn, newest, now, fix }: TurnSectionProps) => {
         <span className="text-ui font-semibold text-text">{t("checks.turn", { n: turn.turn })}</span>
         <span className="ml-1 font-mono text-xs text-faint">
           {formatClock(turn.at)}
-          {turn.sha === null ? null : ` · ${turn.sha.slice(0, 7)}`}
+          {/* With several repos, each section names the commit its checks ran on. */}
+          {sections !== null || turn.sha === null ? null : ` · ${turn.sha.slice(0, 7)}`}
         </span>
-        <span className="ml-auto flex items-center gap-1.5 text-[12.5px]">
-          {running ? (
-            <span className="text-muted">{t("checks.running")}</span>
-          ) : (
-            summary.map((part, i) => (
-              <Fragment key={part.text}>
-                {i > 0 ? <span className="text-faint">·</span> : null}
-                <span className={part.tone === "red" ? "text-red" : "text-green"}>{part.text}</span>
-              </Fragment>
-            ))
-          )}
-        </span>
+        <span className="ml-auto flex items-center gap-1.5 text-[12.5px]">{running ? <span className="text-muted">{t("checks.running")}</span> : <SummaryParts checks={turn.checks} />}</span>
         {running ? null : <span className="ml-3 font-mono text-xs text-faint">{formatCheckDuration(turnTotalMs(turn))}</span>}
       </Collapsible.Trigger>
       <Collapsible.Content>
-        {turn.checks.map((check) => {
-          const hasOutput = check.status !== "waiting" && check.status !== "running";
-          const checkOpen = openChecks.has(check.checkId);
-          const showFix = fix !== null && check.checkId === lastFailing;
-          const row = (
-            <div className="flex h-10 items-center gap-2.5" data-check={check.name} data-status={check.status}>
-              <CheckRowLine check={check} open={hasOutput ? checkOpen : null} now={now} />
-            </div>
-          );
-          return (
-            <div key={check.checkId} className="border-t border-line">
-              {hasOutput ? (
-                <Collapsible.Root
-                  open={checkOpen}
-                  onOpenChange={(next) => {
-                    setOpenChecks((current) => {
-                      const updated = new Set(current);
-                      if (next) updated.add(check.checkId);
-                      else updated.delete(check.checkId);
-                      return updated;
-                    });
-                  }}
-                >
-                  <Collapsible.Trigger className="w-full text-left">{row}</Collapsible.Trigger>
-                  <Collapsible.Content>
-                    <CheckOutput check={check} />
-                  </Collapsible.Content>
-                </Collapsible.Root>
-              ) : (
-                row
-              )}
-              {showFix ? <FixRow {...fix} failing={failing.length} downloadUrl={check.downloadUrl} /> : null}
-            </div>
-          );
-        })}
+        {sections === null
+          ? rowsOf(turn.checks)
+          : sections.map((section) => (
+              <div key={section.repo ?? ""} data-repo={section.repo ?? ""}>
+                <RepoSectionHeading section={section} />
+                {rowsOf(section.checks)}
+              </div>
+            ))}
       </Collapsible.Content>
     </Collapsible.Root>
   );
 };
 
+
 export type ChecksBodyProps = {
-  readonly load: { readonly kind: "loading" } | { readonly kind: "error"; readonly message: string; readonly retry: () => void } | { readonly kind: "ready"; readonly configured: boolean; readonly supported: boolean; readonly turns: readonly TurnChecksView[]; readonly prLines: readonly PrDraftLine[] };
+  readonly load: { readonly kind: "loading" } | { readonly kind: "error"; readonly message: string; readonly retry: () => void } | { readonly kind: "ready"; readonly configured: boolean; readonly supported: boolean; readonly turns: readonly TurnChecksView[]; readonly prLines: readonly PrDraftLine[]; readonly repos: readonly string[] };
   readonly now: number;
   readonly environmentHref: string | null;
   readonly fix: Omit<FixRowProps, "failing" | "downloadUrl">;
@@ -382,11 +416,11 @@ export const ChecksBody = ({ load, now, environmentHref, fix }: ChecksBodyProps)
   return (
     <div className="mt-2">
       {load.prLines.map((line) => (
-        <PrDraftRow key={line.number} line={line} />
+        <PrDraftRow key={`${line.repo ?? ""}#${String(line.number)}`} line={line} />
       ))}
       {load.turns.length === 0 ? <p className="mt-4 text-ui text-muted">{t("checks.notYet")}</p> : null}
       {load.turns.map((turn, i) => (
-        <TurnSection key={turn.turn} turn={turn} newest={i === 0} now={now} fix={turn.turn === newestWithFailure ? fix : null} />
+        <TurnSection key={turn.turn} turn={turn} newest={i === 0} now={now} repos={load.repos} fix={turn.turn === newestWithFailure ? fix : null} />
       ))}
       <Footnote environmentHref={environmentHref} />
     </div>

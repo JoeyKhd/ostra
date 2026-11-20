@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { createNeedsYouItemInTx, recordChecksRunInTx, startCliSession } from "@ostra/domain";
-import { blobIdSchema, gitShaSchema, memberIdSchema, userIdSchema } from "@ostra/protocol";
+import { blobIdSchema, gitShaSchema, memberIdSchema, repoIdSchema, userIdSchema } from "@ostra/protocol";
 import type { CheckId, OrganizationId, ProjectId, RepoId, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -20,6 +20,7 @@ let repoId: RepoId;
 let lint: CheckId;
 let unit: CheckId;
 let settings: CheckId;
+let world: Awaited<ReturnType<typeof seedConnectionAndModel>>;
 const HEAD = gitShaSchema.parse(createHash("sha1").update("checks-head").digest("hex"));
 
 const place = () => ({ organizationId: orgA, projectId: project });
@@ -27,7 +28,7 @@ const place = () => ({ organizationId: orgA, projectId: project });
 beforeAll(async () => {
   harness = await createApiHarness();
   orgA = harness.fixture.a.organization.id;
-  const world = await seedConnectionAndModel(harness);
+  world = await seedConnectionAndModel(harness);
   const calc = await seedProject(harness, world, "calc");
   project = calc.projectId;
   repoId = calc.repoId;
@@ -160,6 +161,63 @@ describe("tasks.checks", () => {
     await harness.test.db.taskPullRequest.create({ data: { organizationId: orgA, projectId: project, taskRepoId: taskRepo.id, number: 483, url: "https://github.com/ostra-test/test1/pull/483", branchName: "ostra/drafts", state: "open", draft: true, draftByOstra: true } });
     const view = await (await harness.as(harness.fixture.a.insider)).tasks.checks({ taskId: task.taskId });
     expect(view.pullRequests).toEqual([{ repoId, repo: "ostra-test/test1", number: 483, url: "https://github.com/ostra-test/test1/pull/483", state: "open", draft: true, draftByOstra: true }]);
+  });
+});
+
+describe("tasks.checks across several repos", () => {
+  it("F-098: names the task's repos in the project's order, and a turn's run of a check per repo with its repo and its commit there", async () => {
+    const { projectId, repoId: first } = await seedProject(harness, world, "two-repos");
+    const at = { organizationId: orgA, projectId };
+    const firstRow = await harness.test.db.repo.findUniqueOrThrow({ where: { id: first } });
+    // The second repo comes first in the project's order.
+    const secondRow = await harness.test.db.repo.create({
+      data: { ...at, connectionId: firstRow.connectionId, installationId: firstRow.installationId, hostRepoId: "host-calculator-api", fullName: "ostra-test/calculator-api", defaultBranch: "main", checkoutDir: "calculator-api", position: firstRow.position - 1 },
+    });
+    const second = repoIdSchema.parse(secondRow.id);
+    const admin = await harness.as(harness.fixture.a.admin);
+    const webTests = (await admin.environments.checks.save({ projectId, name: "web-tests", command: "pnpm test", repoId: first, timeoutSeconds: 600 })).checkId;
+    const apiTests = (await admin.environments.checks.save({ projectId, name: "api-tests", command: "pnpm test", repoId: second, timeoutSeconds: 600 })).checkId;
+    const member = harness.fixture.a.member.id;
+    const task = await seedTask(harness, { ...at, title: "two-repos", state: "in_review", driverMemberId: member, creatorMemberId: member, sessionState: "idle" });
+    for (const repo of [first, second]) {
+      await harness.test.db.taskRepo.create({ data: { ...at, taskId: task.taskId, repoId: repo, branchName: "ostra/two-repos", baseBranch: "main" } });
+    }
+    await harness.test.db.$transaction((tx) =>
+      recordChecksRunInTx(tx, {
+        taskId: task.taskId,
+        sessionId: task.sessionId,
+        turnOrdinal: 1,
+        checks: [
+          { checkId: webTests, status: "passed", exitCode: 0, durationMs: 1_000, outputBlobId: null },
+          { checkId: apiTests, status: "failed", exitCode: 1, durationMs: 2_000, outputBlobId: null },
+        ],
+      }),
+    );
+    const webHead = gitShaSchema.parse(createHash("sha1").update("web").digest("hex"));
+    const apiHead = gitShaSchema.parse(createHash("sha1").update("api").digest("hex"));
+    await appendEvent(harness, task, at, {
+      kind: "session.saved",
+      turnOrdinal: 1,
+      repos: [
+        { repoId: second, headSha: apiHead, ahead: true, hiddenRefSha: null },
+        { repoId: first, headSha: webHead, ahead: true, hiddenRefSha: null },
+      ],
+      archive: null,
+    });
+    const view = await (await harness.as(harness.fixture.a.insider)).tasks.checks({ taskId: task.taskId });
+    expect(view.repos).toEqual([
+      { repoId: second, repo: "ostra-test/calculator-api" },
+      { repoId: first, repo: "ostra-test/test1" },
+    ]);
+    const [turn] = view.turns;
+    expect(turn?.runs.map((run) => [run.name, run.repo, run.status])).toEqual([
+      ["web-tests", "ostra-test/test1", "passed"],
+      ["api-tests", "ostra-test/calculator-api", "failed"],
+    ]);
+    expect(turn?.heads.map((head) => [head.repo, head.headSha])).toEqual([
+      ["ostra-test/calculator-api", apiHead],
+      ["ostra-test/test1", webHead],
+    ]);
   });
 });
 

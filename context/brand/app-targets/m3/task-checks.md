@@ -26,7 +26,7 @@ The page's frame, header and tabs as `task-changes.md`. The Checks tab pins noth
 1. **PR line,** 40px, 8px below the tabs, no box, one per task repo whose PR's draft state comes from the checks (below): `git-pull-request-draft` 15px `--muted`, then 13px: `PR #483 is a draft` weight 600 `--text`, the reason `--muted`, then 12px gap and teal `Open on GitHub` with `arrow-up-right` 12px. Then a 1px `--line`.
 2. **Turns,** newest first. The newest turn with checks is open; the others are folded rows.
    - **Turn header,** 40px: a 16px chevron column (`chevron-down` open, `chevron-right` folded, 14px `--muted`), `Turn {n}` 13px weight 600 `--text`, 12px gap, mono 12px `--faint` `{time} · {sha7}` (the commit the checks ran on), then right-aligned the summary: counts in 12.5px sans (`{n} failed` `--red`, `{n} timed out` `--red`, `{n} couldn't run` `--red`, `{n} passed` `--green`, joined by `--faint` ` · `), then 16px gap and the turn's total time mono 12px `--faint`. The whole header is the fold's button.
-   - **Check rows,** 40px, 1px `--line` between them, a strict grid: the 16px chevron column (`chevron-right`/`chevron-down`, for every row with output), a 16px status icon, 10px, the check's name in mono 12.5px `--text` in a 150px column (truncated, full in `title`), the command in mono 12px `--faint` (one line, truncated, full in `title`), then right-aligned the status word 12.5px and the duration in mono 12px `--faint` in a 56px right-aligned column. A check that runs in one repo of several adds the repo's name as a `.chip` after the name.
+   - **Check rows,** 40px, 1px `--line` between them, a strict grid: the 16px chevron column (`chevron-right`/`chevron-down`, for every row with output), a 16px status icon, 10px, the check's name in mono 12.5px `--text` in a 150px column (truncated, full in `title`), the command in mono 12px `--faint` (one line, truncated, full in `title`), then right-aligned the status word 12.5px and the duration in mono 12px `--faint` in a 56px right-aligned column. A check that runs in one repo of several adds the repo's name as a `.chip` after the name (milestone 4 replaced the chip with a section per repo: "Several repos", below).
    - **Output,** under an open row, indented to the name column: a 12px `--faint` label, 6px, then the output block (`.code`: `--surface`, 1px `--line`, radius 8px, padding 12px 14px, mono 12px/1.6, `--muted`, `white-space: pre-wrap`), the last 40 lines. Plain text: no ANSI colours, no links, nothing interpreted. ANSI escapes are stripped.
    - **Fix row,** 44px, after the last failing check's output in the newest turn only, indented to the name column: `Ask the agent to fix` (primary: `--shell` fill, `--ink` text, `wrench` icon), 16px, teal `Download the full output` with `download` 13px (this check's blob), then 12px gap and the hint 12px `--faint`.
 3. **Footnote,** 16px below the last turn, 12px `--faint`: `Checks run after every turn that changes the code, before the push. They come from the project's environment.` + teal `Edit checks` to the project's Environment page, for project admins only.
@@ -116,6 +116,17 @@ The Code group gains one row after the repos' PRs, on every tab:
 ### The top bar
 
 A draft PR's button uses `git-pull-request-draft` in place of `git-pull-request`: `PR #483`.
+
+### Several repos (milestone 4, F-098)
+
+The m4 spec grows this screen with a section per repo for a task with several (section 12, "Screens that only grow"). Built 2026-11-20:
+
+- **An open turn** of a task with two or more repos holds a section per repo a check ran in, in the project's order, then the checks that ran at the workspace root. A repo the turn didn't change runs none of its checks, so it has no section that turn.
+- **Section heading,** 32px, 1px `--line` above, the 16px chevron column left empty: the repo's full name in mono 12.5px `--text` (truncated, full in `title`), 10px, the commit its checks ran on there, mono 12px `--faint` (7), then right-aligned the section's own summary in 12px sans with the turn summary's tones. The workspace root's heading is 12px `--muted` `Workspace root`, with no commit.
+- **The turn's header** keeps its time and summary and drops the commit: each section names its own.
+- **Check rows** as above, without the repo's chip: the section names the repo.
+- **Ask the agent to fix** follows the last failing check as the sections order them, and still sends every failing check of the turn.
+- A task with one repo keeps the one list, with the commit in the turn's header.
 
 ## Tokens and components
 

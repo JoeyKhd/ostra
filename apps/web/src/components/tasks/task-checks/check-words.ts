@@ -13,7 +13,7 @@ export type CheckRunView = {
   readonly checkId: string;
   readonly name: string;
   readonly command: string;
-  /** The repo it ran in when the task has several, or `null` for the workspace root (Q188). */
+  /** The repo it ran in, or `null` for the workspace root (Q188). */
   readonly repo: string | null;
   readonly status: CheckState;
   readonly exitCode: number | null;
@@ -31,8 +31,31 @@ export type CheckRunView = {
 export type TurnChecksView = {
   readonly turn: number;
   readonly at: number;
+  /** The commit the checks ran on: the first repo's, which a task with one repo shows in the turn's header. */
   readonly sha: string | null;
+  /** Milestone 4 (F-098): the commit the checks ran on in each repo, from the push after the turn. */
+  readonly heads: readonly { readonly repo: string; readonly sha: string }[];
   readonly checks: readonly CheckRunView[];
+};
+
+/** One repo's section of a turn (F-098): its checks and the commit they ran on there. `repo` `null`: the workspace root's. */
+export type RepoChecksSection = { readonly repo: string | null; readonly sha: string | null; readonly checks: readonly CheckRunView[] };
+
+/**
+ * A turn's checks per repo, for a task with several (the m4 spec grows `task-checks.md` with a
+ * section per repo): one section for each repo a check ran in, in the project's order (a repo the
+ * project has dropped since comes after), then the checks that ran at the workspace root. `null`
+ * for a task with one repo, whose turn stays one list.
+ */
+export const repoSectionsOf = (turn: TurnChecksView, repos: readonly string[]): readonly RepoChecksSection[] | null => {
+  if (repos.length < 2) return null;
+  const order = [...new Set([...repos, ...turn.checks.flatMap((check) => (check.repo === null ? [] : [check.repo]))])];
+  const sections = order.flatMap((repo): RepoChecksSection[] => {
+    const checks = turn.checks.filter((check) => check.repo === repo);
+    return checks.length === 0 ? [] : [{ repo, sha: turn.heads.find((head) => head.repo === repo)?.sha ?? null, checks }];
+  });
+  const root = turn.checks.filter((check) => check.repo === null);
+  return root.length === 0 ? sections : [...sections, { repo: null, sha: null, checks: root }];
 };
 
 /** A failed, timed-out or unrunnable check: what "Ask the agent to fix" sends. */

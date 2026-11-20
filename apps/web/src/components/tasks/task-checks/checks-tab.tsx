@@ -20,11 +20,11 @@ import { CodeHostCi } from "../review/code-host-ci";
 type Checks = RouterOutputs["tasks"]["checks"];
 type ApiTurn = Checks["turns"][number];
 
-const runViewOf = (run: ApiTurn["runs"][number], timeoutSeconds: number, several: boolean): CheckRunView => ({
+const runViewOf = (run: ApiTurn["runs"][number], timeoutSeconds: number): CheckRunView => ({
   checkId: run.checkId,
   name: run.name,
   command: run.command ?? "",
-  repo: several ? run.repo : null,
+  repo: run.repo,
   status: run.status,
   exitCode: run.exitCode,
   durationMs: run.durationMs,
@@ -35,18 +35,21 @@ const runViewOf = (run: ApiTurn["runs"][number], timeoutSeconds: number, several
 });
 
 export const turnsViewOf = (checks: Checks): readonly TurnChecksView[] => {
-  const several = new Set(checks.checks.flatMap((check) => (check.repo === null ? [] : [check.repo]))).size > 1;
   const timeoutOf = new Map(checks.checks.map((check) => [check.checkId, check.timeoutSeconds] as const));
   return checks.turns.map((turn) => ({
     turn: turn.turnNumber,
     at: turn.startedAt,
     sha: turn.heads[0]?.headSha ?? null,
-    checks: turn.runs.map((run) => runViewOf(run, timeoutOf.get(run.checkId) ?? 600, several)),
+    heads: turn.heads.map((head) => ({ repo: head.repo, sha: head.headSha })),
+    checks: turn.runs.map((run) => runViewOf(run, timeoutOf.get(run.checkId) ?? 600)),
   }));
 };
 
+/** Milestone 4 (F-098): the task's repos in the project's order, which the turns' sections follow. */
+export const reposOf = (checks: Checks): readonly string[] => checks.repos.map((repo) => repo.repo);
+
 export const prLinesOf = (checks: Checks, newestTurn: number): readonly PrDraftLine[] => {
-  const several = new Set(checks.pullRequests.map((pr) => pr.repo)).size > 1;
+  const several = checks.repos.length > 1;
   return checks.pullRequests
     .filter((pr) => pr.state === "open")
     .map((pr) => ({
@@ -105,7 +108,7 @@ export const ChecksTab = ({
   const data = checks.data;
   const load =
     data !== undefined
-      ? { kind: "ready" as const, configured: data.configured, supported: !data.runnerTooOld, turns: turnsViewOf(data), prLines: prLinesOf(data, data.fix.turnNumber ?? data.turns[0]?.turnNumber ?? 0) }
+      ? { kind: "ready" as const, configured: data.configured, supported: !data.runnerTooOld, turns: turnsViewOf(data), prLines: prLinesOf(data, data.fix.turnNumber ?? data.turns[0]?.turnNumber ?? 0), repos: reposOf(data) }
       : checks.error !== null
         ? { kind: "error" as const, message: errorText(checks.error) ?? t("errors.unknown"), retry: () => void checks.refetch() }
         : { kind: "loading" as const };
