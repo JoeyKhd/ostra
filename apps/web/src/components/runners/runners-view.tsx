@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDownIcon, PlusIcon, ShieldIcon, TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -16,8 +17,10 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { CopyLink } from "./copy-link";
-import { NewPoolSheet } from "./new-pool-sheet";
+import { containmentText } from "./fleet-words";
 import { PoolProperties } from "./pool-properties";
+import { PoolSheet } from "./pool-sheet";
+import type { FleetSettings, PoolSheetStep } from "./pool-sheet";
 import { PoolsTable } from "./pools-table";
 import { MyRunnerRows, RunnerRows } from "./runner-rows";
 import { adminLede, hostNote } from "./runner-words";
@@ -27,7 +30,7 @@ type Runner = RouterOutputs["runners"]["mine"][number];
 /** A runner's kind as the panel says it: a personal `host` runner is "personal, not isolated" (ADR 0029). */
 export const RunnerKind = ({ runner }: { readonly runner: Pick<Runner, "kind" | "executor" | "isolated"> }) => (
   <span className="inline-flex flex-wrap items-center gap-1.5">
-    <Chip>{runner.kind === "personal" ? t("runners.personal") : t("runners.pool")}</Chip>
+    <Chip>{runner.kind === "personal" ? t("runners.personal") : t("runners.poolKind")}</Chip>
     <Chip className="font-mono">{runner.executor}</Chip>
     {/* Amber means only "needs you" (app-design.md): not being isolated is a fact, said in --muted. */}
     {runner.isolated ? null : <Chip><TriangleAlertIcon aria-hidden className="stroke-[1.75]" />{t("runners.notIsolated")}</Chip>}
@@ -42,11 +45,26 @@ const RunnerSkeleton = () => <SkeletonRows rows={3} bars={["w-[90px]", "w-[80px]
 /** Your machine: the member's own runners, then the command that connects one (everyone sees it). */
 const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: string; readonly mine: readonly Runner[] | undefined; readonly now: number }) => {
   const command = cliLine(`runner --server ${corePublicUrl}`);
+  const facts = (runner: Runner): string =>
+    [
+      runner.state === "online" ? t("runners.machine.connected") : t("runners.machine.notConnected"),
+      t("runners.personal"),
+      runner.isolated ? null : t("runners.notIsolated"),
+      runner.processContainment === null ? null : t("runners.machine.contained", { how: containmentText(runner.processContainment).toLowerCase() }),
+      runner.capacity === 1 ? t("runners.machine.oneAtOnce") : t("runners.machine.atOnce", { n: runner.capacity }),
+    ]
+      .filter((part): part is string => part !== null)
+      .join(", ");
   return (
     <Section title={t("runners.yourMachine")} {...(mine === undefined ? {} : { count: mine.length })}>
       <div className="overflow-x-auto">
-        <div className="min-w-[800px]">{mine === undefined ? <RunnerSkeleton /> : <MyRunnerRows runners={mine} now={now} />}</div>
+        <div className="min-w-[1000px]">{mine === undefined ? <RunnerSkeleton /> : <MyRunnerRows runners={mine} now={now} />}</div>
       </div>
+      {mine?.map((runner) => (
+        <p key={runner.id} data-testid="machine-facts" className="mt-2 text-ui text-muted">
+          <span className="font-mono text-text">{runner.name}</span>: {facts(runner)}
+        </p>
+      ))}
       <p className="mb-3 mt-4 text-ui text-muted">{mine !== undefined && mine.length > 0 ? t("runners.connectAnother") : t("runners.connectFirst")}</p>
       <div className="flex min-h-10 items-center gap-3 rounded-lg border border-line bg-surface px-4 py-2">
         <code className="min-w-0 flex-1 break-all font-mono text-body text-text">{command}</code>
@@ -64,16 +82,25 @@ const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: str
  * Organization › Runners (F-013, F-014, F-091, F-092): for admins the pools, every runner and the
  * selected pool's join tokens; for everyone their own machine and the command that connects it.
  */
-export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: string; readonly admin: boolean }) => {
+export const RunnersView = ({ settings, admin }: { readonly settings: FleetSettings; readonly admin: boolean }) => {
   const trpc = useTRPC();
   const me = useQuery(trpc.me.get.queryOptions());
   const mine = useQuery({ ...trpc.runners.mine.queryOptions(), refetchInterval: (query) => (query.state.data?.some((r) => r.state === "online") === true ? 15_000 : 2_000) });
   const runners = useQuery({ ...trpc.runners.list.queryOptions(), enabled: admin, refetchInterval: 5_000 });
   const pools = useQuery({ ...trpc.pools.list.queryOptions(), enabled: admin, refetchInterval: 5_000 });
   const [picked, setPicked] = useState<string | null>(null);
-  const [shown, setShown] = useState<{ readonly poolId: string; readonly token: string } | null>(null);
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
-  const [creating, setCreating] = useState(false);
+  const router = useRouter();
+  const path = usePathname();
+  const params = useSearchParams();
+  // `?new-pool=1` opens New pool, so a link can too (pool-new.md); admins only.
+  const [step, setStep] = useState<PoolSheetStep | null>(admin && params.get("new-pool") === "1" ? { kind: "new-pool" } : null);
+  const [opening, setOpening] = useState(0);
+  const open = (next: PoolSheetStep) => { setOpening(opening + 1); setStep(next); };
+  const close = () => {
+    setStep(null);
+    if (params.get("new-pool") !== null) router.replace(path);
+  };
   const now = Date.now();
 
   const poolList = pools.data ?? [];
@@ -98,10 +125,7 @@ export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: 
       ? undefined
       : adminLede(runners.data, pools.data.length, ownMachine);
 
-  const pickPool = (poolId: string) => {
-    setPicked(poolId);
-    if (shown !== null && shown.poolId !== poolId) setShown(null);
-  };
+  const pickPool = (poolId: string) => { setPicked(poolId); };
 
   const properties =
     selected === undefined ? (
@@ -110,19 +134,20 @@ export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: 
       <PoolProperties
         key={selected.id}
         pool={selected}
-        shown={shown?.poolId === selected.id ? shown.token : null}
-        onShown={(token) => { setShown({ poolId: selected.id, token }); }}
+        onNewToken={() => {
+          open({ kind: "new-token", pool: { id: selected.id, name: selected.name, requiresApproval: selected.requiresApproval, maxBoxes: selected.maxBoxes, joinTokenDays: selected.joinTokenDays, executors: selected.executors } });
+        }}
       />
     );
 
   return (
-    <Sheet open={creating} onOpenChange={setCreating}>
+    <Sheet open={step !== null} onOpenChange={(next) => { if (!next) close(); }}>
       <PageFrame
         crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("shell.runners") }]}
         {...(admin
           ? {
               actions: (
-                <Button variant="primary" onClick={() => { setCreating(true); }}>
+                <Button variant="primary" onClick={() => { open({ kind: "new-pool" }); }}>
                   <PlusIcon className="stroke-[1.75]" /> {t("runners.newPool")}
                 </Button>
               ),
@@ -159,7 +184,7 @@ export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: 
               }
             >
               <div className="overflow-x-auto">
-                <div className="min-w-[800px]">
+                <div className="min-w-[1000px]">
                   {runners.data === undefined ? (
                     <RunnerSkeleton />
                   ) : listed.length === 0 ? (
@@ -172,9 +197,9 @@ export const RunnersView = ({ corePublicUrl, admin }: { readonly corePublicUrl: 
             </Section>
           </>
         ) : null}
-        <YourMachine corePublicUrl={corePublicUrl} mine={mine.data} now={now} />
+        <YourMachine corePublicUrl={settings.serverUrl} mine={mine.data} now={now} />
       </PageFrame>
-      {admin ? <NewPoolSheet key={creating ? "open" : "closed"} onCreated={(poolId) => { setCreating(false); pickPool(poolId); }} /> : null}
+      {admin && step !== null ? <PoolSheet key={opening} step={step} settings={settings} onClose={close} poolHref={(poolId) => `/organization/runners/pools/${poolId}`} /> : null}
     </Sheet>
   );
 };

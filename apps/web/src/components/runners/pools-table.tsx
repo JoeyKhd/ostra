@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { KeyboardEvent } from "react";
 
 import { Chip } from "@/components/ui/status";
@@ -7,12 +8,10 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { poolChips } from "./fleet-words";
 import { versionRange } from "./runner-words";
 
 export type Pool = RouterOutputs["pools"]["list"][number];
-
-/** A pool runs `host` when any of its runners does: then nothing isolates its tasks (F-015, F-092). */
-export const poolIsolated = (pool: Pool): boolean => !pool.executors.includes("host");
 
 /** The busy meter (graphite.css `.meter`): 96 × 4px, `--muted` on `--line-2`. */
 const Meter = ({ value, max }: { readonly value: number; readonly max: number }) => (
@@ -39,12 +38,14 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
   };
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-body">
+      <table className="w-full min-w-[1000px] border-collapse text-body">
         <colgroup>
-          <col className="w-[190px]" />
-          <col className="w-[82px]" />
+          <col className="w-[240px]" />
+          <col className="w-[104px]" />
           <col className="w-[104px]" />
           <col className="w-[164px]" />
+          <col className="w-[72px]" />
+          <col className="w-[140px]" />
           <col className="w-[96px]" />
           <col className="w-[72px]" />
           <col />
@@ -55,6 +56,8 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
             <th className={th}>{t("runners.col.executor")}</th>
             <th className={th}>{t("runners.col.runners")}</th>
             <th className={th}>{t("runners.col.busy")}</th>
+            <th className={th}>{t("runners.col.queue")}</th>
+            <th className={th}>{t("runners.col.labels")}</th>
             <th className={th}>{t("runners.col.joinTokens")}</th>
             <th className={th}>{t("runners.col.projects")}</th>
             <th className={cn(th, "pr-2.5")}>{t("runners.col.version")}</th>
@@ -63,7 +66,7 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
         <tbody>
           {pools.length === 0 ? (
             <tr className="border-b border-line">
-              <td colSpan={7} className="h-10 px-2.5 text-muted">{t("runners.noPools")}</td>
+              <td colSpan={9} className="h-10 px-2.5 text-muted">{t("runners.noPools")}</td>
             </tr>
           ) : null}
           {pools.map((pool) => {
@@ -81,13 +84,13 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
               >
                 <td className="pl-2.5 pr-3">
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="truncate font-medium">{pool.name}</span>
+                    <Link href={`/organization/runners/pools/${pool.id}`} onClick={(event) => { event.stopPropagation(); }} className="truncate font-medium hover:underline">{pool.name}</Link>
                     {pool.isDefault ? <Chip className="shrink-0">{t("runners.defaultPool")}</Chip> : null}
-                    {poolIsolated(pool) ? null : <Chip className="shrink-0">{t("runners.notIsolated")}</Chip>}
+                    {poolChips(pool.lines).map((chip) => <Chip key={chip} className="shrink-0">{chip}</Chip>)}
                   </span>
                 </td>
                 <td className="pr-3 font-mono text-ui">{pool.executors.length === 0 ? "—" : pool.executors.join(", ")}</td>
-                <td className="pr-3 text-text">{t("runners.onlineCount", { online: pool.onlineCount, total: pool.runnerCount })}</td>
+                <td className="whitespace-nowrap pr-3 text-text">{t("runners.onlineCount", { online: pool.onlineCount, total: pool.runnerCount })}</td>
                 <td className="pr-3">
                   {pool.slots === 0 ? (
                     <span className="text-faint">—</span>
@@ -95,6 +98,15 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
                     <span className="flex items-center gap-3">
                       <Meter value={pool.busy} max={pool.slots} />
                       <span className="shrink-0 whitespace-nowrap font-mono text-ui">{pool.busy} / {pool.slots}</span>
+                    </span>
+                  )}
+                </td>
+                <td className="pr-3 font-mono text-ui">{pool.queueLength === 0 ? <span className="text-faint">—</span> : pool.queueLength}</td>
+                <td className="pr-3">
+                  {pool.labels.length === 0 ? <span className="text-faint">—</span> : (
+                    <span className="flex items-center gap-1.5">
+                      {pool.labels.slice(0, 2).map((label) => <Chip key={label} className="font-mono text-[12.5px] text-text">{label}</Chip>)}
+                      {pool.labels.length > 2 ? <span className="font-mono text-[12.5px] text-faint">+{pool.labels.length - 2}</span> : null}
                     </span>
                   )}
                 </td>

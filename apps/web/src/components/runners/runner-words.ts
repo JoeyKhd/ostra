@@ -92,3 +92,12 @@ export const adminLede = (runners: readonly Counted[], pools: number, ownMachine
  */
 export const hostNote = (mine: readonly Pick<RouterOutputs["runners"]["mine"][number], "processContainment">[] | undefined): string =>
   `${t("runners.hostNote")}${mine?.some((runner) => runner.processContainment === "process-tree") === true ? t("runners.hostNoteTreeOnly") : ""}`;
+
+/** `2026-12-19`: a token's expiry in its list. */
+export const isoDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+/** `12 Nov`. */
+export const shortDate = (ms: number): string => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(new Date(ms));
+
+/** `19 Dec 2026`: when a token shown once expires. */
+export const longDate = (ms: number): string => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(ms));
