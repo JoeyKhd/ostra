@@ -25,6 +25,7 @@ import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { AgentCommand, AgentLaunch } from "../agent/base.ts";
 import type { ExecutorCapabilities } from "./capabilities.ts";
 import type { CheckRunResult, RunChecksInput } from "./checks.ts";
+import type { StagedCommitPaths } from "./commit-paths.ts";
 
 // The executor kind (ADR 0025, ADR 0029): `docker`, `host`, then `kubernetes`. It runs in the
 // runner and gives each task its place to run. The same task code drives every executor, so a
@@ -213,6 +214,11 @@ export type CommittedRepoWork = {
    * `commitWork`, by this commit or by the agent's own. A check that names the repo runs only then (Q188).
    */
   readonly changed: boolean;
+  /**
+   * Milestone 6 (F-113, ADR 0038): with the spec's `commitPaths`, what the commit kept and left out
+   * (`commit.filtered`'s fields). Absent when the spec commits everything, or nothing was committed.
+   */
+  readonly filtered?: StagedCommitPaths;
 };
 
 export type RepoPushResult = {
@@ -221,6 +227,8 @@ export type RepoPushResult = {
   readonly headSha: GitSha | null;
   /** Whether the branch is ahead of its base: this repo gets a PR (F-030, F-065). */
   readonly ahead: boolean;
+  /** Milestone 6 (F-113): with the spec's `commitPaths`, what this push's commit kept and left out. Absent otherwise, and with `pushOnly`. */
+  readonly filtered?: StagedCommitPaths;
 };
 
 export type StopInput = {

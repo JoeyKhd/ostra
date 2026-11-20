@@ -195,6 +195,9 @@ export const fakeScripts = [
   "git-push",
   /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
   "heads",
+  // Milestone 6 (ticket 23).
+  /** Writes the files given (session-relative) and commits them itself in the repo the session opened on, as `git add` and `git commit` would. */
+  "commit",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -1166,6 +1169,43 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         });
         await update({ sessionUpdate: "tool_call_update", toolCallId, status: code === 0 ? "completed" : "failed" });
         await say(code === 0 ? "pushed" : "push refused");
+        return "end_turn";
+      }
+
+      case "commit": {
+        // `[[fake:commit <path> ...]]`: the agent's own commit of the files given, in the repo its
+        // session opened on, so a runner test sees a branch the agent changed itself (ticket 23).
+        const root = session.cwd;
+        const relatives = args.split(/\s+/).filter((each) => each !== "");
+        if (root === null || relatives.length === 0) {
+          await say("Nothing to commit.");
+          return "end_turn";
+        }
+        for (const relative of relatives) {
+          const target = path.resolve(root, relative);
+          if (!target.startsWith(`${path.resolve(root)}${path.sep}`)) {
+            await say("That path leaves the session's folder.");
+            return "end_turn";
+          }
+          await mkdir(path.dirname(target), { recursive: true });
+          await writeFile(target, "Committed by the fake agent.\n");
+        }
+        const gitIn = (gitArgs: readonly string[]): Promise<number | null> =>
+          new Promise((resolve) => {
+            const child = spawn("git", ["-c", "user.name=Fake Agent", "-c", "user.email=fake-agent@example.test", ...gitArgs], { cwd: root, stdio: "ignore", windowsHide: true });
+            child.on("error", () => {
+              resolve(null);
+            });
+            child.on("exit", (code) => {
+              resolve(code);
+            });
+          });
+        const toolCallId = "t-commit";
+        await update({ sessionUpdate: "tool_call", toolCallId, title: "git commit", kind: "execute", status: "in_progress", rawInput: { command: "git commit" } });
+        const added = await gitIn(["add", "--", ...relatives]);
+        const committed = added === 0 ? await gitIn(["commit", "--quiet", "--no-verify", "-m", "The fake agent's own commit"]) : added;
+        await update({ sessionUpdate: "tool_call_update", toolCallId, status: committed === 0 ? "completed" : "failed" });
+        await say(committed === 0 ? `Committed ${relatives.join(", ")}.` : "The commit failed.");
         return "end_turn";
       }
 
