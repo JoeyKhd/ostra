@@ -92,6 +92,9 @@ export const auditActions = {
   "pool.updated": "runner-pool",
   "join-token.created": "join-token",
   "join-token.revoked": "join-token",
+  // Milestone 5 (F-120): the registry's settings, and each credential core hands a runner.
+  "registry.set": "registry",
+  "registry.credential-issued": "registry",
   // ---- connections: GitHub, Linear, boards ----
   "github.connected": "connection",
   "connection.added": "connection",

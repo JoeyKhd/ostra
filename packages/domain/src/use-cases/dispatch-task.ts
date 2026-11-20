@@ -26,6 +26,7 @@ import type { FleetRunner } from "../fleet/capacity.ts";
 import { chooseRunner } from "../fleet/choose.ts";
 import type { ChooseResult, ChooseTask } from "../fleet/choose.ts";
 import { fleetInTx, lockPoolsInTx, lockRunnerInTx, poolsInTx, projectPoolsInTx, projectSizeInTx, snapshotRunnerInTx } from "./fleet-rows.ts";
+import { registryImageForProject } from "./registry.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
 // milestone 1), raises the task's lease epoch under the task row's lock, creates the box and the
@@ -170,7 +171,14 @@ export const TASK_BUSY = "the task is locked by another transaction; the job ret
 type Candidate = { readonly id: RunnerId; readonly executor: "docker" | "host" | "kubernetes"; readonly freeSlots: number };
 
 /** The runner a dispatch goes to: its pool (`null` for a personal runner or a kept box), and whether it applies sizes. */
-type Chosen = { readonly id: RunnerId; readonly executor: "docker" | "host" | "kubernetes"; readonly poolId: PoolId | null; readonly sizes: boolean };
+/** The runner a task goes to. `pullsFromRegistry`: its executor starts boxes from the registry's images (F-120). */
+type Chosen = {
+  readonly id: RunnerId;
+  readonly executor: "docker" | "host" | "kubernetes";
+  readonly poolId: PoolId | null;
+  readonly sizes: boolean;
+  readonly pullsFromRegistry: boolean;
+};
 
 type RunnerScope = { readonly ids?: readonly RunnerId[]; readonly poolIds?: readonly PoolId[] };
 
@@ -426,7 +434,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
     } else {
       // The kept box's runner, already chosen: the box it holds is the task's.
-      runner = { id: kept.id, executor: kept.executor, poolId: null, sizes: false };
+      runner = { id: kept.id, executor: kept.executor, poolId: null, sizes: false, pullsFromRegistry: false };
     }
   }
 
@@ -459,7 +467,15 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       return null;
     }
     const row = fleet.find((candidate) => candidate.id === choice.runnerId);
-    return row === undefined ? null : { id: row.id, executor: row.executor, poolId: choice.poolId, sizes: row.capabilities?.boxSizes === true };
+    return row === undefined
+      ? null
+      : {
+          id: row.id,
+          executor: row.executor,
+          poolId: choice.poolId,
+          sizes: row.capabilities?.boxSizes === true,
+          pullsFromRegistry: row.capabilities !== null && row.capabilities.registry !== "none",
+        };
   };
 
   if (runner !== null) {
@@ -586,6 +602,9 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const runnerId = runner.id;
   // Milestone 5 (F-095): the project's size, where the runner's executor applies sizes.
   const boxSize = runner.sizes && size !== null ? { name: size.name, cpuMillis: size.limits.cpuMillis, memoryMiB: size.limits.memoryMiB } : null;
+  // Milestone 5 (F-120): a runner that pulls from the registry starts the box from the project's ready
+  // snapshot there, by digest. The pull credential is fetched for this lease, never put in the command.
+  const image = runner.pullsFromRegistry && plan.step !== "resumed" ? await registryImageForProject(tx, { organizationId, projectId }) : null;
   // `resumed`: the same box, on the runner that kept it. Every other step makes a fresh one.
   const boxId =
     plan.step === "resumed"
@@ -601,6 +620,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
                 executor: runner.executor,
                 state: "creating",
                 ...(boxSize === null ? {} : { size: boxSize.name, cpuMillis: boxSize.cpuMillis, memoryMiB: boxSize.memoryMiB }),
+                ...(image === null ? {} : { imageRef: image.ref, imageDigest: image.digest }),
               },
               select: { id: true },
             })
@@ -625,8 +645,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       sessionId: input.sessionId,
       boxId,
       leaseEpoch: input.leaseEpoch,
-      // Minor 4: the box's size; a minor-3 runner is never sent it (the outbox encodes down).
-      ...(boxSize === null ? {} : { box: { size: boxSize, image: null } }),
+      // Minor 4: the box's size and image; a minor-3 runner is never sent it (the outbox encodes down).
+      ...(boxSize === null && image === null ? {} : { box: { size: boxSize, image } }),
     },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },

@@ -73,6 +73,9 @@ import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-tok
 import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { handleSnapshotEndpoint } from "./snapshots/endpoints.ts";
+import { registryCheckHandler } from "./registry/check.ts";
+import { handleRegistryEndpoint } from "./registry/endpoints.ts";
+import { createRegistryProbe } from "./registry/probe.ts";
 import {
   applySnapshotCommandResultsInTx,
   applySnapshotRunnerEvent,
@@ -263,6 +266,12 @@ export const startCore = async (
   await jobs.work("task.open-pull-requests", openPullRequestsHandler(reactionDeps));
   await jobs.work("snapshot.schedule", snapshotScheduleHandler(snapshotDeps), { localConcurrency: 2 });
   await jobs.work("snapshot.nightly", snapshotNightlyHandler(snapshotDeps), { localConcurrency: 1 });
+  // Milestone 5 (F-120, ticket 17): an admin's registry, checked with core's own calls; nothing is pushed.
+  await jobs.work(
+    "registry.check",
+    registryCheckHandler({ db, notices, clock: systemClock, secretStore: adapters.secretStore, probe: createRegistryProbe() }),
+    { localConcurrency: 1 },
+  );
   // Runaway protection on the server (ticket 19): the maximum duration and the stall sweep.
   const limitDeps: LimitDeps = {
     db,
@@ -333,6 +342,8 @@ export const startCore = async (
     proposalsPerTask: settings.memoryProposalsPerTask,
   });
   const snapshotEndpoints = handleSnapshotEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
+  // Milestone 5 (F-120, ticket 17): the registry's push and pull credentials, by the runner's token.
+  const registryEndpoints = handleRegistryEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
   const blobEndpoints = handleBlobEndpoint({
     db,
     tokens: gateway.context.tokens,
@@ -537,7 +548,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, snapshotEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

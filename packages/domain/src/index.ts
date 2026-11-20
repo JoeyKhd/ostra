@@ -134,6 +134,7 @@ export * from "./checks/pr-checks.ts";
 export * from "./use-cases/checks.ts";
 export * from "./use-cases/notification-settings.ts";
 export * from "./use-cases/snapshots.ts";
+export * from "./use-cases/registry.ts";
 export * from "./use-cases/behind.ts";
 export * from "./use-cases/after-merge.ts";
 export * from "./use-cases/cli-sessions.ts";

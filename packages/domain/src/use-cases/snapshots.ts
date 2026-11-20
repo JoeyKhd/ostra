@@ -26,6 +26,7 @@ import type {
   RepoSecret,
   RunnerId,
   SnapshotBuildEnvironment,
+  SnapshotBuilder,
   SnapshotCredentials,
   SnapshotFailureReason,
   SnapshotId,
@@ -39,10 +40,13 @@ import { transitionSnapshot } from "../lifecycles/snapshot.ts";
 import type { SnapshotInput } from "../lifecycles/snapshot.ts";
 import type { AuditLog, ChangeNotices, Clock, CommandOutbox, ServerAdapters } from "../ports.ts";
 import type { RecordSnapshotResult, ScheduleSnapshot } from "./m3-signatures.ts";
+import { registryImageRef } from "../fleet/registry.ts";
+import { registryHostOf } from "./registry.ts";
 import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // Snapshots (F-051, ADR 0038 as amended; milestone 3's ticket 26). A project's snapshot is built by
-// a `docker` runner of its pools, which keeps the image itself (there's no registry until F-120):
+// a runner of its pools, which keeps the image itself or, with the organization's registry set,
+// pushes it there (F-120, milestone 5's ticket 17, `planSnapshotBuild`):
 //
 // - `scheduleSnapshot` makes the build: a `queued` row, then a `snapshot-build` command to an online
 //   `docker` runner of the project's pools at minor 2 (the one that ran the project's last task
@@ -244,15 +248,35 @@ const projectPoolIds = async (tx: Tx, organizationId: OrganizationId, projectId:
   return defaults.map((row) => poolIdSchema.parse(row.id));
 };
 
+/** Where a build goes and how it's built: by a runner's Docker or a rootless BuildKit pod, kept or pushed. */
+export type SnapshotBuildPlan = {
+  readonly runnerId: RunnerId;
+  readonly builder: SnapshotBuilder;
+  /** The registry the build pushes to (minor 4), or `null`: the runner keeps it (milestone 3). */
+  readonly registry: { readonly id: string; readonly url: string; readonly repositoryPrefix: string } | null;
+};
+
+/** The minor that carries a build's `push` and `builder` (protocol minor 4). */
+const PUSH_MINOR = 4;
+
 /**
- * The runner a build goes to: an online `docker` runner of the project's pools at minor 2, the one
- * that ran the project's most recent task first, so its next boxes start from what it built.
+ * Where a build goes (F-051, F-120, ADR 0038, ADR 0060). With a registry set, a `kubernetes`
+ * runner of the project's pools builds with rootless BuildKit and pushes, else a `docker` runner at
+ * minor 4 pushes, so every host of the pools can pull. A `kubernetes` runner never builds without
+ * a registry: its pool's tasks wait with `needs-registry` (ticket 14). Without a registry, an online
+ * `docker` runner at minor 2 builds and keeps the image (milestone 3). Among several, the one that
+ * ran the project's most recent task first, so its next boxes start from what it built.
  */
-export const pickSnapshotRunner = async (tx: Tx, project: { readonly organizationId: OrganizationId; readonly projectId: ProjectId }, now: number): Promise<RunnerId | null> => {
+export const planSnapshotBuild = async (
+  tx: Tx,
+  project: { readonly organizationId: OrganizationId; readonly projectId: ProjectId },
+  now: number,
+): Promise<SnapshotBuildPlan | null> => {
   const poolIds = await projectPoolIds(tx, project.organizationId, project.projectId);
   if (poolIds.length === 0) {
     return null;
   }
+  const registry = await tx.registry.findUnique({ where: { organizationId: project.organizationId }, select: { id: true, url: true, repositoryPrefix: true } });
   const online = await tx.runner.findMany({
     where: {
       organizationId: project.organizationId,
@@ -260,23 +284,41 @@ export const pickSnapshotRunner = async (tx: Tx, project: { readonly organizatio
       poolId: { in: poolIds },
       state: "online",
       revokedAt: null,
-      executor: "docker",
+      executor: { in: ["docker", "kubernetes"] },
       presence: { is: { disconnectedAt: null, lastSeenAt: { gt: new Date(now - runnerLimits.offlineMs) } } },
     },
     select: { id: true, executor: true, presence: { select: { minor: true } } },
     orderBy: { name: "asc" },
   });
-  const ids = online.filter((runner) => runnerSnapshotKind({ executor: runner.executor, minor: runner.presence?.minor ?? 0 }) === "image").map((runner) => runner.id);
-  if (ids.length === 0) {
-    return null;
+  const minorOf = (runner: (typeof online)[number]): number => runner.presence?.minor ?? 0;
+  const preferLast = async (ids: readonly string[]): Promise<RunnerId | null> => {
+    if (ids.length === 0) {
+      return null;
+    }
+    const last = await tx.lease.findFirst({
+      where: { organizationId: project.organizationId, projectId: project.projectId, runnerId: { in: [...ids] } },
+      orderBy: { grantedAt: "desc" },
+      select: { runnerId: true },
+    });
+    return runnerIdSchema.parse(last?.runnerId ?? ids[0]);
+  };
+  if (registry !== null) {
+    const kubernetes = await preferLast(online.filter((runner) => runner.executor === "kubernetes" && minorOf(runner) >= PUSH_MINOR).map((runner) => runner.id));
+    if (kubernetes !== null) {
+      return { runnerId: kubernetes, builder: "buildkit", registry };
+    }
+    const pushing = await preferLast(online.filter((runner) => runner.executor === "docker" && minorOf(runner) >= PUSH_MINOR).map((runner) => runner.id));
+    if (pushing !== null) {
+      return { runnerId: pushing, builder: "docker", registry };
+    }
   }
-  const last = await tx.lease.findFirst({
-    where: { organizationId: project.organizationId, projectId: project.projectId, runnerId: { in: ids } },
-    orderBy: { grantedAt: "desc" },
-    select: { runnerId: true },
-  });
-  return runnerIdSchema.parse(last?.runnerId ?? ids[0]);
+  const keeping = await preferLast(online.filter((runner) => runnerSnapshotKind({ executor: runner.executor, minor: minorOf(runner) }) === "image").map((runner) => runner.id));
+  return keeping === null ? null : { runnerId: keeping, builder: "docker", registry: null };
 };
+
+/** The runner a build would go to now (`planSnapshotBuild`'s), or `null`. */
+export const pickSnapshotRunner = async (tx: Tx, project: { readonly organizationId: OrganizationId; readonly projectId: ProjectId }, now: number): Promise<RunnerId | null> =>
+  (await planSnapshotBuild(tx, project, now))?.runnerId ?? null;
 
 /** Moves a snapshot by its lifecycle; a refused move is a bug in the caller, which checked the state. */
 const moved = (row: Pick<Snapshot, "state" | "failedReason">, input: SnapshotInput) => {
@@ -304,21 +346,24 @@ const startBuildInTx = async (
   deps: Pick<SnapshotPorts, "outbox" | "notices" | "clock">,
   tx: Tx,
   row: Snapshot,
-  runnerId: RunnerId,
+  plan: SnapshotBuildPlan,
   environment: SnapshotBuildEnvironment,
 ): Promise<void> => {
+  const { runnerId } = plan;
   const snapshotId = snapshotIdSchema.parse(row.id);
   const organizationId = organizationIdSchema.parse(row.organizationId);
   const projectId = projectIdSchema.parse(row.projectId);
+  // Minor 4: where to push, and the builder. The push credential is fetched for this build, never sent here.
+  const push = plan.registry === null ? null : { ref: registryImageRef({ url: registryHostOf(plan.registry.url), repositoryPrefix: plan.registry.repositoryPrefix }, projectId, snapshotId) };
   await deps.outbox.enqueueInTx(tx, organizationId, runnerId, {
     kind: "snapshot-build",
-    body: { snapshotId, projectId, environment },
+    body: { snapshotId, projectId, environment, push, builder: plan.builder },
     notAfter: deps.clock.now() + SNAPSHOT_BUILD_NOT_AFTER_MS,
     task: null,
   });
   await tx.snapshot.update({
     where: { id: row.id },
-    data: { ...moved(row, { type: "build_started" }), runnerId, buildInputsHash: environment.inputsHash },
+    data: { ...moved(row, { type: "build_started" }), runnerId, buildInputsHash: environment.inputsHash, builder: plan.builder, registryId: plan.registry?.id ?? null },
   });
   await environmentNotice(deps, tx, row);
 };
@@ -365,11 +410,11 @@ export const scheduleSnapshot = (async (deps: SnapshotPorts, input) => {
       if (row.state !== "queued") {
         return { ok: true, snapshotId } as const;
       }
-      const runnerId = await pickSnapshotRunner(tx, scope, now);
-      if (runnerId === null) {
+      const plan = await planSnapshotBuild(tx, scope, now);
+      if (plan === null) {
         return { ok: false, error: "no-docker-runner", message: "no docker runner of the project's pools is online; the build waits for one" } as const;
       }
-      await startBuildInTx(deps, tx, row, runnerId, inputs.environment);
+      await startBuildInTx(deps, tx, row, plan, inputs.environment);
       return { ok: true, snapshotId } as const;
     },
     { timeout: 30_000 },
@@ -405,12 +450,19 @@ export const recordSnapshotResult = (async (deps: Pick<SnapshotPorts, "db" | "no
         await tx.snapshot.updateMany({ where: { ...scope, state: "ready", id: { not: row.id } }, data: { state: "replaced" } });
       }
       const ready = moved(row, { type: "build_finished" });
+      // A pushed build is named as the registry holds it, with when it got there; a kept one as its runner's Docker names it.
+      const registry = row.registryId === null ? null : await tx.registry.findUnique({ where: { id: row.registryId }, select: { url: true, repositoryPrefix: true } });
+      const projectId = projectIdSchema.parse(row.projectId);
       await tx.snapshot.update({
         where: { id: row.id },
         data: {
           ...(newer === null ? ready : moved({ ...row, ...ready }, { type: "newer_ready" })),
           runnerId: runnerIdSchema.parse(input.runnerId),
-          imageRef: snapshotImageRef(projectIdSchema.parse(row.projectId), snapshotId),
+          imageRef:
+            registry === null
+              ? snapshotImageRef(projectId, snapshotId)
+              : registryImageRef({ url: registryHostOf(registry.url), repositoryPrefix: registry.repositoryPrefix }, projectId, snapshotId),
+          pushedAt: registry === null ? null : now,
           digest: input.imageDigest,
           buildDurationMs: input.durationMs,
           // The runner reports `built` only after the image passed the scan for every setup secret.

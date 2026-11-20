@@ -20,6 +20,7 @@ import type {
   ProjectId,
   ProposalId,
   ProviderId,
+  RegistryId,
   RepoId,
   ResetLinkGrantId,
   RunnerId,
@@ -100,7 +101,9 @@ export type EntityId =
   | RepoId
   | TaskRepoId
   // An account, for what happens to it at the install's level (a reset link, the instance admin role).
-  | UserId;
+  | UserId
+  // Milestone 5 (F-120): the organization's snapshot registry, in its audit entries.
+  | RegistryId;
 
 /** A change to tell the panel's live views about: IDs only (ADR 0035). */
 export type ChangeNoticeInput = {
