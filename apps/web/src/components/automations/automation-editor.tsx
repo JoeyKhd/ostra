@@ -33,7 +33,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 import { useFilterNames } from "./automation-data";
 import { applyPreset, draftOf, emptyCondition, filterOf, newDraft, poolLabelOk, presetOf, sameDraft, settingsOf } from "./automation-draft";
 import type { Condition, ConditionField, Draft, Preset } from "./automation-draft";
-import { bulkReasonText, categoryWord, clockText, dryCountText, dryOutcomeText, occurrenceText } from "./automation-words";
+import { bulkReasonText, categoryWord, clockText, dryCountText, dryOutcomeText, labelsNoRunnerCarries, occurrenceText } from "./automation-words";
 import type { Automation } from "./automation-words";
 
 // The rule and schedule editor (automation-edit.md, F-011, F-106, F-107): a name and a trigger, a
@@ -199,8 +199,9 @@ const EditorForm = ({
   }, [dirty]);
 
   const profiles = useQuery(trpc.agentProfiles.forStart.queryOptions({ projectId, kind: draft.taskKind }));
+  // The labels the project's pool runners carry (the page's own list query): a draft's label none carries is named.
+  const runnerLabels = useQuery(trpc.automations.list.queryOptions({ projectId })).data?.runnerLabels;
   const { names, filters, boards } = useFilterNames(projectId);
-  const knownLabels = useMemo(() => new Set(automation?.poolLabels ?? []), [automation]);
 
   const cronInput = useDebounced({ cron: draft.cron.trim(), timeZone: draft.timeZone }, 250);
   const preview = useQuery({ ...trpc.automations.previewSchedule.queryOptions(cronInput), enabled: schedule && cronInput.cron !== "" });
@@ -517,7 +518,7 @@ const EditorForm = ({
               />
             </div>
           </div>
-          {(automation?.labelsNoRunnerHas ?? []).filter((label) => draft.poolLabels.includes(label) && knownLabels.has(label)).map((label) => (
+          {labelsNoRunnerCarries(draft.poolLabels, runnerLabels).map((label) => (
             <p key={label} className="mt-1.5 text-[12.5px] text-muted">{t("automations.editor.labelWaits", { label })}</p>
           ))}
           <label className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-ui">

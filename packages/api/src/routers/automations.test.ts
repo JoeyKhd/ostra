@@ -172,6 +172,9 @@ describe("automations: who may do what (F-011, F-106)", () => {
       data: { organizationId: a.organization.id, kind: "pool", poolId: pool.id, name: "gpu-1", publicKey: `k${randomBytes(21).toString("hex")}`, executor: "docker", capacity: 1, labels: ["executor:docker", "tier:gpu"], version: "0.0.0", state: "online" },
     });
     expect((await asAdmin.automations.get({ automationId: taken.id })).labelsNoRunnerHas).toEqual(["zone:eu"]);
+    // The list names every label the project's pool runners carry, for the editor's check of a draft.
+    expect((await asAdmin.automations.list({ projectId })).runnerLabels).toEqual(expect.arrayContaining(["executor:docker", "tier:gpu"]));
+    expect((await asAdmin.automations.list({ projectId })).runnerLabels).not.toContain("zone:eu");
     // A runner of another organization's or another project's pool doesn't count.
     expect((await asAdmin.automations.list({ projectId: a.restrictedProject.id })).automations.every((row) => row.labelsNoRunnerHas.length === row.poolLabels.length)).toBe(true);
   });

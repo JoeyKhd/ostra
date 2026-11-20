@@ -2,7 +2,7 @@ import { boardIdSchema, bulkStartIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import { applyPreset, conditionsOf, filterOf, newDraft, presetOf, sameDraft, settingsOf } from "./automation-draft";
-import { bulkReasonText, filterWords, noNames, occurrenceText } from "./automation-words";
+import { bulkReasonText, filterWords, labelsNoRunnerCarries, noNames, occurrenceText } from "./automation-words";
 import type { FilterNames, HistoryRun } from "./automation-words";
 import { bandsOf, shownRuns } from "./history-bands";
 
@@ -98,6 +98,14 @@ const run = (over: Partial<HistoryRun>): HistoryRun => ({
   task: null,
   bulkStartId: null,
   ...over,
+});
+
+describe("the editor's pool labels (automation-edit.md)", () => {
+  it("F-011: names each label of the draft no runner of the project's pools carries, a new one too, and none before the runners are known", () => {
+    expect(labelsNoRunnerCarries(["tier:gpu", "zone:eu"], ["executor:docker", "tier:gpu"])).toEqual(["zone:eu"]);
+    expect(labelsNoRunnerCarries(["tier:gpu"], ["executor:docker", "tier:gpu"])).toEqual([]);
+    expect(labelsNoRunnerCarries(["zone:eu"], undefined)).toEqual([]);
+  });
 });
 
 describe("the history's bands (automation-history.md)", () => {

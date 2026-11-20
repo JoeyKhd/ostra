@@ -431,6 +431,8 @@ export const automationsRouter = router({
         automations: z.array(automationSchema),
         /** The install's limits the screens name (`OSTRA_INTAKE_STARTS_PER_HOUR`, and the others). */
         limits: z.object({ startsPerHour: z.number().int(), bulkStartMax: z.number().int(), missedHours: z.number().int(), minIntervalMinutes: z.number().int() }),
+        /** Every label a runner of the project's pools carries, so the editor names one a draft's tasks would wait for. */
+        runnerLabels: z.array(z.string()),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -442,6 +444,7 @@ export const automationsRouter = router({
         canEdit: ctx.project.role === "admin",
         automations: await viewOf(ctx.deps.db, organizationId, rows, runners, ctx.deps.ports.clock.now()),
         limits: { startsPerHour: team.intakeStartsPerHour, bulkStartMax: team.bulkStartMax, missedHours: team.scheduleMissedHours, minIntervalMinutes: team.scheduleMinIntervalMinutes },
+        runnerLabels: [...new Set(runners.flat())].sort(),
       };
     }),
 

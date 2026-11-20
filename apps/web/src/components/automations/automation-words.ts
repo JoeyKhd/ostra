@@ -265,3 +265,11 @@ export const bulkReasonText = (reason: string | null): string => {
       return t("bulk.reason.other", { code: reason ?? "" });
   }
 };
+
+/**
+ * The draft's pool labels no runner of the project's pools carries (automation-edit.md): its tasks
+ * would wait for one. Checked as the member types, against what the list says the runners carry;
+ * nothing while that isn't known yet.
+ */
+export const labelsNoRunnerCarries = (draft: readonly string[], runnerLabels: readonly string[] | undefined): readonly string[] =>
+  runnerLabels === undefined ? [] : draft.filter((label) => !runnerLabels.includes(label));
