@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "labels": {
+      "app.kubernetes.io/part-of": "ostra",
+      "ostra.dev/role": "box",
+      "ostra.dev/box": "01a1f8e5-e640-74be-ba98-5c6d6b260495",
+      "ostra.dev/task": "01a1f8e5-cb3e-72ca-8e2a-483a7051b306",
+      "ostra.dev/organization": "480056d1-8c79-439b-8f04-3b378764885f"
+    }
+  },
+  "spec": {
+    "automountServiceAccountToken": false,
+    "containers": [
+      {
+        "name": "agent",
+        "resources": {
+          "limits": {
+            "cpu": "2000m",
+            "memory": "4096Mi"
+          },
+          "requests": {
+            "cpu": "2000m",
+            "memory": "4096Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "task",
+            "mountPath": "/task"
+          },
+          {
+            "name": "tmp-agent",
+            "mountPath": "/tmp"
+          }
+        ],
+        "env": [
+          {
+            "name": "OSTRA_BOX_ID",
+            "value": "01a1f8e5-e640-74be-ba98-5c6d6b260495"
+          },
+          {
+            "name": "OSTRA_BRIDGE_NONCE",
+            "valueFrom": {
+              "secretKeyRef": {
+                "key": "bridge-nonce",
+                "name": "ostra-box-01a1f8e5-e640-74be-ba98-5c6d6b260495"
+              }
+            }
+          },
+          {
+            "name": "OSTRA_BRIDGE_ADDR",
+            "value": "127.0.0.1:7101"
+          },
+          {
+            "name": "OSTRA_AGENT_UID",
+            "value": "1000"
+          },
+          {
+            "name": "OSTRA_AGENT_GID",
+            "value": "1000"
+          }
+        ],
+        "command": [
+          "node",
+          "/opt/ostra/init/main.ts"
+        ],
+        "image": "ostra/base:0.0.0",
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "add": [
+              "SETUID",
+              "SETGID",
+              "KILL"
+            ],
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": true,
+          "runAsNonRoot": false,
+          "runAsUser": 0
+        },
+        "workingDir": "/task"
+      }
+    ],
+    "initContainers": [
+      {
+        "name": "sidecar",
+        "restartPolicy": "Always",
+        "resources": {
+          "limits": {
+            "cpu": "1000m",
+            "memory": "256Mi"
+          },
+          "requests": {
+            "cpu": "1000m",
+            "memory": "256Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "task",
+            "mountPath": "/task"
+          },
+          {
+            "name": "sidecar-data",
+            "mountPath": "/var/lib/ostra-sidecar"
+          },
+          {
+            "name": "tmp-sidecar",
+            "mountPath": "/tmp"
+          },
+          {
+            "name": "token",
+            "mountPath": "/run/ostra",
+            "readOnly": true
+          }
+        ],
+        "env": [
+          {
+            "name": "OSTRA_SERVER_URL",
+            "value": "http://127.0.0.1:9530"
+          },
+          {
+            "name": "OSTRA_SIDECAR_TOKEN_FILE",
+            "value": "/run/ostra/token"
+          },
+          {
+            "name": "OSTRA_TASK_ID",
+            "value": "01a1f8e5-cb3e-72ca-8e2a-483a7051b306"
+          },
+          {
+            "name": "OSTRA_SESSION_ID",
+            "value": "01a1f8e5-cb44-7418-9ba8-51a4803c2005"
+          },
+          {
+            "name": "OSTRA_BOX_ID",
+            "value": "01a1f8e5-e640-74be-ba98-5c6d6b260495"
+          },
+          {
+            "name": "OSTRA_LEASE_EPOCH",
+            "value": "1"
+          },
+          {
+            "name": "OSTRA_BRIDGE_NONCE",
+            "valueFrom": {
+              "secretKeyRef": {
+                "key": "bridge-nonce",
+                "name": "ostra-box-01a1f8e5-e640-74be-ba98-5c6d6b260495"
+              }
+            }
+          },
+          {
+            "name": "OSTRA_BRIDGE_PORT",
+            "value": "7101"
+          },
+          {
+            "name": "OSTRA_SIDECAR_HOST",
+            "value": "127.0.0.1"
+          },
+          {
+            "name": "OSTRA_TASK_ROOT",
+            "value": "/task"
+          },
+          {
+            "name": "OSTRA_SIDECAR_DATA_DIR",
+            "value": "/var/lib/ostra-sidecar"
+          }
+        ],
+        "command": [
+          "ostra",
+          "sidecar"
+        ],
+        "image": "ostra/runner:0.0.0",
+        "readinessProbe": {
+          "failureThreshold": 60,
+          "periodSeconds": 2,
+          "tcpSocket": {
+            "host": "127.0.0.1",
+            "port": 7101
+          }
+        },
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": true,
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000
+        },
+        "workingDir": "/task"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "task",
+        "emptyDir": {}
+      },
+      {
+        "name": "sidecar-data",
+        "emptyDir": {
+          "medium": "Memory",
+          "sizeLimit": "1280Mi"
+        }
+      },
+      {
+        "name": "tmp-agent",
+        "emptyDir": {
+          "medium": "Memory"
+        }
+      },
+      {
+        "name": "tmp-sidecar",
+        "emptyDir": {
+          "medium": "Memory"
+        }
+      },
+      {
+        "name": "token",
+        "secret": {
+          "secretName": "ostra-box-01a1f8e5-e640-74be-ba98-5c6d6b260495",
+          "defaultMode": 256,
+          "items": [
+            {
+              "key": "token",
+              "mode": 256,
+              "path": "token"
+            }
+          ]
+        }
+      }
+    ],
+    "enableServiceLinks": false,
+    "hostIPC": false,
+    "hostNetwork": false,
+    "hostPID": false,
+    "restartPolicy": "Never",
+    "securityContext": {
+      "fsGroup": 1000,
+      "seccompProfile": {
+        "type": "RuntimeDefault"
+      }
+    },
+    "shareProcessNamespace": false,
+    "terminationGracePeriodSeconds": 10
+  }
+}

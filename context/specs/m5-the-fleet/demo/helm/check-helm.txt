@@ -1,0 +1,21 @@
+schema check: values.schema.json, values.yaml, 2 charts' examples, the configuration reference: pass
+helm v4.3.2+g8346aaa
+pass helm lint --strict ostra-server -f existing-secrets.yaml
+pass helm template ostra-server -f existing-secrets.yaml: the rendered checks
+pass helm template ostra-server -f existing-secrets.yaml --kube-version 1.28.0 is refused: native sidecars need 1.29
+pass helm lint --strict ostra-server -f ingress.yaml
+pass helm template ostra-server -f ingress.yaml: the rendered checks
+pass helm template ostra-server -f ingress.yaml --kube-version 1.28.0 is refused: native sidecars need 1.29
+pass helm lint --strict ostra-server -f required-values.yaml
+pass helm template ostra-server -f required-values.yaml: the rendered checks
+pass helm template ostra-server -f required-values.yaml --kube-version 1.28.0 is refused: native sidecars need 1.29
+pass helm lint --strict ostra-runner -f existing-namespaces.yaml
+pass helm template ostra-runner -f existing-namespaces.yaml: the rendered checks
+pass helm template ostra-runner -f existing-namespaces.yaml --kube-version 1.28.0 is refused: native sidecars need 1.29
+pass helm lint --strict ostra-runner -f external-server.yaml
+pass helm template ostra-runner -f external-server.yaml: the rendered checks
+pass helm template ostra-runner -f external-server.yaml --kube-version 1.28.0 is refused: native sidecars need 1.29
+pass helm lint --strict ostra-runner -f required-values.yaml
+pass helm template ostra-runner -f required-values.yaml: the rendered checks
+pass helm template ostra-runner -f required-values.yaml --kube-version 1.28.0 is refused: native sidecars need 1.29
+check:helm: pass

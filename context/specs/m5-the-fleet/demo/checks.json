@@ -1,0 +1,457 @@
+{
+  "ok": true,
+  "minutes": 24,
+  "steps": "all",
+  "timings": {
+    "setup": 90,
+    "step1": 3,
+    "step2": 13,
+    "step3": 4,
+    "step4": 4,
+    "step5": 1,
+    "step6": 228,
+    "step7": 388,
+    "step8": 28,
+    "step9": 150,
+    "step10": 57,
+    "step11": 79,
+    "step12": 5,
+    "step13": 312,
+    "step14": 5,
+    "step15": 0
+  },
+  "checks": [
+    {
+      "step": 1,
+      "name": "the token is shown once, with the ways to start a runner",
+      "ok": true,
+      "detail": "the join command reads the token from a variable or a file, never from the line"
+    },
+    {
+      "step": 1,
+      "name": "build-fleet requires approval, holds at most 3 boxes, and its token lasts 30 days",
+      "ok": true,
+      "detail": "requiresApproval true, maxBoxes 3, token lasts 30 days"
+    },
+    {
+      "step": 1,
+      "name": "test1's Runners tab lists build-fleet, then the default pool, with its share of 2",
+      "ok": true,
+      "detail": "1 build-fleet of 3 boxes 0 / 2 Remove → 2 default no cap 0 running Remove; share 2"
+    },
+    {
+      "step": 2,
+      "name": "build-01 is joining",
+      "ok": true,
+      "detail": "state joining"
+    },
+    {
+      "step": 2,
+      "name": "the audit log has runner.joined naming the token",
+      "ok": true,
+      "detail": "runner.joined with the token's ID"
+    },
+    {
+      "step": 2,
+      "name": "Demo has the notice that build-01 wants to join",
+      "ok": true,
+      "detail": "notification 01a1f8d7-3917-71d8-80b8-aa92911fe7fa"
+    },
+    {
+      "step": 2,
+      "name": "Needs you says build-01 wants to join build-fleet",
+      "ok": true,
+      "detail": "build-01"
+    },
+    {
+      "step": 2,
+      "name": "the review shows its host, system, executor, labels, version and token",
+      "ok": true,
+      "detail": "Needs you · runner approval build-01 joining Wants to join build-fleet. It gets no task until an admin approves it. Host build-01 System Windows · x64 Executor host not isolated, same user (development only) Labels tier:fast Version v0.0.0 "
+    },
+    {
+      "step": 2,
+      "name": "a task in test1 isn't offered to the joining runner",
+      "ok": true,
+      "detail": "0 leases while build-01 waits"
+    },
+    {
+      "step": 2,
+      "name": "after Approve, build-01 is online and the audit log has runner.approved",
+      "ok": true,
+      "detail": "online, runner.approved"
+    },
+    {
+      "step": 2,
+      "name": "the task that waited goes to build-01 once it's approved",
+      "ok": true,
+      "detail": "leased to build-01"
+    },
+    {
+      "step": 3,
+      "name": "revoking the first token leaves build-01 connected",
+      "ok": true,
+      "detail": "state online"
+    },
+    {
+      "step": 3,
+      "name": "build-02 joins with the second token and is approved",
+      "ok": true,
+      "detail": "joined with the rotation token"
+    },
+    {
+      "step": 3,
+      "name": "a runner with the revoked token is refused, saying it was revoked",
+      "ok": true,
+      "detail": "exit 1: The pool's join token was refused (revoked): it was revoked. Ask an admin for a new one in the panel, under Runners."
+    },
+    {
+      "step": 3,
+      "name": "a runner with an expired token is refused, saying it expired",
+      "ok": true,
+      "detail": "exit 1: The pool's join token was refused (expired): it has expired. Ask an admin for a new one in the panel, under Runners."
+    },
+    {
+      "step": 3,
+      "name": "neither refused runner appears as a runner",
+      "ok": true,
+      "detail": "0 rows"
+    },
+    {
+      "step": 4,
+      "name": "Runners lists build-fleet as not isolated, same user (development only)",
+      "ok": true,
+      "detail": "build-fleet not isolated, same user host 2 / 2 online 1 / 4 — arch:x64 executor:host +2 1 active 2 v0.0.0"
+    },
+    {
+      "step": 4,
+      "name": "build-fleet's page lists both runners, its join tokens with the revoked one marked, and its empty queue",
+      "ok": true,
+      "detail": "build-01, build-02; revoked token: Join token revoked 20 Nov; queue: # Priority Task Project Waiting Why Cancel Nothing waiting. Tasks wait here when"
+    },
+    {
+      "step": 5,
+      "name": "small is 2 vCPU and 4 GB, and host counts slots only",
+      "ok": true,
+      "detail": "small 2 vCPU · 4 GiB"
+    },
+    {
+      "step": 5,
+      "name": "large is 8 vCPU and 32 GB, and the audit log has it",
+      "ok": true,
+      "detail": "8000 m · 32768 MiB"
+    },
+    {
+      "step": 6,
+      "name": "test1 runs two, its share; test2's task runs on the third slot",
+      "ok": true,
+      "detail": "test1 2 running, test2 1"
+    },
+    {
+      "step": 6,
+      "name": "the queue is the Urgent ticket, then the prompts in order, then the Low ticket",
+      "ok": true,
+      "detail": "Urgent → 3 → 4 → 5 → Low"
+    },
+    {
+      "step": 6,
+      "name": "a queued task's page gives its place and why it waits",
+      "ok": true,
+      "detail": "3rd in build-fleet's queue; 3rd in build-fleet's queue · test1 is at its share of build-fleet: 2 boxes"
+    },
+    {
+      "step": 6,
+      "name": "the Low ticket's task stops as Cancelled by Demo, and the audit log has task.cancelled",
+      "ok": true,
+      "detail": "cancelled; \"Cancelled by demo\""
+    },
+    {
+      "step": 6,
+      "name": "when a box frees, the Urgent ticket starts next",
+      "ok": true,
+      "detail": "0 queued prompts started before it"
+    },
+    {
+      "step": 7,
+      "name": "tasks on Fast run on build-01 only, with build-02 free",
+      "ok": true,
+      "detail": "build-01, build-01"
+    },
+    {
+      "step": 7,
+      "name": "a task on a profile asking for gpu waits with the reason",
+      "ok": true,
+      "detail": "\"1st in build-fleet's queue · No runner in build-fleet or default has the label gpu.\""
+    },
+    {
+      "step": 7,
+      "name": "a task no member started goes to a pool runner",
+      "ok": true,
+      "detail": "build-01 (pool)"
+    },
+    {
+      "step": 8,
+      "name": "Sam's machine: connected, personal, not isolated, contained by a job object, 2 tasks at once",
+      "ok": true,
+      "detail": "sam-laptop: Connected, personal, not isolated, contained by a job object, 2 tasks at once"
+    },
+    {
+      "step": 8,
+      "name": "an organization provider is refused on Sam's machine until it's allowed there",
+      "ok": true,
+      "detail": "tasks.create refused (PRECONDITION_FAILED): The project's model provider isn't allowed on personal runners: an admin turns it on under Models"
+    },
+    {
+      "step": 8,
+      "name": "Sam's New task offers Your machine beside A pool",
+      "ok": true,
+      "detail": "A pool | Your machine sam-laptop online"
+    },
+    {
+      "step": 8,
+      "name": "two of Sam's tasks run on Sam's machine, the third waits",
+      "ok": true,
+      "detail": "2 running"
+    },
+    {
+      "step": 8,
+      "name": "the third says Your machine is busy (2 of 2)",
+      "ok": true,
+      "detail": "sam-laptop is busy (2 of 2)."
+    },
+    {
+      "step": 8,
+      "name": "Demo's tasks never go to Sam's runner",
+      "ok": true,
+      "detail": "0 leases of other members' tasks"
+    },
+    {
+      "step": 9,
+      "name": "the drained runner's task finishes, and nothing new is offered to it",
+      "ok": true,
+      "detail": "the turn ended; the next Fast task waits"
+    },
+    {
+      "step": 9,
+      "name": "the fleet view shows build-01 draining",
+      "ok": true,
+      "detail": "draining build-01 build-fleet host WebSocket 1 / 2 busy v0.0.0"
+    },
+    {
+      "step": 9,
+      "name": "restarted, build-01 reconnects still draining",
+      "ok": true,
+      "detail": "draining"
+    },
+    {
+      "step": 9,
+      "name": "resumed, build-01 is online and takes the next queued task",
+      "ok": true,
+      "detail": "online; the Fast task runs on it"
+    },
+    {
+      "step": 9,
+      "name": "revoking build-02 stops its task as runner_lost at once",
+      "ok": true,
+      "detail": "runner_lost"
+    },
+    {
+      "step": 9,
+      "name": "the task reopens on build-01",
+      "ok": true,
+      "detail": "build-01"
+    },
+    {
+      "step": 9,
+      "name": "build-02 can't connect again",
+      "ok": true,
+      "detail": "first process: 3; started again: exited 3"
+    },
+    {
+      "step": 10,
+      "name": "a runner at protocol 1.4, one minor behind the server's 1.5, works and is marked so",
+      "ok": true,
+      "detail": "fleet: online build-behind build-fleet host WebSocket 0 / 2 busy v0.0.0 behind; its page: Version v0.0.0 outdated server v0.0.0 · protocol 1.4 of 1.5 One minor behind the server: it runs tasks. Update it when y"
+    },
+    {
+      "step": 10,
+      "name": "a runner at protocol 1.3 is refused with the fix",
+      "ok": true,
+      "detail": "This runner (ostra 0.0.0, protocol 1.3) is outside the server's window (protocol 1.4 to 1.6). Install ostra 0.0.0, the server's version, and start the runner again."
+    },
+    {
+      "step": 10,
+      "name": "the refused runner joins nothing",
+      "ok": true,
+      "detail": "no runner row"
+    },
+    {
+      "step": 11,
+      "name": "behind the proxy that refuses WebSockets, build-03 is on HTTP within 30 s",
+      "ok": true,
+      "detail": "on HTTP 0 s after it started"
+    },
+    {
+      "step": 11,
+      "name": "the fleet view shows its carrier as HTTP",
+      "ok": true,
+      "detail": "Carrier\nHTTP\nIt fell back from WebSocket, and tries WebSocket again on its own."
+    },
+    {
+      "step": 11,
+      "name": "a steer reaches its task over HTTP, and every event is stored once",
+      "ok": true,
+      "detail": "4 events, 4 distinct"
+    },
+    {
+      "step": 11,
+      "name": "with WebSockets passed again, build-03 is back on WebSocket within the retry",
+      "ok": true,
+      "detail": "websocket"
+    },
+    {
+      "step": 11,
+      "name": "through the CONNECT proxy, with Basic auth, a runner stays on WebSocket",
+      "ok": true,
+      "detail": "websocket"
+    },
+    {
+      "step": 12,
+      "name": "the runner chart renders with helm template and its objects apply to the fake API",
+      "ok": true,
+      "detail": "Namespace/ostra-builds, Namespace/ostra-boxes, NetworkPolicy/ostra-egress-baseline, NetworkPolicy/ostra-build-egress, ServiceAccount/ostra-runner, Role/ostra-runner, Role/ostra-runner, RoleBinding/ostra-runner, RoleBinding/ostra-runner; not served by the fake: PersistentVolumeClaim, Deployment"
+    },
+    {
+      "step": 12,
+      "name": "a runner with --executor kubernetes joins k8s-fake against the fake API",
+      "ok": true,
+      "detail": "kubernetes, online"
+    },
+    {
+      "step": 12,
+      "name": "the fleet view says k8s-fake's agent has direct internet access",
+      "ok": true,
+      "detail": "k8s-fake direct internet kubernetes 1 / 1 online 0 / 20 — arch:x64 executor:kubernetes +1 1 active 0 v0.0.0"
+    },
+    {
+      "step": 12,
+      "name": "test2's task waits: k8s-fake needs a registry for snapshots",
+      "ok": true,
+      "detail": "1st in k8s-fake's queue · k8s-fake needs a registry for snapshots: an admin sets one under Registry."
+    },
+    {
+      "step": 13,
+      "name": "Check answers: push and pull both allowed for ostra-dev/",
+      "ok": true,
+      "detail": "Push and pull both allowed for ostra-dev/"
+    },
+    {
+      "step": 13,
+      "name": "the dispatch is accepted at once while the pod waits for a node",
+      "ok": true,
+      "detail": "accepted 0 s after the grant"
+    },
+    {
+      "step": 13,
+      "name": "the task page says Waiting for a node",
+      "ok": true,
+      "detail": "Waiting for a node · 0s"
+    },
+    {
+      "step": 13,
+      "name": "the fake API has the box's pod: the agent, the sidecar as a native sidecar, small's limits, no service account token, the task token mounted only into the sidecar",
+      "ok": true,
+      "detail": "sidecars sidecar; agent limits {\"cpu\":\"2000m\",\"memory\":\"4096Mi\"}; secret mounts in sidecar; pull secrets 0"
+    },
+    {
+      "step": 13,
+      "name": "a snapshot build for k8s-fake runs as a BuildKit pod in ostra-builds, under its own egress policy",
+      "ok": true,
+      "detail": "ostra-builds/ostra-build-01a1f8d7-1d2e-760d-abb8-c5b75765f661"
+    },
+    {
+      "step": 13,
+      "name": "once the box is released its pod and its secrets are deleted",
+      "ok": true,
+      "detail": "pods gone: true; secrets left: 0"
+    },
+    {
+      "step": 14,
+      "name": "pnpm check:images passes",
+      "ok": true,
+      "detail": "check:images: the three images and the compose file pass"
+    },
+    {
+      "step": 14,
+      "name": "pnpm check:helm lints and renders both charts",
+      "ok": true,
+      "detail": "check:helm: pass"
+    },
+    {
+      "step": 14,
+      "name": "the docker rules and the chart's NetworkPolicy match the baseline's list (F-116's tests)",
+      "ok": true,
+      "detail": " Test Files  3 passed | 4 skipped (7)       Tests  5 passed | 56 skipped (61)"
+    },
+    {
+      "step": 15,
+      "name": "the load test's ramp on this machine is recorded (ticket 34, load-windows.md)",
+      "ok": true,
+      "detail": "held 250 tasks; 500 failed on dispatch time and steer p99; not run again in this demo"
+    },
+    {
+      "step": 0,
+      "name": "after the run: no credential reached the event log or a log line",
+      "ok": true,
+      "detail": "searched the event log and 15 logs for 36 values and the GitHub token pattern"
+    },
+    {
+      "step": 0,
+      "name": "after the run: no runner's folder or worktree holds a join token, a registry credential or a key",
+      "ok": true,
+      "detail": "2395 files searched"
+    },
+    {
+      "step": 0,
+      "name": "after the run: isolation: milestone 4's generated test with the new models",
+      "ok": true,
+      "detail": "Test Files  1 passed (1); Tests  13 passed (13)"
+    },
+    {
+      "step": 0,
+      "name": "after the run: join tokens, the share and the queue, choosing, drain and versions on the real gateway",
+      "ok": true,
+      "detail": "Test Files  5 passed (5); Tests  39 passed (39)"
+    },
+    {
+      "step": 0,
+      "name": "after the run: the compatibility matrix over recorded fixtures",
+      "ok": true,
+      "detail": "Test Files  1 passed (1); Tests  5 passed (5)"
+    },
+    {
+      "step": 0,
+      "name": "after the run: the fake cluster's objects: everything released, nothing outside the runner's namespaces",
+      "ok": true,
+      "detail": "Test Files  1 passed (1); Tests  24 passed | 2 skipped (26)"
+    }
+  ],
+  "notes": [
+    {
+      "step": 10,
+      "text": "a refused runner shows as outdated only when it has a row, a runner that joined before the server moved on; one two minors behind stops before it signs in. The panel's outdated line is proved by apps/web/e2e/15-runner.spec.ts and core's refusal on both carriers by apps/core/src/gateway/version-matrix.test.ts (ticket 16)."
+    },
+    {
+      "step": 10,
+      "text": "the pin (the CLI at N+1 installing N from the npm registry) is ticket 19's tests' (apps/runner/src/pin.test.ts): the dev npm registry serves stand-ins, not runners."
+    },
+    {
+      "step": 13,
+      "text": "the agent's container doesn't run in dev:fake-kube's process mode on this machine: its command is the base image's init (node /opt/ostra/init/main.ts), which the dev tool maps to nothing here, so the pod ends and the box fails as it starts. The agent in a pod is ticket 35's kind job's."
+    },
+    {
+      "step": 13,
+      "text": "the build's result isn't recorded here: the pod's ostra steps run (ostra internal build-step, routed by the CLI since this ticket), but its BuildKit container has no stand-in in the fake's process mode, so the build ends there and no image is pushed. The real build, scan and push are ticket 35's kind job's."
+    }
+  ]
+}

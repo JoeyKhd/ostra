@@ -17,11 +17,13 @@ Spec: `../spec.md`, section 3
 
 ## Done when
 
-- [ ] `pnpm e2e:m5` passes on this machine twice in a row from an empty data folder.
-- [ ] Every step of section 3 happened in the manual run, recorded in `demo.md`.
-- [ ] Every check after the run passes.
-- [ ] `pnpm check:proof` passes with every `done` row of section 2 proved, and no row set `done` on a condition that only a machine this one isn't could show without that machine's log.
-- [ ] All the checks for the whole repo pass.
-- [ ] Committed as `✅ add the milestone 5 end-to-end demo`, and the record and ledger as `📝 set milestone 5's ledger statuses`.
+- [ ] `pnpm e2e:m5` passes on this machine twice in a row from an empty data folder. *(Passed once, 69 of 69, which the maintainer asked for on 2026-11-20; a second run in a row is still owed.)*
+- [x] Every step of section 3 happened in the manual run, recorded in `demo.md`. *(The run was Playwright through the panel, per the maintainer; step 15 is ticket 34's ramp on this machine, not run again.)*
+- [x] Every check after the run passes.
+- [x] `pnpm check:proof` passes with every `done` row of section 2 proved, and no row set `done` on a condition that only a machine this one isn't could show without that machine's log.
+- [x] All the checks for the whole repo pass.
+- [x] Committed as `✅ add the milestone 5 end-to-end demo`, and the record and ledger as `📝 set milestone 5's ledger statuses`.
 
 ## Comments
+
+- 2026-11-20: the demo script is `530f71f3` (`✅ add the milestone 5 end-to-end demo`), and the record, ledger and README are `📝 set milestone 5's ledger statuses`. `pnpm e2e:m5` passed once from an empty data folder, 69 of 69 checks in 24 minutes (`demo.md`), after twelve runs that found the bugs fixed in `368d2f17`, `0020b04d`, `5ae20329`, `29bcc561`, `b893bca7`, `edcbba5d` and `9415a29a`, and Q294. Set `done`: F-091, F-092, F-013, F-067, F-069, F-061. Left `building` with dated notes: F-014, F-015, F-120, F-095, F-116 and F-118 (each waits on ticket 35's Linux or macOS job, which hasn't run: this machine has no `gh`), F-093, F-039 and F-117. Departures: the run was Playwright through the panel, not by hand; Sam's runner ran from the clone while every pool runner ran from the npm tarball; step 15 cites ticket 34's ramp instead of running it again; the 1.4 and 1.3 runners stand for section 3's minors 3 and 2, since milestone 4 moved the server to 1.5; and the milestone tags don't exist, so they were built by `--ref`. Still owed for this ticket: a second run in a row, and links to ticket 35's job runs once the maintainer dispatches them. Whole-repo typecheck, lint (72 tasks) and test (65 tasks) through turbo, `check:licenses` and `check:proof` passed.

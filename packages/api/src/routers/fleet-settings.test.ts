@@ -142,7 +142,7 @@ describe("box sizes (F-095)", () => {
 });
 
 describe("a project's pools (F-086)", () => {
-  it("F-086: the project's pools are in the list's order with their shares, its admins set them, and the pools' admission looks again", async () => {
+  it("F-086, F-091: the project's pools are in the list's order with their shares, its admins set them, and the pools' admission looks again", async () => {
     const { projectId } = await seedProject(harness, world, unique("pooled"));
     const first = await seedPool("first");
     const second = await seedPool("second");
