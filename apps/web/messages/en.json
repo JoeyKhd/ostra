@@ -1543,7 +1543,24 @@
       "approved": "Approved",
       "denied": "Denied"
     },
-    "runnerClient": "ostra runner"
+    "runnerClient": "ostra runner",
+    "cli": {
+      "title": "Sign in the ostra CLI",
+      "eyebrow": "ostra login · device sign-in",
+      "crumb": "Account",
+      "doesSignIn": "Sign in the ostra CLI on {machine}.",
+      "doesActsAsYou": "It acts as you, and reads only the branches of the tasks you can open.",
+      "doesRevoke": "It shows in Account, under CLI sessions, where you can revoke it.",
+      "command": "ostra login",
+      "approve": "Approve sign-in",
+      "approved": "Approved. The CLI finishes signing in on its own.",
+      "denied": "Denied. The CLI can't sign in with that code.",
+      "openAccount": "Open Account",
+      "backToAccount": "Back to Account",
+      "client": "ostra CLI",
+      "machineName": "Name",
+      "unnamed": "unnamed machine"
+    }
   },
   "task": {
     "agent": "Agent",

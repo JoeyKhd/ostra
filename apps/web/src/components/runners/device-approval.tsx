@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRightIcon, CircleAlertIcon, CircleCheckIcon, CircleXIcon, ServerIcon, ShieldOffIcon, UserIcon } from "lucide-react";
+import { ArrowRightIcon, CircleAlertIcon, CircleCheckIcon, CircleXIcon, KeyRoundIcon, ServerIcon, ShieldOffIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -34,14 +34,19 @@ type Step =
 
 const RUNNER_CLIENT_ID = "ostra-runner";
 
+/**
+ * What the code signs in (F-103, spec section 12's `m1/device`): a personal runner (`ostra runner`)
+ * or a member's CLI session (`ostra login`) on the named machine. The page's words follow it.
+ */
+type Purpose = { readonly kind: "runner" } | { readonly kind: "cli"; readonly machine: string };
+
 const field = (data: unknown, name: string): string | null => {
   const value: unknown = typeof data === "object" && data !== null ? Reflect.get(data, name) : undefined;
   return typeof value === "string" && value !== "" ? value : null;
 };
 
-/** Text with `ostra runner` set in Plex Mono, wherever the message puts it. */
-const withCommand = (text: string): ReactNode => {
-  const command = t("device.command");
+/** Text with the command (`ostra runner`, or `ostra login`) set in Plex Mono, wherever the message puts it. */
+const withCommand = (text: string, command: string = t("device.command")): ReactNode => {
   const [before = "", ...rest] = text.split(command);
   if (rest.length === 0) return text;
   return (
@@ -72,37 +77,61 @@ const CodeBox = ({ code }: { readonly code: string }) => (
   </div>
 );
 
-const Does = ({ organization }: { readonly organization: string }) => (
+const Does = ({ organization, purpose }: { readonly organization: string; readonly purpose: Purpose }) => (
   <Section title={t("device.does")}>
-    <ul className="rows [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted">
-      <li className="flex min-h-[38px] items-center gap-3 py-2">
-        <ServerIcon aria-hidden />
-        {t("device.doesPersonal", { organization })}
-      </li>
-      <li className="flex min-h-[38px] items-center gap-3 py-2">
-        <UserIcon aria-hidden />
-        {t("device.doesOwnTasks")}
-      </li>
-      <li className="flex min-h-[38px] items-center gap-3 py-2">
-        <ShieldOffIcon aria-hidden />
-        {t("device.notIsolated")}
-      </li>
+    <ul className="rows [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted" data-purpose={purpose.kind}>
+      {purpose.kind === "cli" ? (
+        <>
+          <li className="flex min-h-[38px] items-center gap-3 py-2">
+            <SquareTerminalIcon aria-hidden />
+            {t("device.cli.doesSignIn", { machine: purpose.machine })}
+          </li>
+          <li className="flex min-h-[38px] items-center gap-3 py-2">
+            <UserIcon aria-hidden />
+            {t("device.cli.doesActsAsYou")}
+          </li>
+          <li className="flex min-h-[38px] items-center gap-3 py-2">
+            <KeyRoundIcon aria-hidden />
+            {t("device.cli.doesRevoke")}
+          </li>
+        </>
+      ) : (
+        <>
+          <li className="flex min-h-[38px] items-center gap-3 py-2">
+            <ServerIcon aria-hidden />
+            {t("device.doesPersonal", { organization })}
+          </li>
+          <li className="flex min-h-[38px] items-center gap-3 py-2">
+            <UserIcon aria-hidden />
+            {t("device.doesOwnTasks")}
+          </li>
+          <li className="flex min-h-[38px] items-center gap-3 py-2">
+            <ShieldOffIcon aria-hidden />
+            {t("device.notIsolated")}
+          </li>
+        </>
+      )}
     </ul>
   </Section>
 );
 
-const Outcome = ({ approved }: { readonly approved: boolean }) => (
-  <div className="mt-6" role="status">
-    <p className="flex items-center gap-2.5">
-      {approved ? <CircleCheckIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-green" /> : <CircleXIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />}
-      <span>{approved ? t("device.approved") : t("device.denied")}</span>
-    </p>
-    <Link href="/organization/runners" className={cn(buttonVariants({ variant: "link" }), "mt-2.5 ml-[25px] text-sm")}>
-      {approved ? t("device.openRunners") : t("device.backToRunners")}
-      {approved ? <ArrowRightIcon aria-hidden className="size-3" /> : null}
-    </Link>
-  </div>
-);
+const Outcome = ({ approved, purpose }: { readonly approved: boolean; readonly purpose: Purpose }) => {
+  const cli = purpose.kind === "cli";
+  const said = cli ? (approved ? t("device.cli.approved") : t("device.cli.denied")) : approved ? t("device.approved") : t("device.denied");
+  const next = cli ? (approved ? t("device.cli.openAccount") : t("device.cli.backToAccount")) : approved ? t("device.openRunners") : t("device.backToRunners");
+  return (
+    <div className="mt-6" role="status">
+      <p className="flex items-center gap-2.5">
+        {approved ? <CircleCheckIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-green" /> : <CircleXIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />}
+        <span>{said}</span>
+      </p>
+      <Link href={cli ? "/account" : "/organization/runners"} className={cn(buttonVariants({ variant: "link" }), "mt-2.5 ml-[25px] text-sm")}>
+        {next}
+        {approved ? <ArrowRightIcon aria-hidden className="size-3" /> : null}
+      </Link>
+    </div>
+  );
+};
 
 /**
  * The device approval page (`/device`, F-014, ADR 0029, device.md): the member enters or confirms
@@ -167,6 +196,11 @@ export const DeviceApproval = () => {
 
   const request = step.kind === "confirm" || step.kind === "approved" || step.kind === "denied" ? step.request : null;
   const showCode = step.kind === "checking" && step.fromLink ? step.code : request?.code ?? null;
+  // The verify step above claimed the code for this member, so the server tells its purpose now.
+  const asked = useQuery({ ...trpc.account.deviceRequest.queryOptions({ userCode: request?.code ?? "----" }), enabled: request !== null, staleTime: Number.POSITIVE_INFINITY });
+  const purpose: Purpose | null =
+    request === null || asked.isPending ? null : asked.data?.purpose === "cli" ? { kind: "cli", machine: asked.data.machineName ?? t("device.cli.unnamed") } : { kind: "runner" };
+  const cli = purpose?.kind === "cli";
 
   const status =
     step.kind === "approved" ? (
@@ -183,7 +217,7 @@ export const DeviceApproval = () => {
         <>
           <PropGroup title={t("device.props.request")}>
             <PropRow label={t("device.props.status")}>{status}</PropRow>
-            <PropRow label={t("device.props.client")}>{request.clientId === RUNNER_CLIENT_ID || request.clientId === null ? t("device.runnerClient") : request.clientId}</PropRow>
+            <PropRow label={t("device.props.client")}>{cli ? t("device.cli.client") : request.clientId === RUNNER_CLIENT_ID || request.clientId === null ? t("device.runnerClient") : request.clientId}</PropRow>
             {request.scope === null ? null : (
               <PropRow label={t("device.props.scope")}>
                 <span className="font-mono">{request.scope}</span>
@@ -191,9 +225,15 @@ export const DeviceApproval = () => {
             )}
           </PropGroup>
           <PropGroup title={t("device.props.machine")}>
-            <PropRow label={t("device.props.executor")}>
-              <span className="font-mono">host</span>
-            </PropRow>
+            {purpose?.kind === "cli" ? (
+              <PropRow label={t("device.cli.machineName")}>
+                <span className="truncate font-mono">{purpose.machine}</span>
+              </PropRow>
+            ) : (
+              <PropRow label={t("device.props.executor")}>
+                <span className="font-mono">host</span>
+              </PropRow>
+            )}
           </PropGroup>
         </>
       )}
@@ -211,13 +251,17 @@ export const DeviceApproval = () => {
 
   return (
     <PageFrame
-      crumbs={[{ label: organization }, { label: t("shell.runners"), href: "/organization/runners" }, { label: t("device.title") }]}
+      crumbs={
+        cli
+          ? [{ label: organization }, { label: t("device.cli.crumb"), href: "/account" }, { label: t("device.cli.title") }]
+          : [{ label: organization }, { label: t("shell.runners"), href: "/organization/runners" }, { label: t("device.title") }]
+      }
       properties={properties}
     >
       <div className="max-w-[640px]">
         <PageHeading
-          eyebrow={t("device.eyebrow")}
-          title={t("device.title")}
+          eyebrow={cli ? t("device.cli.eyebrow") : t("device.eyebrow")}
+          title={cli ? t("device.cli.title") : t("device.title")}
           lede={withCommand(showCode === null ? t("device.lede") : t("device.ledeConfirm"))}
         />
         {showCode === null ? (
@@ -264,14 +308,14 @@ export const DeviceApproval = () => {
                 {t("device.otherCode")}
               </Button>
             ) : null}
-            {request === null ? (
+            {request === null || purpose === null ? (
               <div className="mt-[26px] space-y-2.5" aria-busy>
                 <Skeleton className="h-3 w-[180px]" />
                 <Skeleton className="h-3 w-[420px] max-w-full" />
               </div>
             ) : (
               <>
-                <Does organization={organization} />
+                <Does organization={organization} purpose={purpose} />
                 {step.kind === "confirm" ? (
                   <NeedsYou
                     className="mt-6 pl-4"
@@ -282,16 +326,18 @@ export const DeviceApproval = () => {
                           {step.deciding === "deny" ? t("device.denying") : t("device.deny")}
                         </Button>
                         <Button variant="amber" disabled={step.deciding !== null} onClick={() => void decide(step.request, true)}>
-                          {step.deciding === "approve" ? t("device.approving") : t("device.approve")}
+                          {step.deciding === "approve" ? t("device.approving") : cli ? t("device.cli.approve") : t("device.approve")}
                         </Button>
                       </>
                     }
                     {...(step.failed ? { footer: <Problem>{t("device.failed")}</Problem> } : {})}
                   >
-                    {withCommand(t("device.approveOnly", { command: t("device.command") }))}
+                    {cli
+                      ? withCommand(t("device.approveOnly", { command: t("device.cli.command") }), t("device.cli.command"))
+                      : withCommand(t("device.approveOnly", { command: t("device.command") }))}
                   </NeedsYou>
                 ) : (
-                  <Outcome approved={step.kind === "approved"} />
+                  <Outcome approved={step.kind === "approved"} purpose={purpose} />
                 )}
               </>
             )}
