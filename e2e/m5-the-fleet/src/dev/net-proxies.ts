@@ -2,14 +2,22 @@
 // loopback until Ctrl-C, for the runner's HTTP fallback (F-013, ticket 18): a CONNECT proxy, a
 // TLS-inspecting proxy whose mode switches while it runs (`pnpm dev:net-proxies mode pass|block|hold`),
 // and nginx's default reverse proxy, emulated. Each reaches core at `127.0.0.1:<OSTRA_CORE_PORT>`,
-// as `ostra-core.test` through the proxies. The proxies' CAs are written to
-// `.ostra-dev/net-proxies/ca.pem`, for the runner's `NODE_EXTRA_CA_CERTS`. Development and test only.
+// as `ostra-core.test` through the proxies. The CONNECT proxy asks for Basic auth, as a corporate one
+// does, and tunnels to a TLS front of core that passes the upgrade, so a runner of
+// `https://ostra-core.test:<port>` reaches core end to end through it; its `HTTPS_PROXY`, with the
+// credentials made at start, is written to `.ostra-dev/net-proxies/connect-proxy-url` and never
+// printed. The proxies' CAs are written to `.ostra-dev/net-proxies/ca.pem`, for the runner's
+// `NODE_EXTRA_CA_CERTS`. Development and test only.
 
+import { randomBytes } from "node:crypto";
 import { request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { connect as connectTcp } from "node:net";
+import type { Socket } from "node:net";
 import path from "node:path";
+import { createServer as createTlsServer } from "node:tls";
 
 import { issueTestCert, makeTestCa, startConnectProxy, startNginxDefaults, startTlsInspectingProxy } from "@ostra/adapter-sdk/testing/net";
 import type { InspectionMode, Target } from "@ostra/adapter-sdk/testing/net";
@@ -40,6 +48,39 @@ const sendMode = async (controlPort: number, mode: InspectionMode): Promise<numb
   }
   say(`TLS-inspecting proxy: mode ${mode}`);
   return 0;
+};
+
+/** core behind TLS, as a load balancer in front of it would be: bytes passed both ways, the upgrade with them. */
+const startTlsFront = async (core: Target, cert: string, key: string): Promise<{ readonly port: number; readonly close: () => Promise<void> }> => {
+  const sockets = new Set<Socket>();
+  const server = createTlsServer({ cert, key }, (client) => {
+    const upstream = connectTcp(core.port, core.host);
+    sockets.add(upstream);
+    client.pipe(upstream).pipe(client);
+    upstream.on("error", () => client.destroy());
+    client.on("error", () => upstream.destroy());
+    upstream.on("close", () => {
+      sockets.delete(upstream);
+      client.destroy();
+    });
+    client.on("close", () => upstream.destroy());
+  });
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      resolve(typeof address === "object" && address !== null ? address.port : 0);
+    });
+  });
+  return {
+    port,
+    close: () =>
+      new Promise<void>((resolve) => {
+        for (const socket of sockets) socket.destroy();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
 };
 
 const readJson = async (incoming: IncomingMessage): Promise<unknown> => {
@@ -88,12 +129,18 @@ const main = async (): Promise<number> => {
   const corpLeaf = await issueTestCert(corpCa, ["ostra-core.test", "localhost", "127.0.0.1"]);
   const nginxCa = await makeTestCa("ostra-dev nginx CA");
   const nginxLeaf = await issueTestCert(nginxCa, ["localhost", "127.0.0.1"]);
+  const frontLeaf = await issueTestCert(nginxCa, ["ostra-core.test"]);
   const dir = path.join(devDataDir(process.env), "net-proxies");
   await mkdir(dir, { recursive: true });
   const caFile = path.join(dir, "ca.pem");
   await writeFile(caFile, `${corpCa.cert}${nginxCa.cert}`);
 
-  const connect = await startConnectProxy(hosts, undefined, { port: at(0) });
+  const front = await startTlsFront(core, frontLeaf.cert, frontLeaf.key);
+  const auth = { user: "ostra-dev", pass: randomBytes(18).toString("base64url") };
+  const connectUrlFile = path.join(dir, "connect-proxy-url");
+  const connect = await startConnectProxy(new Map([["ostra-core.test", { host: "127.0.0.1", port: front.port }]]), auth, { port: at(0) });
+  await writeFile(connectUrlFile, `http://${auth.user}:${auth.pass}@127.0.0.1:${String(connect.port)}\n`, { mode: 0o600 });
+  await chmod(connectUrlFile, 0o600);
   const inspecting = await startTlsInspectingProxy({ hosts, leafCert: corpLeaf.cert, leafKey: corpLeaf.key, upstreamCa: null, mode: "pass", port: at(1) });
   const nginx = await startNginxDefaults({ upstream: () => core, cert: nginxLeaf.cert, key: nginxLeaf.key, upstreamCa: null, port: at(2) });
   const state = (): Readonly<Record<string, unknown>> => ({ connect: connect.port, inspecting: inspecting.port, nginx: nginx.port, mode: inspecting.mode(), core: corePort });
@@ -118,13 +165,13 @@ const main = async (): Promise<number> => {
     });
   });
 
-  say(`CONNECT proxy:          http://127.0.0.1:${String(connect.port)}   (HTTPS_PROXY for a runner of ws://127.0.0.1:${String(corePort)} or of http://ostra-core.test:${String(corePort)})`);
+  say(`CONNECT proxy:          http://127.0.0.1:${String(connect.port)}   (Basic auth: HTTPS_PROXY=$(cat ${connectUrlFile}) for a runner of https://ostra-core.test:${String(corePort)})`);
   say(`TLS-inspecting proxy:   http://127.0.0.1:${String(inspecting.port)}   (mode pass; pnpm dev:net-proxies mode block|hold switches it)`);
   say(`nginx's defaults:       https://127.0.0.1:${String(nginx.port)}  (in front of core, the upgrade stripped)`);
   say(`Their CAs:              NODE_EXTRA_CA_CERTS=${caFile}`);
   say(`Control:                http://127.0.0.1:${String(controlAt)}/healthz`);
-  return serveUntilStopped({ ...state(), control: controlAt, ca: caFile }, async () => {
-    await Promise.all([connect.close(), inspecting.close(), nginx.close()]);
+  return serveUntilStopped({ ...state(), control: controlAt, ca: caFile, connectUrlFile }, async () => {
+    await Promise.all([connect.close(), inspecting.close(), nginx.close(), front.close()]);
     control.closeAllConnections();
     await new Promise<void>((resolve) => {
       control.close(() => {

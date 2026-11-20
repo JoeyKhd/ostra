@@ -4,6 +4,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import os from "node:os";
+import type { Duplex } from "node:stream";
+import tls from "node:tls";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -185,19 +187,46 @@ describe("milestone 5's dev tools (ticket 36)", () => {
       expect(await status(`${control}/healthz`)).toBe(200);
       expect(await readFile(text(proxies.ready["ca"]), "utf8")).toContain("BEGIN CERTIFICATE");
 
-      // The CONNECT proxy reaches core by its test name.
-      const tunnel = await new Promise<number>((resolve) => {
-        const call = http.request({ host: "127.0.0.1", port: Number(proxies.ready["connect"]), method: "CONNECT", path: `ostra-core.test:${String(corePort)}` });
-        call.once("connect", (answer, socket) => {
-          socket.destroy();
-          resolve(answer.statusCode ?? 0);
+      // The CONNECT proxy asks for Basic auth, and with the credentials in its file reaches core,
+      // behind TLS, by its test name, end to end.
+      const proxyUrl = new URL((await readFile(text(proxies.ready["connectUrlFile"]), "utf8")).trim());
+      expect(JSON.stringify(proxies.ready)).not.toContain(proxyUrl.password);
+      const tunnel = (authorization: string | null) =>
+        new Promise<{ readonly status: number; readonly socket: Duplex | null }>((resolve) => {
+          const call = http.request({
+            host: "127.0.0.1",
+            port: Number(proxies.ready["connect"]),
+            method: "CONNECT",
+            path: `ostra-core.test:${String(corePort)}`,
+            ...(authorization === null ? {} : { headers: { "proxy-authorization": authorization } }),
+          });
+          call.once("connect", (answer, socket) => {
+            resolve({ status: answer.statusCode ?? 0, socket });
+          });
+          call.once("error", () => {
+            resolve({ status: 0, socket: null });
+          });
+          call.end();
         });
-        call.once("error", () => {
-          resolve(0);
+      const refused = await tunnel(null);
+      refused.socket?.destroy();
+      expect(refused.status).toBe(407);
+      const basic = `Basic ${Buffer.from(`${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`).toString("base64")}`;
+      const opened = await tunnel(basic);
+      expect(opened.status).toBe(200);
+      const ca = await readFile(text(proxies.ready["ca"]), "utf8");
+      const answer = await new Promise<string>((resolve, reject) => {
+        const secure = tls.connect({ ...(opened.socket === null ? {} : { socket: opened.socket }), servername: "ostra-core.test", ca: [ca] }, () => {
+          secure.write("GET / HTTP/1.1\r\nhost: ostra-core.test\r\nconnection: close\r\n\r\n");
         });
-        call.end();
+        let body = "";
+        secure.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+        secure.on("end", () => {
+          resolve(body);
+        });
+        secure.on("error", reject);
       });
-      expect(tunnel).toBe(200);
+      expect(answer).toContain("core");
 
       const switched = await fetch(`${control}/mode`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "block" }) });
       expect(await switched.json()).toMatchObject({ mode: "block" });
