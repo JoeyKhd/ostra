@@ -39,5 +39,6 @@ export type ButtonProps = ComponentProps<"button"> &
 
 export const Button = ({ className, variant, size, asChild = false, ...props }: ButtonProps) => {
   const Component = asChild ? Slot.Root : "button";
-  return <Component className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+  // `data-slot`: a link drawn as a button is a control too (the touch size in globals.css, F-075).
+  return <Component data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props} />;
 };

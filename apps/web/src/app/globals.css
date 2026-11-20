@@ -205,3 +205,14 @@
     color: var(--muted);
   }
 }
+
+/*
+ * F-075 (ticket 19): on a touch screen every control is at least 44px tall, so a finger can press
+ * it (milestone 3's phone-approval target). Outside any layer, so it holds over a utility's height;
+ * a mouse keeps the dense sizes. A checkbox, a switch or a radio is pressed through its row.
+ */
+@media (pointer: coarse) {
+  :where(button, [data-slot="button"], input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="file"]), select, textarea, [role="tab"], [role="combobox"]):not([role="checkbox"], [role="switch"], [role="radio"]) {
+    min-height: 44px;
+  }
+}

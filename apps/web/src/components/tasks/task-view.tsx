@@ -471,7 +471,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         <div className="shrink-0">
           <div className="font-mono text-sm text-faint">{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</div>
           <h1 className="page-title my-1.5 break-words">{data.title}</h1>
-          <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing">
+          <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing" data-state={data.state}>
             <Status tone={stateTone(data.state)}><span className="font-medium text-text">{noKey === null ? stateText : t("noKey.queued")}</span></Status>
             {activity === "" ? null : <><Sep /><span className="text-muted">{activity}</span></>}
             <Sep />
