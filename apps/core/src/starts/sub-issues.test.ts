@@ -22,7 +22,7 @@ import {
 import type { MemberScope } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { automationIdSchema, connectionIdSchema, externalTicketIdSchema, sessionIdSchema, taskIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { agentSessionIdSchema, automationIdSchema, connectionIdSchema, externalTicketIdSchema, sessionIdSchema, taskIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { BoardId, ConnectionId, ExternalTicketId, OrganizationId, ProjectId, TicketId, TicketKey } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -37,6 +37,7 @@ import type { TrackerBuildInput } from "../tracker/connections.ts";
 import { fetchContextHandler } from "../tracker/context.ts";
 import { pollBoard } from "../tracker/ingest.ts";
 import { ticketSyncHandler } from "../tracker/writer.ts";
+import { startFromTrackerInTx } from "./outside.ts";
 import { trackerForConnections } from "./sub-issues.ts";
 
 // Ticket 12 (F-077, F-031, ADR 0056): a code start on a parent ticket starts one task per leaf of
@@ -177,7 +178,7 @@ describe("sub-issues (F-077)", () => {
     expect(await test.db.task.count({ where: { parentTicketId } })).toBe(4);
   });
 
-  it("F-077: the parent never gets a code task, by a member's start or a rule's; a refine start refines the parent itself", async () => {
+  it("F-077: the parent never gets a code task, by a member's start, a rule's or an outside delegation's; a refine start refines the parent itself", async () => {
     const refused = await test.db.$transaction((tx) => startTicketTask({ tx, scope: member, publicUrl: PUBLIC_URL, jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { projectId, ticketId: parentTicketId }));
     expect(refused).toMatchObject({ ok: false, error: "has-sub-issues" });
     const byRule = await test.db.$transaction((tx) =>
@@ -187,6 +188,14 @@ describe("sub-issues (F-077)", () => {
       ),
     );
     expect(byRule).toMatchObject({ ok: false, error: "has-sub-issues" });
+    // Nor by a delegation in Linear from someone outside the project, who'd wait for an approval.
+    const byOutsider = await test.db.$transaction((tx) =>
+      startFromTrackerInTx(
+        { tx, jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, publicUrl: PUBLIC_URL },
+        { organizationId, projectId, ticketId: parentTicketId, actor: { externalId: "linear-user-outside", name: "Outside Person" }, matchedMemberId: null, agentSessionId: agentSessionIdSchema.parse(randomUUID()) },
+      ),
+    );
+    expect(byOutsider).toMatchObject({ ok: false, error: "has-sub-issues" });
     expect(await test.db.task.count({ where: { ticketId: parentTicketId, kind: "code" } })).toBe(0);
     const refine = await test.db.$transaction((tx) =>
       startTask(

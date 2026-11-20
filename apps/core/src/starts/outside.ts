@@ -7,6 +7,7 @@ import {
   matchTrackerUser,
   newTask,
   noProviderMessage,
+  openCachedChildrenInTx,
   releaseQueuedTaskInTx,
   requireProjectAccess,
   resolveProfileModelInTx,
@@ -208,6 +209,11 @@ const startOutsideInTx = async (deps: TrackerStartDeps, input: TrackerStartInput
   if (existing !== null) {
     const taskId = taskIdSchema.parse(existing.id);
     return { ok: false, error: "ticket-has-task", message: `This ticket already has an active task, ${taskId}.`, taskId };
+  }
+  // F-077: the parent of open sub-issues never runs code, whoever asks; a member starts its leaves.
+  const children = await openCachedChildrenInTx(tx, ticket);
+  if (children > 0) {
+    return { ok: false, error: "has-sub-issues", message: `${ticket.key} has ${String(children)} open sub-issues: start them instead` };
   }
 
   const rule = startRuleFor({ kind: "linear", agentSessionId: input.agentSessionId, actor: input.actor, matchedMemberId: null }, project);
