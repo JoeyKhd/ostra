@@ -65,3 +65,31 @@ export const parseSetThemeInput = (
   const parsed = setThemeInputSchema.safeParse(input);
   return parsed.success ? { ok: true, value: parsed.data } : { ok: false, error: "invalid-input", message: "The theme is dark, light or system." };
 };
+
+/** Ticket 04's body: the account's own row, and an audit entry when the theme changed. */
+export const setTheme: SetTheme = async (deps, input) => {
+  const parsed = parseSetThemeInput(input);
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { theme } = parsed.value;
+  const before = await deps.tx.user.findUniqueOrThrow({ where: { id: deps.userId }, select: { theme: true } });
+  if (before.theme === theme) {
+    return { ok: true, theme, changed: false };
+  }
+  await deps.tx.user.update({ where: { id: deps.userId }, data: { theme } });
+  await deps.audit.recordInTx(deps.tx, {
+    organizationId: deps.scope.organizationId,
+    projectId: null,
+    actor: { kind: "member", id: deps.scope.memberId },
+    action: "account.theme_changed",
+    entity: "user",
+    entityId: deps.userId,
+    data: { from: before.theme, to: theme },
+  });
+  return { ok: true, theme, changed: true };
+};
+
+/** The cookie a theme is set in: the whole `Set-Cookie` value, for a year, readable by the panel's server only. */
+export const themeCookie = (theme: ThemePreference, secure: boolean): string =>
+  `${THEME_COOKIE}=${theme}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly${secure ? "; Secure" : ""}`;

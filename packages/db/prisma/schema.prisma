@@ -66,6 +66,10 @@ model User {
   cliSessions        CliSession[]
   // ---- milestone 4 ----
   resetLinkGrants    ResetLinkGrant[]
+  // ---- milestone 7 ----
+  /// ostra: the member's theme (F-082): dark, light or the system's. A better-auth additional field
+  /// (`input: false`), so only `account.setTheme` writes it.
+  theme              ThemePreference @default(dark)
 
   @@unique([email])
   @@unique([username])
@@ -3887,4 +3891,13 @@ enum RegistryAuth {
 enum SnapshotBuilder {
   docker
   buildkit
+}
+
+// ---- milestone 7 (spec section 5.3) ----
+
+/// A member's theme (F-082): `system` follows the browser's `prefers-color-scheme`.
+enum ThemePreference {
+  dark
+  light
+  system
 }
