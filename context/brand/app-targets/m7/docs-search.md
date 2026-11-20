@@ -8,7 +8,7 @@
 - **Features:** F-058 (ADR 0063: "Search is built in and static: Fumadocs' own index, built with the site and served as a file. No hosted search service"). Ticket 21.
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`).
 - **The fallback has no search** (ADR 0063): without Fumadocs, the search button, its `⌘K` and this dialog are left out, and this target isn't built.
-- **Tokens:** `docs-home.md`.
+- **Tokens:** `docs-home.md`. Since 2026-11-20 they're the panel's graphite theme, renamed to its names (`--link` is `--teal`, `--surface-2` `--sel`, `--dialog` `--raise`, `--highlight` `--line-2`): a colour or old name below means its row in `docs-home.md`'s table.
 
 > Build it in real HTML/React, then screenshot both states at 1440×956 and compare each with its picture.
 

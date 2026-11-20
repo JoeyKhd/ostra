@@ -37,7 +37,7 @@ The earlier milestones' rules hold (`../m1/README.md` to `../m6/README.md`):
 - **Check each screen by eye** against its picture.
 
 These hold too:
-- **The docs site is a public page, not the console.** It follows `brief.md`'s palette on Abyss and Shell, with the console's type and the Hinge logo, and no amber. `docs-home.md` holds its token table.
+- **The docs site is a public page, not the console.** It wears the console's graphite theme (since 2026-11-20, below), with the console's type and the Hinge logo, and no amber. `docs-home.md` holds its token table.
 - **The light theme is set by `light-home` and `light-task`.** Every other screen follows their token rules without a picture of its own.
 - **The page behind the docs search** is invented in the picture. Build the real page behind the dialog, dimmed as `docs-search.md` says.
 
@@ -52,3 +52,11 @@ The open points in the build specs were settled by the lead on the maintainer's 
 - **"Not isolated"** is its own red callout on the docs site, separate from warnings.
 
 Each one changes many screens, so it's the first thing for the maintainer's review.
+
+## Decided 2026-11-20
+
+**The docs follow the panel's graphite theme.** The brief's Abyss palette for the docs (`docs-home`, `docs-guide`, `docs-reference`, `docs-search`) was superseded on 2026-11-20 by the maintainer's word: the live docs read as an older product beside the panel.
+- **Dark** is the panel's `:root` tokens; **light** is `light-home`'s table, which the panel's own light theme will build (ticket 18).
+- The docs' token names became the panel's (`--link` is `--teal`, `--surface-2` `--sel`, `--dialog` `--raise`, `--highlight` `--line-2`), and `docs-home.md`'s table holds the values. The four docs pictures stay as they are: their layout holds, their colours don't.
+- The tokens are copied into `apps/docs`, and `apps/docs/src/app/theme-tokens.test.ts` fails when they drift from the panel's or a text pair drops under AA.
+- Two docs-only choices stay: field, button and chip borders at 3:1 (`--control`, from 2026-11-19 above; dark is now the neutral `#62656B`, 3.30:1, light keeps `#7D8B87`), and the Deep water illustration as a rounded window in light, now in the search's empty state too.

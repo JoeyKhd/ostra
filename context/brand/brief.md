@@ -36,8 +36,8 @@ Plain, precise and calm, like engineers talking to engineers:
 
 - **Mood:** calm, precise, built to last.
 - **Visual axes:** mostly restrained (25), mostly geometric (25), halfway between familiar and experimental (50).
-- **Dark mode first.** The maintainer: "we want more of a darkmode btw". Abyss is the default background for the docs, the README and social images. Light mode still exists and still works.
-- **The panel is the exception:** its chrome is neutral graphite, and the brand colours are only accents there (`app-design.md`, chosen 2026-11-18 after Abyss made the app look muddy).
+- **Dark mode first.** The maintainer: "we want more of a darkmode btw". Abyss is the default background for the README and social images. Light mode still exists and still works.
+- **The panel and the docs are the exception:** their chrome is neutral graphite, and the brand colours are only accents there (`app-design.md`, chosen 2026-11-18 after Abyss made the app look muddy). The docs site moved to the panel's graphite on 2026-11-20, by the maintainer's word, so the two read as one product (`app-targets/m7/docs-home.md`, "Tokens").
 
 ## Colour direction
 
@@ -50,7 +50,7 @@ Chosen on 2026-11-17. The maintainer delegated the choice ("work on the palette 
 
 | Name | Hex | Role |
 |---|---|---|
-| Abyss | `#0C1D21` | text on light and on amber; the background of dark brand surfaces (not the panel) |
+| Abyss | `#0C1D21` | text on light and on amber; the background of dark brand surfaces (not the panel or the docs) |
 | Shell | `#F3F0E8` | the background in light mode; text on dark |
 | Kelp | `#2F4A47` | secondary text on light (8.4:1 on Shell); raised surfaces in dark mode |
 | Mist | `#CFD8D4` | lines and quiet surfaces |

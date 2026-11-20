@@ -17,7 +17,7 @@ The first page a team new to ostra reads, before it has a panel. In one screen i
 - the 30-minute path as three steps, each linking to the page that walks it;
 - where everything else is: the eight sections of ADR 0063 as a grid.
 
-It's a brand surface, not the console (`brief.md`: "Abyss is the default background for the docs"): the Deep water palette, dark first, with the console's fonts, logo, density and hairline style. No console sidebar, no organization, no amber.
+It's a public page, not the console: no console sidebar, no organization, no amber. It wears the console's graphite theme, dark first, with its fonts, logo, density and hairline style, so the docs and the panel read as one product (the maintainer, 2026-11-20; the Deep water palette it was first drawn in is superseded, below).
 
 ## Layout (CSS px at 1440×956)
 
@@ -36,7 +36,7 @@ It's a brand surface, not the console (`brief.md`: "Abyss is the default backgro
 ### Hero (y 96–370)
 
 - **Left column, 600px:**
-  1. Eyebrow, Plex Mono 13px `--link`: `Documentation · v1.0.0`.
+  1. Eyebrow, Plex Mono 13px `--teal`: `Documentation · v1.0.0`.
   2. `h1` in Manrope 800, 44px, line-height 1.05, `--text`, two lines: `Self-hosted cloud agents` / `for your team.` (the tagline, `brief.md`).
   3. Lede, 16.5px, line-height 1.4, `--muted`, max 580px: `ostra is the source-available, self-hosted control plane for coding agents. A Linear ticket or a prompt becomes a task, an agent works it on its own branch on your runners, and it opens a pull request on GitHub.`
   4. Buttons, 38px, radius 7px, 14.5px weight 600, 16px apart: primary `Install ostra` + Lucide `arrow-right` (`--primary` fill, `--on-primary` text), linking to the install guide (`docs-guide`); outline `Configuration reference` (1px `--control`, `--text`), linking to `docs-reference`.
@@ -75,7 +75,7 @@ One row between two 1px `--line` hairlines, 48px:
 ### Sections (y 692–920)
 
 - `h2` `Sections`, Manrope 700 22px.
-- A 4 × 2 grid, `ul`, 1px `--line` hairlines between cells and along the top and bottom, no fills. Each cell is one link, 88px, padding 18px 20px: a 17px Lucide icon `--muted` at the left, then the title 16px weight 600 `--text` and one line of 13.5px `--faint` text (two at most). Hover: `--surface` fill and the title in `--link`.
+- A 4 × 2 grid, `ul`, 1px `--line` hairlines between cells and along the top and bottom, no fills. Each cell is one link, 88px, padding 18px 20px: a 17px Lucide icon `--muted` at the left, then the title 16px weight 600 `--text` and one line of 13.5px `--faint` text (two at most). Hover: `--surface` fill and the title in `--teal`.
 
 | Section (ADR 0063) | Icon | Text |
 |---|---|---|
@@ -115,35 +115,46 @@ A 1px `--line` hairline, then one 13px `--faint` row: `ostra is source-available
 
 ## Tokens (the docs site's, shared by `docs-guide`, `docs-reference` and `docs-search`)
 
-From `brand/files/tokens/tokens.css` (Abyss, Shell, Kelp, Mist, Buoy Amber), with the console's status colours. `apps/docs` defines them as CSS variables on `:root` (dark) and `:root[data-theme="light"]`.
+**The panel's graphite theme, since 2026-11-20** (the maintainer: the docs looked like an older product). The pictures were drawn on the brief's Abyss palette; build from this table, not their colours. `apps/docs/src/app/globals.css` defines the tokens on `:root` (dark) and `:root[data-theme="light"]`:
+- **Shared names hold the panel's values:** dark from `apps/web/src/app/globals.css`, light from `light-home.md`'s table (the panel's own `[data-theme="light"]` block once ticket 18 builds it).
+- **Copied, with a drift test:** sharing one file would need a new package, so the values are copied, and `apps/docs/src/app/theme-tokens.test.ts` fails when a shared token's value differs from the panel's, or a contrast pair below drops under AA.
+- **Renamed to the panel's names:** `--link` is `--teal`, `--surface-2` is `--sel`, `--dialog` is `--raise`, and `--highlight` is `--line-2`. `docs-guide`, `docs-reference` and `docs-search` still use the old names: read them through this table.
 
 | Token | Dark | Light | Used for |
 |---|---|---|---|
-| `--bg` | `#0C1D21` Abyss | `#F3F0E8` Shell | Page, header, navigation |
-| `--surface` | `#112629` | `#EAE6DC` | Code blocks, fields, callouts, selected nav row, hover |
-| `--surface-2` | `#163035` | `#E2DDD0` | The selected search result |
-| `--dialog` | `#0F2226` | `#F7F5EF` | The search dialog |
-| `--line` | `#1A3034` | `#DDD8CC` | Hairlines (decorative, no contrast need) |
-| `--control` | `#5A7A76` | `#7D8B87` | Borders of fields, outline buttons, chips: 3.69:1 and 3.12:1 on `--bg` (WCAG 1.4.11) |
-| `--text` | `#F3F0E8` | `#0C1D21` | Titles, body on code, values |
-| `--muted` | `#CFD8D4` Mist | `#2F4A47` Kelp | Prose, nav rows |
-| `--faint` | `#8FA6A2` | `#53625F` | Labels, numbers, hints |
-| `--link` | `#6FB8AA` | `#2B6E63` | Links, the `run` chip, the current TOC row |
-| `--green` | `#4FB286` | `#276B4E` | Success, if a page needs it |
+| `--bg` | `#0D0E10` | `#FBFAF6` | Page, header, navigation, the phone drawer |
+| `--surface` | `#131416` | `#F3F0E8` | Code blocks, fields, callouts, outline buttons and chips, group bands, hover |
+| `--raise` | `#17181B` | `#FFFFFF` | The search dialog, tooltips |
+| `--sel` | `#1A1B1E` | `#E8E4D9` | The selected nav row, search result and segment; button hover; skeleton bars |
+| `--line` | `#1F2023` | `#E4E1D8` | Hairlines (decorative, no contrast need) |
+| `--line-2` | `#2A2C30` | `#CFD8D4` Mist | Dialog, drawer and tooltip edges; the search match and the reference's target row (as the panel's `mark`) |
+| `--control` (docs only) | `#62656B` | `#7D8B87` | Borders of fields, outline buttons, chips: 3.30:1 and 3.40:1 on `--bg` (WCAG 1.4.11). The panel draws these in `--line-2`; the docs keep 3:1 (decided 2026-11-19, README). Dark is the panel's own quiet grey (`--chart-2`) |
+| `--text` | `#F2F3F4` | `#0C1D21` Abyss | Titles, values, code |
+| `--text-2` | `#D6D8DB` | `#1E3135` | Prose, callout text, nav rows (as the panel's sidebar rows) |
+| `--muted` | `#B4B7BB` | `#2F4A47` Kelp | Ledes, secondary text, the reference's descriptions, search snippets |
+| `--faint` | `#8B8E93` | `#5A6664` | Labels, numbers, hints |
+| `--teal` | `#6FB8AA` | `#1F6B5E` | Links, the `run` chip, the current TOC row, the focus ring |
+| `--green` | `#4FB286` | `#25734F` | Success (the copy button's tick) |
 | `--red` | `#E5675C` | `#B4382D` | The "Not isolated" callout, errors |
-| `--highlight` | `#1F3F44` | `#D5E5E0` | Search match background |
-| `--primary` / `--on-primary` | `#F3F0E8` / `#0C1D21` | `#0C1D21` / `#F3F0E8` | The one primary button |
+| `--primary` / `--on-primary` | `#F3F0E8` / `#0C1D21` | `#0C1D21` / `#F3F0E8` | The one primary button (the panel's Shell and Ink in dark) |
+| `--overlay` (docs only) | `rgba(0,0,0,0.5)` | `rgba(12,29,33,0.4)` | The scrim behind the search and the drawer (dark as the panel's palette) |
+| `--dialog-shadow` (docs only) | `0 16px 48px rgba(0,0,0,0.5)` | `0 8px 24px rgba(12,29,33,0.12)` | The search dialog (the panel's palette in dark, its `--shadow-pop` in light) |
 
 **No amber on the docs site.** Buoy Amber means "this needs you" (`brief.md`), and nothing in the docs waits on the reader.
 
-**Contrast (WCAG AA), measured:** dark `--text` 15.2:1, `--muted` 11.9:1, `--faint` 6.7:1 (6.1:1 on `--surface`), `--link` 7.5:1 (6.8:1 on `--surface`), `--red` 5.3:1 (4.8:1 on `--surface`); light `--text` 15.2:1, `--muted` 8.4:1, `--faint` 5.6:1 (5.1:1 on `--surface`, 4.7:1 on `--surface-2`), `--link` 5.3:1 (4.8:1 on `--surface`), `--red` 4.8:1 on `--surface`, `--green` 5.6:1; the primary button 15.2:1 both ways. Every pair passes 4.5:1 for text; controls pass 3:1 with `--control`.
+**Contrast (WCAG AA), measured** for every text token on every background (`--bg`, `--surface`, `--raise`, `--sel`), lowest first:
+- **Dark:** `--faint` 5.24:1 on `--sel` (5.87:1 on `--bg`), `--red` 5.27:1, `--green` 6.60:1, `--teal` 7.47:1, `--muted` 8.55:1, `--text-2` 12.06:1, `--text` 15.50:1.
+- **Light:** `--green` 4.54:1 on `--sel` (5.52:1 on `--bg`), `--red` 4.66:1, `--faint` 4.70:1, `--teal` 4.97:1, `--muted` 7.54:1, `--text-2` 10.69:1, `--text` 13.62:1.
+- **Both:** `--text` on the search match (`--line-2`) 12.59:1 dark and 11.89:1 light; the primary button 15.2:1. `--control` passes 3:1 on `--bg`, `--surface` and `--raise` (lowest 3.04:1, dark on `--raise`).
+
+**The illustration** keeps its own colours in both themes: in dark it's feathered into graphite with the radial mask (its water reads as a soft glow); in light it's a rounded window, on the home page and in the search's empty state alike.
 
 **Type:** Manrope 800 for the `h1`, 700 for `h2`s; IBM Plex Sans 400 for prose (15 to 16.5px), 500 for nav and links, 600 for small titles; IBM Plex Mono for commands, setting names, paths, versions and numbers.
 
 ## Differences from the current code
 
 1. **Everything is new:** there's no `apps/docs` (spec section 1). Ticket 21 creates it, Apache-2.0, private.
-2. **The tokens** are the brand's (`files/tokens/`), not the panel's graphite (`apps/web/src/app/globals.css`); the fonts and the logo files are the same.
+2. **The tokens** are the panel's graphite (`apps/web/src/app/globals.css`), as the table above says; the fonts and the logo files are the same. (First built on the brand's Abyss tokens, `files/tokens/`; superseded 2026-11-20.)
 3. **`OSTRA_DOCS_URL`** (spec section 5) points the panel's help links here; its default is the Pages address.
 
 ## Open points (recommendations; ticket 21 records the answer)
@@ -153,6 +164,7 @@ From `brand/files/tokens/tokens.css` (Abyss, Shell, Kelp, Mist, Buoy Amber), wit
 
 ## Wrong in the image (build from this file)
 
+- **The colours:** the picture is drawn on Abyss; build the graphite tokens above.
 - **Field and button borders** are drawn in Kelp `#2F4A47` (1.8:1 on Abyss) in dark and a pale line in light: build them with `--control` so they pass 3:1.
 - **The illustration in dark** has a soft square edge at its top right: build the radial feather.
 - **`Linear is optional`** sits far right on the Before-you-start row: keep it, but as a link to the Linear page, underlined.

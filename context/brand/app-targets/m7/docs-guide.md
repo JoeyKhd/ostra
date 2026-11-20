@@ -6,7 +6,7 @@
 - **Route (new):** `apps/docs/app/docs/[[...slug]]/page.tsx`; this page is `/docs/install/docker-compose`, from `apps/docs/content/install/docker-compose.mdx`.
 - **Features:** F-058 (the docs site, the install guide, "every `run` command block checked"), F-076 (the 30-minute measure follows these pages and nothing else; a gap the newcomer hits is a docs bug). ADR 0063, ADR 0029 (what `host` doesn't isolate), F-001 and Q97 (the Docker socket warning). Ticket 21 builds the layout; ticket 22 writes the install, setup and runner pages and the command check.
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`).
-- **Tokens, header and type:** `docs-home.md` ("Header", "Tokens"). This file doesn't repeat them.
+- **Tokens, header and type:** `docs-home.md` ("Header", "Tokens"). This file doesn't repeat them. Since 2026-11-20 they're the panel's graphite theme, renamed to its names (`--link` is `--teal`, `--surface-2` `--sel`, `--dialog` `--raise`, `--highlight` `--line-2`): a colour or old name below means its row in `docs-home.md`'s table.
 
 > Build it in real HTML/React, then screenshot the build at 1440×956 and at 390×844, and compare each with its picture.
 

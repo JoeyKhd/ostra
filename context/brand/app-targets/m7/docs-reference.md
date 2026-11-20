@@ -6,7 +6,7 @@
 - **Route (new):** `/docs/reference/configuration`, rendered at build time from **`docs/configuration.md`**, read as a file, never copied (ADR 0063: "one source for the reference"; `apps/docs` imports nothing from `packages/domain`, which is Sustainable Use).
 - **Features:** F-058 ("the configuration reference rendered from `docs/configuration.md` holds every setting the settings test knows"). The self-hosting rule in `AGENTS.md` (a new setting ships with its line in the reference). Ticket 21 (the page and its test), ticket 23 (the Reference section's other pages).
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`).
-- **Frame, header, tokens:** `docs-guide.md` and `docs-home.md`. This file covers the main column.
+- **Frame, header, tokens:** `docs-guide.md` and `docs-home.md`. This file covers the main column. Since 2026-11-20 they're the panel's graphite theme, renamed to its names (`--link` is `--teal`, `--surface-2` `--sel`, `--dialog` `--raise`, `--highlight` `--line-2`): a colour or old name below means its row in `docs-home.md`'s table.
 
 > Build it in real HTML/React, then screenshot the build at 1440×956 and compare it with the picture.
 

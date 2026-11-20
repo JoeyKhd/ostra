@@ -45,7 +45,7 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 
 ## Colours
 
-The values live in `app-concepts/html/graphite.css` until milestone 1 turns them into the panel's real tokens. `files/tokens/tokens.css` (with `tokens.json` beside it) still holds the brand tokens (Abyss-based) for the docs, README and social images.
+The values live in `app-concepts/html/graphite.css` until milestone 1 turns them into the panel's real tokens. `files/tokens/tokens.css` (with `tokens.json` beside it) still holds the brand tokens (Abyss-based) for the README and social images. The docs site wears the panel's graphite tokens since 2026-11-20 (`app-targets/m7/docs-home.md`, "Tokens").
 
 | Role | Colour |
 |---|---|

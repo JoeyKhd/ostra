@@ -9,6 +9,9 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["out/**", ".next/**", "!.next/cache/**"]
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "../web/src/app/globals.css", "../../context/brand/app-targets/m7/light-home.md"]
     }
   }
 }
