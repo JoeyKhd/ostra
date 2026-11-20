@@ -1,6 +1,6 @@
 # 35: The Linux and macOS proof jobs
 
-Status: ready-for-agent
+Status: ready-for-human
 Builder: core
 Blocked by: 09, 10, 20, 21, 22, 23, 24
 Features: F-017, F-015, F-014, F-093, F-120, F-095, F-116, F-118, F-039, F-013, F-001 (its compose run), F-051, F-094, F-096, F-045 (their `docker` and `kubernetes` halves)
@@ -23,3 +23,8 @@ Jobs of the manual `Proof` workflow (the maintainer, 2026-11-19: by hand only, n
 - [ ] Committed as `✅ add the Linux and macOS proof jobs`, and the kept logs as `📝 keep the fleet's live proof logs`.
 
 ## Comments
+
+- 2026-11-20: the three jobs and their scripts, committed as `✅ add the Linux and macOS proof jobs` (db8ed960). `proof.yml` gains `live-docker`, `live-kind` and `live-macos`, `workflow_dispatch` only, with a `jobs` input (`all`, `ledger-and-panel`, `fleet`) so `gh workflow run Proof -f jobs=fleet` runs the live jobs alone; `ci.yml` is untouched. Each job runs `scripts/live/docker.sh`, `kind.sh` or `macos.sh` (the same steps run on anyone's own Linux machine or Mac), checks its logs with `scripts/live/check-logs.sh` and uploads them only when that passes. Tools are pinned by version and SHA-256 (kind v0.33.0 and v0.27.0, Helm v4.3.2, Calico v3.33.0's manifest, flannel v0.28.10's), images by digest (`registry:3.0.0`, `docker:28.5.2-dind`, `busybox:1.37.0`, `httpd:2.4.65-alpine` for `htpasswd`, `nginx:1.29.3`, compose's Postgres); actions by the SHAs `proof.yml` already used.
+- **Not run yet: the boxes stay unticked.** This machine has no `gh`, and dispatching the workflow with the stored git credential instead wasn't permitted, so no job has run, no log is in the repo and no proof row cites one. **The maintainer's step:** `gh workflow run Proof -f jobs=fleet`, then hand the runs to an agent to fix what fails and keep the logs (`📝 keep the fleet's live proof logs`, ticket 37's `demo/linux/` and `demo/macos/`). Every condition these jobs prove stays `partial` until then.
+- Choices: the second kind cluster is Kubernetes 1.29 on flannel, because kind's own kindnet enforces NetworkPolicy since v0.24; the first is the newest kind supports (1.37) on Calico. The registry and the second Docker Engine for F-120 are a `registry:3` with Basic auth and a `docker:dind` on the host network (its own bridge and iptables off), so `localhost:5000` is the same registry to both Engines. The `host` pool's delegated cgroup comes from a systemd scope with `Delegate=yes` around the test run.
+- Steps each job says it doesn't do, as `not-run` lines with the reason (their conditions stay `partial`): real nginx's defaults in front of core (no test drives the fallback through a real nginx yet), 50 boxes on one host with a box ready in under 10 s and the sidecar's memory (no live test measures them yet), gVisor (optional, not installed), and on kind a box as a pod with its services ready in under 60 s and the rootless BuildKit pod's build, scan and push (both need a task or a snapshot build driven through core on the cluster, which the job doesn't set up yet). An autoscaler that really adds a node stays ticket 38's.
