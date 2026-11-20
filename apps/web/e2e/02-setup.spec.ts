@@ -65,16 +65,26 @@ test("Add a model provider: a wrong token is refused in words, the right one lis
   await expect(page.getByLabel("Allow on personal runners")).toHaveAttribute("data-state", "unchecked");
 
   await page.getByRole("button", { name: "Save provider" }).click();
-  await expect(page.getByTestId("provider-settings")).toBeVisible();
+  const settings = page.getByTestId("provider-settings");
+  await expect(settings).toBeVisible();
   await expect(page.locator("tr[data-model]")).toHaveCount(2);
   // The token is never shown back.
   expect(await page.content()).not.toContain(e2eModelToken);
 
+  // The saved provider shows as a key (milestone 4's `models-keys` target): its settings, the
+  // switch among them, open under "Edit provider".
+  const personalRow = settings.getByText("Personal runners", { exact: true }).locator("xpath=..");
+  await expect(personalRow).toContainText("Off");
+  await settings.getByRole("button", { name: "Edit provider" }).click();
+
   // Allow on personal runners, optimistically, then confirmed.
   await page.getByLabel("Allow on personal runners").click();
   await expect(page.getByLabel("Allow on personal runners")).toHaveAttribute("data-state", "checked");
+  await expect(personalRow).toContainText("On");
   await page.reload();
   await page.getByRole("button", { name: /stub/ }).click();
+  await expect(personalRow).toContainText("On");
+  await settings.getByRole("button", { name: "Edit provider" }).click();
   await expect(page.getByLabel("Allow on personal runners")).toHaveAttribute("data-state", "checked");
 
   // The custom model is editable, and becomes the default model.
