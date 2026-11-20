@@ -61,7 +61,7 @@ export const foldCoverage = {
   "pr.comment_received": "no row (milestone 3, ticket 43)",
   // Protocol minor 3: no row until the milestone 4 task page draws them.
   "memory.used": "no row (milestone 4)",
-  "memory.proposed": "no row (milestone 4)",
+  "memory.proposed": "memory proposal row (F-111)",
   "turn.held": "held row (F-037)",
   "turn.released": "released row (F-037)",
   "review.check_updated": "no row (milestone 4)",

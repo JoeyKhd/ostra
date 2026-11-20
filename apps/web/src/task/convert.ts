@@ -98,6 +98,7 @@ const convertPart = (part: TaskUIPart): ThreadPart | null => {
     case "data-limit":
     case "data-held":
     case "data-released":
+    case "data-memory-proposed":
     case "data-ticket-files":
     case "data-system":
     case "data-unsupported":

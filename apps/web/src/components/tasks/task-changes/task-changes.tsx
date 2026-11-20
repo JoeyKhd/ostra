@@ -12,7 +12,7 @@ import { fillNodes, tNodes } from "@/lib/message-nodes";
 import { plural, t } from "@/lib/messages";
 
 import { DiffView } from "./diff-view";
-import type { DiffActions, SaveResult } from "./diff-view";
+import type { DiffActions, RememberResult, SaveResult } from "./diff-view";
 import { MAX_SEND, aheadText, behindOf, commentCount, draftsOf, draftsTitle, fileKey, glyphOf, reviewHint, rowsOf, sendLabel, shortNames } from "./diff-words";
 import type { BehindPart, CommentTarget, DiffCommentView, DiffRepoView, OpenField, SendDelivery } from "./diff-words";
 
@@ -254,6 +254,8 @@ export type ChangesBodyProps = {
   readonly onSave: (target: CommentTarget, body: string, editing: DiffCommentView | null) => Promise<SaveResult>;
   readonly onDelete: (comment: DiffCommentView) => void;
   readonly onUndoDelete: (comment: DiffCommentView) => void;
+  /** F-111: "Remember this" on a sent comment. */
+  readonly onRemember?: (comment: DiffCommentView) => Promise<RememberResult>;
   /** The list's size before it's measured (the tests). */
   readonly initialHeight?: number;
 };
@@ -269,7 +271,7 @@ const LoadingBody = () => (
   </div>
 );
 
-export const ChangesBody = ({ load, comments, canComment, update, review, onSave, onDelete, onUndoDelete, initialHeight }: ChangesBodyProps) => {
+export const ChangesBody = ({ load, comments, canComment, update, review, onSave, onDelete, onUndoDelete, onRemember, initialHeight }: ChangesBodyProps) => {
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState<OpenField>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -290,6 +292,7 @@ export const ChangesBody = ({ load, comments, canComment, update, review, onSave
   const actions: DiffActions = {
     onOpen: (target) => { setOpen({ kind: "new", target }); },
     onEdit: (comment) => { setOpen({ kind: "edit", comment }); },
+    ...(onRemember === undefined ? {} : { onRemember }),
     onCancel: () => { setOpen(null); },
     onSave: async (target, body, editing) => {
       const result = await onSave(target, body, editing);

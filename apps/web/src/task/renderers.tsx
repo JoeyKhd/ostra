@@ -6,6 +6,7 @@ import {
   BrainIcon,
   HistoryIcon,
   LayersIcon,
+  LightbulbIcon,
   PaperclipIcon,
   PauseIcon,
   PlayIcon,
@@ -466,6 +467,14 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
         <div data-part="released">
           <Line icon={<PlayIcon />} tone="muted">
             {t("task.released")}
+          </Line>
+        </div>
+      );
+    case "data-memory-proposed":
+      return (
+        <div data-part="memory-proposed">
+          <Line icon={<LightbulbIcon />} tone="muted">
+            {t("task.memoryProposed", { title: part.data.title })}
           </Line>
         </div>
       );

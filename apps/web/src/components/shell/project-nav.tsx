@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BoxIcon, ChartNoAxesColumnIcon, GitBranchIcon, InboxIcon, ListChecksIcon, LockIcon, SettingsIcon, SquareKanbanIcon } from "lucide-react";
+import { BookOpenIcon, BoxIcon, ChartNoAxesColumnIcon, GitBranchIcon, InboxIcon, ListChecksIcon, LockIcon, SettingsIcon, SquareKanbanIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -73,6 +73,9 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
                 </NavLink>
                 <NavLink sub href={`/projects/${project.id}/repos`} icon={<GitBranchIcon />} onNavigate={onNavigate}>
                   {t("shell.repos")}
+                </NavLink>
+                <NavLink sub href={`/projects/${project.id}/memory`} icon={<BookOpenIcon />} onNavigate={onNavigate}>
+                  {t("shell.memory")}
                 </NavLink>
                 <NavLink sub href={`/projects/${project.id}/insights`} icon={<ChartNoAxesColumnIcon />} onNavigate={onNavigate}>
                   {t("shell.insights")}

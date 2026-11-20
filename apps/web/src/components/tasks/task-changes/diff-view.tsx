@@ -2,7 +2,7 @@
 
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import type { Range } from "@tanstack/react-virtual";
-import { ArrowUpRightIcon, ChevronDownIcon, ChevronRightIcon, MessageSquarePlusIcon, PencilIcon, Trash2Icon, UnfoldVerticalIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkPlusIcon, ChevronDownIcon, ChevronRightIcon, MessageSquarePlusIcon, PencilIcon, Trash2Icon, UnfoldVerticalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -33,7 +33,11 @@ export type DiffActions = {
   readonly onSave: (target: CommentTarget, body: string, editing: DiffCommentView | null) => Promise<SaveResult>;
   readonly onDelete: (comment: DiffCommentView) => void;
   readonly onFold: (key: string) => void;
+  /** F-111: "Remember this" on a sent comment proposes it as a project note; answers whether it went. */
+  readonly onRemember?: (comment: DiffCommentView) => Promise<RememberResult>;
 };
+
+export type RememberResult = { readonly kind: "proposed" } | { readonly kind: "refused"; readonly message: string };
 
 // ---------- the rows ----------
 
@@ -158,8 +162,9 @@ const Chip = ({ children, tone }: { readonly children: ReactNode; readonly tone:
 );
 
 /** A sent comment, the viewer's draft, or an outdated one: plain text under a 2px left rule. */
-export const CommentBlock = ({ comment, onEdit, onDelete }: { readonly comment: DiffCommentView; readonly onEdit: () => void; readonly onDelete: () => void }) => {
+export const CommentBlock = ({ comment, onEdit, onDelete, onRemember }: { readonly comment: DiffCommentView; readonly onEdit: () => void; readonly onDelete: () => void; readonly onRemember?: (() => Promise<RememberResult>) | undefined }) => {
   const outdated = comment.outdated;
+  const [remember, setRemember] = useState<RememberResult | "pending" | null>(null);
   const chip = outdated !== null ? t("changes.outdated") : comment.state === "sent" ? t("changes.sent") : t("changes.draft");
   return (
     <div className="py-1 pl-[104px] pr-3" data-comment={comment.id} data-state={outdated === null ? comment.state : "outdated"}>
@@ -183,8 +188,25 @@ export const CommentBlock = ({ comment, onEdit, onDelete }: { readonly comment: 
                 </Button>
               </Tooltip>
             </span>
-          ) : null}
+          ) : onRemember === undefined ? null : remember !== null && remember !== "pending" && remember.kind === "proposed" ? (
+            <span className="ml-auto text-xs text-muted" data-testid="remembered">{t("changes.remembered")}</span>
+          ) : (
+            <Button
+              variant="ghost"
+              className="ml-auto h-6 px-2 text-xs"
+              disabled={remember === "pending"}
+              data-action="remember-this"
+              onClick={() => {
+                setRemember("pending");
+                void onRemember().then(setRemember);
+              }}
+            >
+              <BookmarkPlusIcon aria-hidden />
+              {t("changes.rememberThis")}
+            </Button>
+          )}
         </div>
+        {remember !== null && remember !== "pending" && remember.kind === "refused" ? <p role="alert" className="text-xs text-red">{remember.message}</p> : null}
         {outdated === null ? null : (
           <div className="whitespace-pre-wrap font-mono text-xs text-faint [overflow-wrap:anywhere]">
             {outdated.sign === "-" ? minus : outdated.sign} {outdated.text}
@@ -309,7 +331,14 @@ export const DiffRowView = ({
     case "line":
       return <LineRow row={row} focused={focused} canComment={canComment} onOpen={actions.onOpen} />;
     case "comment":
-      return <CommentBlock comment={row.comment} onEdit={() => { actions.onEdit(row.comment); }} onDelete={() => { actions.onDelete(row.comment); }} />;
+      return (
+        <CommentBlock
+          comment={row.comment}
+          onEdit={() => { actions.onEdit(row.comment); }}
+          onDelete={() => { actions.onDelete(row.comment); }}
+          onRemember={actions.onRemember === undefined || row.comment.state !== "sent" ? undefined : () => actions.onRemember?.(row.comment) ?? Promise.resolve({ kind: "refused", message: "" })}
+        />
+      );
     case "field":
       return <CommentField key={row.key} target={row.target} editing={row.editing} onSave={actions.onSave} onCancel={actions.onCancel} />;
     case "outdated-label":

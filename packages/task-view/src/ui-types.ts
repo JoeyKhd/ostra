@@ -181,6 +181,9 @@ export type HeldData = {
 };
 export type ReleasedData = { readonly at: number };
 
+/** Minor 3 (F-111): the agent proposed a note for memory (`memory.proposed`); nothing reaches an agent until a member decides. */
+export type MemoryProposedData = { readonly proposalId: string; readonly title: string };
+
 /** The ticket's files, written into the workspace for the agent (`ticket.files_ready`). */
 export type TicketFilesData = { readonly paths: readonly string[] };
 
@@ -200,6 +203,7 @@ export type TaskDataParts = {
   limit: LimitData;
   held: HeldData;
   released: ReleasedData;
+  "memory-proposed": MemoryProposedData;
   "ticket-files": TicketFilesData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };

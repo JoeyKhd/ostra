@@ -139,6 +139,7 @@ export const ChangesTab = ({
   const save = useMutation(trpc.diff.comments.save.mutationOptions({ onSettled: refreshComments }));
   const remove = useMutation(trpc.diff.comments.delete.mutationOptions({ onSettled: refreshComments }));
   const send = useMutation(trpc.diff.comments.send.mutationOptions({ onSettled: refreshComments }));
+  const remember = useMutation(trpc.memory.rememberThis.mutationOptions());
   const update = useMutation(trpc.tasks.updateBranch.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) }));
   const [reviewState, setReviewState] = useState<PressState>({ kind: "idle" });
 
@@ -192,6 +193,14 @@ export const ChangesTab = ({
         onSeeActivity,
       }}
       onSave={onSave}
+      onRemember={async (comment) => {
+        try {
+          await remember.mutateAsync({ source: { diffCommentId: diffCommentIdSchema.parse(comment.id) } });
+          return { kind: "proposed" };
+        } catch (cause) {
+          return { kind: "refused", message: cause instanceof Error ? cause.message : t("errors.unknown") };
+        }
+      }}
       onDelete={(comment) => { remove.mutate({ taskId, commentId: diffCommentIdSchema.parse(comment.id) }); }}
       onUndoDelete={(comment) => {
         void onSave({ taskRepoId: comment.taskRepoId, path: comment.path, side: comment.side, line: comment.line }, comment.body, null);

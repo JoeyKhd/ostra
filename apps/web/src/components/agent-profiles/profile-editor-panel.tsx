@@ -164,6 +164,14 @@ export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members
         <p className="text-sm text-faint">{t("agentProfiles.props.planFirstHelp")}</p>
       </Group>
 
+      <Group
+        title={t("agentProfiles.props.closingTurn")}
+        labelId={`${id}-closing`}
+        end={<Switch aria-labelledby={`${id}-closing`} checked={draft.closingTurn} disabled={readOnly} onCheckedChange={(closingTurn) => { onChange({ ...draft, closingTurn }); }} data-testid="closing-turn" />}
+      >
+        <p className="text-sm text-faint">{t("agentProfiles.props.closingTurnHelp")}</p>
+      </Group>
+
       <Group title={t("agentProfiles.props.who")} labelId={`${id}-who`}>
         {builtIn ? (
           <>

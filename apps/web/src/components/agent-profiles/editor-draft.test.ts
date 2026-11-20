@@ -154,4 +154,14 @@ describe("the profile's effort in the save", () => {
     expect(saveInputOf(filled({ effort: "xhigh" }), null, newId, "xhigh")).not.toHaveProperty("effort");
     expect(saveInputOf(filled({ effort: "max" }), null, newId, "xhigh").effort).toBe("max");
   });
+
+describe("the closing turn (F-111)", () => {
+  it("F-111: Ask what the next task should know saves with the profile, off for a new one", () => {
+    expect(newDraft("opencode", MODEL).closingTurn).toBe(false);
+    expect(saveInputOf({ ...newDraft("opencode", MODEL), name: "Careful", closingTurn: true }, null, () => "id").closingTurn).toBe(true);
+    const saved = newDraft("opencode", MODEL);
+    expect(isDirty({ ...saved, closingTurn: true }, saved)).toBe(true);
+  });
+});
+
 });

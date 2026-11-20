@@ -855,8 +855,11 @@ export const foldTaskEvents = (
         row(seq, sessionId, { type: "data-released", id: `released:${String(seq)}`, data: { at: stored.at } });
         break;
       }
+      case "memory.proposed": {
+        row(seq, sessionId, { type: "data-memory-proposed", id: `memory-proposed:${String(seq)}`, data: { proposalId: event.proposalId, title: event.title } });
+        break;
+      }
       case "memory.used":
-      case "memory.proposed":
       case "review.check_updated":
       case "pr.related_updated":
         // Protocol minor 3. No row until the milestone 4 task page draws them.

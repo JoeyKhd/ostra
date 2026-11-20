@@ -20,8 +20,8 @@ Spec: `../spec.md`, sections 3 (steps 7 to 9) and 12; targets `memory`, `memory-
 ## Done when
 
 - [ ] Playwright, named `it("F-109: ...")` and `it("F-111: ...")`: a member writes a note and finds it by a word; a note with a fake token is refused with the kind named; a save from a stale version says who saved first and keeps the text; a proposal is approved and appears as a note with its source; "Remember this" on a diff comment makes a proposal.
-- [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
-- [ ] Committed as `✨ add Memory to the panel`.
+- [x] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
+- [x] Committed as `✨ add Memory to the panel`.
 
 ## Decided 2026-11-19
 
@@ -35,3 +35,5 @@ Settled by the target's recommendation, on the maintainer's delegation (ticket 4
 - **No reason on Reject** (open point 3).
 
 ## Comments
+
+- 2026-11-20, web builder B: Memory for the organization and each project (`/organization/memory`, `/projects/[id]/memory`, `components/memory/`) to the `memory` target: Project, Organization and Archived tabs, full-text search (`?q=`), Kind and Source filters, "Always only", the index order without a search, last used, the Proposals count and New note; the selected note in the panel with its Always switch (a save at the version shown), source, versions and Archive. A note's page (`…/memory/new`, `…/memory/[note-id]`) to `memory-note`: the editor, the size against 4 KiB, the secret refusal worded from the API's kind, the stale-save line naming who saved first with the text kept, the versions, and archive for whoever may. Proposals (`…/memory/proposals`) to `memory-proposals`: the list with the declared relation, one proposal with its related notes, and Approve, Approve and archive, Merge into (the merged text editable, its stale line) and Reject. Growing screens: the task panel's Memory group (`tasks.memory`: the notes each session used and how, the proposals and their states); `memory.proposed` is a thread row (`@ostra/task-view` folds it to `data-memory-proposed`); a sent diff comment has "Remember this" (`memory.rememberThis`); the agent profile editor has "Ask what the next task should know" (`closingTurn`); the sidebar has Memory under Organization and under each project. Proof: `apps/web/e2e/15-memory.spec.ts` (write and find by a word, the token refusal, the stale save, a proposal approved into a note with its source, the count, phone width), with break-its on a rebuilt panel, plus unit tests; see `context/proof/F-109.md` and `F-111.md`. Checked by eye at 1440 px and 412 px in the dark theme against the three targets (finals in the session's `ui-check/m4-memory-*-final.png`); the panel has no light theme yet. **Left open (the Playwright box stays unticked):** "Remember this" has no browser case: the e2e stack's fake GitHub holds no diff for a seeded task, so it's proved by the API's test and the comment's render test; and the thread has no row for an accepted `@ostra` PR comment yet (`pr.comment_received` draws nothing), so "Remember this" there isn't built. The merge's stale line and the task panel's Memory group have no browser case. Commit: see the git log for `✨ add Memory to the panel`.

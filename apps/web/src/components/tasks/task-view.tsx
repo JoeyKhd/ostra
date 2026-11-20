@@ -11,6 +11,7 @@ import { deriveTaskState } from "@ostra/task-view";
 
 import { servicesWaitText } from "@/components/projects/environment-services-words";
 import { RunnerKind } from "@/components/runners/runners-view";
+import { TaskMemory } from "@/components/memory/task-memory";
 import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { initials } from "@/components/shell/user-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -214,6 +215,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
         </PropGroup>
       )}
       {ticket}
+      <TaskMemory taskId={task.id} />
       <PropGroup title={t("taskPage.code")}>
         {task.repos.map((repo) => {
           const href = repo.pr === null ? null : safeHref(repo.pr.url);

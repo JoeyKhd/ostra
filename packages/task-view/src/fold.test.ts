@@ -343,7 +343,8 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "memory.proposed": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).toContain("data-memory-proposed");
+      expect(m.at(-1)?.parts.find((part) => part.type === "data-memory-proposed")).toMatchObject({ data: { proposalId: f["memory.proposed"].proposalId, title: f["memory.proposed"].title } });
     },
   },
   "turn.held": {
@@ -950,5 +951,25 @@ describe("held turns (F-037)", () => {
       stored(4, { kind: "turn.held", origin: "dispatch", budgetId, scope: "organization" }),
     ];
     expect(authorOf(foldTaskEvents(log, []), later)?.held).toBeUndefined();
+  });
+});
+
+describe("memory proposals (F-111)", () => {
+  it("F-111: an agent's proposal is a row in the thread with its title, and a note's use is none", () => {
+    const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e4");
+    const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d4", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
+    const messages = foldTaskEvents(
+      [
+        stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
+        stored(2, f["memory.used"]),
+        stored(3, f["memory.proposed"]),
+      ],
+      [],
+    );
+    const parts = messages.flatMap((message) => message.parts);
+    expect(parts.filter((part) => part.type === "data-memory-proposed")).toEqual([
+      expect.objectContaining({ data: { proposalId: f["memory.proposed"].proposalId, title: f["memory.proposed"].title } }),
+    ]);
+    expect(parts.some((part) => part.type === "data-system")).toBe(false);
   });
 });

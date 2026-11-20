@@ -46,6 +46,8 @@ export type ProfileDraft = {
   readonly effort: EffortLevel;
   readonly instructions: string;
   readonly planFirst: boolean;
+  /** F-111: the task ends with a closing turn that proposes what the next task should know. */
+  readonly closingTurn: boolean;
   readonly access: "everyone" | "listed";
   readonly members: readonly MemberId[];
   readonly rules: readonly RuleDraft[];
@@ -173,6 +175,7 @@ export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
   effort: detail.effort,
   instructions: detail.instructions ?? "",
   planFirst: detail.planFirst,
+  closingTurn: detail.closingTurn,
   access: detail.access.kind,
   members: detail.access.kind === "listed" ? detail.access.members.map((member) => member.memberId) : [],
   rules: groupRules(detail.rules),
@@ -212,6 +215,7 @@ export const newDraft = (adapter: string, model: ModelName | null): ProfileDraft
   effort: "default",
   instructions: "",
   planFirst: false,
+  closingTurn: false,
   access: "everyone",
   members: [],
   rules: [],
@@ -236,6 +240,7 @@ export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | nul
   instructions: draft.instructions.trim() === "" ? null : draft.instructions,
   approvalRules: [...draftsToRules(draft.rules, newId)],
   planFirst: draft.planFirst,
+  closingTurn: draft.closingTurn,
   access: draft.access === "everyone" ? { kind: "everyone" } : { kind: "listed", members: [...draft.members] },
   mcpServers: draft.servers.map((server) =>
     server.transport === "http"
