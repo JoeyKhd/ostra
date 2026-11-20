@@ -15,9 +15,14 @@ describe("queryScopesOf", () => {
     expect(queryScopesOf("runner")).toEqual(expect.arrayContaining(["runners", "pools"]));
   });
 
+  it("F-095: refreshes the box sizes and the fleet's counts for an organization, a runner, a project or a task change", () => {
+    expect(queryScopesOf("organization")).toEqual(expect.arrayContaining(["boxSizes", "fleetUse"]));
+    for (const entity of ["runner", "project", "task"] as const) expect(queryScopesOf(entity)).toContain("fleetUse");
+  });
+
   it("refreshes the organization and the member's own view for a member or organization change", () => {
     for (const entity of ["member", "organization"] as const) {
-      expect(queryScopesOf(entity)).toEqual(["organization", "me"]);
+      expect(queryScopesOf(entity)).toEqual(expect.arrayContaining(["organization", "me"]));
     }
   });
 });

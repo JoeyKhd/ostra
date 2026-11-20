@@ -16,7 +16,7 @@ const now = Date.UTC(2026, 10, 19, 12);
 const idle = { run: () => undefined, pending: false };
 
 type Box = NonNullable<TaskDetail["box"]>;
-const box = (over: Partial<Box>): Box => ({ state: "running", idleStopDueAt: null, releasedAt: null, releaseReason: null, runnerName: "alex-laptop", ...over });
+const box = (over: Partial<Box>): Box => ({ state: "running", idleStopDueAt: null, releasedAt: null, releaseReason: null, runnerName: "alex-laptop", size: null, waiting: null, ...over });
 
 describe("the box", () => {
   it("F-032: says each state, the idle stop's time, and why it was released", () => {

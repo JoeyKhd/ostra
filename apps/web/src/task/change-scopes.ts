@@ -4,15 +4,16 @@ import type { ChangeEntity } from "@ostra/protocol";
 // over `ChangeEntity`, so a new kind of notice fails the build until the panel says what it refreshes.
 
 /** A top-level tRPC router whose cached queries a notice can invalidate. */
-export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me";
+export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse";
 
 export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
   switch (entity) {
     case "task":
-      return ["tasks", "projects"];
+      return ["tasks", "projects", "fleetUse"];
     case "runner":
     case "runner-pool":
-      return ["runners", "pools"];
+      // Milestone 5: the Box sizes page counts runners, and a project's Runners tab its pools' boxes.
+      return ["runners", "pools", "fleetUse"];
     case "model-provider":
     case "model":
       return ["providers"];
@@ -20,13 +21,13 @@ export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
       return ["agentProfiles"];
     case "project":
     case "environment":
-      return ["projects", "environments"];
+      return ["projects", "environments", "fleetUse"];
     case "connection":
       return ["github"];
     case "member":
     case "organization":
       // A role or a name change shows in the organization's pages and in the signed-in member's own view.
-      return ["organization", "me"];
+      return ["organization", "me", "boxSizes", "fleetUse"];
     default:
       return entity satisfies never;
   }

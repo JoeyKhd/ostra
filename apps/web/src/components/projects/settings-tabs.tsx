@@ -18,7 +18,8 @@ export const ProjectSettingsTabs = ({ projectId, admin }: { readonly projectId: 
     ...(admin ? [{ href: `${base}/settings/ticket-template`, label: t("projectSettings.ticketTemplate") }, { href: `${base}/repos`, label: t("projectSettings.repos") }] : []),
     { href: `${base}/settings/models`, label: t("projectSettings.models") },
     { href: `${base}/settings/access`, label: t("projectSettings.access") },
-    ...(admin ? [{ href: `${base}/settings/audit`, label: t("projectSettings.audit") }] : []),
+    // Milestone 5 (project-runners.md): the pools and shares are an admin's settings.
+    ...(admin ? [{ href: `${base}/settings/runners`, label: t("projectSettings.runners") }, { href: `${base}/settings/audit`, label: t("projectSettings.audit") }] : []),
   ];
   return (
     <nav aria-label={t("projectSettings.tabs")} className="-mt-1 mb-6 flex gap-6 overflow-x-auto border-b border-line">

@@ -1,6 +1,6 @@
 "use client";
 
-import { BellIcon, ChartNoAxesColumnIcon, CheckIcon, ChevronsUpDownIcon, CircleUserRoundIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, ScrollTextIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon, UsersIcon, WalletIcon } from "lucide-react";
+import { BellIcon, BoxIcon, ChartNoAxesColumnIcon, ContainerIcon, CheckIcon, ChevronsUpDownIcon, CircleUserRoundIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, ScrollTextIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon, UsersIcon, WalletIcon } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
@@ -117,6 +117,15 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       <NavLink href="/organization/runners" also={["/device"]} icon={<ServerIcon />} onNavigate={onNavigate}>
         {t("shell.runners")}
       </NavLink>
+      {/* Milestone 5 (box-sizes.md, registry.md): every member reads the sizes; the registry is an admin's. */}
+      <NavLink href="/organization/box-sizes" icon={<BoxIcon />} onNavigate={onNavigate}>
+        {t("shell.boxSizes")}
+      </NavLink>
+      {admin ? (
+        <NavLink href="/organization/registry" icon={<ContainerIcon />} onNavigate={onNavigate}>
+          {t("shell.registry")}
+        </NavLink>
+      ) : null}
       {admin ? (
         <>
           <NavLink href="/organization/models" icon={<CpuIcon />} onNavigate={onNavigate}>

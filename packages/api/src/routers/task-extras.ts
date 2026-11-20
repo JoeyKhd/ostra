@@ -1,5 +1,5 @@
 import { modelTokenPrices } from "@ostra/domain";
-import { blobIdSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { blobIdSchema, boxSizeNameSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { SessionLimit } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -51,6 +51,12 @@ const limitOf = (limit: SessionRow["limitReached"]): SessionLimit | null => {
 };
 
 const restoredPayload = z.looseObject({ previousBox: z.enum(["kept", "released", "lost"]).optional() });
+
+/** Milestone 5 (F-095): the size a box was made with, or `null` where sizes don't apply. */
+const sizeOf = (box: { readonly size: string | null; readonly cpuMillis: number | null; readonly memoryMiB: number | null }) => {
+  const name = boxSizeNameSchema.safeParse(box.size);
+  return !name.success || box.cpuMillis === null || box.memoryMiB === null ? null : { name: name.data, cpuMillis: box.cpuMillis, memoryMiB: box.memoryMiB };
+};
 
 /** How a task's box shows: `ready` holds a running turn, `idle` waits for the next one. */
 const boxStateOf = (state: "creating" | "preparing" | "ready" | "idle" | "stopped" | "released" | "failed"): "starting" | "running" | "idle" | "stopped" | "released" | "failed" => {
@@ -182,6 +188,10 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
             releasedAt: box.releasedAt?.getTime() ?? null,
             releaseReason: box.releaseReason,
             runnerName,
+            /** Milestone 5 (F-095): the size it was made with, or `null` where sizes don't apply. */
+            size: sizeOf(box),
+            /** Milestone 5 (F-093): why it's still being made, and since when (epoch ms), or `null`. */
+            waiting: box.waitingReason === null || box.waitingSince === null ? null : { reason: box.waitingReason, since: box.waitingSince.getTime() },
           },
     spend,
     /** The limit that stopped the newest session, if one did. */

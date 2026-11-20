@@ -15,6 +15,7 @@ import { plansRouter, questionsRouter } from "./questions-plans.ts";
 import { joinTokensRouter, poolsRouter } from "./pools.ts";
 import { boxSizesRouter } from "./box-sizes.ts";
 import { registryRouter } from "./registry.ts";
+import { fleetUseRouter } from "./fleet-use.ts";
 import { runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
@@ -64,6 +65,7 @@ export const appRouter = router({
   joinTokens: joinTokensRouter,
   boxSizes: boxSizesRouter,
   registry: registryRouter,
+  fleetUse: fleetUseRouter,
   stream: streamRouter,
   insights: insightsRouter,
   spend: spendRouter,

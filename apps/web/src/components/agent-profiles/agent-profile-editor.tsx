@@ -33,6 +33,7 @@ import type { ProfileDetail } from "./profile-types";
 import { dayText, modelName } from "./profile-words";
 import { draftToRules, emptyRule, groupRules } from "./rule-drafts";
 import { RulesSection } from "./rules-section";
+import { RunnerLabelsSection } from "./runner-labels-section";
 import type { Coverage } from "./rules-section";
 import { SkillsSection } from "./skills-section";
 
@@ -412,6 +413,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
             </EditorSection>
             <SkillsSection skills={current.skills} readOnly={readOnly} newSkill={newSkill} onChange={(skills) => { update({ ...current, skills }); }} />
             <McpSection servers={current.servers} readOnly={readOnly} onChange={(servers) => { update({ ...current, servers }); }} />
+            <RunnerLabelsSection profileId={profileId} labels={data?.runnerLabels ?? []} readOnly={readOnly} />
             <RulesSection
               rules={current.rules}
               openKey={openKey}
