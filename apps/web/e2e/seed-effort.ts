@@ -38,7 +38,8 @@ const model = (endpointModelId: string, displayName: string, catalogId: string, 
 const gpt = await model("gpt-5.5", "GPT-5.5", "openai/gpt-5.5", { supported: true, effort: ["none", "low", "medium", "high", "xhigh"] });
 await model("claude-haiku-5", "Claude Haiku 5", "anthropic/claude-haiku-5", { supported: false });
 
-const profile = await db.agentProfile.create({ data: { organizationId, name: `Careful ${randomUUID().slice(0, 6)}`, adapter: "opencode", modelId: gpt.id, effort: "high" } });
+// F-135 (ADR 0065 amended 2026-11-20): the profile runs on its provider, whose models its picker offers.
+const profile = await db.agentProfile.create({ data: { organizationId, name: `Careful ${randomUUID().slice(0, 6)}`, adapter: "opencode", modelId: gpt.id, modelCatalogId: "openai/gpt-5.5", providerId: provider.id, effort: "high" } });
 const project =
   (await db.project.findFirst({ where: { organizationId, slug: "effort" } })) ??
   (await db.project.create({ data: { organizationId, name: "effort", slug: "effort", access: "open" } }));

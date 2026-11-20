@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { modelNameSchema, presetRules } from "@ostra/domain";
-import { agentProfileIdSchema, memberIdSchema } from "@ostra/protocol";
+import { agentProfileIdSchema, memberIdSchema, providerIdSchema } from "@ostra/protocol";
 
 import { draftProblem, isDirty, newDraft, pickedFileProblem, saveInputOf, serverProblem, skillDescription, skillProblem, withFile } from "./editor-draft";
 import type { ProfileDraft, ServerDraft, SkillDraft, SkillFileDraft } from "./editor-draft";
@@ -18,7 +18,8 @@ const member = memberIdSchema.parse("01900000-0000-7000-8000-0000000000aa");
 let next = 0;
 const newId = (): string => `01900000-0000-7000-8000-${String(next++).padStart(12, "0")}`;
 
-const filled = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({ ...newDraft("opencode", MODEL), name: "Careful", ...over });
+const PROVIDER = providerIdSchema.parse("01900000-0000-7000-8000-0000000000cc");
+const filled = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({ ...newDraft("opencode", MODEL, PROVIDER), name: "Careful", ...over });
 
 describe("the profile editor's draft", () => {
   it("F-021, F-063: saves the name, model, plan first, the listed members and the preset's rules as the router takes them", () => {
@@ -56,6 +57,7 @@ describe("the profile editor's draft", () => {
 
   it("F-021: Save profile waits for a name, a model, a listed member and valid rules", () => {
     expect(draftProblem(filled({ name: " " }))).toBe("agentProfiles.editor.name");
+    expect(draftProblem(filled({ providerId: null }))).toBe("agentProfiles.editor.pickProviderPlaceholder");
     expect(draftProblem(filled({ model: null }))).toBe("agentProfiles.editor.pickModelPlaceholder");
     expect(draftProblem(filled({ access: "listed" }))).toBe("agentProfiles.props.nobodyListed");
     expect(draftProblem(filled({ access: "listed", members: [member] }))).toBeNull();

@@ -9,7 +9,7 @@ import {
   modelNameText,
   previewProviderChange,
   profileModelName,
-  resolveProjectModel,
+  resolveProfileModel,
   setProjectProviders,
 } from "@ostra/domain";
 import type { MemberScope, ModelName, ProviderChangePlan, ProviderDeps, ProviderListState } from "@ostra/domain";
@@ -42,8 +42,22 @@ const servedSchema = z.object({ providerId: providerIdSchema, providerName: z.st
 export const projectProvidersViewSchema = z.object({
   mode: z.enum(["default", "own"]),
   providers: z.array(providerLineSchema),
-  /** Each model a profile names, and the provider that serves it here; `null` is "no key". */
-  models: z.array(z.object({ name: modelNameSchema, text: z.string(), displayName: z.string(), logoPath: z.string().nullable(), served: servedSchema, needsConfirm: z.boolean() })),
+  /**
+   * Each model a profile names, and the provider that serves it here; `null` is "no key". A model
+   * that profiles on their own provider name is a row per provider, with `pinned` set (ADR 0065
+   * amended 2026-11-20): that provider serves it, only while this project's list allows it.
+   */
+  models: z.array(
+    z.object({
+      name: modelNameSchema,
+      text: z.string(),
+      displayName: z.string(),
+      logoPath: z.string().nullable(),
+      served: servedSchema,
+      needsConfirm: z.boolean(),
+      pinned: z.object({ providerId: providerIdSchema, providerName: z.string() }).nullable(),
+    }),
+  ),
 });
 export type ProjectProvidersView = z.infer<typeof projectProvidersViewSchema>;
 
@@ -212,20 +226,27 @@ export const planView = async (
   };
 };
 
-/** The model names the organization's live profiles use, once each, in a stable order. */
-export const profileModelNames = async (db: DbOrTx, organizationId: OrganizationId): Promise<readonly ModelName[]> => {
+/** A model the organization's live profiles use: by name (`pinned` null), or on one provider. */
+export type ProfileModelUse = { readonly name: ModelName; readonly pinned: { readonly providerId: ProviderId; readonly providerName: string } | null };
+
+/**
+ * The models the organization's live profiles use, once each: by name for the profiles saved
+ * before, and once per provider for those that name their provider (ADR 0065 amended 2026-11-20).
+ */
+export const profileModelUses = async (db: DbOrTx, organizationId: OrganizationId): Promise<readonly ProfileModelUse[]> => {
   const profiles = await db.agentProfile.findMany({
     where: { organizationId, archivedAt: null },
-    select: { modelCatalogId: true, modelCustomName: true, model: { select: { catalogId: true, endpointModelId: true } } },
+    select: { modelCatalogId: true, modelCustomName: true, model: { select: { catalogId: true, endpointModelId: true } }, provider: { select: { id: true, name: true } } },
   });
-  const byKey = new Map<string, ModelName>();
+  const byKey = new Map<string, ProfileModelUse>();
   for (const profile of profiles) {
     const name = profileModelName(profile);
     if (name !== null) {
-      byKey.set(modelNameKey(name), name);
+      const pinned = profile.provider === null ? null : { providerId: providerIdSchema.parse(profile.provider.id), providerName: profile.provider.name };
+      byKey.set(`${modelNameKey(name)}|${pinned?.providerId ?? ""}`, { name, pinned });
     }
   }
-  return [...byKey.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)).map(([, name]) => name);
+  return [...byKey.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)).map(([, use]) => use);
 };
 
 /** A project's providers and what serves each model, as anyone who can open it reads them. */
@@ -236,7 +257,7 @@ export const loadProjectProviders = async (db: Db, organizationId: OrganizationI
   }
   const [rows, names, confirms, displayNames] = await Promise.all([
     db.modelProvider.findMany({ where: { organizationId, id: { in: [...state.list] } }, orderBy: { name: "asc" } }),
-    profileModelNames(db, organizationId),
+    profileModelUses(db, organizationId),
     db.modelChoice.findMany({ where: { organizationId, projectId: state.listProjectId, needsConfirm: true }, select: { modelKey: true } }),
     modelDisplayNames(db, organizationId),
   ]);
@@ -248,15 +269,17 @@ export const loadProjectProviders = async (db: Db, organizationId: OrganizationI
       const provider = mapModelProvider(row);
       return { providerId: provider.id, name: provider.name, host: hostOf(provider.baseUrl), apiFormat: provider.apiFormat };
     }),
-    models: names.map((name) => {
-      const resolved = resolveProjectModel(state.list, state.choices, state.models, name);
+    models: names.map(({ name, pinned }) => {
+      const resolved = resolveProfileModel(state.list, state.choices, state.models, name, pinned?.providerId ?? null);
       return {
         name,
         text: modelNameText(name),
         displayName: displayNameOf(displayNames, name),
         logoPath: logoOf(logos, name),
-        served: resolved.ok ? { providerId: resolved.providerId, providerName: providerName.get(resolved.providerId) ?? "", modelId: resolved.modelId } : null,
-        needsConfirm: unconfirmed.has(modelNameKey(name)),
+        served: resolved.ok ? { providerId: resolved.providerId, providerName: pinned?.providerName ?? providerName.get(resolved.providerId) ?? "", modelId: resolved.modelId } : null,
+        // A model on a profile's own provider has no choice of this project's to confirm.
+        needsConfirm: pinned === null && unconfirmed.has(modelNameKey(name)),
+        pinned,
       };
     }),
   };

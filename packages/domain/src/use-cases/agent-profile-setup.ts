@@ -1,4 +1,4 @@
-import { agentProfileIdSchema, approvalRulesSchema, projectIdSchema, runnerLimits } from "@ostra/protocol";
+import { agentProfileIdSchema, approvalRulesSchema, projectIdSchema, providerIdSchema, runnerLimits } from "@ostra/protocol";
 import type { AgentProfileId, TaskKind } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -7,9 +7,9 @@ import { effortLevelFromDb, effortLevelToDb } from "@ostra/db";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
-import { modelNameColumns, modelNameOfModel } from "../providers/model-name.ts";
-import { loadProviderList } from "../providers/provider-lists.ts";
-import { resolveProjectModel } from "../providers/resolve.ts";
+import { modelNameColumns, modelNameOfColumns, modelNameOfModel, modelNameText } from "../providers/model-name.ts";
+import { loadListedModelsInTx, loadProviderList } from "../providers/provider-lists.ts";
+import { resolveProfileModel, resolveProjectModel } from "../providers/resolve.ts";
 import { BUILT_IN_PROFILE_ADAPTER, ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import type { UseCaseResult } from "./common.ts";
 import type { ArchiveAgentProfile, ProfilesForMember, SaveAgentProfile, SetProjectDefaultProfile } from "./m3-signatures.ts";
@@ -190,15 +190,46 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
     if (clash !== null) {
       return refuseSave("name-taken", "Another profile already has that name");
     }
+    // The provider (F-135, F-021; ADR 0065 amended 2026-11-20): absent keeps the stored one, and a
+    // model given as one provider's row (`modelId`) names that provider, unless the profile had none.
+    const byRow =
+      (input.modelName === undefined || input.modelName === null) && input.modelId !== null
+        ? await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { providerId: true } })
+        : null;
+    const stored = existing?.providerId ?? null;
+    const providerId = input.providerId !== undefined ? input.providerId : byRow !== null && stored !== null ? byRow.providerId : stored;
+    if (byRow !== null && providerId !== null && providerId !== byRow.providerId) {
+      return refuseSave("invalid-input", "The model is another provider's");
+    }
+    const provider = providerId === null ? null : await tx.modelProvider.findFirst({ where: { id: providerId, organizationId }, select: { id: true, name: true } });
+    if (providerId !== null && provider === null) {
+      return refuseSave("invalid-input", "No such provider");
+    }
     // The model by name (F-135): the name is what the profile means; `modelId` is still written,
-    // as the default list's row for it, so the previous release reads the same profile.
+    // as its provider's row for it (or, with no provider, the default list's), so the previous
+    // release reads the same profile.
     let modelId = input.modelId;
     let nameColumns: { readonly modelCatalogId: string | null; readonly modelCustomName: string | null } = { modelCatalogId: null, modelCustomName: null };
-    if (input.modelName !== undefined && input.modelName !== null) {
+    if (input.modelName !== undefined && input.modelName !== null && provider !== null) {
+      nameColumns = modelNameColumns(input.modelName);
+      const served = resolveProfileModel([providerIdSchema.parse(provider.id)], [], await loadListedModelsInTx(tx, organizationId), input.modelName, providerIdSchema.parse(provider.id));
+      const unchanged =
+        existing !== null &&
+        existing.providerId === provider.id &&
+        JSON.stringify(modelNameOfColumns(existing)) === JSON.stringify(modelNameOfColumns(nameColumns));
+      // A profile names only a model its provider lists; one saved before that it stopped listing
+      // keeps saving, and its tasks wait with the reason (the no-key path).
+      if (!served.ok && !unchanged) {
+        return refuseSave("invalid-input", `${provider.name} doesn't list ${modelNameText(input.modelName)}`);
+      }
+      modelId = served.ok ? served.modelId : existing?.modelId ?? null;
+    } else if (input.modelName !== undefined && input.modelName !== null) {
       nameColumns = modelNameColumns(input.modelName);
       const defaults = await loadProviderList(tx, organizationId, null);
       const resolved = defaults === null ? null : resolveProjectModel(defaults.list, defaults.choices, defaults.models, input.modelName);
       modelId = resolved?.ok === true ? resolved.modelId : null;
+    } else if (providerId !== null && byRow === null) {
+      return refuseSave("invalid-input", "A profile on a provider names one of its models");
     } else if (input.modelId !== null) {
       const model = await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { listed: true, catalogId: true, endpointModelId: true } });
       if (model === null) {
@@ -230,6 +261,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
       name,
       adapter: input.adapter,
       modelId,
+      providerId,
       instructions: input.instructions === null || input.instructions.trim() === "" ? null : input.instructions,
       approvalRules: rules.data,
       planFirst: input.planFirst,
@@ -274,6 +306,7 @@ export const saveAgentProfile: SaveAgentProfile = async (deps, scope, input) => 
               name: existing.name,
               adapter: existing.adapter,
               modelId: existing.modelId,
+              providerId: existing.providerId,
               instructions: existing.instructions,
               approvalRules: existing.approvalRules,
               planFirst: existing.planFirst,
@@ -406,7 +439,10 @@ export const setProjectDefaultProfile: SetProjectDefaultProfile = async (deps, s
         ? ({ ok: false, error: "not-found", message: "No such project" } as const)
         : ({ ok: false, error: "forbidden", message: "Only a project admin may set its defaults" } as const);
     }
-    const profile = await tx.agentProfile.findFirst({ where: { id: input.profileId, organizationId }, select: { id: true, access: true, archivedAt: true } });
+    const profile = await tx.agentProfile.findFirst({
+      where: { id: input.profileId, organizationId },
+      select: { id: true, access: true, archivedAt: true, providerId: true, provider: { select: { name: true } } },
+    });
     if (profile === null) {
       return { ok: false, error: "not-found", message: "No such agent profile" } as const;
     }
@@ -415,6 +451,17 @@ export const setProjectDefaultProfile: SetProjectDefaultProfile = async (deps, s
     }
     if (profile.access !== "everyone") {
       return { ok: false, error: "not-open-to-every-member", message: "A default must be open to every member of the project" } as const;
+    }
+    // F-135 (ADR 0065 amended 2026-11-20): the project's list decides which profiles run there.
+    if (profile.providerId !== null) {
+      const list = await loadProviderList(tx, organizationId, input.projectId);
+      if (!(list?.list.some((providerId) => providerId === profile.providerId) ?? false)) {
+        return {
+          ok: false,
+          error: "provider-not-allowed",
+          message: `The profile runs on ${profile.provider?.name ?? "a provider"}, which this project's list doesn't allow: an organization admin adds it in Models and keys`,
+        } as const;
+      }
     }
     await tx.project.update({ where: { id: input.projectId }, data: { [defaultProfileColumn[input.kind]]: profile.id } });
     await deps.audit.recordInTx(tx, {

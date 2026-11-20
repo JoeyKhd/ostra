@@ -89,7 +89,8 @@ it("F-037: startCheck gives each reason: open, a project's and the organization'
   await admin.budgets.clear({ projectId: null });
   expect(await check()).toEqual({ kind: "open", providerName: "World models" });
 
-  // No key: the project's own list holds no provider that serves the profile's model.
+  // No key: the project's own list doesn't allow the profile's provider (ADR 0065 amended
+  // 2026-11-20: the first-run model names it).
   await harness.test.db.project.update({
     where: { id: a.openProject.id },
     data: { ownProviders: true },
@@ -98,7 +99,8 @@ it("F-037: startCheck gives each reason: open, a project's and the organization'
     kind: "wait",
     reason: "no-provider",
     modelName: "world-model",
-    message: "No provider on this project's list serves world-model: an organization admin adds one under Models",
+    provider: { name: "World models", reason: "not-allowed" },
+    message: "The profile runs on World models, which this project's list doesn't allow: an organization admin adds it in Models and keys, or a member picks a profile on an allowed key",
   });
   await harness.test.db.project.update({
     where: { id: a.openProject.id },

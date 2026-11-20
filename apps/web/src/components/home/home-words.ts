@@ -54,6 +54,16 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
     case "files_outside_repos":
       return [plain(t("home.reason.filesOutsideRepos"))];
     case "no_provider_for_model":
+      // ADR 0065 amended 2026-11-20: the profile's own provider, which the project doesn't allow or which stopped listing the model.
+      if (detail.provider !== null) {
+        return [
+          plain(
+            detail.provider.reason === "not-allowed"
+              ? t("home.reason.profileKeyNotAllowed", { provider: detail.provider.name })
+              : t("home.reason.profileKeyNotListed", { provider: detail.provider.name, model: detail.modelName ?? "" }),
+          ),
+        ];
+      }
       return [plain(detail.modelName === null ? t("home.reason.noProviderForModel") : t("home.reason.noKeyFor", { model: detail.modelName }))];
     case "runner_awaiting_approval":
       return [plain(t("home.reason.runnerAwaitingApproval"))];

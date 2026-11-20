@@ -1,5 +1,5 @@
 import { blobIdSchema } from "@ostra/protocol";
-import type { AgentProfileId, EffortLevel, MemberId } from "@ostra/protocol";
+import type { AgentProfileId, EffortLevel, MemberId, ProviderId } from "@ostra/protocol";
 
 import type { MessageKey } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -40,7 +40,12 @@ export type ServerDraft =
 export type ProfileDraft = {
   readonly name: string;
   readonly adapter: string;
-  /** The model by name (F-135): never a key. */
+  /**
+   * F-135, F-021 (ADR 0065 amended 2026-11-20): the provider whose key its tasks use, picked before
+   * the model. `null` on a profile saved before: each project's own key serves the model by name.
+   */
+  readonly providerId: ProviderId | null;
+  /** The model by name (F-135), one its provider lists. */
   readonly model: ModelName | null;
   /** F-137: how much its model reasons; a new task copies it. */
   readonly effort: EffortLevel;
@@ -83,6 +88,7 @@ export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** What stops "Save profile", in the order the page shows it, or `null`. */
 export const draftProblem = (draft: ProfileDraft): MessageKey | null => {
   if (draft.name.trim() === "") return "agentProfiles.editor.name";
+  if (draft.providerId === null) return "agentProfiles.editor.pickProviderPlaceholder";
   if (draft.model === null) return "agentProfiles.editor.pickModelPlaceholder";
   if (draft.access === "listed" && draft.members.length === 0) return "agentProfiles.props.nobodyListed";
   for (const rule of draft.rules) {
@@ -171,6 +177,7 @@ export const commandLine = (server: Extract<ServerDraft, { transport: "stdio" }>
 export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
   name: detail.name,
   adapter: detail.adapter,
+  providerId: detail.provider?.providerId ?? null,
   model: detail.modelName,
   effort: detail.effort,
   instructions: detail.instructions ?? "",
@@ -207,10 +214,11 @@ export const draftFromDetail = (detail: ProfileDetail): ProfileDraft => ({
   ),
 });
 
-/** A new profile's draft: the agent, the built-in profile's model, nothing else (agent-profile.md, "New profile"). */
-export const newDraft = (adapter: string, model: ModelName | null): ProfileDraft => ({
+/** A new profile's draft: the agent, the built-in profile's provider and model, nothing else (agent-profile.md, "New profile"). */
+export const newDraft = (adapter: string, model: ModelName | null, providerId: ProviderId | null = null): ProfileDraft => ({
   name: "",
   adapter,
+  providerId,
   model,
   effort: "default",
   instructions: "",
@@ -237,6 +245,7 @@ export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | nul
   adapter: draft.adapter,
   modelId: null,
   modelName: draft.model,
+  providerId: draft.providerId,
   instructions: draft.instructions.trim() === "" ? null : draft.instructions,
   approvalRules: [...draftsToRules(draft.rules, newId)],
   planFirst: draft.planFirst,
@@ -272,3 +281,25 @@ export const saveInputOf = (draft: ProfileDraft, profileId: AgentProfileId | nul
 /** Whether two model names name the same model. */
 export const sameModel = (a: ModelName, b: ModelName | null): boolean =>
   b !== null && (a.kind === "catalog" ? b.kind === "catalog" && b.catalogId === a.catalogId : b.kind === "custom" && b.endpointModelId === a.endpointModelId);
+
+type ProviderListing = { readonly providerId: string };
+type Listed = { readonly name: ModelName; readonly providers: readonly ProviderListing[] };
+
+/**
+ * F-135, F-021 (agent-profile-model.md, ADR 0065 amended 2026-11-20): the models the editor's
+ * picker offers once a provider is picked: only the ones that provider lists, each with that
+ * provider's listing alone. No provider yet: none.
+ */
+export const modelsOfProvider = <T extends Listed,>(options: readonly T[], providerId: string | null): readonly T[] =>
+  providerId === null
+    ? []
+    : options.flatMap((option) => {
+        const own = option.providers.filter((provider) => provider.providerId === providerId);
+        return own.length === 0 ? [] : [{ ...option, providers: own }];
+      });
+
+/** The draft on another provider: a model that provider doesn't list is cleared (agent-profile-model.md). */
+export const withProvider = (draft: ProfileDraft, providerId: ProviderId, options: readonly Listed[]): ProfileDraft => {
+  const kept = draft.model !== null && modelsOfProvider(options, providerId).some((option) => sameModel(option.name, draft.model));
+  return { ...draft, providerId, model: kept ? draft.model : null };
+};

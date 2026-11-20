@@ -6,7 +6,9 @@ import { apiFormatFromDb, effortLevelFromDb } from "@ostra/db";
 import {
   agentDisplayName,
   archiveAgentProfile,
+  loadListedModelsInTx,
   loadProviderList,
+  modelNameColumns,
   modelNameKey,
   modelNameOfModel,
   modelNameSchema,
@@ -17,6 +19,7 @@ import {
   profileMcpServersSchema,
   profileModelName,
   profilesForMember,
+  resolveProfileModel,
   resolveProjectModel,
   saveAgentProfile,
   setProfileLabels,
@@ -105,8 +108,14 @@ const profileRowSchema = z.object({
   agentName: z.string(),
   builtIn: z.boolean(),
   model: modelViewSchema.nullable(),
-  /** F-135 (ADR 0065): the model by name, as the profile saved it; each project's list decides who serves it. */
+  /** F-135 (ADR 0065): the model by name, as the profile saved it. */
   modelName: modelNameSchema.nullable(),
+  /**
+   * F-135, F-021 (ADR 0065 amended 2026-11-20): the provider whose key its tasks use, and no other.
+   * `null`: a profile saved before, which each project's own choice serves by name until an admin
+   * picks one.
+   */
+  provider: z.object({ providerId: providerIdSchema, name: z.string() }).nullable(),
   /** F-137: how much its model reasons; a new task copies it. */
   effort: effortLevelSchema,
   planFirst: z.boolean(),
@@ -192,6 +201,7 @@ type ProfileRow = Awaited<ReturnType<typeof loadRows>>[number];
 
 const profileInclude = {
   model: { include: { provider: { select: { id: true, name: true, apiFormat: true } } } },
+  provider: { select: { id: true, name: true } },
   skills: { select: { name: true, body: true, files: true }, orderBy: { name: "asc" } },
   members: { select: { member: { select: { id: true, user: { select: { name: true } } } } } },
 } as const;
@@ -273,6 +283,7 @@ const toRow = async (
               apiFormat: apiFormatFromDb[row.model.provider.apiFormat],
             },
       modelName: profileModelName(row),
+      provider: row.provider === null ? null : { providerId: providerIdSchema.parse(row.provider.id), name: row.provider.name },
       effort: effortLevelFromDb[row.effort],
       planFirst: row.planFirst,
       closingTurn: row.closingTurn,
@@ -343,6 +354,11 @@ const saveInput = z.strictObject({
    * decides which provider serves it. Given, it wins over `modelId`.
    */
   modelName: modelNameSchema.nullable().optional(),
+  /**
+   * F-135, F-021 (ADR 0065 amended 2026-11-20): the provider whose key and base URL its tasks use;
+   * it must list the model. Absent keeps the stored one; `null` resolves the name in each project.
+   */
+  providerId: providerIdSchema.nullable().optional(),
   instructions: z.string().max(profileLimits.instructionsMax).nullable(),
   approvalRules: approvalRulesSchema,
   planFirst: z.boolean(),
@@ -435,6 +451,26 @@ export const ruleCoverage = (rules: readonly ApprovalRule[], context: RuleContex
     }
     return { ruleId: rule.ruleId, matched, unmatched };
   });
+
+/**
+ * The model row whose levels bound a saved effort (F-137): the one given, else the profile's own
+ * provider's row for the name, else the default list's.
+ */
+const effortRowOf = async (db: AgentProfileDb, organizationId: OrganizationId, input: z.infer<typeof saveInput>): Promise<ModelId | null> => {
+  if (input.modelId !== null) {
+    return input.modelId;
+  }
+  if (input.modelName === undefined || input.modelName === null) {
+    return null;
+  }
+  if (input.providerId !== undefined && input.providerId !== null) {
+    const served = resolveProfileModel([input.providerId], [], await loadListedModelsInTx(db, organizationId), input.modelName, input.providerId);
+    return served.ok ? served.modelId : null;
+  }
+  const defaults = await loadProviderList(db, organizationId, null);
+  const served = defaults === null ? null : resolveProjectModel(defaults.list, defaults.choices, defaults.models, input.modelName);
+  return served?.ok === true ? served.modelId : null;
+};
 
 // ---------- secrets ----------
 
@@ -549,13 +585,22 @@ export const agentProfilesRouter = router({
         select: { defaultRefineProfileId: true, defaultCodeProfileId: true, defaultReviewProfileId: true },
       });
       const defaultId = { refine: project.defaultRefineProfileId, code: project.defaultCodeProfileId, review: project.defaultReviewProfileId }[input.kind];
-      const usable = await profilesForMember(db, ctx.scope, { projectId: input.projectId });
+      const [usable, list] = await Promise.all([
+        profilesForMember(db, ctx.scope, { projectId: input.projectId }),
+        loadProviderList(db, ctx.scope.organizationId, input.projectId),
+      ]);
       const rows = await db.agentProfile.findMany({
         where: { organizationId: ctx.scope.organizationId, id: { in: usable.map((profile) => profile.profileId) } },
-        select: { id: true, adapter: true, approvalRules: true, model: { select: { endpointModelId: true, displayName: true } } },
+        select: { id: true, adapter: true, approvalRules: true, providerId: true, model: { select: { endpointModelId: true, displayName: true } } },
       });
       const byId = new Map(rows.map((row) => [row.id, row] as const));
-      const offered = usable.map((profile) => {
+      // F-135 (ADR 0065 amended 2026-11-20): the project's list decides which profiles run here, so
+      // a profile on a provider it doesn't allow isn't offered.
+      const allowed = new Set<string>(list?.list ?? []);
+      const offered = usable.filter((profile) => {
+        const providerId = byId.get(profile.profileId)?.providerId ?? null;
+        return providerId === null || allowed.has(providerId);
+      }).map((profile) => {
         const row = byId.get(profile.profileId);
         return {
           profileId: profile.profileId,
@@ -616,7 +661,8 @@ export const agentProfilesRouter = router({
       }
       // F-137: a level the model doesn't offer is refused, naming the ones it does (ADR 0066, Q289).
       if (input.effort !== undefined && input.effort !== "default") {
-        const offered = input.modelId === null ? null : await loadModelEffort(db, ctx.deps.agentEffort, organizationId, input.modelId, input.adapter);
+        const effortRow = await effortRowOf(db, organizationId, input);
+        const offered = effortRow === null ? null : await loadModelEffort(db, ctx.deps.agentEffort, organizationId, effortRow, input.adapter);
         const levels = offered?.levels ?? ["default"];
         if (!levels.includes(input.effort)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: levelRefusal(input.effort, levels) });
@@ -666,6 +712,7 @@ export const agentProfilesRouter = router({
         adapter: input.adapter,
         modelId: input.modelId,
         ...(input.modelName === undefined ? {} : { modelName: input.modelName }),
+        ...(input.providerId === undefined ? {} : { providerId: input.providerId }),
         instructions: input.instructions,
         approvalRules: input.approvalRules,
         planFirst: input.planFirst,
@@ -755,6 +802,41 @@ export const agentProfilesRouter = router({
         }));
     }),
 
+  /**
+   * F-135, F-021 (ADR 0065 amended 2026-11-20): the organization's providers, for the profile
+   * editor's Provider field, by name, each with every project and whether its list allows that
+   * provider. A profile on a provider runs only where it's allowed. Organization admins, who save
+   * profiles. Never a token.
+   */
+  providerOptions: adminProcedure
+    .output(
+      z.array(
+        z.object({
+          providerId: providerIdSchema,
+          name: z.string(),
+          projects: z.array(z.object({ projectId: projectIdSchema, name: z.string(), allowed: z.boolean() })),
+        }),
+      ),
+    )
+    .query(async ({ ctx }) => {
+      const { db } = ctx.deps;
+      const organizationId = ctx.scope.organizationId;
+      const [providers, projects] = await Promise.all([
+        db.modelProvider.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+        db.project.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      ]);
+      const lists = await Promise.all(projects.map(async (project) => ({ project, state: await loadProviderList(db, organizationId, projectIdSchema.parse(project.id)) })));
+      return providers.map((provider) => ({
+        providerId: providerIdSchema.parse(provider.id),
+        name: provider.name,
+        projects: lists.map(({ project, state }) => ({
+          projectId: projectIdSchema.parse(project.id),
+          name: project.name,
+          allowed: state?.list.some((providerId) => providerId === provider.id) ?? false,
+        })),
+      }));
+    }),
+
   /** Archives a profile; project defaults on it move to the built-in one (Q189). Organization admins only. */
   archive: adminProcedure
     .input(z.strictObject({ profileId: agentProfileIdSchema }))
@@ -789,7 +871,7 @@ export const agentProfilesRouter = router({
       const { db, ports } = ctx.deps;
       const organizationId = ctx.scope.organizationId;
       return db.$transaction(async (tx) => {
-        const model = await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { id: true, listed: true, providerId: true } });
+        const model = await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { id: true, listed: true, providerId: true, catalogId: true, endpointModelId: true } });
         if (model === null) {
           throw new TRPCError({ code: "NOT_FOUND", message: "No such model" });
         }
@@ -801,7 +883,12 @@ export const agentProfilesRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "This organization has no built-in OpenCode profile" });
         }
         const profileId = agentProfileIdSchema.parse(profile.id);
-        await tx.agentProfile.update({ where: { id: profile.id }, data: { modelId: model.id } });
+        // F-135 (ADR 0065 amended 2026-11-20): a provider's listing names the model and its provider.
+        const name = modelNameOfModel(model);
+        await tx.agentProfile.update({
+          where: { id: profile.id },
+          data: { modelId: model.id, providerId: model.providerId, ...modelNameColumns(name) },
+        });
         await ports.audit.recordInTx(tx, {
           organizationId,
           projectId: null,

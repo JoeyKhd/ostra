@@ -124,7 +124,7 @@ describe("tasks.create (F-097)", () => {
 
   it("needs a model on the project's profile, and says what to do", async () => {
     const { a } = harness.fixture;
-    await harness.test.db.agentProfile.updateMany({ where: { organizationId: a.organization.id, builtIn: true }, data: { modelId: null } });
+    await harness.test.db.agentProfile.updateMany({ where: { organizationId: a.organization.id, builtIn: true }, data: { modelId: null, modelCatalogId: null, modelCustomName: null, providerId: null } });
     try {
       const refusal = await trpcFailure((await harness.as(a.member)).tasks.create({ projectId, prompt: "hello" }));
       expect(refusal.code).toBe("PRECONDITION_FAILED");

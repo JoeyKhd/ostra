@@ -15,6 +15,9 @@ let world: Awaited<ReturnType<typeof seedConnectionAndModel>>;
 beforeAll(async () => {
   harness = await createApiHarness();
   world = await seedConnectionAndModel(harness);
+  // These cases are a profile saved before the profile's provider (ADR 0065 amended 2026-11-20),
+  // which each project's list serves by name; `profile-provider.test.ts` has the profile on its own.
+  await harness.test.db.agentProfile.updateMany({ where: { organizationId: harness.fixture.a.organization.id }, data: { providerId: null } });
 });
 
 afterAll(async () => {
@@ -101,7 +104,7 @@ describe("keys per project at a task's start", () => {
     expect(adminRows).toContain(started.taskId);
     expect(memberRows).not.toContain(started.taskId);
     // Ticket 50: the row names the model, for "No key for {model}".
-    expect((await admin.home.needsYou({})).rows.find((row) => row.taskId === started.taskId)?.detail).toEqual({ reason: "no_provider_for_model", modelName: "world-model" });
+    expect((await admin.home.needsYou({})).rows.find((row) => row.taskId === started.taskId)?.detail).toEqual({ reason: "no_provider_for_model", modelName: "world-model", provider: null });
     // Another organization's admin sees nothing of it.
     const outsider = await harness.as(harness.fixture.b.admin);
     expect((await outsider.home.needsYou({})).rows.map((row) => row.taskId)).not.toContain(started.taskId);

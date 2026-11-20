@@ -217,7 +217,7 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
   if (!served.ok) {
     return served.modelName === null
       ? refuseStart("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models")
-      : refuseStart("no-provider-for-model", noProviderMessage(served.modelName));
+      : refuseStart("no-provider-for-model", noProviderMessage(served.modelName, served.provider));
   }
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {

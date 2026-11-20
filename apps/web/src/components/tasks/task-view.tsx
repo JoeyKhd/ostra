@@ -372,7 +372,12 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   // F-135: queued because no key on the project's list serves the profile's model.
   const noKey: NoKey | null =
     data.waiting?.kind === "no-runner" && data.waiting.reason.code === "no-provider-for-model"
-      ? { model: data.agent?.model?.name ?? data.waiting.reason.modelName, mono: data.agent?.model === null || data.agent === null, projectName: project.data?.name ?? "" }
+      ? {
+          model: data.agent?.model?.name ?? data.waiting.reason.modelName,
+          mono: data.agent?.model === null || data.agent === null,
+          projectName: project.data?.name ?? "",
+          provider: data.waiting.reason.provider ?? null,
+        }
       : null;
   // Who can fix a missing key, by name and role only (no-key-for-model.md, open point 3).
   const admins = (members.data ?? []).filter((member) => member.role === "admin").map((member) => member.name);
@@ -500,7 +505,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             <div className="mt-2.5 border-l-2 border-line-2 pl-3" data-testid="task-no-key">
               <p className="text-body text-text"><NoKeySentence noKey={noKey} /></p>
               <p className="text-ui text-muted">
-                <WhoPicks projectId={data.projectId} organizationAdmin={organizationAdmin} suffix={t("noKey.startsItself")} />
+                <WhoPicks projectId={data.projectId} organizationAdmin={organizationAdmin} suffix={t("noKey.startsItself")} provider={noKey.provider} />
               </p>
               {organizationAdmin || admins.length === 0 ? null : <p className="mt-0.5 text-sm text-faint">{adminNames(admins)}</p>}
             </div>

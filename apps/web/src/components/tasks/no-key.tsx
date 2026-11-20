@@ -17,17 +17,45 @@ import { adminNames } from "./no-key-words";
 // sentence on New task, a queued task, a held message and Home's needs-you row. It names who can
 // fix it and never falls back to another key (ADR 0065).
 
+/** ADR 0065 amended 2026-11-20: the profile's own provider, which the project doesn't allow, or which no longer lists the model. */
+export type NoKeyProvider = { readonly name: string; readonly reason: "not-allowed" | "not-listed" };
+
 export type NoKey = {
   /** The model's display name, or a custom model's endpoint ID (`mono`). */
   readonly model: string;
   readonly mono: boolean;
   readonly projectName: string;
+  /** Set when the profile runs on its own provider: the sentence names it instead of "no key". */
+  readonly provider?: NoKeyProvider | null | undefined;
 };
 
 const ModelWord = ({ noKey }: { readonly noKey: NoKey }) => (noKey.mono ? <span className="font-mono">{noKey.model}</span> : <>{noKey.model}</>);
 
-/** `No key for {model} in {project}.` with the model and the project in their own type. */
+/**
+ * `No key for {model} in {project}.` with the model and the project in their own type; for a
+ * profile on its own provider, `The profile runs on {provider}, which {project} doesn't allow.` or
+ * `{provider}, the profile's provider, no longer lists {model}.`
+ */
 export const NoKeySentence = ({ noKey }: { readonly noKey: NoKey }) => {
+  const provider = noKey.provider ?? null;
+  if (provider !== null) {
+    const parts = t(provider.reason === "not-allowed" ? "noKey.notAllowed" : "noKey.notListed").split(/(\{provider\}|\{project\}|\{model\})/);
+    return (
+      <>
+        {parts.map((part, index) =>
+          part === "{provider}" ? (
+            <span key={index} className="font-mono">{provider.name}</span>
+          ) : part === "{project}" ? (
+            <span key={index} className="font-mono">{noKey.projectName}</span>
+          ) : part === "{model}" ? (
+            <ModelWord key={index} noKey={noKey} />
+          ) : (
+            part
+          ),
+        )}
+      </>
+    );
+  }
   const [before = "", middle = "", after = ""] = t("noKey.sentence").split(/\{model\}|\{project\}/);
   return (
     <>
@@ -40,9 +68,26 @@ export const NoKeySentence = ({ noKey }: { readonly noKey: NoKey }) => {
   );
 };
 
-/** `An organization admin picks one in Models and keys.`, the last words a link for an organization admin. */
-export const WhoPicks = ({ projectId, organizationAdmin, suffix }: { readonly projectId: string; readonly organizationAdmin: boolean; readonly suffix?: string }) => {
-  const [before = "", after = ""] = t("noKey.whoPicks").split("{place}");
+/**
+ * `An organization admin picks one in Models and keys.`, the last words a link for an organization
+ * admin. For the profile's own provider: `allows it in Models and keys, or pick another profile`,
+ * or, when it stopped listing the model, `picks another model for the profile`.
+ */
+export const WhoPicks = ({ projectId, organizationAdmin, suffix, provider }: {
+  readonly projectId: string;
+  readonly organizationAdmin: boolean;
+  readonly suffix?: string;
+  readonly provider?: NoKeyProvider | null | undefined;
+}) => {
+  if (provider?.reason === "not-listed") {
+    return (
+      <>
+        {t("noKey.whoRepicks")}
+        {suffix === undefined ? null : ` ${suffix}`}
+      </>
+    );
+  }
+  const [before = "", after = ""] = t(provider?.reason === "not-allowed" ? "noKey.whoAllows" : "noKey.whoPicks").split("{place}");
   return (
     <>
       {before}
@@ -70,7 +115,7 @@ export const NoKeyReason = ({ id, noKey, projectId, organizationAdmin, admins }:
       <BanIcon aria-hidden className="mt-[3px] size-[15px] shrink-0 stroke-[1.75] text-muted" />
       <span>
         <span className="text-text"><NoKeySentence noKey={noKey} /></span>{" "}
-        <span className="text-muted"><WhoPicks projectId={projectId} organizationAdmin={organizationAdmin} /></span>
+        <span className="text-muted"><WhoPicks projectId={projectId} organizationAdmin={organizationAdmin} provider={noKey.provider} /></span>
       </span>
     </p>
     {organizationAdmin || admins.length === 0 ? null : <p className="mt-1 pl-[23px] text-sm text-faint">{adminNames(admins)}</p>}

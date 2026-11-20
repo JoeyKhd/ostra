@@ -773,7 +773,7 @@ export const tasksRouter = router({
       if (session.state === "idle") {
         // Milestone 4 (F-135, ADR 0065): a turn start checks the session's provider against the
         // project's list now; moved or gone, the message starts a fresh session instead of a steer.
-        const providers = await sessionProviderGateInTx(tx, { organizationId, projectId, providerId: session.providerId, modelId: session.modelId });
+        const providers = await sessionProviderGateInTx(tx, { organizationId, projectId, providerId: session.providerId, modelId: session.modelId, agentProfileId: session.agentProfileId });
         if (providers !== null && providers.kind !== "open") {
           const restarted = await restartOnProviderChangeInTx(ports, tx, mapTask(task), providers, {
             memberId: ctx.scope.memberId,

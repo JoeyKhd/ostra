@@ -427,7 +427,7 @@ export const NewTaskView = () => {
   );
   const noKey: NoKey | null =
     check.data?.kind === "wait" && check.data.reason === "no-provider" && project !== undefined
-      ? { model: profile?.modelName ?? check.data.modelName, mono: profile?.modelName === null || profile?.modelName === undefined, projectName: project.name }
+      ? { model: profile?.modelName ?? check.data.modelName, mono: profile?.modelName === null || profile?.modelName === undefined, projectName: project.name, provider: check.data.provider }
       : null;
   const checking = check.isFetching;
   // F-037: the budget gate's reason; the task still starts, queued (ADR 0055).

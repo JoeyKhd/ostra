@@ -286,7 +286,7 @@ export const projectsRouter = router({
     .output(z.object({ profileId: agentProfileIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const result = await setProjectDefaultProfile({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, { projectId: input.projectId, kind: input.kind, profileId: input.profileId });
-      const checked = unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "not-open-to-every-member": "BAD_REQUEST", archived: "CONFLICT" });
+      const checked = unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "not-open-to-every-member": "BAD_REQUEST", archived: "CONFLICT", "provider-not-allowed": "PRECONDITION_FAILED" });
       return { profileId: checked.profileId };
     }),
 

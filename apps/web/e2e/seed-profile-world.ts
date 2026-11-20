@@ -50,7 +50,8 @@ if (builtIn.modelId === null) {
     create: { organizationId, providerId: provider.id, endpointModelId: "claude-sonnet-4-5", displayName: "Claude Sonnet 4.5" },
     update: {},
   });
-  await db.agentProfile.update({ where: { id: builtIn.id }, data: { modelId: model.id } });
+  // F-135 (ADR 0065 amended 2026-11-20): as the first-run model does, it names the model and its provider.
+  await db.agentProfile.update({ where: { id: builtIn.id }, data: { modelId: model.id, providerId: provider.id, modelCustomName: "claude-sonnet-4-5" } });
 }
 
 // The project the earlier specs made, if they ran: only the specs that start a task need it.

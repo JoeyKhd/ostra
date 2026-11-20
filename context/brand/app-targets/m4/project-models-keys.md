@@ -85,6 +85,10 @@ The approved pictures' scale (`../m1/README.md`, "Scale"). `--red` only for `No 
 3. **Which models the table lists.** Settled: the model names of every profile usable in this project (default profiles first), so a member sees the key behind any profile they can pick.
 4. **Choosing a model's key on a project that follows the default.** Settled: not here. The project uses the organization's choices; `Set in Models` links to them.
 
+## Amended 2026-11-20: profiles on their own provider
+
+A profile now names its provider (ADR 0065 amended 2026-11-20). In `Models its profiles use`, a model a profile names on its own provider is its own row (`data-pinned`): `Served by` is that provider, or, when this project's list doesn't hold it, the provider struck through in `--faint` and `Not allowed here` in `--red`; the last column reads `the profile's key` in `--faint` instead of `Change`, since no choice of this project moves it. The `No key for …` line above the table counts only the models served by name.
+
 ## Differences from the current code
 
 1. New route and view; `settings/layout.tsx`'s tab row gains `Models and keys`.

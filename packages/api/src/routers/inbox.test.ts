@@ -335,7 +335,7 @@ describe("F-010, F-097: starting a task from a ticket", () => {
       data: { organizationId: a.organization.id, kind: "personal", ownerMemberId: a.admin.id, name: "not mine", publicKey: "n".repeat(43), executor: "host", capacity: 1, version: "0.0.0", state: "online" },
     });
     await expect((await member()).tasks.startFromTicket({ projectId, ticketId, runnerId: runnerIdSchema.parse(theirs.id) })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await harness.test.db.agentProfile.updateMany({ where: { organizationId: a.organization.id, builtIn: true }, data: { modelId: null } });
+    await harness.test.db.agentProfile.updateMany({ where: { organizationId: a.organization.id, builtIn: true }, data: { modelId: null, modelCatalogId: null, modelCustomName: null, providerId: null } });
     try {
       await expect((await member()).tasks.startFromTicket({ projectId, ticketId })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     } finally {

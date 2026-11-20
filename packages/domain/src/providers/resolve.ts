@@ -24,8 +24,12 @@ export type ModelChoiceRow = { readonly modelKey: string; readonly modelId: Mode
 
 export type Resolution =
   | { readonly ok: true; readonly providerId: ProviderId; readonly modelId: ModelId }
-  /** `no-provider`: nothing on the list serves it. `not-listed`: the chosen row's provider no longer lists it, or left the list. */
-  | { readonly ok: false; readonly reason: "no-provider" | "not-listed" };
+  /**
+   * `no-provider`: nothing on the list serves it. `not-listed`: the chosen row's provider (or the
+   * profile's own provider) no longer lists it, or left the list. `not-allowed`: the profile's own
+   * provider isn't on the list (ADR 0065 amended 2026-11-20).
+   */
+  | { readonly ok: false; readonly reason: "no-provider" | "not-listed" | "not-allowed" };
 
 /**
  * The provider and model row that serve `name` on a list. A choice wins; a chosen row that's no
@@ -56,6 +60,32 @@ export const resolveProjectModel = (
     return { ok: false, reason: "no-provider" };
   }
   return { ok: true, providerId: only.providerId, modelId: only.modelId };
+};
+
+/**
+ * What serves a profile's model on a list (F-135, F-021; ADR 0065 amended 2026-11-20, the
+ * maintainer: "you should first select the provider and then you get to see which models are
+ * available under that provider"). A profile with a provider runs on that provider alone: it must
+ * be on the list (`not-allowed`) and still list the model (`not-listed`), from its plain row when it
+ * lists the name twice. Nothing falls back to another provider, not even the one the list chose for
+ * the model. A profile with none (saved before, `null`) resolves by name, as `resolveProjectModel`.
+ */
+export const resolveProfileModel = (
+  list: readonly ProviderId[],
+  choices: readonly ModelChoiceRow[],
+  models: readonly ListedModel[],
+  name: ModelName,
+  providerId: ProviderId | null,
+): Resolution => {
+  if (providerId === null) {
+    return resolveProjectModel(list, choices, models, name);
+  }
+  if (!list.includes(providerId)) {
+    return { ok: false, reason: "not-allowed" };
+  }
+  const key = modelNameKey(name);
+  const [row] = models.filter((model) => model.listed && model.providerId === providerId && modelNameKey(model.name) === key).sort(byPlainRowFirst);
+  return row === undefined ? { ok: false, reason: "not-listed" } : { ok: true, providerId, modelId: row.modelId };
 };
 
 /**
@@ -177,13 +207,15 @@ export type ProviderGate =
 
 /**
  * The check every turn start makes (ADR 0065): a turn never starts on a provider its project no
- * longer allows. `session` is what the session recorded at its start.
+ * longer allows. `session` is what the session recorded at its start. `pinned`: its profile names
+ * its provider (ADR 0065 amended 2026-11-20), so the session stays on the provider it recorded,
+ * `open` while the project allows it and it lists the model, else `none`: never to another provider.
  */
 export const providerGate = (
-  session: { readonly providerId: ProviderId; readonly modelId: ModelId; readonly modelName: ModelName },
+  session: { readonly providerId: ProviderId; readonly modelId: ModelId; readonly modelName: ModelName; readonly pinned?: boolean | undefined },
   project: { readonly list: readonly ProviderId[]; readonly choices: readonly ModelChoiceRow[]; readonly models: readonly ListedModel[] },
 ): ProviderGate => {
-  const now = resolveProjectModel(project.list, project.choices, project.models, session.modelName);
+  const now = resolveProfileModel(project.list, project.choices, project.models, session.modelName, session.pinned === true ? session.providerId : null);
   if (!now.ok) {
     return { kind: "none", modelName: session.modelName };
   }

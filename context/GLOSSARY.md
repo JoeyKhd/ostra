@@ -311,7 +311,7 @@ A coding harness that ostra drives, such as OpenCode, Claude Code or Codex.
 _Avoid_: bot, model, AI, assistant
 
 **Agent profile**:
-A named setup of an agent (a model by its model name, instructions, tools, how much it may do without asking) that automations and members choose from. It belongs to the organization, and a project picks a default for each task kind.
+A named setup of an agent (its model provider, then one of that provider's models by its model name, instructions, tools, how much it may do without asking) that automations and members choose from. It belongs to the organization, and a project picks a default for each task kind. Its tasks use its provider's key and base URL alone, so it runs only in projects whose provider list allows that provider. A profile saved before 2026-11-20 may name no provider yet; then each project's own provider serves its model name, until an admin picks one.
 _Avoid_: preset, config, persona
 
 **Model provider**:
@@ -319,7 +319,7 @@ An endpoint an organization adds for models: an API base URL and a token. ostra 
 _Avoid_: vendor, LLM, key (alone, when you mean the provider: the key is its token)
 
 **Model name**:
-A model as ostra knows it apart from who serves it: its models.dev catalog ID, or, for a model the catalog lacks, the ID its endpoint lists it under. An agent profile names its model this way, and each project serves it from one provider on its list.
+A model as ostra knows it apart from who serves it: its models.dev catalog ID, or, for a model the catalog lacks, the ID its endpoint lists it under. An agent profile names its model this way, beside its provider; a profile with no provider is served, in each project, by one provider on that project's list.
 _Avoid_: model ID (that's one provider's listing of the model), model (alone, when you mean the name)
 
 **Reasoning effort**:
@@ -327,7 +327,7 @@ How much a model reasons before it answers, as one of the levels its model has: 
 _Avoid_: thinking level, reasoning mode, variant (that's OpenCode's name for how it sends a level)
 
 **Provider list**:
-The model providers a project may use: the organization's default list, which a project follows until it has its own, or the project's own. Only an organization admin edits it. In each project, each model is served by exactly one provider on the list, and a task gets credentials for no provider outside it.
+The model providers a project may use: the organization's default list, which a project follows until it has its own, or the project's own. Only an organization admin edits it. It decides which agent profiles run in the project: those whose provider it holds. For a profile with no provider, each model is served by exactly one provider on the list. A task gets credentials for no provider outside it.
 _Avoid_: allowlist, key ring, fallback (no task ever moves to another provider on its own)
 
 **Agent image**:

@@ -227,7 +227,8 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
 
   const plan = dirty ? preview.data : undefined;
   const afterOf = new Map((plan?.lines ?? []).map((line) => [line.text, line] as const));
-  const noKey = (data?.models ?? []).filter((model) => model.served === null);
+  // A model a profile's own provider can't serve here says so in its row (`Not allowed here`).
+  const noKey = (data?.models ?? []).filter((model) => model.served === null && model.pinned === null);
 
   const properties =
     data === undefined ? undefined : dirty ? (
@@ -386,10 +387,13 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
                 {data.models.map((model) => {
                   const info = infoOf(model);
                   const options = info.rows.filter((row) => current.ids.has(row.providerId));
-                  const line = afterOf.get(model.text);
+                  // ADR 0065 amended 2026-11-20: a profile on its own provider uses it here only while the list allows it; no choice moves it.
+                  const pinned = model.pinned;
+                  const line = pinned === null ? afterOf.get(model.text) : undefined;
                   const moving = line !== undefined && line.change !== "keeps";
+                  const blockedOn = pinned !== null && !data.providers.some((provider) => provider.providerId === pinned.providerId) ? pinned : null;
                   return (
-                    <tr key={model.text} className="h-11 border-b border-line" data-model={model.text}>
+                    <tr key={`${model.text}|${pinned?.providerId ?? ""}`} className="h-11 border-b border-line" data-model={model.text} data-pinned={pinned?.providerId}>
                       <td className="pr-3">
                         <span className="flex min-w-0 items-center gap-2.5">
                           <ModelLogo path={info.logoPath} />
@@ -408,14 +412,22 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
                         ) : model.served === null ? (
                           <span className="flex items-center gap-1.5 font-mono text-ui text-red">
                             <TriangleAlertIcon aria-hidden className="size-[13px] stroke-[1.75]" />
-                            {t("projectModels.models.noKey")}
+                            {blockedOn !== null ? (
+                              <>
+                                <s className="text-faint">{blockedOn.providerName}</s> {t("projectModels.models.notAllowedHere")}
+                              </>
+                            ) : (
+                              t("projectModels.models.noKey")
+                            )}
                           </span>
                         ) : (
                           <span className="font-mono text-ui text-text">{model.served.providerName}</span>
                         )}
                       </td>
                       <td className="text-right">
-                        {!canEdit ? null : data.mode === "default" ? (
+                        {pinned !== null ? (
+                          <span className="text-xs text-faint">{t("projectModels.models.profileKey")}</span>
+                        ) : !canEdit ? null : data.mode === "default" ? (
                           <Link href="/organization/models" className="text-ui text-teal hover:underline">{t("projectModels.models.setInModels")}</Link>
                         ) : options.length <= 1 ? (
                           <span className="text-xs text-faint">{t("projectModels.models.onlyKey")}</span>

@@ -230,6 +230,8 @@ export const mapAgentProfile = (row: AgentProfile) => ({
   id: agentProfileIdSchema.parse(row.id),
   organizationId: organizationIdSchema.parse(row.organizationId),
   modelId: optional(modelIdSchema, row.modelId),
+  // F-135 (ADR 0065 amended 2026-11-20): the provider whose key its tasks use; `null` resolves by name.
+  providerId: optional(providerIdSchema, row.providerId),
   // Milestone 3: the rules, as the protocol's schema parses them (ADR 0049).
   approvalRules: approvalRulesSchema.parse(row.approvalRules),
   effort: effortLevelFromDb[row.effort],

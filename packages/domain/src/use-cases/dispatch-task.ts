@@ -19,6 +19,7 @@ import { modelNameText } from "../providers/model-name.ts";
 import type { ModelName } from "../providers/model-name.ts";
 import { installationStateSelect, installationUsable } from "../code-host/installations.ts";
 import { clearNoProviderInTx, raiseNoProviderInTx, resolveProfileModelInTx, sessionRowStateInTx } from "../providers/session-model.ts";
+import type { ProfileProviderRefusal } from "../providers/session-model.ts";
 import type { ReopenStep } from "./reopen.ts";
 import { boxFootprint } from "../fleet/capacity.ts";
 import { queuePriorityFor } from "../fleet/queue.ts";
@@ -298,27 +299,45 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const project = projectIdSchema.parse(task.projectId);
   let providerId = session.providerId;
   let modelId = session.modelId;
-  const noProvider = async (modelName: ModelName): Promise<DispatchTaskResult> => {
+  const noProvider = async (modelName: ModelName, refusal: ProfileProviderRefusal | null = null): Promise<DispatchTaskResult> => {
     await raiseNoProviderInTx(deps, tx, task, modelName);
-    return noRunner({ code: "no-provider-for-model", modelName: modelNameText(modelName) });
+    return noRunner({
+      code: "no-provider-for-model",
+      modelName: modelNameText(modelName),
+      ...(refusal === null ? {} : { provider: { name: refusal.name, reason: refusal.reason } }),
+    });
+  };
+  // ADR 0065 amended 2026-11-20: a session on its profile's own provider, which the project no
+  // longer allows or which stopped listing the model, takes the no-key path, worded for it, with
+  // the organization admins' needs-you item; it never moves to another provider.
+  const pinnedRefusal = async (): Promise<DispatchTaskResult | null> => {
+    if (profile.providerId === null || profile.providerId !== providerId) {
+      return null;
+    }
+    const now = await resolveProfileModelInTx(tx, { organizationId: organization, projectId: project, profileId: profile.id });
+    return now.ok || now.modelName === null || now.provider === null ? null : noProvider(now.modelName, now.provider);
   };
   if (providerId === null || modelId === null) {
     const resolved = await resolveProfileModelInTx(tx, { organizationId: organization, projectId: project, profileId: profile.id });
     if (!resolved.ok) {
-      return resolved.modelName === null ? noRunner({ code: "no-model" }) : noProvider(resolved.modelName);
+      return resolved.modelName === null ? noRunner({ code: "no-model" }) : noProvider(resolved.modelName, resolved.provider);
     }
     providerId = resolved.providerId;
     modelId = resolved.modelId;
     await tx.session.update({ where: { id: session.id }, data: { providerId, modelId } });
   } else {
-    const { allowed, gate } = await sessionRowStateInTx(tx, { organizationId: organization, projectId: project, providerId, modelId });
+    const { allowed, gate } = await sessionRowStateInTx(tx, { organizationId: organization, projectId: project, providerId, modelId, agentProfileId: session.agentProfileId });
     if (!allowed) {
+      const refused = await pinnedRefusal();
+      if (refused !== null) {
+        return refused;
+      }
       deps.logger?.warn("dispatch.provider-not-allowed", { taskId: task.id, sessionId: session.id, providerId });
       return noRunner({ code: "provider-not-allowed" });
     }
     // A turn start (ADR 0065): a session that hasn't run yet takes the row the project serves now.
     if (gate?.kind === "none") {
-      return noProvider(gate.modelName);
+      return (await pinnedRefusal()) ?? noProvider(gate.modelName);
     }
     if (gate?.kind === "moved") {
       providerId = gate.providerId;

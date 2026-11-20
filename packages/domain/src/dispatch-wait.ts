@@ -47,7 +47,16 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
    * Milestone 4 (F-135, ADR 0065): no provider on the project's list serves the profile's model, or
    * the chosen one stopped listing it. `modelName` is the catalog ID or the endpoint's model ID.
    */
-  z.strictObject({ code: z.literal("no-provider-for-model"), modelName: z.string().min(1).max(256) }),
+  z.strictObject({
+    code: z.literal("no-provider-for-model"),
+    modelName: z.string().min(1).max(256),
+    /**
+     * ADR 0065 amended 2026-11-20: the profile runs on its own provider, `name`, which the project's
+     * list doesn't allow (`not-allowed`) or which no longer lists the model (`not-listed`). Absent:
+     * nothing on the list serves the model by name.
+     */
+    provider: z.strictObject({ name: z.string().min(1).max(200), reason: z.enum(["not-allowed", "not-listed"]) }).exactOptional(),
+  }),
   /** Milestone 4 (F-135): the session's provider is no longer on its project's list. */
   z.strictObject({ code: z.literal("provider-not-allowed") }),
   /** Milestone 4 (F-037, ADR 0055): this month's budget of the project or the organization is reached. */
@@ -117,6 +126,11 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
     case "needs-protocol":
       return `The task's agent profile needs a runner at protocol ${String(wait.minor)} or later: update the runner.`;
     case "no-provider-for-model":
+      if (wait.provider !== undefined) {
+        return wait.provider.reason === "not-allowed"
+          ? `The profile runs on ${wait.provider.name}, which this project's list doesn't allow: an organization admin adds it in Models and keys.`
+          : `${wait.provider.name}, the profile's provider, no longer lists ${wait.modelName}: an organization admin picks another model for the profile.`;
+      }
       return `No provider on this project's list serves ${wait.modelName}: an organization admin adds one under Models.`;
     case "provider-not-allowed":
       return "The session's model provider is no longer allowed in this project.";

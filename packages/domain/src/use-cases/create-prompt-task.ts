@@ -143,7 +143,7 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
   if (!served.ok) {
     return served.modelName === null
       ? refuse("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models")
-      : refuse("no-provider-for-model", noProviderMessage(served.modelName));
+      : refuse("no-provider-for-model", noProviderMessage(served.modelName, served.provider));
   }
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {

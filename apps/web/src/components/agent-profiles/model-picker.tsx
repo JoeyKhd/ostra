@@ -17,8 +17,9 @@ import type { RouterOutputs } from "@/lib/trpc";
 import { disambiguatorsOf, keysText, matchesQuery, noKeyText, sortOptions } from "./model-picker-words";
 
 // The profile's model, chosen by name (F-135, F-021, app-targets/m4/agent-profile-model.md): a
-// combobox over every model name any key lists, each with the keys that list it and the projects
-// where no key serves it. A profile names a model, never a key.
+// combobox over the models its provider lists, picked first (ADR 0065 amended 2026-11-20). With no
+// provider (a profile saved before), it lists every model name any key lists, each with the keys
+// that list it and the projects where no key serves it.
 
 export type ModelOption = RouterOutputs["agentProfiles"]["modelOptions"][number];
 
@@ -41,9 +42,11 @@ export const ModelLabel = ({ option, endpointId }: { readonly option: ModelOptio
 /** The keys that list a model, by name. */
 const keyNames = (option: ModelOption): readonly string[] => option.providers.map((provider) => provider.name);
 
-export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledBy, loading }: {
+export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledBy, loading, provider }: {
   readonly options: readonly ModelOption[] | undefined;
   readonly chosenKey: string | null;
+  /** The profile's provider: the options are its models alone, so no key column and no by-name warning. */
+  readonly provider: { readonly name: string } | null;
   readonly onPick: (option: ModelOption) => void;
   /** The option the keyboard or the pointer is on while open, so the panel previews it; null when closed. */
   readonly onHighlight: (option: ModelOption | null) => void;
@@ -60,6 +63,13 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
   const chosen = options?.find((option) => option.text === chosenKey);
 
   if (loading || options === undefined) return <Skeleton className="h-8 w-full" />;
+  if (options.length === 0 && provider !== null) {
+    return (
+      <button type="button" disabled className="flex h-8 w-full items-center rounded-[7px] border border-line-2 bg-surface px-2.5 text-left text-faint" data-testid="profile-model">
+        {t("agentProfiles.editor.providerNoModels", { provider: provider.name })}
+      </button>
+    );
+  }
   if (options.length === 0) {
     return (
       <>
@@ -101,6 +111,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
   };
   const customMatch = custom === null ? undefined : options.find((option) => isCustom(option) && option.text === custom.trim());
   const listId = `${id}-list`;
+  const groupLabel = provider === null ? t("agentProfiles.editor.modelPicker.group") : t("agentProfiles.editor.modelPicker.groupOf", { provider: provider.name });
 
   return (
     <Popover open={open} onOpenChange={setOpenAndReset}>
@@ -139,13 +150,13 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
                 className="h-full min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-faint"
               />
             </div>
-            <p className="px-3 pb-1 pt-2.5 text-xs font-medium text-faint">{t("agentProfiles.editor.modelPicker.group")}</p>
-            <ul role="listbox" id={listId} aria-label={t("agentProfiles.editor.modelPicker.group")} className="px-1">
+            <p className="px-3 pb-1 pt-2.5 text-xs font-medium text-faint">{groupLabel}</p>
+            <ul role="listbox" id={listId} aria-label={groupLabel} className="px-1">
               {shown.length === 0 ? (
                 <li className="px-2 py-2.5 text-sm text-muted">{t("agentProfiles.editor.modelPicker.empty", { query })}</li>
               ) : (
                 shown.map((option, index) => {
-                  const noKey = noKeyText(option.projectsWithout.map((project) => project.name));
+                  const noKey = provider === null ? noKeyText(option.projectsWithout.map((project) => project.name)) : null;
                   return (
                     <li
                       key={option.text}
@@ -162,9 +173,9 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
                         <span className="w-[15px] shrink-0">{option.text === chosenKey ? <CheckIcon aria-hidden className="size-[15px] stroke-[1.75] text-green" /> : null}</span>
                         <ModelLogo />
                         <ModelLabel option={option} endpointId={endpointIds.get(option.text)} />
-                        <span className="ml-auto hidden shrink-0 font-mono text-xs text-faint sm:inline">{keysText(keyNames(option))}</span>
+                        {provider === null ? <span className="ml-auto hidden shrink-0 font-mono text-xs text-faint sm:inline">{keysText(keyNames(option))}</span> : null}
                       </span>
-                      <span className="block pl-[46px] font-mono text-xs text-faint sm:hidden">{keysText(keyNames(option))}</span>
+                      {provider === null ? <span className="block pl-[46px] font-mono text-xs text-faint sm:hidden">{keysText(keyNames(option))}</span> : null}
                       {noKey === null ? null : (
                         <span className="flex items-center gap-1.5 pl-[46px] text-[12.5px] text-muted">
                           <TriangleAlertIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />
@@ -190,7 +201,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
             <p className="mt-1.5 text-sm text-faint">{t("agentProfiles.editor.modelPicker.endpointHelp")}</p>
             {custom.trim() === "" ? null : customMatch === undefined ? (
               <p className="mt-1.5 text-[12.5px] text-muted">{t("agentProfiles.editor.modelPicker.noKeyListsId")}</p>
-            ) : noKeyText(customMatch.projectsWithout.map((project) => project.name)) === null ? null : (
+            ) : provider !== null || noKeyText(customMatch.projectsWithout.map((project) => project.name)) === null ? null : (
               <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-muted">
                 <TriangleAlertIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />
                 {noKeyText(customMatch.projectsWithout.map((project) => project.name))}
@@ -201,24 +212,45 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
             </Button>
           </div>
         )}
-        <p className="border-t border-line px-3 py-2 text-xs text-faint">{t("agentProfiles.editor.modelPicker.footer")}</p>
+        <p className="border-t border-line px-3 py-2 text-xs text-faint">
+          {provider === null ? t("agentProfiles.editor.modelPicker.footer") : t("agentProfiles.editor.modelPicker.footerOf", { provider: provider.name })}
+        </p>
       </PopoverContent>
     </Popover>
   );
 };
 
-/** The panel's `{model} in each project`: the key that serves it in each project, or `No key`. */
-export const ModelInProjects = ({ option, organizationAdmin }: { readonly option: ModelOption | undefined; readonly organizationAdmin: boolean }) => {
-  if (option === undefined) return null;
-  const missing = option.projects.filter((project) => project.providerName === null);
+/** One project's line in the panel's group: the key that serves the profile there, or `null` for none. */
+export type ProjectKeyLine = { readonly projectId: string; readonly name: string; readonly providerName: string | null };
+
+/**
+ * The panel's `{model} in each project`: the key that serves it in each project, or `No key`. With
+ * the profile's own provider (ADR 0065 amended 2026-11-20), `{provider} in each project`: the
+ * provider where a project allows it, else `Not allowed`.
+ */
+export const ModelInProjects = ({ option, organizationAdmin, provider }: {
+  readonly option: ModelOption | undefined;
+  readonly organizationAdmin: boolean;
+  /** The profile's provider and each project's allowance, from `agentProfiles.providerOptions`. */
+  readonly provider?: { readonly name: string; readonly projects: readonly { readonly projectId: string; readonly name: string; readonly allowed: boolean }[] } | undefined;
+}) => {
+  if (option === undefined && provider === undefined) return null;
+  const lines: readonly ProjectKeyLine[] =
+    provider === undefined
+      ? (option?.projects ?? [])
+      : provider.projects.map((project) => ({ projectId: project.projectId, name: project.name, providerName: project.allowed ? provider.name : null }));
+  const missing = lines.filter((project) => project.providerName === null);
   const [only] = missing;
+  const title =
+    provider === undefined
+      ? t("agentProfiles.editor.modelPicker.inEachProject", { model: option === undefined ? "" : isCustom(option) ? option.text : option.displayName })
+      : t("agentProfiles.editor.modelPicker.inEachProjectOf", { provider: provider.name });
+  const missingWord = provider === undefined ? t("agentProfiles.editor.modelPicker.noKey") : t("agentProfiles.editor.modelPicker.notAllowed");
   return (
     <div className="mb-3.5 border-b border-line pb-3.5" data-testid="model-in-projects">
-      <h3 className="mb-2 text-xs font-medium text-faint">
-        {t("agentProfiles.editor.modelPicker.inEachProject", { model: isCustom(option) ? option.text : option.displayName })}
-      </h3>
+      <h3 className="mb-2 text-xs font-medium text-faint">{title}</h3>
       <ul>
-        {option.projects.map((project) => (
+        {lines.map((project) => (
           <li key={project.projectId} className="flex h-[30px] items-center gap-2 text-ui">
             <span aria-hidden className="inline-block size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(project.projectId) }} />
             <span className="truncate text-text">{project.name}</span>
@@ -226,12 +258,12 @@ export const ModelInProjects = ({ option, organizationAdmin }: { readonly option
               organizationAdmin ? (
                 <Link href={`/projects/${project.projectId}/settings/models`} className="ml-auto flex shrink-0 items-center gap-1 text-teal hover:underline">
                   <TriangleAlertIcon aria-hidden className="size-[13px] stroke-[1.75]" />
-                  {t("agentProfiles.editor.modelPicker.noKey")}
+                  {missingWord}
                 </Link>
               ) : (
                 <span className="ml-auto flex shrink-0 items-center gap-1 text-red">
                   <TriangleAlertIcon aria-hidden className="size-[13px] stroke-[1.75]" />
-                  {t("agentProfiles.editor.modelPicker.noKey")}
+                  {missingWord}
                 </span>
               )
             ) : (
@@ -242,9 +274,13 @@ export const ModelInProjects = ({ option, organizationAdmin }: { readonly option
       </ul>
       {only === undefined ? null : (
         <p className="mt-1.5 text-[12.5px] text-faint">
-          {missing.length === 1
-            ? t("agentProfiles.editor.modelPicker.cantStartOne", { project: only.name })
-            : t("agentProfiles.editor.modelPicker.cantStartMany", { n: missing.length })}
+          {provider === undefined
+            ? missing.length === 1
+              ? t("agentProfiles.editor.modelPicker.cantStartOne", { project: only.name })
+              : t("agentProfiles.editor.modelPicker.cantStartMany", { n: missing.length })
+            : missing.length === 1
+              ? t("agentProfiles.editor.modelPicker.cantStartOneOf", { project: only.name, provider: provider.name })
+              : t("agentProfiles.editor.modelPicker.cantStartManyOf", { n: missing.length, provider: provider.name })}
         </p>
       )}
     </div>

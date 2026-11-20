@@ -55,12 +55,14 @@ const clientA = await provider("client-a", [sonnet]);
 const clientB = await provider("client-b", [sonnet, { endpointModelId: "local-coder-7b", catalogId: null, displayName: null }]);
 const modelOnA = clientA.modelIds[0] ?? "";
 
-// The profile names the model by its catalog ID; a later seed puts it back after the picker's case changed it.
+// The profile names the model by its catalog ID, saved before the profile's provider (ADR 0065
+// amended 2026-11-20): it names no provider, so each project's own key serves it. A later seed puts
+// it back after the picker's case gave it one.
 const found = await db.agentProfile.findFirst({ where: { organizationId, name: "Builder" } });
 const builder =
   found === null
     ? await db.agentProfile.create({ data: { organizationId, name: "Builder", adapter: "opencode", modelId: modelOnA, modelCatalogId: CATALOG_ID } })
-    : await db.agentProfile.update({ where: { id: found.id }, data: { modelId: modelOnA, modelCatalogId: CATALOG_ID, modelCustomName: null } });
+    : await db.agentProfile.update({ where: { id: found.id }, data: { modelId: modelOnA, modelCatalogId: CATALOG_ID, modelCustomName: null, providerId: null } });
 
 const project = async (name: string, providerIds: readonly string[]) => {
   const row =

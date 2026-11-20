@@ -1,11 +1,9 @@
 import {
   budgetMonthOf,
   checkBudget,
-  modelNameOfColumns,
-  modelNameOfModel,
   modelNameText,
   noProviderMessage,
-  resolveSessionModel,
+  resolveProfileModelInTx,
   resolveStartProfileInTx,
 } from "@ostra/domain";
 import type { MemberScope } from "@ostra/domain";
@@ -59,6 +57,8 @@ export const startCheckSchema = z.union([
     kind: z.literal("wait"),
     reason: z.literal("no-provider"),
     modelName: z.string(),
+    /** ADR 0065 amended 2026-11-20: the profile's own provider, which the project doesn't allow or which no longer lists the model. */
+    provider: z.object({ name: z.string(), reason: z.enum(["not-allowed", "not-listed"]) }).nullable(),
     message: z.string(),
   }),
 ]);
@@ -100,30 +100,22 @@ export const startCheckInTx = async (
       message: resolved.message,
     });
   }
-  const { profile } = resolved;
-  const name =
-    modelNameOfColumns({
-      modelCatalogId: profile.modelCatalogId,
-      modelCustomName: profile.modelCustomName,
-    }) ?? (profile.model === null ? null : modelNameOfModel(profile.model));
-  if (name === null) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: "The task's agent profile has no model yet: an admin picks one under Models",
-    });
-  }
-  const model = await resolveSessionModel(tx, {
-    organizationId,
-    projectId: input.projectId,
-    modelName: name,
-  });
+  // The same resolution as the dispatch: the profile's own provider when it names one, which the
+  // project's list must allow (ADR 0065 amended 2026-11-20), else the list's provider for the name.
+  const model = await resolveProfileModelInTx(tx, { organizationId, projectId: input.projectId, profileId: resolved.profileId });
   if (!model.ok) {
-    const text = modelNameText(name);
+    if (model.modelName === null) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "The task's agent profile has no model yet: an admin picks one under Models",
+      });
+    }
     return {
       kind: "wait",
       reason: "no-provider",
-      modelName: text,
-      message: noProviderMessage(name),
+      modelName: modelNameText(model.modelName),
+      provider: model.provider === null ? null : { name: model.provider.name, reason: model.provider.reason },
+      message: noProviderMessage(model.modelName, model.provider),
     };
   }
   const gate = await checkBudget(tx, {

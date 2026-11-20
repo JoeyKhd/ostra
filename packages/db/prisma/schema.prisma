@@ -498,6 +498,8 @@ model ModelProvider {
   // ---- milestone 4 (F-135, ADR 0065) ----
   listEntries ProviderListEntry[]
   sessions    Session[]
+  // ---- the profile's provider (ADR 0065 amended 2026-11-20) ----
+  agentProfiles AgentProfile[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -726,6 +728,12 @@ model AgentProfile {
   /// name, so a rollback works; nothing new reads it, and a later release drops it.
   modelCatalogId  String?
   modelCustomName String?
+  // ---- milestone 4, the profile's provider (F-135, F-021, ADR 0065 amended 2026-11-20) ----
+  /// The provider whose key and base URL its tasks use, and no other: a project whose list doesn't
+  /// allow it can't run the profile. `null` (a profile saved before, whose model several providers or
+  /// none served): the project's own choice serves the model by name, until an admin picks one.
+  providerId      String?
+  provider        ModelProvider? @relation(fields: [providerId, organizationId], references: [id, organizationId], onDelete: NoAction)
   /// F-137 (ADR 0066): how much the model reasons. A new task copies it.
   effort         EffortLevel   @default(default)
   // ---- milestone 5 (F-069, ADR 0059) ----

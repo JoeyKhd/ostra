@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, ShieldCheckIcon } from "lucide-react";
+import { CheckIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -23,13 +23,14 @@ import { useTRPC } from "@/lib/trpc";
 
 import { EditorSection } from "./editor-section";
 import { EffortField, effortChoiceOf } from "./effort-field";
-import { draftFromDetail, draftProblem, isDirty, newDraft, nextKey, sameModel, saveInputOf } from "./editor-draft";
-import type { ProfileDraft, SkillDraft } from "./editor-draft";
+import { draftFromDetail, draftProblem, isDirty, modelsOfProvider, newDraft, nextKey, sameModel, saveInputOf, withProvider } from "./editor-draft";
+import type { ModelName, ProfileDraft, SkillDraft } from "./editor-draft";
 import { McpSection } from "./mcp-section";
 import { ModelInProjects, ModelPicker } from "./model-picker";
 import type { ModelOption } from "./model-picker";
 import { EditorPanel } from "./profile-editor-panel";
 import type { ProfileDetail } from "./profile-types";
+import type { RouterOutputs } from "@/lib/trpc";
 import { dayText, modelName } from "./profile-words";
 import { draftToRules, emptyRule, groupRules } from "./rule-drafts";
 import { RulesSection } from "./rules-section";
@@ -40,6 +41,9 @@ import { SkillsSection } from "./skills-section";
 // One agent profile's editor (F-021, F-026, F-063; agent-profile.md): the main column holds the
 // agent and model, instructions, skills, MCP servers and approval rules; the panel holds plan
 // first, who may use it, the defaults and archive. "Save profile" saves it all at once.
+
+/** One of the organization's providers, with each project's allowance (F-135, ADR 0065 amended 2026-11-20). */
+type ProviderOption = RouterOutputs["agentProfiles"]["providerOptions"][number];
 
 const newId = (): string => crypto.randomUUID();
 
@@ -109,26 +113,54 @@ const Instructions = ({ value, readOnly, onChange }: { readonly value: string; r
   );
 };
 
-/** Agent and model: Name, Agent and Model in one row (one per line below 900px). */
-const AgentAndModel = ({ draft, readOnly, detail, options, onChange, onHighlight }: {
+/** The words of a model by name: a catalog ID or a custom model's endpoint ID. */
+const modelText = (name: ModelName): string => (name.kind === "catalog" ? name.catalogId : name.endpointModelId);
+
+/** `globex-shop doesn't allow Client B…`, or `2 projects don't…`; `null` when every project allows it. */
+const notAllowedText = (provider: ProviderOption | undefined): string | null => {
+  const blocked = (provider?.projects ?? []).filter((project) => !project.allowed);
+  const [only] = blocked;
+  if (provider === undefined || only === undefined) return null;
+  return blocked.length === 1
+    ? t("agentProfiles.editor.providerNotAllowedIn", { projects: only.name, provider: provider.name })
+    : t("agentProfiles.editor.providerNotAllowedInMany", { n: blocked.length, provider: provider.name });
+};
+
+/**
+ * Agent and model (agent-profile-model.md, ADR 0065 amended 2026-11-20): Name, Agent and Provider
+ * in one row, then the Model the provider lists, then its Effort (one per line below 900px). The
+ * provider comes first: "you should first select the provider and then you get to see which models
+ * are available under that provider" (the maintainer, 2026-11-20).
+ */
+const AgentAndModel = ({ draft, readOnly, detail, options, providers, onChange, onHighlight }: {
   readonly draft: ProfileDraft;
   readonly readOnly: boolean;
   readonly detail: ProfileDetail | null;
   readonly options: readonly ModelOption[] | undefined;
+  /** The organization's providers, by name (`agentProfiles.providerOptions`); `undefined` while they load. */
+  readonly providers: readonly ProviderOption[] | undefined;
   readonly onChange: (draft: ProfileDraft) => void;
   readonly onHighlight: (option: ModelOption | null) => void;
 }) => {
   const id = useId();
   const trpc = useTRPC();
   const agents = useQuery(trpc.agentProfiles.agents.queryOptions());
-  const chosen = options?.find((option) => sameModel(option.name, draft.model));
+  const provider = providers?.find((entry) => entry.providerId === draft.providerId);
+  // Only the chosen provider's models, with its own listing of each (none before a provider is picked).
+  const offered = useMemo(() => (options === undefined ? undefined : modelsOfProvider(options, draft.providerId)), [options, draft.providerId]);
+  const chosen = offered?.find((option) => sameModel(option.name, draft.model));
   const chosenKey = chosen?.text ?? null;
-  // F-137: the levels the agent offers on the chosen model (its first key's row), rebuilt as either changes.
+  // F-137: the levels the agent offers on the chosen model, on its provider's row, rebuilt as either changes.
   const effortModelId = chosen?.providers[0]?.modelId ?? detail?.model?.id ?? null;
   const effort = useQuery(
     trpc.agentProfiles.effortLevels.queryOptions(effortModelId === null ? skipToken : { adapter: draft.adapter, modelId: modelIdSchema.parse(effortModelId) }),
   );
   const label = "mb-1.5 block text-sm font-medium text-muted";
+  const savedModelText = draft.model === null ? "" : detail?.model !== null && detail?.model !== undefined && sameModel(draft.model, detail.modelName) ? modelName(detail.model) : modelText(draft.model);
+  // A profile saved before the profile's provider: it names none yet, and the editor asks for one.
+  const unset = draft.providerId === null && detail !== null && detail.provider === null && draft.model !== null;
+  const notListed = provider !== undefined && offered !== undefined && draft.model !== null && chosen === undefined;
+  const blocked = readOnly ? null : notAllowedText(provider);
 
   return (
     <EditorSection title={t("agentProfiles.editor.agentAndModel")}>
@@ -153,30 +185,73 @@ const AgentAndModel = ({ draft, readOnly, detail, options, onChange, onHighlight
           )}
         </div>
         <div className="min-w-0">
+          <label id={`${id}-provider`} className={label}>{t("agentProfiles.editor.provider")}</label>
+          {readOnly ? (
+            <p className="flex h-8 min-w-0 items-center text-body" data-testid="profile-provider">
+              {detail?.provider === null || detail?.provider === undefined ? (
+                <span className="truncate text-muted">{t("agentProfiles.editor.providerNone", { model: savedModelText })}</span>
+              ) : (
+                <span className="truncate">{detail.provider.name}</span>
+              )}
+            </p>
+          ) : providers === undefined ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <Select
+              value={draft.providerId ?? ""}
+              onValueChange={(value) => {
+                const next = providers.find((entry) => entry.providerId === value);
+                if (next !== undefined) onChange(withProvider(draft, next.providerId, options ?? []));
+              }}
+            >
+              <SelectTrigger className="h-8 w-full bg-surface" aria-labelledby={`${id}-provider`} data-testid="profile-provider">
+                <SelectValue placeholder={t("agentProfiles.editor.pickProviderPlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((entry) => (
+                  <SelectItem key={entry.providerId} value={entry.providerId} data-provider={entry.name}>{entry.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <div className="min-w-0 min-[900px]:col-span-3 min-[900px]:max-w-[520px]">
           <label id={`${id}-model`} className={label}>{t("agentProfiles.editor.model")}</label>
           {readOnly ? (
             <p className="flex h-8 items-center text-body">{detail?.model === null || detail?.model === undefined ? <span className="text-red">{t("agentProfiles.noModel")}</span> : modelName(detail.model)}</p>
+          ) : draft.providerId === null ? (
+            <button type="button" disabled className="flex h-8 w-full items-center rounded-[7px] border border-line-2 bg-surface px-2.5 text-left text-faint" data-testid="profile-model">
+              {draft.model === null ? t("agentProfiles.editor.pickProviderFirst") : savedModelText}
+            </button>
           ) : (
             <ModelPicker
-              options={options}
+              options={offered}
               chosenKey={chosenKey}
-              loading={options === undefined}
+              loading={offered === undefined}
               labelledBy={`${id}-model`}
+              provider={provider === undefined ? null : { name: provider.name }}
               onHighlight={onHighlight}
               onPick={(option) => { onChange({ ...draft, model: option.name }); }}
             />
           )}
-          {chosen?.providers.length === 0 ? (
-            <p className="mt-1.5 text-[12.5px] text-red">{t("agentProfiles.editor.modelPicker.noKeyListsNow", { model: chosen.displayName })}</p>
+          {notListed ? (
+            <p className="mt-1.5 text-[12.5px] text-red" data-testid="profile-model-not-listed">{t("agentProfiles.editor.modelPicker.notListedNow", { provider: provider.name, model: savedModelText })}</p>
           ) : null}
         </div>
       </div>
+      {unset ? (
+        <p className="mt-2.5 flex items-start gap-1.5 text-[13px] text-muted" data-testid="profile-provider-unset">
+          <TriangleAlertIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75]" />
+          {t("agentProfiles.editor.providerUnset", { model: savedModelText })}
+        </p>
+      ) : null}
+      {blocked === null ? null : <p className="mt-2.5 text-[12.5px] text-muted" data-testid="profile-provider-blocked">{blocked}</p>}
       {draft.model === null ? null : (
         <EffortField
           choice={effortChoiceOf(
             effort.data,
             {
-              model: chosen === undefined ? (detail?.model === null || detail?.model === undefined ? "" : modelName(detail.model)) : chosen.displayName,
+              model: chosen === undefined ? savedModelText : chosen.displayName,
               agent: agents.data?.find((agent) => agent.adapter === draft.adapter)?.name ?? detail?.agentName ?? draft.adapter,
             },
             readOnly || effortModelId === null ? null : `/organization/models?model=${effortModelId}`,
@@ -251,7 +326,11 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [highlighted, setHighlighted] = useState<ModelOption | null>(null);
   const modelOptions = useQuery(trpc.agentProfiles.modelOptions.queryOptions(undefined, { enabled: admin }));
+  const providerOptions = useQuery(trpc.agentProfiles.providerOptions.queryOptions(undefined, { enabled: admin }));
+  // After a save, where its tasks can't start: no key for the name, or a project that doesn't allow its provider.
+  const savedProvider = providerOptions.data?.find((provider) => provider.providerId === saved?.providerId);
   const savedNoKey = (modelOptions.data?.find((option) => sameModel(option.name, saved?.model ?? null))?.projectsWithout ?? []).map((project) => project.name);
+  const savedNotAllowed = (savedProvider?.projects ?? []).filter((project) => !project.allowed).map((project) => project.name);
 
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -261,8 +340,8 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
   // The draft starts from what loaded, once; a save resets it from the saved profile.
   useEffect(() => {
     if (loaded === null || saved !== null) return;
-    const builtInModel = list.data?.find((profile) => profile.builtIn)?.modelName ?? null;
-    const first = loaded === "new" ? newDraft("opencode", builtInModel) : draftFromDetail(loaded);
+    const builtIn = list.data?.find((profile) => profile.builtIn);
+    const first = loaded === "new" ? newDraft("opencode", builtIn?.modelName ?? null, builtIn?.provider?.providerId ?? null) : draftFromDetail(loaded);
     setSaved(first);
     setDraft(first);
   }, [loaded, saved, list.data]);
@@ -380,14 +459,26 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
           members={memberList}
           onChange={update}
           onArchive={readOnly || builtIn ? null : () => { setConfirmArchive(true); }}
-          modelGroup={<ModelInProjects option={highlighted ?? modelOptions.data?.find((option) => sameModel(option.name, current.model))} organizationAdmin={admin} />}
+          modelGroup={
+            current.providerId === null ? (
+              <ModelInProjects option={highlighted ?? modelOptions.data?.find((option) => sameModel(option.name, current.model))} organizationAdmin={admin} />
+            ) : (
+              <ModelInProjects option={undefined} organizationAdmin={admin} provider={providerOptions.data?.find((provider) => provider.providerId === current.providerId)} />
+            )
+          }
         />
       }
     >
       <div className="max-w-[760px]" data-testid="profile-editor">
         <Heading eyebrow={eyebrowOf(data, savedAt)} title={title} builtIn={builtIn} loading={loading} />
         {savedAt !== null && !dirty ? (
-          <p role="status" className="mt-2 flex items-center gap-1.5 text-ui text-green"><CheckIcon aria-hidden className="size-[14px]" /> {savedNoKey.length === 0 ? t("agentProfiles.editor.saved") : t("agentProfiles.editor.modelPicker.savedNoKey", { projects: savedNoKey.join(", ") })}</p>
+          <p role="status" className="mt-2 flex items-center gap-1.5 text-ui text-green"><CheckIcon aria-hidden className="size-[14px]" /> {saved?.providerId !== null && saved?.providerId !== undefined
+              ? savedNotAllowed.length === 0 || savedProvider === undefined
+                ? t("agentProfiles.editor.saved")
+                : t("agentProfiles.editor.modelPicker.savedNotAllowed", { projects: savedNotAllowed.join(", "), provider: savedProvider.name })
+              : savedNoKey.length === 0
+                ? t("agentProfiles.editor.saved")
+                : t("agentProfiles.editor.modelPicker.savedNoKey", { projects: savedNoKey.join(", ") })}</p>
         ) : null}
         {save.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(save.error)}</p>}
         {archive.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(archive.error)}</p>}
@@ -403,7 +494,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
           </div>
         ) : (
           <>
-            <AgentAndModel draft={current} readOnly={readOnly} detail={data} options={modelOptions.data} onChange={update} onHighlight={setHighlighted} />
+            <AgentAndModel draft={current} readOnly={readOnly} detail={data} options={modelOptions.data} providers={providerOptions.data} onChange={update} onHighlight={setHighlighted} />
             <EditorSection title={t("agentProfiles.editor.instructions")} note={t("agentProfiles.editor.instructionsNote")}>
               {readOnly && current.instructions === "" ? (
                 <p className="text-ui text-faint">{t("agentProfiles.none")}</p>

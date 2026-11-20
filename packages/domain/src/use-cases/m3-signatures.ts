@@ -20,6 +20,7 @@ import type {
   OrganizationId,
   PlanEntry,
   ProjectId,
+  ProviderId,
   QuestionId,
   RepoId,
   SessionId,
@@ -89,6 +90,12 @@ export type SaveAgentProfileInput = {
    * serves it), so a rollback works. Absent, the name is taken from `modelId`'s row.
    */
   readonly modelName?: ModelName | null;
+  /**
+   * F-135, F-021 (ADR 0065 amended 2026-11-20): the provider whose key and base URL the profile's
+   * tasks use, and no other; it must list the model. Absent keeps the stored one (`null` for a new
+   * profile); `null` resolves the model by name in each project, as a profile saved before did.
+   */
+  readonly providerId?: ProviderId | null;
   readonly instructions: string | null;
   readonly approvalRules: readonly ApprovalRule[];
   readonly planFirst: boolean;
@@ -137,7 +144,7 @@ export type SetProjectDefaultProfile = (
   deps: M3Deps,
   scope: MemberScope,
   input: { readonly projectId: ProjectId; readonly kind: TaskKind; readonly profileId: AgentProfileId },
-) => Promise<UseCaseResult<{ readonly profileId: AgentProfileId }, "forbidden" | "not-found" | "not-open-to-every-member" | "archived">>;
+) => Promise<UseCaseResult<{ readonly profileId: AgentProfileId }, "forbidden" | "not-found" | "not-open-to-every-member" | "archived" | "provider-not-allowed">>;
 
 // ---------- approvals, questions, plans (F-026, F-024, F-063; tickets 17, 18) ----------
 

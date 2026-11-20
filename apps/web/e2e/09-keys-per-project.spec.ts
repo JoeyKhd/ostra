@@ -184,35 +184,51 @@ test("F-135: the task page names its key, and a task queued with no key says why
   await signOut(page);
 });
 
-test("F-135: a profile's model is picked by name, with the projects where no key serves it", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-135, F-021: a profile picks its provider first, then one of that provider's models, with the projects that don't allow it", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedWorld();
   await signIn(page);
   await page.goto(`/organization/agent-profiles/${world.builderId}`);
+  // Saved before the profile's provider: it names none, says so, and can't be saved until it does.
+  await expect(page.getByTestId("profile-provider-unset")).toContainText("Pick the provider this profile's tasks use.");
+  await expect(page.getByTestId("profile-model")).toBeDisabled();
+  await page.getByTestId("profile-name").fill("Builder ");
+  await expect(page.locator('[data-action="save-profile"]')).toBeDisabled();
+  await page.getByTestId("profile-name").fill("Builder");
+  // client-a: only its models; client-b's custom model isn't offered.
+  await page.getByTestId("profile-provider").click();
+  await page.getByRole("option", { name: "client-a" }).click();
   await page.getByTestId("profile-model").click();
-  const option = page.getByRole("option", { name: /Claude Sonnet 4.5/ });
-  await expect(option).toContainText("client-a, client-b");
-  await expect(option).toContainText("No key in nokey");
-  // While highlighted, the panel previews the model in each project.
-  await option.hover();
+  await expect(page.getByRole("option", { name: /Claude Sonnet 4.5/ })).toHaveCount(1);
+  await expect(page.getByRole("option", { name: /local-coder-7b/ })).toHaveCount(0);
+  await expect(page.getByText("Models client-a lists")).toBeVisible();
+  await page.keyboard.press("Escape");
+  // The panel: client-a in each project, and `Not allowed` where a project's list doesn't hold it.
   const inProjects = page.getByTestId("model-in-projects");
-  await expect(inProjects).toContainText("Claude Sonnet 4.5 in each project");
-  await expect(inProjects).toContainText("client-a");
-  await expect(inProjects.getByRole("listitem").filter({ hasText: "nokey" }).getByRole("link", { name: "No key" })).toHaveAttribute("href", `/projects/${world.noKey}/settings/models`);
-  // The custom model, by its endpoint ID: one key lists it.
+  await expect(inProjects).toContainText("client-a in each project");
+  await expect(inProjects.getByRole("listitem").filter({ hasText: "nokey" }).getByRole("link", { name: "Not allowed" })).toHaveAttribute("href", `/projects/${world.noKey}/settings/models`);
+  await expect(page.getByTestId("profile-provider-blocked")).toContainText("don't allow client-a");
+  // client-b keeps Claude Sonnet 4.5, which it lists too, and offers its custom model.
+  await page.getByTestId("profile-provider").click();
+  await page.getByRole("option", { name: "client-b" }).click();
+  await expect(page.getByTestId("profile-model")).toContainText("Claude Sonnet 4.5");
+  await page.getByTestId("profile-model").click();
   await page.getByRole("searchbox").or(page.getByRole("combobox", { name: "Search models" })).fill("local-coder");
-  const custom = page.getByRole("option", { name: /local-coder-7b/ });
-  await expect(custom).toContainText("client-b");
-  await custom.click();
+  await page.getByRole("option", { name: /local-coder-7b/ }).click();
   await expect(page.getByTestId("profile-model")).toContainText("local-coder-7b");
   await page.locator('[data-action="save-profile"]').click();
-  await expect(page.getByRole("status")).toContainText("Saved. No key serves it in");
+  await expect(page.getByRole("status")).toContainText("doesn't allow client-b yet");
   await page.reload();
+  await expect(page.getByTestId("profile-provider")).toContainText("client-b");
   await expect(page.getByTestId("profile-model")).toContainText("local-coder-7b");
-  // Back to the model by its catalog name.
+  // Back on client-a, a model client-a doesn't list is cleared, and Save waits for a model.
+  await page.getByTestId("profile-provider").click();
+  await page.getByRole("option", { name: "client-a" }).click();
+  await expect(page.getByTestId("profile-model")).toContainText("Pick a model");
+  await expect(page.locator('[data-action="save-profile"]')).toBeDisabled();
   await page.getByTestId("profile-model").click();
   await page.getByRole("option", { name: /Claude Sonnet 4.5/ }).click();
   await page.locator('[data-action="save-profile"]').click();
   await expect(page.getByRole("status")).toContainText("Saved.");
-  // Put the profile's key row back for the phone run's cases.
+  // Put the profile back, with no provider, for the phone run's cases.
   await seedWorld(true);
 });

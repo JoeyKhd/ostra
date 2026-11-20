@@ -1,4 +1,4 @@
-import { agentDisplayName } from "@ostra/domain";
+import { agentDisplayName, dispatchWaitFromDb } from "@ostra/domain";
 import type { Db, DbEnum } from "@ostra/db";
 import {
   approvalIdSchema,
@@ -54,6 +54,8 @@ export type ItemRow = {
     readonly agentProfileId: string | null;
     readonly updatedAt: Date;
     readonly repos: readonly { readonly prNumber: number | null }[];
+    /** Why a queued task waits (`Task.dispatchWait`): a no-key item reads its profile's provider from it. */
+    readonly dispatchWait?: unknown;
   };
 };
 
@@ -67,7 +69,12 @@ export type ReasonDetail =
   | { readonly reason: "stalled"; readonly minutes: number }
   | { readonly reason: "ticket_closed"; readonly status: string | null }
   /** F-135 (ticket 50): the model no provider on the project's list serves, as its text ("No key for {model}"). */
-  | { readonly reason: "no_provider_for_model"; readonly modelName: string | null }
+  | {
+      readonly reason: "no_provider_for_model";
+      readonly modelName: string | null;
+      /** ADR 0065 amended 2026-11-20: the profile's own provider, which the project doesn't allow or which no longer lists the model. */
+      readonly provider: { readonly name: string; readonly reason: "not-allowed" | "not-listed" } | null;
+    }
   | { readonly reason: Exclude<DbEnum.NeedsYouReason, "question" | "approval" | "plan" | "draft_ready" | "setup_failed" | "stalled" | "ticket_closed" | "no_provider_for_model"> };
 
 /** What an inline answer needs, and whether this member can give it. */
@@ -290,8 +297,14 @@ export const loadNeedsYouViews = async (
         }
         case "ticket_closed":
           return { reason: "ticket_closed", status: loaded.ticketStatus.get(task.id) ?? null };
-        case "no_provider_for_model":
-          return { reason: "no_provider_for_model", modelName: item.summary === null || item.summary === "" ? null : item.summary };
+        case "no_provider_for_model": {
+          const wait = dispatchWaitFromDb(task.dispatchWait);
+          return {
+            reason: "no_provider_for_model",
+            modelName: item.summary === null || item.summary === "" ? null : item.summary,
+            provider: wait?.code === "no-provider-for-model" && wait.provider !== undefined ? wait.provider : null,
+          };
+        }
         case "no_changes":
         case "spend_cap":
         case "crashed":
@@ -394,6 +407,7 @@ const taskSelect = {
   agentProfileId: true,
   updatedAt: true,
   repos: { select: { prNumber: true } },
+  dispatchWait: true,
 } as const;
 
 /** Who reads what waits: the member, with their role for the admins' items. */

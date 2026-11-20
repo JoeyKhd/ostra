@@ -142,7 +142,7 @@ export const sendMemberMessageInTx = async (
     // Milestone 4 (F-135, ADR 0065): a turn start checks the session's provider against the
     // project's list now. Moved or gone, the turn starts in a fresh session instead of the box that
     // holds the old key; a turn going finishes on its own.
-    const providers = await sessionProviderGateInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, providerId: session.providerId, modelId: session.modelId });
+    const providers = await sessionProviderGateInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, providerId: session.providerId, modelId: session.modelId, agentProfileId: session.agentProfileId });
     if (providers !== null && providers.kind !== "open") {
       const restarted = await restartOnProviderChangeInTx(deps, tx, task, providers, { memberId: scope.memberId, clientMessageId: input.clientMessageId, text, intent: input.intent });
       return { ok: true, delivery: "reopen", sessionId: restarted.sessionId, seq: restarted.seq, duplicate: false };

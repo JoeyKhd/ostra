@@ -28,17 +28,32 @@ const kindLabel = {
   review: "agentProfiles.projectDefaults.review",
 } as const;
 
-/** The profiles a default may be: active ones open to everyone, plus the one already set. */
-export const defaultChoices = <T extends Pick<ListedProfile, "id" | "archivedAt"> & { readonly access: { readonly kind: "everyone" | "listed" } },>(
-  profiles: readonly T[],
-  current: string | null,
-): readonly T[] =>
-  profiles.filter((profile) => profile.archivedAt === null && (profile.access.kind === "everyone" || profile.id === current));
+type DefaultCandidate = Pick<ListedProfile, "id" | "archivedAt"> & {
+  readonly access: { readonly kind: "everyone" | "listed" };
+  readonly provider?: { readonly providerId: string } | null;
+};
+
+/**
+ * The profiles a default may be: active ones open to everyone, plus the one already set. With the
+ * project's allowed providers (`allowed`), a profile on a provider the project's list doesn't allow
+ * isn't offered (F-135, ADR 0065 amended 2026-11-20); the API refuses it too.
+ */
+export const defaultChoices = <T extends DefaultCandidate,>(profiles: readonly T[], current: string | null, allowed: ReadonlySet<string> | null = null): readonly T[] =>
+  profiles.filter(
+    (profile) =>
+      profile.archivedAt === null &&
+      (profile.id === current ||
+        (profile.access.kind === "everyone" &&
+          (allowed === null || profile.provider === null || profile.provider === undefined || allowed.has(profile.provider.providerId)))),
+  );
 
 export const ProjectDefaults = ({ projectId, defaults, admin }: { readonly projectId: ProjectId; readonly defaults: DefaultProfiles; readonly admin: boolean }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const profiles = useQuery(trpc.agentProfiles.list.queryOptions({ includeArchived: false }, { enabled: admin }));
+  // F-135: the providers this project's list allows, which decide the profiles it can run.
+  const keys = useQuery(trpc.projects.providers.queryOptions({ projectId }, { enabled: admin }));
+  const allowed = keys.data === undefined ? null : new Set<string>(keys.data.providers.map((provider) => provider.providerId));
   const [saved, setSaved] = useState<TaskKind | null>(null);
   const set = useMutation(
     trpc.projects.setDefaultProfile.mutationOptions({
@@ -57,7 +72,7 @@ export const ProjectDefaults = ({ projectId, defaults, admin }: { readonly proje
       <div data-testid="project-defaults">
         {KINDS.map((kind) => {
           const current = defaults[kind];
-          const choices = defaultChoices(profiles.data ?? [], current?.id ?? null);
+          const choices = defaultChoices(profiles.data ?? [], current?.id ?? null, allowed);
           return (
             <PropRow key={kind} label={t(kindLabel[kind])}>
               {admin && profiles.data !== undefined ? (
