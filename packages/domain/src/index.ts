@@ -155,3 +155,16 @@ export * from "./use-cases/box-wait.ts";
 export * from "./palette/actions.ts";
 export * from "./setup/timeline.ts";
 export * from "./use-cases/theme.ts";
+
+// Milestone 6 (spec section 5.4): automations, starts, Linear's agent mode and the review loop.
+export * from "./lifecycles/m6.ts";
+export * from "./automations/cron.ts";
+export * from "./automations/intake-filter.ts";
+export * from "./starts/start-task.ts";
+export * from "./review-loop/ci-verdict.ts";
+export * from "./review-loop/rounds.ts";
+export * from "./review-loop/place-findings.ts";
+export * from "./review-loop/codeowners.ts";
+export * from "./linear/agent-session-copy.ts";
+export * from "./prompts/m6.ts";
+export * from "./use-cases/m6-signatures.ts";

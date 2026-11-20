@@ -85,6 +85,23 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "queue.admit": { ...base, retryLimit: 3, expireInSeconds: 120 },
   "runner.join-notice": { ...base, retryLimit: 8 },
   "registry.check": { ...base, retryLimit: 3, expireInSeconds: 120 },
+  // Milestone 6 (its ticket 06's names; tickets 10 to 21 build them).
+  "scheduler.tick": { ...base, retryLimit: 1, expireInSeconds: 50 },
+  "automation.occurrence": { ...base, retryLimit: 5 },
+  "intake.match": { ...base, retryLimit: 5 },
+  "bulk.start-item": { ...base, retryLimit: 3 },
+  "linear.agent-event": { ...base, retryLimit: 8 },
+  "linear.activity.send": { ...base, retryLimit: 10, retryDelayMax: 900, groupConcurrency: 2 },
+  "linear.heartbeat": { ...base, retryLimit: 1, expireInSeconds: 50 },
+  "ci.evaluate": { ...base, retryLimit: 8, groupConcurrency: 2 },
+  "round.start": { ...base, retryLimit: 5 },
+  "review.start": { ...base, retryLimit: 5 },
+  "review.post": { ...base, retryLimit: 8, groupConcurrency: 2 },
+  "reviewers.refresh": { ...base, retryLimit: 8, groupConcurrency: 2 },
+  "changes.reopen": { ...base, retryLimit: 5 },
+  "draft.apply": { ...base, retryLimit: 8 },
+  "environment.propose": { ...base, retryLimit: 5 },
+  "profiles.seed-built-in": { ...base, retryLimit: 5 },
 };
 
 /**

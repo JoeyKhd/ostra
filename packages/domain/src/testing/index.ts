@@ -175,3 +175,6 @@ export const seedTaskStartedByNobody = async (
   await db.task.update({ where: { id: taskId }, data: { creatorMemberId: null, driverMemberId: input.driverMemberId ?? null } });
   return { taskId };
 };
+
+// Milestone 6 (spec section 8).
+export * from "./m6.ts";

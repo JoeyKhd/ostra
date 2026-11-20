@@ -78,6 +78,23 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_JOIN_TOKEN_DAYS` | `30` | A new join token's lifetime in days, for a pool that names none (F-091). `0`: tokens never expire. |
 | `OSTRA_PERSONAL_RUNNER_CAPACITY` | `2` | How many tasks a personal runner runs at once, unless its member sets another number on the runner (F-014, F-067). |
 | `OSTRA_QUEUE_SWEEP_SECONDS` | `5` | How often each pool's queue is swept for tasks that now fit, besides the admission every change of room starts (F-067). |
+| `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES` | `60` | The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved. |
+| `OSTRA_SCHEDULE_MISSED_HOURS` | `6` | How late an occurrence may be and still fire, after the install was down (F-106). Only the latest due one fires; older ones are skipped and audited. |
+| `OSTRA_INTAKE_STARTS_PER_HOUR` | `20` | The most tasks one intake rule starts in an hour (F-011). The next match pauses the rule and tells the project's admins. |
+| `OSTRA_BULK_START_MAX` | `50` | The most tickets a member starts at once, from the Inbox or a dry run's "Start all" (F-107). |
+| `OSTRA_SUB_ISSUES_MAX` | `50` | The most sub-issues one start on a parent ticket runs (F-077). More than that starts nothing, and the member is told. |
+| `OSTRA_SUB_ISSUES_DEPTH` | `3` | How many levels of sub-issues below a parent a start reaches (F-077). |
+| `OSTRA_LINEAR_HEARTBEAT_MINUTES` | `20` | How long a Linear agent session may go without a post before ostra posts a heartbeat, so it doesn't look stale (F-012). |
+| `OSTRA_LINEAR_HEARTBEAT_KIND` | `ephemeral` | The heartbeat's kind: `ephemeral` (it replaces itself) or `thought` (it stays in the session). |
+| `OSTRA_CI_NONE_SECONDS` | `120` | How long after a push ostra waits for any check before it decides the repo has no CI (F-035). |
+| `OSTRA_CI_WAIT_MINUTES` | `60` | How long CI may stay pending before the AI review starts anyway, with no fixing round (F-035). |
+| `OSTRA_CI_LOG_TAIL_KIB` | `64` | The most of each failing check's log, in KiB, that reaches the agent as a file (F-035). The tail is kept. |
+| `OSTRA_CI_LOG_CHECKS` | `5` | The most failing checks whose logs reach the agent in one CI round (F-035). |
+| `OSTRA_CI_ROUNDS` | `2` | The most CI rounds a task gets before a person acts (F-035). |
+| `OSTRA_REVIEW_ROUNDS` | `2` | The most findings rounds a task gets before a person acts (F-101). |
+| `OSTRA_AUTOMATIC_TURNS` | `4` | The most automatic turns, CI and findings rounds together, a task gets before a person acts (F-101). |
+| `OSTRA_REVIEW_FINDINGS_MAX` | `30` | The most findings one AI review hands in (F-100). |
+| `OSTRA_DRAFT_IMAGES_MAX` | `10` | The most images a refine draft holds, 10 MiB each (F-099). |
 | `OSTRA_DEV_HOST_POOL_SAME_USER` | `false` | Development and tests only: lets a `host` pool runner run the agent as its own OS user, labelled "not isolated, same user (development only)". The server refuses to start with it `true` unless `NODE_ENV` is `development` or `test`. |
 | `OSTRA_DOCS_URL` | `https://joeykhd.github.io/ostra/` | The docs site's address, which the panel's help links point at (F-058). Set it to a copy you host yourself, such as one for your own version. |
 

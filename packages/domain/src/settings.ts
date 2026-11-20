@@ -99,6 +99,24 @@ export const settingNames = [
   "OSTRA_DEV_HOST_POOL_SAME_USER",
   // Milestone 7 (spec section 5.4).
   "OSTRA_DOCS_URL",
+  // Milestone 6 (spec section 5.4).
+  "OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES",
+  "OSTRA_SCHEDULE_MISSED_HOURS",
+  "OSTRA_INTAKE_STARTS_PER_HOUR",
+  "OSTRA_BULK_START_MAX",
+  "OSTRA_SUB_ISSUES_MAX",
+  "OSTRA_SUB_ISSUES_DEPTH",
+  "OSTRA_LINEAR_HEARTBEAT_MINUTES",
+  "OSTRA_LINEAR_HEARTBEAT_KIND",
+  "OSTRA_CI_NONE_SECONDS",
+  "OSTRA_CI_WAIT_MINUTES",
+  "OSTRA_CI_LOG_TAIL_KIB",
+  "OSTRA_CI_LOG_CHECKS",
+  "OSTRA_CI_ROUNDS",
+  "OSTRA_REVIEW_ROUNDS",
+  "OSTRA_AUTOMATIC_TURNS",
+  "OSTRA_REVIEW_FINDINGS_MAX",
+  "OSTRA_DRAFT_IMAGES_MAX",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -380,6 +398,74 @@ export const settingFields = {
     default: "false",
     description: "Development and tests only: lets a host pool runner run the agent as its own OS user, labelled \"not isolated, same user (development only)\". Refused as true unless NODE_ENV is development or test.",
   },
+  OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES: {
+    default: "60",
+    description: "The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved.",
+  },
+  OSTRA_SCHEDULE_MISSED_HOURS: {
+    default: "6",
+    description: "How late an occurrence may be and still fire, after the install was down (F-106). Only the latest due one fires; older ones are skipped and audited.",
+  },
+  OSTRA_INTAKE_STARTS_PER_HOUR: {
+    default: "20",
+    description: "The most tasks one intake rule starts in an hour (F-011). The next match pauses the rule and tells the project's admins.",
+  },
+  OSTRA_BULK_START_MAX: {
+    default: "50",
+    description: "The most tickets a member starts at once, from the Inbox or a dry run's \"Start all\" (F-107).",
+  },
+  OSTRA_SUB_ISSUES_MAX: {
+    default: "50",
+    description: "The most sub-issues one start on a parent ticket runs (F-077). More than that starts nothing, and the member is told.",
+  },
+  OSTRA_SUB_ISSUES_DEPTH: {
+    default: "3",
+    description: "How many levels of sub-issues below a parent a start reaches (F-077).",
+  },
+  OSTRA_LINEAR_HEARTBEAT_MINUTES: {
+    default: "20",
+    description: "How long a Linear agent session may go without a post before ostra posts a heartbeat, so it doesn't look stale (F-012).",
+  },
+  OSTRA_LINEAR_HEARTBEAT_KIND: {
+    default: "ephemeral",
+    description: "The heartbeat's kind: `ephemeral` (it replaces itself) or `thought` (it stays in the session).",
+  },
+  OSTRA_CI_NONE_SECONDS: {
+    default: "120",
+    description: "How long after a push ostra waits for any check before it decides the repo has no CI (F-035).",
+  },
+  OSTRA_CI_WAIT_MINUTES: {
+    default: "60",
+    description: "How long CI may stay pending before the AI review starts anyway, with no fixing round (F-035).",
+  },
+  OSTRA_CI_LOG_TAIL_KIB: {
+    default: "64",
+    description: "The most of each failing check's log, in KiB, that reaches the agent as a file (F-035). The tail is kept.",
+  },
+  OSTRA_CI_LOG_CHECKS: {
+    default: "5",
+    description: "The most failing checks whose logs reach the agent in one CI round (F-035).",
+  },
+  OSTRA_CI_ROUNDS: {
+    default: "2",
+    description: "The most CI rounds a task gets before a person acts (F-035).",
+  },
+  OSTRA_REVIEW_ROUNDS: {
+    default: "2",
+    description: "The most findings rounds a task gets before a person acts (F-101).",
+  },
+  OSTRA_AUTOMATIC_TURNS: {
+    default: "4",
+    description: "The most automatic turns, CI and findings rounds together, a task gets before a person acts (F-101).",
+  },
+  OSTRA_REVIEW_FINDINGS_MAX: {
+    default: "30",
+    description: "The most findings one AI review hands in (F-100).",
+  },
+  OSTRA_DRAFT_IMAGES_MAX: {
+    default: "10",
+    description: "The most images a refine draft holds, 10 MiB each (F-099).",
+  },
   OSTRA_DOCS_URL: {
     default: DOCS_SITE_URL,
     description: "The docs site's address, which the panel's help links point at. Set it to a copy you host yourself, such as one for your own version.",
@@ -542,6 +628,24 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_DEV_HOST_POOL_SAME_USER: flag.default(false).describe(describe("OSTRA_DEV_HOST_POOL_SAME_USER")),
   // Milestone 7.
   OSTRA_DOCS_URL: url.default(DOCS_SITE_URL).describe(describe("OSTRA_DOCS_URL")),
+  // Milestone 6.
+  OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES: whole(1, 10_080).default(60).describe(describe("OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES")),
+  OSTRA_SCHEDULE_MISSED_HOURS: whole(0, 168).default(6).describe(describe("OSTRA_SCHEDULE_MISSED_HOURS")),
+  OSTRA_INTAKE_STARTS_PER_HOUR: whole(1, 1000).default(20).describe(describe("OSTRA_INTAKE_STARTS_PER_HOUR")),
+  OSTRA_BULK_START_MAX: whole(1, 500).default(50).describe(describe("OSTRA_BULK_START_MAX")),
+  OSTRA_SUB_ISSUES_MAX: whole(1, 500).default(50).describe(describe("OSTRA_SUB_ISSUES_MAX")),
+  OSTRA_SUB_ISSUES_DEPTH: whole(1, 10).default(3).describe(describe("OSTRA_SUB_ISSUES_DEPTH")),
+  OSTRA_LINEAR_HEARTBEAT_MINUTES: whole(1, 29).default(20).describe(describe("OSTRA_LINEAR_HEARTBEAT_MINUTES")),
+  OSTRA_LINEAR_HEARTBEAT_KIND: z.enum(["ephemeral", "thought"]).default("ephemeral").describe(describe("OSTRA_LINEAR_HEARTBEAT_KIND")),
+  OSTRA_CI_NONE_SECONDS: whole(10, 3600).default(120).describe(describe("OSTRA_CI_NONE_SECONDS")),
+  OSTRA_CI_WAIT_MINUTES: whole(1, 1440).default(60).describe(describe("OSTRA_CI_WAIT_MINUTES")),
+  OSTRA_CI_LOG_TAIL_KIB: whole(1, 64).default(64).describe(describe("OSTRA_CI_LOG_TAIL_KIB")),
+  OSTRA_CI_LOG_CHECKS: whole(1, 5).default(5).describe(describe("OSTRA_CI_LOG_CHECKS")),
+  OSTRA_CI_ROUNDS: whole(0, 10).default(2).describe(describe("OSTRA_CI_ROUNDS")),
+  OSTRA_REVIEW_ROUNDS: whole(0, 10).default(2).describe(describe("OSTRA_REVIEW_ROUNDS")),
+  OSTRA_AUTOMATIC_TURNS: whole(0, 20).default(4).describe(describe("OSTRA_AUTOMATIC_TURNS")),
+  OSTRA_REVIEW_FINDINGS_MAX: whole(1, 30).default(30).describe(describe("OSTRA_REVIEW_FINDINGS_MAX")),
+  OSTRA_DRAFT_IMAGES_MAX: whole(0, 50).default(10).describe(describe("OSTRA_DRAFT_IMAGES_MAX")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -646,6 +750,37 @@ export type ServerSettings = {
   readonly devHostPoolSameUser: boolean;
   /** OSTRA_DOCS_URL: the docs site, always ending in one slash, so a page's path is appended to it. */
   readonly docsUrl: string;
+  /** Milestone 6's working values (spec section 5.4): automations, Linear's agent mode and the review loop. */
+  readonly team: TeamSettings;
+};
+
+/** Milestone 6's settings, resolved. The rounds are per install in v1. */
+export type TeamSettings = {
+  /** OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES. */
+  readonly scheduleMinIntervalMinutes: number;
+  /** OSTRA_SCHEDULE_MISSED_HOURS. */
+  readonly scheduleMissedHours: number;
+  /** OSTRA_INTAKE_STARTS_PER_HOUR. */
+  readonly intakeStartsPerHour: number;
+  /** OSTRA_BULK_START_MAX. */
+  readonly bulkStartMax: number;
+  /** OSTRA_SUB_ISSUES_MAX and OSTRA_SUB_ISSUES_DEPTH. */
+  readonly subIssuesMax: number;
+  readonly subIssuesDepth: number;
+  /** OSTRA_LINEAR_HEARTBEAT_MINUTES, in ms, and OSTRA_LINEAR_HEARTBEAT_KIND. */
+  readonly linearHeartbeatMs: number;
+  readonly linearHeartbeatKind: "ephemeral" | "thought";
+  /** OSTRA_CI_NONE_SECONDS and OSTRA_CI_WAIT_MINUTES, in ms. */
+  readonly ciWaits: { readonly noneMs: number; readonly waitMs: number };
+  /** OSTRA_CI_LOG_TAIL_KIB, in bytes, and OSTRA_CI_LOG_CHECKS. */
+  readonly ciLogTailBytes: number;
+  readonly ciLogChecks: number;
+  /** OSTRA_CI_ROUNDS, OSTRA_REVIEW_ROUNDS and OSTRA_AUTOMATIC_TURNS. */
+  readonly roundLimits: { readonly ciRounds: number; readonly reviewRounds: number; readonly automaticTurns: number };
+  /** OSTRA_REVIEW_FINDINGS_MAX. */
+  readonly reviewFindingsMax: number;
+  /** OSTRA_DRAFT_IMAGES_MAX. */
+  readonly draftImagesMax: number;
 };
 
 /**
@@ -839,6 +974,22 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       queueSweepSeconds: value.OSTRA_QUEUE_SWEEP_SECONDS,
       devHostPoolSameUser: value.OSTRA_DEV_HOST_POOL_SAME_USER,
       docsUrl: `${value.OSTRA_DOCS_URL.replace(/\/+$/, "")}/`,
+      team: {
+        scheduleMinIntervalMinutes: value.OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES,
+        scheduleMissedHours: value.OSTRA_SCHEDULE_MISSED_HOURS,
+        intakeStartsPerHour: value.OSTRA_INTAKE_STARTS_PER_HOUR,
+        bulkStartMax: value.OSTRA_BULK_START_MAX,
+        subIssuesMax: value.OSTRA_SUB_ISSUES_MAX,
+        subIssuesDepth: value.OSTRA_SUB_ISSUES_DEPTH,
+        linearHeartbeatMs: value.OSTRA_LINEAR_HEARTBEAT_MINUTES * 60_000,
+        linearHeartbeatKind: value.OSTRA_LINEAR_HEARTBEAT_KIND,
+        ciWaits: { noneMs: value.OSTRA_CI_NONE_SECONDS * 1000, waitMs: value.OSTRA_CI_WAIT_MINUTES * 60_000 },
+        ciLogTailBytes: value.OSTRA_CI_LOG_TAIL_KIB * 1024,
+        ciLogChecks: value.OSTRA_CI_LOG_CHECKS,
+        roundLimits: { ciRounds: value.OSTRA_CI_ROUNDS, reviewRounds: value.OSTRA_REVIEW_ROUNDS, automaticTurns: value.OSTRA_AUTOMATIC_TURNS },
+        reviewFindingsMax: value.OSTRA_REVIEW_FINDINGS_MAX,
+        draftImagesMax: value.OSTRA_DRAFT_IMAGES_MAX,
+      },
     },
   };
 };

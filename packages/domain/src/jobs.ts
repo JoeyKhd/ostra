@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto";
 
 import {
+  agentActivityIdSchema,
+  automationIdSchema,
   boardIdSchema,
   boxIdSchema,
   boxReleaseReasonSchema,
   budgetIdSchema,
+  bulkStartItemIdSchema,
   connectionIdSchema,
+  draftIdSchema,
+  environmentProposalIdSchema,
   epochMsSchema,
   gitShaSchema,
   leaseEpochSchema,
@@ -18,11 +23,14 @@ import {
   providerIdSchema,
   registryIdSchema,
   repoIdSchema,
+  reviewRunIdSchema,
+  roundKindSchema,
   runnerIdSchema,
   sessionIdSchema,
   taskIdSchema,
   taskRepoIdSchema,
   taskSeqSchema,
+  ticketIdSchema,
   ticketWriteIdSchema,
   webhookDeliveryIdSchema,
 } from "@ostra/protocol";
@@ -83,6 +91,23 @@ export const jobNames = [
   "queue.admit",
   "runner.join-notice",
   "registry.check",
+  // ---- milestone 6 (spec section 5.4) ----
+  "scheduler.tick",
+  "automation.occurrence",
+  "intake.match",
+  "bulk.start-item",
+  "linear.agent-event",
+  "linear.activity.send",
+  "linear.heartbeat",
+  "ci.evaluate",
+  "round.start",
+  "review.start",
+  "review.post",
+  "reviewers.refresh",
+  "changes.reopen",
+  "draft.apply",
+  "environment.propose",
+  "profiles.seed-built-in",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -227,6 +252,42 @@ export const jobPayloadSchemas = {
   "runner.join-notice": z.strictObject({ organizationId: organizationIdSchema, runnerId: runnerIdSchema }),
   /** Check the organization's registry with its settings at `version` (F-120, ticket 17): nothing is pushed. */
   "registry.check": z.strictObject({ organizationId: organizationIdSchema, registryId: registryIdSchema, version: epochMsSchema }),
+  // ---- milestone 6 (spec section 5.4, ADR 0056 to 0058) ----
+  /** One pass a minute over the due schedules (F-106): each occurrence a row, inserted once with its job. */
+  "scheduler.tick": z.strictObject({}),
+  /** An occurrence's start through `startTask`, or its skip. Keyed by the automation and the occurrence's time. */
+  "automation.occurrence": z.strictObject({ organizationId: organizationIdSchema, automationId: automationIdSchema, occurrenceAt: epochMsSchema }),
+  /** The enabled rules a ticket starts to match (F-011). Keyed by the ticket and the read that changed it. */
+  "intake.match": z.strictObject({ organizationId: organizationIdSchema, ticketId: ticketIdSchema, trackerUpdatedAt: epochMsSchema }),
+  /** One ticket of a bulk start, in its own transaction (F-107). */
+  "bulk.start-item": z.strictObject({ organizationId: organizationIdSchema, bulkStartItemId: bulkStartItemIdSchema }),
+  /** A Linear agent session's event, claimed before the 200 (F-012). The body stays in the delivery's row. */
+  "linear.agent-event": z.strictObject({ organizationId: organizationIdSchema, connectionId: connectionIdSchema, deliveryId: webhookDeliveryIdSchema }),
+  /** One outbox post to an agent session, with the app's token. */
+  "linear.activity.send": z.strictObject({ organizationId: organizationIdSchema, agentActivityId: agentActivityIdSchema }),
+  /** The heartbeat sweep, once a minute: a post for each session whose heartbeat is due. */
+  "linear.heartbeat": z.strictObject({}),
+  /** A head's CI verdict (F-035), on a check webhook or the reconcile. */
+  "ci.evaluate": z.strictObject({ organizationId: organizationIdSchema, taskRepoId: taskRepoIdSchema, headSha: gitShaSchema }),
+  /**
+   * A fixing round (F-035, F-101, F-105). `causeRef` names what caused it: the head (CI), the review
+   * run (findings) or the review (changes requested). An ID, never text.
+   */
+  "round.start": z.strictObject({ ...taskScope, kind: roundKindSchema, causeRef: z.string().min(1).max(200).regex(/^[A-Za-z0-9._:-]+$/) }),
+  /** A code task's review round: its review task made or reopened (F-100). */
+  "review.start": z.strictObject({ organizationId: organizationIdSchema, codeTaskId: taskIdSchema, round: z.number().int().positive() }),
+  /** One comment-type review for one PR of a review run. */
+  "review.post": z.strictObject({ organizationId: organizationIdSchema, reviewRunId: reviewRunIdSchema, repoId: repoIdSchema }),
+  /** A PR's requested reviewers and code owners, matched through the GitHub link (F-102). */
+  "reviewers.refresh": z.strictObject({ organizationId: organizationIdSchema, taskRepoId: taskRepoIdSchema }),
+  /** A "changes requested" review that may reopen the task (F-105). `reviewId` is the code host's. */
+  "changes.reopen": z.strictObject({ organizationId: organizationIdSchema, taskRepoId: taskRepoIdSchema, reviewId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/) }),
+  /** "Update ticket" with a draft's version, through the ticket outbox (F-099). */
+  "draft.apply": z.strictObject({ organizationId: organizationIdSchema, draftId: draftIdSchema, version: z.number().int().positive() }),
+  /** An environment proposal's notice to the project's admins (F-113). */
+  "environment.propose": z.strictObject({ organizationId: organizationIdSchema, proposalId: environmentProposalIdSchema }),
+  /** The built-in Refine and Review profiles, once per organization. */
+  "profiles.seed-built-in": z.strictObject({ organizationId: organizationIdSchema }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -277,6 +338,22 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "queue.admit": (payload) => `pool:${payload.poolId}:admit`,
   "runner.join-notice": (payload) => `runner:${payload.runnerId}:join-notice`,
   "registry.check": (payload) => `organization:${payload.organizationId}:registry-check:${String(payload.version)}`,
+  "scheduler.tick": () => "scheduler:tick",
+  "automation.occurrence": (payload) => `automation:${payload.automationId}:occurrence:${String(payload.occurrenceAt)}`,
+  "intake.match": (payload) => `ticket:${payload.ticketId}:intake-match:${String(payload.trackerUpdatedAt)}`,
+  "bulk.start-item": (payload) => `bulk-item:${payload.bulkStartItemId}:start`,
+  "linear.agent-event": (payload) => `linear:${payload.connectionId}:agent-event:${payload.deliveryId}`,
+  "linear.activity.send": (payload) => `activity:${payload.agentActivityId}:send`,
+  "linear.heartbeat": () => "linear:heartbeat",
+  "ci.evaluate": (payload) => `task-repo:${payload.taskRepoId}:ci:${payload.headSha}`,
+  "round.start": (payload) => `task:${payload.taskId}:round:${payload.kind}:${payload.causeRef}`,
+  "review.start": (payload) => `task:${payload.codeTaskId}:review:${String(payload.round)}`,
+  "review.post": (payload) => `review-run:${payload.reviewRunId}:post:${payload.repoId}`,
+  "reviewers.refresh": (payload) => `task-repo:${payload.taskRepoId}:reviewers`,
+  "changes.reopen": (payload) => `task-repo:${payload.taskRepoId}:changes-reopen:${payload.reviewId}`,
+  "draft.apply": (payload) => `draft:${payload.draftId}:apply:${String(payload.version)}`,
+  "environment.propose": (payload) => `proposal:${payload.proposalId}:propose`,
+  "profiles.seed-built-in": (payload) => `organization:${payload.organizationId}:seed-built-in-profiles`,
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -337,6 +414,25 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "queue.admit": { kind: "event" },
   "runner.join-notice": { kind: "event" },
   "registry.check": { kind: "event" },
+  // A pg-boss schedule every minute; the tick is idempotent, each occurrence a unique row.
+  "scheduler.tick": { kind: "schedule" },
+  "automation.occurrence": { kind: "event" },
+  "intake.match": { kind: "event" },
+  "bulk.start-item": { kind: "event" },
+  "linear.agent-event": { kind: "event" },
+  "linear.activity.send": { kind: "event", throttle: "connection" },
+  "linear.heartbeat": { kind: "schedule" },
+  // A head's check events a moment apart evaluate once (`ciEvaluateSingletonSeconds`).
+  "ci.evaluate": { kind: "event", throttle: "connection" },
+  "round.start": { kind: "event" },
+  "review.start": { kind: "event" },
+  "review.post": { kind: "event", throttle: "connection" },
+  // Reviewer changes a moment apart refresh once (`reviewersRefreshSingletonSeconds`).
+  "reviewers.refresh": { kind: "event", throttle: "connection" },
+  "changes.reopen": { kind: "event" },
+  "draft.apply": { kind: "event" },
+  "environment.propose": { kind: "event" },
+  "profiles.seed-built-in": { kind: "event" },
 };
 
 /** `review.evaluate`'s singleton window (spec section 5.4): one evaluation per PR and head in 10 s. */
@@ -347,6 +443,15 @@ export const snapshotScheduleSingletonSeconds = 60;
 
 /** `queue.admit`'s singleton window (spec section 5.4): one admission per pool a second. */
 export const queueAdmitSingletonSeconds = 1;
+
+/** `ci.evaluate`'s singleton window (milestone 6's spec section 5.4): one verdict per task repo and head in 10 s. */
+export const ciEvaluateSingletonSeconds = 10;
+
+/** `reviewers.refresh`'s singleton window: one refresh per task repo in 10 s. */
+export const reviewersRefreshSingletonSeconds = 10;
+
+/** `scheduler.tick`'s and `linear.heartbeat`'s pg-boss schedule: every minute. */
+export const EVERY_MINUTE_CRON = "* * * * *";
 
 const typedSchemas: { readonly [N in JobName]: z.ZodType<JobPayload<N>> } = jobPayloadSchemas;
 

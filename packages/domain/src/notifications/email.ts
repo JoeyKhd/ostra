@@ -24,7 +24,30 @@ export type MomentDetail =
   | { readonly kind: "crashed" }
   | { readonly kind: "setup_failed" }
   | { readonly kind: "ticket_closed"; readonly status: string }
-  | { readonly kind: "test" };
+  | { readonly kind: "test" }
+  // ---- milestone 6 (F-036, ADR 0050): the whole team's moments ----
+  /** A refine task's draft is ready for its owners: its counts, never its text. */
+  | { readonly kind: "draft_ready"; readonly acceptanceCriteria: number; readonly subTickets: number }
+  /** A PR waits on its matched reviewers. */
+  | { readonly kind: "review_requested"; readonly pullRequests: number }
+  /** A task started from outside waits for a member's approval: who started it, by the tracker's name. */
+  | { readonly kind: "task_approval"; readonly startedBy: string }
+  /** A task reached a cap of rounds or of automatic turns. */
+  | { readonly kind: "round_cap"; readonly reason: "rounds" | "automatic-turns"; readonly turns: number }
+  /**
+   * An automation paused itself at its hourly limit. Its `task` in the input is the automation:
+   * its name as the title, no key, and its page.
+   */
+  | { readonly kind: "automation_paused"; readonly starts: number };
+
+/** Milestone 6's moments' headings (the adapter SDK's `teamNotificationKinds`): the mail's title and the panel's. */
+export const teamMomentHeading = {
+  draft_ready: "A draft is ready",
+  review_requested: "A PR waits for your review",
+  task_approval: "A task waits for approval",
+  round_cap: "A task needs you",
+  automation_paused: "An automation paused",
+} as const satisfies Record<Extract<MomentDetail["kind"], "draft_ready" | "review_requested" | "task_approval" | "round_cap" | "automation_paused">, string>;
 
 export type NeedsYouEmailInput = {
   readonly detail: MomentDetail;
@@ -152,6 +175,49 @@ const words = (detail: MomentDetail): Words => {
         line: { verb: "Ticket", subject: cut(detail.status, 60) },
         button: "Open the task",
         note: () => "Stop the task, or keep it working, on the task page.",
+      };
+    case "draft_ready":
+      return {
+        heading: teamMomentHeading.draft_ready,
+        lede: lede("The refine task on ", " handed in a draft for you to check."),
+        line: {
+          verb: "Draft",
+          subject: `${String(detail.acceptanceCriteria)} acceptance criteri${detail.acceptanceCriteria === 1 ? "on" : "a"}, ${String(detail.subTickets)} sub-ticket${detail.subTickets === 1 ? "" : "s"}`,
+        },
+        button: "Open the draft",
+        note: () => "Edit it, update the ticket or mark it ready, signed in, on the task page.",
+      };
+    case "review_requested":
+      return {
+        heading: teamMomentHeading.review_requested,
+        lede: lede("", " passed its checks and the AI review, and waits for you."),
+        line: { verb: "Review", subject: `${String(detail.pullRequests)} pull request${detail.pullRequests === 1 ? "" : "s"}` },
+        button: "Open the task",
+        note: () => "Review it on the code host. Nothing in ostra approves or merges it.",
+      };
+    case "task_approval":
+      return {
+        heading: teamMomentHeading.task_approval,
+        lede: lede("", " was started from outside the project, and waits for a member's approval before anything runs."),
+        line: { verb: "Started by", subject: `${cut(oneLine(detail.startedBy), 80)}, in Linear` },
+        button: "Approve or reject",
+        note: (project) => `Any member of ${project} can answer, signed in, on the task page.`,
+      };
+    case "round_cap":
+      return {
+        heading: teamMomentHeading.round_cap,
+        lede: lede("", detail.reason === "rounds" ? " reached its limit of fixing rounds." : " reached its limit of automatic turns."),
+        line: { verb: "Automatic turns", subject: `${String(detail.turns)} since a person last acted` },
+        button: "Open the task",
+        note: () => "Read where it stands, then reply, reopen or stop it on the task page.",
+      };
+    case "automation_paused":
+      return {
+        heading: teamMomentHeading.automation_paused,
+        lede: lede("The automation ", " reached its hourly limit of starts, so it paused itself."),
+        line: { verb: "Paused", subject: `after ${String(detail.starts)} starts this hour` },
+        button: "Open the automation",
+        note: () => "Check its filter, then resume it on the automation's page.",
       };
     case "test":
       return {
