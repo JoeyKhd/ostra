@@ -125,28 +125,28 @@ export const suiteCases = {
  * changes. Each runs on the scripted fake agent, which drives the runner as any agent does.
  */
 export const sharedCases = {
-  gitProxy: { file: "apps/runner/src/task-host/task-host.test.ts", title: "F-090: the agent's own git clones, fetches and pushes through the proxy, which adds the repo's token; its push to main is refused" },
-  crash: { file: "apps/runner/src/task-host/task-host.test.ts", title: "F-047: a run whose agent crashes frees the runner's one slot, and the next dispatch is accepted and starts" },
-  prText: { file: "apps/runner/src/sidecar/mcp-tools.test.ts", title: "F-030: emits pr.text_set for a call naming one of the task's repos" },
-  prTool: { file: "apps/runner/src/sidecar/mcp-tools.test.ts", title: "F-030, F-078: lists the tool, whose description carries the repo's PR template and the title rule" },
-  trailer: { file: "packages/adapters/adapter-executor-host/src/host-executor.test.ts", title: "F-078: puts the trailer on the agent's own commits too, and the bot authors them" },
+  gitProxy: { file: "apps/runner/src/task-host/task-host.test.ts", title: "F-090/c1,c2: the agent's own git clones, fetches and pushes through the proxy, which adds the repo's token; its push to main is refused" },
+  crash: { file: "apps/runner/src/task-host/task-host.test.ts", title: "F-047/c1: a run whose agent crashes frees the runner's one slot, and the next dispatch is accepted and starts" },
+  prText: { file: "apps/runner/src/sidecar/mcp-tools.test.ts", title: "F-030/c4: emits pr.text_set for a call naming one of the task's repos" },
+  prTool: { file: "apps/runner/src/sidecar/mcp-tools.test.ts", title: "F-030/c4, F-078/c1: lists the tool, whose description carries the repo's PR template and the title rule" },
+  trailer: { file: "packages/adapters/adapter-executor-host/src/host-executor.test.ts", title: "F-078/c2: puts the trailer on the agent's own commits too, and the bot authors them" },
   ticketFiles: { file: "apps/runner/src/task-host/ticket-files.test.ts", title: "writes images and PDFs under .ostra/ticket/ by blob and type, skips the rest, and starts the turn" },
   rebuild: { file: "apps/core/src/dispatch/reopen.test.ts", title: "rebuilds from the template when the archive is gone, or the runner can't restore" },
   spendCap: { file: "apps/runner/src/task-host/limits.test.ts", title: "ends the turn at the cap, saves its work, sends session.limit_reached once, and ends the session" },
   stall: { file: "apps/core/src/limits/limits.test.ts", title: "stops a silent session within one minute of the limit, and leaves a waiting one and a recent one alone" },
-  killHard: { file: "packages/adapters/adapter-executor-host/src/host-containment.test.ts", title: "F-014: a runner killed hard leaves no process of its task" },
+  killHard: { file: "packages/adapters/adapter-executor-host/src/host-containment.test.ts", title: "F-014/c6: a runner killed hard leaves no process of its task" },
   imagePin: {
     file: "packages/deploy-checks/src/image-checks.test.ts",
-    title: "F-039: the checksum comes from the repo's pin: each architecture's expected SHA-256 is pinnedChecksums', fed to sha256sum -c",
+    title: "F-039/c1: the checksum comes from the repo's pin: each architecture's expected SHA-256 is pinnedChecksums', fed to sha256sum -c",
   },
   egressPlan: {
     file: "packages/adapter-sdk/src/testing/egress-probes.test.ts",
-    title: "F-116: the plan probes every routable range of the one list, the metadata address, the box network's gateway and another box's sidecar ports, each with its control",
+    title: "F-116/c6: the plan probes every routable range of the one list, the metadata address, the box network's gateway and another box's sidecar ports, each with its control",
   },
   openCodeQuestion: { file: "apps/runner/src/task-host/approvals.opencode.test.ts", title: "F-024: OpenCode's question is held, and the driver's answer reaches the model" },
   openCodeRepoAgents: {
     file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
-    title: "F-021: the repo's own AGENTS.md and skills reach OpenCode beside the profile's instructions and skill, with the repo's config off",
+    title: "F-021/c6: the repo's own AGENTS.md and skills reach OpenCode beside the profile's instructions and skill, with the repo's config off",
   },
 } as const satisfies Record<string, ParityCase>;
 
