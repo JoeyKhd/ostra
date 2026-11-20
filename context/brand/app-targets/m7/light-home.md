@@ -26,30 +26,31 @@ The same variable names as the dark set in `apps/web/src/app/globals.css`; only 
 
 | Token | Dark (today) | **Light** | Used for | Contrast in light |
 |---|---|---|---|---|
-| `--bg` | `#0D0E10` | `#FBFAF6` (Shell, lifted) | page, properties panel | — |
-| `--side` | `#0A0B0C` | `#F3F0E8` (Shell) | sidebar | — |
-| `--surface` | `#131416` | `#F3F0E8` (Shell) | inputs, code blocks, the composer, outline buttons, the search field, group bands | — |
+| `--bg` | `#0D0E10` | `#FAFAFB` | page, properties panel | — |
+| `--side` | `#0A0B0C` | `#F3F3F5` | sidebar (a step below the page, as dark's sidebar is) | — |
+| `--surface` | `#131416` | `#F3F3F5` | inputs, code blocks, the composer, outline buttons, the search field, group bands | — |
 | `--raise` | `#17181B` | `#FFFFFF` | menus, popovers, dialogs, tooltips (they sit above the page, so they're the lightest step) | — |
-| `--sel` | `#1A1B1E` | `#E8E4D9` | the selected row and nav item, the view toggle's selected half, avatars' fill | — |
-| `--line` | `#1F2023` | `#E4E1D8` | hairlines: rows, panel edges, group separators | 1.24:1 (a hairline, never the only cue) |
-| `--line-2` | `#2A2C30` | `#CFD8D4` (Mist) | control borders: buttons, inputs, chips, the composer | 1.39:1 (the label carries the control, as in dark) |
-| `--text` | `#F2F3F4` | `#0C1D21` (Abyss) | titles, values, row titles | 16.6:1 |
-| `--text-2` | `#D6D8DB` | `#1E3135` | sidebar rows | 11.9:1 on `--side` |
-| `--muted` | `#B4B7BB` | `#2F4A47` (Kelp) | lede, secondary text, keys, project names in rows | 9.2:1 |
-| `--faint` | `#8B8E93` | `#5A6664` | labels, ages, counts, table heads, icons | 5.7:1; 5.2:1 on `--side`; 4.7:1 on `--sel` |
-| `--teal` | `#6FB8AA` | `#1F6B5E` | links and inline actions (`Open all →`, `Take over`), the focus ring | 6.1:1 |
-| `--green` | `#4FB286` | `#25734F` | success, additions, merged | 5.5:1; 5.0:1 on the diff's add fill |
+| `--sel` | `#1A1B1E` | `#E8E9EC` | the selected row and nav item, the view toggle's selected half, avatars' fill | — |
+| `--line` | `#1F2023` | `#E3E4E7` | hairlines: rows, panel edges, group separators | 1.22:1 (a hairline, never the only cue) |
+| `--line-2` | `#2A2C30` | `#D0D2D6` | control borders: buttons, inputs, chips, the composer | 1.45:1 (the label carries the control, as in dark) |
+| `--text` | `#F2F3F4` | `#141518` | titles, values, row titles | 17.5:1 |
+| `--text-2` | `#D6D8DB` | `#2B2D32` | sidebar rows | 12.4:1 on `--side` |
+| `--muted` | `#B4B7BB` | `#4A4D53` | lede, secondary text, keys, project names in rows | 8.1:1 |
+| `--faint` | `#8B8E93` | `#62656B` | labels, ages, counts, table heads, icons | 5.6:1; 5.3:1 on `--side`; 4.8:1 on `--sel` |
+| `--teal` | `#6FB8AA` | `#1F6B5E` | links and inline actions (`Take over`, `#483`, `Show the diff`), the focus ring: an accent, as in dark, never a fill | 6.1:1; 5.2:1 on `--sel` |
+| `--green` | `#4FB286` | `#25734F` | success, additions, merged | 5.5:1; 5.0:1 on the diff's add fill; 4.75:1 on `--sel` |
 | `--red` | `#E5675C` | `#B4382D` | errors, failures, deletions | 5.7:1; 5.1:1 on the diff's delete fill |
-| `--amber` | `#FFB224` | `#FFB224` (unchanged) | **fills only** in light: the Needs you count pill, status and project dots, the approval's rule, `Approve` buttons | `--ink` on it 9.6:1 |
+| `--amber` | `#FFB224` | `#FFB224` (unchanged) | **fills only** in light: the Needs you count pill, status and project dots, the approval's rule, `Approve` buttons | `--on-amber` on it 10.1:1 |
 | `--amber-text` (**new**) | `#FFB224` | `#8A5300` | amber that has to be text or a line icon: the approval title and its `hand`, the Needs you column's numbers | 6.1:1 |
-| `--primary` (**new**) | `#F3F0E8` (`--shell`) | `#0C1D21` (`--ink`) | the one primary button's fill (`New task`, `Send`), the sidebar's `+` | — |
-| `--on-primary` (**new**) | `#0C1D21` | `#F3F0E8` | text and icon on the primary fill | 15.2:1 |
-| `--chart` (**new**) | `#CFD8D4` (Mist) | `#748A85` | single-series bars and lines; "now" bars at 45% | 3.5:1 (graphics need 3:1) |
-| `--track` (**new**) | `--line` | `#E4E1D8` | meter tracks (spend, pools, context) | — |
-| `--meter` (**new**) | `--mist` | `#2F4A47` (Kelp) | meter fills | 9.2:1 |
-| `--diff-add` (**new**) | `rgba(79,178,134,0.10)` | `#E6F2EA` | added lines' fill | `--text` on it 15.0:1 |
-| `--diff-del` (**new**) | `rgba(229,103,92,0.10)` | `#FBE9E6` | removed lines' fill | `--text` on it 14.8:1 |
-| `--shadow-pop` (**new**) | `0 8px 24px rgba(0,0,0,0.45)` | `0 8px 24px rgba(12,29,33,0.12)` | overlays only (menus, dialogs, the palette); no page element has a shadow | — |
+| `--on-amber` (**new**) | `#0C1D21` (`--ink`) | `#141518` (`--text`) | text and icon on an amber fill (`Approve`, the count pill) | 10.1:1 |
+| `--primary` (**new**) | `#F3F0E8` (`--shell`) | `#141518` (`--text`) | the one primary button's fill (`New task`, `Send`), the sidebar's `+` | — |
+| `--on-primary` (**new**) | `#0C1D21` | `#FAFAFB` (`--bg`) | text and icon on the primary fill | 17.5:1 |
+| `--chart` (**new**) | `#CFD8D4` (Mist) | `#7F8288` | single-series bars and lines; "now" bars at 45% | 3.7:1 (graphics need 3:1) |
+| `--track` (**new**) | `--line` | `#E3E4E7` (`--line`) | meter tracks (spend, pools, context) | — |
+| `--meter` (**new**) | `--mist` | `#4A4D53` (`--muted`) | meter fills | 8.1:1 |
+| `--diff-add` (**new**) | `rgba(79,178,134,0.10)` | `#E6F2EA` | added lines' fill | `--text` on it 15.9:1 |
+| `--diff-del` (**new**) | `rgba(229,103,92,0.10)` | `#FBE9E6` | removed lines' fill | `--text` on it 15.6:1 |
+| `--shadow-pop` (**new**) | `0 8px 24px rgba(0,0,0,0.45)` | `0 8px 24px rgba(13,14,16,0.12)` | overlays only (menus, dialogs, the palette); no page element has a shadow | — |
 | `--ink`, `--shell`, `--mist` | brand constants | unchanged | brand colours by name, never by role | — |
 
 `color-scheme: light`, `<meta name="theme-color">` `#FBFAF6` (dark `#0D0E10`), and the Abyss Hinge (`ostra-hinge.svg`) in the sidebar instead of the Shell one.

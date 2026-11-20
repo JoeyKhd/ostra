@@ -122,30 +122,30 @@ A 1px `--line` hairline, then one 13px `--faint` row: `ostra is source-available
 
 | Token | Dark | Light | Used for |
 |---|---|---|---|
-| `--bg` | `#0D0E10` | `#FBFAF6` | Page, header, navigation, the phone drawer |
-| `--surface` | `#131416` | `#F3F0E8` | Code blocks, fields, callouts, outline buttons and chips, group bands, hover |
+| `--bg` | `#0D0E10` | `#FAFAFB` | Page, header, navigation, the phone drawer |
+| `--surface` | `#131416` | `#F3F3F5` | Code blocks, fields, callouts, outline buttons and chips, group bands, hover |
 | `--raise` | `#17181B` | `#FFFFFF` | The search dialog, tooltips |
-| `--sel` | `#1A1B1E` | `#E8E4D9` | The selected nav row, search result and segment; button hover; skeleton bars |
-| `--line` | `#1F2023` | `#E4E1D8` | Hairlines (decorative, no contrast need) |
-| `--line-2` | `#2A2C30` | `#CFD8D4` Mist | Dialog, drawer and tooltip edges; the search match and the reference's target row (as the panel's `mark`) |
-| `--control` (docs only) | `#62656B` | `#7D8B87` | Borders of fields, outline buttons, chips: 3.30:1 and 3.40:1 on `--bg` (WCAG 1.4.11). The panel draws these in `--line-2`; the docs keep 3:1 (decided 2026-11-19, README). Dark is the panel's own quiet grey (`--chart-2`) |
-| `--text` | `#F2F3F4` | `#0C1D21` Abyss | Titles, values, code |
-| `--text-2` | `#D6D8DB` | `#1E3135` | Prose, callout text, nav rows (as the panel's sidebar rows) |
-| `--muted` | `#B4B7BB` | `#2F4A47` Kelp | Ledes, secondary text, the reference's descriptions, search snippets |
-| `--faint` | `#8B8E93` | `#5A6664` | Labels, numbers, hints |
+| `--sel` | `#1A1B1E` | `#E8E9EC` | The selected nav row, search result and segment; button hover; skeleton bars |
+| `--line` | `#1F2023` | `#E3E4E7` | Hairlines (decorative, no contrast need) |
+| `--line-2` | `#2A2C30` | `#D0D2D6` | Dialog, drawer and tooltip edges; the search match and the reference's target row (as the panel's `mark`) |
+| `--control` (docs only) | `#62656B` | `#7F8288` | Borders of fields, outline buttons, chips: 3.30:1 and 3.69:1 on `--bg` (WCAG 1.4.11). The panel draws these in `--line-2`; the docs keep 3:1 (decided 2026-11-19, README). Dark is the panel's own quiet grey (`--chart-2`), light its light `--chart` |
+| `--text` | `#F2F3F4` | `#141518` | Titles, values, code |
+| `--text-2` | `#D6D8DB` | `#2B2D32` | Prose, callout text, nav rows (as the panel's sidebar rows) |
+| `--muted` | `#B4B7BB` | `#4A4D53` | Ledes, secondary text, the reference's descriptions, search snippets |
+| `--faint` | `#8B8E93` | `#62656B` | Labels, numbers, hints |
 | `--teal` | `#6FB8AA` | `#1F6B5E` | Links, the `run` chip, the current TOC row, the focus ring |
 | `--green` | `#4FB286` | `#25734F` | Success (the copy button's tick) |
 | `--red` | `#E5675C` | `#B4382D` | The "Not isolated" callout, errors |
-| `--primary` / `--on-primary` | `#F3F0E8` / `#0C1D21` | `#0C1D21` / `#F3F0E8` | The one primary button (the panel's Shell and Ink in dark) |
-| `--overlay` (docs only) | `rgba(0,0,0,0.5)` | `rgba(12,29,33,0.4)` | The scrim behind the search and the drawer (dark as the panel's palette) |
-| `--dialog-shadow` (docs only) | `0 16px 48px rgba(0,0,0,0.5)` | `0 8px 24px rgba(12,29,33,0.12)` | The search dialog (the panel's palette in dark, its `--shadow-pop` in light) |
+| `--primary` / `--on-primary` | `#F3F0E8` / `#0C1D21` | `#141518` / `#FAFAFB` | The one primary button (the panel's Shell and Ink in dark; graphite on the page's white in light) |
+| `--overlay` (docs only) | `rgba(0,0,0,0.5)` | `rgba(13,14,16,0.4)` | The scrim behind the search and the drawer (dark as the panel's palette) |
+| `--dialog-shadow` (docs only) | `0 16px 48px rgba(0,0,0,0.5)` | `0 8px 24px rgba(13,14,16,0.12)` | The search dialog (the panel's palette in dark, its `--shadow-pop` in light) |
 
 **No amber on the docs site.** Buoy Amber means "this needs you" (`brief.md`), and nothing in the docs waits on the reader.
 
 **Contrast (WCAG AA), measured** for every text token on every background (`--bg`, `--surface`, `--raise`, `--sel`), lowest first:
 - **Dark:** `--faint` 5.24:1 on `--sel` (5.87:1 on `--bg`), `--red` 5.27:1, `--green` 6.60:1, `--teal` 7.47:1, `--muted` 8.55:1, `--text-2` 12.06:1, `--text` 15.50:1.
-- **Light:** `--green` 4.54:1 on `--sel` (5.52:1 on `--bg`), `--red` 4.66:1, `--faint` 4.70:1, `--teal` 4.97:1, `--muted` 7.54:1, `--text-2` 10.69:1, `--text` 13.62:1.
-- **Both:** `--text` on the search match (`--line-2`) 12.59:1 dark and 11.89:1 light; the primary button 15.2:1. `--control` passes 3:1 on `--bg`, `--surface` and `--raise` (lowest 3.04:1, dark on `--raise`).
+- **Light** (the graphite set of 2026-11-20): `--green` 4.75:1 on `--sel` (5.52:1 on `--bg`), `--faint` 4.81:1, `--red` 4.88:1, `--teal` 5.21:1, `--muted` 6.98:1, `--text-2` 11.35:1, `--text` 15.04:1.
+- **Both:** `--text` on the search match (`--line-2`) 12.59:1 dark and 12.06:1 light; the primary button 15.2:1 dark and 17.5:1 light. `--control` passes 3:1 on `--bg`, `--surface` and `--raise` (lowest 3.04:1, dark on `--raise`).
 
 **The illustration** keeps its own colours in both themes: in dark it's feathered into graphite with the radial mask (its water reads as a soft glow); in light it's a rounded window, on the home page and in the search's empty state alike.
 
