@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, HandIcon, PauseCircleIcon, RefreshCcwIcon, XIcon } from "lucide-react";
+import { CheckIcon, HandIcon, LoaderCircleIcon, PauseCircleIcon, RefreshCcwIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
@@ -10,7 +10,10 @@ import { cn } from "@/lib/cn";
 import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
-import { capBody, capTitle, findingsSentWords, roundName, stagesOf } from "./review-words";
+import { taskStateLine } from "../task-words";
+import type { TaskReason, TaskState } from "../task-words";
+
+import { capBody, capTitle, findingsSentWords, releasedHoldText, roundName, roundOutcomeText, stagesOf } from "./review-words";
 import type { CapKind, Limits, Stage, SubState, TaskRound } from "./review-words";
 
 // The task page in review (app-targets/m6/task-rounds.md; F-035, F-101, F-105, ticket 35): the
@@ -60,7 +63,7 @@ export const StageLine = ({ subState, aiReview, counts, needsYou, held }: {
 };
 
 /** One round as a card: its name, its turn, and what it sent. */
-const RoundCard = ({ round, limits, reviewHref, taskId }: { readonly round: TaskRound; readonly limits: Limits; readonly reviewHref: string; readonly taskId: string }) => {
+export const RoundCard = ({ round, limits, reviewHref, taskId }: { readonly round: TaskRound; readonly limits: Limits; readonly reviewHref: string; readonly taskId: string }) => {
   const body = (() => {
     switch (round.cause.kind) {
       case "ci":
@@ -115,6 +118,11 @@ const RoundCard = ({ round, limits, reviewHref, taskId }: { readonly round: Task
             <PauseCircleIcon aria-hidden className="size-[13px]" />
             {round.heldReason?.scope === "organization" ? t("review.round.heldOrganization") : t("review.round.heldProject")}
           </p>
+        ) : round.hold !== null && releasedHoldText(round.hold) !== null ? (
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-faint" data-testid="round-released">
+            <PauseCircleIcon aria-hidden className="size-[13px]" />
+            {releasedHoldText(round.hold)}
+          </p>
         ) : round.state === "capped" ? (
           <p className="mt-1.5 text-xs text-faint">{round.cappedReason === "spend-cap" ? t("review.round.cappedSpend") : t("review.round.capped")}</p>
         ) : null}
@@ -141,7 +149,15 @@ export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver
   return (
     <div className="mt-4 space-y-3" data-testid="task-rounds">
       {/* A round the cap stopped never ran: the cap's needs-you below says so, not a card. */}
-      {rounds.filter((round) => round.state !== "capped").map((round) => <RoundCard key={`${round.kind}-${String(round.number)}-${String(round.createdAt)}`} round={round} limits={limits} reviewHref={reviewHref} taskId={taskId} />)}
+      {rounds.filter((round) => round.state !== "capped").map((round) => {
+        const outcome = roundOutcomeText(round.outcome, capInput.agent);
+        return (
+          <div key={`${round.kind}-${String(round.number)}-${String(round.createdAt)}`} className="space-y-1.5">
+            <RoundCard round={round} limits={limits} reviewHref={reviewHref} taskId={taskId} />
+            {outcome === null ? null : <p className="pl-10 text-ui text-muted" data-testid="round-outcome">{outcome}</p>}
+          </div>
+        );
+      })}
       {cap === null ? null : (
         <div className={cn("border-l-2 pl-3", isDriver ? "border-amber" : "border-line-2")} role="region" aria-label={capTitle(cap)} data-testid="round-cap" data-cap={cap}>
           <p className={cn("flex items-center gap-1.5 text-sm font-semibold", isDriver ? "text-amber-text" : "text-muted")}>
@@ -169,6 +185,60 @@ export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver
     </div>
   );
 };
+
+/**
+ * The Status row in review (task-rounds.md): the state, then the sub-state the loop is at
+ * (`In review · CI running`); a needs-you or any other state keeps its own line.
+ */
+export const statusWithSubState = (task: { readonly state: TaskState; readonly reason: TaskReason; readonly subState: SubState }): string => {
+  const line = taskStateLine(task.state, task.reason);
+  if (task.state !== "in_review" || task.subState === null) return line;
+  switch (task.subState) {
+    case "ci_running":
+      return t("review.statusSub.ciRunning", { state: line });
+    case "fixing_ci":
+      return t("review.statusSub.fixingCi", { state: line });
+    case "ai_review":
+      return t("review.statusSub.aiReview", { state: line });
+    case "fixing_findings":
+      return t("review.statusSub.fixingFindings", { state: line });
+    case "waiting_for_reviewer":
+      return t("review.statusSub.waitingForReviewer", { state: line });
+    default:
+      return task.subState satisfies never;
+  }
+};
+
+/** The Code group's `Head` and `CI` rows for a repo with a PR (task-rounds.md). */
+export const CodeHeadRows = ({ headSha, ci }: { readonly headSha: string | null; readonly ci: { readonly state: "passed" | "failed" | "running" | "none"; readonly failing: string | null } | null }) => (
+  <>
+    <PropRow label={t("taskPage.head")}>
+      <span className="font-mono text-ui" data-testid="code-head">{headSha === null ? "–" : headSha.slice(0, 7)}</span>
+    </PropRow>
+    <PropRow label={t("taskPage.ci")}>
+      <span className="flex min-w-0 items-center gap-1.5 text-ui" data-testid="code-ci" data-ci={ci?.state ?? "none"}>
+        {ci?.state === "passed" ? (
+          <>
+            <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
+            {t("taskPage.ciPassed")}
+          </>
+        ) : ci?.state === "failed" ? (
+          <>
+            <XIcon aria-hidden className="size-[14px] stroke-[1.75] text-red" />
+            <span className="truncate">{ci.failing === null ? t("taskPage.ciFailed") : `${t("taskPage.ciFailed")} · ${ci.failing}`}</span>
+          </>
+        ) : ci?.state === "running" ? (
+          <>
+            <LoaderCircleIcon aria-hidden className="size-[14px] animate-spin stroke-[1.75] text-muted" />
+            {t("taskPage.ciRunning")}
+          </>
+        ) : (
+          <span className="text-faint">{t("taskPage.ciNone")}</span>
+        )}
+      </span>
+    </PropRow>
+  </>
+);
 
 /** The panel's Rounds group: each count of its limit since a person last acted, and a hold. */
 export const RoundsGroup = ({ counts, aiReview, since, held }: {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  CI_FAILING_CONCLUSIONS,
   agentSteersMidTurn,
   answerNextTurnItemsInTx,
   answerApproval,
@@ -165,6 +166,16 @@ const reviewCheckOf = (checks: readonly ReviewCheckRow[], reviewers: ReadonlyMap
 /** How many events a page of the event log holds by default, and at most (ticket 25). */
 const EVENT_LOG_PAGE = 200;
 const EVENT_LOG_MAX_PAGE = 1000;
+
+/** A head's CI as the Code group says it: running, passed, failed with its first failing check, or none. */
+const ciOfHead = (run: { readonly state: "pending" | "passed" | "failed" | "none" | "timed_out"; readonly checks: unknown } | null) => {
+  if (run === null || run.state === "none") return { state: "none" as const, failing: null };
+  if (run.state === "pending") return { state: "running" as const, failing: null };
+  if (run.state === "passed") return { state: "passed" as const, failing: null };
+  const checks = z.array(z.looseObject({ name: z.string(), conclusion: z.string().nullable() })).safeParse(run.checks);
+  const failing = checks.success ? (checks.data.find((check) => check.conclusion !== null && CI_FAILING_CONCLUSIONS.has(check.conclusion))?.name ?? null) : null;
+  return { state: "failed" as const, failing };
+};
 
 export const tasksRouter = router({
   /** F-037, F-135 (tickets 27, 50): whether a new task would start now, or the reason it would wait. */
@@ -345,6 +356,8 @@ export const tasksRouter = router({
             pullRequests: { orderBy: { openedAt: "asc" } },
             // Milestone 4 (F-104, ticket 30): the review check of each PR, per head, newest first.
             reviewChecks: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] },
+            // Ticket 41: the code host's CI per head, for the Code group's CI row.
+            ciRuns: { orderBy: { firstSeenAt: "desc" }, take: 5, select: { headSha: true, state: true, checks: true } },
           },
           orderBy: { createdAt: "asc" },
         },
@@ -456,6 +469,8 @@ export const tasksRouter = router({
         baseBranch: repo.baseBranch,
         state: repo.state,
         headSha: repo.headSha,
+        /** Ticket 41 (task-rounds.md's Code group): the code host's CI on the head, with its first failing check; `null` without a PR. */
+        ci: repo.prNumber === null ? null : ciOfHead(repo.ciRuns.find((run) => run.headSha === repo.headSha) ?? null),
         pr: repo.prNumber === null || repo.prUrl === null ? null : { number: repo.prNumber, url: repo.prUrl, state: prStateOf(repo.state) },
         /** Milestone 3 (ticket 39, F-070): how many commits the base is ahead of the branch, as of `behindCheckedAt`; `null` before it is read. */
         behindBy: repo.behindBy,

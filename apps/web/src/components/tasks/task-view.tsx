@@ -56,7 +56,7 @@ import { Chip } from "@/components/ui/status";
 import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
 import { capOf } from "./review/review-words";
-import { RoundsGroup, RoundsInThread, StageLine } from "./review/task-rounds";
+import { CodeHeadRows, RoundsGroup, RoundsInThread, StageLine, statusWithSubState } from "./review/task-rounds";
 import { formatClock } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -209,7 +209,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
       <PropGroup title={t("taskPage.properties")}>
         <PropRow label={t("taskPage.status")}>
           <Status tone={stateTone(task.state)} className="min-w-0">
-            <span className="truncate">{noKey ? t("noKey.queued") : taskStateLine(task.state, task.reason)}</span>
+            <span className="truncate" data-testid="task-status">{noKey ? t("noKey.queued") : statusWithSubState(task)}</span>
           </Status>
         </PropRow>
         <PropRow label={t("taskPage.driver")}>
@@ -318,6 +318,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
                   <span className="text-ui text-muted">{pr.state}</span>
                 </PropRow>
               ))}
+              {repo.pr === null ? null : <CodeHeadRows headSha={repo.headSha} ci={repo.ci} />}
               <PropRow label={t("taskPage.pr")}>
                 {repo.pr === null || href === null ? <span className="text-faint">{t("taskPage.noPr")}</span> : (
                   <>

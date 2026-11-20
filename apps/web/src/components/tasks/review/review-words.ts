@@ -37,6 +37,51 @@ export const subStateWords = (subState: SubState, rounds: { readonly ci: Count; 
   }
 };
 
+const monthOf = (at: number): string => new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(at);
+
+/** How long a hold lasted: `9 min`, `2 h`, `1 d`. */
+const heldFor = (ms: number): string => {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return t("units.minutes", { n: minutes });
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? t("units.hours", { n: hours }) : t("units.days", { n: Math.round(hours / 24) });
+};
+
+/**
+ * A released hold's line (task-rounds.md): `Held 9 min: the project's budget for November was
+ * reached. Released when Alex Kim raised it.` (or `…when December began.`); `null` while it holds.
+ */
+export const releasedHoldText = (hold: NonNullable<TaskRound["hold"]>): string | null => {
+  if (hold.releasedAt === null) return null;
+  const month = monthOf(hold.heldAt);
+  const head = hold.scope === "organization" ? t("review.round.releasedOrganization", { duration: heldFor(hold.releasedAt - hold.heldAt), month }) : t("review.round.releasedProject", { duration: heldFor(hold.releasedAt - hold.heldAt), month });
+  const tail =
+    hold.releasedByName !== null
+      ? t("review.round.releasedBy", { name: hold.releasedByName })
+      : monthOf(hold.releasedAt) !== month
+        ? t("review.round.releasedMonth", { month: monthOf(hold.releasedAt) })
+        : t("review.round.released");
+  return `${head} ${tail}`;
+};
+
+/** The round's outcome after its card: `OpenCode pushed 3f9c21a. CI passed.`; `null` before a push. */
+export const roundOutcomeText = (outcome: TaskRound["outcome"], agent: string): string | null => {
+  if (outcome === null) return null;
+  const sha = outcome.headSha.slice(0, 7);
+  switch (outcome.ci) {
+    case "passed":
+      return t("review.round.pushedPassed", { agent, sha });
+    case "failed":
+    case "timed_out":
+      return outcome.failing === null ? t("review.round.pushedFailedNoCheck", { agent, sha }) : t("review.round.pushedFailed", { agent, sha, check: outcome.failing });
+    case "pending":
+    case "none":
+      return t("review.round.pushed", { agent, sha });
+    default:
+      return outcome.ci satisfies never;
+  }
+};
+
 /** The latest CI verdict on a PR's head. */
 export const ciWords = (state: CiState | null): string | null => {
   switch (state) {

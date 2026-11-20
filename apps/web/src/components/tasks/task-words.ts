@@ -35,7 +35,7 @@ export const taskStateText = (state: TaskState): string => {
   }
 };
 
-type TaskReason = RouterOutputs["tasks"]["get"]["reason"];
+export type TaskReason = RouterOutputs["tasks"]["get"]["reason"];
 
 /** The reasons the thread itself shows as an amber block: the header names them, without a note. */
 export const shownInThread = (reason: TaskReason): boolean => reason === "approval" || reason === "question";

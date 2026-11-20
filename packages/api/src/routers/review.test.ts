@@ -258,6 +258,31 @@ describe("the task's rounds (F-035, F-101, ticket 28)", () => {
     expect(view.rounds[0]?.cause).not.toMatchObject({ failing: [{ name: "lint" }] });
     expect(await codeOf((await harness.as(harness.fixture.b.admin)).tasks.rounds({ taskId: task.taskId }))).toBe("NOT_FOUND");
   });
+
+  it("F-035/c1,c2: each round says what its turn pushed and how CI went, and a hold the budget released says how long and who raised it", async () => {
+    const task = await reviewedTask("outcomes");
+    const { db } = harness.test;
+    const now = Date.now();
+    const minutes = (n: number) => new Date(now - n * 60_000);
+    // The CI round, then the findings round; a head CI saw after each.
+    await db.taskRound.updateMany({ where: { taskId: task.taskId, kind: "ci" }, data: { createdAt: minutes(30) } });
+    await db.taskRound.updateMany({ where: { taskId: task.taskId, kind: "findings" }, data: { createdAt: minutes(10) } });
+    const head3 = "c3".repeat(20);
+    const head4 = "d4".repeat(20);
+    await db.ciRun.create({ data: { organizationId: orgA, projectId, taskRepoId: task.pr1, headSha: head3, state: "passed", checks: [], firstSeenAt: minutes(20), completedAt: minutes(19) } });
+    await db.ciRun.create({ data: { organizationId: orgA, projectId, taskRepoId: task.pr1, headSha: head4, state: "failed", checks: [{ name: "lint", conclusion: "failure", externalId: "9" }], firstSeenAt: minutes(5) } });
+    // The CI round's turn the project's budget held for 9 minutes, until the admin raised it.
+    const budget = await db.budget.create({ data: { organizationId: orgA, projectId, monthlyMicroUsd: 1n } });
+    await db.heldTurn.create({ data: { organizationId: orgA, projectId, taskId: task.taskId, origin: "automatic_round", budgetId: budget.id, heldAt: minutes(29), releasedAt: minutes(20) } });
+    await db.auditEntry.create({ data: { organizationId: orgA, projectId, actorKind: "member", actorId: harness.fixture.a.admin.id, action: "budget.set", entity: "budget", entityId: budget.id, createdAt: minutes(21) } });
+    const view = await (await harness.as(harness.fixture.a.member)).tasks.rounds({ taskId: task.taskId });
+    const adminName = (await db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.admin.userId } })).name;
+    expect(view.rounds.find((round) => round.kind === "ci")).toMatchObject({
+      outcome: { headSha: head3, ci: "passed", failing: null },
+      hold: { heldAt: minutes(29).getTime(), releasedAt: minutes(20).getTime(), scope: "project", releasedByName: adminName },
+    });
+    expect(view.rounds.find((round) => round.kind === "findings")).toMatchObject({ outcome: { headSha: head4, ci: "failed", failing: "lint" }, hold: null });
+  });
 });
 
 describe("Review settings (F-100, ticket 28)", () => {

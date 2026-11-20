@@ -327,14 +327,31 @@ export const taskRoundsProcedure = taskProcedure("read", taskInput).query(async 
       ? db.finding.findMany({ where: { organizationId, reviewRunId: { in: rounds.filter((round) => round.kind === "findings").map((round) => round.causeRef) } }, orderBy: { createdAt: "asc" }, select: { id: true, reviewRunId: true, path: true, line: true, severity: true, title: true } })
       : [],
     db.event.findMany({ where: { organizationId, taskId: input.taskId, kind: "round.capped" }, orderBy: { seq: "asc" }, select: { payload: true, occurredAt: true } }),
-    db.heldTurn.findMany({ where: { organizationId, taskId: input.taskId, releasedAt: null, origin: { in: ["automatic_round", "changes_requested"] } }, select: { origin: true, budget: { select: { projectId: true } } } }),
+    db.heldTurn.findMany({
+      where: { organizationId, taskId: input.taskId, origin: { in: ["automatic_round", "changes_requested"] } },
+      orderBy: { heldAt: "asc" },
+      select: { origin: true, budgetId: true, heldAt: true, releasedAt: true, budget: { select: { projectId: true } } },
+    }),
     db.auditEntry.findMany({ where: { organizationId, entityId: input.taskId, action: "pr.changes-requested" }, select: { actorId: true, data: true } }),
   ]);
   const reviewers = changes.flatMap((entry) => {
     const data = changesAuditSchema.safeParse(entry.data);
     return data.success ? [{ reviewId: String(data.data.reviewId), memberId: entry.actorId }] : [];
   });
-  const names = await nameMap(ctx, organizationId, reviewers.map((reviewer) => reviewer.memberId));
+  // Ticket 41: each round's pushed head (the first head CI saw after it), and who raised a budget that released a hold.
+  const heads = rounds.length === 0 ? [] : await db.ciRun.findMany({ where: { organizationId, taskRepo: { taskId: input.taskId } }, orderBy: { firstSeenAt: "asc" }, select: { headSha: true, state: true, checks: true, firstSeenAt: true } });
+  const released = held.filter((turn) => turn.releasedAt !== null);
+  const raises =
+    released.length === 0
+      ? []
+      : await db.auditEntry.findMany({ where: { organizationId, action: "budget.set", entityId: { in: released.map((turn) => turn.budgetId) } }, orderBy: { createdAt: "asc" }, select: { entityId: true, actorId: true, createdAt: true } });
+  const names = await nameMap(ctx, organizationId, [...reviewers.map((reviewer) => reviewer.memberId), ...raises.map((raise) => raise.actorId)]);
+  const raiserOf = (turn: (typeof held)[number]): string | null => {
+    if (turn.releasedAt === null) return null;
+    const releasedAt = turn.releasedAt.getTime();
+    const raise = raises.find((one) => one.entityId === turn.budgetId && one.createdAt.getTime() >= turn.heldAt.getTime() && one.createdAt.getTime() <= releasedAt + 60_000);
+    return raise === undefined ? null : (person(names, raise.actorId)?.name ?? null);
+  };
   const cappedEvents = capped.flatMap((event) => {
     const parsed = cappedEventSchema.safeParse(event.payload);
     return parsed.success ? [{ ...parsed.data, at: event.occurredAt.getTime() }] : [];
@@ -380,8 +397,14 @@ export const taskRoundsProcedure = taskProcedure("read", taskInput).query(async 
         }
       })();
       const createdAt = round.createdAt.getTime();
+      const next = rounds.find((other) => other.createdAt.getTime() > createdAt)?.createdAt.getTime() ?? Number.POSITIVE_INFINITY;
       const cappedBy = round.state === "capped" ? (cappedEvents.filter((event) => event.round === kind).sort((one, other) => Math.abs(one.at - createdAt) - Math.abs(other.at - createdAt))[0] ?? null) : null;
-      const heldTurn = round.state === "held" ? (held.find((turn) => turn.origin === (round.kind === "changes_requested" ? "changes_requested" : "automatic_round")) ?? null) : null;
+      const origin = round.kind === "changes_requested" ? "changes_requested" : "automatic_round";
+      const heldTurn = round.state === "held" ? (held.find((turn) => turn.origin === origin && turn.releasedAt === null) ?? null) : null;
+      // The hold this round had, released or not: made with the round, before the next one.
+      const hold = held.find((turn) => turn.origin === origin && turn.heldAt.getTime() >= createdAt - 5_000 && turn.heldAt.getTime() < next) ?? null;
+      // What the round's turn pushed: the first head CI saw after the round, before the next one.
+      const pushed = round.state === "started" ? (heads.find((head) => head.firstSeenAt.getTime() > createdAt && head.firstSeenAt.getTime() < next) ?? null) : null;
       const heldReason: HeldReason | null = heldTurn === null ? null : { kind: "budget", scope: heldTurn.budget.projectId === null ? "organization" : "project" };
       return {
         kind,
@@ -394,6 +417,25 @@ export const taskRoundsProcedure = taskProcedure("read", taskInput).query(async 
         cappedReason: round.state === "capped" ? (cappedBy?.reason ?? ("spend-cap" as const)) : null,
         /** Why a held round waits: the budget holding its turn, until it's raised or the month turns. */
         heldReason,
+        /** Ticket 41: the round's hold, while held or once released (when, and who raised the budget). */
+        hold:
+          hold === null
+            ? null
+            : {
+                heldAt: hold.heldAt.getTime(),
+                releasedAt: hold.releasedAt?.getTime() ?? null,
+                scope: hold.budget.projectId === null ? ("organization" as const) : ("project" as const),
+                releasedByName: raiserOf(hold),
+              },
+        /** Ticket 41: what the round's turn pushed and how its CI went (`OpenCode pushed {sha7}. CI passed.`). */
+        outcome:
+          pushed === null
+            ? null
+            : {
+                headSha: pushed.headSha,
+                ci: pushed.state,
+                failing: checksOf(pushed.checks).find((check) => check.conclusion !== null && CI_FAILING_CONCLUSIONS.has(check.conclusion))?.name ?? null,
+              },
       };
     }),
   };

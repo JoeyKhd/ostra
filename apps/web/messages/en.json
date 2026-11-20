@@ -146,6 +146,13 @@
       "turns": "automatic turns",
       "turnsCount": "{used} of {limit}"
     },
+    "statusSub": {
+      "ciRunning": "{state} · CI running",
+      "fixingCi": "{state} · fixing CI",
+      "aiReview": "{state} · AI review",
+      "fixingFindings": "{state} · fixing findings",
+      "waitingForReviewer": "{state} · waiting for a reviewer"
+    },
     "stage": {
       "ciRunning": "CI running",
       "fixingCi": "Fixing CI {n} of {limit}",
@@ -268,6 +275,15 @@
       "changesSent": "Sent {name}'s review: its comment and its line comments.",
       "heldProject": "Held: the project's budget for this month is reached. It starts when the budget allows.",
       "heldOrganization": "Held: the organization's budget for this month is reached. It starts when the budget allows.",
+      "releasedProject": "Held {duration}: the project's budget for {month} was reached.",
+      "releasedOrganization": "Held {duration}: the organization's budget for {month} was reached.",
+      "releasedBy": "Released when {name} raised it.",
+      "releasedMonth": "Released when {month} began.",
+      "released": "Released.",
+      "pushedPassed": "{agent} pushed {sha}. CI passed.",
+      "pushedFailed": "{agent} pushed {sha}. CI failed again: {check}.",
+      "pushedFailedNoCheck": "{agent} pushed {sha}. CI failed again.",
+      "pushed": "{agent} pushed {sha}.",
       "capped": "Not started: a round limit was reached.",
       "cappedSpend": "Not started: the task reached its spend cap."
     },
@@ -1958,6 +1974,12 @@
     "context": "Context",
     "code": "Code",
     "repo": "Repo",
+    "head": "Head",
+    "ci": "CI",
+    "ciPassed": "Passed",
+    "ciFailed": "Failed",
+    "ciRunning": "Running",
+    "ciNone": "No CI",
     "branch": "Branch",
     "pr": "PR",
     "noPr": "None yet",
