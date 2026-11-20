@@ -25,3 +25,9 @@ Spec: `../spec.md`, section 3
 - [ ] Committed as `✅ add the milestone 4 end-to-end demo`, and the record and ledger as `📝 set milestone 4's ledger statuses`.
 
 ## Comments
+
+- 2026-11-20: the scripted run, live on `host` against `ostra-test` and OST, is recorded in `../demo.md`, with its screenshots and `demo/checks.json`. Run 6, from an empty data folder, passed 133 of 143 checks. The failed steps were re-run on the same stack after fixing the script's reads, and every remaining failure is explained in `demo.md`: the script's wording or timing, and one expected ranking.
+  - The runs found five product bugs, each fixed with its tests and break-its: `dd90184b` (bearer links in `next dev`'s request log), `1bb78bf9` (`repo:` in search, F-080), `5cb4e5b7` (merges never reached Insights, F-108), `21e9020a` (a task whose question expired couldn't be reopened) and `00114a7b` (a removed member's panel, F-002).
+  - The script's fixes are in `63ea82b1`, `f27b71da` and `0b17ba9d`.
+  - F-098's first row is now proved by the live run.
+  - **No box is ticked.** `pnpm e2e:m4` hasn't passed twice in a row. The manual run (Resend, the reviewer user) and step 5's protection and approvals need ticket 42's tokens, so `in_progress` versus `action_required` is still open for ADR 0040. Steps 15 to 17's second organization and second key are ticket 55. The ledger statuses wait on those.
