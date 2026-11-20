@@ -208,8 +208,14 @@ export type SessionChannel = SessionRef & {
   readonly drained: () => Promise<void>;
 };
 
-/** How the connection ended: stopped, or refused for good. `message` is a sentence for the person. */
-export type ConnectionEnd = { readonly kind: "stopped" } | { readonly kind: TerminalRefusal; readonly message: string };
+/**
+ * How the connection ended: stopped, refused for good, or (a runner only) replaced by another
+ * process connected as this runner. `message` is a sentence for the person.
+ */
+export type ConnectionEnd =
+  | { readonly kind: "stopped" }
+  | { readonly kind: TerminalRefusal; readonly message: string }
+  | { readonly kind: "replaced"; readonly message: string };
 
 export type ConnectionReport = {
   readonly connected: boolean;
@@ -274,6 +280,20 @@ type End =
 type Link = { readonly carrier: Carrier; readonly send: (frame: UpFrame) => boolean };
 
 const REVOKED_BY_SERVER = "This runner was revoked in the panel.";
+
+export const REPLACED_MESSAGE =
+  "Another process connected as this runner, and the server closed this one's connection for it: an ostra runner with the same identity runs on another machine, or from a copy of this data folder. " +
+  "This one stops, so the two don't take the connection from each other. Stop the other one, or sign each machine in as a runner of its own.";
+
+/**
+ * How long a hello this runner sent without getting its welcome may still be accepted by the server.
+ * Core closes a socket whose hello doesn't come within 10 s, and an HTTP request not in within
+ * 30 s, and settles a hello in one transaction, so seconds; this leaves room for a proxy that
+ * forwards a request late. An eviction within this of such a hello may be the server accepting it
+ * after this runner's next connection: the runner's own reconnect race, not another process
+ * (ADR 0034, amended 2026-11-20).
+ */
+const OWN_HELLO_SETTLES_MS = 5 * 60_000;
 
 /** Bytes of an `events` frame besides its events: `{"type":"events","events":[...]}` and commas. */
 const EVENTS_FRAME_OVERHEAD = 64;
@@ -351,6 +371,12 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   let inflightBytes = 0;
   let lastContact = now();
   let fenced = false;
+  /**
+   * When each of this runner's earlier connections sent a hello and ended without its welcome. The
+   * server may still accept such a hello after the next connection's, and evict that one for it:
+   * each explains one `replaced` within `OWN_HELLO_SETTLES_MS` (ADR 0034, amended 2026-11-20).
+   */
+  const unansweredHellos: number[] = [];
   let commandChain: Promise<void> = Promise.resolve();
   const results = new Map<string, CommandAckItem>();
   let unsentResults: CommandAckItem[] = [];
@@ -780,6 +806,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     new Promise<End>((resolve) => {
       let finished = false;
       let welcomed = false;
+      let helloSent = false;
       let openedAt: number | null = null;
       let lastFrame = now();
       let chain: Promise<void> = Promise.resolve();
@@ -817,6 +844,10 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         clearInterval(deadCheck);
         if (link === wsLink) {
           link = undefined;
+        }
+        // A hello the server neither welcomed nor refused may still be taken, after the next one.
+        if (helloSent && !welcomed && (value.kind === "lost" || value.kind === "no-welcome")) {
+          unansweredHellos.push(now());
         }
         if (ws.readyState === WebSocket.OPEN) {
           ws.close(1000);
@@ -876,6 +907,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         lastFrame = openedAt;
         lastContact = lastFrame;
         ws.send(encodeUpFrame(helloFrame("websocket"), PROTOCOL_MINOR));
+        helloSent = true;
         // Upgraded, but no `welcome` within the handshake timeout: something holds the frames.
         welcomeTimer = setTimeout(() => {
           if (!welcomed) {
@@ -1075,6 +1107,8 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       link = httpLink;
       const hello = await call("POST", runnerPaths.httpHello, encodeUpFrame(helloFrame("http"), PROTOCOL_MINOR), timers.handshakeTimeoutMs);
       if (isEnd(hello)) {
+        // No answer: the server may still take this hello, after the next connection's.
+        unansweredHellos.push(now());
         finish(hello);
         return conn.ended ?? hello;
       }
@@ -1251,12 +1285,32 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           hooks.onRefused?.("revoked", end.message);
           log.error("the server refused this runner for good", { reason: "revoked" });
           return { kind: "revoked", message: end.message };
-        case "replaced":
-          // Another connection with this identity took over: don't fight it.
-          hooks.onRefused?.("replaced", "another connection of this runner took over");
-          log.warn("replaced by another connection of this runner");
+        case "replaced": {
+          // The server gave this runner's connection to a newer one. It's this connection that was
+          // replaced: an earlier socket's late evict or 4409 only ends that socket, which was
+          // finished before this one opened. So the newer one is another process, unless it's a
+          // hello of this runner's own that the server took late, after this connection's.
+          const since = now() - OWN_HELLO_SETTLES_MS;
+          while (unansweredHellos.length > 0 && (unansweredHellos[0] ?? since) < since) {
+            unansweredHellos.shift();
+          }
+          if (unansweredHellos.shift() !== undefined) {
+            log.info("replaced by a hello of this runner's own that the server took late: reconnecting");
+            break;
+          }
+          if (options.peer.kind === "runner") {
+            // ADR 0034, amended 2026-11-20: reconnecting would evict the other one, which would
+            // reconnect and evict this one, without end. Each takeover restarted a task's agent.
+            hooks.onRefused?.("replaced", REPLACED_MESSAGE);
+            log.error("another process connected as this runner: stopping");
+            return { kind: "replaced", message: REPLACED_MESSAGE };
+          }
+          // A box's sidecar: its box has one, so it doesn't fight, and keeps its task's events.
+          hooks.onRefused?.("replaced", "another connection of this box took over");
+          log.warn("replaced by another connection of this box");
           await sleep(timers.backoffMaxMs, signal);
           continue;
+        }
         case "token-expired":
           options.tokens.invalidate();
           continue;

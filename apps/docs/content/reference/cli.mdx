@@ -45,6 +45,9 @@ Fetches each of a task's branches into your own clones and checks them out. Name
 | `1` | Failed |
 | `2` | A usage error: an unknown command or flag, or a flag without its value |
 | `3` | The server refused this runner for good: revoked, or a key it doesn't know. Restarting won't help; sign it in again with a new identity |
+| `4` | Another process runs as this runner. Either another `ostra runner` on this machine uses the same data folder (the message names its pid), or another process connected with this runner's identity, from another machine or a copy of the data folder, and the server gave it the connection. Stop the other one first |
+
+A service manager that restarts the runner shouldn't restart it on `3` or `4`: neither ends while nothing changes, and restarting on `4` takes the connection back from the other process. Under systemd, that's `RestartPreventExitStatus=3 4`.
 
 ## Runner flags
 

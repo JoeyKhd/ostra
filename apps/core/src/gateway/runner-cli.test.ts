@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { createPrivateKey, randomBytes } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -479,5 +479,64 @@ describe("ostra runner against core", () => {
     expect(output).toContain(`To sign in again, delete ${path.join(runner.dataDir, "identity")} and start the runner again.`);
     expect(output).not.toContain("revoked");
     expect(tokenRefusals(runnerId).map((record) => record.fields["reason"])).toEqual(["unknown-key"]);
+  });
+});
+
+// ADR 0034, amended 2026-11-20: four runners with one identity on one machine took the connection
+// from each other every few seconds, and each takeover restarted the task's agent.
+describe("one process per runner", () => {
+  const presenceOf = (runnerId: string) => test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId } });
+  const evictions = (runnerId: string) => coreLog.records.filter((record) => record.message === "gateway.evicted" && record.fields["runnerId"] === runnerId);
+
+  it("F-013: a second ostra runner on the same data folder refuses to start with exit code 4, naming the first one's pid, which keeps its connection; after a crash the next one starts", async () => {
+    const { runner: first, runnerId } = await signInPersonal("one-process");
+    await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
+    const connected = await presenceOf(runnerId);
+
+    const second = spawnCliRunner(first.dataDir, "host", ["--name", "one-process"]);
+    expect(await second.exited).toBe(exitCodes.duplicate);
+    expect(second.lines.join("\n")).toContain(`Another ostra runner (pid ${String(first.child.pid)}) is running with this data folder, ${first.dataDir}`);
+    // The first never lost its connection: the same one, nothing evicted, still running.
+    expect(await presenceOf(runnerId)).toMatchObject({ connectionEpoch: connected.connectionEpoch, disconnectedAt: null });
+    expect(evictions(runnerId)).toEqual([]);
+    expect(first.child.exitCode).toBeNull();
+
+    // A crash leaves the lock behind, naming a pid that's gone: the next start takes it over.
+    first.child.kill("SIGKILL");
+    await first.exited;
+    const third = spawnCliRunner(first.dataDir, "host", ["--name", "one-process"]);
+    await third.line(/Runner \S+ \(personal, .*\) is connecting to/);
+    await waitFor("the next runner connected", async () => {
+      const presence = await presenceOf(runnerId);
+      return presence.connectionEpoch > connected.connectionEpoch && presence.disconnectedAt === null;
+    });
+    expect(third.child.exitCode).toBeNull();
+  });
+
+  it("F-013: a runner whose connection another process took stops with exit code 4 and says why, and doesn't take it back", async () => {
+    const { runner: first, runnerId } = await signInPersonal("copied");
+    await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
+    const before = await presenceOf(runnerId);
+
+    // Another machine with a copy of its identity: its own data folder, so its own lock.
+    const copy = await mkdtemp(path.join(tmpdir(), "ostra-f013-copy-"));
+    await cp(path.join(first.dataDir, "identity"), path.join(copy, "identity"), { recursive: true });
+    const other = spawnCliRunner(copy, "host", ["--name", "copied"]);
+
+    expect(await first.exited).toBe(exitCodes.duplicate);
+    expect(first.lines.join("\n")).toContain("Another process connected as this runner, and the server closed this one's connection for it");
+    expect(first.lines.join("\n")).not.toContain("To sign in again");
+    const status: unknown = JSON.parse(await readFile(path.join(first.dataDir, "status.json"), "utf8"));
+    expect(status).toMatchObject({ lastRefusal: { reason: "replaced" } });
+
+    // The other keeps the connection: the same one, three seconds on, and still running.
+    await waitFor("the other runner connected", async () => {
+      const presence = await presenceOf(runnerId);
+      return presence.connectionEpoch > before.connectionEpoch && presence.disconnectedAt === null;
+    });
+    const held = await presenceOf(runnerId);
+    await sleep(3_000);
+    expect(await presenceOf(runnerId)).toMatchObject({ connectionEpoch: held.connectionEpoch, disconnectedAt: null });
+    expect(other.child.exitCode).toBeNull();
   });
 });

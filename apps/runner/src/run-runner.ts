@@ -276,11 +276,20 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
   const end = await live.done;
   await work.shutdown();
   await live.stop();
-  if (end.kind !== "stopped") {
-    // Refused for good (revoked, or a key the server doesn't know): only then is a new identity the fix.
-    terminal.warn(`${end.message} ${signInAgainAdvice(dataDir)}`);
-    return exitCodes.refused;
+  switch (end.kind) {
+    case "stopped":
+      terminal.say("Runner stopped.");
+      return exitCodes.ok;
+    case "replaced":
+      // Another process runs as this runner: its identity is fine, and so is this one's sign-in.
+      terminal.warn(end.message);
+      return exitCodes.duplicate;
+    case "revoked":
+    case "unknown-key":
+      // Refused for good: only then is a new identity the fix.
+      terminal.warn(`${end.message} ${signInAgainAdvice(dataDir)}`);
+      return exitCodes.refused;
+    default:
+      return end satisfies never;
   }
-  terminal.say("Runner stopped.");
-  return exitCodes.ok;
 };

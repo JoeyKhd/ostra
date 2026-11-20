@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { silentLogger } from "@ostra/adapter-sdk";
 import { recordingLogger } from "@ostra/adapter-sdk/testing";
-import { imageDigestSchema, leaseEpochSchema, runnerIdSchema, segmentIdSchema, sessionIdSchema, snapshotIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
+import { boxIdSchema, imageDigestSchema, leaseEpochSchema, runnerIdSchema, segmentIdSchema, sessionIdSchema, snapshotIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { SessionId, TaskEvent } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generateRunnerKeyPair } from "../identity/key-pair.ts";
@@ -15,7 +15,7 @@ import type { FakeGateway, FakeGatewayOptions } from "../testing/fake-gateway.ts
 import { startFakeServer } from "../testing/fake-server.ts";
 import type { FakeServer } from "../testing/fake-server.ts";
 import { rejectAllHandlers } from "../testing/handlers.ts";
-import { startConnection } from "./peer.ts";
+import { REPLACED_MESSAGE, startConnection } from "./peer.ts";
 import type { CommandHandlers, ConnectionHooks, ConnectionOptions, ConnectionEnd, RefusedReason, RunnerConnection, SessionChannel, TokenSource } from "./peer.ts";
 
 // Ticket 16's "done when", against a fake gateway built from the protocol's schemas.
@@ -445,6 +445,99 @@ describe("the connection's lifecycle", () => {
     await gw.waitFor(() => gw.connected());
     gw.send({ type: "evict", reason: "revoked" });
     expect(await connection.done).toMatchObject({ kind: "revoked" });
+  });
+});
+
+// ADR 0034, amended 2026-11-20: four runners with one identity took the connection from each other
+// every few seconds, because a replaced runner reconnected after a minute and evicted the other.
+describe("another process connected as this runner", () => {
+  it("F-013: a runner whose connection the server gives to another process stops, says why, and doesn't reconnect", async () => {
+    for (const how of ["evict", "close"] as const) {
+      const { server: fake, gateway: gw } = await setup();
+      const refused: RefusedReason[] = [];
+      const connection = await connect(fake, { hooks: { onRefused: (reason) => refused.push(reason) } });
+      await gw.waitFor(() => gw.connected());
+      if (how === "evict") {
+        // What core sends: the frame, then the close.
+        gw.send({ type: "evict", reason: "replaced" });
+      }
+      gw.closeWith(4409);
+      expect(await connection.done).toEqual({ kind: "replaced", message: REPLACED_MESSAGE });
+      expect(refused).toEqual(["replaced"]);
+      // Its backoff is 5 to 20 ms here: a runner that came back would have, many times over.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(gw.connections()).toBe(1);
+      await gw.close();
+      await fake.close();
+      gateway = undefined;
+      server = undefined;
+    }
+  });
+
+  it("F-013: its own earlier connection, half open and evicted for its new one, doesn't stop the runner", async () => {
+    const { server: fake, gateway: gw } = await setup({ pingMs: 20 });
+    const refused: RefusedReason[] = [];
+    const connection = await connect(fake, { timers: { deadMs: 200 }, hooks: { onRefused: (reason) => refused.push(reason) } });
+    await gw.waitFor(() => gw.connected());
+
+    // The network drops: the server still holds the first connection, the runner hears nothing on
+    // it, gives up on it and connects again.
+    gw.goSilent();
+    await gw.waitFor(() => gw.connections() === 2 && gw.connected());
+    // The server accepts the new connection and evicts the one it still held, as core does.
+    gw.evictOlder();
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(await settledWithin(connection.done, 50)).toBe(false);
+    expect(refused).toEqual([]);
+    expect(gw.connections()).toBe(2);
+    expect(gw.connected()).toBe(true);
+  });
+
+  it("F-013: a hello of its own that the server takes late, after its next connection's, doesn't stop the runner; another process then does", async () => {
+    const { server: fake, gateway: gw } = await setup({ pingMs: 20 });
+    gw.holdWelcomes = true;
+    const refused: RefusedReason[] = [];
+    const connection = await connect(fake, { timers: { handshakeTimeoutMs: 300 }, hooks: { onRefused: (reason) => refused.push(reason) } });
+    // The first hello gets no welcome in time: the runner gives up on it and connects again.
+    await gw.waitFor(() => gw.hellos.length === 1);
+    gw.holdWelcomes = false;
+    await gw.waitFor(() => gw.connections() === 2 && gw.connected());
+
+    // The server only now settles that first hello, and evicts the runner's new connection for it.
+    gw.send({ type: "evict", reason: "replaced" });
+    gw.closeWith(4409);
+    await gw.waitFor(() => gw.connections() === 3 && gw.connected());
+    expect(await settledWithin(connection.done, 50)).toBe(false);
+    expect(refused).toEqual([]);
+
+    // That hello is spent: the next eviction is another process, and the runner stops.
+    gw.send({ type: "evict", reason: "replaced" });
+    gw.closeWith(4409);
+    expect(await connection.done).toEqual({ kind: "replaced", message: REPLACED_MESSAGE });
+    expect(refused).toEqual(["replaced"]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(gw.connections()).toBe(3);
+  });
+
+  it("F-013: a box's sidecar that's replaced keeps reconnecting: its task's events have nowhere else to go", async () => {
+    const { server: fake, gateway: gw } = await setup();
+    const connection = await startConnection({
+      serverUrl: fake.url,
+      peer: { kind: "sidecar", taskId, boxId: boxIdSchema.parse("box-1"), leaseEpoch },
+      tokens: { get: () => Promise.resolve({ ok: true, token: TOKEN, expiresAt: Date.now() + 600_000 }), invalidate: () => undefined },
+      dataDir,
+      handlers: rejectAllHandlers,
+      status: () => ({ executor: "docker", capacity: 1, freeSlots: 1, labels: [], running: [] }),
+      logger: silentLogger,
+      timers: { backoffMinMs: 5, backoffMaxMs: 20, checkMs: 10, liveTextIntervalMs: 20 },
+    });
+    connections.push(connection);
+    await gw.waitFor(() => gw.connected());
+    gw.send({ type: "evict", reason: "replaced" });
+    gw.closeWith(4409);
+    await gw.waitFor(() => gw.connections() === 2 && gw.connected());
+    expect(await settledWithin(connection.done, 50)).toBe(false);
   });
 });
 

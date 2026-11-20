@@ -13,6 +13,7 @@ import { makeOwnerOnlyDir, writeOwnerOnlyFile } from "./owner-only.ts";
 //     runner.key       the Ed25519 private key, PKCS#8 PEM, owner-only
 //     runner.json      the runner's ID, its server and how it registered
 //   status.json        what `ostra runner status` shows: the version window, the last refusal
+//   runner.lock        the one `ostra runner` using this folder: its pid (`runner-lock.ts`)
 //   spool/             the event spool, per session (ticket 16)
 //   state.json         the commands applied, and the sessions held (ticket 16)
 //   tasks/             the task workspaces (the host executor, ticket 19)
@@ -29,6 +30,7 @@ export const dataPaths = (dataDir: string) =>
     privateKey: path.join(dataDir, "identity", "runner.key"),
     identity: path.join(dataDir, "identity", "runner.json"),
     status: path.join(dataDir, "status.json"),
+    lock: path.join(dataDir, "runner.lock"),
     spoolDir: path.join(dataDir, "spool"),
     state: path.join(dataDir, "state.json"),
     tasksDir: path.join(dataDir, "tasks"),

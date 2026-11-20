@@ -36,5 +36,6 @@ After the first time, the same command starts it, and Organization › Runners s
 
 - A model provider must allow personal runners (**Allow on personal runners**, off by default) before its models can be used here: on your own machine, you could read the key the proxy holds.
 - `pnpm ostra runner status` shows the runner's ID, its server, the versions it accepts and its last refusal.
+- One runner runs per data folder. A second `ostra runner` started on the same folder, say in another terminal, doesn't start: it names the pid of the one already running and exits with code 4. If you copy the folder to another machine, that copy is the same runner, and the server keeps only the newest connection. The other one stops with code 4, so the two don't take turns. Sign each machine in as its own runner.
 - A personal runner starts no services; a project whose environment declares them runs on a pool.
 - On Windows, setup scripts run with Git for Windows' bash. Keep `--data-dir` short, because git refuses very long paths there.

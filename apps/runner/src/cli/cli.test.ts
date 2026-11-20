@@ -7,6 +7,7 @@ import { checkOwnerOnly } from "../identity/owner-only.ts";
 import { dataPaths, loadIdentity, updateStatus } from "../identity/store.ts";
 import type { SignedIn } from "../sign-in.ts";
 import { startFakeServer } from "../testing/fake-server.ts";
+import { startLockHolder } from "../testing/lock-holder.ts";
 import type { FakeServer, FakeServerOptions } from "../testing/fake-server.ts";
 import { RUNNER_VERSION } from "../version.ts";
 import { exitCodes, runCli } from "./cli.ts";
@@ -236,6 +237,29 @@ describe("ostra runner: refusals", () => {
     } finally {
       await other.close();
     }
+  });
+
+  it("F-013: refuses to start while another runner on this machine holds its data folder, with exit code 4 and that runner's pid, and starts once it's gone", async () => {
+    const fake = await start();
+    await runner(fake);
+    const before = fake.requests.length;
+    const tokens = [...fake.tokensIssued.values()];
+    const other = await startLockHolder(dataDir);
+    try {
+      const refused = await runner(fake);
+      expect(refused.code).toBe(exitCodes.duplicate);
+      expect(refused.lines.join("")).toContain(`Another ostra runner (pid ${String(other.pid)}) is running with this data folder, ${dataDir}`);
+      // Refused before it signed in: no token, no registration, and no runner started.
+      expect(refused.signedIn).toBeUndefined();
+      expect(fake.requests.slice(before).filter((line) => /\/token|\/register|\/device/.test(line))).toEqual([]);
+      expect([...fake.tokensIssued.values()]).toEqual(tokens);
+    } finally {
+      await other.crash();
+    }
+    // A crash leaves its lock behind; the next start takes it over.
+    const again = await runner(fake);
+    expect(again.code).toBe(exitCodes.ok);
+    expect(again.signedIn).toBeDefined();
   });
 });
 

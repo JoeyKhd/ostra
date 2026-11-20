@@ -3,6 +3,7 @@ import { parseRunnerConfig, runnerConfigFields } from "@ostra/protocol";
 import type { RunnerConfig, RunnerInstall } from "@ostra/protocol";
 import { fallbackReasonWords } from "../connection/http-carrier.ts";
 import { checkOwnerOnly } from "../identity/owner-only.ts";
+import { lockHeldMessage, takeRunnerLock } from "../identity/runner-lock.ts";
 import { dataPaths, defaultDataDir, loadIdentity, loadStatus } from "../identity/store.ts";
 import { applyPin, PIN_REEXEC_ENV } from "../pin.ts";
 import type { PinInput } from "../pin.ts";
@@ -33,6 +34,12 @@ export const exitCodes = {
    * disagree, never ends the runner.
    */
   refused: 3,
+  /**
+   * Another process runs as this runner: one on this machine holds its data folder's lock, or the
+   * server handed this runner's connection to a newer one, from another machine or a copy of the
+   * folder. Restarting won't help while the other one runs, and would take the connection back.
+   */
+  duplicate: 4,
 } as const;
 
 /** What `ostra runner` does once it's signed in: connect and take tasks (ticket 16, ticket 21). */
@@ -202,20 +209,42 @@ const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDep
       }
     }
   }
-  const signedIn = await signIn({
-    config,
-    dataDir,
-    terminal: deps.terminal,
-    signal: deps.signal,
-    ...(deps.deviceFlow === undefined ? {} : { deviceFlow: deps.deviceFlow }),
-    ...(deps.now === undefined ? {} : { now: deps.now }),
-  });
-  if (!signedIn.ok) {
-    deps.terminal.warn(signedIn.failure.message);
-    const reason = signedIn.failure.reason;
-    return reason === "revoked" || reason === "unknown-key" ? exitCodes.refused : exitCodes.failed;
+  // One runner per data folder on this machine (ADR 0034, amended 2026-11-20), taken before the
+  // sign-in so two first starts don't both register. After the pin: the version it runs takes it.
+  const taken = await takeRunnerLock(dataDir);
+  switch (taken.kind) {
+    case "held":
+      deps.terminal.warn(lockHeldMessage(dataDir, taken));
+      return exitCodes.duplicate;
+    case "failed":
+      deps.terminal.warn(`ostra runner: ${taken.message}`);
+      return exitCodes.failed;
+    case "taken":
+      if (taken.tookOver !== null) {
+        deps.terminal.logger.info("runner.lock-taken-over", { reason: taken.tookOver.reason, pid: taken.tookOver.holder?.pid ?? null });
+      }
+      break;
+    default:
+      return taken satisfies never;
   }
-  return deps.runSignedIn({ signedIn: signedIn.value, config, dataDir, terminal: deps.terminal, signal: deps.signal, install });
+  try {
+    const signedIn = await signIn({
+      config,
+      dataDir,
+      terminal: deps.terminal,
+      signal: deps.signal,
+      ...(deps.deviceFlow === undefined ? {} : { deviceFlow: deps.deviceFlow }),
+      ...(deps.now === undefined ? {} : { now: deps.now }),
+    });
+    if (!signedIn.ok) {
+      deps.terminal.warn(signedIn.failure.message);
+      const reason = signedIn.failure.reason;
+      return reason === "revoked" || reason === "unknown-key" ? exitCodes.refused : exitCodes.failed;
+    }
+    return await deps.runSignedIn({ signedIn: signedIn.value, config, dataDir, terminal: deps.terminal, signal: deps.signal, install });
+  } finally {
+    await taken.lock.release().catch(() => undefined);
+  }
 };
 
 export const runCli = async (args: readonly string[], deps: CliDeps): Promise<number> => {

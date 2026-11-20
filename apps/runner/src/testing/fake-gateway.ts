@@ -38,6 +38,8 @@ export type FakeGatewayOptions = {
   readonly creditBytes?: number;
   /** The server's clock, for `welcome.serverTime` and `notAfter`. */
   readonly now?: () => number;
+  /** Pings every open connection this often, as core does, except one gone silent. */
+  readonly pingMs?: number;
 };
 
 export type FakeGateway = {
@@ -78,6 +80,18 @@ export type FakeGateway = {
   readonly closeWith: (code: number) => void;
   /** Refuse every upgrade from now on (the server is down). */
   refuseUpgrades: boolean;
+  /** Take a hello, and answer nothing: a server still settling it when the peer gives up on it. */
+  holdWelcomes: boolean;
+  /**
+   * The current connection goes half open: no more pings, and the gateway stops reading it, so it
+   * never sees the peer close it, and holds it as open, as a server does when the network drops.
+   */
+  readonly goSilent: () => void;
+  /**
+   * What core does when it accepts a newer connection of the runner: `evict` with `replaced`, then
+   * close with 4409, on every connection it still holds but the current one.
+   */
+  readonly evictOlder: () => void;
   readonly waitFor: (check: () => boolean, timeoutMs?: number) => Promise<void>;
   readonly close: () => Promise<void>;
 };
@@ -107,6 +121,19 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
   let connectionCount = 0;
   let unacked = 0;
   let maxUnacked = 0;
+  // Each connection's TCP socket, and the connections gone half open.
+  const rawSockets = new Map<WebSocket, Duplex>();
+  const silent = new Set<WebSocket>();
+  const pinger =
+    options.pingMs === undefined
+      ? undefined
+      : setInterval(() => {
+          for (const client of wss.clients) {
+            if (client.readyState === 1 && !silent.has(client)) {
+              client.ping();
+            }
+          }
+        }, options.pingMs);
 
   const upTo = (sessionId: SessionId): number => {
     const events = stored.get(sessionId);
@@ -139,6 +166,21 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
     loseNextFrame: false,
     staleSessions: new Set(),
     refuseUpgrades: false,
+    holdWelcomes: false,
+    goSilent: () => {
+      if (current !== undefined) {
+        silent.add(current);
+        rawSockets.get(current)?.pause();
+      }
+    },
+    evictOlder: () => {
+      for (const client of wss.clients) {
+        if (client !== current && client.readyState === 1) {
+          sendTo(client, { type: "evict", reason: "replaced" });
+          client.close(closeCodes.replaced, "replaced by a newer connection");
+        }
+      }
+    },
     sendCommand: (command) => {
       sendTo(current, command);
     },
@@ -166,6 +208,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
     },
     close: () =>
       new Promise<void>((resolve) => {
+        clearInterval(pinger);
         for (const client of wss.clients) {
           client.terminate();
         }
@@ -179,6 +222,9 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
     switch (frame.type) {
       case "hello": {
         hellos.push(frame);
+        if (gateway.holdWelcomes) {
+          return;
+        }
         const negotiation = negotiate(PROTOCOL_MINOR, frame.protocolMajor, frame.protocolMinor);
         if (!negotiation.ok) {
           sendTo(socket, { type: "error", code: "version-unsupported", message: "outside the window", supported: negotiation.window, serverMinor: PROTOCOL_MINOR });
@@ -274,6 +320,11 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
       connectionCount += 1;
       unacked = 0;
       current = ws;
+      rawSockets.set(ws, socket);
+      ws.once("close", () => {
+        rawSockets.delete(ws);
+        silent.delete(ws);
+      });
       ws.on("message", (data, isBinary) => {
         if (isBinary) {
           ws.close(closeCodes.protocolViolation);
