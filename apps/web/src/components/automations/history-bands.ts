@@ -47,6 +47,20 @@ export const bandsOf = (runs: readonly HistoryRun[], dayOf: (at: number) => stri
   return bands.reverse().map((band) => ({ ...band, rows: [...band.rows].reverse() }));
 };
 
+/**
+ * The rows a band draws under its label, in order: a band's own run is a row only when nothing
+ * sits under it (a skipped or missed occurrence, a started one with its task, a "Start all" that
+ * started nothing); otherwise the label says it. What can be selected is exactly these rows.
+ */
+export const rowsOfBand = (band: Band): readonly HistoryRun[] => {
+  if (band.kind === "day") return band.rows;
+  const own = band.rows.length === 0 && (band.run.state !== "started" || (band.kind === "occurrence" && band.run.task !== null));
+  return own ? [band.run, ...band.rows] : band.rows;
+};
+
+/** Every row the history draws, top to bottom: the default selection and the arrow keys walk these. */
+export const shownRuns = (bands: readonly Band[]): readonly HistoryRun[] => bands.flatMap(rowsOfBand);
+
 /** The matches in a list of runs (a match is a ticket's run). */
 export const matchCount = (runs: readonly HistoryRun[]): number => runs.filter((run) => run.kind === "ticket_match").length;
 export const occurrenceCount = (runs: readonly HistoryRun[]): number => runs.filter((run) => run.kind === "occurrence").length;

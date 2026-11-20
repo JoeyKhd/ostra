@@ -25,7 +25,7 @@ import { useTRPC } from "@/lib/trpc";
 import { useFilterNames } from "./automation-data";
 import { clockText, dayText, filterWords, occurrenceText, secondsText, skipReasonText, weekdayText } from "./automation-words";
 import type { Automation, HistoryRun } from "./automation-words";
-import { bandsOf, matchCount, occurrenceCount } from "./history-bands";
+import { bandsOf, matchCount, occurrenceCount, rowsOfBand, shownRuns } from "./history-bands";
 import type { Band } from "./history-bands";
 
 // An automation's history (automation-history.md, F-011, F-106): each occurrence, match and "Start
@@ -130,7 +130,7 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
   const days = periodDays[period];
   const runs = allRuns.filter((run) => (days === null || now === 0 || run.at >= now - days * 86_400_000) && (outcome === "all" || run.state === outcome));
   const bands = bandsOf(runs, (at) => new Date(at).toDateString());
-  const flat = bands.flatMap((band) => (band.kind === "day" ? band.rows : [band.run, ...band.rows]));
+  const flat = shownRuns(bands);
   const selectedId = params.get("run");
   const selected = flat.find((run) => run.id === selectedId) ?? flat[0] ?? null;
   const filtered = outcome !== "all" || period !== "d30";
@@ -265,13 +265,7 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
                       <BandLabel band={band} zone={zone} now={now} />
                     </td>
                   </tr>
-                  {band.kind !== "day" && band.rows.length === 0 && band.run.state !== "started" ? (
-                    <RunRow run={band.run} zone={zone} selected={selected?.id === band.run.id} limits={limits} onSelect={() => { setParam("run", band.run.id); }} onKey={onKey(band.run)} />
-                  ) : null}
-                  {band.kind === "occurrence" && band.rows.length === 0 && band.run.state === "started" && band.run.task !== null ? (
-                    <RunRow run={band.run} zone={zone} selected={selected?.id === band.run.id} limits={limits} onSelect={() => { setParam("run", band.run.id); }} onKey={onKey(band.run)} />
-                  ) : null}
-                  {band.rows.map((run) => (
+                  {rowsOfBand(band).map((run) => (
                     <RunRow key={run.id} run={run} zone={zone} selected={selected?.id === run.id} limits={limits} onSelect={() => { setParam("run", run.id); }} onKey={onKey(run)} />
                   ))}
                 </Fragment>

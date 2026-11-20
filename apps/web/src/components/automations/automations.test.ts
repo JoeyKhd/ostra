@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { applyPreset, conditionsOf, filterOf, newDraft, presetOf, sameDraft, settingsOf } from "./automation-draft";
 import { bulkReasonText, filterWords, noNames, occurrenceText } from "./automation-words";
 import type { FilterNames, HistoryRun } from "./automation-words";
-import { bandsOf } from "./history-bands";
+import { bandsOf, shownRuns } from "./history-bands";
 
 // Ticket 31 (F-011, F-106): the automations screens' words and the editor's draft, pure.
 
@@ -114,6 +114,20 @@ describe("the history's bands (automation-history.md)", () => {
     expect(bands.map((band) => band.key)).toEqual(["p", "o2", "o1"]);
     expect(bands[0]?.rows.map((row) => row.id)).toEqual(["m3"]);
     expect(bands[2]?.rows.map((row) => row.id)).toEqual(["m2", "m1"]);
+  });
+
+  it("F-011: only the rows the history draws are selectable, so the default is the newest row shown, never a press's own run", () => {
+    const runs = [
+      run({ id: "m1", at: 1 }),
+      run({ id: "p", kind: "start_all", state: "started", at: 9500, bulkStartId: press }),
+      run({ id: "m3", at: 9600, bulkStartId: press }),
+      run({ id: "m4", at: 9700, bulkStartId: press }),
+    ];
+    const shown = shownRuns(bandsOf([...runs].reverse(), () => "day"));
+    expect(shown.map((row) => row.id)).toEqual(["m4", "m3", "m1"]);
+    // A skipped occurrence with nothing under it is a row of its own.
+    const lone = shownRuns(bandsOf([run({ id: "o", kind: "occurrence", state: "skipped", occurrenceAt: 5, at: 5 })], () => "day"));
+    expect(lone.map((row) => row.id)).toEqual(["o"]);
   });
 
   it("F-011: a rule's own matches band by day", () => {
