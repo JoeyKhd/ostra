@@ -247,6 +247,38 @@ describe("usage per turn and per task (F-084)", () => {
     expect(read.totals).toMatchObject({ inputTokens: 305, outputTokens: 35 });
   });
 
+  it("F-084, F-037: a call that ends after its turn, a subagent still working, counts to the task, its session, that turn and the project's day", async () => {
+    // OpenCode runs every subagent in the background: the main agent may end its turn while the
+    // subagent's calls go on through the key proxy (`context/research/opencode-subagents.md`).
+    const modelId = await modelOf(world);
+    await setPrices(modelId, true);
+    // A day of its own, so the project's rollup holds this task's spend alone.
+    const T1 = Date.UTC(2026, 10, 24, 9, 0, 0);
+    const day = new Date(Date.UTC(2026, 10, 24));
+    const task = await freshTask();
+    const inTurn = { input: 100_000, output: 10_000, read: 0, write: 0 };
+    const afterTurn = { input: 200_000, output: 20_000, read: 50_000, write: 0 };
+    await sendAt(task, T1, turnStarted(1));
+    await sendAt(task, T1 + 5_000, usage(world, modelId, inTurn));
+    await sendAt(task, T1 + 9_000, turnEnded(1));
+    await sendAt(task, T1 + 40_000, usage(world, modelId, afterTurn));
+
+    const prices = modelTokenPrices(await test.db.model.findUniqueOrThrow({ where: { id: modelId } }));
+    if (prices === null) throw new Error("the model has no price");
+    const cost = (tokens: Tokens): number => priceTokens(prices, { inputTokens: tokens.input, outputTokens: tokens.output, cacheReadTokens: tokens.read, cacheWriteTokens: tokens.write });
+    const spent = cost(inTurn) + cost(afterTurn);
+    const read = await usageOf(task);
+    expect(read.totals).toMatchObject({ inputTokens: 300_000, outputTokens: 30_000, cacheReadTokens: 50_000, spentMicroUsd: spent });
+    expect(read.turns).toHaveLength(1);
+    expect(read.turns[0]).toMatchObject({ inputTokens: 300_000, outputTokens: 30_000, cacheReadTokens: 50_000, spentMicroUsd: spent, agentMs: 9_000 });
+    const session = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+    expect({ input: session.inputTokens, spent: session.spentMicroUsd }).toEqual({ input: 300_000, spent });
+    // Budgets and Insights read the project's day: the call after the turn is in it.
+    const rollup = await test.db.spendDaily.findUniqueOrThrow({ where: { projectId_day_modelId: { projectId: world.projectId, day, modelId } } });
+    expect({ input: Number(rollup.inputTokens), read: Number(rollup.cacheReadTokens), spent: Number(rollup.spentMicroUsd) }).toEqual({ input: 300_000, read: 50_000, spent });
+    await setPrices(modelId, false);
+  });
+
   it("F-084: a model with no price shows its tokens and no spend", async () => {
     const modelId = await modelOf(world);
     await setPrices(modelId, false);

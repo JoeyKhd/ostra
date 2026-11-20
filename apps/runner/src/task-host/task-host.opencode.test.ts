@@ -65,6 +65,24 @@ beforeAll(async () => {
         }
         return step === 1 ? { text: "The README is edited." } : undefined;
       },
+      // A subagent (OpenCode's `subagent` tool, which always runs it in the background), then a
+      // wait long enough for it to report back, then text.
+      "with-subagent": ({ step }) => {
+        if (step === 0) {
+          return { toolCalls: [{ name: "subagent", arguments: { agent: "general", description: "read the readme", prompt: `${stubMarker("subagent-reads")} Read README.md.` } }] };
+        }
+        if (step === 1) {
+          return { toolCalls: [{ name: "shell", arguments: { command: `node -e "setTimeout(()=>{},8000)"`, timeout: 60_000, description: "wait for the subagent" } }] };
+        }
+        return step === 2 ? { text: "The subagent read the README." } : undefined;
+      },
+      // The subagent's own calls: a read, then its answer.
+      "subagent-reads": ({ step }) => {
+        if (step === 0) {
+          return { toolCalls: [{ name: "read", arguments: { path: "README.md" } }] };
+        }
+        return step === 1 ? { text: "The README says hello." } : undefined;
+      },
     }),
   });
 }, 60_000);
@@ -200,6 +218,34 @@ describe("the task host with OpenCode", () => {
       for (const secret of [STUB_TOKEN, GIT_TOKEN, MCP_TOKEN]) {
         expect(everything.includes(secret)).toBe(false);
       }
+    } finally {
+      await h.close();
+    }
+  }, 180_000);
+
+  it("F-089, F-084: a subagent's model calls go through the key proxy, and each one is counted", async () => {
+    const h = await harness("subagent");
+    const before = stub.calls.length;
+    try {
+      const spec = dispatchTask(h, "subagent", `${stubMarker("with-subagent")} Have a subagent read the README.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
+      await h.gateway.waitFor(() => kindsOf(h, spec).includes("session.ended") || kindsOf(h, spec).includes("session.crashed"), 150_000);
+      expect(kindsOf(h, spec)).toContain("session.ended");
+      const calls = stub.calls.slice(before);
+      // OpenCode starts a subagent with its own first message; its calls are told apart by it.
+      const subagentCalls = calls.filter((call) => call.messages.some((message) => message.role === "user" && message.text.includes("You are a subagent spawned by another session.")));
+      expect(subagentCalls.length, "the subagent's read and its answer").toBeGreaterThanOrEqual(2);
+      expect(subagentCalls.every((call) => call.authOk && call.billed !== undefined), "each answered with the real key, past the proxy").toBe(true);
+      // The subagent's work reached the task's events: its read, under the call ID OpenCode prefixes with its session.
+      const called = eventsOf(h, spec).flatMap((item) => (item.event.kind === "tool.called" ? [item.event] : []));
+      expect(called.some((event) => event.toolCallId.includes(":") && event.toolKind === "read")).toBe(true);
+      // Every billed call, the subagent's included, has its `usage.recorded`, and the counts add up.
+      const usage = eventsOf(h, spec).flatMap((item) => (item.event.kind === "usage.recorded" ? [item.event] : []));
+      const billed = calls.flatMap((call) => (call.billed === undefined ? [] : [call.billed]));
+      expect(usage).toHaveLength(billed.length);
+      expect(usage.reduce((sum, event) => sum + event.inputTokens + event.cacheReadTokens, 0)).toBe(billed.reduce((sum, item) => sum + item.inputTokens + item.cacheReadTokens, 0));
+      expect(usage.reduce((sum, event) => sum + event.outputTokens, 0)).toBe(billed.reduce((sum, item) => sum + item.outputTokens, 0));
+      const subagentBilled = subagentCalls.reduce((sum, call) => sum + (call.billed?.inputTokens ?? 0) + (call.billed?.cacheReadTokens ?? 0), 0);
+      expect(subagentBilled).toBeGreaterThan(0);
     } finally {
       await h.close();
     }
