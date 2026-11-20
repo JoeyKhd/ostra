@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   boardIdSchema,
   boxIdSchema,
@@ -261,7 +263,8 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "snapshot.schedule": (payload) => `project:${payload.projectId}:snapshot:${payload.reason}`,
   "snapshot.nightly": () => "snapshots:nightly",
   "cli-session.expire": () => "cli-sessions:expire",
-  "account-mail.send": (payload) => `account-mail:${payload.purpose}:${payload.recordId}`,
+  // An invitation's ID is its link's secret (ADR 0053), and a job's key reaches log lines: its hash.
+  "account-mail.send": (payload) => `account-mail:${payload.purpose}:${createHash("sha256").update(payload.recordId).digest("hex").slice(0, 32)}`,
   "invitation.expire": () => "invitations:expire",
   "budget.check": (payload) => `budget:${payload.budgetId}:${payload.month}:${payload.threshold}`,
   "budget.release": (payload) => `budget:${payload.budgetId}:release:${String(payload.raisedAt)}`,

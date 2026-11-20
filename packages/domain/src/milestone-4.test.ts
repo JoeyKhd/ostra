@@ -660,13 +660,22 @@ describe("milestone 4's mails", () => {
 // ---------- jobs ----------
 
 describe("milestone 4's jobs", () => {
+  it("F-002: an account mail's job key, which log lines carry, holds no invitation ID: the link's secret", () => {
+    const invitationId = "Fk3yqY0d1sJ2bE8xH5tQ-w";
+    const key = jobKey("account-mail.send", { organizationId, purpose: "invitation", recordId: invitationId });
+    expect(key).not.toContain(invitationId);
+    // Still one key per mail: the same record gives the same key, another record another.
+    expect(jobKey("account-mail.send", { organizationId, purpose: "invitation", recordId: invitationId })).toBe(key);
+    expect(jobKey("account-mail.send", { organizationId, purpose: "invitation", recordId: `${invitationId}x` })).not.toBe(key);
+  });
+
   it("names each job with its key rule", () => {
     for (const name of ["account-mail.send", "invitation.expire", "budget.check", "budget.release", "insights.compute", "search.backfill", "pr.link-related", "review.evaluate"] as const) {
       expect(jobNames).toContain(name);
       expect(jobSending[name]).toBeDefined();
     }
     const org = organizationId;
-    expect(jobKey("account-mail.send", { organizationId: org, purpose: "invitation", recordId: "inv-1" })).toBe("account-mail:invitation:inv-1");
+    expect(jobKey("account-mail.send", { organizationId: org, purpose: "invitation", recordId: "inv-1" })).toMatch(/^account-mail:invitation:[0-9a-f]{32}$/);
     expect(jobKey("budget.check", { organizationId: org, budgetId, month: "2026-11", threshold: "warn" })).toBe("budget:budget-project:2026-11:warn");
     expect(jobKey("budget.release", { organizationId: org, budgetId, raisedAt: 7 })).toBe("budget:budget-project:release:7");
     expect(jobKey("search.backfill", { organizationId: org, taskId: taskIdSchema.parse("t1") })).toBe("task:t1:search-backfill");
