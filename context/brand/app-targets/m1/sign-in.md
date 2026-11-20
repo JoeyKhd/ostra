@@ -54,10 +54,10 @@ The form column is a flex column with three rows: a top row (32px inset), a midd
 
 ### The illustration (decorative)
 
-A machined, matte stone in the shape of the Hinge, split by a diagonal seam with Shell light inside, in deep blue-green water. It's a picture, not markup, and it carries no information, so screen readers skip it.
+A machined, matte stone in the shape of the Hinge, split by a diagonal seam with light inside, in deep water, graded to the panel's neutral graphite (2026-11-20; it was blue-green). It's a picture, not markup, and it carries no information, so screen readers skip it.
 
 - **The file:** `../../files/web/sign-in-illustration.webp` (1792×2240) and `sign-in-illustration-1200.webp` (960×1200). Copy both to `apps/web/public/`, served as `/sign-in-illustration.webp` and `/sign-in-illustration-1200.webp`.
-- **The fades are baked in.** The asset already carries its grade: darkened so the form stays the brightest thing on the screen, a soft fade into `--side` along its left edge (so it meets the hairline as graphite, not as a teal panel), and the bottom fade the tagline sits on. The build adds no CSS gradients, overlays or filters.
+- **The fades are baked in.** The asset already carries its grade: darkened so the form stays the brightest thing on the screen, its colour taken down to graphite, a soft fade into `--bg` along its left edge (so it meets the hairline as graphite, not as a panel of its own), and the bottom fade the tagline sits on, which ends on `--bg`. The build adds no CSS gradients, overlays or filters.
 - **The column:** `position: relative; overflow: hidden; background: var(--side)`. The background only shows while the image loads.
 - **The image fills the column:** `object-fit: cover; object-position: 50% 8%`. At 1200×800 the column is about 705px wide, the image scales to about 705×881 and loses 7px at the top and 74px at the bottom, which puts the stone's centre at about x 843, y 367 of the viewport, beside the form. On a wider column the crop takes more off the bottom, the darkest part, and the stone sits lower (its centre about 60% down at 1920×1080), still well clear of the tagline. On a narrower, taller one the crop takes the sides instead, and the stone stays whole and centred.
 - **As Next code:** `<Image src="/sign-in-illustration.webp" alt="" aria-hidden fill sizes="60vw" className="object-cover object-[50%_8%]" />`. Without the image optimizer, a plain `<img alt="" aria-hidden="true" loading="lazy">` with `srcset="/sign-in-illustration-1200.webp 960w, /sign-in-illustration.webp 1792w"` and `sizes="60vw"`, or a CSS `background: var(--side) url(/sign-in-illustration-1200.webp) 50% 8% / cover no-repeat`, gives the same picture.
@@ -103,7 +103,7 @@ Copy comes from `apps/web/messages/en.json` (`signIn.*`). Two keys change, `sign
 | Token | Hex | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | form column |
-| `--side` | `#0A0B0C` | illustration column, under the image (the asset's fades end in it) |
+| `--side` | `#0A0B0C` | illustration column, under the image (the asset's fades end in `--bg`, since 2026-11-20) |
 | `--surface` | `#131416` | input fill |
 | `--line` | `#1F2023` | column hairline |
 | `--line-2` | `#2A2C30` | input border |

@@ -17,6 +17,11 @@ new pixels are generated. The grade, in order:
 3. Bottom fade toward --side, from y 1437 to y 2045 at (t^1.6) x 0.92, held
    at 0.92 below. These are the rows the 1200x800 sign-in target shows.
 4. A fixed-seed dither of one level against banding in the dark water.
+
+The committed files carry one more step on top of this script's output: the
+graphite regrade of 2026-11-20 (chroma x 0.08, both fades retargeted to --bg
+#0D0E10), described under B-017 in context/brand/assets.md. Run alone, this
+script gives the earlier blue-green master.
 """
 
 import sys

@@ -12,6 +12,8 @@ They were made image first with the `ui-taste` skill on Higgsfield `gpt_image_2_
 
 **Status:** the maintainer approved every target on 2026-11-19, `sign-in` and `change-password` included. Their right column, first a dimmed task mock, is now a brand illustration ("the sign in page requires a proper illustration on the right"): the maintainer chose "Deep water" from three directions (Strata, Deep water, Contour) the same day, and both pictures show it composited in. The file is `../../files/web/sign-in-illustration.webp` (B-017 in `../../assets.md`), and `sign-in.md` says how to build the column. No screen is rebuilt to its target before it's approved (`../../app-design.md`, and the UI process in `AGENTS.md`).
 
+**Moved to the panel's graphite theme, 2026-11-20:** `sign-in` and `change-password` re-composited with the regraded Deep water picture (chroma ×0.08, its fades ending on `--bg`; B-017 in `../../assets.md`), at the placement they were first composited at, the tagline kept. The picture was blue-green; every surface wears the panel's graphite. The panel's own copies in `apps/web/public/` are the same files.
+
 ## Screens
 
 | Screen | Route | Target |
