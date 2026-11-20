@@ -66,12 +66,13 @@ test("F-073: an admin filters by actor and action and exports the same rows", { 
   const response = await page.request.get(href);
   expect(response.status()).toBe(200);
   const csv = parseCsv(await response.text());
-  expect(csv[0]).toEqual(["time", "actor", "actor kind", "actor ID", "action", "entity", "entity ID", "task ID", "project", "data"]);
+  // The target's columns (app-targets/m4/audit-log.md, "Export CSV").
+  expect(csv[0]).toEqual(["time", "actor_kind", "actor_id", "actor_name", "action", "entity", "entity_id", "entity_label", "project_id", "project_name", "data"]);
   const body = csv.slice(1);
   const shown = await rowsOf(page).evaluateAll((rows) => rows.map((row) => row.getAttribute("data-entity-id")));
   expect(body.map((row) => row[6])).toEqual(shown);
   expect(body.map((row) => row[4])).toEqual(["task.created"]);
-  expect(body.map((row) => row[3])).toEqual([world.memberId]);
+  expect(body.map((row) => row[2])).toEqual([world.memberId]);
 
   // Without the actor filter, both entries; the export follows.
   await page.getByRole("button", { name: "Clear Actor" }).click();
