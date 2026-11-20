@@ -7,6 +7,7 @@ import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { LINEAR_AGENT_MODE_SCOPES } from "./app/oauth.ts";
 import { LinearAdapter, linearMention } from "./linear-adapter.ts";
 import { markdownImages } from "./markdown-images.ts";
 
@@ -25,13 +26,14 @@ defineTrackerContractSuite({
     const fake = await createFakeLinear();
     const other = await createFakeLinear();
     const app = fake.createApp({ name: "ostra", redirectUris: ["https://ostra.example.test/oauth/linear/callback"], webhookUrl: null });
-    const token = fake.mintToken("app");
+    // Agent mode's scopes on the install, so the session cases run (ticket 07).
+    const token = fake.mintToken("app", LINEAR_AGENT_MODE_SCOPES);
     const appUser = fake.appUser();
     if (appUser === undefined) throw new Error("the fake made no app user");
     const adapter = adapterOn(fake, token.accessToken, "oauth");
     return {
       adapter,
-      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: appUser.id, webhookSecret: app.webhookSecret }),
+      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: appUser.id, webhookSecret: app.webhookSecret, milestone6: true }),
       dispose: async () => {
         await Promise.all([fake.close(), other.close()]);
       },
@@ -46,7 +48,7 @@ defineTrackerContractSuite({
     const other = await createFakeLinear();
     return {
       adapter: adapterOn(fake, fake.adminApiKey, "api-key"),
-      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: null, webhookSecret: "lin_wh_dev" }),
+      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: null, webhookSecret: "lin_wh_dev", milestone6: true }),
       dispose: async () => {
         await Promise.all([fake.close(), other.close()]);
       },
@@ -255,9 +257,9 @@ describe("the Linear adapter", () => {
     expect(linearMention({ displayName: "x", url: "not a url" })).toBeNull();
   });
 
-  it("declares what it has: sub-issues, webhooks, comment edits and attachments; no agent sessions, graph or transitions", () => {
+  it("declares what it has: agent sessions, sub-issues, webhooks, comment edits and attachments; no graph or transitions", () => {
     expect(adapter.capabilities).toEqual({
-      agentSessions: false,
+      agentSessions: true,
       subIssues: true,
       statusGraph: false,
       webhooks: true,
@@ -266,9 +268,9 @@ describe("the Linear adapter", () => {
       transitions: false,
       // F-036: findUsersByEmail, with the profile link as the mention.
       mentions: true,
-      // Milestone 6: none yet, until ticket 07.
-      agentScopes: [],
-      agentSessionLink: false,
+      // Milestone 6 (ticket 07): agent mode's scopes, and the session's link to the task.
+      agentScopes: ["app:assignable", "app:mentionable"],
+      agentSessionLink: true,
       ticketFields: { acceptanceCriteria: false },
     });
   });

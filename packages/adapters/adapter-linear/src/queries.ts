@@ -15,6 +15,10 @@ export const COMMENTS_PER_PAGE = 100;
 export const MAX_COMMENT_PAGES = 10;
 /** Emails asked for in one `users` query (F-036): a delivery's audience is a handful. */
 export const USERS_PER_QUERY = 50;
+/** A session's activities read per page, looking for ostra's before posting (milestone 6). */
+export const ACTIVITIES_PER_PAGE = 250;
+/** Pages of a session's activities read at most: past that, the client-made ID still dedupes. */
+export const MAX_ACTIVITY_PAGES = 8;
 
 // ---------- fields ----------
 
@@ -57,6 +61,22 @@ export const documents = {
   // and the filter says so too.
   usersByEmail: `query OstraUsersByEmail($emails: [String!]!, $first: Int) { users(first: $first, filter: { email: { in: $emails }, active: { eq: true } }) { nodes { id name displayName email url active } } }`,
   issueCreate: `mutation OstraIssueCreate($teamId: String!, $title: String!, $description: String) { issueCreate(input: { teamId: $teamId, title: $title, description: $description }) { success issue { ${ISSUE_FIELDS} } } }`,
+  // ---------- milestone 6 (ticket 07) ----------
+  // A sub-issue: `parentId` on the same team (F-077, F-099).
+  issueCreateChild: `mutation OstraIssueCreateChild($teamId: String!, $title: String!, $description: String, $parentId: String!) { issueCreate(input: { teamId: $teamId, title: $title, description: $description, parentId: $parentId }) { success issue { ${ISSUE_FIELDS} } } }`,
+  // A draft's description, written by "Update ticket" (F-099).
+  issueUpdateDescription: "mutation OstraIssueUpdateDescription($id: String!, $description: String!) { issueUpdate(id: $id, input: { description: $description }) { success issue { id } } }",
+  // Linear's upload: a signed URL to PUT the bytes to, then the asset URL is attached.
+  fileUpload:
+    "mutation OstraFileUpload($contentType: String!, $filename: String!, $size: Int!) { fileUpload(contentType: $contentType, filename: $filename, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } } }",
+  // A person, for matching a session's creator to a member (ADR 0057). Without `email` when the
+  // token can't read it.
+  user: "query OstraUser($id: String!) { user(id: $id) { id name email active } }",
+  userWithoutEmail: "query OstraUserWithoutEmail($id: String!) { user(id: $id) { id name active } }",
+  // A session's activities, to find ostra's by its client-made ID before posting (F-046).
+  agentSessionActivities: `query OstraAgentSessionActivities($id: String!, $after: String) { agentSession(id: $id) { id activities(first: ${String(ACTIVITIES_PER_PAGE)}, after: $after) { nodes { id } ${PAGE_INFO} } } }`,
+  agentActivityCreate: "mutation OstraAgentActivityCreate($input: AgentActivityCreateInput!) { agentActivityCreate(input: $input) { success agentActivity { id } } }",
+  agentSessionUpdateUrls: "mutation OstraAgentSessionUpdateUrls($id: String!, $input: AgentSessionUpdateInput!) { agentSessionUpdate(id: $id, input: $input) { success } }",
 } as const;
 
 export type DocumentName = keyof typeof documents;
@@ -82,6 +102,14 @@ export const worstCaseVariables: Readonly<Record<DocumentName, Readonly<Record<s
   attachmentLinkGitHubPRWithKind: {},
   usersByEmail: { first: USERS_PER_QUERY * 2 },
   issueCreate: {},
+  issueCreateChild: {},
+  issueUpdateDescription: {},
+  fileUpload: {},
+  user: {},
+  userWithoutEmail: {},
+  agentSessionActivities: {},
+  agentActivityCreate: {},
+  agentSessionUpdateUrls: {},
 };
 
 // ---------- what Linear answers, read loosely ----------
@@ -179,4 +207,27 @@ export const answers = {
     ),
   }),
   issueCreate: z.looseObject({ issueCreate: z.looseObject({ success: z.boolean(), issue: issueSchema.nullish() }) }),
+  issueUpdateDescription: z.looseObject({ issueUpdate: z.looseObject({ success: z.boolean() }) }),
+  fileUpload: z.looseObject({
+    fileUpload: z.looseObject({
+      success: z.boolean(),
+      uploadFile: z
+        .looseObject({
+          uploadUrl: z.string(),
+          assetUrl: z.string(),
+          headers: z.array(z.looseObject({ key: z.string(), value: z.string() })).nullish(),
+        })
+        .nullish(),
+    }),
+  }),
+  user: z.looseObject({
+    user: z.looseObject({ id: z.string(), name: z.string(), email: z.string().nullish(), active: z.boolean().nullish() }),
+  }),
+  agentSessionActivities: z.looseObject({
+    agentSession: z.looseObject({ id: z.string(), activities: z.looseObject({ nodes: z.array(z.looseObject({ id: z.string() })), pageInfo: pageInfoSchema }) }),
+  }),
+  agentActivityCreate: z.looseObject({
+    agentActivityCreate: z.looseObject({ success: z.boolean(), agentActivity: z.looseObject({ id: z.string() }).nullish() }),
+  }),
+  agentSessionUpdate: z.looseObject({ agentSessionUpdate: z.looseObject({ success: z.boolean() }) }),
 } as const;

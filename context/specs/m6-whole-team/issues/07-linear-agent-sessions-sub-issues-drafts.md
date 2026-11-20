@@ -1,6 +1,6 @@
 # 07: Linear adapter: agent sessions, sub-issues, drafts and users
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 02
 Features: F-012, F-077, F-099, F-040
@@ -25,11 +25,17 @@ GraphQL over `fetch`, as milestone 2's adapter is; no `@linear/sdk` (Q219).
 
 ## Done when
 
-- [ ] Ticket 02's contract suite passes against the fake Linear server, with the new cases.
-- [ ] Tests against the fake: a `created` and a `prompted` event parsed, with and without `signal`, an unknown field tolerated; an activity posted twice with one key creates one; a personal key's post is refused as `unauthorized`, never retried; the re-authorization URL's parameters; a three-level tree; a file attached.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add agent sessions and sub-issues to Linear`.
+- [x] Ticket 02's contract suite passes against the fake Linear server, with the new cases.
+- [x] Tests against the fake: a `created` and a `prompted` event parsed, with and without `signal`, an unknown field tolerated; an activity posted twice with one key creates one; a personal key's post is refused as `unauthorized`, never retried; the re-authorization URL's parameters; a three-level tree; a file attached.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add agent sessions and sub-issues to Linear`.
 
 ## Comments
 
 - 2026-11-20 (from ticket 02): the base class answers `unsupported` for every new operation, so this ticket overrides `parseAgentSessionEvent`, `postAgentActivity`, `setAgentSessionLink`, `getUser`, `updateTicket` and `attachFile`, sets `agentSessions: true`, `agentScopes: ["app:assignable", "app:mentionable"]` and `agentSessionLink`, and passes `milestone6: true` to `fakeLinearSuiteFixture` in `linear-adapter.test.ts` to run the new suite cases. The fake Linear's sessions need an install with the agent scopes: `fake.mintToken("app", [..., "app:assignable", "app:mentionable"])`. Its session JSON (`agentSession(id)`, with `activities` and `externalUrls`), `user(id)`, `issueCreate`'s `parentId` and `delegateId`, `agentActivityCreate` (a repeated client-made `id` is the same activity) and `agentSessionUpdate(externalUrls)` are answered.
+- 2026-11-20 (ticket 07, commit `✨ add agent sessions and sub-issues to Linear`): built in `packages/adapters/adapter-linear` (`agent-sessions.ts`, `thread-reply.ts`, `linear-adapter.ts`, `queries.ts`, `app/oauth.ts`), with the fake Linear's `fileUpload` and signed upload target in `packages/adapter-sdk/src/testing/fake-linear/`. Proved in `agent-mode.test.ts` and by the tracker suite with `milestone6: true`; rows in `context/proof/F-012.md`, `F-040.md`, `F-077.md` (new) and `F-099.md`, all `partial` until core and the panel finish them. Differences from the ticket's words:
+  - **`checkAppToken` doesn't return the scopes.** Linear's API has no field that reads a token's scopes back (spike 5: "the scopes are those in the token response, not read back"). The granted scopes are the token answer's (`LinearTokenSet.scopes`, kept by core with the install), and `missingAgentScopes(granted)` says which agent scopes they lack.
+  - **"A tree three levels deep in at most one query per level"** holds as one `issue` query per `getTicketContext`: the interface reads one ticket's context at a time (ticket 02 kept milestone 2's shape), so core's walk (ticket 12) reads one context per ticket. The test reads a three-level tree in three queries.
+  - **An activity's idempotency:** its client-made `id` is a UUID derived from the session and the key (`activityIdFor`), looked up among the session's activities before the post and again when Linear refuses it, so a retry after a lost answer posts nothing more.
+  - `getUser` reads the address when the token can, and reads the rest without it when Linear refuses the field. The test is named F-040, for core's member match.
+  - The live run waits for the maintainer's Authorize click (ticket 40); its plan is in `context/proof/F-012.md`.

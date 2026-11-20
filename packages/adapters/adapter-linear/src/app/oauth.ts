@@ -24,6 +24,24 @@ export const LINEAR_API_URL = "https://api.linear.app/graphql";
 /** The scopes milestone 2 asks for (spec section 11, item 3). Agent mode's come with F-012. */
 export const LINEAR_APP_SCOPES = ["read", "write", "issues:create", "comments:create"] as const;
 
+/**
+ * Milestone 6 (F-012, ADR 0013): the scopes agent mode adds. `app:assignable` lets the app be
+ * delegated issues, `app:mentionable` lets it be mentioned (linear.app/developers/agents).
+ */
+export const LINEAR_AGENT_SCOPES = ["app:assignable", "app:mentionable"] as const;
+
+/** The full set "Turn on agent mode" asks for: Linear replaces an install's scopes with the set it's given. */
+export const LINEAR_AGENT_MODE_SCOPES: readonly string[] = [...LINEAR_APP_SCOPES, ...LINEAR_AGENT_SCOPES];
+
+/**
+ * The agent scopes a token lacks, from the scopes its token answer granted (`LinearTokenSet.scopes`).
+ * Linear's API has no field that reads a token's scopes back (spike 5: "The scopes are those in
+ * the token response, not read back"), so the granted set is the one the consent or the last
+ * refresh answered with.
+ */
+export const missingAgentScopes = (granted: readonly string[]): readonly string[] =>
+  LINEAR_AGENT_SCOPES.filter((scope) => !granted.includes(scope));
+
 /** How long Linear keeps answering a rotated refresh token with the same new pair. */
 export const REFRESH_RETRY_WINDOW_MS = 30 * 60_000;
 
@@ -72,6 +90,17 @@ export type AuthorizeUrlInput = {
   readonly codeChallenge: string;
   /** Default Linear's. */
   readonly authorizeUrl?: string;
+  /**
+   * Milestone 6 ("Turn on agent mode"): scopes asked for beside `scopes`, such as
+   * `LINEAR_AGENT_SCOPES`. Each is asked for once.
+   */
+  readonly extraScopes?: readonly string[];
+  /**
+   * Milestone 6: re-authorizes the existing install with the full set
+   * (`update_scopes_on_existing_token=true`), so its token gains the new scopes. Without it, a
+   * second consent keeps the install's scopes (linear.app/developers/oauth-2-0-authentication).
+   */
+  readonly updateExistingToken?: boolean;
 };
 
 /** Where the admin's browser goes to consent: `actor=app`, S256 PKCE, the scopes comma-separated. */
@@ -80,7 +109,10 @@ export const authorizeUrl = (input: AuthorizeUrlInput): string => {
   url.searchParams.set("client_id", input.clientId);
   url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", input.scopes.join(","));
+  url.searchParams.set("scope", [...new Set([...input.scopes, ...(input.extraScopes ?? [])])].join(","));
+  if (input.updateExistingToken === true) {
+    url.searchParams.set("update_scopes_on_existing_token", "true");
+  }
   url.searchParams.set("actor", "app");
   url.searchParams.set("state", input.state);
   url.searchParams.set("code_challenge", input.codeChallenge);

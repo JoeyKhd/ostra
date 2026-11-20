@@ -3,6 +3,9 @@ import type {
   AdapterContext,
   AdapterError,
   AdapterResult,
+  AgentActivity,
+  AgentSessionEvent,
+  AttachedFile,
   BoardRef,
   CodeHostIntegration,
   DownloadedFile,
@@ -19,6 +22,7 @@ import type {
   TicketAttachment,
   TicketComment,
   TicketContext,
+  TicketFile,
   TicketImage,
   TicketLinkKind,
   TicketPage,
@@ -27,8 +31,10 @@ import type {
   TicketStatus,
   TicketStatusCategory,
   TicketSummary,
+  TicketUpdate,
   TrackerBoard,
   TrackerCapabilities,
+  TrackerPerson,
   TrackerStatus,
   TrackerUser,
   TrackerWebhookHint,
@@ -39,9 +45,11 @@ import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { TicketKey } from "@ostra/protocol";
 import { z } from "zod";
 
+import { activityContent, activityIdFor, canBeEphemeral, parseLinearAgentSessionEvent } from "./agent-sessions.ts";
+import { LINEAR_AGENT_SCOPES } from "./app/oauth.ts";
 import { linearWebhookHint, verifyLinearWebhook } from "./app/webhooks.ts";
 import { imageName, looksLikeImage, markdownImages } from "./markdown-images.ts";
-import { answers, documents, MAX_COMMENT_PAGES, MAX_TICKET_PAGE, USERS_PER_QUERY } from "./queries.ts";
+import { answers, documents, MAX_ACTIVITY_PAGES, MAX_COMMENT_PAGES, MAX_TICKET_PAGE, USERS_PER_QUERY } from "./queries.ts";
 import type { DocumentName, LinearComment, LinearIssue, LinearSummary } from "./queries.ts";
 
 // The Linear tracker adapter (ADR 0013, ADR 0025): Linear's plain API over GraphQL with `fetch`
@@ -74,6 +82,17 @@ export type LinearAdapterOptions = {
 const DEFAULT_API_URL = "https://api.linear.app/graphql";
 const DEFAULT_FILE_ORIGINS: readonly string[] = ["https://uploads.linear.app"];
 const DEFAULT_PAGE = 50;
+/** The largest file `attachFile` uploads: milestone 2's cap on a ticket's file. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+/** The label on the session's link to the task in ostra. */
+const SESSION_LINK_LABEL = "Open in ostra";
+
+/** The bytes copied onto an ArrayBuffer of their own, which every `BodyInit` typing accepts. */
+const ownBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+};
 
 /** Linear's state types, in the four categories every tracker shares. */
 export const linearStateCategory = (type: string): TicketStatusCategory => {
@@ -216,8 +235,8 @@ export class LinearAdapter extends TrackerAdapter {
   readonly capabilities: TrackerCapabilities = {
     // `findUsersByEmail`: a profile link in a comment's markdown notifies the user (F-036).
     mentions: true,
-    // Linear's agent sessions come with milestone 6 (F-012).
-    agentSessions: false,
+    // Linear's agent sessions (F-012, ADR 0013): delegations, mentions, follow-ups and stops.
+    agentSessions: true,
     // A ticket's parent is read, so a sub-issue is told from a ticket.
     subIssues: true,
     statusGraph: false,
@@ -228,10 +247,10 @@ export class LinearAdapter extends TrackerAdapter {
     attachments: true,
     // Linear sets a status directly.
     transitions: false,
-    // Agent mode's scopes (`app:assignable`, `app:mentionable`, ADR 0013) come with its sessions,
-    // in milestone 6's ticket 07; until then no session operation is offered.
-    agentScopes: [],
-    agentSessionLink: false,
+    // Agent mode's scopes (ADR 0013): the install re-authorizes with them ("Turn on agent mode").
+    agentScopes: LINEAR_AGENT_SCOPES,
+    // `agentSessionUpdate(externalUrls)` links the session to the task.
+    agentSessionLink: true,
     // Linear has no field of its own for acceptance criteria: they go into the description.
     ticketFields: { acceptanceCriteria: false },
   };
@@ -598,16 +617,184 @@ export class LinearAdapter extends TrackerAdapter {
   }
 
   async createTicket(board: BoardRef, ticket: NewTicket): Promise<AdapterResult<Ticket>> {
-    const created = await this.#query(
-      "issueCreate",
-      { teamId: board.externalId, title: ticket.title, description: ticket.description },
-      answers.issueCreate,
-    );
+    let parentId: string | null = null;
+    if (ticket.parent !== undefined) {
+      // A sub-issue's parent must be on this board: one from elsewhere makes nothing.
+      const parent = await this.#issueOnBoard(board, ticket.parent);
+      if (!parent.ok) {
+        return parent;
+      }
+      parentId = parent.value.id;
+    }
+    const created =
+      parentId === null
+        ? await this.#query("issueCreate", { teamId: board.externalId, title: ticket.title, description: ticket.description }, answers.issueCreate)
+        : await this.#query(
+            "issueCreateChild",
+            { teamId: board.externalId, title: ticket.title, description: ticket.description, parentId },
+            answers.issueCreate,
+          );
     if (!created.ok) {
       return created;
     }
     const { success, issue } = created.value.issueCreate;
     return success && issue !== null && issue !== undefined ? toTicket(issue) : adapterError("conflict", "Linear did not create the ticket");
+  }
+
+  // ---------- milestone 6: drafts (F-099) ----------
+
+  override async updateTicket(board: BoardRef, ref: TicketRef, update: TicketUpdate): Promise<AdapterResult<void>> {
+    if (update.acceptanceCriteria !== undefined) {
+      // Linear has no field for them (`ticketFields.acceptanceCriteria` is false): core writes
+      // them into the description.
+      return adapterError("invalid-input", "updating a ticket failed: Linear has no acceptance-criteria field");
+    }
+    const issue = await this.#issueOnBoard(board, ref);
+    if (!issue.ok) {
+      return issue;
+    }
+    const updated = await this.#query("issueUpdateDescription", { id: issue.value.id, description: update.description }, answers.issueUpdateDescription);
+    if (!updated.ok) {
+      return updated;
+    }
+    return updated.value.issueUpdate.success ? ok(undefined) : adapterError("conflict", "Linear did not save the description");
+  }
+
+  override async attachFile(board: BoardRef, ref: TicketRef, file: TicketFile): Promise<AdapterResult<AttachedFile>> {
+    if (file.bytes.length > MAX_ATTACHMENT_BYTES) {
+      return adapterError("invalid-input", `attaching a file failed: it's larger than ${String(MAX_ATTACHMENT_BYTES)} bytes`);
+    }
+    if (file.name.trim() === "" || file.contentType.trim() === "") {
+      return adapterError("invalid-input", "attaching a file failed: it has no name or no type");
+    }
+    const issue = await this.#issueOnBoard(board, ref);
+    if (!issue.ok) {
+      return issue;
+    }
+    const upload = await this.#query("fileUpload", { contentType: file.contentType, filename: file.name, size: file.bytes.length }, answers.fileUpload);
+    if (!upload.ok) {
+      return upload;
+    }
+    const target = upload.value.fileUpload.uploadFile;
+    if (!upload.value.fileUpload.success || target === null || target === undefined || !URL.canParse(target.uploadUrl) || !URL.canParse(target.assetUrl)) {
+      return adapterError("invalid-response", "attaching a file failed: Linear gave no upload URL");
+    }
+    // The signed URL is a storage bucket's: Linear's token never goes there, only the headers
+    // Linear signed for it.
+    const headers: Record<string, string> = { "content-type": file.contentType, "cache-control": "public, max-age=31536000" };
+    for (const header of target.headers ?? []) {
+      headers[header.key.toLowerCase()] = header.value;
+    }
+    let put: Response;
+    try {
+      put = await fetch(new URL(target.uploadUrl), {
+        method: "PUT",
+        headers,
+        // A copy on its own ArrayBuffer: what `fetch` takes as a body under the DOM types too.
+        body: ownBuffer(file.bytes),
+        redirect: "manual",
+        signal: AbortSignal.timeout(Math.max(this.#timeoutMs, 60_000)),
+      });
+      await put.body?.cancel();
+    } catch {
+      return adapterError("unavailable", "attaching a file failed: the upload could not be sent");
+    }
+    if (!put.ok) {
+      this.plumbing.logger.warn("linear.upload.failed", { status: put.status });
+      return put.status >= 500
+        ? adapterError("unavailable", `attaching a file failed (HTTP ${String(put.status)}): the upload failed`)
+        : adapterError("invalid-response", `attaching a file failed (HTTP ${String(put.status)}): the upload was refused`);
+    }
+    const assetUrl = new URL(target.assetUrl).href;
+    const created = await this.#query("attachmentCreate", { issueId: issue.value.id, url: assetUrl, title: file.name, subtitle: null }, answers.attachmentCreate);
+    if (!created.ok) {
+      return created;
+    }
+    const { success, attachment } = created.value.attachmentCreate;
+    return success && attachment !== null && attachment !== undefined
+      ? ok({ attachmentId: attachment.id, url: assetUrl })
+      : adapterError("conflict", "Linear did not attach the file");
+  }
+
+  // ---------- milestone 6: agent sessions (F-012) ----------
+
+  override parseAgentSessionEvent(body: unknown): AdapterResult<AgentSessionEvent> {
+    return parseLinearAgentSessionEvent(body);
+  }
+
+  /**
+   * Posts an activity once per key: its client-made ID is derived from the key, looked up among the
+   * session's activities first, and looked up again when Linear refuses the create (another call
+   * won the race). A personal API key's post is refused by Linear: `unauthorized`, never retried.
+   */
+  override async postAgentActivity(sessionId: string, activity: AgentActivity): Promise<AdapterResult<{ readonly activityId: string }>> {
+    if (activity.ephemeral && !canBeEphemeral(activity)) {
+      return adapterError("invalid-input", `posting an activity failed: a ${activity.kind} can't be ephemeral`);
+    }
+    if (activity.body.trim() === "") {
+      return adapterError("invalid-input", "posting an activity failed: it has no text");
+    }
+    const id = activityIdFor(sessionId, activity.idempotencyKey);
+    const before = await this.#findActivity(sessionId, id);
+    if (!before.ok) {
+      return before;
+    }
+    if (before.value) {
+      return ok({ activityId: id });
+    }
+    const created = await this.#query(
+      "agentActivityCreate",
+      { input: { agentSessionId: sessionId, id, content: activityContent(activity), ...(activity.ephemeral ? { ephemeral: true } : {}) } },
+      answers.agentActivityCreate,
+    );
+    if (!created.ok) {
+      if (created.error.code === "invalid-input" || created.error.code === "conflict") {
+        const after = await this.#findActivity(sessionId, id);
+        if (after.ok && after.value) {
+          return ok({ activityId: id });
+        }
+      }
+      this.plumbing.logger.warn("linear.activity.failed", { sessionId, kind: activity.kind, code: created.error.code });
+      return created;
+    }
+    const { success, agentActivity } = created.value.agentActivityCreate;
+    if (!success || agentActivity === null || agentActivity === undefined) {
+      return adapterError("conflict", "Linear did not post the activity");
+    }
+    this.plumbing.logger.debug("linear.activity.posted", { sessionId, kind: activity.kind, ephemeral: activity.ephemeral });
+    return ok({ activityId: agentActivity.id });
+  }
+
+  override async setAgentSessionLink(sessionId: string, url: string): Promise<AdapterResult<void>> {
+    if (!URL.canParse(url)) {
+      return adapterError("invalid-input", "linking a session failed: not a URL");
+    }
+    const updated = await this.#query(
+      "agentSessionUpdateUrls",
+      { id: sessionId, input: { externalUrls: [{ label: SESSION_LINK_LABEL, url }] } },
+      answers.agentSessionUpdate,
+    );
+    if (!updated.ok) {
+      return updated;
+    }
+    return updated.value.agentSessionUpdate.success ? ok(undefined) : adapterError("conflict", "Linear did not link the session");
+  }
+
+  /** A person by ID. The address only when the token can read it: a refusal of the field reads the rest. */
+  override async getUser(userId: string): Promise<AdapterResult<TrackerPerson>> {
+    let found = await this.#query("user", { id: userId }, answers.user);
+    if (!found.ok && found.error.code === "forbidden") {
+      found = await this.#query("userWithoutEmail", { id: userId }, answers.user);
+    }
+    if (!found.ok) {
+      return found;
+    }
+    const { user } = found.value;
+    if (user.id !== userId) {
+      return adapterError("not-found", "reading a user failed: not found, or not visible to the credentials");
+    }
+    const email = user.email === null || user.email === undefined || user.email.trim() === "" ? null : user.email;
+    return ok({ userId: user.id, name: user.name, email, active: user.active !== false });
   }
 
   // ---------- people ----------
@@ -663,6 +850,32 @@ export class LinearAdapter extends TrackerAdapter {
   }
 
   // ---------- internals ----------
+
+  /** Whether the session has an activity with this client-made ID. */
+  async #findActivity(sessionId: string, activityId: string): Promise<AdapterResult<boolean>> {
+    let after: string | null = null;
+    for (let page = 0; page < MAX_ACTIVITY_PAGES; page += 1) {
+      const listed: AdapterResult<z.infer<typeof answers.agentSessionActivities>> = await this.#query(
+        "agentSessionActivities",
+        { id: sessionId, after },
+        answers.agentSessionActivities,
+      );
+      if (!listed.ok) {
+        return listed;
+      }
+      const activities: z.infer<typeof answers.agentSessionActivities>["agentSession"]["activities"] = listed.value.agentSession.activities;
+      const { nodes, pageInfo } = activities;
+      if (nodes.some((node) => node.id === activityId)) {
+        return ok(true);
+      }
+      const endCursor: string | null | undefined = pageInfo.endCursor;
+      if (!pageInfo.hasNextPage || endCursor === null || endCursor === undefined) {
+        break;
+      }
+      after = endCursor;
+    }
+    return ok(false);
+  }
 
   #authorization(): string {
     return this.#auth.kind === "oauth" ? `Bearer ${this.#auth.token}` : this.#auth.token;
