@@ -31,4 +31,10 @@ describe("queryScopesOf", () => {
       expect(queryScopesOf(entity)).toEqual(expect.arrayContaining(["organization", "me"]));
     }
   });
+
+  it("F-036, F-062: a member's notification and a task's change refresh Needs you, its count and Home, live", () => {
+    for (const entity of ["member", "task"] as const) {
+      expect(queryScopesOf(entity)).toEqual(expect.arrayContaining(["notifications", "home"]));
+    }
+  });
 });

@@ -4,7 +4,7 @@ import type { ChangeEntity } from "@ostra/protocol";
 // over `ChangeEntity`, so a new kind of notice fails the build until the panel says what it refreshes.
 
 /** A top-level tRPC router whose cached queries a notice can invalidate. */
-export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox" | "tickets" | "diff";
+export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox" | "tickets" | "diff" | "home" | "notifications";
 
 export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
   switch (entity) {
@@ -12,7 +12,8 @@ export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
       // Milestone 6: a task's move shows in the Inbox's rows and a parent ticket's page. Milestone 3
       // (ticket 46): `diff.fetch` sends the task's notice once a new head's diff is in and the
       // comments it outdated are marked, so an open Changes tab shows both.
-      return ["tasks", "projects", "fleetUse", "inbox", "tickets", "diff"];
+      // Ticket m3-44: Home's sections and board, and the Needs you rows (an item answered elsewhere), follow a task live.
+      return ["tasks", "projects", "fleetUse", "inbox", "tickets", "diff", "home", "notifications"];
     case "runner":
     case "runner-pool":
       // Milestone 5: the Box sizes page counts runners, and a project's Runners tab its pools' boxes.
@@ -29,6 +30,8 @@ export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
     case "connection":
       return ["github"];
     case "member":
+      // A member's new notification (core's fan-out, F-036) is a member notice: Needs you, its count and Home refetch.
+      return ["organization", "me", "boxSizes", "fleetUse", "registry", "registryUse", "notifications", "home"];
     case "organization":
       // A role or a name change shows in the organization's pages and in the signed-in member's own view.
       return ["organization", "me", "boxSizes", "fleetUse", "registry", "registryUse"];
