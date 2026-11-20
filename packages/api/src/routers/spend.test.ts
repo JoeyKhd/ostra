@@ -1,4 +1,5 @@
 import type { CatalogEntry } from "@ostra/adapter-sdk";
+import { Prisma } from "@ostra/db";
 import { budgetMonthOf } from "@ostra/domain";
 import { modelIdSchema, providerIdSchema } from "@ostra/protocol";
 import type { ModelId, ProjectId } from "@ostra/protocol";
@@ -233,6 +234,21 @@ describe("budgets and prices", () => {
         cacheWritePerMTok: null,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("F-037: a budget is the organization's or a project's only: no member's or agent profile's, which come later (F-131)", async () => {
+    const { a } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    const base: Parameters<typeof admin.budgets.set>[0] = { projectId: null, monthlyUsd: 10 };
+    for (const scope of [{ memberId: a.member.id }, { agentProfileId: "01900000-0000-7000-8000-0000000000c1" }]) {
+      await expect(admin.budgets.set(Object.assign({}, base, scope))).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      await expect(admin.budgets.clear(Object.assign({ projectId: null }, scope))).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    }
+    expect(await harness.test.db.budget.count({ where: { organizationId: a.organization.id } })).toBe(0);
+    // A budget row has an organization and, at most, a project: nothing names a member or a profile.
+    expect(Object.keys(Prisma.BudgetScalarFieldEnum).filter((field) => field.endsWith("Id")).sort()).toEqual(
+      ["organizationId", "projectId", "updatedByMemberId"].sort(),
+    );
   });
 
   it("F-037: an admin's price takes all four, from now on, with its audit entry", async () => {

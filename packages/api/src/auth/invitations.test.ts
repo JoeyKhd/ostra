@@ -486,7 +486,7 @@ describe("better-auth's own organization and admin routes", () => {
 describe("a reset link", () => {
   const NEW_PASSWORD = "a-brand-new-passphrase-2026";
 
-  it("F-002: the instance admin's link works once within 24 hours, signs out the other sessions and revokes CLI sessions", async () => {
+  it("F-002, F-115: the instance admin's link works once within 24 hours, signs out the other sessions and revokes CLI sessions", async () => {
     const target = harness.fixture.a.member;
     const account = await harness.test.db.user.findUniqueOrThrow({ where: { id: target.userId } });
     await givePassword(target.userId);

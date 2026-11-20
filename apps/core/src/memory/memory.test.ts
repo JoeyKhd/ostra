@@ -279,7 +279,7 @@ describe("F-110: memory in the task spec", () => {
     expect(memoryNoteResponseSchema.parse(ok.body)).toMatchObject({ noteId: active, version: 1, scope: "project" });
   });
 
-  it("F-110: search ranks matches, matches word prefixes, shows the matching line, and logs no query or text", async () => {
+  it("F-109, F-110: search ranks matches, matches word prefixes, shows the matching line, and logs no query or text", async () => {
     const task = await leasedTask();
     const strong = await note({ title: `${QUERY_WORD} setup`, body: `First line.\nRun ${QUERY_WORD} before the tests.\nLast line.` });
     const weak = await note({ title: "Something else", body: `Mentions ${QUERY_WORD} once.` });

@@ -184,7 +184,7 @@ test("F-111: a merge into a note that moved on says who saved first and keeps th
   await expect(page.locator('[data-proposal="Settings keys say what they hold"]')).toBeVisible();
 });
 
-test("F-111: the task panel's Memory lists the notes its session used and the proposals it made", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-110, F-111: the task panel's Memory lists the notes its session used and the proposals it made", { tag: "@desktop-only" }, async ({ page }) => {
   const { taskId } = await seed();
   await signIn(page);
   await page.goto(`/tasks/${taskId}`);

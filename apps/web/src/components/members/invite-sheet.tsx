@@ -75,7 +75,7 @@ const SheetRow = ({ label, children }: { readonly label: string; readonly childr
 );
 
 /** State 2: the link, shown once (member-invite.md). Nothing re-fetches it. */
-const CreatedBody = ({ created, organization, inviterName, emailOn, projects }: { readonly created: Created; readonly organization: string; readonly inviterName: string; readonly emailOn: boolean; readonly projects: readonly Project[] }) => {
+export const CreatedBody = ({ created, organization, inviterName, emailOn, projects }: { readonly created: Created; readonly organization: string; readonly inviterName: string; readonly emailOn: boolean; readonly projects: readonly Project[] }) => {
   const nameOf = (id: string) => projects.find((project) => project.id === id)?.name ?? id;
   return (
     <>

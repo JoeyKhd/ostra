@@ -63,8 +63,8 @@ export const compareForIndex = (x: BlockNote, y: BlockNote): number => {
   return x.noteId < y.noteId ? -1 : x.noteId > y.noteId ? 1 : 0;
 };
 
-/** One index line: the note's ID, kind and title. Never its body. */
-const indexLine = (note: BlockNote): string => `- [${note.kind}] ${oneLine(note.title)} (id: ${note.noteId}, ${note.scope})`;
+/** One index line: the kind, the title, the ID, the scope and where the note came from (ADR 0044, Q91 change 5). Never its body. */
+const indexLine = (note: BlockNote): string => `- [${note.kind}] ${oneLine(note.title)} (id: ${note.noteId}, ${note.scope}, ${sourceLine(note.source)})`;
 
 const oneLine = (text: string): string => text.replaceAll(/[\r\n\t]+/g, " ").trim();
 

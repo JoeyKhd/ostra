@@ -1,0 +1,31 @@
+---
+title: "Members"
+description: "Inviting people, their roles, project access, password resets and removing a member."
+summary: "Sign-up is by invitation only. An invitation's link is a secret: send it privately."
+---
+
+ostra has no public sign-up page. People join an organization by an invitation from one of its admins, and an install has one organization.
+
+## Inviting someone
+
+An organization admin opens **Organization**, **Members**, **Invite**, and gives the address, a role (admin or member) and, optionally, the restricted projects to grant. The panel shows the invitation's link once, with **Copy link**. The link works once and expires after 7 days (`OSTRA_INVITATION_DAYS`). An admin can revoke it from the **Invitations** list until it's used.
+
+**The link is a bearer secret.** Whoever holds it can join as the invited person, so send it privately: in a direct message or a mail to that one person, never in a shared channel or a ticket. Without email set up, nothing proves that the person who opens the link owns the invited address; the link is the only proof.
+
+**With email set up,** ostra also mails the link to the invited address. The invitee must then sign up with that same address, and the membership waits until they open the verification mail ostra sends. A pasted link alone never activates it. Someone who already has an ostra account signs in to accept, without a second account.
+
+## Roles and project access
+
+Roles exist at two levels. An organization admin manages members, connections, model providers, runner pools, agent profiles, budgets and projects, and opens every project. A member starts, drives, steers and reopens tasks in the projects they can open.
+
+A project is open to the whole organization, or restricted to the members it lists. Each listed member is a project admin, who edits the project's repos, boards, environment, automations, memory and defaults, or a project member. A restricted project's tasks, notes and spend are hidden from everyone it doesn't list, apart from the organization's admins.
+
+An organization always keeps at least one admin, and the install at least one instance admin.
+
+## Password resets
+
+With email set up, **Forgot your password?** on the sign-in page mails a reset link. Without email, the instance admin opens **Instance**, **Accounts**, and presses **Create reset link** for the account: the link is shown once, works once and expires after 24 hours (`OSTRA_RESET_LINK_HOURS`). Send it privately too. Every reset signs the account out of its other sessions.
+
+## Removing a member
+
+An organization admin removes a member from the row's menu in **Members**. The panel first lists what the removal ends: their project roles, personal runners, CLI sessions, the tasks they drive, their drafts and the invitations they sent. Their next request is refused, an open panel says they're no longer a member, and past entries show their name followed by "(removed)".

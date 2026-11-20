@@ -26,7 +26,7 @@ const invite = async (page: Page, email: string): Promise<string> => {
 
 const freshPage = async (browser: Browser): Promise<Page> => (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
 
-test("F-002: an admin invites, the invitee signs up through the link in a second context, and appears in the list", { tag: "@desktop-only" }, async ({ page, browser }) => {
+test("F-002, F-115: an admin invites, the invitee signs up through the link in a second context, and appears in the list", { tag: "@desktop-only" }, async ({ page, browser }) => {
   await signIn(page);
   const link = await invite(page, `${INVITEE}@example.com`);
   await expect(page.getByText("Mail is off on this install. Send the link yourself.")).toBeVisible();
@@ -72,7 +72,7 @@ test("F-002: a revoked link shows its state", { tag: "@desktop-only" }, async ({
   await stranger.context().close();
 });
 
-test("F-002: a reset by link changes the password and signs the other context out", { tag: "@desktop-only" }, async ({ page, browser }) => {
+test("F-002, F-115: a reset by link changes the password and signs the other context out", { tag: "@desktop-only" }, async ({ page, browser }) => {
   // The member is signed in elsewhere.
   await seedM4Member(RESETTER);
   const elsewhere = await freshPage(browser);

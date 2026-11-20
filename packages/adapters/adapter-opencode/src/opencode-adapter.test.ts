@@ -180,8 +180,12 @@ describe("the OpenCode adapter's launch", () => {
     expect(env["OPENCODE_DISABLE_MODELS_FETCH"]).toBe("1");
   });
 
-  it("keeps every file and folder under the task's own agent folder", async () => {
+  it("F-110: keeps every file and folder under the task's own agent folder and never reads `.claude`, so nothing OpenCode keeps for itself is outside the task", async () => {
     const { files, env } = await launch();
+    // OpenCode has no memory of its own (research/project-memory.md); what it keeps (sessions, its
+    // config and state) is under the agent folder the release removes, and Claude Code's memory
+    // files under `.claude` are never read.
+    expect(env["OPENCODE_DISABLE_CLAUDE_CODE"]).toBe("1");
     for (const file of files) {
       expect(path.relative(input().agentDir, file.path).startsWith("..")).toBe(false);
     }
