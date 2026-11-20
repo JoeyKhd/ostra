@@ -24,9 +24,10 @@ describe("the task page in review (task-rounds.md)", () => {
     expect(failed).toContain("Failed · unit-tests");
     expect(renderToStaticMarkup(<CodeHeadRows headSha="3f9c21ab7e" ci={{ state: "passed", failing: null }} />)).toContain("Passed");
     expect(renderToStaticMarkup(<CodeHeadRows headSha={null} ci={null} />)).toContain("No CI");
-    expect(roundOutcomeText({ headSha: "b20e7f31aa", ci: "passed", failing: null }, "OpenCode")).toBe("OpenCode pushed b20e7f3. CI passed.");
-    expect(roundOutcomeText({ headSha: "b20e7f31aa", ci: "failed", failing: "lint" }, "OpenCode")).toBe("OpenCode pushed b20e7f3. CI failed again: lint.");
-    expect(roundOutcomeText({ headSha: "b20e7f31aa", ci: "pending", failing: null }, "OpenCode")).toBe("OpenCode pushed b20e7f3.");
+    expect(roundOutcomeText({ kind: "pushed", headSha: "b20e7f31aa", ci: "passed", failing: null }, "OpenCode")).toBe("OpenCode pushed b20e7f3. CI passed.");
+    expect(roundOutcomeText({ kind: "pushed", headSha: "b20e7f31aa", ci: "failed", failing: "lint" }, "OpenCode")).toBe("OpenCode pushed b20e7f3. CI failed again: lint.");
+    expect(roundOutcomeText({ kind: "pushed", headSha: "b20e7f31aa", ci: "pending", failing: null }, "OpenCode")).toBe("OpenCode pushed b20e7f3.");
+    expect(roundOutcomeText({ kind: "no-push", endedAt: at }, "OpenCode")).toBe("The turn ended without a push.");
     expect(roundOutcomeText(null, "OpenCode")).toBeNull();
   });
 

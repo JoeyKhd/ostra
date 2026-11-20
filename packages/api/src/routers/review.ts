@@ -317,6 +317,8 @@ export const reviewRouter = router({
 type HeldReason = { readonly kind: "budget"; readonly scope: "organization" | "project" };
 
 const cappedEventSchema = z.looseObject({ kind: z.literal("round.capped"), round: z.enum(["ci", "findings", "changes-requested"]), reason: z.enum(["rounds", "automatic-turns"]) });
+/** A push the runner reported: the branch's (`refs/heads/...`), or the hidden ref's. */
+const pushedEventSchema = z.looseObject({ kind: z.literal("git.pushed"), ref: z.string(), headSha: z.string() });
 const changesAuditSchema = z.looseObject({ reviewId: z.union([z.string(), z.number()]) });
 
 /** `tasks.rounds`: each round of the task, oldest first, with its cause and its state. */
@@ -345,6 +347,34 @@ export const taskRoundsProcedure = taskProcedure("read", taskInput).query(async 
   });
   // Ticket 41: each round's pushed head (the first head CI saw after it), and who raised a budget that released a hold.
   const heads = rounds.length === 0 ? [] : await db.ciRun.findMany({ where: { organizationId, taskRepo: { taskId: input.taskId } }, orderBy: { firstSeenAt: "asc" }, select: { headSha: true, state: true, checks: true, firstSeenAt: true } });
+  // Ticket 41: each started round's turn, in the session it ran in (`TaskRound.turnId`), its end, and
+  // the work saved after it (`session.saved`, or `session.ended` on a session's last turn) with the
+  // branch heads pushed in between, so a turn that moved no branch says so.
+  const turnSessions = [...new Set(rounds.flatMap((round) => (round.state === "started" && round.turnId !== null ? [round.turnId] : [])))];
+  const marks =
+    turnSessions.length === 0
+      ? []
+      : await db.event.findMany({
+          where: { organizationId, taskId: input.taskId, OR: [{ sessionId: { in: turnSessions }, kind: { in: ["turn.started", "session.saved", "session.ended"] } }, { kind: "git.pushed" }] },
+          orderBy: { seq: "asc" },
+          select: { seq: true, sessionId: true, kind: true, payload: true, createdAt: true },
+        });
+  const turns = turnSessions.length === 0 ? [] : await db.turn.findMany({ where: { organizationId, taskId: input.taskId, sessionId: { in: turnSessions } }, select: { sessionId: true, startSeq: true, endedAt: true } });
+  const branchPushes = marks.flatMap((mark) => {
+    const pushed = pushedEventSchema.safeParse(mark.payload);
+    return pushed.success && pushed.data.ref.startsWith("refs/heads/") ? [{ seq: mark.seq, headSha: pushed.data.headSha }] : [];
+  });
+  /** The round's turn, the first its session started after `since`, once it ended and its work was saved: when, and whether it moved a branch. */
+  const turnOf = (sessionId: string, since: number): { readonly endedAt: number; readonly pushed: boolean } | null => {
+    const start = marks.find((mark) => mark.kind === "turn.started" && mark.sessionId === sessionId && mark.createdAt.getTime() >= since);
+    if (start === undefined) return null;
+    const endedAt = turns.find((turn) => turn.sessionId === sessionId && turn.startSeq === start.seq)?.endedAt ?? null;
+    const saved = marks.find((mark) => (mark.kind === "session.saved" || mark.kind === "session.ended") && mark.sessionId === sessionId && mark.seq > start.seq);
+    if (endedAt === null || saved === undefined) return null;
+    // The runner pushes the branch after every turn: only a head it didn't hold before the turn is a push.
+    const before = new Set(branchPushes.filter((push) => push.seq < start.seq).map((push) => push.headSha));
+    return { endedAt: endedAt.getTime(), pushed: branchPushes.some((push) => push.seq > start.seq && push.seq <= saved.seq && !before.has(push.headSha)) };
+  };
   const released = held.filter((turn) => turn.releasedAt !== null);
   const raises =
     released.length === 0
@@ -411,6 +441,8 @@ export const taskRoundsProcedure = taskProcedure("read", taskInput).query(async 
       // What the round's turn pushed: the first head CI saw after the round, before the next one.
       const pushed = round.state === "started" ? (heads.find((head) => head.firstSeenAt.getTime() > createdAt && head.firstSeenAt.getTime() < next) ?? null) : null;
       const heldReason: HeldReason | null = heldTurn === null ? null : { kind: "budget", scope: heldTurn.budget.projectId === null ? "organization" : "project" };
+      // A held round's turn starts at its release; any other started round's, at the round.
+      const turn = round.state === "started" && round.turnId !== null ? turnOf(round.turnId, hold?.releasedAt?.getTime() ?? createdAt) : null;
       return {
         kind,
         number: round.number,
@@ -432,15 +464,22 @@ export const taskRoundsProcedure = taskProcedure("read", taskInput).query(async 
                 scope: hold.budget.projectId === null ? ("organization" as const) : ("project" as const),
                 releasedByName: raiserOf(hold),
               },
-        /** Ticket 41: what the round's turn pushed and how its CI went (`OpenCode pushed {sha7}. CI passed.`). */
+        /**
+         * Ticket 41: what the round's turn pushed and how its CI went (`OpenCode pushed {sha7}. CI
+         * passed.`), or that it ended and its saved work moved no branch (`The turn ended without a
+         * push.`); `null` while it runs, or while CI hasn't seen its push.
+         */
         outcome:
-          pushed === null
-            ? null
-            : {
+          pushed !== null
+            ? {
+                kind: "pushed" as const,
                 headSha: pushed.headSha,
                 ci: pushed.state,
                 failing: checksOf(pushed.checks).find((check) => check.conclusion !== null && CI_FAILING_CONCLUSIONS.has(check.conclusion))?.name ?? null,
-              },
+              }
+            : turn !== null && !turn.pushed
+              ? { kind: "no-push" as const, endedAt: turn.endedAt }
+              : null,
       };
     }),
   };

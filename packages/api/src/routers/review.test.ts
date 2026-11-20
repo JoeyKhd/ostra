@@ -306,6 +306,53 @@ describe("the task's rounds (F-035, F-101, ticket 28)", () => {
   });
 });
 
+describe("a round's turn without a push (F-035, ticket 41)", () => {
+  it("F-035/c1: a round whose turn ended and saved no new head says so; one still running, or whose push CI hasn't seen yet, says nothing", async () => {
+    const task = await reviewedTask("no-push");
+    const { db } = harness.test;
+    const now = Date.now();
+    const minutes = (n: number) => new Date(now - n * 60_000);
+    const event = async (payload: unknown, createdAt: Date) => {
+      const seq = await appendEvent(harness, task, { organizationId: orgA, projectId }, taskEventSchema.parse(payload));
+      await db.event.update({ where: { taskId_seq: { taskId: task.taskId, seq } }, data: { createdAt } });
+      return seq;
+    };
+    let ordinal = 0;
+    const turn = async (startedAt: Date, endedAt: Date | null) => {
+      const startSeq = await event({ kind: "turn.started", turnId: `turn-${String(ordinal + 1)}` }, startedAt);
+      ordinal += 1;
+      await db.turn.create({ data: { organizationId: orgA, projectId, taskId: task.taskId, sessionId: task.sessionId, ordinal, startSeq, startedAt, endedAt } });
+    };
+    const pushed = (headSha: string, ref = "refs/heads/ostra/no-push") => ({ kind: "git.pushed", repoId: repo1, branch: "ostra/no-push", headSha, ref });
+    const saved = { kind: "session.saved", turnOrdinal: 1, repos: [], archive: null };
+    // CI saw the task's heads before the rounds; the rounds ran in the task's session.
+    await db.ciRun.updateMany({ where: { taskRepo: { taskId: task.taskId } }, data: { firstSeenAt: minutes(45) } });
+    await db.taskRound.updateMany({ where: { taskId: task.taskId, kind: "ci" }, data: { createdAt: minutes(30), turnId: task.sessionId } });
+    await db.taskRound.updateMany({ where: { taskId: task.taskId, kind: "findings" }, data: { createdAt: minutes(10), turnId: task.sessionId } });
+    const head5 = sha("no-push-5");
+    await db.taskRound.create({ data: { organizationId: orgA, projectId, taskId: task.taskId, kind: "ci", number: 2, automatic: true, causeRef: `${head5}.1`, state: "started", turnId: task.sessionId, createdAt: minutes(2) } });
+    await event(pushed(task.head1), minutes(40));
+    // The CI round's turn ended; the runner pushed the branch again at the same head, and only the hidden ref moved.
+    await turn(minutes(29), minutes(25));
+    await event(pushed(task.head1), minutes(25));
+    await event(pushed(sha("no-push-wip"), `refs/ostra/wip/${task.taskId}`), minutes(25));
+    await event(saved, minutes(25));
+    // The findings round's turn pushed a new head that CI hasn't seen yet.
+    await turn(minutes(9), minutes(5));
+    await event(pushed(head5), minutes(5));
+    await event(saved, minutes(5));
+    // The second CI round's turn is still running.
+    await turn(minutes(1), null);
+
+    const view = await (await harness.as(harness.fixture.a.member)).tasks.rounds({ taskId: task.taskId });
+    expect(view.rounds.map((round) => [round.kind, round.number, round.outcome])).toEqual([
+      ["ci", 1, { kind: "no-push", endedAt: minutes(25).getTime() }],
+      ["findings", 1, null],
+      ["ci", 2, null],
+    ]);
+  });
+});
+
 describe("Review settings (F-100, ticket 28)", () => {
   it("F-035/c1: each repo's CI as ostra last saw it, on the newest head a task pushed there, and a repo no task pushed to has none", async () => {
     const task = await reviewedTask("ci-seen", { appliedDraft: false });

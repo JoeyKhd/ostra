@@ -286,6 +286,7 @@
       "releasedMonth": "Released when {month} began.",
       "released": "Released.",
       "pushedPassed": "{agent} pushed {sha}. CI passed.",
+      "noPush": "The turn ended without a push.",
       "pushedFailed": "{agent} pushed {sha}. CI failed again: {check}.",
       "pushedFailedNoCheck": "{agent} pushed {sha}. CI failed again.",
       "pushed": "{agent} pushed {sha}.",

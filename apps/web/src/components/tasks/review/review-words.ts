@@ -64,21 +64,26 @@ export const releasedHoldText = (hold: NonNullable<TaskRound["hold"]>): string |
   return `${head} ${tail}`;
 };
 
-/** The round's outcome after its card: `OpenCode pushed 3f9c21a. CI passed.`; `null` before a push. */
+/**
+ * The round's outcome after its card: `OpenCode pushed 3f9c21a. CI passed.`, or `The turn ended
+ * without a push.`; `null` while the turn runs.
+ */
 export const roundOutcomeText = (outcome: TaskRound["outcome"], agent: string): string | null => {
   if (outcome === null) return null;
+  if (outcome.kind === "no-push") return t("review.round.noPush");
   const sha = outcome.headSha.slice(0, 7);
-  switch (outcome.ci) {
+  const { ci, failing } = outcome;
+  switch (ci) {
     case "passed":
       return t("review.round.pushedPassed", { agent, sha });
     case "failed":
     case "timed_out":
-      return outcome.failing === null ? t("review.round.pushedFailedNoCheck", { agent, sha }) : t("review.round.pushedFailed", { agent, sha, check: outcome.failing });
+      return failing === null ? t("review.round.pushedFailedNoCheck", { agent, sha }) : t("review.round.pushedFailed", { agent, sha, check: failing });
     case "pending":
     case "none":
       return t("review.round.pushed", { agent, sha });
     default:
-      return outcome.ci satisfies never;
+      return ci satisfies never;
   }
 };
 
