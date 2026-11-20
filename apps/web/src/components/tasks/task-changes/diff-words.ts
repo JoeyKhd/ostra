@@ -118,9 +118,12 @@ export type DiffRow =
   | { readonly kind: "gap"; readonly key: string; readonly lines: number }
   | { readonly kind: "line"; readonly key: string; readonly taskRepoId: string; readonly path: string; readonly line: DiffLine }
   | { readonly kind: "comment"; readonly key: string; readonly comment: DiffCommentView }
-  /** Ticket 35: an AI review's finding, and the label over a file's findings off its changed lines. */
+  /**
+   * Ticket 35: an AI review's finding, and the label over a file's findings off its changed lines;
+   * with a `path`, over the findings on a file the PR doesn't change, after the repo's last file.
+   */
   | { readonly kind: "finding"; readonly key: string; readonly finding: DiffFindingView }
-  | { readonly kind: "findings-label"; readonly key: string }
+  | { readonly kind: "findings-label"; readonly key: string; readonly path: string | null }
   | { readonly kind: "field"; readonly key: string; readonly target: CommentTarget; readonly editing: DiffCommentView | null }
   | { readonly kind: "outdated-label"; readonly key: string };
 
@@ -168,7 +171,7 @@ export const rowsOf = (
       const shownLines = new Set(file.body.kind === "hunks" ? file.body.hunks.flatMap((hunk) => hunk.lines.flatMap((line) => { const anchor = anchorOf(line); return anchor === null ? [] : [`${anchor.side}:${String(anchor.line)}`]; })) : []);
       const offDiff = fileFindings.filter((finding) => finding.state !== "outdated" && !shownLines.has(`${finding.side}:${String(finding.line)}`));
       if (offDiff.length > 0) {
-        rows.push({ kind: "findings-label", key: `${key}:findings-off` });
+        rows.push({ kind: "findings-label", key: `${key}:findings-off`, path: null });
         for (const finding of offDiff) rows.push({ kind: "finding", key: `${key}:f:${finding.id}`, finding });
       }
       const body = file.body;
@@ -215,6 +218,15 @@ export const rowsOf = (
           else rows.push({ kind: "comment", key: `${key}:o:${comment.id}`, comment });
         }
       }
+    }
+    // A finding on a file the PR doesn't change (the review posted it in its body): after the
+    // repo's files, under its path, so no finding goes unshown.
+    const changed = new Set(repo.state.files.map((file) => file.path));
+    const elsewhere = findings.filter((finding) => finding.taskRepoId === repo.taskRepoId && finding.state !== "outdated" && !changed.has(finding.path)).sort(byRound);
+    for (const path of [...new Set(elsewhere.map((finding) => finding.path))].sort()) {
+      const key = `${repo.taskRepoId}:other:${path}`;
+      rows.push({ kind: "findings-label", key, path });
+      for (const finding of elsewhere.filter((one) => one.path === path)) rows.push({ kind: "finding", key: `${key}:f:${finding.id}`, finding });
     }
   }
   return rows;

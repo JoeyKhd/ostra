@@ -348,7 +348,11 @@ export const DiffRowView = ({
     case "finding":
       return <>{actions.renderFinding?.(row.finding) ?? null}</>;
     case "findings-label":
-      return <div className="flex h-6 items-center pl-[104px] text-xs text-faint">{t("changes.findingsOffDiff")}</div>;
+      return (
+        <div className="flex h-6 items-center pl-[104px] text-xs text-faint">
+          {row.path === null ? t("changes.findingsOffDiff") : t("changes.findingsOtherFile", { path: row.path })}
+        </div>
+      );
     default:
       return row satisfies never;
   }

@@ -3337,6 +3337,7 @@
     "commentOn": "Comment on line {n}",
     "outdatedComments": "Outdated comments",
     "findingsOffDiff": "Not on a changed line",
+    "findingsOtherFile": "Not in this pull request's changes: {path}",
     "sent": "Sent",
     "draft": "Draft",
     "outdated": "Outdated",
