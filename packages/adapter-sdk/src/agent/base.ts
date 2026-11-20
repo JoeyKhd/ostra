@@ -7,12 +7,14 @@ import type {
   ApprovalRule,
   EffortLevel,
   OptionId,
+  OstraToolSet,
   QuestionField,
   ReasoningControls,
   SessionId,
   StopReason,
   TaskEvent,
   TaskId,
+  TaskKind,
   TaskRule,
   TaskSpecModelLimits,
   ToolCallId,
@@ -172,6 +174,20 @@ export type PrepareLaunchInput = {
   // ---- milestone 4 (ADR 0044) ----
   /** The task's memory. Absent or `null`: the task has none, or its spec came without it. */
   readonly memory?: LaunchMemory | null;
+
+  // ---- milestone 6 (ADR 0028, protocol minor 5) ----
+  /**
+   * The task's kind (the spec's `kind`). A review task's agent never edits; a refine task's edits
+   * only inside its box, and only when its profile allows prototyping. Absent: `code`.
+   */
+  readonly kind?: TaskKind;
+  /** A refine profile's prototyping: edits inside the box (ADR 0028 amended). Read for a refine task only. Absent: `false`. */
+  readonly allowPrototyping?: boolean;
+  /**
+   * The tool sets of ostra's MCP server for the task (the spec's `tools`), so an adapter offers the
+   * agent those tools and no other of ostra's. Absent: `defaultOstraToolSets`, a code task's.
+   */
+  readonly tools?: readonly OstraToolSet[];
 };
 
 /**
