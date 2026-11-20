@@ -7,6 +7,7 @@ import {
   postgresAuditLog,
   postgresChangeNotices,
   postgresCommandOutbox,
+  requestUpdateBranch,
   saveDiffComment,
   sendDiffComments,
   systemClock,
@@ -154,6 +155,26 @@ describe("the diff", () => {
     expect(await test.db.diffCache.count({ where: { repoId: repo(), headSha: head } })).toBe(1);
     // Another organization's member can't read it.
     expect((await taskDiffs(deps, outsider, { taskId: task.taskId })).ok).toBe(false);
+  });
+
+  it("F-070: before the reconcile has measured, Update branch takes how far behind the branch's head compare says, as the Changes tab shows it", async () => {
+    const head = sha("diff-head-behind");
+    codeHost.setCompare("ostra-test/test1", head, compareOf(readmePatch("behind"), { behindBy: 3 }));
+    const task = await runningTask(head);
+    await test.db.taskRepo.update({ where: { id: task.taskRepoId }, data: { behindBy: null, behindCheckedAt: null } });
+    await taskDiffs(deps, driver, { taskId: task.taskId });
+    await fetchDiff(task.taskId, head);
+    const read = await taskDiffs(deps, driver, { taskId: task.taskId });
+    expect(read.ok && read.repos[0]?.state === "ready" ? read.repos[0].diff.behindBy : null).toBe(3);
+    const before = (await userMessages(task.taskId)).length;
+    const updated = await requestUpdateBranch(deps, driver, { taskId: task.taskId });
+    expect(updated).toMatchObject({ ok: true, repos: 1 });
+    const messages = await userMessages(task.taskId);
+    expect(messages).toHaveLength(before + 1);
+    expect(messages.at(-1)?.intent).toBe("update-branch");
+    // A measured figure wins over the compare's: the reconcile said 0, so there's nothing to update.
+    await test.db.taskRepo.update({ where: { id: task.taskRepoId }, data: { behindBy: 0, behindCheckedAt: new Date() } });
+    expect(await requestUpdateBranch(deps, driver, { taskId: task.taskId })).toMatchObject({ ok: false, error: "nothing-behind" });
   });
 
   it("F-027/c1: a patch over the size limit is kept as too large, with the PR's files link", async () => {

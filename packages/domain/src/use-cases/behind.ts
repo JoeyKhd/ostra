@@ -9,6 +9,7 @@ import type { MemberScope } from "../access.ts";
 import { updateBranchPrompt } from "../prompts/index.ts";
 import type { BehindRepo } from "../prompts/index.ts";
 import type { Ports, ServerAdapters } from "../ports.ts";
+import { storedDiffInTx } from "./diff-comments.ts";
 import type { M3Deps, RecordBehind, RequestUpdateBranch } from "./m3-signatures.ts";
 import { sendMemberMessageInTx } from "./member-message.ts";
 import type { SendMemberMessageDeps } from "./member-message.ts";
@@ -185,15 +186,24 @@ export const requestUpdateBranchWith = (deps: M3Deps, extras: UpdateBranchExtras
       if (task === null || !requireProjectAccess(scope, { id: projectIdSchema.parse(task.projectId), organizationId: scope.organizationId, access: task.project.access }, "read").ok) {
         return { ok: false, error: "not-found", message: "No such task" };
       }
-      const behind = await tx.taskRepo.findMany({
-        where: { taskId: task.id, behindBy: { gt: 0 }, state: { in: [...BEHIND_REPO_STATES] } },
+      const candidates = await tx.taskRepo.findMany({
+        where: { taskId: task.id, state: { in: [...BEHIND_REPO_STATES] } },
         orderBy: { createdAt: "asc" },
-        select: { id: true, branchName: true, baseBranch: true, behindBy: true, behindCheckedAt: true, repo: { select: { fullName: true } } },
+        select: { id: true, repoId: true, headSha: true, branchName: true, baseBranch: true, behindBy: true, behindCheckedAt: true, repo: { select: { fullName: true } } },
       });
+      // The figure the Changes tab shows (`diff.get`): the reconcile's or a webhook's, else the compare
+      // of the branch's current head, so the button the tab offers is never refused (F-070).
+      const behind: (typeof candidates[number] & { readonly behindBy: number })[] = [];
+      for (const row of candidates) {
+        const figure = row.behindBy ?? (row.headSha === null ? null : ((await storedDiffInTx(tx, repoIdSchema.parse(row.repoId), row.headSha))?.behindBy ?? null));
+        if (figure !== null && figure > 0) {
+          behind.push({ ...row, behindBy: figure });
+        }
+      }
       if (behind.length === 0) {
         return { ok: false, error: "nothing-behind", message: "No repo of the task is behind its base" };
       }
-      const repos: BehindRepo[] = behind.map((row) => ({ repo: row.repo.fullName, branch: row.branchName, baseBranch: row.baseBranch, behindBy: row.behindBy ?? 0 }));
+      const repos: BehindRepo[] = behind.map((row) => ({ repo: row.repo.fullName, branch: row.branchName, baseBranch: row.baseBranch, behindBy: row.behindBy }));
       // The same repos at the same check are the same request: pressed twice, sent once.
       const key = behind.map((row) => `${row.id}:${String(row.behindBy)}:${String(row.behindCheckedAt?.getTime() ?? 0)}`).join(",");
       const clientMessageId = clientMessageIdSchema.parse(`update-branch:${createHash("sha256").update(key).digest("hex").slice(0, 32)}`);
