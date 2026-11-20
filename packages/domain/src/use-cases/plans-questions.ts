@@ -9,6 +9,7 @@ import {
   planRevisionPrompt,
   planText,
   planTextSchema,
+  organizationIdSchema,
   projectIdSchema,
   questionFieldSchema,
   runnerIdSchema,
@@ -24,6 +25,7 @@ import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import { lateQuestionAnswerPrompt } from "../prompts/index.ts";
 import type { ApprovalEffectDeps } from "./approvals.ts";
+import { checkBudget, holdTurnInTx, sessionModelIdInTx } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
@@ -185,7 +187,26 @@ export const answerPlanInputSchema = z.discriminatedUnion("decision", [
   z.strictObject({ taskId: z.string().min(1), decision: z.literal("revise"), request: planTextSchema.trim().min(1) }),
 ]);
 
-export type AnswerPlanResult = UseCaseResult<{ readonly reopened: boolean }, "not-found" | "not-driver" | "no-plan" | "invalid-input">;
+export type AnswerPlanResult = UseCaseResult<{ readonly reopened: boolean; readonly held?: true }, "not-found" | "not-driver" | "no-plan" | "invalid-input">;
+
+/**
+ * The `plan-answer` command's text for a `plan.answered` event, as the answer built it: the
+ * approved plan's prompt (marked edited when it differs from the newest proposal), or the request.
+ * A held answer's release sends it from the saved event (F-037).
+ */
+export const planAnswerCommandInTx = async (tx: Tx, taskId: string, payload: unknown): Promise<{ readonly decision: "approve" | "revise"; readonly text: string } | null> => {
+  const parsed = taskEventSchema.safeParse(payload);
+  if (!parsed.success || parsed.data.kind !== "plan.answered") {
+    return null;
+  }
+  const answered = parsed.data;
+  if (answered.decision === "revise") {
+    return { decision: "revise", text: planRevisionPrompt(answered.text) };
+  }
+  const proposed = await proposedPlanInTx(tx, taskId);
+  const edited = proposed === null || answered.entries === undefined || !sameSteps(answered.entries, proposed.entries) || (answered.message ?? "").trim() !== proposed.message.trim();
+  return { decision: "approve", text: approvedPlanPrompt({ text: answered.text, edited }) };
+};
 
 /** The newest `plan.proposed` of the task: what the driver saw. */
 const proposedPlanInTx = async (tx: Tx, taskId: string): Promise<PlanProposed | null> => {
@@ -233,11 +254,12 @@ export const answerPlan = async (
       const sessionId = going === null ? await newestSessionInTx(tx, task.id) : sessionIdSchema.parse(going.session.id);
 
       let commandText: string;
+      let answeredSeq;
       if (input.decision === "approve") {
         const text = planText(input.entries, input.message);
         const edited = !sameSteps(input.entries, proposed.entries) || input.message.trim() !== proposed.message.trim();
         commandText = approvedPlanPrompt({ text, edited });
-        await appendServerEvent(tx, {
+        answeredSeq = await appendServerEvent(tx, {
           organizationId,
           projectId,
           taskId: task.id,
@@ -248,7 +270,7 @@ export const answerPlan = async (
         await tx.task.update({ where: { id: task.id }, data: { planState: "approved" } });
       } else {
         commandText = planRevisionPrompt(input.request);
-        await appendServerEvent(tx, {
+        answeredSeq = await appendServerEvent(tx, {
           organizationId,
           projectId,
           taskId: task.id,
@@ -279,6 +301,21 @@ export const answerPlan = async (
         return { ok: true, reopened: true };
       }
       await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "plan_answered", boxWarm: true });
+      // Milestone 4 (F-037, ADR 0055): the answer starts the next turn of an idle session, so it
+      // passes the budget gate first. A closed gate holds the turn; its release sends the answer.
+      if (going.session.state === "idle") {
+        const gate = await checkBudget(tx, {
+          organizationId: organizationIdSchema.parse(organizationId),
+          projectId,
+          modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: going.session.agentProfileId, modelId: going.session.modelId }),
+          origin: "message",
+          now,
+        });
+        if (gate.kind === "held") {
+          await holdTurnInTx(deps, tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: answeredSeq, now, queued: false });
+          return { ok: true, reopened: false, held: true };
+        }
+      }
       await deps.outbox.enqueueInTx(tx, organizationId, going.runnerId, {
         kind: "plan-answer",
         body: { sessionId, decision: input.decision, text: commandText },

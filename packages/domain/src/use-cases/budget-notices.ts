@@ -29,6 +29,7 @@ import type { NotificationChannel } from "../notifications/choices.ts";
 import type { Ports } from "../ports.ts";
 import { BUDGET_WARN_PERCENT_DEFAULT, budgetsForProjectInTx, checkBudget, monthSpendInTx, sessionModelIdInTx } from "./budgets.ts";
 import type { M4Deps, SetBudget } from "./m4-signatures.ts";
+import { planAnswerCommandInTx } from "./plans-questions.ts";
 import { appendServerEvent } from "./server-events.ts";
 
 // Budget notices and their release (F-037, F-115, ADR 0055, ADR 0050; ticket 13). `budget.check`
@@ -376,7 +377,16 @@ export const releaseHeldTurnsInTx = async (
         tx.event.findFirst({ where: { taskId: task.id, seq: turn.pendingMessageSeq }, select: { payload: true } }),
       ]);
       const message = steerPayloadSchema.safeParse(event?.payload);
-      if (lease !== null && message.success) {
+      // A held plan answer (F-063): sent as the answer it was, so the session leaves plan mode.
+      const answer = message.success ? null : await planAnswerCommandInTx(tx, task.id, event?.payload);
+      if (lease !== null && answer !== null) {
+        await deps.outbox.enqueueInTx(tx, input.organizationId, runnerIdSchema.parse(lease.runnerId), {
+          kind: "plan-answer",
+          body: { sessionId: sessionIdSchema.parse(session.id), decision: answer.decision, text: answer.text },
+          notAfter: now + runnerLimits.offerTimeoutMs,
+          task: { taskId: task.id, projectId },
+        });
+      } else if (lease !== null && message.success) {
         await deps.outbox.enqueueInTx(tx, input.organizationId, runnerIdSchema.parse(lease.runnerId), {
           kind: "steer",
           body: {

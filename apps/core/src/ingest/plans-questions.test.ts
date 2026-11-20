@@ -2,11 +2,11 @@ import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
-import { answerPlan, answerQuestion, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import { answerPlan, answerQuestion, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, releaseHeldTurnsInTx, systemClock } from "@ostra/domain";
 import type { AnswerDeps, MemberScope } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { memberIdSchema, questionIdSchema, readMarkedBlocks, turnIdSchema } from "@ostra/protocol";
+import { budgetIdSchema, memberIdSchema, questionIdSchema, readMarkedBlocks, turnIdSchema } from "@ostra/protocol";
 import type { EventsFrame, PlanEntry, QuestionId, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -124,6 +124,43 @@ afterAll(async () => {
 });
 
 describe("plan first", () => {
+  it("F-037: a plan's approval past 100% of the budget holds the build turn, and the release sends the answer", async () => {
+    const { task } = await planned();
+    const organizationId = fixture.a.organization.id;
+    const provider = await test.db.modelProvider.create({
+      data: { organizationId, name: `Gate provider ${task.taskId}`, baseUrl: "https://models.example.com/v1", apiFormat: "openai_compatible", authScheme: "bearer", tokenSecretRef: `secret:${task.taskId}` },
+    });
+    const model = await test.db.model.create({ data: { organizationId, providerId: provider.id, endpointModelId: `gate-${task.taskId}` } });
+    const now = new Date();
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    await test.db.spendDaily.create({ data: { organizationId, projectId: fixture.a.openProject.id, day, modelId: model.id, spentMicroUsd: 2_000_000n } });
+    const budget = await test.db.budget.create({ data: { organizationId, projectId: fixture.a.openProject.id, monthlyMicroUsd: 1_000_000n } });
+    try {
+      expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: task.taskId, decision: "approve", entries, message: MESSAGE })).toEqual({ ok: true, reopened: false, held: true });
+      // Held: no plan-answer goes to the runner, the turn is held under the budget, the answer saved.
+      expect(await commandsOf(task.taskId)).toEqual([]);
+      const held = await test.db.heldTurn.findFirstOrThrow({ where: { taskId: task.taskId } });
+      expect(held).toMatchObject({ budgetId: budget.id, releasedAt: null });
+      const saved = await test.db.event.findFirstOrThrow({ where: { taskId: task.taskId, seq: held.pendingMessageSeq ?? -1 } });
+      expect(saved.kind).toBe("plan.answered");
+      expect(await eventsOf(task.taskId, "turn.held")).toHaveLength(1);
+      expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).planState).toBe("approved");
+      // Raised: the release sends the answer as a plan-answer, so the session leaves plan mode.
+      await test.db.budget.update({ where: { id: budget.id }, data: { monthlyMicroUsd: 100_000_000n } });
+      const released = await test.db.$transaction((tx) =>
+        releaseHeldTurnsInTx({ jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock }, tx, { organizationId, budgetId: budgetIdSchema.parse(budget.id) }),
+      );
+      expect(released.released).toBe(1);
+      const commands = await commandsOf(task.taskId);
+      expect(commands).toMatchObject([{ kind: "plan_answer", body: { sessionId: task.sessionId, decision: "approve" } }]);
+      expect(commandText(commands[0]?.body)).toContain("A member approved your plan. It is below.");
+    } finally {
+      await test.db.heldTurn.deleteMany({ where: { taskId: task.taskId } });
+      await test.db.budget.delete({ where: { id: budget.id } });
+      await test.db.spendDaily.deleteMany({ where: { modelId: model.id } });
+    }
+  });
+
   it("F-063: a plan raises one item for the driver, sets planState to proposed, and the task needs you", async () => {
     const { task, seq } = await planned();
     const row = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
