@@ -32,9 +32,15 @@ export const fixedWindowLimiter = (input: { readonly limit: number; readonly win
   };
 };
 
-/** The client's address as the proxy in front of the panel reports it, or `unknown`. */
+/**
+ * The client's address as the proxy in front of the panel reports it, or `unknown`. A proxy appends
+ * the address it saw to `X-Forwarded-For`, after whatever the client sent, so only the last hop is
+ * the proxy's word: the ones before it are the client's own, and a fresh one each request would make
+ * a fresh window. With no proxy, Next.js sets the header to the socket's address when the request has
+ * none. A chain of proxies gives the nearest one's address, which limits more, never less.
+ */
 export const clientAddressOf = (headers: Headers): string => {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const forwarded = headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
   if (forwarded !== undefined && forwarded !== "") {
     return forwarded;
   }

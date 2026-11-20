@@ -86,6 +86,20 @@ const REPLACED_ORGANIZATION_PATHS: ReadonlyMap<string, string> = new Map([
   ["/organization/update-member-role", "An organization admin changes roles on the Members page"],
 ]);
 
+/**
+ * better-auth's organization and admin plugins serve HTTP routes the panel never calls: it goes through
+ * ostra's own procedures (`members.*`, `instance.*`, `accounts.*`), which read a membership's state,
+ * keep the last-admin locks and write the audit entries. better-auth's routes check only that a member
+ * row exists and its role, so a removed or unverified member could still list invitations (each ID is
+ * a link's secret), invite, rename the organization or read every address, and an instance admin could
+ * drop the last instance admin or make an account with no invitation (ADR 0053, ADR 0054). Every one
+ * of them is refused over HTTP. Server code may still call `auth.api.*` directly: it holds ostra's rules.
+ */
+const SERVED_ONLY_TO_SERVER_CODE: readonly string[] = ["/organization/", "/admin/"];
+
+/** Whether better-auth's route at `path` is one the panel never calls over HTTP. */
+export const isServerOnlyAuthPath = (path: string): boolean => SERVED_ONLY_TO_SERVER_CODE.some((prefix) => path.startsWith(prefix));
+
 const ONE_DAY_SECONDS = 24 * 60 * 60;
 const ONE_HOUR_SECONDS = 60 * 60;
 
@@ -373,6 +387,11 @@ export const createAuth = (input: CreateAuthInput) => {
         const replaced = REPLACED_ORGANIZATION_PATHS.get(ctx.path);
         if (replaced !== undefined) {
           throw new APIError("FORBIDDEN", { code: "USE_OSTRA", message: replaced });
+        }
+        // An HTTP request (a browser's, or anyone's with a cookie) reaches none of the organization and
+        // admin plugins' routes; only a direct `auth.api.*` call has no request.
+        if (ctx.request !== undefined && isServerOnlyAuthPath(ctx.path)) {
+          throw new APIError("FORBIDDEN", { code: "USE_OSTRA", message: "Use ostra's panel for this" });
         }
         // F-001: the seeded admin with the default password changes it before anything else.
         const { sessionOf } = finished;

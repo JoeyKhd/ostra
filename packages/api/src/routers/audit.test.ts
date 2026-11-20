@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mapMember } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import type { AuditInput } from "@ostra/domain";
-import { approvalIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, memberIdSchema, poolIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
 import { minor2FieldFixtures } from "@ostra/protocol/testing";
 import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -114,6 +114,46 @@ describe("audit.list", () => {
     expect(await trpcFailure(member.audit.list({ projectId: restrictedId }))).toMatchObject({ code: "NOT_FOUND" });
   });
 
+  it("F-073: an entry names its entity: the live record's label, the label its data recorded once the record is gone, else the ID", async () => {
+    const { a } = harness.fixture;
+    const keyed = await seedTask(harness, { organizationId: orgA, projectId: openId, title: "Add a square root key" });
+    await harness.test.db.task.update({ where: { id: keyed.taskId }, data: { ticketKey: "CALC-161" } });
+    const titled = await seedTask(harness, { organizationId: orgA, projectId: openId, title: "Fix the divide button" });
+    const gonePool = poolIdSchema.parse(randomUUID());
+    const goneTask = taskIdSchema.parse(randomUUID());
+    const member = { kind: "member" as const, id: a.admin.id };
+    await record({ organizationId: orgA, projectId: openId, actor: member, action: "task.stopped", entity: "task", entityId: keyed.taskId });
+    await record({ organizationId: orgA, projectId: openId, actor: member, action: "task.stopped", entity: "task", entityId: titled.taskId });
+    await record({ organizationId: orgA, projectId: null, actor: member, action: "member.role-changed", entity: "member", entityId: memberIdSchema.parse(a.insider.id), data: { role: "admin" } });
+    await record({ organizationId: orgA, projectId: null, actor: member, action: "pool.updated", entity: "runner-pool", entityId: gonePool, data: { name: "build-pool" } });
+    await record({ organizationId: orgA, projectId: openId, actor: member, action: "task.stopped", entity: "task", entityId: goneTask });
+
+    const all = await listAll(admin, {}, 50);
+    const labelOf = (entityId: string) => all.find((entry) => entry.entityId === entityId)?.entityLabel;
+    expect(labelOf(keyed.taskId)).toBe("CALC-161");
+    expect(labelOf(titled.taskId)).toBe("Fix the divide button");
+    const insider = await harness.test.db.user.findUniqueOrThrow({ where: { id: a.insider.userId } });
+    expect(labelOf(a.insider.id)).toBe(insider.name);
+    expect(labelOf(orgA)).toBe(a.organization.name);
+    expect(labelOf(restrictedId)).toBe(a.restrictedProject.name);
+    expect(labelOf(gonePool)).toBe("build-pool");
+    expect(labelOf(goneTask)).toBe(goneTask);
+    // An entry about no entity has no label.
+    expect(all.find((entry) => entry.action === "budget.cleared")?.entityLabel).toBeNull();
+    // Another organization's record never lends its label: B's project named in A's log reads as its ID.
+    await record({ organizationId: orgA, projectId: null, actor: member, action: "project.access-changed", entity: "project", entityId: harness.fixture.b.project.id });
+    expect(labelOf(harness.fixture.b.project.id)).toBeUndefined();
+    const again = await listAll(admin, { entityId: harness.fixture.b.project.id }, 50);
+    expect(again.map((entry) => entry.entityLabel)).toEqual([harness.fixture.b.project.id]);
+  });
+
+  it("F-073: the Actor filter's Runners and System choices read every runner's entries, and the system's", async () => {
+    expect(actions(await listAll(admin, { actorKind: "runner" }))).toEqual(["runner.registered"]);
+    expect(actions(await listAll(admin, { actorKind: "system" }))).toEqual(["pr.merged"]);
+    const response = await exportAs(harness.fixture.a.admin, "?actorKind=system");
+    expect(parseCsv(await response.text()).slice(1).map((row) => row[4])).toEqual(["pr.merged"]);
+  });
+
   it("F-073: another organization's entries never appear, and its project is NOT_FOUND", async () => {
     const { b } = harness.fixture;
     const all = await listAll(admin, {}, 50);
@@ -150,13 +190,27 @@ describe("the CSV export", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/csv");
       const rows = parseCsv(await response.text());
+      // The target's columns (audit-log.md, "Export CSV"), and its file name.
+      expect(rows[0]).toEqual(["time", "actor_kind", "actor_id", "actor_name", "action", "entity", "entity_id", "entity_label", "project_id", "project_name", "data"]);
       expect(rows[0]).toEqual([...AUDIT_CSV_COLUMNS]);
+      const day = new Date().toISOString().slice(0, 10);
+      expect(response.headers.get("content-disposition")).toBe(`attachment; filename="audit-${harness.fixture.a.organization.slug}-${day}.csv"`);
       const listed = await listAll(admin, filter, 2);
       expect(rows.slice(1)).toEqual(parseCsv(listed.map((entry) => `${auditCsvRow(entry)}\r\n`).join("")));
       expect(rows.length - 1).toBe(listed.length);
       // Field by field from the list's own entries, not only through the same formatter.
-      expect(rows.slice(1).map((row) => [row[1], row[3], row[4], row[6], row[8]])).toEqual(
-        listed.map((entry) => [entry.actor.name ?? "", entry.actor.id ?? "", entry.action, entry.entityId ?? "", entry.project?.name ?? ""]),
+      expect(rows.slice(1).map((row) => row.slice(1, 10))).toEqual(
+        listed.map((entry) => [
+          entry.actor.kind,
+          entry.actor.id ?? "",
+          entry.actor.name ?? "",
+          entry.action,
+          entry.entity ?? "",
+          entry.entityId ?? "",
+          entry.entityLabel ?? "",
+          entry.project?.id ?? "",
+          entry.project?.name ?? "",
+        ]),
       );
     }
     expect((await exportAs(projectAdmin, `?projectId=${restrictedId}`)).status).toBe(200);

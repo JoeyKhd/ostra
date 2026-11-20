@@ -27,6 +27,8 @@ export const auditFilterSchema = z.strictObject({
   projectId: projectIdSchema.optional(),
   /** The member, runner or job that acted. */
   actorId: z.string().min(1).max(64).optional(),
+  /** Every runner's entries, or the system's (audit-log.md: the Actor filter's `Runners` and `System`). */
+  actorKind: z.enum(["member", "runner", "system"]).optional(),
   action: auditActionFilterSchema.optional(),
   entity: z.string().min(1).max(40).optional(),
   entityId: z.string().min(1).max(128).optional(),
@@ -56,6 +58,12 @@ export const auditEntryViewSchema = z.object({
   action: z.string(),
   entity: z.string().nullable(),
   entityId: z.string().nullable(),
+  /**
+   * What the entity is called (audit-log.md, the Entity column): a task's ticket key or title, a
+   * member's or a record's name, read from the live record; a label the entry recorded in its data
+   * when the record is gone; else its ID. `null` for an entry about no entity.
+   */
+  entityLabel: z.string().nullable(),
   /** The task an entry is about, so the panel can open its event log. */
   taskId: z.string().nullable(),
   project: z.object({ id: projectIdSchema, name: z.string() }).nullable(),
@@ -87,6 +95,7 @@ const whereOf = (organizationId: string, filter: AuditFilter, cursor: AuditCurso
   const and: Prisma.AuditEntryWhereInput[] = [{ organizationId }];
   if (filter.projectId !== undefined) and.push({ projectId: filter.projectId });
   if (filter.actorId !== undefined) and.push({ actorId: filter.actorId });
+  if (filter.actorKind !== undefined) and.push({ actorKind: filter.actorKind });
   if (filter.action !== undefined) and.push(filter.action.endsWith(".") ? { action: { startsWith: filter.action } } : { action: filter.action });
   if (filter.entity !== undefined) and.push({ entity: filter.entity });
   if (filter.entityId !== undefined) and.push({ entityId: filter.entityId });
@@ -105,6 +114,66 @@ const taskIdOf = (entity: string | null, entityId: string | null, data: unknown)
   }
   const fromData: unknown = typeof data === "object" && data !== null ? Reflect.get(data, "taskId") : undefined;
   return typeof fromData === "string" ? fromData : null;
+};
+
+/** A label the writer recorded in an entry's data, for a record since gone. */
+const recordedLabelOf = (data: unknown): string | null => {
+  if (typeof data !== "object" || data === null) return null;
+  for (const key of ["label", "name", "title", "ticketKey"]) {
+    const value: unknown = Reflect.get(data, key);
+    if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return null;
+};
+
+type LabelRow = { readonly id: string; readonly label: string | null };
+
+/** The live records' labels for one page, keyed `entity:id`; every read stays inside the organization. */
+const liveLabels = async (
+  db: DbOrTx,
+  organizationId: string,
+  rows: readonly { readonly entity: string | null; readonly entityId: string | null }[],
+): Promise<ReadonlyMap<string, string>> => {
+  const named = (list: readonly { readonly id: string; readonly name: string }[]): LabelRow[] => list.map((row) => ({ id: row.id, label: row.name }));
+  const inOrg = { organizationId };
+  const readers: Readonly<Record<string, (ids: string[]) => Promise<LabelRow[]>>> = {
+    task: async (ids) =>
+      (await db.task.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, ticketKey: true, title: true } })).map((row) => ({ id: row.id, label: row.ticketKey ?? row.title })),
+    member: async (ids) =>
+      (await db.member.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, user: { select: { name: true } } } })).map((row) => ({ id: row.id, label: row.user.name })),
+    user: async (ids) => named(await db.user.findMany({ where: { id: { in: ids }, members: { some: inOrg } }, select: { id: true, name: true } })),
+    organization: async (ids) => named(await db.organization.findMany({ where: { id: { in: ids.filter((id) => id === organizationId) } }, select: { id: true, name: true } })),
+    project: async (ids) => named(await db.project.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, name: true } })),
+    "runner-pool": async (ids) => named(await db.runnerPool.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, name: true } })),
+    runner: async (ids) => named(await db.runner.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, name: true } })),
+    "model-provider": async (ids) => named(await db.modelProvider.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, name: true } })),
+    "agent-profile": async (ids) => named(await db.agentProfile.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, name: true } })),
+    automation: async (ids) => named(await db.automation.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, name: true } })),
+    "memory-note": async (ids) =>
+      (await db.memoryNote.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, title: true } })).map((row) => ({ id: row.id, label: row.title })),
+    "join-token": async (ids) =>
+      (await db.joinToken.findMany({ where: { ...inOrg, id: { in: ids } }, select: { id: true, label: true } })).map((row) => ({ id: row.id, label: row.label })),
+  };
+  const idsByEntity = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (row.entity === null || row.entityId === null || !Object.hasOwn(readers, row.entity)) continue;
+    const ids = idsByEntity.get(row.entity) ?? new Set<string>();
+    ids.add(row.entityId);
+    idsByEntity.set(row.entity, ids);
+  }
+  const reads = await Promise.all(
+    [...idsByEntity].map(async ([entity, ids]) => {
+      const read = readers[entity];
+      return { entity, found: read === undefined ? [] : await read([...ids]) };
+    }),
+  );
+  const labels = new Map<string, string>();
+  for (const { entity, found } of reads) {
+    for (const row of found) {
+      if (row.label !== null && row.label.trim() !== "") labels.set(`${entity}:${row.id}`, row.label);
+    }
+  }
+  return labels;
 };
 
 /**
@@ -127,9 +196,10 @@ export const auditPage = async (
   const page = rows.slice(0, limit);
   const memberIds = [...new Set(page.flatMap((row) => (row.actorKind === "member" && row.actorId !== null ? [row.actorId] : [])))];
   const projectIds = [...new Set(page.flatMap((row) => (row.projectId === null ? [] : [row.projectId])))];
-  const [members, projects] = await Promise.all([
+  const [members, projects, labels] = await Promise.all([
     db.member.findMany({ where: { organizationId: scope.organizationId, id: { in: memberIds } }, select: { id: true, state: true, user: { select: { name: true } } } }),
     db.project.findMany({ where: { organizationId: scope.organizationId, id: { in: projectIds } }, select: { id: true, name: true } }),
+    liveLabels(db, scope.organizationId, page),
   ]);
   const memberById = new Map(members.map((row) => [row.id, row] as const));
   const projectById = new Map(projects.map((row) => [row.id, row.name] as const));
@@ -143,6 +213,7 @@ export const auditPage = async (
       action: row.action,
       entity: row.entity,
       entityId: row.entityId,
+      entityLabel: row.entity === null ? null : (labels.get(`${row.entity}:${row.entityId ?? ""}`) ?? recordedLabelOf(row.data) ?? row.entityId),
       taskId: taskIdOf(row.entity, row.entityId, row.data),
       project: row.projectId === null || projectName === undefined ? null : { id: projectIdSchema.parse(row.projectId), name: projectName },
       data: row.data,
@@ -154,7 +225,8 @@ export const auditPage = async (
 
 // ---------- the CSV export ----------
 
-export const AUDIT_CSV_COLUMNS = ["time", "actor", "actor kind", "actor ID", "action", "entity", "entity ID", "task ID", "project", "data"] as const;
+/** The export's columns (audit-log.md, "Export CSV"). */
+export const AUDIT_CSV_COLUMNS = ["time", "actor_kind", "actor_id", "actor_name", "action", "entity", "entity_id", "entity_label", "project_id", "project_name", "data"] as const;
 
 /** One CSV field: always quoted; a leading `=`, `+`, `-`, `@`, tab or return is defused for spreadsheets. */
 export const csvField = (value: string): string => {
@@ -166,13 +238,14 @@ export const csvField = (value: string): string => {
 export const auditCsvRow = (entry: AuditEntryView): string =>
   [
     new Date(entry.at).toISOString(),
-    entry.actor.name === null ? "" : entry.actor.removed ? `${entry.actor.name} (removed)` : entry.actor.name,
     entry.actor.kind,
     entry.actor.id ?? "",
+    entry.actor.name === null ? "" : entry.actor.removed ? `${entry.actor.name} (removed)` : entry.actor.name,
     entry.action,
     entry.entity ?? "",
     entry.entityId ?? "",
-    entry.taskId ?? "",
+    entry.entityLabel ?? "",
+    entry.project?.id ?? "",
     entry.project?.name ?? "",
     entry.data === null || entry.data === undefined ? "" : JSON.stringify(entry.data),
   ]
@@ -188,7 +261,7 @@ const textResponse = (status: number, text: string): Response =>
 /** The filters from the export's query parameters: the list's, by the same names. */
 export const auditFilterFromQuery = (params: URLSearchParams): z.ZodSafeParseResult<AuditFilter> => {
   const raw: Record<string, string | number> = {};
-  for (const key of ["projectId", "actorId", "action", "entity", "entityId"] as const) {
+  for (const key of ["projectId", "actorId", "actorKind", "action", "entity", "entityId"] as const) {
     const value = params.get(key);
     if (value !== null && value !== "") raw[key] = value;
   }
@@ -247,11 +320,13 @@ export const serveAuditExport = async (ctx: Context, url: URL, options: { readon
     },
   });
   const day = new Date(ctx.deps.ports.clock.now()).toISOString().slice(0, 10);
+  const organization = await db.organization.findUnique({ where: { id: scope.organizationId }, select: { slug: true } });
+  const slug = (organization?.slug ?? "organization").replace(/[^a-zA-Z0-9-]/g, "-");
   return new Response(body, {
     status: 200,
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="audit-log-${day}.csv"`,
+      "content-disposition": `attachment; filename="audit-${slug}-${day}.csv"`,
       "x-content-type-options": "nosniff",
       "cache-control": "private, no-store",
     },

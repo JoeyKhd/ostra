@@ -91,7 +91,7 @@ export type RemovalCounts = {
 /**
  * Removes a membership (ADR 0053, Q191), in one transaction: marked removed and kept, so history keeps
  * its name; its project roles dropped; its personal runners in the organization revoked (F-014's
- * revoke); its CLI sessions revoked; each task it drives handed to nobody (`driver.changed`, its
+ * revoke); its CLI sessions revoked; its login sessions out of the organization; each task it drives handed to nobody (`driver.changed`, its
  * driver's needs-you items falling back to the project's members); its draft diff comments deleted;
  * the invitations it sent and that still wait revoked; and the audit entry. An admin can't remove
  * themselves, and the last active admin can't be removed.
@@ -146,6 +146,9 @@ export const removeMember = async (
     }
 
     const cliSessions = await tx.cliSession.updateMany({ where: { organizationId, memberId: target.id, revokedAt: null }, data: { revokedAt: at } });
+    // Its login sessions leave the organization: still signed in, so the panel can say they're no
+    // longer a member, but no session of theirs names the organization any more.
+    await tx.authSession.updateMany({ where: { userId: target.userId, activeOrganizationId: organizationId }, data: { activeOrganizationId: null } });
 
     // The tasks it drives: driven by nobody from now, and their driver's items go to the project's members.
     const driven = await tx.task.findMany({ where: { organizationId, driverMemberId: target.id }, select: { id: true }, orderBy: { id: "asc" } });

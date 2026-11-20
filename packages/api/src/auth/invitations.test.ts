@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { SeededMember } from "@ostra/db/testing";
 import { hashCliToken, inviteMember, mintMembershipVerification } from "@ostra/domain";
+import { memberIdSchema } from "@ostra/protocol";
 import { createEmailVerificationToken } from "better-auth/api";
 import { hashPassword } from "better-auth/crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -237,6 +238,25 @@ describe("sign-up through an invitation", () => {
     expect(await trpcFailure(prober.invitations.preview({ invitationId: "guess-31" }))).toMatchObject({ code: "TOO_MANY_REQUESTS" });
     expect(await from("203.0.113.10").invitations.preview({ invitationId: "guess-31" })).toEqual({ state: "not-found" });
   });
+
+  it("F-002: a forged leading X-Forwarded-For value opens no new window: the proxy's last hop is the address", async () => {
+    // What a proxy forwards: whatever the client sent, a new value each time, then the address it saw.
+    const forged = (attempt: number) =>
+      harness
+        .callerFor({
+          deps: harness.deps,
+          headers: new Headers({ "x-forwarded-for": `198.51.100.${String(attempt % 250)}, 203.0.113.77` }),
+          resHeaders: new Headers(),
+          user: null,
+          member: null,
+          revalidate: () => Promise.resolve(null),
+        })
+        .invitations.preview({ invitationId: `forged-${String(attempt)}` });
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      expect(await forged(attempt)).toEqual({ state: "not-found" });
+    }
+    expect(await trpcFailure(forged(30))).toMatchObject({ code: "TOO_MANY_REQUESTS" });
+  });
 });
 
 describe("with email set up", () => {
@@ -369,6 +389,97 @@ describe("an existing account", () => {
       const refused = await call("POST", path, { invitationId: "x", memberIdOrEmail: "x", organizationId, memberId: "x", role: "member" }, { cookie: cookie.get("cookie") ?? "" });
       expect({ path, ...refused.body }).toMatchObject({ path, code: "USE_OSTRA" });
     }
+  });
+});
+
+describe("better-auth's own organization and admin routes", () => {
+  /** The routes a member's cookie could use to act in the organization behind ostra's back. */
+  const actingRoutes = (email: string) =>
+    [
+      ["POST", "/organization/invite-member", { email, role: "admin", organizationId }],
+      ["GET", `/organization/list-invitations?organizationId=${organizationId}`, null],
+      ["POST", "/organization/update", { data: { name: "Renamed behind ostra's back" }, organizationId }],
+    ] as const;
+
+  const answersOf = async (cookie: Headers, routes: readonly (readonly ["GET" | "POST", string, object | null])[]) => {
+    const answers: { readonly path: string; readonly status: number; readonly code: string | undefined }[] = [];
+    for (const [method, path, body] of routes) {
+      const answer = await call(method, path, body, { cookie: cookie.get("cookie") ?? "" });
+      answers.push({ path, status: answer.status, code: answer.body.code });
+    }
+    return answers;
+  };
+
+  const refusals = (routes: readonly (readonly [string, string, unknown])[]) => routes.map(([, path]) => ({ path, status: 403, code: "USE_OSTRA" }));
+
+  const signedUpMember = async (label: string, role: "admin" | "member") => {
+    const who = fresh(label);
+    const invited = await inviteOf(who.email, { role });
+    const signedUp = await signUp({ ...who, invitationId: invited.invitationId });
+    expect(signedUp.status).toBe(200);
+    const member = await memberOf(who.email);
+    if (member === null) throw new Error("no membership");
+    return { member, cookie: cookieHeaderFrom(signedUp.headers) };
+  };
+
+  it("F-002: a removed admin's cookie, and an unverified admin's, are refused better-auth's invite, invitation list and rename routes", async () => {
+    const removed = await signedUpMember("removed-admin", "admin");
+    expect(removed.member).toMatchObject({ state: "active", role: "admin" });
+    expect(await harness.test.db.authSession.count({ where: { userId: removed.member.userId, activeOrganizationId: organizationId } })).toBeGreaterThan(0);
+    await admin.members.remove({ memberId: memberIdSchema.parse(removed.member.id) });
+    // The removal takes the organization out of its login sessions, in the removal's transaction.
+    expect(await harness.test.db.authSession.count({ where: { userId: removed.member.userId, activeOrganizationId: organizationId } })).toBe(0);
+
+    harness.emailSwitch.on = true;
+    const unverified = await signedUpMember("unverified-admin", "admin");
+    expect(unverified.member).toMatchObject({ state: "pending_verification", role: "admin" });
+
+    const invitationsBefore = await harness.test.db.invitation.count({ where: { organizationId } });
+    const auditBefore = await harness.test.db.auditEntry.count({ where: { organizationId } });
+    for (const { cookie } of [removed, unverified]) {
+      const routes = actingRoutes(fresh("smuggled").email);
+      expect(await answersOf(cookie, routes)).toEqual(refusals(routes));
+    }
+    expect(await harness.test.db.invitation.count({ where: { organizationId } })).toBe(invitationsBefore);
+    expect(await harness.test.db.organization.findUniqueOrThrow({ where: { id: organizationId } })).toMatchObject({ name: harness.fixture.a.organization.name });
+    expect(await harness.test.db.auditEntry.count({ where: { organizationId } })).toBe(auditBefore);
+  });
+
+  it("F-003: a member's cookie is refused better-auth's member list and full organization, which would show every address", async () => {
+    const { cookie } = await signedUpMember("plain-member", "member");
+    const routes = [
+      ["GET", `/organization/list-members?organizationId=${organizationId}`, null],
+      ["GET", `/organization/get-full-organization?organizationId=${organizationId}`, null],
+      ["GET", "/organization/get-active-member", null],
+      ["GET", "/organization/list", null],
+    ] as const;
+    expect(await answersOf(cookie, routes)).toEqual(refusals(routes));
+  });
+
+  it("F-003: better-auth's admin routes are refused over HTTP: the last instance admin keeps the role, and no account is made without an invitation", async () => {
+    const self = harness.fixture.a.admin.userId;
+    if ((await harness.test.db.account.count({ where: { userId: self, providerId: "credential" } })) === 0) {
+      await givePassword(self);
+    }
+    const account = await harness.test.db.user.findUniqueOrThrow({ where: { id: self } });
+    const cookie = await signIn(account.email);
+    const instanceAdminsBefore = await harness.test.db.user.count({ where: { role: "admin" } });
+    const who = fresh("backdoor");
+    const target = harness.fixture.a.member.userId;
+    const routes = [
+      ["POST", "/admin/set-role", { userId: self, role: "user" }],
+      ["POST", "/admin/create-user", { email: who.email, password: TEST_PASSWORD, name: who.username, data: { username: who.username } }],
+      ["POST", "/admin/impersonate-user", { userId: target }],
+      ["POST", "/admin/set-user-password", { userId: target, newPassword: "taken-over-passphrase-1" }],
+      ["POST", "/admin/ban-user", { userId: target }],
+      ["POST", "/admin/revoke-user-sessions", { userId: target }],
+      ["POST", "/admin/remove-user", { userId: target }],
+    ] as const;
+    expect(await answersOf(cookie, routes)).toEqual(refusals(routes));
+    expect(await harness.test.db.user.findUniqueOrThrow({ where: { id: self } })).toMatchObject({ role: "admin" });
+    expect(await harness.test.db.user.count({ where: { role: "admin" } })).toBe(instanceAdminsBefore);
+    expect(await harness.test.db.user.count({ where: { email: who.email } })).toBe(0);
+    expect(await harness.test.db.user.findUniqueOrThrow({ where: { id: target } })).toMatchObject({ banned: false });
   });
 });
 
