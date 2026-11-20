@@ -82,7 +82,7 @@ export const queueTask: QueueTask = async (deps, input) => {
       queuedAt: true,
       agentProfileId: true,
       ticket: { select: { priority: true } },
-      sessions: { where: { state: "starting" }, select: { agentProfileId: true }, orderBy: { startedAt: "desc" }, take: 1 },
+      sessions: { where: { state: "starting" }, select: { agentProfileId: true, startedAt: true }, orderBy: { startedAt: "desc" }, take: 1 },
     },
   });
   if (row === null) {
@@ -99,8 +99,10 @@ export const queueTask: QueueTask = async (deps, input) => {
     data: {
       queuePriority,
       requiredLabels: [...new Set(profile?.runnerLabels ?? [])].sort(),
-      // A requeue keeps its first time, so it keeps its place.
-      ...(input.keepPlace && row.queuedAt !== null ? {} : { queuedAt: new Date(deps.clock.now()) }),
+      // A requeue keeps its first time, so it keeps its place. A task's first time is when its start
+      // was asked for (its starting session's), not when this job ran: dispatch jobs run late and in
+      // any order, and the queue keeps the order tasks came in.
+      ...(input.keepPlace && row.queuedAt !== null ? {} : { queuedAt: row.sessions[0]?.startedAt ?? new Date(deps.clock.now()) }),
     },
   });
   const poolIds = goesToPersonalRunner(row) ? [] : (await projectPoolsInTx(tx, input.organizationId, projectIdSchema.parse(row.projectId))).map((entry) => entry.poolId);

@@ -453,6 +453,23 @@ describe("the pool queue and its admission (F-067)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([older.taskId]);
   });
 
+  it("F-067: the queue keeps the order tasks were started in, however late and out of order their dispatch jobs run", async () => {
+    const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
+    await dockerRunner(poolId, 1);
+    const first = await queued(projectA);
+    const second = await queued(projectA);
+    const at = Date.now();
+    await test.db.session.update({ where: { id: first.sessionId }, data: { startedAt: new Date(at - 2_000) } });
+    await test.db.session.update({ where: { id: second.sessionId }, data: { startedAt: new Date(at - 1_000) } });
+    await test.db.task.updateMany({ where: { id: { in: [first.taskId, second.taskId] } }, data: { queuedAt: null } });
+    // The second task's dispatch job runs first.
+    for (const task of [second, first]) {
+      await test.db.$transaction((tx) => queueTask({ tx, jobs, clock: systemClock }, { organizationId, taskId: task.taskId, keepPlace: false }));
+    }
+    expect((await poolQueueInTx(test.db, organizationId, poolId)).map((entry) => entry.taskId)).toEqual([first.taskId, second.taskId]);
+    expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([first.taskId]);
+  });
+
   it("F-067: queueing a task sets its priority, its profile's labels and its first time, and a requeue keeps that time", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     await test.db.agentProfile.update({ where: { id: world.profileId }, data: { runnerLabels: ["region:eu", "gpu"] } });
