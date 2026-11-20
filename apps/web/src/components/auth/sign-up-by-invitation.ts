@@ -32,7 +32,22 @@ export const signUpOutcomeOf = (status: number, code: string | undefined): SignU
   }
 };
 
-export const signUpByInvitation = async (input: { readonly invitationId: string; readonly email: string; readonly username: string; readonly password: string }): Promise<SignUpOutcome> => {
+/**
+ * A sign-up that went through. With email set up (the invitation's address locked) the membership
+ * waits on the address check (ADR 0053): better-auth signs the account in, but it sees nothing of the
+ * organization until the mail's link is opened, so the page says "Check your inbox", not Home.
+ */
+export const signedUpOutcomeOf = (token: string | null, addressChecked: boolean): SignUpOutcome =>
+  token === null || addressChecked ? { kind: "verify" } : { kind: "joined" };
+
+export const signUpByInvitation = async (input: {
+  readonly invitationId: string;
+  readonly email: string;
+  readonly username: string;
+  readonly password: string;
+  /** Email is set up: the address is the invitation's and gets checked by mail. */
+  readonly addressChecked: boolean;
+}): Promise<SignUpOutcome> => {
   try {
     const result = await authClient.signUp.email({
       email: input.email,
@@ -43,8 +58,7 @@ export const signUpByInvitation = async (input: { readonly invitationId: string;
       fetchOptions: { headers: { "x-ostra-invitation": input.invitationId } },
     });
     if (result.error !== null) return signUpOutcomeOf(result.error.status, result.error.code);
-    // With email set up no session is made: the membership waits on the address check.
-    return result.data.token === null ? { kind: "verify" } : { kind: "joined" };
+    return signedUpOutcomeOf(result.data.token, input.addressChecked);
   } catch {
     return { kind: "unknown" };
   }

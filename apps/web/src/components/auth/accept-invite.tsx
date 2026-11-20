@@ -269,7 +269,7 @@ export const AcceptInvite = ({
     }
     setBusy(true);
     setFailure(null);
-    const outcome = await signUpByInvitation({ invitationId, email: lockedAddress ? preview.email : email.trim(), username, password });
+    const outcome = await signUpByInvitation({ invitationId, email: lockedAddress ? preview.email : email.trim(), username, password, addressChecked: lockedAddress });
     setBusy(false);
     switch (outcome.kind) {
       case "joined":
