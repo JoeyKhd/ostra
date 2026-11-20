@@ -64,26 +64,35 @@ export const upsertTicketCacheInTx = async (
   let changed = 0;
   const columns = columnsOf(ticket);
   for (const board of boards) {
-    const existing = await tx.ticket.findUnique({
-      where: { boardId_externalId: { boardId: board.id, externalId: ticket.externalId } },
-      select: { id: true, trackerUpdatedAt: true, removedAt: true, statusCategory: true },
-    });
+    const where = { boardId_externalId: { boardId: board.id, externalId: ticket.externalId } };
+    const select = { id: true, trackerUpdatedAt: true, removedAt: true, statusCategory: true } as const;
+    let existing = await tx.ticket.findUnique({ where, select });
     if (existing === null) {
-      const created = await tx.ticket.create({
-        data: {
-          organizationId: board.organizationId,
-          projectId: board.projectId,
-          boardId: board.id,
-          connectionId: board.connectionId,
-          externalId: ticket.externalId,
-          ...columns,
-        },
+      // Milestone 6 (F-012): two readers can make the same copy at once (a delegation and its
+      // ticket's own webhook). The second's insert waits for the first, does nothing, and takes the
+      // copy the first made, as any copy held, instead of failing on the unique key and retrying.
+      const created = await tx.ticket.createManyAndReturn({
+        data: [
+          {
+            organizationId: board.organizationId,
+            projectId: board.projectId,
+            boardId: board.id,
+            connectionId: board.connectionId,
+            externalId: ticket.externalId,
+            ...columns,
+          },
+        ],
+        skipDuplicates: true,
         select: { id: true },
       });
-      ticketIds.push(ticketIdSchema.parse(created.id));
-      changedTicketIds.push(ticketIdSchema.parse(created.id));
-      changed += 1;
-      continue;
+      const [row] = created;
+      if (row !== undefined) {
+        ticketIds.push(ticketIdSchema.parse(row.id));
+        changedTicketIds.push(ticketIdSchema.parse(row.id));
+        changed += 1;
+        continue;
+      }
+      existing = await tx.ticket.findUniqueOrThrow({ where, select });
     }
     ticketIds.push(ticketIdSchema.parse(existing.id));
     if (existing.trackerUpdatedAt.getTime() > ticket.updatedAt && existing.removedAt === null) {

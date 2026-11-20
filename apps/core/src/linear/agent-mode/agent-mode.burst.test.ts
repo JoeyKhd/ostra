@@ -14,6 +14,7 @@ import {
   postgresCommandOutbox,
   rejectOutsideTask,
   systemClock,
+  upsertTicketCacheInTx,
 } from "@ostra/domain";
 import type { MemberScope, Ports } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
@@ -30,7 +31,8 @@ import { seedWorld } from "../../testing/world.ts";
 import { createConnectionTrackers } from "../../tracker/connections.ts";
 import type { ConnectionTrackers } from "../../tracker/connections.ts";
 import { createWebhookInbox } from "../../webhooks/inbox.ts";
-import { agentEventHandler } from "./events.ts";
+import { agentEventHandler, handleAgentSessionEvent } from "./events.ts";
+import type { AgentModeDeps } from "./events.ts";
 import { activitySendHandler } from "./outbox.ts";
 
 // The burst CI found (run 44818964002, ticket 38's rehearsal): 50 delegations, 250 ms apart, then
@@ -71,6 +73,7 @@ let connectionId: ConnectionId;
 let inboxUrl: string;
 let boardId: string;
 let trackers: ConnectionTrackers;
+let agentMode: AgentModeDeps;
 const secretStore = new FakeSecretStore();
 const codeHost = new FakeCodeHost();
 const servers: CoreServer[] = [];
@@ -170,22 +173,19 @@ beforeAll(async () => {
         ? new LinearAdapter({ apiUrl: fake.apiUrl, auth: { kind: "oauth", token: input.token } }, input.context)
         : null,
   });
-  await jobs.work(
-    "linear.agent-event",
-    agentEventHandler({
-      db: small,
-      jobs,
-      outbox: postgresCommandOutbox,
-      notices: postgresChangeNotices,
-      audit: postgresAuditLog,
-      clock: systemClock,
-      trackers,
-      publicUrl: PUBLIC_URL,
-      logger: silentLogger,
-      heartbeatMs: 20 * 60_000,
-    }),
-    { localConcurrency: 4 },
-  );
+  agentMode = {
+    db: small,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices: postgresChangeNotices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    trackers,
+    publicUrl: PUBLIC_URL,
+    logger: silentLogger,
+    heartbeatMs: 20 * 60_000,
+  };
+  await jobs.work("linear.agent-event", agentEventHandler(agentMode), { localConcurrency: 4 });
   await jobs.work(
     "linear.activity.send",
     activitySendHandler({
@@ -345,6 +345,58 @@ describe("agent mode under a burst on a small pool (F-012)", () => {
       for (const one of timings) {
         expect(fake.session(one.sessionId)?.activities.filter((activity) => activity.type === "response")).toHaveLength(1);
       }
+    },
+  );
+
+  it(
+    "F-012/c1: a delegation whose ticket its own webhook is copying at that moment takes that copy and starts its task on the first try",
+    { timeout: 60_000 },
+    async () => {
+      // A delegation's `created` and its ticket's `Issue` webhook come together: the hint's ingest
+      // writes the ticket's copy first and is still committing when the delegation reads the ticket.
+      const issue = await fake.createIssue({ title: "Copied twice at once" });
+      const { sessionId } = await fake.delegateToApp(issue.id, fake.admin.id);
+      const body = fake.sessionEvents().find((one) => one.sessionId === sessionId && one.action === "created")?.body;
+      const lookup = await trackers.forConnection(organizationId, connectionId);
+      if (!lookup.ok) throw new Error(lookup.message);
+      const tracker = lookup.value.tracker;
+      const event = tracker.parseAgentSessionEvent(body);
+      if (!event.ok) throw new Error("the session's event didn't parse");
+      const read = await tracker.getTicket({ externalId: fake.team.id }, { externalId: issue.id });
+      if (!read.ok) throw new Error(`the ticket's read: ${read.error.code}`);
+      const board = await test.db.board.findUniqueOrThrow({
+        where: { id: boardId },
+        select: { id: true, organizationId: true, projectId: true, connectionId: true, externalId: true },
+      });
+      let written = (): void => undefined;
+      const copied = new Promise<void>((resolve) => {
+        written = resolve;
+      });
+      const hint = test.db.$transaction(
+        async (tx) => {
+          await upsertTicketCacheInTx(tx, [board], read.value);
+          written();
+          await tx.$executeRaw`SELECT pg_sleep(2)`;
+        },
+        { timeout: 15_000 },
+      );
+      await copied;
+      const outcome = await handleAgentSessionEvent(agentMode, tracker, {
+        organizationId,
+        connectionId,
+        deliveryId: webhookDeliveryIdSchema.parse(randomUUID()),
+        event: event.value,
+      });
+      await hint;
+      expect(outcome).toMatchObject({ posted: ["waiting-for-approval"] });
+      const copies = await test.db.ticket.findMany({ where: { boardId, externalId: issue.id }, select: { id: true } });
+      expect(copies).toHaveLength(1);
+      const session = await test.db.agentSession.findUniqueOrThrow({
+        where: { connectionId_externalSessionId: { connectionId, externalSessionId: sessionId } },
+        select: { ticketId: true, taskId: true },
+      });
+      expect(session.taskId).not.toBeNull();
+      expect(session).toEqual({ ticketId: copies[0]?.id, taskId: outcome.taskId });
     },
   );
 });
