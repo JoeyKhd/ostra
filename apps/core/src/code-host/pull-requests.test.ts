@@ -271,6 +271,32 @@ describe("PR states", () => {
     expect(late.outcome.outcome).toBe("processed");
   });
 
+  it("F-108: the PR's own row follows a merge, a close and a reopen, with its time, for Insights", async () => {
+    const seeded = await taskInReview(world, 2);
+    const repos = await test.db.taskRepo.findMany({ where: { taskId: seeded.taskId }, orderBy: { createdAt: "asc" } });
+    for (const repo of repos) {
+      if (repo.prNumber === null) throw new Error("no PR number");
+      await test.db.taskPullRequest.create({
+        data: { organizationId: repo.organizationId, projectId: repo.projectId, taskRepoId: repo.id, number: repo.prNumber, url: repo.prUrl ?? "", branchName: repo.branchName },
+      });
+    }
+    const rows = () => test.db.taskPullRequest.findMany({ where: { taskRepoId: { in: repos.map((repo) => repo.id) } }, orderBy: { createdAt: "asc" } });
+    const [merged, closed] = seeded.prs;
+    if (merged === undefined || closed === undefined) throw new Error("no PRs");
+    codeHost.changePull(merged.repo, merged.number, "merge");
+    await deliver(githubA, world.organizationId, merged, "closed");
+    codeHost.changePull(closed.repo, closed.number, "close");
+    await deliver(githubA, world.organizationId, closed, "closed");
+    const after = await rows();
+    expect(after.map((row) => row.state)).toEqual(["merged", "closed_unmerged"]);
+    expect(after.every((row) => row.closedAt !== null)).toBe(true);
+    codeHost.changePull(closed.repo, closed.number, "reopen");
+    await deliver(githubA, world.organizationId, closed, "reopened");
+    const reopened = await rows();
+    expect(reopened.map((row) => row.state)).toEqual(["merged", "open"]);
+    expect(reopened[1]?.closedAt).toBeNull();
+  });
+
   it("another organization's PR with the same number is untouched", async () => {
     const ours = await taskInReview(world, 1);
     const theirs = await taskInReview(otherWorld, 1);

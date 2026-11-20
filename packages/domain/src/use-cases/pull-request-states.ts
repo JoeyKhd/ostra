@@ -173,6 +173,16 @@ export const recordPullRequestState: RecordPullRequestState = async (deps, input
         ...(input.headSha === null ? {} : { headSha: input.headSha }),
       },
     });
+    // The PR's own row, which Insights reads (F-108): merged, closed or open again, with its time.
+    await tx.taskPullRequest.updateMany({
+      where: { taskRepoId: row.id, number: input.prNumber },
+      data:
+        repo.state === "merged"
+          ? { state: "merged", closedAt: at }
+          : repo.state === "closed_unmerged"
+            ? { state: "closed_unmerged", closedAt: at }
+            : { state: "open", closedAt: null },
+    });
     // The ticket: the merge's "done" when ostra moves it there, and the comment's edit.
     await writeTicketStepsInTx({ tx, jobs: deps.jobs }, { taskId: task.id, trigger: triggerFor(repo, repoId, input.changedAt) });
     await deps.audit.recordInTx(tx, {
