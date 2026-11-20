@@ -30,7 +30,8 @@ test("Connect GitHub with an existing App, create a project from its repo, and t
   await page.getByLabel("Private key", { exact: true }).fill(github.privateKey);
   await page.getByLabel("Webhook secret").fill(github.webhookSecret);
   await page.getByRole("button", { name: "Connect the App" }).click();
-  const connection = page.getByTestId("github-connection");
+  // F-136: the connected App shows as its own section, by its slug.
+  const connection = page.getByTestId("github-app").first();
   await expect(connection).toBeVisible();
   await expect(connection).toContainText(github.slug);
   // The key and the secret are never shown back.

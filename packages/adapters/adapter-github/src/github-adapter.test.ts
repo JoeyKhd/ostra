@@ -1301,6 +1301,9 @@ describe("the GitHub adapter", () => {
         expect((await local.listRepos(first, "93")).ok).toBe(false);
         const own = await local.listRepos(first, two.installationId);
         expect(own.ok && own.value.map((repo) => repo.fullName)).toEqual(["fake-org/test1"]);
+        // Its own bot, as GitHub names an App's bot by its slug.
+        const bot = await local.getBotIdentity(app);
+        expect(bot.ok && bot.value.name).toBe("globex-ostra[bot]");
         // The second App's key signed for the first App's ID is refused.
         expect((await local.readApp({ appId: two.appId, privateKey: secondApp.privateKey })).ok).toBe(false);
       } finally {

@@ -1556,7 +1556,12 @@
       "ready": "Ready",
       "warning": "1 warning",
       "unsupported": "Not supported",
-      "unknown": "Couldn't check"
+      "unknown": "Couldn't check",
+      "notLinked": "Not usable"
+    },
+    "accountKind": {
+      "organization": "organization",
+      "user": "user"
     },
     "check": {
       "protected": "Default branch protected",
@@ -1569,7 +1574,10 @@
       "signedRequiredWhy": "ostra's pushes aren't signed, so GitHub would refuse them.",
       "signedUnknown": "Couldn't check signed commits",
       "unknown": "Couldn't check",
-      "noReason": "The code host didn't say why."
+      "noReason": "The code host didn't say why.",
+      "notLinkedUnlinked": "Its installation on {account} was unlinked",
+      "notLinkedRemoved": "Its installation on {account} was removed",
+      "notLinkedWhy": "New tasks here wait until an admin links it again."
     },
     "footnote": "ostra reads each default branch's rules when you open this page, at most every 10 minutes, and again when a task starts.",
     "panel": {
@@ -1589,6 +1597,9 @@
       "whyBlocked": "Why it's blocked",
       "whyBlockedBody": "GitHub refuses commits that aren't signed on this branch, and ostra can't sign the agent's commits yet. Until it can, no task starts in this project.",
       "whyUnknown": "Why ostra couldn't check",
+      "whyNotLinked": "Why it's not usable",
+      "whyNotLinkedBody": "ostra reaches this repo through the App's installation on {account}, which isn't linked any more. New tasks here wait until an organization admin links it again.",
+      "openGitHub": "Open the organization's GitHub page",
       "whyUnknownAfter": "ostra checks again when a task starts. A task isn't refused because of a check it couldn't make.",
       "protect": "Protect {branch}",
       "protectStep1": "On GitHub, open the repo's Settings › Rules.",
@@ -2993,6 +3004,7 @@
     "organization": "organization",
     "user": "user",
     "allRepos": "All repositories",
+    "selectedRepos": "Selected repositories",
     "reposOne": "{n} repository",
     "reposMany": "{n} repositories",
     "projectsOne": "{n} project",
@@ -3041,10 +3053,12 @@
       "waitingAfter": " on this account. Link it if it's a client's, and its repos can join projects. Remove it to uninstall the App there.",
       "linked": "Its repos can join projects. Unlinking stops new tasks on them, with the reason; running tasks finish.",
       "removed": "Removed by {name} on {date}. The App is no longer installed there.",
+      "unlinked": "Unlinked by {name} on {date}. The App is still installed there, but ostra uses none of its repos.",
       "usedBy": "Used by"
     },
     "addOrg": {
       "label": "Add a GitHub organization",
+      "short": "Organization",
       "body": "Send this link to the organization's owner. They pick the repos; the installation waits here until you link it.",
       "pickApp": "The App to install"
     },
@@ -3062,6 +3076,7 @@
     },
     "connectAnother": {
       "title": "Connect another App",
+      "short": "Another App",
       "connect": "Connect the App",
       "setThese": "Set these in the App's settings on GitHub",
       "webhookUrl": "Webhook URL",

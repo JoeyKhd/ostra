@@ -7,7 +7,7 @@ import { t } from "@/lib/messages";
 
 import { ComposerRepoNotes } from "./repo-check-line";
 import { BlockedNotice, RepoBlock, RepoProperties, ReposLede } from "./repo-checks";
-import { checkLines, oldestCheck, repoVerdict, selectedRepo } from "./repo-checks-words";
+import { checkLines, oldestCheck, repoVerdict, reposByAccount, selectedRepo } from "./repo-checks-words";
 import type { RepoDetail } from "./repo-checks-words";
 
 // F-060, F-055: each combination of the two branch checks (repo-checks.md).
@@ -166,5 +166,48 @@ describe("where a task starts", () => {
 
   it("a check ostra couldn't make says nothing there, and ready repos neither", () => {
     expect(renderToStaticMarkup(<ComposerRepoNotes projectId="p1" repos={[ready, unchecked]} />)).toBe("");
+  });
+});
+
+// F-136 (ticket 54): a repo whose App installation was unlinked or removed, and repos on two accounts.
+describe("a repo's installation", () => {
+  const on = (detail: RepoDetail, accountLogin: string, state: "linked" | "unlinked" | "removed", fullName = detail.fullName): RepoDetail => ({
+    ...detail,
+    fullName,
+    installation: { accountLogin, accountKind: "organization", state },
+  });
+
+  it("F-136: a repo whose installation was unlinked says so first, on its account, and reads Not usable in red", () => {
+    const unlinked = on(ready, "globex", "unlinked", "globex/billing");
+    expect(repoVerdict(unlinked)).toBe("notLinked");
+    expect(checkLines(unlinked)[0]).toEqual({ kind: "notLinked", account: "globex", how: "unlinked" });
+    const html = block(unlinked);
+    expect(html).toContain("Its installation on globex was unlinked");
+    expect(html).toContain(esc("New tasks here wait until an admin links it again."));
+    expect(html).toContain('data-verdict="notLinked"');
+    expect(html).toMatch(/text-red[^>]*>Not usable</);
+    expect(block(on(ready, "globex", "removed"))).toContain("Its installation on globex was removed");
+    // Linked: no such line, and the branch checks decide.
+    expect(block(ready)).not.toContain("Its installation on");
+    expect(selectedRepo([ready, unsupported, unlinked], null)?.repoId).toBe(unlinked.repoId);
+  });
+
+  it("F-136: the panel says why a not-linked repo isn't usable, and where it's linked again", () => {
+    const html = renderToStaticMarkup(<RepoProperties repo={on(ready, "globex", "unlinked")} now={now} />);
+    expect(html).toContain(esc("Why it's not usable"));
+    expect(html).toContain("installation on globex");
+    expect(html).toContain('href="/organization/github"');
+  });
+
+  it("F-136: groups the repos by GitHub account, in the project's order, and one account is one group", () => {
+    const a1 = on(ready, "acme", "linked", "acme/web");
+    const b1 = on(warning, "globex", "linked", "globex/billing");
+    const a2 = on(unchecked, "acme", "linked", "acme/api");
+    const groups = reposByAccount([a1, b1, a2]);
+    expect(groups.map((group) => [group.account, group.repos.map((each) => each.fullName)])).toEqual([
+      ["acme", ["acme/web", "acme/api"]],
+      ["globex", ["globex/billing"]],
+    ]);
+    expect(reposByAccount([a1, a2])).toHaveLength(1);
   });
 });

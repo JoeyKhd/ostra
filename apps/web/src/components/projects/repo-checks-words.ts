@@ -5,17 +5,24 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 export type RepoDetail = RouterOutputs["projects"]["get"]["repos"][number];
 
-/** A repo's worst result, in this order: signed commits block, a warning, a check it couldn't make, ready. */
-export type RepoVerdict = "unsupported" | "warning" | "unknown" | "ready";
+/**
+ * A repo's worst result, in this order: its installation isn't linked (F-136), signed commits
+ * block, a warning, a check it couldn't make, ready.
+ */
+export type RepoVerdict = "notLinked" | "unsupported" | "warning" | "unknown" | "ready";
+
+/** Whether the repo's App installation was unlinked or removed: new tasks on it wait (F-136). */
+export const installationNotLinked = (repo: RepoDetail): boolean => repo.installation !== null && repo.installation.state !== "linked";
 
 export const repoVerdict = (repo: RepoDetail): RepoVerdict => {
+  if (installationNotLinked(repo)) return "notLinked";
   if (repo.signedCommitsRequired.result === true) return "unsupported";
   if (repo.defaultBranchProtected.result === false) return "warning";
   if (repo.defaultBranchProtected.result === "unknown" || repo.signedCommitsRequired.result === "unknown") return "unknown";
   return "ready";
 };
 
-const rank: Readonly<Record<RepoVerdict, number>> = { unsupported: 0, warning: 1, unknown: 2, ready: 3 };
+const rank: Readonly<Record<RepoVerdict, number>> = { notLinked: 0, unsupported: 1, warning: 2, unknown: 3, ready: 4 };
 
 /** The repo the panel opens on: the URL's, else the first with a problem (worst first), else the first. */
 export const selectedRepo = (repos: readonly RepoDetail[], fromUrl: string | null): RepoDetail | undefined =>
@@ -39,15 +46,47 @@ export const oldestCheck = (repos: readonly RepoDetail[]): number | null => {
   return oldest;
 };
 
+/** A GitHub account's repos, in the project's order (F-136). */
+export type RepoGroup = { readonly account: string; readonly kind: "organization" | "user" | null; readonly repos: readonly RepoDetail[] };
+
+/**
+ * The repos grouped by the GitHub account they're on, each group where its first repo stands
+ * (F-136). One group when they're all on one account: the page then shows no group labels.
+ */
+export const reposByAccount = (repos: readonly RepoDetail[]): readonly RepoGroup[] => {
+  const groups: { account: string; kind: "organization" | "user" | null; repos: RepoDetail[] }[] = [];
+  for (const repo of repos) {
+    const account = repo.installation?.accountLogin ?? repo.fullName.split("/")[0] ?? "";
+    const group = groups.find((each) => each.account.toLowerCase() === account.toLowerCase());
+    if (group === undefined) {
+      groups.push({ account, kind: repo.installation?.accountKind ?? null, repos: [repo] });
+    } else {
+      group.repos.push(repo);
+    }
+  }
+  return groups;
+};
+
 /** The account the repos live under (`acme` of `acme/calculator-web`). */
 export const accountOf = (repos: readonly RepoDetail[]): string | null => repos[0]?.fullName.split("/")[0] ?? null;
 
-/** One check line under a repo. Both unknown for the same reason collapse into one line. */
+/**
+ * One check line under a repo. Both unknown for the same reason collapse into one line. An
+ * installation that isn't linked comes first, naming its account and how it ended (F-136).
+ */
 export type CheckLine =
   | { readonly kind: "protected" | "notProtected" | "signedNotRequired" | "signedRequired" }
-  | { readonly kind: "protectedUnknown" | "signedUnknown" | "unknown"; readonly reason: string | null };
+  | { readonly kind: "protectedUnknown" | "signedUnknown" | "unknown"; readonly reason: string | null }
+  | { readonly kind: "notLinked"; readonly account: string; readonly how: "unlinked" | "removed" };
 
 export const checkLines = (repo: RepoDetail): readonly CheckLine[] => {
+  const installation = repo.installation;
+  const notLinked: readonly CheckLine[] =
+    installation === null || installation.state === "linked" ? [] : [{ kind: "notLinked", account: installation.accountLogin, how: installation.state }];
+  return [...notLinked, ...branchLines(repo)];
+};
+
+const branchLines = (repo: RepoDetail): readonly CheckLine[] => {
   const p = repo.defaultBranchProtected;
   const s = repo.signedCommitsRequired;
   if (p.result === "unknown" && s.result === "unknown" && p.reason === s.reason) return [{ kind: "unknown", reason: p.reason ?? null }];

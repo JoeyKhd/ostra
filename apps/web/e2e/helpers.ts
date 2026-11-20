@@ -72,6 +72,11 @@ const stackSchema = z.object({
   databaseUrl: z.string(),
   /** The fake GitHub's App: the credentials the setup spec types into "Use an existing App". */
   github: z.object({ appId: z.string(), privateKey: z.string(), webhookSecret: z.string(), slug: z.string() }),
+  /**
+   * F-136: a second GitHub organization with the App installed, waiting to be linked (`login`, its
+   * repo), and a second App owned by a third account, for "Connect another App" (`appId`, `privateKey`, `slug`).
+   */
+  githubB: z.object({ login: z.string(), repo: z.string(), appId: z.string(), privateKey: z.string(), slug: z.string() }),
 });
 const seededSchema = z.object({ taskId: taskIdSchema });
 

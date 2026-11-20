@@ -16,7 +16,7 @@ import { createJobs } from "@ostra/jobs";
 import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
-import { e2eCorePort, e2eModelToken, e2eOpenAiStubPort, e2ePort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
+import { e2eCorePort, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2ePort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 /** F-001: the second stack runs with the default password allowed (`06-default-password.spec.ts`). */
@@ -111,7 +111,11 @@ const main = async (): Promise<void> => {
   // A fake GitHub the panel and core talk to through OSTRA_GITHUB_API_URL (ticket 37): one org with
   // one repo, and an App whose key and webhook secret the setup spec types into the panel.
   const github = await createFakeGitHub({
+    // F-136: a second account with the App installed, waiting to be linked, and a second App another account owns.
+    otherAccounts: [{ login: e2eGitHubOrgB.login, id: e2eGitHubOrgB.id, type: "Organization", installationId: e2eGitHubOrgB.installationId }],
+    secondApp: { slug: "client-c-ostra", owner: { login: "client-c", id: 6_003, type: "Organization", installationId: 9 } },
     repos: [
+      { id: 4_002, owner: e2eGitHubOrgB.login, name: e2eGitHubOrgB.repo, defaultBranch: "main", branches: ["main"], files: { "README.md": "# billing\n" } },
       {
         id: 4_001,
         owner: e2eRepo.owner,
@@ -135,6 +139,13 @@ const main = async (): Promise<void> => {
     JSON.stringify({
       databaseUrl,
       github: { appId: github.appId, privateKey: github.privateKey, webhookSecret: github.webhookSecret, slug: github.appSlug },
+      githubB: {
+        login: e2eGitHubOrgB.login,
+        repo: e2eGitHubOrgB.repo,
+        appId: github.secondApp?.appId ?? "",
+        privateKey: github.secondApp?.privateKey ?? "",
+        slug: github.secondApp?.appSlug ?? "",
+      },
     }),
   );
 

@@ -43,6 +43,11 @@ export const e2eStubBaseUrl = `http://127.0.0.1:${String(e2eStubPort)}/v1`;
 export const e2eCorePort = basePort + 2;
 export const e2eCoreUrl = `http://127.0.0.1:${String(e2eCorePort)}`;
 export const e2eRepo = { owner: "fake-org", name: "test1" } as const;
+/**
+ * F-136: the fake GitHub's second account, `client-b`, with the App installed and waiting to be
+ * linked, and one repo. A third, `client-c`, owns a second App (`stack.ts`), whose key the stack writes out.
+ */
+export const e2eGitHubOrgB = { login: "client-b", id: 6_002, installationId: 8, repo: "billing" } as const;
 export const e2eRunnerName = "e2e-runner";
 /** A second stub model endpoint, in the OpenAI-compatible format, with the same token and models (F-088). */
 export const e2eOpenAiStubPort = basePort + 3;

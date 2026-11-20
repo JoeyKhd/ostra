@@ -16,7 +16,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
@@ -92,16 +91,12 @@ export const NewProjectView = () => {
   const queryClient = useQueryClient();
   const connection = useQuery(trpc.github.connection.queryOptions());
   const connected = connection.data ?? null;
-  const installations = useQuery({ ...trpc.github.installations.queryOptions(), enabled: connected !== null });
+  // F-136: the repos of every linked installation, across the Apps, grouped by GitHub account; a
+  // waiting or removed installation's repos are offered nowhere.
+  const groups = useQuery({ ...trpc.github.reposByAccount.queryOptions(), enabled: connected !== null });
   const [name, setName] = useState("");
-  const [installationId, setInstallationId] = useState<string | null>(null);
-  const [fullName, setFullName] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const installation = installations.data?.find((item) => item.installationId === installationId) ?? installations.data?.[0] ?? null;
-  const repos = useQuery({
-    ...trpc.github.repos.queryOptions({ installationId: installation?.installationId ?? "" }),
-    enabled: installation !== null,
-  });
 
   const client = useTRPCClient();
   const me = useQuery(trpc.me.get.queryOptions());
@@ -158,26 +153,29 @@ export const NewProjectView = () => {
   }
 
   const slug = slugOf(name);
-  const listed = repos.data ?? [];
-  const shown = filterRepos(listed, query);
-  const chosen = listed.find((repo) => repo.fullName === fullName) ?? null;
-  const draftRepo: DraftRepo | null =
-    chosen === null || installation === null ? null : { installationId: installation.installationId, fullName: chosen.fullName, defaultBranch: chosen.defaultBranch };
+  const listed = (groups.data ?? []).flatMap((group) => group.repos.map((repo) => ({ ...repo, group, key: `${group.installationId}:${repo.fullName}` })));
+  const shownGroups = (groups.data ?? [])
+    .map((group) => ({ group, repos: filterRepos(listed.filter((repo) => repo.group === group), query) }))
+    .filter((entry) => entry.repos.length > 0);
+  const chosen = listed.find((repo) => repo.key === picked) ?? null;
+  const draftRepo: DraftRepo | null = chosen === null ? null : { installationId: chosen.group.installationId, fullName: chosen.fullName, defaultBranch: chosen.defaultBranch };
+  const [onlyGroup] = groups.data ?? [];
+  const single = groups.data?.length === 1 ? onlyGroup : undefined;
   const busy = create.isPending;
 
-  const pick = (repoName: string, checked: boolean) => {
+  const pick = (key: string, repoName: string, checked: boolean) => {
     // One repo in milestone 1 (F-086): checking one unchecks the other.
-    setFullName(checked ? repoName : null);
+    setPicked(checked ? key : null);
     if (checked && name.trim() === "") setName(repoName.split("/")[1] ?? "");
   };
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (installation === null || chosen === null || slug === "") return;
+    if (chosen === null || slug === "") return;
     create.mutate({
       name: name.trim(),
       slug,
-      repo: { connectionId: connected.connectionId, installationId: installation.installationId, fullName: chosen.fullName },
+      repo: { connectionId: chosen.group.connectionId, installationId: chosen.group.installationId, fullName: chosen.fullName },
     });
   };
 
@@ -202,82 +200,68 @@ export const NewProjectView = () => {
           <FormSection
             title={t("projects.repos")}
             note={t("projects.reposSelected", { n: chosen === null ? 0 : 1 })}
-            end={
-              installation === null ? null : (
-                <a href={installationSettingsUrl(installation)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-teal hover:underline">
-                  {t("projects.manageOnGitHub")}
-                  <ArrowUpRightIcon aria-hidden className="size-[14px] stroke-[1.75]" />
-                </a>
-              )
-            }
           >
-            {installations.error === null ? null : <ErrorLine>{errorText(installations.error)}</ErrorLine>}
-            {repos.error === null ? null : <ErrorLine>{errorText(repos.error)}</ErrorLine>}
-            <div className="mb-2.5 flex gap-2">
-              {(installations.data?.length ?? 0) > 1 ? (
-                <Select
-                  value={installation?.installationId ?? ""}
-                  onValueChange={(value) => { setInstallationId(value); setFullName(null); }}
-                >
-                  <SelectTrigger aria-label={t("projects.installation")} className="h-[34px] w-[200px] shrink-0 bg-surface">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="start">
-                    {installations.data?.map((item) => (
-                      <SelectItem key={item.installationId} value={item.installationId}>
-                        <GitHubMark />
-                        {item.accountLogin}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : installation === null ? null : (
-                <span className="flex h-[34px] shrink-0 items-center gap-2 px-1 text-muted" aria-label={t("projects.installation")}>
-                  <GitHubMark />
-                  {installation.accountLogin}
-                </span>
-              )}
-              <div className="relative min-w-0 flex-1">
-                <SearchIcon aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-[14px] -translate-y-1/2 stroke-[1.75] text-faint" />
-                <Input
-                  type="search"
-                  aria-label={t("projects.filterRepos")}
-                  placeholder={t("projects.filterRepos")}
-                  className="pl-8 [&::-webkit-search-cancel-button]:appearance-none"
-                  value={query}
-                  disabled={repos.isPending || busy}
-                  onChange={(e) => { setQuery(e.target.value); }}
-                />
-              </div>
+            {groups.error === null ? null : <ErrorLine>{errorText(groups.error)}</ErrorLine>}
+            <div className="relative mb-2.5">
+              <SearchIcon aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-[14px] -translate-y-1/2 stroke-[1.75] text-faint" />
+              <Input
+                type="search"
+                aria-label={t("projects.filterRepos")}
+                placeholder={t("projects.filterRepos")}
+                className="pl-8 [&::-webkit-search-cancel-button]:appearance-none"
+                value={query}
+                disabled={groups.isPending || busy}
+                onChange={(e) => { setQuery(e.target.value); }}
+              />
             </div>
-            {repos.isPending ? (
+            {groups.isPending ? (
               <SkeletonRepoRows rows={5} />
             ) : listed.length === 0 ? (
-              repos.error === null ? <p className="text-sm text-faint">{t("projects.noRepos")}</p> : null
+              groups.error === null ? <p className="text-sm text-faint">{t("projects.noRepos")}</p> : null
             ) : (
               <>
-                <ul className="rows max-h-[360px] overflow-y-auto" aria-label={t("projects.repo")}>
-                  {shown.length === 0 ? (
-                    <li className="flex h-[38px] items-center px-3 text-faint">{t("projects.noMatch", { query: query.trim() })}</li>
+                <div className="max-h-[360px] overflow-y-auto" data-testid="repo-options" aria-label={t("projects.repo")}>
+                  {shownGroups.length === 0 ? (
+                    <p className="flex h-[38px] items-center px-3 text-faint">{t("projects.noMatch", { query: query.trim() })}</p>
                   ) : (
-                    shown.map((repo) => {
-                      const checked = repo.fullName === fullName;
-                      return (
-                        <li key={repo.hostRepoId} data-repo={repo.fullName}>
-                          <label className={cn("flex h-[38px] cursor-pointer items-center gap-3 px-3 hover:bg-raise", checked && "bg-sel hover:bg-sel")}>
-                            <Checkbox checked={checked} onCheckedChange={(value) => { pick(repo.fullName, value === true); }} />
-                            <span className="min-w-0 truncate font-mono text-ui text-text">{repo.fullName}</span>
-                            {repo.private ? <LockIcon aria-label={t("projects.private")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}
-                            <span className="ml-auto shrink-0 font-mono text-sm text-faint">{repo.defaultBranch}</span>
-                          </label>
-                        </li>
-                      );
-                    })
+                    shownGroups.map(({ group, repos }) => (
+                      <div key={`${group.connectionId}:${group.installationId}`}>
+                        <div className="flex h-[30px] items-center gap-2 px-3 text-xs font-medium text-faint" data-testid="repo-group">
+                          <GitHubMark />
+                          <span className="font-mono">{group.accountLogin}</span>
+                          {group.accountKind === null ? null : <span>{group.accountKind === "organization" ? t("githubOrgs.repoGroup.organization") : t("githubOrgs.repoGroup.user")}</span>}
+                          <a
+                            href={installationSettingsUrl({ accountKind: group.accountKind ?? "organization", accountLogin: group.accountLogin, installationId: group.installationId })}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ml-auto inline-flex items-center gap-1 font-sans text-teal hover:underline"
+                          >
+                            {t("projects.manageOnGitHub")}
+                            <ArrowUpRightIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+                          </a>
+                        </div>
+                        <ul className="rows">
+                          {repos.map((repo) => {
+                            const checked = repo.key === picked;
+                            return (
+                              <li key={repo.key} data-repo={repo.fullName}>
+                                <label className={cn("flex h-[38px] cursor-pointer items-center gap-3 px-3 hover:bg-raise", checked && "bg-sel hover:bg-sel")}>
+                                  <Checkbox checked={checked} onCheckedChange={(value) => { pick(repo.key, repo.fullName, value === true); }} />
+                                  <span className="min-w-0 truncate font-mono text-ui text-text">{repo.fullName}</span>
+                                  {repo.private ? <LockIcon aria-label={t("projects.private")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}
+                                  <span className="ml-auto shrink-0 font-mono text-sm text-faint">{repo.defaultBranch}</span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))
                   )}
-                </ul>
-                {installation === null ? null : (
+                </div>
+                {single === undefined ? null : (
                   <p className="mt-2 text-sm text-faint">
-                    {plural(listed.length, "projects.reposSeenOne", "projects.reposSeen", { account: installation.accountLogin })}
+                    {plural(single.repos.length, "projects.reposSeenOne", "projects.reposSeen", { account: single.accountLogin })}
                   </p>
                 )}
               </>

@@ -527,6 +527,10 @@ export const createFakeGitHub = async (options: {
     const botUser = /^\/users\/([^/]+)$/.exec(path);
     if (method === "GET" && botUser !== null) {
       const login = decodeURIComponent(botUser[1] ?? "");
+      if (second !== null && login === `${second.appSlug}[bot]`) {
+        send(response, 200, { id: botId + 1, login });
+        return;
+      }
       if (login !== `${appSlug}[bot]`) {
         send(response, 404, { message: "Not Found" });
         return;

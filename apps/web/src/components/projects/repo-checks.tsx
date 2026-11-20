@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRightIcon, BanIcon, GitBranchIcon, InfoIcon, LockIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -17,10 +18,11 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { RepoCheckLine } from "./repo-check-line";
-import { accountOf, checkLines, checkedAge, oldestCheck, repoVerdict, selectedRepo, unsupportedRepos } from "./repo-checks-words";
+import { accountOf, checkLines, checkedAge, oldestCheck, repoVerdict, reposByAccount, selectedRepo, unsupportedRepos } from "./repo-checks-words";
 import type { RepoDetail, RepoVerdict } from "./repo-checks-words";
 
 const verdictStyle: Readonly<Record<RepoVerdict, string>> = {
+  notLinked: "font-medium text-red",
   ready: "text-muted",
   warning: "font-medium text-text",
   unsupported: "font-medium text-red",
@@ -161,9 +163,18 @@ export const RepoProperties = ({ repo, now }: { readonly repo: RepoDetail | unde
       {verdict === "ready" ? null : (
         <>
           <Sep />
-          <PanelLabel>{t(verdict === "warning" ? "repos.panel.whyAllowed" : verdict === "unsupported" ? "repos.panel.whyBlocked" : "repos.panel.whyUnknown")}</PanelLabel>
+          <PanelLabel>
+            {t(verdict === "notLinked" ? "repos.panel.whyNotLinked" : verdict === "warning" ? "repos.panel.whyAllowed" : verdict === "unsupported" ? "repos.panel.whyBlocked" : "repos.panel.whyUnknown")}
+          </PanelLabel>
           <div className="space-y-2 text-ui leading-[1.55] text-muted">
-            {verdict === "warning" ? (
+            {verdict === "notLinked" ? (
+              <>
+                <p>{t("repos.panel.whyNotLinkedBody", { account: repo.installation?.accountLogin ?? "" })}</p>
+                <Link href="/organization/github" className="inline-flex items-center gap-1 text-teal hover:underline">
+                  {t("repos.panel.openGitHub")}
+                </Link>
+              </>
+            ) : verdict === "warning" ? (
               <p>
                 <WithBranch text={t("repos.panel.whyAllowedBody")} branch={repo.defaultBranch} />
               </p>
@@ -270,18 +281,30 @@ export const RepoChecksView = ({ projectId }: { readonly projectId: ProjectId })
         <div className="max-w-[760px]">
           <BlockedNotice repos={repos} />
           {check.error === null ? null : <p role="alert" className="mt-3 text-ui text-red">{errorText(check.error)}</p>}
-          <ul className="mt-[18px]" data-testid="repo-checks">
-            {repos.map((repo) => (
-              <RepoBlock
-                key={repo.repoId}
-                repo={repo}
-                selected={repo.repoId === selected?.repoId}
-                onSelect={() => {
-                  router.replace(`${pathname}?repo=${repo.repoId}`, { scroll: false });
-                }}
-              />
+          <div className="mt-[18px] space-y-5" data-testid="repo-checks">
+            {reposByAccount(repos).map((group, _, groups) => (
+              <section key={group.account} data-testid="repo-account" data-account={group.account} aria-label={groups.length > 1 ? group.account : undefined}>
+                {groups.length > 1 ? (
+                  <h2 className="mb-1.5 text-xs font-medium text-faint">
+                    <span className="font-mono">{group.account}</span>
+                    {group.kind === null ? null : ` · ${t(`repos.accountKind.${group.kind}`)}`}
+                  </h2>
+                ) : null}
+                <ul>
+                  {group.repos.map((repo) => (
+                    <RepoBlock
+                      key={repo.repoId}
+                      repo={repo}
+                      selected={repo.repoId === selected?.repoId}
+                      onSelect={() => {
+                        router.replace(`${pathname}?repo=${repo.repoId}`, { scroll: false });
+                      }}
+                    />
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
           <p className="mt-4 flex items-start gap-2 text-xs text-faint">
             <InfoIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
             {t("repos.footnote")}

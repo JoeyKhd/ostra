@@ -41,6 +41,19 @@ export const RepoCheckLine = ({ line }: { readonly line: CheckLine }) => {
           why={t("repos.check.signedRequiredWhy")}
         />
       );
+    case "notLinked":
+      return (
+        <Line
+          glyph={<BanIcon aria-hidden className={`${icon} text-red`} />}
+          text={
+            <>
+              {t(line.how === "unlinked" ? "repos.check.notLinkedUnlinked" : "repos.check.notLinkedRemoved", { account: line.account })}
+              <span className="text-faint">{" · "}</span>
+              <span className="text-muted">{t("repos.check.notLinkedWhy")}</span>
+            </>
+          }
+        />
+      );
     case "protectedUnknown":
     case "signedUnknown":
     case "unknown":

@@ -88,7 +88,7 @@ test("Connect GitHub refuses an App it can't read, in words", async ({ page }) =
   await page.getByLabel("Webhook secret").fill("e2e-webhook-secret");
   await page.getByRole("button", { name: "Connect the App" }).click();
   await expect(page.getByRole("alert").filter({ hasText: /./ })).toContainText("private key");
-  await expect(page.locator('[data-testid="github-connection"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="github-app"]')).toHaveCount(0);
 });
 
 test("F-006: Create a new App shows the manifest's permissions, leaves workflows out, and says it gets no webhook without a public address", async ({ page }) => {
