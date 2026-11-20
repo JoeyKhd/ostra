@@ -1,7 +1,9 @@
 # Research: live previews of a task's app
 
-**Question:** How could a task's page show a live preview of the app its agent is building (a website, or an API server), in the chat view and in an expanded view, when the app runs in a box on a runner that only dials out? Should tunnels be the default, and how would the proxying work? The maintainer, 2026-11-20: "everything basically runs in our sandbox environment, right? So if I'm working on a website or on an API server or anything like that, it's pretty hard to show a live preview in our dashboard. It would be really nice if in the chat window of our tasks, we are able to preview the website that we're currently building, for example. Perhaps that could then have an expanded view. I'm not sure how we could do this, whether tunnels should be the default or how the proxies and communications would work."
-**Status:** Research, 2026-11-20. Feeds F-121 (seeing the running app, Q68), ADR 0034 (the runner protocol), ADR 0029 (executors and boxes), ADR 0030 and ADR 0031 (credentials and the safety minimum) and ADR 0039 (idle boxes). It settles nothing: the designs at the end are for the lead to discuss with the maintainer.
+**Question:** How could a task's page show a live preview of the app its agent is building (a website, or an API server), in the chat view and in an expanded view, when the app runs in a box on a runner that only dials out? Should tunnels be the default, and how would the proxying work? The maintainer, 2026-11-20: "everything basically runs in our sandbox environment, right? So if I'm working on a website or on an API server or anything like that, it's pretty hard to show a live preview in our dashboard. It would be really nice if in the chat window of our tasks, we are able to preview the website that we're currently building, for example. Perhaps that could then have an expanded view. I'm not sure how we could do this, whether tunnels should be the default or how the proxies and communications would work." And later the same day: "will it make our system smart enough to understand that if a project runs a frontend and api, and the frontend relies on the api, that it can just use the api? we might have many more similar things to this." (§8).
+**Status:** Research, 2026-11-20. Feeds F-121 (seeing the running app, Q68), ADR 0034 (the runner protocol), ADR 0029 (executors and boxes), ADR 0030 and ADR 0031 (credentials and the safety minimum), ADR 0038 (environments and services) and ADR 0039 (idle boxes). It settles nothing: the designs at the end are for the lead to discuss with the maintainer. **Extended the same day** with apps made of several services (§8), and with the maintainer's first two answers:
+- **The wildcard preview domain is optional.** It's welcome, but never required.
+- **Who can open a preview is configurable:** members, specific people, an expiring link, or the public if an admin allows it.
 **Method:** Tavily search and page reads (`tavily_search`, `tavily_extract`) of official docs, specs, source code, changelogs and security advisories, on 2026-11-20. Facts about ostra come from this repo. Anything I couldn't confirm on a primary source is marked **unconfirmed**; my own reasoning is marked *(inference)*; proposed numbers are *(working values)*. Secondary sources are labelled.
 **Related:** `research/runner-transport.md` (Cloudflare Tunnel and Tailscale DERP, as transports for the runner itself), `research/elastic-sandboxes.md` (the hosted sandboxes), `research/credential-proxy.md`, `research/spike-what-is-inside-a-box.md` (the box's networks), `research/landscape.md` (Vibe Kanban's `preview-proxy` crate).
 
@@ -17,7 +19,7 @@
   - letting the vendor terminate TLS, so it sees the plaintext (Cloudflare, ngrok).
 
   Cloudflare's no-account Quick Tunnels are "for testing and development", cap at 200 in-flight requests, and don't carry SSE. ngrok's free tier puts an interstitial page in front of browser traffic (§2.2). All of them also skip ostra's own access checks.
-- **A live preview asks one thing of a self-hoster: a wildcard DNS name and a wildcard certificate.** Coder, Gitpod, Ona, Teleport and frp ask the same (§3.1). Proxying by path under the panel's domain breaks Vite, React and Next.js dev servers, by Coder's own list ([Coder](https://coder.com/docs/admin/networking/wildcard-access-url)). It would also put agent-written code on the panel's origin, which RFC 6265 §8.6 and Coder's docs warn against (§3.2, §4.1).
+- **The app running in the member's own browser needs one thing from a self-hoster: a wildcard DNS name and a wildcard certificate.** Coder, Gitpod, Ona, Teleport and frp ask the same (§3.1). The maintainer wants it optional, so a live pane must also work without it. Design B, a stream of the box's browser, does (§7). Proxying by path under the panel's domain breaks Vite, React and Next.js dev servers, by Coder's own list ([Coder](https://coder.com/docs/admin/networking/wildcard-access-url)). It would also put agent-written code on the panel's origin, which RFC 6265 §8.6 and Coder's docs warn against (§3.2, §4.1).
 - **The advisories are real and recent.**
   - Gitpod CVE-2023-0957: same-site WebSocket hijack, ending in account takeover.
   - Gitpod CVE-2024-21583: cookie tossing from a workspace subdomain.
@@ -32,12 +34,14 @@
 
   Devin's preview gets past all three without project changes: it "sets the `Host` and `Origin` headers to `localhost` before the request reaches your app" ([Devin](https://docs.devin.ai/work-with-devin/browser-previews)) (§5).
 - **Screenshots and recordings are what most cloud agents ship.** Copilot's coding agent, Codex cloud, Jules and Cursor attach screenshots or videos to the task or the PR. Devin and Replit add video replays. Devin, Replit, Lovable, v0 and OpenHands embed a live preview in the product. Cursor forwards ports to the user's machine. Codex and Copilot publish no live preview (§1, §6).
-- **Recommendation (§7):**
-  - **Screenshots and recordings in the timeline (F-121) are the default.** They need no setting, work on every executor and carrier, and outlive the box.
-  - **The live pane is Design A:** preview hosts through core, on ostra's own runner connection. It turns on when an admin sets a preview domain (one wildcard record and certificate). `ostra preview` forwards a port to the member's own `localhost` with no setting at all.
-  - **Design B, a stream of the box's own browser,** is the fallback to keep for installs that can't add a wildcard.
-  - **No third-party tunnel is built in.**
-  - Either live design needs a new protocol minor.
+- **A frontend that relies on an API works under every design when the browser talks to one origin.** The frontend's dev server then proxies `/api` to the API inside the box, with Vite's `server.proxy`, Next.js rewrites or CRA's `proxy`. A URL per service breaks under at least one design, because Vite and Next.js inline client variables. A single value can't point at the API both for the member's browser and for the box's own browser (§8.2).
+- **Every dev environment declares its services and ports in a file:** devcontainer.json, `.gitpod.yml`, `.replit`, Coder's `coder_app`, compose. Each also gives an app the other services' URLs: Codespaces' variables, `gp url`, Railway's `${{service.VAR}}` references, Vercel's Related Projects (§8.1).
+- **Recommendation (§7, §8.4):**
+  - **With no setting:** screenshots and recordings in the timeline (F-121), a live pane that streams the box's own browser (Design B), and `ostra preview` to open any port on the member's own `localhost`.
+  - **With the optional preview domain:** Design A, the app in the member's own browser on preview hosts through core, over ostra's own runner connection.
+  - **Who can open a preview** is a setting per preview: the project's members by default, then named people, an expiring link, and public where an admin allows it. It fails closed.
+  - **For several services:** the environment declares the app's processes and ports with a primary preview. Onboarding proposes them from the repo's files, the agent can add one mid-task, and ostra tells the agent to keep the browser on one origin.
+  - **No third-party tunnel is built in.** Either live design needs a new protocol minor.
 
 ---
 
@@ -413,7 +417,7 @@ The lessons for ostra *(inference)*:
 | A token in the host name | Daytona signed URLs, Cloudflare 0.x | Yes, with no cookie | The host name travels in clear: "The SNI extension is carried in cleartext in the TLS 'ClientHello' message" ([RFC 8744 §2](https://www.rfc-editor.org/rfc/rfc8744.html)), and in DNS queries *(inference)* |
 | A header token | E2B, Daytona's default, v0's API | No: "Browsers cannot attach that token as a custom header when loading an iframe" ([v0](https://v0.app/docs/api/v2/guides/accessing-previews)) | Needs a proxy in front |
 | An unguessable URL only | Vercel Sandbox, Modal `forward` | Yes | Anyone with the link; v0's staff say people "had their accounts compromised by sharing the preview URL with its access token" (vendor forum, [community](https://community.vercel.com/t/where-has-the-preview-url-gone/19859)) |
-| Share links that expire | Lovable (7 days), Vercel Shareable Links ([docs](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/sharable-links)), Devin Apps (never public) | Yes | Sharing beyond the team is a product decision |
+| Share links that expire | Lovable (7 days), Vercel Shareable Links ([docs](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/sharable-links)), Devin Apps (never public) | Yes | The maintainer wants them, as one of the levels a preview can be shared at (§7) |
 
 Vercel's bypass cookie shows the iframe catch. It is `SameSite=Lax` by default, and for iframes there is `samesitenone` ([bypass](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)).
 
@@ -551,13 +555,13 @@ F-121 already plans this: "An environment says how to start the app, and the bas
 ### What the pane would show
 
 Beside the chat on a task's page sits a preview pane with:
-- a port menu, with each port's source shown: declared, announced by the agent, or detected;
+- the task's previews, primary first: the app, then others such as an API's docs, a mail catcher or Storybook (§8). Each shows its label and its source: declared in the environment, announced by the agent, or detected;
 - a path field;
 - reload;
 - a width preset;
 - "Open in a new tab".
 
-The expanded view is the same pane at full width. Moving an iframe element in the DOM reloads it, so the expanded view should resize the same frame rather than move it *(inference, untested)*. The pane always says where the box stands (ready, idle, stopped), and why a live view isn't offered when it isn't (no preview domain, a runner on the HTTP carrier, a runner below the needed minor). When there's no live view, it shows the latest screenshot.
+The expanded view is the same pane at full width. Moving an iframe element in the DOM reloads it, so the expanded view should resize the same frame rather than move it *(inference, untested)*. The pane always says where the box stands (ready, idle, stopped), and which live view it is giving. Without a preview domain the pane shows Design B; with one, Design A. When neither can run (a stopped box, a runner below the needed minor), it says why and shows the latest screenshot.
 
 ### Design A: preview hosts through core (the live pane)
 
@@ -569,6 +573,16 @@ The expanded view is the same pane at full width. Moving an iframe element in th
   2. Core mints a one-time code: single use, 60 s *(working value)*, bound to the member, the task, the port and the lease epoch. It returns `https://<host>/.ostra/enter?code=…`.
   3. On that host, core sets `__Host-ostra-preview` (HttpOnly, Secure, and `SameSite=None; Partitioned` when the preview domain is another site, `Lax` when it's the panel's site). Then it redirects to the path.
   4. Every request checks the cookie. Its lifetime is capped by the member's panel session and the lease. Core re-checks membership and the lease on each new connection and every few minutes *(working value)*.
+- **Who can open it is a setting per preview** (the maintainer, 2026-11-20). The levels, with precedents:
+  - **The project's members**, the default. Each member gets their own handshake. Codespaces, Gitpod, Ona and Coder default to private.
+  - **Named people.** Only the people a member picks, from the organization.
+  - **An expiring link.** Anyone with it, until it expires or is revoked. The link's token replaces the one-time code, sets the same per-origin cookie, and carries the link's expiry. Precedents: Lovable's 7-day links, Vercel's Shareable Links, Daytona's signed URLs of at most 24 hours (§1).
+  - **Public**, only where an admin allows it. Codespaces' organization owners "can restrict the ability to make forward ports available publicly" ([forwarding ports](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)). Coder caps sharing at owner by default, and Devin Apps are "never public" (§1).
+
+  Two rules go with the levels:
+  - **Fail closed.** Ona's CLI "opens the port for everyone instead" when a runner is too old to enforce private access ([Ona ports](https://ona.com/docs/ona/integrations/ports)). ostra should refuse instead *(inference)*.
+  - **Audit sharing.** Making a link and every first use of one is an audit entry (ADR 0054).
+  - **Watch dev servers that write files.** A link for people outside the project reaches dev servers whose WebSockets can write files: Storybook "can also write files in your project through the WebSocket channel" (§8.3). The `Origin` rewrite below lets those through, so such links may need the rewrite off.
 - **What the proxy does on every request:**
   - Removes its own cookie and any `X-Forwarded-*` from the client.
   - Never passes the member's identity to the app.
@@ -590,7 +604,7 @@ The expanded view is the same pane at full width. Moving an iframe element in th
   - **`host`:** the runner dials `127.0.0.1` on its machine.
   - The preview may reach only ports that belong to the task: declared, announced, or found by a scan filtered to the task's processes. It never reaches the sidecar's own ports (the key proxy, the git proxy, its control API) or OpenCode's loopback port. Without that rule, a preview on `kubernetes` (shared `localhost`) or on `host` (the whole machine's loopback) could reach things that aren't the app. Daytona's reserved ports are the same idea.
   - On macOS `host` runners, which can't scan per task, only declared and announced ports work. That's a runner-parity question to record.
-- **The HTTP fallback carrier.** No live preview over it in the first version. The pane says the runner reaches the server over HTTP only, and shows screenshots. That's a difference by network, not by executor, but AGENTS.md's parity rule would want it written down.
+- **The HTTP fallback carrier.** No Design A preview over it in the first version. The pane says the runner reaches the server over HTTP only, and falls back to Design B, which works over it slowly, or to screenshots. That's a difference by network, not by executor, but AGENTS.md's parity rule would want it written down.
 - **Idle and stopped boxes (ADR 0039).**
   - While a member has the pane open, the panel's heartbeat, not the app's HMR WebSocket (CodeSandbox's and Cloudflare's lesson), holds the box past the 15-minute idle timer, up to a cap of another 15 minutes after the last heartbeat *(working value)*.
   - When the box stops, the dev server is gone (and on `kubernetes` the pod). The pane shows the last screenshot and offers to start the app again. That needs F-121's "how to start the app" and a box started without an agent turn, which is an open question.
@@ -601,7 +615,7 @@ The expanded view is the same pane at full width. Moving an iframe element in th
   - a wildcard certificate (DNS-01 with Let's Encrypt);
   - WebSocket upgrades passed through on those hosts, as runners already need.
 
-  Several core replicas also need each replica's internal address. Unset, there's no live pane, and screenshots and `ostra preview` still work. In development it could default to `preview.localhost` (§3.5). The docs recommend a registrable domain of its own (v0, Cloudflare, Google) and allow a subdomain of the panel's domain with a warning. That's Coder's own layout, with §4.3's lessons applied.
+  Several core replicas also need each replica's internal address. The preview domain is optional, never required (the maintainer, 2026-11-20). Unset, the pane falls back to Design B, and screenshots and `ostra preview` still work. In development it could default to `preview.localhost` (§3.5). The docs recommend a registrable domain of its own (v0, Cloudflare, Google) and allow a subdomain of the panel's domain with a warning. That's Coder's own layout, with §4.3's lessons applied.
 - **Cost.** Preview bytes cross core only while someone watches. That's bounded by open panes, not by running tasks, unlike the model traffic ADR 0030 kept off the server.
 
 ### Design B: the box's browser, streamed (pixels, not code)
@@ -626,6 +640,11 @@ What it costs:
 - **No real check on the member's own device, clipboard or file uploads,** short of more protocol work.
 
 It needs a new minor too, since frames and input are new messages.
+
+**Sharing in Design B.**
+- **Members and named people** see the stream in the task's own page.
+- **An expiring or public link** needs a viewer page on the panel that a signed-out person can open. That's possible because it serves pixels, not the app's code. Whether such a viewer may also click and type into the box's browser, or only watch, is a choice to make *(inference)*.
+- **Same levels, smaller risk.** The levels are Design A's. A viewer here never runs the app's code in their own browser, which keeps the stakes lower.
 
 ### Design C: a tunnel the organization brings
 
@@ -654,7 +673,7 @@ A self-hoster whose core sits behind NAT can still put core itself behind their 
 | | A: preview hosts through core | B: the box's browser, streamed | C: the org's tunnel |
 |---|---|---|---|
 | Live in the pane | Yes, a real browser on the member's machine | Yes, as pixels | Yes |
-| Self-hoster's setting | Preview domain, wildcard DNS and certificate | None | A vendor account and egress exception |
+| Self-hoster's setting | The optional preview domain: wildcard DNS and certificate | None | A vendor account and egress exception |
 | New protocol minor | Yes | Yes | Yes (a tunnel spec in the dispatch) |
 | `docker` / `kubernetes` / `host` | All three; a forwarder in the agent's container on `docker`; per-task port filtering on `host` | All three; a browser in the box or on the host | All three, if egress allows |
 | HTTP fallback carrier | Not in the first version | Works, slowly | Separate from ostra's carrier |
@@ -664,31 +683,231 @@ A self-hoster whose core sits behind NAT can still put core itself behind their 
 
 ### Recommendation
 
-1. **Default, with no setting: screenshots and recordings in the timeline (F-121).** It's what most cloud agents ship (§6). It works everywhere ostra runs, and it's the fallback for every case where a live view can't work.
-2. **The live pane: Design A, on when an admin sets a preview domain.** The panel's setup page names the one record and the certificate to add. The same data path powers `ostra preview` with no setting at all. Through core is the right transport: it already dials out on 443, it keeps ostra's own access rules, and it needs no vendor.
-3. **Keep Design B as the follow-up** for installs that can't add a wildcard but want a live pane. Most of it (the browser in the box) comes with F-121 anyway.
-4. **No built-in third-party tunnel,** and no tunnel as the default.
-5. **Spike before the ADR:**
+The maintainer's answers decide the shape: the preview domain is optional, never required, and who can open a preview is configurable.
+
+1. **With no setting, three things work on every install:**
+   - **Screenshots and recordings in the timeline (F-121).** It's what most cloud agents ship (§6), it works on every executor and carrier, and it outlives the box.
+   - **A live pane through Design B,** streaming the same browser F-121 puts in the box.
+   - **`ostra preview`,** for any port on the member's own `localhost`.
+
+   Without a wildcard, these three are the whole path.
+2. **With the optional preview domain: Design A.** The app runs in the member's own browser, with devtools, real device sizes and copy and paste. The panel's setup page names the one record and the certificate to add. Through core is the right transport: it already dials out on 443, it keeps ostra's own access rules, and it needs no vendor.
+3. **The build order follows the dependencies** *(inference)*: F-121's browser in the box and its screenshots, then B's stream of that browser, then the preview connection, which `ostra preview` needs first and Design A later.
+4. **Who can open a preview** is a setting per preview: the project's members by default, named people, an expiring link, and public only where an admin allows it. It fails closed, and sharing is audited (Design A above).
+5. **Apps made of several services** follow §8.4.
+6. **No built-in third-party tunnel,** and no tunnel as the default.
+7. **Spike before the ADR:**
+   - B's frame rate, bandwidth and memory on a small box (2 vCPU, 4 GB);
    - HTTP/2 with extended CONNECT over a `ws` duplex;
    - the `docker` forwarder;
    - a Vite and a Next.js 16 app through the Host and Origin rewrite;
    - a partitioned preview cookie in an iframe on Safari, Firefox and Chrome;
    - `*.localhost` in each browser;
-   - the extra latency of a page load through core, measured and not guessed.
+   - the extra latency of a page load through core, measured and not guessed;
+   - a Vite frontend whose `server.proxy` sends `/api` to a second process, under A, B and screenshots (§8.2).
+
+---
+
+## 8. Apps made of several services
+
+The maintainer, 2026-11-20: "will it make our system smart enough to understand that if a project runs a frontend and api, and the frontend relies on the api, that it can just use the api? we might have many more similar things to this."
+
+The short answer: yes, if ostra knows the app's processes and their ports, and the browser talks to one origin. The products below don't guess either: they declare.
+
+### 8.1 How dev environments declare several services and wire them together
+
+**devcontainer.json and Codespaces:**
+- **Declaring ports:** `forwardPorts` takes port numbers or `"host:port"` values, the second "for forwarding a service not in the primary container in Docker Compose scenarios (e.g. "db:5432")". `portsAttributes` maps a port, range or pattern to a `label`, an `onAutoForward` action and a `protocol`. `openPreview` opens the port in the tool's "embedded preview browser" ([spec](https://containers.dev/implementors/json_reference/)).
+- **Several containers:** `dockerComposeFile`, `service` (the one tools connect to) and `runServices`, which "Defaults to all services", make a dev environment of several containers (same page).
+- **Finding another port's URL:** a codespace has `CODESPACE_NAME` and `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`, the latter "the domain of the GitHub Codespaces forwarded port. For example, app.github.dev" ([variables](https://docs.github.com/en/codespaces/developing-in-a-codespace/default-environment-variables-for-your-codespace)). GitHub's advice: "If you reference a forwarded port in your code… we recommend that you use an environment variable instead of hardcoding the URL" ([troubleshooting](https://docs.github.com/en/codespaces/troubleshooting/troubleshooting-port-forwarding-for-github-codespaces)). With the URL shape `https://CODESPACENAME-PORT.app.github.dev` (§1.3), the variables build any port's URL *(inference; I found the construction spelled out only in third-party docs)*.
+- **A frontend calling a private API port:** no GitHub page covers it. A 2021 community thread reports that the preflight fails because "redirect is not allow for a preflight request". The answer given there is to make the port public (secondary, [discussion](https://github.com/orgs/community/discussions/3637)).
+
+**Gitpod (classic) and Ona:**
+- **Gitpod classic:**
+  - **Declaring ports:** `.gitpod.yml` `ports` take a `name`, `description`, `onOpen` (`open-browser`, `open-preview`, `notify`, `ignore`), `visibility` and a port or range ([reference](https://ona.com/docs/classic/user/references/gitpod-yml)).
+  - **Finding another port's URL:** "`gp url 8080` prints the URL which points to the service listening on port 8080" ([CLI](https://ona.com/docs/classic/user/configure/workspaces/gitpod-cli)), and `GITPOD_WORKSPACE_URL` is the workspace's URL ([variables](https://ona.com/docs/classic/user/configure/workspaces/environment-variables)).
+  - **A frontend calling a private port:** the "fetch request needs to have the `credentials: "include"` option set", and the server sends `Access-Control-Allow-Credentials` ([ports](https://ona.com/docs/classic/user/configure/workspaces/ports)).
+- **Ona:**
+  - **Services:** these live in `.ona/config.yaml`, with a `start` command that "Must stay running" and a `ready` check that runs "until it exits with code 0" ([schema](https://ona.com/docs/ona/reference/ona-config-schema)).
+  - **Ports:** they aren't declared there. `ona environment port open 8000 -n my-app` opens one and prints its URL ([ports](https://ona.com/docs/ona/integrations/ports)).
+  - **Finding another port's URL:** I found no variable that gives a service another port's URL (**unconfirmed**).
+
+**Coder:**
+- **Declaring apps:** each app is a `coder_app` in the template, with a `slug` "used in URLs", `subdomain`, `share`, a `healthcheck`, `order`, `group` and `hidden` ([provider v2.20.0](https://registry.terraform.io/providers/coder/coder/latest/docs/resources/app)).
+- **Frontend-to-backend calls:**
+  - Coder "automatically sets headers that allow requests between separately forwarded applications belonging to the same user". "The allowed origin will be set to the origin provided by the browser if the users are identical. Credentials are allowed."
+  - The app's own CORS headers "will be stripped from the response", and "These cross-origin headers are not configurable by administrative settings".
+  - The frontend must send `credentials: "include"` ([port forwarding](https://coder.com/docs/admin/networking/port-forwarding)).
+- **Finding another port's URL:** inside the workspace, the agent sets `VSCODE_PROXY_URI`, a template with `{{port}}` for code-server's ports dialog ([agent.go](https://raw.githubusercontent.com/coder/coder/main/agent/agent.go)). A computed URL on `coder_app` is **unconfirmed**.
+
+**Daytona:**
+- **Getting a port's URL:** the SDK mints it from outside the sandbox: `sandbox.getPreviewLink(3000)` ([preview](https://www.daytona.io/docs/en/preview)). Its OpenClaw guide resolves the link first and passes it in, because "its origin has to be allowlisted in the gateway config before the gateway starts" ([guide](https://www.daytona.io/docs/en/guides/openclaw/openclaw-sdk-sandbox)).
+- **Several services:** they run in one sandbox only if the image ships `dockerd` ([docker](https://www.daytona.io/docs/en/v2/docker)). A declaration file for services is **unconfirmed**.
+
+**Replit:**
+- **Declaring ports:** several `[[ports]]` entries each need "both a localPort and externalPort". The first opened port binds to external port 80, and extra external ports come from a fixed list ([ports](https://docs.replit.com/features/project-setup/ports)).
+- **Finding the URL:** `REPLIT_DEV_DOMAIN` is the "Development URL on the replit.dev domain", and `REPLIT_DOMAINS` lists them all ([secrets](https://docs.replit.com/replit-workspace/workspace-features/secrets)).
+- **A frontend reaching the backend:** no guidance found (**unconfirmed**).
+
+**Docker Compose:**
+- **Finding each other:** each container is "reachable by other containers on that network, and discoverable by its service name". "Service-to-service communication uses the CONTAINER_PORT" ([networking](https://docs.docker.com/compose/how-tos/networking/)).
+- **Order and visibility:** `depends_on` with `service_healthy` orders startup, and `expose` keeps a port off the host ([services](https://docs.docker.com/reference/compose-file/services/)).
+
+**Preview-environment platforms that wire services together:**
+- **Railway:**
+  - References take the form `${{SERVICE_NAME.VAR}}` ([variables](https://docs.railway.com/guides/variables)).
+  - `RAILWAY_PUBLIC_DOMAIN` "is a hostname without a scheme… Add https:// when the value is used as a URL or as an allowed CORS origin" ([best practices](https://docs.railway.com/overview/best-practices)).
+  - PR environments give "each service a new URL", and references resolve per environment ([PR environments](https://docs.railway.com/guides/preview-deployments-with-pr-environments)).
+- **Render:**
+  - `RENDER_EXTERNAL_URL` is a web service's "full onrender.com URL" ([variables](https://render.com/docs/environment-variables)).
+  - A Blueprint's `fromService` passes another service's `host`, `port` or `hostport` over the private network ([Blueprint spec](https://render.com/docs/blueprint-spec)).
+- **Vercel:** with Related Projects, "each preview deployment of the frontend automatically references the corresponding preview deployment of the backend", for up to 3 projects in one repo ([monorepos](https://vercel.com/docs/monorepos)).
+
+**What they share.**
+1. **Ports declared by number,** with a label, an open action and a visibility.
+2. **A predictable host per port,** built from injected variables.
+3. **A command that prints a port's URL.**
+4. **Named references** that each environment resolves to its own copy of the other service.
+
+### 8.2 The frontend calls the API
+
+**Two patterns.**
+- **One origin, and the frontend's dev server proxies.**
+  - **Vite:** in `server.proxy`, "Any requests whose request path starts with that key will be proxied to the specified target". `ws: true` carries WebSockets, and the docs warn that `rewriteWsOrigin` "can leave the proxying open to CSRF attacks" ([server options](https://vite.dev/config/server-options)).
+  - **Next.js:** rewrites "act as a URL proxy and mask the destination path", to an external URL too ([rewrites](https://nextjs.org/docs/app/api-reference/config/next-config-js/rewrites)).
+  - **Create React App:** its `proxy` field "supports HTTP, HTTPS and WebSocket connections", in development only ([CRA](https://create-react-app.dev/docs/proxying-api-requests-in-development/)). CRA itself was deprecated on 2025-02-14 ([React](https://react.dev/blog/2025/02/14/sunsetting-create-react-app)).
+  - **The effect:** the browser only ever sees the frontend's origin, and the dev server calls the API at `localhost:<port>` inside the box.
+- **A URL per service, with CORS.** The frontend calls an absolute API URL from a variable, and the API answers cross-origin.
+  - **Vite inlines the variable:** `VITE_*` variables are "defined as global variables during dev and statically replaced at build time" ([env](https://vite.dev/guide/env-and-mode)).
+  - **Next.js too:** `NEXT_PUBLIC_*` ones "will be inlined into the JavaScript bundle during `next build`" ([env](https://nextjs.org/docs/app/guides/environment-variables)).
+  - **CORS with credentials:** it can't use `*`: "Attempting to use the wildcard with credentials results in an error" ([MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Origin)).
+  - **Cookies on cross-site calls:** `SameSite=Lax` cookies are not sent on cross-site `fetch()` calls ([MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)).
+  - **Socket.IO:** since v3 it needs CORS explicitly, and "this also applies to localhost if your web application and your server are not served from the same port" ([Socket.IO](https://socket.io/docs/v4/handling-cors/)).
+
+**Which works under which design** *(inference from the facts above)*:
+
+| How the frontend reaches the API | Screenshots (the box's browser) | Design B (the box's browser, streamed) | Design A (the member's browser, preview hosts) | `ostra preview` (the member's `localhost`) |
+|---|---|---|---|---|
+| One origin, the frontend's dev server proxies `/api` | Works | Works | Works: the API call never leaves the box | Works |
+| An absolute `http://localhost:3001` in the client | Works | Works | Breaks: the member's browser looks for port 3001 on the member's own machine | Works only if the member forwards 3001 too |
+| An absolute preview URL (`https://3001-<id>.<domain>`) from a variable | Breaks: the box's browser leaves the box and has no preview cookie | Breaks, the same way | Works only with CORS for the frontend's preview origin, `credentials: "include"`, and a preview cookie on the API's host too | Breaks |
+
+**One value can't serve both browsers.** The dev server starts once, inlines one API URL, and serves both the member's browser (Design A) and the box's own browser (Design B and screenshots) *(inference)*. So the one-origin proxy is the only pattern that works under every design. It is also what ostra should tell the agent to do, and what onboarding should propose.
+
+**If a project keeps separate origins, Design A can help in two ways:**
+- **Coder's way: the proxy answers CORS between two preview hosts of the same task, for the same member.**
+  - The check must use core's own records of which task and member a host belongs to, never the host name's text. That's the lesson of CVE-2026-55438: "the CORS middleware trusted the unverified username in the hostname" (§4.3).
+  - The member then needs a cookie on each of the task's hosts, so the handshake sets them one by one.
+  - Coder's shortcut, one cookie on the whole wildcard, is what GHSA-5g4w-3vw9-478w showed is risky.
+- **Devin's way: one origin per task, and a service worker that rewrites the page's calls to `localhost:<port>` back onto that origin.** "Because the request stays on the preview's own address, you don't need to change CORS settings" ([Devin](https://docs.devin.ai/work-with-devin/browser-previews)). The cost is the app's own service worker. How Devin routes the port, and how it carries WebSockets, is **unconfirmed**.
+
+### 8.3 The neighbouring cases
+
+**HMR and other WebSockets.**
+- **The frontend's own HMR:** Vite's HMR socket goes to the frontend's own origin, which the proxy passes (§5.2).
+- **A backend's socket** (Socket.IO on 3001) is the question in §8.2 again:
+  - through the frontend's proxy with `ws: true`; or
+  - as a separate origin with Socket.IO's own CORS. "WebSocket connections are not subject to CORS restrictions" there, only polling is ([Socket.IO](https://socket.io/docs/v4/handling-cors/)).
+- **Under Design A, a socket to another preview host** needs that host's preview cookie, since the upgrade carries cookies *(inference)*.
+
+**OAuth callbacks need a stable URL.**
+- **The rule:**
+  - RFC 9700 requires "exact string matching except for port numbers in `localhost` redirection URIs of native apps" ([RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html)).
+  - Google: "The value must exactly match one of the authorized redirect URIs". Wildcards aren't allowed, and HTTPS is required except for localhost ([Google](https://developers.google.com/identity/protocols/oauth2/web-server)).
+  - GitHub OAuth apps take up to 10 callback URLs ([creating](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)). With wildcard matching off, "the redirect URL must exactly match the callback URL". With it on, any subdomain or subdirectory matches, and GitHub warns: "Only enable wildcard matching if you absolutely need it". Apps with a single callback URL before 2026-08-03 have it on ([authorizing](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)).
+- **Auth.js:**
+  - It trusts `X-Forwarded-Host` behind a proxy with `AUTH_TRUST_HOST`.
+  - For previews it has a redirect proxy, because "Most OAuth providers cannot be configured with multiple callback URLs or using a wildcard". It keeps the preview's URL in `state` and sets "the redirect_uri to the stable deployment" ([deployment](https://authjs.dev/getting-started/deployment)).
+- **For ostra *(inference)*:**
+  - **A preview host is random per task,** so it can't be registered task by task.
+  - **In the box's own browser (Design B, screenshots),** the app is at `http://localhost:<port>`. One registered localhost callback then serves every task, and `ostra preview` on the same port serves the member's machine with the same callback.
+  - **Design A needs one of:** a stable per-project host the app redirects through (Auth.js's pattern), or GitHub's wildcard matching on the preview domain, which GitHub warns against.
+  - **Design A's `Host` rewrite gets in the way here.** An app that builds its callback from `Host` would send the member's browser to `http://localhost:<port>`, so a project with OAuth needs the rewrite off and the real host in `X-Forwarded-Host`.
+  - **The OAuth client's keys are an environment secret,** for dev and test only (ADR 0030, ADR 0031).
+
+**Incoming webhooks need a public URL, and a preview isn't one.** Forwarders that dial out avoid that:
+- **Stripe CLI:** `stripe listen --forward-to localhost:4242/webhook` relays events and prints a signing secret ([Stripe](https://docs.stripe.com/webhooks)). Its client receives "webhook requests from Stripe" over a WebSocket it opens ([client.go](https://raw.githubusercontent.com/stripe/stripe-cli/master/pkg/websocket/client.go)).
+- **GitHub CLI:** `gh webhook forward` "only works with repository and organization webhooks", and only one person can use it at a time for each repository and organization ([GitHub](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/using-the-github-cli-to-forward-webhooks-for-testing)).
+- **smee.io:** it uses Server-Sent Events to relay payloads ([smee](https://smee.io/)).
+- **Svix CLI:** it gives a public relay URL ([Svix](https://docs.svix.com/play)).
+
+These fit "the box dials out", and need only public egress, which the v1 egress baseline allows (ADR 0031) *(inference)*. Their login or key is an environment secret, which the code under test can see (ADR 0030). The other choice is an ostra webhook entry: a public, unguessable URL per task that forwards to a port. That opens a door into agent-written code from the internet, so it would be admin-allowed, like public previews.
+
+**Mail catchers are a preview of a service.**
+- **Mailpit:** it takes SMTP on `0.0.0.0:1025` and serves its UI on `0.0.0.0:8025`. Its UI uses a WebSocket, and its `Host` allowlist is opt-in: "When unset (the default), any Host header is accepted" ([Mailpit](https://mailpit.axllent.org/docs/configuration/runtime-options/)).
+- **MailHog:** not archived, but its last release is v1.0.1 of 2020-08-11 ([GitHub API](https://api.github.com/repos/mailhog/MailHog/releases/latest)).
+- **In ADR 0038's terms,** Mailpit is a service (an image and a port), and its UI is a second preview, "Mail". So the preview path must reach the box's service containers as well as the agent's container:
+  - **`docker`:** `mailpit:8025`, by service name;
+  - **`kubernetes`:** the pod's `localhost`;
+  - **`host`:** none, since `host` runs no services.
+
+**Database admin UIs.**
+- **Adminer:** a single PHP file that "does not allow connecting to databases without a password" ([Adminer](https://www.adminer.org/en/)).
+- **pgAdmin:** it listens on 80 or 443 and needs `X-Script-Name` to serve under a sub-path ([pgAdmin](https://www.pgadmin.org/docs/pgadmin4/latest/container_deployment.html)).
+- **Prisma Studio:** it uses port 5555 and binds `127.0.0.1` ([Prisma](https://www.prisma.io/docs/guides/deployment/docker)).
+- **Drizzle Studio:** its UI is hosted at `local.drizzle.studio` and talks to a server on `127.0.0.1:4983`. It's "not meant to be used on remote (VPS, etc)" ([Drizzle](https://orm.drizzle.team/docs/drizzle-kit-studio)).
+- **Where Drizzle Studio works** *(inference)*: it breaks under Design A, because the hosted UI calls the member's own machine. It works under Design B, and with `ostra preview 4983`.
+- **Who should see them:** these UIs reach the dev database, so they stay private by default. An environment's data is for dev and test only (ADR 0031).
+
+**Storybook.**
+- **Port and binding:** port 6006, and "`127.0.0.1` by default" for its host ([CLI](https://storybook.js.org/docs/api/cli-options)).
+- **Its checks:** it "validates the Host header of every request, and the Origin header of WebSocket connections". A reverse proxy needs `core.allowedHosts` ([core config](https://storybook.js.org/docs/api/main-config/main-config-core)).
+- **Its write channel:** "It can also write files in your project through the WebSocket channel." So a Storybook preview shared outside the project should keep its own `Origin` check (Design A, sharing).
+
+**Mobile dev servers.**
+- **Expo's tunnel:** `npx expo start --tunnel` tunnels "via ngrok" through `@expo/ngrok`. "Tunnel URLs are public and can be accessed by any device", Metro listens on 8081, and `EXPO_PACKAGER_PROXY_URL` forces the URL the app opens ([Expo CLI](https://docs.expo.dev/more/expo-cli/)).
+- **The tunnel is best-effort:** an Expo maintainer called the shared tunnel "neither a paid service (no service-level guarantees), nor meant as a permanent solution" (2026-02-23, [#43335](https://github.com/expo/expo/issues/43335)).
+- **For ostra:** a phone in Expo Go can't do a browser's cookie handshake. A private preview doesn't reach it, and whether an expiring link through `EXPO_PACKAGER_PROXY_URL` would is **unconfirmed**. In reach: Expo's web target as an ordinary preview, and screenshots.
+
+### 8.4 What it means for ostra
+
+- **The environment gains the app's processes, beside its services.**
+  - **Today:** ADR 0038's services are containers from an image, each with a port and a health check. Their `name` "is also its host name on the box's network" (`packages/protocol/src/task/spec.ts`). The app's own processes, such as the frontend and the API, aren't declared anywhere. F-121 plans "how to start the app".
+  - **A proposal:** a list of **app processes**: a name, its repo's folder, a start command, a port, a ready check (Ona's `ready`, Compose's `service_healthy`), a label, and one marked the **primary preview**. A service with a web UI (Mailpit's 8025, Adminer) gets a preview flag.
+  - **The pane** opens the primary, and lists the rest.
+- **Onboarding proposes them from the repo's files.**
+  - **What detection reads today:** F-112's detection already reads `devcontainer.json` and compose files, and takes compose services' ports (`packages/domain/src/environment/detect.ts`). It doesn't read `forwardPorts` or `portsAttributes`.
+  - **What it could add:**
+    - `forwardPorts` with their labels, and `onAutoForward: openPreview` as the hint for the primary;
+    - `.gitpod.yml` ports and `.replit` `[[ports]]`;
+    - the `dev` scripts in `package.json`;
+    - Vite's `server.port` and `server.proxy`. A proxy entry is exactly the "frontend relies on the API" link.
+  - **Testing the proposal:** the onboarding task (F-113, milestone 6 ticket 21) starts each process, checks that its port answers and that the primary loads (a screenshot), and hands the list in through `propose_environment`, which already takes services. A project admin accepts it, as for the rest of the environment.
+- **The agent can register a port mid-task.** An ostra MCP tool in the sidecar (working name `show_preview`, taking a port, a label, a path and whether it's primary) opens it in the pane. This is how Devin's agent opens a preview "when it starts an app you should look at" (§1.2). It's scoped to the task. "Keep it" turns it into a proposal for the environment, which a project admin accepts, so the next task starts with it. Detection's port scan (§5.4) is the third source, shown as "detected".
+- **Each process gets the others' URLs, inside the box.**
+  - **The model:** Railway's references and Codespaces' variables. Each process and service gets variables with the others' in-box addresses, such as `http://localhost:3001` for a process and `http://mailpit:8025` for a service *(working names to choose)*.
+  - **Why in-box:** those are right for server-side calls under every design, and for the box's own browser.
+  - **No browser-facing URL by default:** one only exists under Design A, only for members, and an inlined client variable can't serve the box's browser at the same time (§8.2). So ostra doesn't inject one by default, and the agent's instructions prefer the one-origin proxy.
+- **Several repos in one box.** Milestone 4 (F-098) puts a project's repos side by side in one workspace, with the agent at the root.
+  - The processes of a frontend repo and an API repo run in one network namespace: the agent's container on `docker`, the pod on `kubernetes`, the machine on `host`. So the frontend's dev server reaches `localhost:3001` on every executor.
+  - Each process names its repo's folder.
+  - A project of two repos and one app has one primary preview.
+- **The protocol.** Design A's preview event (§7) carries each preview's label, source (declared, announced, detected) and whether it's primary. Design B needs the same list to know what its browser should load. Both fit the same new minor.
+- **Sharing per preview.** The levels in §7 apply to each preview on its own. A mail catcher, a database UI or a Storybook may deserve a tighter default than the app itself.
 
 ---
 
 ## Open questions for the maintainer
 
-1. **Is one wildcard DNS name and certificate an acceptable ask for the live pane,** with screenshots as the no-setting default? Or must a live view work with no setting, which points to Design B first?
-2. **A registrable domain of its own for previews, or a subdomain of the panel's domain?** The first is what v0, Cloudflare and Google advise. The second is Coder's layout and easier for a self-hoster. Allow both, recommend the first?
-3. **Should watching a preview keep a box warm past the 15-minute idle timer,** and for how long? It costs compute, and ADR 0042's budgets count model spend only.
-4. **May "start the app again" start a box with no agent turn,** from the branch, the hidden ref and the environment's start command (F-121), to serve a preview of a stopped task?
-5. **Sharing:** members of the project only (each with their own handshake), or also expiring links for people outside it, as Lovable and Vercel do? If yes, who may make them?
-6. **Several core replicas:** accept replica-to-replica forwarding for preview streams (ADR 0034 set it aside for commands), or require previews to be served by one replica?
-7. **The HTTP fallback carrier:** no live preview over it, recorded as a known limit? Or a degraded mode over long polls?
-8. **Is rewriting `Host` and `Origin` to `localhost` acceptable as the default?** It's Devin's answer, and it removes the dev server's own DNS-rebinding defence behind ostra's proxy. The other choice is configuring each framework (`__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`, `allowedDevOrigins`).
-9. **Where does F-121 move?** A live pane depends on the box's browser and the start command that F-121 brings. Q68 put it after v1, "first in line".
+Answered on 2026-11-20 and folded in above:
+- **The wildcard preview domain is optional.** It's welcome, never required.
+- **Who can open a preview is configurable:** members, specific people, an expiring link, or public if an admin allows it.
+
+Still open:
+1. **A registrable domain of its own for previews, or a subdomain of the panel's domain?** The first is what v0, Cloudflare and Google advise. The second is Coder's layout and easier for a self-hoster. Allow both, recommend the first?
+2. **Should watching a preview keep a box warm past the 15-minute idle timer,** and for how long? It costs compute, and ADR 0042's budgets count model spend only.
+3. **May "start the app again" start a box with no agent turn,** from the branch, the hidden ref and the environment's start command (F-121), to serve a preview of a stopped task?
+4. **Several core replicas:** accept replica-to-replica forwarding for preview streams (ADR 0034 set it aside for commands), or require previews to be served by one replica?
+5. **The HTTP fallback carrier:** no Design A preview over it, recorded as a known limit? Or a degraded mode over long polls? Design B works over it, slowly.
+6. **Is rewriting `Host` and `Origin` to `localhost` acceptable as Design A's default?**
+   - **Why:** it's Devin's answer, and needs no project config.
+   - **The cost:** it removes the dev server's own DNS-rebinding defence behind ostra's proxy. It also gets in the way of OAuth callbacks built from `Host` (§8.3), and of Storybook's `Origin` check on links outside the project.
+   - **The other choice:** configuring each framework (`__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`, `allowedDevOrigins`).
+7. **Where does F-121 move?** Without a wildcard, the live pane is Design B, which streams F-121's browser in the box. Q68 put it after v1, "first in line".
+8. **App processes as a second list in the environment,** beside ADR 0038's services, with a primary preview? Or should services grow to cover processes?
+9. **Should ostra tell agents to keep the browser on one origin,** putting the API behind the frontend's dev-server proxy, and should onboarding propose it? It's the only pattern that works under every design (§8.2). Should Design A also offer cross-host CORS between a task's previews, as Coder does?
+10. **Webhooks:** rely on forwarders that dial out (Stripe CLI, `gh webhook forward`, smee), run in the box? Or add an ostra webhook entry, a public per-task URL that an admin allows?
+11. **Links outside the project in Design B:** may the viewer click and type into the box's browser, or only watch?
 
 ## Unconfirmed, listed together
 
@@ -712,6 +931,18 @@ A self-hoster whose core sits behind NAT can still put core itself behind their 
   - that Next.js 16.2.0 stable blocks dev origins (the canary does), and which 16.x minor renamed the HMR path;
   - a first-party MCP tool in a major agent product that announces a port;
   - a sandbox product with a built-in API console.
+- **Several services (§8):**
+  - a GitHub page that builds another port's URL from `CODESPACE_NAME` and `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`;
+  - how a codespace's frontend calls a private API port (only a 2021 community thread);
+  - an Ona variable with another port's URL;
+  - a computed URL on Coder's `coder_app`;
+  - a Daytona file that declares services;
+  - Replit's guidance on reaching the backend port;
+  - how Devin's service worker routes ports and carries WebSockets;
+  - the Stripe CLI's WebSocket host;
+  - whether MailHog is unmaintained;
+  - whether Expo Go can reach a preview through an expiring link;
+  - which port Expo's web target uses.
 - **Repo:** the prefix of ostra's own session cookie name.
 - **Ideas no source tested:**
   - Node's HTTP/2 with extended CONNECT over a `ws` duplex, end to end;
@@ -721,6 +952,30 @@ A self-hoster whose core sits behind NAT can still put core itself behind their 
 ## What this means for ostra
 
 - **The shape ostra already has is the right one for previews.** Core relays the browser's traffic to the box over a connection the box dialled out, like Coder and Teleport. No tunnel vendor sits in the middle, and ostra's own membership and lease rules decide who sees an app.
-- **The one thing ostra can't avoid asking a self-hoster for a live in-browser preview is a wildcard name and certificate.** Every self-hosted product in this field asks the same. Path-based proxying breaks dev servers, and on the panel's origin it hands agent code the member's session.
-- **What needs nothing and works everywhere is screenshots and recordings in the timeline.** F-121 already plans them. They should come first, and a live pane on a preview domain should follow. A streamed view of the box's browser (Design B) is the answer if installs without a wildcard want a live pane too.
-- **Either live design is a new protocol minor** and an ADR covering the preview connection, the preview domain, the idle rule and the HTTP-carrier limit. The open questions above are what the maintainer would settle first.
+- **A live pane needs no wildcard.** Without a preview domain, three things work on every install with no setting:
+  - screenshots and recordings fill the timeline (F-121);
+  - the pane streams the box's own browser (Design B);
+  - `ostra preview` opens any port on the member's own `localhost`.
+
+  The preview domain the maintainer wants optional adds Design A: the app in the member's own browser, with devtools. It's the one design that asks for a wildcard name and certificate, as every self-hosted product in this field does. Path-based proxying is no way around it: it breaks dev servers, and on the panel's origin it hands agent code the member's session.
+- **Who sees a preview is a setting per preview:** the project's members by default, named people, an expiring link, or public where an admin allows it. It fails closed, and sharing is audited.
+- **ostra gets "smart" about a frontend and its API by knowing them, not by guessing.**
+  - The environment declares the app's processes and ports with a primary preview.
+  - Onboarding proposes them from devcontainer, compose, `.gitpod.yml`, `.replit`, `package.json` and Vite's config.
+  - The agent can add one mid-task.
+  - Each process gets the others' in-box addresses.
+
+  The frontend reaches the API under every design when the browser talks to one origin and the frontend's dev server proxies to the API inside the box, so ostra makes that the convention it tells agents.
+- **The neighbours fit the same model.**
+  - A localhost OAuth callback works in the box's browser and through `ostra preview`.
+  - Webhooks arrive through forwarders that dial out.
+  - A mail catcher, a database UI and Storybook are previews of their own, private by default.
+  - Native mobile is out of a private preview's reach, beyond Expo's web target and screenshots.
+- **Either live design is a new protocol minor** and an ADR covering:
+  - the preview connection;
+  - the optional preview domain;
+  - the preview list and its access levels;
+  - the idle rule;
+  - the HTTP-carrier limit.
+
+  ADR 0038 would also gain the app's processes. The open questions above are what the maintainer would settle first.
