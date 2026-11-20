@@ -22,7 +22,7 @@ Spec: `../spec.md`, sections 4 and 10.1; ADR 0064 ("The 30-minute measure")
 
 ## Comments
 
-- 2026-11-20, api: built and proved (`context/proof/F-076.md`).
+- 2026-11-20, api: built and proved in f37e77fd (`context/proof/F-076.md`).
   - **The checklist:** `setup.status` gains, additively, each step's `docs` (its page under `OSTRA_DOCS_URL`, from `setupStepDocs`) and `complete` (every step done but the optional Linear). Home drops the checklist on `complete`, so an organization finishes setup with Linear connected, skipped or untouched; `next` keeps milestone 2's meaning (the first open step, Linear included). The runner's link goes to the setup guide's "Connect a runner" section, since the compose file's runner is a pool runner; the API test checks every link's page and heading exist in `apps/docs/content`.
   - **The screen that grows** (`app-targets/m2/home-first-run`, spec section 13): each row's body ends with a `--muted` "Docs" link with Lucide `book-open` 12px, opening in a new tab, on every row, done or not, for admins and members (`checklist.docs`, and `checklist.docsLabel` for its accessible name). Nothing else on the screen changes.
   - **`setup.timeline`** (instance admin only, its input the start alone) reads the first organization's earliest audit entry per mark and its first `pr.opened` event, through the domain's `setupTimeline`. The password change wrote no audit entry before (`password.changed` was in the closed list, unused): better-auth's `/change-password` now writes one in each of the account's organizations, in one transaction with clearing `mustChangePassword`.
