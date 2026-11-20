@@ -31,3 +31,4 @@ Spec: `../spec.md`, sections 3 (steps 4, 6 and 9) and 4
   - Departure from "`runners.list` ... members see their own personal runner and the pools' names": `runners.list` and `pools.list` stay admin-only so their outputs keep one shape for the panel; a member reads their runners through `runners.mine` and `runners.get` (their own personal runner only; any other is `NOT_FOUND`) and the pools' names through the new `pools.names`.
   - `pools.queue` is admins only. A member sees their own task's place on `tasks.get` (`queue: { poolId, poolName, place, length }`), read from the pool's queue now rather than the place the admission last recorded, which goes stale as the queue moves.
   - `runners.drain` answers `runningTasks`, the busy boxes that will finish; `runners.resume` answers `commandSent` (false below minor 4); `runners.revoke` keeps its `stoppedTasks`.
+- 2026-11-20: commit 779ff3f6 (`✨ add the fleet and the queue to the API`).

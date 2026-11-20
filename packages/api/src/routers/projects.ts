@@ -25,6 +25,7 @@ import { agentProfileViewSchema, loadAgentProfileView } from "./agent-profile-vi
 import { detectionViewSchema } from "./environments.ts";
 import { projectReposProcedures } from "./project-repos.ts";
 import { projectProviderProcedures } from "./project-providers.ts";
+import { projectRunnerProcedures } from "./project-runners.ts";
 
 // F-086, ticket 32: projects. A project is one repo linked through the organization's App, with its
 // one environment. Another organization's projects, and a restricted one a member isn't on, are
@@ -133,6 +134,7 @@ export const projectsRouter = router({
   ...projectReposProcedures,
   // F-135 (ticket 50): the project's providers, by name, and an organization admin's changes to them.
   ...projectProviderProcedures,
+  ...projectRunnerProcedures,
 
   /**
    * Creates a project on one or more repos the App's installations include (`repo` first, then

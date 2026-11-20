@@ -130,6 +130,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "approvals.preview": { input: (target) => ({ approvalId: row(target, "Approval") }), about: "project" },
   "audit.actions": { input: none, about: "organization" },
   "audit.list": { input: project, about: "project" },
+  "boxSizes.list": { input: none, about: "organization" },
   "boards.available": { input: project, about: "project" },
   "boards.get": { input: project, about: "project" },
   "diff.comments.list": { input: task, about: "project" },
@@ -181,6 +182,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "projects.access": { input: project, about: "project" },
   "projects.get": { input: project, about: "project" },
   "projects.getTicketTemplate": { input: project, about: "project" },
+  "projects.runners": { input: project, about: "project" },
   "projects.list": { input: none, about: "organization" },
   "projects.previewProviders": { input: (target) => ({ projectId: target.projectId, mode: { kind: "default" } }), about: "project" },
   "projects.providers": { input: project, about: "project" },
@@ -207,6 +209,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "tasks.local": { input: task, about: "project" },
   "tasks.memory": { input: task, about: "project" },
   "tasks.startCheck": { input: project, about: "project" },
+  "tasks.runnerChoices": { input: project, about: "project" },
 };
 
 /** Which procedures read each model's rows: what the suite calls for it. */
@@ -222,7 +225,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Model: ["providers.models", "agentProfiles.get", "agentProfiles.effortLevels", "spend.modelPrice"],
   RunnerPool: ["pools.list", "pools.joinTokens", "pools.get", "pools.names", "pools.queue"],
   JoinToken: ["pools.joinTokens", "pools.list", "joinTokens.list", "pools.get"],
-  Runner: ["runners.list", "runners.mine", "runners.get"],
+  Runner: ["runners.list", "runners.mine", "runners.get", "tasks.runnerChoices"],
   RunnerPresence: ["runners.list", "runners.mine"],
   AgentProfile: ["agentProfiles.list", "agentProfiles.get", "agentProfiles.forStart"],
   AgentProfileMember: ["agentProfiles.get"],
@@ -230,7 +233,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Secret: [],
   Project: ["projects.list", "projects.get", "home.overview"],
   ProjectMember: ["projects.get", "projects.access", "members.list"],
-  ProjectPool: ["projects.get", "pools.list"],
+  ProjectPool: ["projects.get", "pools.list", "projects.runners", "tasks.runnerChoices"],
   Repo: ["projects.get", "tasks.get", "projects.repos"],
   Board: ["boards.get", "inbox.filters"],
   Ticket: ["inbox.list", "inbox.get"],
@@ -287,7 +290,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ProviderListEntry: ["providers.list", "projects.get", "projects.providers", "providers.previewDefaultList"],
   ModelChoice: ["providers.list", "projects.get", "projects.providers", "projects.previewProviders", "providers.choicesToConfirm"],
   // Milestone 5 (its ticket 04): no procedure reads them yet; tickets 27 and 28 add theirs.
-  BoxSize: [],
+  BoxSize: ["boxSizes.list"],
   Registry: [],
 };
 
@@ -503,6 +506,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "approvals.preview": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "audit.actions": ["ok", "ok", "ok", "ok", "ok"],
   "audit.list": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
+  "boxSizes.list": ["ok", "ok", "ok", "ok", "ok"],
   "boards.available": ["PRECONDITION_FAILED", "FORBIDDEN", "PRECONDITION_FAILED", "FORBIDDEN", "NOT_FOUND"],
   "boards.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "diff.comments.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
@@ -554,6 +558,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "projects.access": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.getTicketTemplate": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
+  "projects.runners": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.list": ["ok", "ok", "ok", "ok", "ok"],
   "projects.previewProviders": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "NOT_FOUND"],
   "projects.providers": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
@@ -580,6 +585,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "tasks.local": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.memory": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.startCheck": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.runnerChoices": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
 };
 
 describe("the matrix of procedures and roles (F-003, F-087)", () => {

@@ -13,6 +13,7 @@ import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
 import { plansRouter, questionsRouter } from "./questions-plans.ts";
 import { joinTokensRouter, poolsRouter } from "./pools.ts";
+import { boxSizesRouter } from "./box-sizes.ts";
 import { runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
@@ -60,6 +61,7 @@ export const appRouter = router({
   runners: runnersRouter,
   pools: poolsRouter,
   joinTokens: joinTokensRouter,
+  boxSizes: boxSizesRouter,
   stream: streamRouter,
   insights: insightsRouter,
   spend: spendRouter,

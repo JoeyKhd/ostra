@@ -155,7 +155,8 @@ export type RecordRunnerReport = (
 export type SetBoxSizes = (
   deps: M5Deps,
   scope: MemberScope,
-  input: { readonly sizes: Readonly<Record<BoxSizeName, Resources>> },
+  /** The sizes to change; a name left out keeps its limits (ticket 27's `boxSizes.update` sets one). */
+  input: { readonly sizes: Readonly<Partial<Record<BoxSizeName, Resources>>> },
 ) => Promise<UseCaseResult<{ readonly changedAt: number }, "forbidden" | "invalid-input">>;
 
 /** A project's pools in order, each with its share in boxes (`null`: none), and its default size. */
@@ -164,8 +165,10 @@ export type SetProjectPools = (
   scope: MemberScope,
   input: {
     readonly projectId: ProjectId;
-    readonly pools: readonly { readonly poolId: PoolId; readonly maxBoxes: number | null }[];
-    readonly defaultBoxSize: BoxSizeName | null;
+    /** In the project's order. Left out: kept (ticket 27's `projects.setDefaultBoxSize` sets the size alone). */
+    readonly pools?: readonly { readonly poolId: PoolId; readonly maxBoxes: number | null }[];
+    /** Left out: kept. `null`: none, slots only. */
+    readonly defaultBoxSize?: BoxSizeName | null;
   },
 ) => Promise<UseCaseResult<{ readonly changedAt: number }, "forbidden" | "not-found" | "invalid-input">>;
 

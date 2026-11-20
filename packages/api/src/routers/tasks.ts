@@ -56,6 +56,7 @@ import {
 import type { EffortLevel, OrganizationId, StoredEvent, TaskId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { startCheckProcedure } from "./task-start-check.ts";
+import { runnerChoicesProcedure } from "./task-runner-choices.ts";
 import { taskMemoryProcedure } from "./memory.ts";
 import { z } from "zod";
 
@@ -165,6 +166,8 @@ const EVENT_LOG_MAX_PAGE = 1000;
 export const tasksRouter = router({
   /** F-037, F-135 (tickets 27, 50): whether a new task would start now, or the reason it would wait. */
   startCheck: startCheckProcedure,
+  /** Milestone 5 (F-069, F-014): New task's runner picker. */
+  runnerChoices: runnerChoicesProcedure,
 
   /** F-110, F-111 (ticket 29): the notes each session used and how, and the proposals the task made. */
   memory: taskMemoryProcedure,

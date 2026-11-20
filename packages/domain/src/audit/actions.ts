@@ -95,6 +95,10 @@ export const auditActions = {
   // Milestone 5 (F-120): the registry's settings, and each credential core hands a runner.
   "registry.set": "registry",
   "registry.credential-issued": "registry",
+  // Milestone 5 (F-095, F-086): the box sizes, and a project's pools and default size.
+  "box-size.updated": "organization",
+  "project.pools-set": "project",
+  "project.default-box-size-set": "project",
   // ---- connections: GitHub, Linear, boards ----
   "github.connected": "connection",
   "connection.added": "connection",

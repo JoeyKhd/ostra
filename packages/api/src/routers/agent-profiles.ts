@@ -19,6 +19,7 @@ import {
   profilesForMember,
   resolveProjectModel,
   saveAgentProfile,
+  setProfileLabels,
   SELECTABLE_AGENT_ADAPTERS,
   visibleProjects,
 } from "@ostra/domain";
@@ -111,6 +112,8 @@ const profileRowSchema = z.object({
   planFirst: z.boolean(),
   /** F-111 (ADR 0044 amended): whether a task ends with a closing turn that proposes what it learned. */
   closingTurn: z.boolean(),
+  /** Milestone 5 (F-069): the labels a runner must carry to take its tasks. */
+  runnerLabels: z.array(z.string()),
   access: accessViewSchema,
   archivedAt: z.number().nullable(),
   createdAt: z.number(),
@@ -273,6 +276,7 @@ const toRow = async (
       effort: effortLevelFromDb[row.effort],
       planFirst: row.planFirst,
       closingTurn: row.closingTurn,
+      runnerLabels: [...row.runnerLabels],
       access:
         row.access === "everyone"
           ? { kind: "everyone" as const }
@@ -753,6 +757,22 @@ export const agentProfilesRouter = router({
       const result = await archiveAgentProfile({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, { profileId: input.profileId });
       const checked = unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "built-in": "BAD_REQUEST" });
       return { movedDefaults: [...checked.movedDefaults] };
+    }),
+
+  /**
+   * Milestone 5 (F-069): the labels a runner must carry to take the profile's tasks, compared
+   * exactly. Each matches the protocol's label schema; the built-in `executor:`, `os:` and `arch:`
+   * are refused (ticket 27). Organization admins, who edit profiles. A queued task keeps the labels
+   * it was queued with.
+   */
+  setRunnerLabels: adminProcedure
+    .input(z.strictObject({ profileId: agentProfileIdSchema, labels: z.array(z.string().max(64)).max(64) }))
+    .output(z.object({ runnerLabels: z.array(z.string()) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await setProfileLabels({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, { profileId: input.profileId, labels: input.labels });
+      unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "invalid-input": "BAD_REQUEST" });
+      const row = await ctx.deps.db.agentProfile.findFirstOrThrow({ where: { id: input.profileId, organizationId: ctx.scope.organizationId }, select: { runnerLabels: true } });
+      return { runnerLabels: [...row.runnerLabels] };
     }),
 
   /** The model of the built-in OpenCode profile: one of the providers' listed models (F-088). */
