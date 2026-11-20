@@ -5,7 +5,7 @@ import type { Demo } from "./context.ts";
 import { mailTo } from "./steps-people.ts";
 import { PROFILE } from "./steps-setup.ts";
 import { sleep, waitFor } from "./state.ts";
-import { openNewTask, sendMessage, settled, startNewTask, taskRow, turnRunning } from "./tasks.ts";
+import { openNewTask, sendMessage, settled, settledAnswering, startNewTask, taskRow, turnRunning } from "./tasks.ts";
 
 // Spec section 3, steps 6 and 13: costs and a budget, and Insights.
 
@@ -111,7 +111,7 @@ export const budget = async (d: Demo): Promise<void> => {
     await d.save();
   }
   const taskId = d.id("task:step6");
-  const planState = await settled(d, taskId);
+  const planState = await settledAnswering(d, demo, taskId, "Your question expired before I saw it: test1 only, with your own draft rules. Go ahead.");
   d.check("step 6: the plan turn ends as Needs you · plan", planState === "needs_you · plan", planState);
   await demo.goto(`/tasks/${taskId}`);
   await d.shot(demo, "step06-plan");

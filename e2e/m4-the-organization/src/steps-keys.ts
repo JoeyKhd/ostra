@@ -6,7 +6,7 @@ import type { Demo } from "./context.ts";
 import { spendMonth } from "./steps-money.ts";
 import { createRepoProject, projectIdOf } from "./steps-setup.ts";
 import { sleep, waitFor } from "./state.ts";
-import { auditSince, sendMessage, settled, startPromptTask, taskRow } from "./tasks.ts";
+import { auditSince, sendMessage, settled, settledAnswering, startPromptTask, taskRow } from "./tasks.ts";
 
 // Spec section 3, steps 16 and 17: two clients, two keys, and no key with no fallback. Without
 // ticket 55's `model-b.env` there's one model key: `client-b` is a second provider on the same
@@ -133,8 +133,8 @@ export const twoKeys = async (d: Demo): Promise<void> => {
   }
   const calcTask = d.id("task:step16-calculator");
   const portalTask = d.id("task:step16-portal");
-  await settled(d, calcTask);
-  await settled(d, portalTask);
+  await settledAnswering(d, demo, calcTask);
+  await settledAnswering(d, demo, portalTask);
   const calcKey = await keyLine(demo, calcTask);
   await d.shot(demo, "step16-calculator-task");
   const portalKey = await keyLine(demo, portalTask);
@@ -161,7 +161,7 @@ export const twoKeys = async (d: Demo): Promise<void> => {
   const again = await startPromptTask(demo, calculator, "Add one line to `docs/client.md`: the contact is in the CRM", settings.runnerName);
   d.run.ids["task:step16-calculator-2"] = again;
   await d.save();
-  await settled(d, again);
+  await settledAnswering(d, demo, again);
   const againKey = await keyLine(demo, again);
   d.check("step 16: a new task there shows Key · client-a", againKey.includes("client-a") && (await providerOfLastSession(d, again)) === "client-a", againKey);
   await d.shot(demo, "step16-calculator-still-a");

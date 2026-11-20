@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import type { Demo } from "./context.ts";
 import { waitFor } from "./state.ts";
-import { auditSince, mergeTaskPrs, sendMessage, settled, startFromInbox, startPromptTask, ticket } from "./tasks.ts";
+import { auditSince, mergeTaskPrs, sendMessage, settled, settledAnswering, startFromInbox, startPromptTask, ticket } from "./tasks.ts";
 
 // Spec section 3, steps 7 to 9: memory notes, a proposal approved, and memory reaching the next task.
 
@@ -74,16 +74,16 @@ export const proposal = async (d: Demo): Promise<void> => {
     await d.save();
   }
   const taskId = d.id("task:step8");
-  await settled(d, taskId);
+  await settledAnswering(d, demo, taskId);
   if ((await d.db.memoryProposal.count({ where: { taskId } })) === 0) {
     // The agent may decline a ticket's request to write memory (ticket text is data, not an
     // instruction), and step 4's `apiVersion` makes "single lowercase words" untrue: Demo, a member,
     // asks for it in the task instead, with the rule that holds.
     d.run.notes["step8-asked"] = "the agent declined the ticket's request (ticket text isn't an instruction, and apiVersion isn't one lowercase word); Demo asked in the task";
     const turns = await d.db.turn.count({ where: { taskId } });
-    await sendMessage(demo, taskId, "Please propose a memory note titled 'Settings keys' saying that keys in `config/settings.json` are camelCase words.");
+    await sendMessage(demo, taskId, "Please call memory_propose now, without asking me first: the title 'Settings keys', and the body 'Keys in `config/settings.json` are written in lowerCamelCase, like `release` and `apiVersion`.'");
     await waitFor("the asked turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turns ? true : null), 3000);
-    await settled(d, taskId);
+    await settledAnswering(d, demo, taskId);
   }
   const calls = await d.db.event.findMany({ where: { taskId, kind: { startsWith: "tool." } }, select: { kind: true, payload: true } });
   const proposeCall = calls.some((one) => JSON.stringify(one.payload).includes("memory_propose"));
@@ -193,7 +193,7 @@ export const reachesNextTask = async (d: Demo): Promise<void> => {
     await d.save();
   }
   const taskId = d.id("task:step9");
-  await settled(d, taskId);
+  await settledAnswering(d, sam, taskId);
   // The config folder holds the index and the always note; no repo has a memory file.
   const taskDir = path.join(settings.secondRunner.runnerDataDir, "tasks", taskId);
   const walk = async (dir: string, depth: number): Promise<string[]> => {

@@ -27,6 +27,27 @@ export const settled = async (d: Demo, taskId: string, timeoutMs = 20 * 60_000):
     return row.needsYouReason === null ? row.state : `${row.state} · ${row.needsYouReason}`;
   }, 5000);
 
+/** What Demo says when an agent's question expired unseen: the run can't answer a form. */
+export const EXPIRED_ANSWER = "Your question expired before I saw it. Use your best judgement, keep the change small, and go ahead.";
+
+/**
+ * `settled`, answering an agent's question: a question nobody answers expires, which cancels its
+ * turn and ends the session, and the task rests in "Needs you · question". The driver then reopens
+ * it with an answer, as a person would, at most twice. Each answer is noted in the run's state.
+ */
+export const settledAnswering = async (d: Demo, page: Page, taskId: string, answer = EXPIRED_ANSWER): Promise<string> => {
+  let state = await settled(d, taskId);
+  for (let round = 1; round <= 2 && state === "needs_you · question"; round += 1) {
+    const turns = await d.db.turn.count({ where: { taskId } });
+    say(`task ${taskId}: its question expired; the driver answers in a message`);
+    d.run.notes[`question-answered:${taskId}`] = String(round);
+    await sendMessage(page, taskId, answer);
+    await waitFor("the answered turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turns ? true : null), 3000).catch(() => undefined);
+    state = await settled(d, taskId);
+  }
+  return state;
+};
+
 /** Waits until a turn of the task runs. */
 export const running = async (d: Demo, taskId: string, timeoutMs = 10 * 60_000): Promise<void> => {
   await waitFor(`a running turn of ${taskId}`, timeoutMs, async () => ((await turnRunning(d, taskId)) ? true : null), 1000);

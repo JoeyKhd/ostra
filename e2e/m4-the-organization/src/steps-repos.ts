@@ -6,7 +6,7 @@ import { readIssue } from "@ostra/e2e-m2/linear";
 
 import type { Demo } from "./context.ts";
 import { waitFor } from "./state.ts";
-import { attributes, sendMessage, settled, startFromInbox, ticket } from "./tasks.ts";
+import { attributes, sendMessage, settled, settledAnswering, startFromInbox, ticket } from "./tasks.ts";
 
 // Spec section 3, steps 3 to 5: a second repo in test1, a task across test1 and test2, and the
 // independent-review check on both PRs.
@@ -61,7 +61,7 @@ export const acrossRepos = async (d: Demo): Promise<void> => {
     return names.includes(settings.githubRepo) && names.includes(settings.githubOtherRepo) ? names : null;
   }, 3000).catch(() => none);
   d.check("step 4: one session checks both repos out side by side", folders.includes(settings.githubRepo) && folders.includes(settings.githubOtherRepo), `workspace holds ${folders.join(", ")}`);
-  const state = await settled(d, taskId);
+  const state = await settledAnswering(d, demo, taskId);
   say(`step 4: the task is ${state}`);
   const repos = await d.db.taskRepo.findMany({ where: { taskId }, select: { branchName: true, prNumber: true, prUrl: true, repo: { select: { fullName: true } } }, orderBy: { createdAt: "asc" } });
   const branches = new Set(repos.map((repo) => repo.branchName));

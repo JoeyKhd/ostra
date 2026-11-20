@@ -2,7 +2,7 @@ import { say } from "@ostra/e2e-m1/setup";
 import { z } from "zod";
 
 import type { Demo } from "./context.ts";
-import { attributes, settled, startPromptTask } from "./tasks.ts";
+import { attributes, settledAnswering, startPromptTask } from "./tasks.ts";
 
 // Spec section 3, steps 10 and 11: the audit log and the event log, and search.
 
@@ -94,7 +94,7 @@ export const search = async (d: Demo): Promise<void> => {
     await d.save();
   }
   const vaultTask = d.id("task:step11");
-  await settled(d, vaultTask);
+  await settledAnswering(d, demo, vaultTask);
   const sam = await d.page("sam");
   const step4 = d.id("task:step4");
   const first = await paletteResults(d, sam, "apiVersion");
