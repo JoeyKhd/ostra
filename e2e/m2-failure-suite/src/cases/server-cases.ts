@@ -127,6 +127,13 @@ const linearSignature = (secret: string, body: string): string => createHmac("sh
  * What the replay compares before and after: Linear's comments, links, status and history on the
  * run's tickets, the outbox, and GitHub's PRs. New deliveries are not compared: Linear sends its own
  * for whatever else happens meanwhile, under new IDs. The replayed IDs are checked on their own.
+ *
+ * Ticket 38's run of 2026-11-19 compared the inbox's whole count here, and failed with 148
+ * deliveries before and 149 after while every comment, link, status, history entry, tracker write
+ * and PR stayed the same: one more delivery Linear sent meanwhile under a new ID, not a replay
+ * stored twice (the inbox's unique keys hold one row per connection and delivery ID). So the check
+ * below reads the replayed IDs themselves: each stored once, and no `webhook.process` queued for
+ * one after the replay began (2026-11-20: 177 rows for 177 replayed IDs, no new job).
  */
 const effects = async (world: World): Promise<string> => {
   const parts: string[] = [];
@@ -205,8 +212,14 @@ export const replayWebhooksCase = (world: World, githubWebhookSecret: string, pr
     const after = await effects(world);
     // The inbox's own proof: no second row for a replayed ID, and no handler ran for one again.
     const ids = deliveries.map((one) => one.deliveryId);
-    const rows = await world.db.webhookDelivery.findMany({ where: { deliveryId: { in: ids } }, select: { connectionId: true, deliveryId: true } });
+    const rows = await world.db.webhookDelivery.findMany({ where: { deliveryId: { in: ids } }, select: { connectionId: true, deliveryId: true, event: true, status: true, receivedAt: true, connection: { select: { kind: true } } } });
     const distinct = new Set(rows.map((row) => `${row.connectionId}:${row.deliveryId}`)).size;
+    const snapshot = new Set(deliveries.map((one) => `${one.connectionId}:${one.deliveryId}`));
+    const extra = rows.filter((row) => !snapshot.has(`${row.connectionId}:${row.deliveryId}`));
+    if (extra.length > 0) {
+      // The rows the replay found that the snapshot didn't hold: kinds, events and times, never content.
+      c.say(`rows not in the snapshot: ${extra.map((row) => `${row.connection.kind} ${row.event} ${row.deliveryId} ${row.status} received ${String(Math.round((row.receivedAt.getTime() - replayedAt.getTime()) / 100) / 10)} s after the replay began`).join("; ")}`);
+    }
     const handled = await world.db.$queryRaw<readonly { n: bigint }[]>`
       SELECT count(*) AS n FROM pgboss.job WHERE name = 'webhook.process' AND created_on > ${replayedAt} AND data->>'deliveryId' = ANY(${ids})`;
     const handledAgain = Number(handled[0]?.n ?? 0n);
