@@ -119,7 +119,8 @@ test("F-021, F-026, F-063: an admin makes a profile with a preset rule, plan fir
   await page.getByRole("navigation", { name: "Navigation" }).getByRole("link", { name: projectName, exact: true }).click();
   const defaults = page.getByTestId("project-defaults");
   // A listed profile is never offered as a default: it isn't open to every member.
-  await defaults.locator('[data-kind="code"]').click();
+  // The select, once the profiles have loaded: until then the row shows the default as plain text.
+  await defaults.getByRole("combobox", { name: "Code tasks" }).click();
   await expect(page.getByRole("option", { name: CAREFUL })).toHaveCount(0);
   await page.getByRole("option", { name: TEAM }).click();
   await expect(defaults.getByRole("status")).toHaveText("Saved.");
