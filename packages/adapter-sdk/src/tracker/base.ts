@@ -80,6 +80,11 @@ export type Ticket = {
   readonly assignee?: { readonly id: string; readonly name: string } | null;
   /** In ms since the epoch. */
   readonly updatedAt: number;
+  /**
+   * Milestone 6 (F-099): the acceptance criteria, as a field of its own, on a tracker whose
+   * `ticketFields.acceptanceCriteria` is true. Missing on any other. Untrusted text.
+   */
+  readonly acceptanceCriteria?: string | null;
 };
 
 /** Another ticket, as the context names it: a parent, a child or a linked one. */
@@ -125,6 +130,26 @@ export type TicketLinkKind = "blocks" | "blocked-by" | "related" | "duplicate" |
 
 export type LinkedTicket = { readonly kind: TicketLinkKind; readonly ticket: TicketSummary };
 
+/**
+ * A sub-issue, as its parent's context lists it (F-077). `open`: it isn't done or cancelled yet,
+ * so the parent's page counts it as still to do.
+ */
+export type ChildTicket = TicketSummary & { readonly open: boolean };
+
+/** Whether a status category is still open: neither done nor cancelled. */
+export const isOpenCategory = (category: TicketStatusCategory): boolean => {
+  switch (category) {
+    case "open":
+    case "started":
+      return true;
+    case "done":
+    case "cancelled":
+      return false;
+    default:
+      return category satisfies never;
+  }
+};
+
 /** Everything the ticket prompt is rendered from (F-064). Every string in it is untrusted. */
 export type TicketContext = {
   readonly ticket: Ticket;
@@ -134,7 +159,7 @@ export type TicketContext = {
   /** Inline images in the description and comments, then image attachments, each once. */
   readonly images: readonly TicketImage[];
   readonly parent: TicketSummary | null;
-  readonly children: readonly TicketSummary[];
+  readonly children: readonly ChildTicket[];
   readonly linked: readonly LinkedTicket[];
 };
 
@@ -204,7 +229,34 @@ export type NewTicket = {
   readonly title: string;
   /** Markdown. */
   readonly description: string | null;
+  /**
+   * Milestone 6 (F-077, F-099): the ticket this one is a sub-issue of, on the same board. Needs
+   * `subIssues`; without it, a ticket with a parent is `unsupported`.
+   */
+  readonly parent?: TicketRef;
 };
+
+/**
+ * Milestone 6 (F-099): what "Update ticket" writes. `acceptanceCriteria` only where the tracker
+ * has the field (`ticketFields.acceptanceCriteria`); anywhere else it's `invalid-input`, and core
+ * writes the criteria into the description.
+ */
+export type TicketUpdate = {
+  /** Markdown. */
+  readonly description: string;
+  readonly acceptanceCriteria?: string;
+};
+
+/** Milestone 6 (F-099): a file a member added to a draft, attached to the ticket (`attachFile`). */
+export type TicketFile = {
+  /** A plain file name. Untrusted: the adapter never builds a path from it. */
+  readonly name: string;
+  readonly contentType: string;
+  readonly bytes: Uint8Array;
+};
+
+/** The file once attached: where the tracker keeps it. */
+export type AttachedFile = { readonly attachmentId: string; readonly url: string };
 
 /** Whether the tracker's own code host integration links PRs and moves statuses (F-031). */
 export type CodeHostIntegration = { readonly installed: boolean; readonly name: string | null };
@@ -278,6 +330,54 @@ export type TrackerUser = {
   /** Such as Linear's `@<displayName>` link or Jira's `[~accountid:<id>]`. */
   readonly mention: string;
 };
+
+// ---------- milestone 6: agent sessions and people (F-012, ADR 0013) ----------
+
+/**
+ * A tracker's agent-session event (Linear's `AgentSessionEvent`): a person delegated or mentioned
+ * the app (`created`), or wrote in the session (`prompted`). A stop is a `prompted` event with
+ * `signal: "stop"`: ostra receives it, and never asks the tracker to stop anything (ADR 0013).
+ */
+export type AgentSessionEvent = {
+  readonly sessionId: string;
+  readonly action: "created" | "prompted";
+  readonly ticketExternalId: ExternalTicketId;
+  /** The board the ticket is on (a Linear team). */
+  readonly teamExternalId: string;
+  /** The person who started the session or wrote the follow-up. Matched to a member by `getUser`. */
+  readonly creator: { readonly userId: string; readonly name: string; readonly email: string | null };
+  /** A follow-up's text, or a mention's. Untrusted, and never logged. `null` for a plain delegation. */
+  readonly prompt: string | null;
+  readonly signal: "stop" | null;
+  /** The comment the session hangs from, when it started from a mention or a thread. */
+  readonly commentId: string | null;
+};
+
+export type AgentActivityKind = "thought" | "action" | "elicitation" | "response" | "error";
+
+export const agentActivityKinds: readonly AgentActivityKind[] = ["thought", "action", "elicitation", "response", "error"];
+
+/** What ostra posts into a session: its progress, a question, the final answer, or an error. */
+export type AgentActivity = {
+  readonly kind: AgentActivityKind;
+  /** Markdown. Never logged. */
+  readonly body: string;
+  /** Shown until the next activity replaces it. Only a thought or an action can be ephemeral. */
+  readonly ephemeral: boolean;
+  /** Posting twice with one key posts once (F-046's rule): a retry finds the first. */
+  readonly idempotencyKey: string;
+};
+
+/** A tracker user, by ID (`getUser`): for matching a session's creator to a member. */
+export type TrackerPerson = {
+  readonly userId: string;
+  readonly name: string;
+  /** `null` when the credential can't read it. Never logged. */
+  readonly email: string | null;
+  readonly active: boolean;
+};
+
+const refId = (ref: TicketRef): string => ("externalId" in ref ? ref.externalId : ref.key);
 
 export abstract class TrackerAdapter {
   readonly kind = "tracker" as const;
@@ -384,5 +484,47 @@ export abstract class TrackerAdapter {
   findUsersByEmail(board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
     this.plumbing.logger.debug("findUsersByEmail is not supported", { board: board.externalId, count: emails.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't find users by email`));
+  }
+
+  // ---------- milestone 6 (spec section 5.2): each `unsupported` until an adapter has it ----------
+
+  /**
+   * Reads a verified delivery's body as an agent-session event, loosely: the tracker owns the
+   * format, so unknown fields are tolerated. A body that isn't one is `invalid-response`. Pure.
+   * Needs `agentSessions`.
+   */
+  parseAgentSessionEvent(body: unknown): AdapterResult<AgentSessionEvent> {
+    this.plumbing.logger.debug("parseAgentSessionEvent is not supported", { present: body !== undefined });
+    return adapterError("unsupported", `${this.name} has no agent sessions`);
+  }
+
+  /** Posts an activity into a session, once per `idempotencyKey`. Needs `agentSessions`. */
+  postAgentActivity(sessionId: string, activity: AgentActivity): Promise<AdapterResult<{ readonly activityId: string }>> {
+    this.plumbing.logger.debug("postAgentActivity is not supported", { sessionId, kind: activity.kind });
+    return Promise.resolve(adapterError("unsupported", `${this.name} has no agent sessions`));
+  }
+
+  /** Sets the session's link to the task in ostra. Needs `agentSessionLink`. */
+  setAgentSessionLink(sessionId: string, url: string): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("setAgentSessionLink is not supported", { sessionId, present: url !== "" });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't link an agent session`));
+  }
+
+  /** A tracker user by ID; an unknown one is `not-found`. */
+  getUser(userId: string): Promise<AdapterResult<TrackerPerson>> {
+    this.plumbing.logger.debug("getUser is not supported", { userId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read a user`));
+  }
+
+  /** Writes a draft's description (and, where the tracker has the field, its criteria) to the ticket (F-099). */
+  updateTicket(board: BoardRef, ref: TicketRef, update: TicketUpdate): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("updateTicket is not supported", { board: board.externalId, ticket: refId(ref), criteria: update.acceptanceCriteria !== undefined });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't update a ticket`));
+  }
+
+  /** Attaches a file to the ticket. Needs `attachments`. The bytes and the name are never logged. */
+  attachFile(board: BoardRef, ref: TicketRef, file: TicketFile): Promise<AdapterResult<AttachedFile>> {
+    this.plumbing.logger.debug("attachFile is not supported", { board: board.externalId, ticket: refId(ref), bytes: file.bytes.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't attach a file`));
   }
 }

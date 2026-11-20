@@ -110,6 +110,9 @@ describe("a missing operation", () => {
         attachments: false,
         transitions: false,
         mentions: false,
+        agentScopes: [],
+        agentSessionLink: false,
+        ticketFields: { acceptanceCriteria: false },
       };
       health(): Promise<HealthReport> {
         return ok();

@@ -99,6 +99,7 @@ import type {
   TicketPage,
   TrackerBoard,
   TrackerStatus,
+  TrackerPerson,
   TrackerUser,
   TrackerWebhookHint,
   WebhookVerification,
@@ -124,14 +125,26 @@ export class TinyTracker extends TrackerAdapter {
     attachments: false,
     transitions: false,
     mentions: true,
+    // Milestone 6: no agent sessions, no attachments and no structured fields, so each absence
+    // is declared and tested.
+    agentScopes: [],
+    agentSessionLink: false,
+    ticketFields: { acceptanceCriteria: false },
   };
-  /** Milestone 3: the board's users, by email, for `findUsersByEmail`. */
-  readonly users: { readonly email: string; readonly userId: string }[] = [];
+  /** Milestone 3: the board's users, by email, for `findUsersByEmail`; milestone 6 names them for `getUser`. */
+  readonly users: { readonly email: string; readonly userId: string; readonly name?: string }[] = [];
+
+  override getUser(userId: string): Promise<AdapterResult<TrackerPerson>> {
+    const user = this.users.find((candidate) => candidate.userId === userId);
+    return Promise.resolve(
+      user === undefined ? adapterError("not-found", "no such user") : ok({ userId: user.userId, name: user.name ?? user.email, email: user.email, active: true }),
+    );
+  }
 
   override findUsersByEmail(_board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
     const wanted = new Set(emails.map((email) => email.toLowerCase()));
     return Promise.resolve(
-      ok(this.users.filter((user) => wanted.has(user.email.toLowerCase())).map((user) => ({ ...user, mention: `@${user.userId}` }))),
+      ok(this.users.filter((user) => wanted.has(user.email.toLowerCase())).map((user) => ({ email: user.email, userId: user.userId, mention: `@${user.userId}` }))),
     );
   }
   health(): Promise<HealthReport> {

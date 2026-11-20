@@ -11,7 +11,7 @@ import { hmacSha256Hex } from "../../plumbing/signature.ts";
 import { manualClock } from "../memory.ts";
 import type { ManualClock } from "../memory.ts";
 import type { TrackerAdapter } from "../../tracker/base.ts";
-import type { SeededTicket, TrackerSuiteFixture } from "../tracker-suite.ts";
+import type { SeededTicket, SessionDelivery, TrackerMilestone6Hooks, TrackerSessionFixture, TrackerSuiteFixture } from "../tracker-suite.ts";
 import { readOperation } from "./graphql-lite.ts";
 import type { GraphqlValue, TopLevelField } from "./graphql-lite.ts";
 
@@ -35,6 +35,16 @@ import type { GraphqlValue, TopLevelField } from "./graphql-lite.ts";
 //   unless `includeDisabled` is true (the schema's default). A comment mentions a user when its
 //   markdown links the user's profile URL (github.com/linear/linear/issues/351); ticket 10's live
 //   case checks that against ostra-test.
+//
+// Milestone 6 (ticket 02) adds agent sessions, ported from spike 5's fake (its `rules.ts`, the
+// activity record): a delegation (`delegateId`) or a mention of the app makes a session and an
+// `AgentSessionEvent` `created`; a reply in the session's thread is `prompted`; a stop is
+// `prompted` with `signal: "stop"`; activities are recorded with their kind and ephemeral flag;
+// a session goes stale after 30 minutes without an activity and recovers on the next; and a
+// personal key's `agentActivityCreate` gets the 403 spike 5's real run saw. Its assumptions, as
+// the spike's were: a repeated client-made activity ID is the same activity; a delegation needs
+// `app:assignable` and a mention `app:mentionable` on the install; and re-consenting without
+// `update_scopes_on_existing_token=true` keeps the install's scopes.
 
 export type FakeLinearPerson = { readonly id: string; readonly name: string; readonly email: string };
 
@@ -90,6 +100,8 @@ type Issue = {
   readonly createdAt: number;
   updatedAt: number;
   archivedAt: number | null;
+  /** Milestone 6: who the issue is delegated to (Linear's `delegate`): the app's user starts a session. */
+  delegateId: string | null;
   readonly relations: { readonly id: string; readonly type: "blocks" | "related" | "duplicate"; readonly relatedId: string }[];
 };
 
@@ -118,6 +130,75 @@ export type FakeLinearDelivery = {
   readonly attempts: readonly { readonly status: number | null }[];
   readonly delivered: boolean;
 };
+
+/** Linear's rules for a session (spike 5's `rules.ts`): a session silent this long goes stale. */
+export const LINEAR_SESSION_RULES = { staleAfterMs: 30 * 60 * 1000 } as const;
+
+/** A session's status, as Linear derives it from its last activity (spike 5's `rules.ts`). */
+export type FakeLinearSessionStatus = "pending" | "active" | "awaitingInput" | "complete" | "error" | "stale" | "stopping";
+
+type TouchType = "thought" | "action" | "elicitation" | "response" | "error" | "prompt" | "update";
+
+/** An activity in a session, as the fake records it: ostra's, or a person's prompt. */
+export type FakeLinearActivity = {
+  readonly id: string;
+  readonly type: Exclude<TouchType, "update">;
+  readonly signal: string | null;
+  readonly ephemeral: boolean;
+  /** The text; `null` for an action. */
+  readonly body: string | null;
+  /** The person who wrote a prompt; `null` for the app's own activities. */
+  readonly userId: string | null;
+  /** On the fake's clock. */
+  readonly at: number;
+};
+
+export type FakeLinearSessionView = {
+  readonly id: string;
+  readonly issueId: ExternalTicketId;
+  readonly creatorId: string;
+  /** The mention's comment, for a session a mention started. */
+  readonly commentId: string | null;
+  /** The comment the session's thread hangs from: a reply to it is a follow-up. */
+  readonly threadId: string;
+  readonly status: FakeLinearSessionStatus;
+  readonly activities: readonly FakeLinearActivity[];
+  readonly externalUrls: readonly { readonly label: string; readonly url: string }[];
+  /** Times an activity came after more than 30 minutes of silence while the session was working. */
+  readonly staleEpisodes: number;
+};
+
+/** An `AgentSessionEvent` the fake made: sent to the app's URL when it has one, and kept here either way. */
+export type FakeLinearSessionEvent = {
+  readonly sessionId: string;
+  readonly action: "created" | "prompted";
+  /** The JSON body, as `verifyWebhook` hands it on. */
+  readonly body: unknown;
+};
+
+const baseSessionStatus = (last: { readonly type: TouchType; readonly signal: string | null } | undefined): FakeLinearSessionStatus => {
+  if (last === undefined) return "pending";
+  switch (last.type) {
+    case "thought":
+    case "action":
+    case "update":
+      return "active";
+    case "elicitation":
+      return "awaitingInput";
+    case "response":
+      return last.signal === "continue" ? "active" : "complete";
+    case "error":
+      return "error";
+    case "prompt":
+      // Spike 5's guess: a follow-up leaves the session waiting for the agent until it answers.
+      return last.signal === "stop" ? "stopping" : "pending";
+    default:
+      return last.type satisfies never;
+  }
+};
+
+/** Spike 5's guess: only a session the agent should be working on goes stale. */
+const goesStale = (status: FakeLinearSessionStatus): boolean => status === "active" || status === "pending";
 
 export type FakeLinearFault =
   /** 429 with `Retry-After`, Linear's `RATELIMITED`. */
@@ -164,10 +245,26 @@ export type FakeLinear = {
   readonly createApp: (input: { readonly name: string; readonly redirectUris: readonly string[]; readonly webhookUrl: string | null }) => FakeLinearApp;
   /** The app's own user, once a consent with `actor=app` made it. */
   readonly appUser: () => FakeLinearPerson | undefined;
+  /** Milestone 6: the install's scopes, once the app is installed (`actor=app`); `null` before. */
+  readonly installScopes: () => readonly string[] | null;
+  /** Milestone 6: every consent asked for, with its scopes and whether it updates the install's. */
+  readonly authorizations: () => readonly { readonly actor: string | null; readonly scopes: readonly string[]; readonly updateScopes: boolean }[];
+  /** Milestone 6: a person delegates the issue to the app, as picking it in "Delegate" does. */
+  readonly delegateToApp: (issueId: ExternalTicketId, byUserId?: string) => Promise<{ readonly sessionId: string }>;
+  /** Milestone 6: a person mentions the app in a comment on the issue. */
+  readonly mentionApp: (issueId: ExternalTicketId, body: string, byUserId?: string) => Promise<{ readonly sessionId: string; readonly commentId: string }>;
+  /** Milestone 6: a person replies in the session's thread, or presses "Send stop request" (`stop`). */
+  readonly promptSession: (sessionId: string, body: string, options?: { readonly stop?: boolean; readonly byUserId?: string }) => Promise<void>;
+  readonly session: (sessionId: string) => FakeLinearSessionView | undefined;
+  /** Every `AgentSessionEvent` made so far, oldest first. */
+  readonly sessionEvents: () => readonly FakeLinearSessionEvent[];
   /** Whether the client-credentials grant answers (off by default, as on `ostra-test`). */
   readonly setClientCredentialsEnabled: (enabled: boolean) => void;
-  /** A token without the consent flow, for tests of a saved token. */
-  readonly mintToken: (kind: "app" | "person") => { readonly accessToken: string; readonly refreshToken: string };
+  /**
+   * A token without the consent flow, for tests of a saved token. An app token's scopes default
+   * to milestone 2's set; the first app token sets the install's scopes.
+   */
+  readonly mintToken: (kind: "app" | "person", scopes?: readonly string[]) => { readonly accessToken: string; readonly refreshToken: string };
   /** Expires every access token now, as a day passing does. Refresh tokens still work. */
   readonly expireAccessTokens: () => void;
   readonly setGithubIntegration: (installed: boolean) => void;
@@ -321,7 +418,27 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     [adminApiKey, { userId: admin.id, via: "apiKey", scopes: ["read", "write", "admin"], expiresAt: Number.POSITIVE_INFINITY, app: false }],
   ]);
   const refreshTokens = new Map<string, { userId: string; app: boolean; scopes: readonly string[]; rotatedAt: number | null; next: { accessToken: string; refreshToken: string } | null }>();
-  const codes = new Map<string, { readonly redirectUri: string; readonly challenge: string; readonly actor: string | null; readonly scopes: readonly string[] }>();
+  const codes = new Map<string, { readonly redirectUri: string; readonly challenge: string; readonly actor: string | null; readonly scopes: readonly string[]; readonly updateScopes: boolean }>();
+  const consents: { readonly actor: string | null; readonly scopes: readonly string[]; readonly updateScopes: boolean }[] = [];
+  let installScopes: readonly string[] | null = null;
+  type Session = {
+    readonly id: string;
+    readonly issueId: ExternalTicketId;
+    readonly appUserId: string;
+    readonly creatorId: string;
+    readonly commentId: string | null;
+    readonly threadId: string;
+    readonly createdAt: number;
+    readonly activities: FakeLinearActivity[];
+    externalUrls: { label: string; url: string }[];
+    lastTouch: { readonly type: TouchType; readonly signal: string | null } | undefined;
+    lastTouchAt: number;
+    staleEpisodes: number;
+    /** Client-made activity IDs already used, each with the activity it made. */
+    readonly activityIds: Map<string, string>;
+  };
+  const sessions = new Map<string, Session>();
+  const sessionEvents: FakeLinearSessionEvent[] = [];
   const webhooks: Webhook[] = [];
   const deliveries: { deliveryId: string; webhookId: string; type: string; action: string; attempts: { status: number | null }[]; delivered: boolean }[] = [];
   const faults: FakeLinearFault[] = [];
@@ -524,8 +641,15 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
   ];
 
   const send = (issue: Issue, type: "Issue" | "Comment", action: string, byUserId: string, comment?: Comment): void => {
-    if (webhooksPaused) return;
     for (const target of targets(issue, type)) {
+      deliver(target, type, action, (now) => payloadFor({ issue, type, action, byUserId, sentAt: now, webhookId: target.id, ...(comment === undefined ? {} : { comment }) }));
+    }
+  };
+
+  /** Sends one delivery to one endpoint, with Linear's retries. */
+  const deliver = (target: { readonly id: string; readonly url: string; readonly secret: string }, type: string, action: string, payloadAt: (now: number) => unknown): void => {
+    if (webhooksPaused) return;
+    {
       const attempts: { status: number | null }[] = [];
       const record = { deliveryId: randomUUID(), webhookId: target.id, type, action, attempts, delivered: false };
       deliveries.push(record);
@@ -540,7 +664,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
           }
           // A retry is stamped afresh (assumed, as spike 5 did).
           const now = clock.now();
-          const request = signed(target.secret, type, payloadFor({ issue, type, action, byUserId, sentAt: now, webhookId: target.id, ...(comment === undefined ? {} : { comment }) }));
+          const request = signed(target.secret, type, payloadAt(now));
           try {
             const response = await fetch(target.url, {
               method: "POST",
@@ -567,6 +691,217 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       pending.add(promise);
     }
   };
+
+  // ---------- agent sessions (milestone 6, ported from spike 5) ----------
+
+  const personJson = (id: string) => {
+    const user = userJson(id);
+    return user === null ? null : { id: user.id, name: user.name, email: user.email, url: user.url };
+  };
+
+  const sessionStatus = (session: Session): FakeLinearSessionStatus => {
+    const base = baseSessionStatus(session.lastTouch);
+    return goesStale(base) && clock.now() - session.lastTouchAt > LINEAR_SESSION_RULES.staleAfterMs ? "stale" : base;
+  };
+
+  const touchSession = (session: Session, type: TouchType, signal: string | null, ephemeral: boolean, body: string | null, userId: string | null): string => {
+    const now = clock.now();
+    if (goesStale(baseSessionStatus(session.lastTouch)) && now - session.lastTouchAt > LINEAR_SESSION_RULES.staleAfterMs) {
+      session.staleEpisodes += 1;
+    }
+    session.lastTouch = { type, signal };
+    session.lastTouchAt = now;
+    const id = `activity-${randomUUID()}`;
+    if (type !== "update") {
+      session.activities.push({ id, type, signal, ephemeral, body, userId, at: now });
+    }
+    return id;
+  };
+
+  const sessionJson = (session: Session) => {
+    const issue = issueOf(session.issueId);
+    const comment = session.commentId === null ? undefined : comments.find((candidate) => candidate.id === session.commentId);
+    return {
+      __typename: "AgentSession",
+      id: session.id,
+      appUserId: session.appUserId,
+      organizationId: organization.id,
+      issueId: issue.id,
+      issue: { id: issue.id, identifier: issue.identifier, title: issue.title, url: issueUrl(issue), teamId: issue.teamId, team: teamJson(teamOf(issue.teamId)) },
+      commentId: session.commentId,
+      comment: comment === undefined ? null : { id: comment.id, body: comment.body },
+      creatorId: session.creatorId,
+      creator: personJson(session.creatorId),
+      status: sessionStatus(session),
+      type: "commentThread",
+      url: `${issueUrl(issue)}#agent-session-${session.id}`,
+      externalUrls: session.externalUrls,
+      createdAt: iso(session.createdAt),
+      updatedAt: iso(session.lastTouchAt),
+      activities: connection(
+        session.activities.map((activity) => ({
+          id: activity.id,
+          content: activity.type === "action" ? { type: "action", action: activity.body ?? "", parameter: "" } : { type: activity.type, body: activity.body ?? "" },
+          signal: activity.signal,
+          ephemeral: activity.ephemeral,
+          createdAt: iso(activity.at),
+          user: activity.userId === null ? null : personJson(activity.userId),
+        })),
+      ),
+    };
+  };
+
+  const sessionEvent = (session: Session, action: "created" | "prompted", now: number, prompt?: { readonly activityId: string; readonly body: string; readonly stop: boolean; readonly userId: string; readonly commentId: string | null }) => {
+    const issue = issueOf(session.issueId);
+    const common = {
+      type: "AgentSessionEvent",
+      action,
+      organizationId: organization.id,
+      appUserId: session.appUserId,
+      oauthClientId: app?.clientId ?? null,
+      webhookId: `app-${app?.clientId ?? "none"}`,
+      webhookTimestamp: now,
+      createdAt: iso(now),
+      agentSession: sessionJson(session),
+    };
+    if (prompt === undefined) {
+      return {
+        ...common,
+        promptContext: `<issue identifier="${issue.identifier}"><title>${issue.title}</title></issue>`,
+        guidance: [],
+      };
+    }
+    return {
+      ...common,
+      agentActivity: {
+        id: prompt.activityId,
+        agentSessionId: session.id,
+        content: { type: "prompt", body: prompt.body },
+        ...(prompt.stop ? { signal: "stop" } : {}),
+        sourceCommentId: prompt.commentId,
+        createdAt: iso(now),
+        updatedAt: iso(now),
+        user: personJson(prompt.userId),
+        userId: prompt.userId,
+      },
+    };
+  };
+
+  /** Records an `AgentSessionEvent`, and sends it to the app's URL when it has one. */
+  const emitSessionEvent = (session: Session, action: "created" | "prompted", prompt?: Parameters<typeof sessionEvent>[3]): void => {
+    sessionEvents.push({ sessionId: session.id, action, body: sessionEvent(session, action, clock.now(), prompt) });
+    if (app?.webhookUrl === null || app?.webhookUrl === undefined) return;
+    deliver({ id: `app-${app.clientId}`, url: app.webhookUrl, secret: app.webhookSecret }, "AgentSessionEvent", action, (now) => sessionEvent(session, action, now, prompt));
+  };
+
+  const startSession = (issue: Issue, creatorId: string, commentId: string | null): Session => {
+    const owner = appUser;
+    if (owner === undefined) throw invalid("No app is installed");
+    const now = clock.now();
+    const session: Session = {
+      id: `session-${randomUUID()}`,
+      issueId: issue.id,
+      appUserId: owner.id,
+      creatorId,
+      commentId,
+      threadId: commentId ?? `thread-${randomUUID()}`,
+      createdAt: now,
+      activities: [],
+      externalUrls: [],
+      lastTouch: undefined,
+      lastTouchAt: now,
+      staleEpisodes: 0,
+      activityIds: new Map(),
+    };
+    sessions.set(session.id, session);
+    emitSessionEvent(session, "created");
+    return session;
+  };
+
+  /** A delegation to the app's user starts a session; it needs `app:assignable` on the install. */
+  const delegate = (issue: Issue, delegateId: string | null, byUserId: string): void => {
+    if (delegateId === issue.delegateId) return;
+    if (delegateId !== null && delegateId === appUser?.id && !(installScopes ?? []).includes("app:assignable")) {
+      throw invalid("The app can't be delegated issues: it lacks app:assignable");
+    }
+    issue.delegateId = delegateId;
+    if (delegateId !== null && delegateId === appUser?.id) {
+      startSession(issue, byUserId, null);
+    }
+  };
+
+  /** A person's comment: a mention of the app starts a session, a reply in a session's thread is a follow-up. */
+  const onPersonComment = (comment: Comment): void => {
+    const session = comment.parentId === null ? undefined : [...sessions.values()].find((candidate) => candidate.threadId === comment.parentId);
+    if (session !== undefined) {
+      const activityId = touchSession(session, "prompt", null, false, comment.body, comment.userId);
+      emitSessionEvent(session, "prompted", { activityId, body: comment.body, stop: false, userId: comment.userId, commentId: comment.id });
+      return;
+    }
+    if (appUser !== undefined && comment.body.includes(`](${profileUrl(appUser)})`) && (installScopes ?? []).includes("app:mentionable")) {
+      startSession(issueOf(comment.issueId), comment.userId, comment.id);
+    }
+  };
+
+  const activityContentSchema = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("thought"), body: z.string().min(1).max(250_000) }),
+    z.object({ type: z.literal("response"), body: z.string().min(1).max(250_000) }),
+    z.object({ type: z.literal("error"), body: z.string().min(1).max(250_000) }),
+    z.object({ type: z.literal("elicitation"), body: z.string().min(1).max(250_000) }),
+    z.object({ type: z.literal("action"), action: z.string().min(1), parameter: z.string(), result: z.string().max(250_000).optional() }),
+  ]);
+
+  const createActivity = (principal: Token, input: Readonly<Record<string, GraphqlValue>>) => {
+    const session = sessions.get(stringArg(input["agentSessionId"]) ?? "");
+    if (session === undefined) throw invalid("Entity not found: AgentSession");
+    // Spike 5's real run: a personal API key can't post an agent activity.
+    if (principal.via === "apiKey") {
+      throw new FakeAnswer(403, "FORBIDDEN", "forbidden", "Using an unexpected authentication method (apiKey) for an operation");
+    }
+    if (!principal.app || principal.userId !== session.appUserId) {
+      throw new FakeAnswer(403, "FORBIDDEN", "forbidden", "An app cannot publish activities to another agent's session");
+    }
+    const content = activityContentSchema.safeParse(input["content"]);
+    if (!content.success) throw invalid("Invalid activity content");
+    const type = content.data.type;
+    const signal = stringArg(input["signal"]) ?? null;
+    const ephemeral = input["ephemeral"] === true;
+    if (signal === "stop") throw invalid("stop is reserved for user prompts");
+    if (ephemeral && type !== "thought" && type !== "action") throw invalid("only thoughts and actions can be ephemeral");
+    const clientId = stringArg(input["id"]);
+    const repeated = clientId === undefined ? undefined : session.activityIds.get(clientId);
+    if (repeated !== undefined) {
+      return { success: true, agentActivity: { id: repeated } };
+    }
+    const id = touchSession(session, type, signal, ephemeral, "body" in content.data ? content.data.body : content.data.action, null);
+    if (clientId !== undefined) session.activityIds.set(clientId, id);
+    return { success: true, agentActivity: { id } };
+  };
+
+  const updateSession = (principal: Token, id: string, input: Readonly<Record<string, GraphqlValue>>) => {
+    const session = sessions.get(id);
+    if (session === undefined) throw invalid("Entity not found: AgentSession");
+    if (!principal.app || principal.userId !== session.appUserId) {
+      throw new FakeAnswer(403, "FORBIDDEN", "forbidden", "Only the owning app can update a session");
+    }
+    const urls = z.array(z.object({ label: z.string().min(1), url: z.url() })).safeParse(input["externalUrls"]);
+    if (input["externalUrls"] !== undefined && !urls.success) throw invalid("Invalid AgentSessionUpdateInput");
+    if (urls.success) session.externalUrls = urls.data.map(({ label, url }) => ({ label, url }));
+    touchSession(session, "update", null, false, null, null);
+    return { success: true, agentSession: { id: session.id } };
+  };
+
+  const sessionView = (session: Session): FakeLinearSessionView => ({
+    id: session.id,
+    issueId: session.issueId,
+    creatorId: session.creatorId,
+    commentId: session.commentId,
+    threadId: session.threadId,
+    status: sessionStatus(session),
+    activities: [...session.activities],
+    externalUrls: [...session.externalUrls],
+    staleEpisodes: session.staleEpisodes,
+  });
 
   // ---------- auth ----------
 
@@ -701,6 +1036,16 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         const list = sortIssues(filterIssues(objectArg(args["filter"]), args["includeArchived"] === true), args);
         return pageOf(list, args, issueJson);
       }
+      case "agentSession": {
+        const found = sessions.get(stringArg(args["id"]) ?? "");
+        if (found === undefined) throw notFound("AgentSession");
+        return sessionJson(found);
+      }
+      case "user": {
+        const found = userJson(stringArg(args["id"]) ?? "");
+        if (found === null) throw notFound("User");
+        return found;
+      }
       case "comment": {
         const found = comments.find((comment) => comment.id === stringArg(args["id"]));
         if (found === undefined) throw notFound("Comment");
@@ -750,8 +1095,11 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
           description: stringArg(input["description"]) ?? null,
           stateId: stringArg(input["stateId"]),
           creatorId: principal.userId,
+          ...(stringArg(input["parentId"]) === undefined ? {} : { parentId: issueOf(stringArg(input["parentId"]) ?? "").id }),
         });
         send(created, "Issue", "create", principal.userId);
+        const delegateTo = stringArg(input["delegateId"]);
+        if (delegateTo !== undefined) delegate(created, delegateTo, principal.userId);
         return { success: true, issue: issueJson(created) };
       }
       case "issueUpdate": {
@@ -772,6 +1120,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         }
         touch(issue);
         send(issue, "Issue", "update", principal.userId);
+        if ("delegateId" in input) delegate(issue, stringArg(input["delegateId"]) ?? null, principal.userId);
         return { success: true, issue: issueJson(issue) };
       }
       case "commentCreate": {
@@ -779,11 +1128,13 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         const body = stringArg(input["body"]);
         if (body === undefined || body === "") throw invalid("body is required");
         const parentId = stringArg(input["parentId"]) ?? null;
-        if (parentId !== null && !comments.some((comment) => comment.id === parentId && comment.issueId === issue.id)) throw notFound("Comment");
+        const inThread = [...sessions.values()].some((session) => session.threadId === parentId && session.issueId === issue.id);
+        if (parentId !== null && !inThread && !comments.some((comment) => comment.id === parentId && comment.issueId === issue.id)) throw notFound("Comment");
         const comment = { id: `comment-${randomUUID()}`, issueId: issue.id, body, userId: principal.userId, parentId, createdAt: clock.now(), updatedAt: clock.now() };
         comments.push(comment);
         touch(issue);
         send(issue, "Comment", "create", principal.userId, comment);
+        if (!principal.app) onPersonComment(comment);
         return { success: true, comment: commentJson(comment) };
       }
       case "commentUpdate": {
@@ -820,6 +1171,10 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         }
         return { success: true, attachment: attachmentJson(linkAttachment(stringArg(args["issueId"]) ?? "", url, "GitHub pull request", null)) };
       }
+      case "agentActivityCreate":
+        return createActivity(principal, input);
+      case "agentSessionUpdate":
+        return updateSession(principal, stringArg(args["id"]) ?? "", input);
       case "webhookCreate": {
         const url = stringArg(input["url"]);
         if (url === undefined) throw invalid("url is required");
@@ -863,6 +1218,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       createdAt: now,
       updatedAt: now,
       archivedAt: null,
+      delegateId: null,
       relations: [],
     };
     issues.set(issue.id, issue);
@@ -934,7 +1290,10 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     }
     // The admin presses Authorize at once.
     const code = randomBytes(16).toString("hex");
-    codes.set(code, { redirectUri, challenge, actor: params.get("actor"), scopes: (params.get("scope") ?? "").split(/[\s,]+/).filter((scope) => scope !== "") });
+    const scopes = (params.get("scope") ?? "").split(/[\s,]+/).filter((scope) => scope !== "");
+    const updateScopes = params.get("update_scopes_on_existing_token") === "true";
+    consents.push({ actor: params.get("actor"), scopes, updateScopes });
+    codes.set(code, { redirectUri, challenge, actor: params.get("actor"), scopes, updateScopes });
     const target = new URL(redirectUri);
     target.searchParams.set("code", code);
     target.searchParams.set("state", state);
@@ -974,7 +1333,24 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       codes.delete(form.get("code") ?? "");
       const asApp = code.actor === "app";
       const user = asApp ? ensureAppUser() : admin;
-      sendJson(response, 200, tokenAnswer(issueToken(user.id, asApp, code.scopes), code.scopes));
+      let granted = code.scopes;
+      if (asApp) {
+        // An installed app keeps its scopes on a second consent, unless it asks to update them
+        // (`update_scopes_on_existing_token=true`, with the full set): then every token of the
+        // install gets the new set (research/trackers.md section 1).
+        if (installScopes !== null && !code.updateScopes) {
+          granted = installScopes;
+        } else if (installScopes !== null) {
+          for (const [key, token] of tokens) {
+            if (token.app) tokens.set(key, { ...token, scopes: granted });
+          }
+          for (const record of refreshTokens.values()) {
+            if (record.app) record.scopes = granted;
+          }
+        }
+        installScopes = granted;
+      }
+      sendJson(response, 200, tokenAnswer(issueToken(user.id, asApp, granted), granted));
       return;
     }
     if (grant === "refresh_token") {
@@ -1098,8 +1474,65 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     setClientCredentialsEnabled: (enabled) => {
       clientCredentials = enabled;
     },
-    mintToken: (kind) =>
-      kind === "app" ? issueToken(ensureAppUser().id, true, ["read", "write", "issues:create", "comments:create"]) : issueToken(admin.id, false, ["read", "write"]),
+    mintToken: (kind, scopes) => {
+      if (kind === "person") return issueToken(admin.id, false, scopes ?? ["read", "write"]);
+      const granted = scopes ?? ["read", "write", "issues:create", "comments:create"];
+      installScopes ??= granted;
+      return issueToken(ensureAppUser().id, true, granted);
+    },
+    installScopes: () => installScopes,
+    authorizations: () => [...consents],
+    delegateToApp: async (issueId, byUserId) => {
+      const issue = issueOf(issueId);
+      const owner = appUser;
+      if (owner === undefined) throw new Error("the fake Linear has no app user: install first");
+      const before = sessions.size;
+      delegate(issue, owner.id, byUserId ?? admin.id);
+      touch(issue);
+      send(issue, "Issue", "update", byUserId ?? admin.id);
+      await settle();
+      const made = [...sessions.values()][before];
+      if (made === undefined) throw new Error("the delegation made no session");
+      return { sessionId: made.id };
+    },
+    mentionApp: async (issueId, body, byUserId) => {
+      const issue = issueOf(issueId);
+      const owner = appUser;
+      if (owner === undefined) throw new Error("the fake Linear has no app user: install first");
+      const before = sessions.size;
+      const comment = { id: `comment-${randomUUID()}`, issueId: issue.id, body: `[@${owner.name}](${profileUrl(owner)}) ${body}`, userId: byUserId ?? admin.id, parentId: null, createdAt: clock.now(), updatedAt: clock.now() };
+      comments.push(comment);
+      touch(issue);
+      send(issue, "Comment", "create", comment.userId, comment);
+      onPersonComment(comment);
+      await settle();
+      const made = [...sessions.values()][before];
+      if (made === undefined) throw new Error("the mention made no session: does the install have app:mentionable?");
+      return { sessionId: made.id, commentId: comment.id };
+    },
+    promptSession: async (sessionId, body, promptOptions = {}) => {
+      const session = sessions.get(sessionId);
+      if (session === undefined) throw new Error("the fake Linear has no such session");
+      const userId = promptOptions.byUserId ?? admin.id;
+      if (promptOptions.stop === true) {
+        // "Send stop request" posts a prompt with the stop signal, not a comment.
+        const activityId = touchSession(session, "prompt", "stop", false, body, userId);
+        emitSessionEvent(session, "prompted", { activityId, body, stop: true, userId, commentId: null });
+      } else {
+        const issue = issueOf(session.issueId);
+        const comment = { id: `comment-${randomUUID()}`, issueId: issue.id, body, userId, parentId: session.threadId, createdAt: clock.now(), updatedAt: clock.now() };
+        comments.push(comment);
+        touch(issue);
+        send(issue, "Comment", "create", userId, comment);
+        onPersonComment(comment);
+      }
+      await settle();
+    },
+    session: (sessionId) => {
+      const found = sessions.get(sessionId);
+      return found === undefined ? undefined : sessionView(found);
+    },
+    sessionEvents: () => [...sessionEvents],
     expireAccessTokens: () => {
       for (const [key, token] of tokens) {
         if (token.via === "oauth") tokens.set(key, { ...token, expiresAt: clock.now() });
@@ -1211,6 +1644,11 @@ export const fakeLinearSuiteFixture = (input: {
   readonly other: TrackerAdapter;
   readonly ownUserId: string | null;
   readonly webhookSecret: string;
+  /**
+   * Milestone 6: run the agent-session, people, sub-issue and draft cases too (ticket 07 turns
+   * this on with Linear's implementation). The session hooks need the app installed.
+   */
+  readonly milestone6?: boolean;
 }): TrackerSuiteFixture => {
   const { fake } = input;
   const otherTeam = fake.addTeam("OPS", "Operations");
@@ -1264,5 +1702,46 @@ export const fakeLinearSuiteFixture = (input: {
       const user = fake.addUser({ name: `Seeded ${email.split("@")[0] ?? "user"}`, email });
       return Promise.resolve({ userId: user.id, mentionHolds: user.url });
     },
+    ...(input.milestone6 === true ? { milestone6: milestone6Hooks(fake) } : {}),
+  };
+};
+
+const lastEvent = (fake: FakeLinear, sessionId: string): SessionDelivery => {
+  const event = fake.sessionEvents().filter((one) => one.sessionId === sessionId).at(-1);
+  if (event === undefined) throw new Error("the fake Linear sent no event for the session");
+  return { sessionId, body: event.body };
+};
+
+/** The milestone 6 hooks on a fake Linear: people, and sessions once the app is installed. */
+export const milestone6Hooks = (fake: FakeLinear): TrackerMilestone6Hooks => {
+  const sessions: TrackerSessionFixture | undefined =
+    fake.appUser() === undefined
+      ? undefined
+      : {
+          person: { userId: fake.admin.id, name: fake.admin.name },
+          delegate: async (ticket) => lastEvent(fake, (await fake.delegateToApp(ticket.externalId)).sessionId),
+          mention: async (ticket, text) => {
+            const made = await fake.mentionApp(ticket.externalId, text);
+            return { ...lastEvent(fake, made.sessionId), commentId: made.commentId };
+          },
+          followUp: async (sessionId, text) => {
+            await fake.promptSession(sessionId, text);
+            return lastEvent(fake, sessionId);
+          },
+          stop: async (sessionId) => {
+            await fake.promptSession(sessionId, "Stop", { stop: true });
+            return lastEvent(fake, sessionId);
+          },
+          activities: (sessionId) =>
+            Promise.resolve(
+              (fake.session(sessionId)?.activities ?? []).flatMap((activity) =>
+                activity.type === "prompt" ? [] : [{ kind: activity.type, body: activity.body, ephemeral: activity.ephemeral }],
+              ),
+            ),
+          link: (sessionId) => Promise.resolve(fake.session(sessionId)?.externalUrls[0]?.url ?? null),
+        };
+  return {
+    seedPerson: (person) => Promise.resolve({ userId: fake.addUser(person).id }),
+    ...(sessions === undefined ? {} : { sessions }),
   };
 };

@@ -1,4 +1,4 @@
-import { adapterError, mappedStatusId, ok, parseVendor, sha256Hex, TrackerAdapter } from "@ostra/adapter-sdk";
+import { adapterError, isOpenCategory, mappedStatusId, ok, parseVendor, sha256Hex, TrackerAdapter } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
@@ -228,6 +228,12 @@ export class LinearAdapter extends TrackerAdapter {
     attachments: true,
     // Linear sets a status directly.
     transitions: false,
+    // Agent mode's scopes (`app:assignable`, `app:mentionable`, ADR 0013) come with its sessions,
+    // in milestone 6's ticket 07; until then no session operation is offered.
+    agentScopes: [],
+    agentSessionLink: false,
+    // Linear has no field of its own for acceptance criteria: they go into the description.
+    ticketFields: { acceptanceCriteria: false },
   };
 
   readonly #auth: LinearAuth;
@@ -378,7 +384,7 @@ export class LinearAdapter extends TrackerAdapter {
       attachments,
       images: this.#imagesOf(ticket.value.description, comments, attachments),
       parent: toSummary(issue.parent),
-      children: present(issue.children.nodes.map(toSummary)),
+      children: present(issue.children.nodes.map(toSummary)).map((child) => ({ ...child, open: isOpenCategory(child.status.category) })),
       linked,
     });
   }

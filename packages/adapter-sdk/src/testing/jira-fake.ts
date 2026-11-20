@@ -8,8 +8,9 @@ import type { AdapterContext } from "../common/context.ts";
 import { adapterError, ok } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import { hmacSha256Hex, sha256Hex, verifyHmacSha256Hex } from "../plumbing/signature.ts";
-import { TrackerAdapter, mappedStatusId } from "../tracker/base.ts";
+import { isOpenCategory, TrackerAdapter, mappedStatusId } from "../tracker/base.ts";
 import type {
+  AttachedFile,
   BoardRef,
   CodeHostIntegration,
   DownloadedFile,
@@ -26,7 +27,10 @@ import type {
   TicketRef,
   TicketStatus,
   TicketStatusCategory,
+  TicketFile,
+  TicketUpdate,
   TrackerBoard,
+  TrackerPerson,
   TrackerStatus,
   TrackerWebhookHint,
   TrackerWebhookRequest,
@@ -190,6 +194,8 @@ type JiraIssue = {
   projectId: string;
   summary: string;
   description: AdfNode | null;
+  /** Milestone 6: the criteria, as a field of its own (`ticketFields.acceptanceCriteria`). */
+  acceptanceCriteria: string | null;
   statusId: string;
   labels: string[];
   priority: number | null;
@@ -197,6 +203,8 @@ type JiraIssue = {
   readonly links: { readonly kind: "blocks" | "relates"; readonly to: ExternalTicketId }[];
   readonly comments: JiraComment[];
   readonly remoteLinks: JiraLink[];
+  /** Milestone 6: files attached to the issue (`attachFile`), served from `files`. */
+  readonly attachments: JiraLink[];
   readonly created: number;
   updated: number;
   readonly writes: number[];
@@ -248,10 +256,10 @@ export type JiraSite = {
   /** Internal: what the adapter reads. */
   readonly issues: Map<ExternalTicketId, JiraIssue>;
   readonly takeFault: () => JiraFault | undefined;
-  /** Milestone 3: the site's people, by account ID and email (F-036). */
-  readonly users: { readonly accountId: string; readonly email: string }[];
+  /** Milestone 3: the site's people, by account ID and email (F-036); milestone 6 names them. */
+  readonly users: { readonly accountId: string; readonly email: string; readonly name: string; active: boolean }[];
   /** Milestone 3: adds a person to the site, and gives back their account ID. */
-  readonly addUser: (email: string) => string;
+  readonly addUser: (email: string, name?: string) => string;
   readonly nextId: () => string;
   readonly nextKey: (projectId: string) => TicketKey;
 };
@@ -284,7 +292,7 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
   const counters = new Map<string, number>();
   const issues = new Map<ExternalTicketId, JiraIssue>();
   const faults: JiraFault[] = [];
-  const users: { readonly accountId: string; readonly email: string }[] = [];
+  const users: { readonly accountId: string; readonly email: string; readonly name: string; active: boolean }[] = [];
   // Each site numbers from its own range, as two Jira sites never share an ID.
   sitesMade += 1;
   let idCounter = sitesMade * 1_000_000;
@@ -321,9 +329,9 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
     writeLimit: { count: 20, windowMs: 2000 },
     files: new Map(),
     users,
-    addUser: (email) => {
+    addUser: (email, name) => {
       const accountId = `user-${randomUUID()}`;
-      users.push({ accountId, email });
+      users.push({ accountId, email, name: name ?? email.split("@")[0] ?? email, active: true });
       return accountId;
     },
     issues,
@@ -351,6 +359,7 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
                   { type: "mediaSingle", content: [{ type: "media", attrs: { type: "external", url: input.imageUrl, alt: "screenshot" } }] },
                 ],
               },
+        acceptanceCriteria: null,
         statusId: "10000",
         labels: [...(input.labels ?? [])],
         priority: 3,
@@ -364,6 +373,7 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
           updated: now + index,
         })),
         remoteLinks: [],
+        attachments: [],
         created: now,
         updated: now,
         writes: [],
@@ -453,7 +463,11 @@ export type JiraFakeAdapterOptions = {
 export class JiraFakeAdapter extends TrackerAdapter {
   readonly name = "jira-fake";
   readonly capabilities: TrackerCapabilities = {
+    // Jira has no agent sessions: its methods answer `unsupported` (the base class's).
     agentSessions: false,
+    agentScopes: [],
+    agentSessionLink: false,
+    // Sub-tasks under a parent, one level deep.
     subIssues: true,
     statusGraph: true,
     webhooks: true,
@@ -461,6 +475,8 @@ export class JiraFakeAdapter extends TrackerAdapter {
     attachments: true,
     transitions: true,
     mentions: true,
+    // Jira takes the criteria as a field of its own (a custom field on a real site).
+    ticketFields: { acceptanceCriteria: true },
   };
 
   readonly #site: JiraSite;
@@ -584,7 +600,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
         .map((image) => ({ url: image.url, name: image.name, contentType: this.#site.files.get(image.url)?.contentType ?? null }));
       const children = [...this.#site.issues.values()].filter((other) => other.parentId === issue.id).flatMap((other) => {
         const child = summary(other.id);
-        return child === null ? [] : [child];
+        return child === null ? [] : [{ ...child, open: isOpenCategory(child.status.category) }];
       });
       const linked = issue.links.flatMap((link) => {
         const other = summary(link.to);
@@ -593,7 +609,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
       return ok({
         ticket,
         comments,
-        attachments: issue.remoteLinks.map((link) => ({ id: link.id, url: link.url, title: link.title, subtitle: link.subtitle })),
+        attachments: [...issue.remoteLinks, ...issue.attachments].map((link) => ({ id: link.id, url: link.url, title: link.title, subtitle: link.subtitle })),
         images,
         parent: issue.parentId === null ? null : summary(issue.parentId),
         children,
@@ -638,9 +654,57 @@ export class JiraFakeAdapter extends TrackerAdapter {
       if (!project.ok) {
         return project;
       }
+      let parentId: ExternalTicketId | null = null;
+      if (ticket.parent !== undefined) {
+        const parent = this.#find(board, ticket.parent);
+        if (!parent.ok) {
+          return parent;
+        }
+        // Jira's sub-tasks are one level deep: a sub-task can't have its own.
+        if (parent.value.parentId !== null) {
+          return adapterError("invalid-input", "a sub-task can't have sub-tasks");
+        }
+        parentId = parent.value.id;
+      }
       const created = this.#site.createIssue(project.value.id, { summary: ticket.title, description: ticket.description });
       const issue = this.#site.issues.get(created.externalId);
-      return issue === undefined ? adapterError("unavailable", "the issue wasn't created") : ok(this.#ticket(issue));
+      if (issue === undefined) {
+        return adapterError("unavailable", "the issue wasn't created");
+      }
+      issue.parentId = parentId;
+      return ok(this.#ticket(issue));
+    });
+  }
+
+  /** Milestone 6 (F-099): the description as ADF, and the criteria in their own field. */
+  override updateTicket(board: BoardRef, ref: TicketRef, update: TicketUpdate): Promise<AdapterResult<void>> {
+    return this.#write(ref, board, (issue) => {
+      issue.description = markdownToAdf(update.description);
+      if (update.acceptanceCriteria !== undefined) {
+        issue.acceptanceCriteria = update.acceptanceCriteria;
+      }
+      return ok(undefined);
+    });
+  }
+
+  /** Milestone 6 (F-099): an attachment on the issue, which `downloadFile` serves back. */
+  override attachFile(board: BoardRef, ref: TicketRef, file: TicketFile): Promise<AdapterResult<AttachedFile>> {
+    return this.#write(ref, board, (issue) => {
+      const id = this.#site.nextId();
+      const url = `https://jira-fake.invalid/secure/attachment/${id}/${encodeURIComponent(file.name)}`;
+      this.#site.files.set(url, { bytes: new Uint8Array(file.bytes), contentType: file.contentType });
+      issue.attachments.push({ id, url, title: file.name, subtitle: null });
+      return ok({ attachmentId: id, url });
+    });
+  }
+
+  /** Milestone 6 (F-012): a person on the site, by account ID. */
+  override getUser(userId: string): Promise<AdapterResult<TrackerPerson>> {
+    return this.#read(() => {
+      const user = this.#site.users.find((candidate) => candidate.accountId === userId);
+      return user === undefined
+        ? adapterError("not-found", "no such user on the site")
+        : ok({ userId: user.accountId, name: user.name, email: user.email, active: user.active });
     });
   }
 
@@ -824,6 +888,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
       parentExternalId: parent?.id ?? null,
       labels: [...issue.labels],
       updatedAt: issue.updated,
+      acceptanceCriteria: issue.acceptanceCriteria,
     };
   }
 
@@ -926,6 +991,8 @@ export const createJiraFakeSuiteSubject = (
           }),
         ),
       seedUser: (email) => Promise.resolve({ userId: site.addUser(email) }),
+      // Milestone 6: people by ID; Jira has no agent sessions, so no session hooks.
+      milestone6: { seedPerson: (person) => Promise.resolve({ userId: site.addUser(person.email, person.name) }) },
       rateLimitNext: (retryAfterSeconds) => {
         site.injectFault({ kind: "rate-limited", retryAfterSeconds });
         return Promise.resolve();

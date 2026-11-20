@@ -31,3 +31,5 @@ GraphQL over `fetch`, as milestone 2's adapter is; no `@linear/sdk` (Q219).
 - [ ] Committed as `✨ add agent sessions and sub-issues to Linear`.
 
 ## Comments
+
+- 2026-11-20 (from ticket 02): the base class answers `unsupported` for every new operation, so this ticket overrides `parseAgentSessionEvent`, `postAgentActivity`, `setAgentSessionLink`, `getUser`, `updateTicket` and `attachFile`, sets `agentSessions: true`, `agentScopes: ["app:assignable", "app:mentionable"]` and `agentSessionLink`, and passes `milestone6: true` to `fakeLinearSuiteFixture` in `linear-adapter.test.ts` to run the new suite cases. The fake Linear's sessions need an install with the agent scopes: `fake.mintToken("app", [..., "app:assignable", "app:mentionable"])`. Its session JSON (`agentSession(id)`, with `activities` and `externalUrls`), `user(id)`, `issueCreate`'s `parentId` and `delegateId`, `agentActivityCreate` (a repeated client-made `id` is the same activity) and `agentSessionUpdate(externalUrls)` are answered.

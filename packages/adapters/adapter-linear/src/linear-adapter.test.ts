@@ -266,6 +266,10 @@ describe("the Linear adapter", () => {
       transitions: false,
       // F-036: findUsersByEmail, with the profile link as the mention.
       mentions: true,
+      // Milestone 6: none yet, until ticket 07.
+      agentScopes: [],
+      agentSessionLink: false,
+      ticketFields: { acceptanceCriteria: false },
     });
   });
 });

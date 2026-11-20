@@ -16,7 +16,7 @@ import type { ExecutorFixture, FleetFixture } from "./testing/executor-suite.ts"
 import { defineBlobStoreFirstCases } from "./testing/blob-store-suite.ts";
 import { defineNotificationContractSuite, suiteRecipient } from "./testing/notification-suite.ts";
 import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
-import { defineTrackerContractSuite, defineTrackerFirstCases, defineTrackerMentionSuite } from "./testing/tracker-suite.ts";
+import { defineTrackerContractSuite, defineTrackerFirstCases, defineTrackerMentionSuite, defineTrackerMilestone6Suite } from "./testing/tracker-suite.ts";
 import { defineModelProviderContractSuite } from "./testing/model-provider-suite.ts";
 import { defineSecretStoreContractSuite } from "./testing/secret-store-suite.ts";
 import {
@@ -80,6 +80,25 @@ defineTrackerMentionSuite({
           const userId = `tiny-user-${String(adapter.users.length + 1)}`;
           adapter.users.push({ email, userId });
           return Promise.resolve({ userId });
+        },
+      },
+    });
+  },
+});
+defineTrackerMilestone6Suite({
+  name: "tiny tracker",
+  create: () => {
+    const adapter = new TinyTracker();
+    return Promise.resolve({
+      adapter,
+      fixture: {
+        board: { externalId: "tiny-board" },
+        hooks: {
+          seedPerson: (person: { readonly name: string; readonly email: string }) => {
+            const userId = `tiny-user-${String(adapter.users.length + 1)}`;
+            adapter.users.push({ email: person.email, userId, name: person.name });
+            return Promise.resolve({ userId });
+          },
         },
       },
     });

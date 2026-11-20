@@ -16,4 +16,17 @@ export type TrackerCapabilities = {
   readonly transitions: boolean;
   /** Milestone 3: `findUsersByEmail` matches members to tracker users, whose mention notifies them (F-036). */
   readonly mentions: boolean;
+  /**
+   * Milestone 6 (F-012): the scopes agent mode needs on the install's token (Linear:
+   * `app:assignable`, `app:mentionable`), so core can tell a stored token lacks them. Empty
+   * without `agentSessions`.
+   */
+  readonly agentScopes: readonly string[];
+  /** Milestone 6: `setAgentSessionLink` sets the session's link to the task, where the tracker has one. */
+  readonly agentSessionLink: boolean;
+  /**
+   * Milestone 6 (F-099): the structured fields a ticket can take beside its description. A field
+   * the tracker can't take goes into the description instead (Linear has none).
+   */
+  readonly ticketFields: { readonly acceptanceCriteria: boolean };
 };

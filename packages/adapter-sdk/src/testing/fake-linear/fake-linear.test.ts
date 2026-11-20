@@ -243,3 +243,190 @@ describe("the fake Linear", () => {
     expect(typeof signature === "string" && verifyHmacSha256Hex(`${app.webhookSecret}x`, delivery.body, signature)).toBe(false);
   });
 });
+
+// Milestone 6 (ticket 02): agent sessions, ported from spike 5's fake. Each test makes its own
+// fake, so one session's clock and scopes never reach another's.
+describe("the fake Linear's agent sessions", () => {
+  const agentScopes = ["read", "write", "issues:create", "comments:create", "app:assignable", "app:mentionable"];
+  const received: { readonly headers: Record<string, string | string[] | undefined>; readonly body: Buffer }[] = [];
+  let receiver: Server;
+  let receiverUrl = "";
+  const opened: FakeLinear[] = [];
+
+  beforeAll(async () => {
+    receiver = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        received.push({ headers: request.headers, body: Buffer.concat(chunks) });
+        response.writeHead(200);
+        response.end();
+      });
+    });
+    await new Promise<void>((resolve) => {
+      receiver.listen(0, "127.0.0.1", resolve);
+    });
+    const address = receiver.address();
+    if (address === null || typeof address === "string") throw new Error("no address");
+    receiverUrl = `http://127.0.0.1:${String(address.port)}/webhooks/linear/conn-1`;
+  });
+
+  afterAll(async () => {
+    await Promise.all(opened.map((one) => one.close()));
+    await new Promise<void>((resolve) => {
+      receiver.close(() => {
+        resolve();
+      });
+    });
+  });
+
+  const installed = async (scopes: readonly string[] = agentScopes) => {
+    const fake = await createFakeLinear();
+    opened.push(fake);
+    const app = fake.createApp({ name: "ostra", redirectUris: ["http://127.0.0.1:1/cb"], webhookUrl: receiverUrl });
+    const token = fake.mintToken("app", scopes);
+    return { fake, app, auth: `Bearer ${token.accessToken}` };
+  };
+
+  const post = (fake: FakeLinear, auth: string, input: Record<string, unknown>) =>
+    gql(fake, auth, "mutation ($input: AgentActivityCreateInput!) { agentActivityCreate(input: $input) { success agentActivity { id } } }", { input });
+
+  const eventSchema = z.looseObject({
+    type: z.literal("AgentSessionEvent"),
+    action: z.enum(["created", "prompted"]),
+    agentSession: z.looseObject({ id: z.string(), issue: z.looseObject({ id: z.string(), teamId: z.string() }), commentId: z.string().nullable(), creator: z.looseObject({ id: z.string() }) }),
+    agentActivity: z.looseObject({ content: z.looseObject({ type: z.string(), body: z.string() }), signal: z.string().optional() }).optional(),
+  });
+
+  it("F-012: a delegation and a mention each make a session and a signed created event; a reply is prompted, a stop is prompted with signal stop", async () => {
+    const { fake, app } = await installed();
+    received.length = 0;
+    const issue = await fake.createIssue({ title: "Delegate me" });
+    const { sessionId } = await fake.delegateToApp(issue.id);
+    const created = eventSchema.parse(fake.sessionEvents().at(-1)?.body);
+    expect(created).toMatchObject({ action: "created", agentSession: { id: sessionId, issue: { id: issue.id, teamId: fake.team.id }, commentId: null, creator: { id: fake.admin.id } } });
+    const sent = received.find((one) => one.headers["linear-event"] === "AgentSessionEvent");
+    if (sent === undefined) throw new Error("no AgentSessionEvent reached the app's URL");
+    const signature = sent.headers["linear-signature"];
+    expect(typeof signature === "string" && verifyHmacSha256Hex(app.webhookSecret, sent.body, signature)).toBe(true);
+
+    await fake.promptSession(sessionId, "Also the footer");
+    const prompted = eventSchema.parse(fake.sessionEvents().at(-1)?.body);
+    expect(prompted).toMatchObject({ action: "prompted", agentSession: { id: sessionId }, agentActivity: { content: { type: "prompt", body: "Also the footer" } } });
+    expect(prompted.agentActivity?.signal).toBeUndefined();
+    await fake.promptSession(sessionId, "Stop", { stop: true });
+    expect(eventSchema.parse(fake.sessionEvents().at(-1)?.body)).toMatchObject({ action: "prompted", agentActivity: { signal: "stop" } });
+    expect(fake.session(sessionId)?.status).toBe("stopping");
+
+    const mention = await fake.mentionApp(issue.id, "please look");
+    expect(eventSchema.parse(fake.sessionEvents().at(-1)?.body)).toMatchObject({ action: "created", agentSession: { id: mention.sessionId, commentId: mention.commentId } });
+    // A reply in the mention's thread, through the API as a person writes it, is a follow-up.
+    await dataOf(fake, fake.adminApiKey, "mutation ($input: CommentCreateInput!) { commentCreate(input: $input) { success } }", { input: { issueId: issue.id, body: "more", parentId: mention.commentId } });
+    expect(fake.sessionEvents().at(-1)).toMatchObject({ sessionId: mention.sessionId, action: "prompted" });
+  });
+
+  it("F-012: records each activity with its kind and ephemeral flag, once per client-made ID, and a link", async () => {
+    const { fake, auth } = await installed();
+    const issue = await fake.createIssue({ title: "Progress" });
+    const { sessionId } = await fake.delegateToApp(issue.id);
+    const id = "4a8f7a52-2f7a-4a59-9a59-1c1b8c9d0e01";
+    const first = await post(fake, auth, { id, agentSessionId: sessionId, content: { type: "thought", body: "Reading" }, ephemeral: true });
+    const again = await post(fake, auth, { id, agentSessionId: sessionId, content: { type: "thought", body: "Reading" }, ephemeral: true });
+    expect(first.status).toBe(200);
+    expect(again.body.data).toEqual(first.body.data);
+    expect((await post(fake, auth, { agentSessionId: sessionId, content: { type: "response", body: "Done" }, ephemeral: true })).status).toBe(400);
+    await post(fake, auth, { agentSessionId: sessionId, content: { type: "response", body: "Done" } });
+    expect(fake.session(sessionId)?.activities.map((activity) => [activity.type, activity.body, activity.ephemeral])).toEqual([
+      ["thought", "Reading", true],
+      ["response", "Done", false],
+    ]);
+    expect(fake.session(sessionId)?.status).toBe("complete");
+    await dataOf(fake, auth, "mutation ($id: String!, $input: AgentSessionUpdateInput!) { agentSessionUpdate(id: $id, input: $input) { success } }", {
+      id: sessionId,
+      input: { externalUrls: [{ label: "ostra", url: "https://ostra.example.test/tasks/1" }] },
+    });
+    expect(fake.session(sessionId)?.externalUrls).toEqual([{ label: "ostra", url: "https://ostra.example.test/tasks/1" }]);
+    const read = z
+      .object({ agentSession: z.looseObject({ activities: z.object({ nodes: z.array(z.looseObject({ content: z.looseObject({ type: z.string() }) })) }) }) })
+      .parse(await dataOf(fake, auth, "query ($id: String!) { agentSession(id: $id) { activities { nodes { content } } } }", { id: sessionId }));
+    expect(read.agentSession.activities.nodes.map((node) => node.content.type)).toEqual(["thought", "response"]);
+  });
+
+  it("F-012: a session silent for more than 30 minutes goes stale, and its next activity recovers it", async () => {
+    const { fake, auth } = await installed();
+    const issue = await fake.createIssue({ title: "Silent" });
+    const { sessionId } = await fake.delegateToApp(issue.id);
+    await post(fake, auth, { agentSessionId: sessionId, content: { type: "thought", body: "Starting" } });
+    fake.clock.advance(30 * 60_000);
+    expect(fake.session(sessionId)?.status).toBe("active");
+    fake.clock.advance(1);
+    expect(fake.session(sessionId)?.status).toBe("stale");
+    await post(fake, auth, { agentSessionId: sessionId, content: { type: "thought", body: "Still here" } });
+    expect(fake.session(sessionId)).toMatchObject({ status: "active", staleEpisodes: 1 });
+  });
+
+  it("F-012: a session with an activity every 20 minutes never goes stale", async () => {
+    const { fake, auth } = await installed();
+    const issue = await fake.createIssue({ title: "Heartbeat" });
+    const { sessionId } = await fake.delegateToApp(issue.id);
+    for (let beat = 0; beat < 6; beat += 1) {
+      await post(fake, auth, { agentSessionId: sessionId, content: { type: "thought", body: `Working ${String(beat)}` }, ephemeral: true });
+      fake.clock.advance(20 * 60_000);
+      expect(fake.session(sessionId)?.status).toBe("active");
+    }
+    expect(fake.session(sessionId)?.staleEpisodes).toBe(0);
+  });
+
+  it("F-012: a personal API key's agentActivityCreate is refused 403, as spike 5's real run saw, and nothing is recorded", async () => {
+    const { fake } = await installed();
+    const issue = await fake.createIssue({ title: "Keyed" });
+    const { sessionId } = await fake.delegateToApp(issue.id);
+    const refused = await post(fake, fake.adminApiKey, { agentSessionId: sessionId, content: { type: "thought", body: "From a key" } });
+    expect(refused.status).toBe(403);
+    expect(refused.body.errors?.[0]?.message).toContain("unexpected authentication method (apiKey)");
+    expect(fake.session(sessionId)?.activities).toEqual([]);
+  });
+
+  it("F-012: a delegation needs app:assignable, and a re-consent changes the install's scopes only with update_scopes_on_existing_token", async () => {
+    const { fake, app } = await installed(["read", "write"]);
+    const issue = await fake.createIssue({ title: "No scope" });
+    const appUser = fake.appUser();
+    if (appUser === undefined) throw new Error("no app user");
+    const refused = await gql(fake, fake.adminApiKey, "mutation ($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }", { id: issue.id, input: { delegateId: appUser.id } });
+    expect(refused.body.errors?.[0]?.message).toContain("app:assignable");
+    expect(fake.sessionEvents()).toEqual([]);
+
+    const redirectUri = "http://127.0.0.1:1/cb";
+    const consent = async (extra: Record<string, string>) => {
+      const verifier = randomBytes(32).toString("base64url");
+      const authorize = new URL(fake.authorizeUrl);
+      for (const [key, value] of Object.entries({
+        client_id: app.clientId,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        state: "s",
+        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+        code_challenge_method: "S256",
+        scope: agentScopes.join(","),
+        actor: "app",
+        ...extra,
+      })) {
+        authorize.searchParams.set(key, value);
+      }
+      const back = new URL((await fetch(authorize, { redirect: "manual" })).headers.get("location") ?? "");
+      const answer = await fetch(fake.tokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "authorization_code", code: back.searchParams.get("code") ?? "", redirect_uri: redirectUri, client_id: app.clientId, client_secret: app.clientSecret, code_verifier: verifier }),
+      });
+      return z.object({ scope: z.string() }).parse(await answer.json()).scope.split(" ");
+    };
+    expect(await consent({})).toEqual(["read", "write"]);
+    expect(fake.installScopes()).toEqual(["read", "write"]);
+    expect(await consent({ update_scopes_on_existing_token: "true" })).toEqual(agentScopes);
+    expect(fake.installScopes()).toEqual(agentScopes);
+    expect(fake.authorizations().map((one) => one.updateScopes)).toEqual([false, true]);
+    await fake.delegateToApp(issue.id);
+    expect(fake.sessionEvents().map((event) => event.action)).toEqual(["created"]);
+  });
+});

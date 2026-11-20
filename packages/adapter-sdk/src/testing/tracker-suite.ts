@@ -1,9 +1,10 @@
+import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { ExternalTicketId, TicketKey } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import type { AdapterResult } from "../common/result.ts";
-import { ticketStatusCategories } from "../tracker/base.ts";
-import type { BoardRef, StatusMapping, Ticket, TrackerAdapter } from "../tracker/base.ts";
+import { agentActivityKinds, ticketStatusCategories } from "../tracker/base.ts";
+import type { AgentActivityKind, BoardRef, StatusMapping, Ticket, TrackerAdapter } from "../tracker/base.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
@@ -62,6 +63,52 @@ export type TrackerSuiteFixture = {
   readonly rateLimitNext: (retryAfterSeconds: number) => Promise<void>;
   /** Milestone 3: adds a user with this email to the board's tracker. Absent: the mention case is skipped. */
   readonly seedUser?: (email: string) => Promise<SeededTrackerUser>;
+  /**
+   * Milestone 6: what the agent-session, people, sub-issue and draft cases need. Absent: only the
+   * case that checks each capability's declared absence runs (an adapter whose milestone 6
+   * operations aren't built yet, such as Linear's before ticket 07).
+   */
+  readonly milestone6?: TrackerMilestone6Hooks;
+};
+
+/** What a session's fixture hands back: the event's body, as `verifyWebhook` gives it on. */
+export type SessionDelivery = { readonly sessionId: string; readonly body: unknown };
+
+/** An activity the tracker recorded in a session, as the fixture reads it from the fake. */
+export type RecordedActivity = { readonly kind: AgentActivityKind; readonly body: string | null; readonly ephemeral: boolean };
+
+/** Milestone 6 (F-012): a person in the tracker drives a session the way Linear's UI does. */
+export type TrackerSessionFixture = {
+  /** The person who delegates, mentions and follows up. */
+  readonly person: { readonly userId: string; readonly name: string };
+  /** A person delegates the ticket to the app: the `created` event. */
+  readonly delegate: (ticket: SeededTicket) => Promise<SessionDelivery>;
+  /** A person mentions the app in a comment on the ticket: a `created` event with its comment. */
+  readonly mention: (ticket: SeededTicket, text: string) => Promise<SessionDelivery & { readonly commentId: string }>;
+  /** A person replies in the session's thread: the `prompted` event. */
+  readonly followUp: (sessionId: string, text: string) => Promise<SessionDelivery>;
+  /** A person presses "Send stop request": a `prompted` event with the stop signal. */
+  readonly stop: (sessionId: string) => Promise<SessionDelivery>;
+  /** The app's activities in the session, oldest first: never a person's prompts. */
+  readonly activities: (sessionId: string) => Promise<readonly RecordedActivity[]>;
+  /** The session's link, or `null`. */
+  readonly link: (sessionId: string) => Promise<string | null>;
+};
+
+export type TrackerMilestone6Hooks = {
+  /** Adds a person to the tracker, for `getUser`. */
+  readonly seedPerson: (input: { readonly name: string; readonly email: string }) => Promise<{ readonly userId: string }>;
+  /** Present on a tracker with `agentSessions`. */
+  readonly sessions?: TrackerSessionFixture;
+};
+
+/** What the milestone 6 cases run on: a board, and, to go past the capability checks, tickets and the hooks. */
+export type TrackerMilestone6Fixture = {
+  readonly board: BoardRef;
+  readonly seedTicket?: (input: SeedTicketInput) => Promise<SeededTicket>;
+  /** The board's statuses for each step, to move a child to done. */
+  readonly mapping?: StatusMapping;
+  readonly hooks?: TrackerMilestone6Hooks;
 };
 
 /**
@@ -104,6 +151,9 @@ const trackerCapabilityTypes = {
   attachments: "boolean",
   transitions: "boolean",
   mentions: "boolean",
+  agentScopes: "array",
+  agentSessionLink: "boolean",
+  ticketFields: "object",
 } as const;
 
 /** The tracker's first cases only: for an adapter whose milestone 2 operations aren't built yet. */
@@ -153,10 +203,214 @@ export const defineTrackerMentionSuite = (options: ContractSuiteOptions<TrackerA
   });
 };
 
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+
+/** Milestone 6 (spec section 5.2): agent sessions, people, sub-issues and draft writes. */
+const defineMilestone6Cases = (subject: () => { readonly adapter: TrackerAdapter; readonly fixture: TrackerMilestone6Fixture }): void => {
+  it("declares each milestone 6 capability, and answers unsupported where it's absent", async () => {
+    const { adapter, fixture } = subject();
+    const { capabilities } = adapter;
+    expect(Array.isArray(capabilities.agentScopes)).toBe(true);
+    expect(typeof capabilities.ticketFields.acceptanceCriteria).toBe("boolean");
+    if (!capabilities.agentSessions) {
+      // No agent sessions: no scopes to ask for, and every session operation is refused.
+      expect(capabilities.agentScopes).toEqual([]);
+      expect(capabilities.agentSessionLink).toBe(false);
+      expect(adapter.parseAgentSessionEvent({ type: "AgentSessionEvent", action: "created" })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(await adapter.postAgentActivity("session-1", { kind: "thought", body: "Reading", ephemeral: true, idempotencyKey: "k-1" })).toMatchObject({
+        ok: false,
+        error: { code: "unsupported" },
+      });
+    } else {
+      expect(capabilities.agentScopes.length).toBeGreaterThan(0);
+    }
+    if (!capabilities.agentSessionLink) {
+      expect(await adapter.setAgentSessionLink("session-1", "https://ostra.example.test/tasks/1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    }
+    if (!capabilities.attachments) {
+      const ref = { key: ticketKeySchema.parse("NONE-1") };
+      expect(await adapter.attachFile(fixture.board, ref, { name: "a.png", contentType: "image/png", bytes: PNG })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    }
+  });
+
+  it("reads a person by ID, and an unknown one is not-found", async (context) => {
+    const { adapter, fixture } = subject();
+    if (fixture.hooks === undefined) {
+      context.skip();
+      return;
+    }
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const person = await fixture.hooks.seedPerson({ name: `Ada ${suffix}`, email: `ada-${suffix}@example.com` });
+    expect(must(await adapter.getUser(person.userId), "getUser")).toMatchObject({ userId: person.userId, name: `Ada ${suffix}`, active: true });
+    const found = must(await adapter.getUser(person.userId), "getUser");
+    expect(found.email === null || found.email === `ada-${suffix}@example.com`).toBe(true);
+    expect(await adapter.getUser(`nobody-${suffix}`)).toMatchObject({ ok: false, error: { code: "not-found" } });
+  });
+
+  it("creates a child under a parent and reads it back, open until it's done", async (context) => {
+    const { adapter, fixture } = subject();
+    const { seedTicket } = fixture;
+    if (seedTicket === undefined || fixture.hooks === undefined) {
+      context.skip();
+      return;
+    }
+    const parent = await seedTicket({ title: "Parent" });
+    const created = await adapter.createTicket(fixture.board, { title: "Child", description: "Part one", parent: { externalId: parent.externalId } });
+    if (!adapter.capabilities.subIssues) {
+      expect(created).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      return;
+    }
+    const child = must(created, "createTicket with a parent");
+    expect(child).toMatchObject({ parentExternalId: parent.externalId, parentKey: parent.key });
+    const context6 = must(await adapter.getTicketContext(fixture.board, { externalId: parent.externalId }), "getTicketContext");
+    expect(context6.children.map((one) => ({ externalId: one.externalId, title: one.title, open: one.open }))).toEqual([
+      { externalId: child.externalId, title: "Child", open: true },
+    ]);
+    const childContext = must(await adapter.getTicketContext(fixture.board, { externalId: child.externalId }), "the child's context");
+    expect(childContext.parent?.externalId).toBe(parent.externalId);
+    if (fixture.mapping !== undefined) {
+      for (const target of ["started", "in-review", "done"] as const) {
+        must(await adapter.moveTicket(fixture.board, { externalId: child.externalId }, target, fixture.mapping), `moveTicket ${target}`);
+      }
+      const after = must(await adapter.getTicketContext(fixture.board, { externalId: parent.externalId }), "getTicketContext after done");
+      expect(after.children.map((one) => one.open)).toEqual([false]);
+    }
+    const elsewhere = await adapter.createTicket(fixture.board, { title: "Orphan", description: null, parent: { externalId: externalTicketIdSchema.parse("no-such-parent") } });
+    expect(elsewhere.ok).toBe(false);
+  });
+
+  it("writes a draft's description, and its criteria only where the tracker has the field", async (context) => {
+    const { adapter, fixture } = subject();
+    const { seedTicket } = fixture;
+    if (seedTicket === undefined || fixture.hooks === undefined) {
+      context.skip();
+      return;
+    }
+    const seeded = await seedTicket({ title: "Refine me", description: "Vague" });
+    const ref = { externalId: seeded.externalId };
+    const description = "## What\n\nThe banner shows the user's name.\n\n- [ ] One `$(whoami)` stays text";
+    must(await adapter.updateTicket(fixture.board, ref, { description }), "updateTicket");
+    const read = must(await adapter.getTicket(fixture.board, ref), "getTicket");
+    expect(read.description).toBe(description);
+    const withCriteria = await adapter.updateTicket(fixture.board, ref, { description, acceptanceCriteria: "- It shows the name" });
+    if (adapter.capabilities.ticketFields.acceptanceCriteria) {
+      must(withCriteria, "updateTicket with criteria");
+      expect(must(await adapter.getTicket(fixture.board, ref), "getTicket").acceptanceCriteria).toBe("- It shows the name");
+    } else {
+      expect(withCriteria).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    }
+    expect((await adapter.updateTicket({ externalId: "no-such-board" }, ref, { description })).ok).toBe(false);
+  });
+
+  it("attaches a file to a ticket, which downloads back", async (context) => {
+    const { adapter, fixture } = subject();
+    const { seedTicket } = fixture;
+    if (seedTicket === undefined || fixture.hooks === undefined || !adapter.capabilities.attachments) {
+      context.skip();
+      return;
+    }
+    const seeded = await seedTicket({ title: "With a file" });
+    const attached = must(
+      await adapter.attachFile(fixture.board, { externalId: seeded.externalId }, { name: "mock-up.png", contentType: "image/png", bytes: PNG }),
+      "attachFile",
+    );
+    const context6 = must(await adapter.getTicketContext(fixture.board, { externalId: seeded.externalId }), "getTicketContext");
+    expect(context6.attachments.map((attachment) => attachment.url)).toContain(attached.url);
+    const file = must(await adapter.downloadFile(attached.url, 1024 * 1024), "downloadFile");
+    expect([...file.bytes]).toEqual([...PNG]);
+  });
+
+  it("reads a session's created, follow-up and stop events, and tolerates an unknown field", async (context) => {
+    const { adapter, fixture } = subject();
+    const sessions = fixture.hooks?.sessions;
+    const { seedTicket } = fixture;
+    if (!adapter.capabilities.agentSessions || sessions === undefined || seedTicket === undefined) {
+      context.skip();
+      return;
+    }
+    const seeded = await seedTicket({ title: "Delegated" });
+    const created = await sessions.delegate(seeded);
+    const read = must(adapter.parseAgentSessionEvent(created.body), "parseAgentSessionEvent created");
+    expect(read).toMatchObject({
+      sessionId: created.sessionId,
+      action: "created",
+      ticketExternalId: seeded.externalId,
+      teamExternalId: fixture.board.externalId,
+      creator: { userId: sessions.person.userId, name: sessions.person.name },
+      signal: null,
+    });
+    // The vendor owns the format: a field ostra doesn't know is read past.
+    const widened = typeof created.body === "object" && created.body !== null ? { ...created.body, somethingNew: { nested: true } } : created.body;
+    expect(must(adapter.parseAgentSessionEvent(widened), "parseAgentSessionEvent with an unknown field").sessionId).toBe(created.sessionId);
+
+    const followUp = await sessions.followUp(created.sessionId, "Also check the footer");
+    expect(must(adapter.parseAgentSessionEvent(followUp.body), "parseAgentSessionEvent prompted")).toMatchObject({
+      sessionId: created.sessionId,
+      action: "prompted",
+      prompt: "Also check the footer",
+      signal: null,
+    });
+    // A stop is an event ostra reads, never a call it makes (ADR 0013).
+    const stop = await sessions.stop(created.sessionId);
+    expect(must(adapter.parseAgentSessionEvent(stop.body), "parseAgentSessionEvent stop")).toMatchObject({ sessionId: created.sessionId, action: "prompted", signal: "stop" });
+
+    const mention = await sessions.mention(seeded, "can you look at this?");
+    expect(must(adapter.parseAgentSessionEvent(mention.body), "parseAgentSessionEvent mention")).toMatchObject({
+      sessionId: mention.sessionId,
+      action: "created",
+      commentId: mention.commentId,
+    });
+    expect(adapter.parseAgentSessionEvent({ type: "Issue", action: "update" })).toMatchObject({ ok: false, error: { code: "invalid-response" } });
+  });
+
+  it("posts each activity once per idempotency key, with its kind and ephemeral flag", async (context) => {
+    const { adapter, fixture } = subject();
+    const sessions = fixture.hooks?.sessions;
+    const { seedTicket } = fixture;
+    if (!adapter.capabilities.agentSessions || sessions === undefined || seedTicket === undefined) {
+      context.skip();
+      return;
+    }
+    const { sessionId } = await sessions.delegate(await seedTicket({ title: "Progress" }));
+    const thought = { kind: "thought", body: "Reading the code", ephemeral: true, idempotencyKey: "task-1:thought:1" } as const;
+    const first = must(await adapter.postAgentActivity(sessionId, thought), "postAgentActivity");
+    const again = must(await adapter.postAgentActivity(sessionId, thought), "postAgentActivity again");
+    expect(again.activityId).toBe(first.activityId);
+    for (const kind of agentActivityKinds.filter((one) => one !== "thought")) {
+      must(await adapter.postAgentActivity(sessionId, { kind, body: `A ${kind}`, ephemeral: false, idempotencyKey: `task-1:${kind}` }), `postAgentActivity ${kind}`);
+    }
+    // An action's text is the tracker's own shape (Linear's action and parameter), so only its kind is compared.
+    const recorded = await sessions.activities(sessionId);
+    expect(recorded.map((activity) => ({ kind: activity.kind, ephemeral: activity.ephemeral, body: activity.kind === "action" ? null : activity.body }))).toEqual([
+      { kind: "thought", ephemeral: true, body: "Reading the code" },
+      ...agentActivityKinds.filter((one) => one !== "thought").map((kind) => ({ kind, ephemeral: false, body: kind === "action" ? null : `A ${kind}` })),
+    ]);
+    if (adapter.capabilities.agentSessionLink) {
+      must(await adapter.setAgentSessionLink(sessionId, "https://ostra.example.test/tasks/0196f1a0"), "setAgentSessionLink");
+      expect(await sessions.link(sessionId)).toBe("https://ostra.example.test/tasks/0196f1a0");
+    }
+  });
+};
+
+/** Milestone 6's cases alone, for an adapter the full suite doesn't run (the tiny tracker). */
+export const defineTrackerMilestone6Suite = (options: ContractSuiteOptions<TrackerAdapter, TrackerMilestone6Fixture>): void => {
+  describe(`tracker contract (milestone 6): ${options.name}`, () => {
+    defineMilestone6Cases(useSubject(options));
+  });
+};
+
 export const defineTrackerContractSuite = (options: ContractSuiteOptions<TrackerAdapter, TrackerSuiteFixture>): void => {
   describe(`tracker contract: ${options.name}`, () => {
     const subject = useSubject(options);
     defineMentionCases(subject);
+    defineMilestone6Cases(() => {
+      const { adapter, fixture } = subject();
+      const hooks = fixture.milestone6;
+      return {
+        adapter,
+        fixture: hooks === undefined ? { board: fixture.board } : { board: fixture.board, seedTicket: fixture.seedTicket, mapping: fixture.mapping, hooks },
+      };
+    });
     defineCommonCases(subject, "tracker", trackerCapabilityTypes);
 
     const otherSeesNothing = async (ticket: SeededTicket): Promise<void> => {
