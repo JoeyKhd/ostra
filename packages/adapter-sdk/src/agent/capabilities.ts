@@ -58,4 +58,14 @@ export type AgentCapabilities = {
    * shows no control).
    */
   readonly reasoningEffort: "session-option" | "relaunch" | "none";
+
+  // ---- subagents (2026-11-20, F-138's turn) ----
+  /**
+   * How the agent's subagents meet its turn. `background`: they run on after the agent's prompt is
+   * answered, and the agent reports each one's state (OpenCode's child-session updates), so a turn
+   * ends only once no subagent runs and the agent has finished the turns their reports wake it
+   * for. `none`: the agent has no subagents ostra can tell apart, and a turn ends with its
+   * prompt's answer.
+   */
+  readonly subagents: "background" | "none";
 };

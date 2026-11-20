@@ -39,6 +39,7 @@ const capabilities = (planMode: AgentCapabilities["planMode"]): AgentCapabilitie
   projectConfigOverride: false,
   memory: "index-only",
   reasoningEffort: "none",
+  subagents: "none",
 });
 
 const unusedDriver: DriverPort = {

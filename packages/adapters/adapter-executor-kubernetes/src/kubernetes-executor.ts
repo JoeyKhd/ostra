@@ -106,6 +106,8 @@ export type KubernetesExecutorOptions = {
   readonly sidecarLimits?: BoxSize;
   /** `OSTRA_SERVICE_CPU_MILLIS` and `OSTRA_SERVICE_MEMORY_MIB`: a service names no limits of its own. */
   readonly serviceLimits?: BoxSize;
+  /** `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`, for each box's sidecar, which runs the task. Absent: the sidecar's default. */
+  readonly subagentWaitMinutes?: number;
   /** How long the services have to be healthy once the sidecar runs. Default 120 s (F-094). */
   readonly servicesWaitMs?: number;
   /** How long an image's pull runs before the box says it waits for it. Default 10 s (F-093). */
@@ -209,6 +211,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
   readonly #nodeWaitMs: number;
   readonly #scaleUpGraceMs: number;
   readonly #sidecarLimits: BoxSize;
+  readonly #subagentWaitMinutes: number | null;
   readonly #serviceLimits: BoxSize;
   readonly #servicesWaitMs: number;
   readonly #imagePullWaitMs: number;
@@ -242,6 +245,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
     this.#scaleUpGraceMs = options.scaleUpGraceMs ?? 30_000;
     this.#sidecarLimits = options.sidecarLimits ?? { cpuMillis: 1000, memoryMiB: 256 };
     this.#serviceLimits = options.serviceLimits ?? { cpuMillis: 1000, memoryMiB: 1024 };
+    this.#subagentWaitMinutes = options.subagentWaitMinutes ?? null;
     this.#servicesWaitMs = options.servicesWaitMs ?? 120_000;
     this.#imagePullWaitMs = options.imagePullWaitMs ?? 10_000;
     this.#requireEgressBaseline = options.requireEgressBaseline ?? true;
@@ -374,6 +378,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
         runtimeClassName: this.#runtimeClassName,
         sidecarLimits: this.#sidecarLimits,
         serviceLimits: this.#serviceLimits,
+        subagentWaitMinutes: this.#subagentWaitMinutes,
         bridgePort: listening?.port ?? BRIDGE_PORT,
         initCommand: this.#initCommand,
         sidecarCommand: this.#sidecarCommand,

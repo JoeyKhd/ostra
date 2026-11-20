@@ -76,6 +76,10 @@ export const suiteCases = {
   steer: suite("agent-suite.ts", "ADR 0032: a steer during a turn reaches the agent, when steering is declared"),
   archive: suite("agent-suite.ts", "ADR 0039: exports a session, imports it into a fresh box's workspace, and loads it there with its history"),
   noLoad: suite("agent-suite.ts", "refuses to resume a session when it doesn't declare sessionLoad"),
+  // Subagents (2026-11-20).
+  subagentsWait: suite("agent-suite.ts", "F-023: a subagent that outlives its agent's prompt holds the turn until it reports and the agent answers, with subagents background"),
+  subagentsNone: suite("agent-suite.ts", "F-023: an agent without background subagents ends its turn with its prompt's answer"),
+  subagentsCancel: suite("agent-suite.ts", "F-025: a cancel while a subagent runs stops it with the turn, in under 5 s, and nothing of theirs comes after"),
   ruleAsks: suite("agent-profile-cases.ts", "F-026: a request a rule covers asks a member, named by its subject; one no rule covers goes on without one"),
   taskRule: suite("agent-profile-cases.ts", "F-026: a task rule answers a matching request without a member, and only a matching one"),
   denyReason: suite("agent-profile-cases.ts", "F-026: a deny with a reason ends the request, and the re-prompt carries the reason as data"),
@@ -164,6 +168,7 @@ export const capabilityCases: Readonly<Record<keyof AgentCapabilities, { readonl
   projectConfigOverride: { on: [suiteCases.repoAllowsAll], off: [suiteCases.repoConfigHidden] },
   memory: { on: [suiteCases.memoryTools], off: [suiteCases.memoryIndex] },
   reasoningEffort: { on: [suiteCases.effortLevels], off: [suiteCases.noEffort] },
+  subagents: { on: [suiteCases.subagentsWait, suiteCases.subagentsCancel], off: [suiteCases.subagentsNone] },
 };
 
 /** Whether an adapter declares a capability, read the way `capabilityCases` splits it. */
@@ -179,6 +184,8 @@ export const declares = (capabilities: AgentCapabilities, capability: keyof Agen
       return capabilities.memory === "mcp";
     case "reasoningEffort":
       return capabilities.reasoningEffort !== "none";
+    case "subagents":
+      return capabilities.subagents === "background";
     case "steerMidTurn":
     case "sessionLoad":
     case "nativePlan":
@@ -244,8 +251,8 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   opencode: {
     ...common,
     ...milestone6WithTools,
-    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan),
-    "F-025 Stop": cases(suiteCases.cancel),
+    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.subagentsWait),
+    "F-025 Stop": cases(suiteCases.cancel, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),
     "F-078 Repo conventions": cases(sharedCases.openCodeRepoAgents, sharedCases.trailer),
     "F-032, F-033, F-096 Reopen anywhere": cases(suiteCases.archive),
@@ -261,8 +268,8 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-rich": {
     ...common,
     ...milestone6WithTools,
-    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
-    "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
+    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsWait),
+    "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
     "F-078 Repo conventions": cases(suiteCases.twoRepos, sharedCases.trailer),
     "F-032, F-033, F-096 Reopen anywhere": cases(suiteCases.archive),
@@ -278,7 +285,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-plain": {
     ...common,
     ...milestone6WithTools,
-    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
+    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
     "F-078 Repo conventions": cases(suiteCases.twoRepos, sharedCases.trailer),
@@ -295,7 +302,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-plain-index-only-unknown-notification": {
     ...common,
     ...milestone6IndexOnly,
-    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
+    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
     "F-078 Repo conventions": cases(suiteCases.twoRepos, sharedCases.trailer),
@@ -312,8 +319,8 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-rich-effort": {
     ...common,
     ...milestone6WithTools,
-    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
-    "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
+    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsWait),
+    "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
     "F-078 Repo conventions": cases(suiteCases.twoRepos, sharedCases.trailer),
     "F-032, F-033, F-096 Reopen anywhere": cases(suiteCases.archive),

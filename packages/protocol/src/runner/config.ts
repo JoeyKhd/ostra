@@ -40,6 +40,8 @@ export const runnerConfigKeys = [
   "sidecarMemoryMiB",
   "serviceCpuMillis",
   "serviceMemoryMiB",
+  // Subagents (2026-11-20).
+  "subagentWaitMinutes",
 ] as const;
 
 export type RunnerConfigKey = (typeof runnerConfigKeys)[number];
@@ -221,6 +223,13 @@ export const runnerConfigFields = {
     default: "1024",
     description: "The memory limit, in MiB, of a service that names none, counted in the box's footprint.",
   },
+  subagentWaitMinutes: {
+    flag: "subagent-wait-minutes",
+    env: "OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES",
+    default: "30",
+    description:
+      "How long a turn waits, once its agent's prompt is answered, for the subagents it started and the turns their reports wake (OpenCode runs subagents in the background). Past it, ostra stops them, fails each one on the call that started it, and ends the turn.",
+  },
 } as const satisfies Record<
   RunnerConfigKey,
   { readonly flag: string; readonly env: string; readonly default: string; readonly description: string }
@@ -273,6 +282,7 @@ export const runnerConfigSchema = z.strictObject({
   sidecarMemoryMiB: whole(1, 16_777_216).default(256).describe(describe("sidecarMemoryMiB")),
   serviceCpuMillis: whole(1, 1_000_000).default(1000).describe(describe("serviceCpuMillis")),
   serviceMemoryMiB: whole(1, 16_777_216).default(1024).describe(describe("serviceMemoryMiB")),
+  subagentWaitMinutes: whole(1, 1440).default(30).describe(describe("subagentWaitMinutes")),
 });
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
 

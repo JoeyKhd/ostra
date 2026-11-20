@@ -27,6 +27,10 @@ import { loadFakeSession, saveFakeSession } from "./archive.ts";
 // - `plain` asks for every request and leaves the rules to the runner (`runner-only`), changes
 //   mode only by a relaunch, takes skills as instructions, speaks MCP over HTTP only, and obeys
 //   a repo's own config, so the runner must hide it.
+//
+// Subagents (2026-11-20): both run a subagent the way OpenCode 2.3.2 does (`[[fake:subagent-bg]]`),
+// in the background past the prompt's answer, its states sent as `opencode/session/child_update`
+// to a client that asks for them. `rich` declares `subagents: "background"`, `plain` declares `none`.
 
 export type FakeAgentProfile = "rich" | "plain";
 
@@ -41,6 +45,8 @@ export type FakeAgentCapabilities = {
   readonly skills: boolean;
   readonly mcp: { readonly http: boolean; readonly stdio: boolean };
   readonly projectConfigOverride: boolean;
+  // Subagents (2026-11-20).
+  readonly subagents: "background" | "none";
 };
 
 export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentCapabilities>> = {
@@ -54,6 +60,7 @@ export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentC
     skills: true,
     mcp: { http: true, stdio: true },
     projectConfigOverride: true,
+    subagents: "background",
   },
   plain: {
     steerMidTurn: false,
@@ -65,6 +72,7 @@ export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentC
     skills: false,
     mcp: { http: true, stdio: false },
     projectConfigOverride: false,
+    subagents: "none",
   },
 };
 
@@ -198,6 +206,13 @@ export const fakeScripts = [
   // Milestone 6 (ticket 23).
   /** Writes the files given (session-relative) and commits them itself in the repo the session opened on, as `git add` and `git commit` would. */
   "commit",
+  // Subagents (2026-11-20).
+  /**
+   * Starts a subagent and ends its turn, as OpenCode does: the subagent works for the ms given
+   * (default 1000; `hang` never ends), reads a file and answers, and its report wakes the agent,
+   * which then says `the final answer, after the subagent`, with no prompt in flight.
+   */
+  "subagent-bg",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -212,6 +227,10 @@ export const FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV = "FAKE_AGENT_UNKNOWN_NOTIFICAT
 
 /** The method of that notification. */
 export const FAKE_AGENT_UNKNOWN_NOTIFICATION = "_future/announcement";
+
+/** Subagents (2026-11-20): OpenCode's client capability for its child sessions, and their notification. */
+const FAKE_CHILD_SESSION_UPDATES = "opencode/child-session-updates";
+const FAKE_CHILD_UPDATE_METHOD = "opencode/session/child_update";
 
 export const fakeMarker = (script: FakeScript, args = ""): string => `[[fake:${script}${args === "" ? "" : ` ${args}`}]]`;
 
@@ -265,6 +284,14 @@ type Session = {
   effort: string;
   /** Every value `session/set_config_option` set on it, in order. */
   readonly effortsSet: string[];
+  /** Subagents (2026-11-20): its running subagents, by their child session's ID. */
+  readonly children: Map<string, AbortController>;
+  /** The agent is at work on a subagent's report, with no prompt in flight. */
+  waking: boolean;
+  /** Stops that work: `session/close` on the session. */
+  wakeAbort: AbortController;
+  /** The client is attached: OpenCode's follower sends what the session does past a turn's answer. */
+  following: boolean;
 };
 
 const sleep = async (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -331,6 +358,8 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
   const capabilities = fakeAgentCapabilities[options.profile];
   const sessions = new Map<string, Session>();
   let counter = 0;
+  /** The client asked for its subagents' updates and states (`opencode/child-session-updates`), as OpenCode reads it. */
+  let childUpdates = false;
 
   /** The task config, read once per session: the adapter writes it before the launch. */
   const readConfig = async (): Promise<FakeAgentConfig> => {
@@ -381,6 +410,10 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       cancel: new AbortController(),
       steer: undefined,
       running: false,
+      children: new Map(),
+      waking: false,
+      wakeAbort: new AbortController(),
+      following: true,
     };
   };
 
@@ -430,12 +463,17 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
 
   const app = acp
     .agent()
-    .onRequest(acp.methods.agent.initialize, () => ({
-      protocolVersion: acp.PROTOCOL_VERSION,
-      agentInfo: { name: "ostra-fake-agent", title: "ostra fake agent", version: "0.0.0" },
-      agentCapabilities: { loadSession: capabilities.sessionLoad, promptCapabilities: {} },
-      ...(capabilities.steerMidTurn ? { _meta: { steering: { supported: true } } } : {}),
-    }))
+    .onRequest(acp.methods.agent.initialize, (ctx) => {
+      const meta: unknown = Reflect.get(Object(Reflect.get(Object(ctx.params), "clientCapabilities")), "_meta");
+      childUpdates = Reflect.get(Object(meta), FAKE_CHILD_SESSION_UPDATES) === true;
+      return {
+        protocolVersion: acp.PROTOCOL_VERSION,
+        agentInfo: { name: "ostra-fake-agent", title: "ostra fake agent", version: "0.0.0" },
+        // As OpenCode: it always offers its subagents' updates; a client takes them by asking.
+        agentCapabilities: { loadSession: capabilities.sessionLoad, promptCapabilities: {}, _meta: { [FAKE_CHILD_SESSION_UPDATES]: true } },
+        ...(capabilities.steerMidTurn ? { _meta: { steering: { supported: true } } } : {}),
+      };
+    })
     .onRequest(acp.methods.agent.session.new, async (ctx) => {
       // Milestone 7 (ticket 03): a notification of a method no client knows, after `initialize`.
       if (options.env[FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV] === "1") {
@@ -500,7 +538,29 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       return { configOptions: configOptionsOf(session) };
     })
     .onNotification(acp.methods.agent.session.cancel, (ctx) => {
+      // As OpenCode's: it reaches the prompt in flight alone, never a subagent or a report's turn.
       sessions.get(ctx.params.sessionId)?.cancel.abort();
+    })
+    // Subagents (2026-11-20), as OpenCode 2.3.2 closes a session: a child session's close interrupts
+    // that subagent; the session's own stops its turn and its follower, so nothing more is sent.
+    .onRequest(acp.methods.agent.session.close, (ctx) => {
+      const id = ctx.params.sessionId;
+      for (const session of sessions.values()) {
+        session.children.get(id)?.abort();
+      }
+      const session = sessions.get(id);
+      if (session !== undefined) {
+        session.following = false;
+        session.cancel.abort();
+        session.wakeAbort.abort();
+      }
+      return {};
+    })
+    .onRequest(acp.methods.agent.session.resume, (ctx) => {
+      const session = sessionOf(ctx.params.sessionId);
+      session.following = true;
+      session.wakeAbort = new AbortController();
+      return {};
     });
 
   if (capabilities.planMode === "session-mode") {
@@ -520,6 +580,14 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       z.looseObject({ sessionId: z.string(), prompt: z.array(z.looseObject({ type: z.string(), text: z.string().optional() })) }),
       (ctx) => {
         const session = sessions.get(ctx.params.sessionId);
+        // As OpenCode's: a running turn is checked first, then the prompt, so an image with neither
+        // data nor URI is refused only by a session at work, and an idle one answers `promptRequired`.
+        if (ctx.params.prompt.some((block) => block.type === "image" && block["data"] === "" && block["uri"] === undefined)) {
+          if (session !== undefined && (session.running || session.waking)) {
+            throw acp.RequestError.invalidParams({ field: "prompt" }, "image content has no data or uri");
+          }
+          return { outcome: "promptRequired" };
+        }
         if (session?.steer === undefined) {
           return { outcome: "not_running" };
         }
@@ -684,6 +752,84 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       return "end_turn";
     }
     return "cancelled";
+  };
+
+  /**
+   * Subagents (2026-11-20): `[[fake:subagent-bg]]`, as OpenCode 2.3.2 plays a background subagent
+   * (`research/opencode-subagents.md`): the `subagent` call ends at once with the child's session ID,
+   * the agent ends its turn, and the child's work goes on. A client that asked for the child's
+   * updates gets them, and its states, as `opencode/session/child_update`; one that didn't gets none
+   * once the turn is answered. The child's report then wakes the agent, whose words come as the
+   * session's own updates either way, while OpenCode follows the session.
+   */
+  const subagentInBackground = async (io: Play, args: string): Promise<acp.StopReason> => {
+    const { session, update, say } = io;
+    const client = io.ctx.client;
+    const [first = "", second = ""] = args.split(/\s+/);
+    const hangs = first === "hang";
+    const ms = Number.parseInt(hangs ? second : first, 10);
+    const workMs = Number.isFinite(ms) && ms > 0 ? ms : 1000;
+    counter += 1;
+    const childId = `fake-child-${String(counter)}`;
+    const title = "slow child";
+    const notifyChild = async (event: Record<string, unknown>): Promise<void> => {
+      if (!childUpdates || !session.following) {
+        return;
+      }
+      await client
+        .notify<Record<string, unknown>>(FAKE_CHILD_UPDATE_METHOD, { rootSessionId: session.id, childSessionId: childId, parentSessionId: session.id, depth: 1, title, ...event })
+        .catch(() => undefined);
+    };
+    const child = new AbortController();
+    session.children.set(childId, child);
+    await update({ sessionUpdate: "tool_call", toolCallId: "subagent-1", title: "subagent", kind: "think", status: "pending" });
+    await update({ sessionUpdate: "tool_call_update", toolCallId: "subagent-1", status: "in_progress", rawInput: { agent: "general", description: title, prompt: "read the README" } });
+    await notifyChild({ type: "status", status: "created" });
+    await update({ sessionUpdate: "tool_call_update", toolCallId: "subagent-1", status: "completed", rawOutput: { metadata: { sessionID: childId, status: "running", truncated: false } } });
+    await notifyChild({ type: "status", status: "running" });
+    await say("launched a subagent, ending my turn");
+    // The child's work and the agent's wake, past the answer: never awaited by the prompt.
+    void (async () => {
+      const meta = { "opencode/child-session": { id: childId, parentID: session.id, depth: 1, title } };
+      if (hangs) {
+        // One that never ends says so now and then, so a stop that misses it shows.
+        for (let tick = 1; !child.signal.aborted; tick += 1) {
+          const tickId = `${childId}:tick-${String(tick)}`;
+          await notifyChild({ type: "update", update: { sessionUpdate: "tool_call", toolCallId: tickId, title: `${title}: wait`, kind: "execute", status: "pending", rawInput: { command: "sleep 0.2" }, _meta: meta } });
+          await sleep(200, child.signal);
+          await notifyChild({ type: "update", update: { sessionUpdate: "tool_call_update", toolCallId: tickId, status: "completed", _meta: meta } });
+        }
+      } else {
+        await sleep(workMs, child.signal);
+      }
+      session.children.delete(childId);
+      const toolCallId = `${childId}:read-1`;
+      if (child.signal.aborted) {
+        await notifyChild({ type: "status", status: "interrupted" });
+      } else {
+        await notifyChild({ type: "update", update: { sessionUpdate: "tool_call", toolCallId, title: `${title}: read`, kind: "read", status: "pending", rawInput: { path: "README.md" }, _meta: meta } });
+        await notifyChild({ type: "update", update: { sessionUpdate: "tool_call_update", toolCallId, status: "completed", _meta: meta } });
+        await notifyChild({ type: "update", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "child answer: the README says hello" }, _meta: meta } });
+        await notifyChild({ type: "status", status: "completed" });
+      }
+      // The report wakes the agent: a turn of its own, seen by a client OpenCode still follows.
+      const wakeSignal = session.wakeAbort.signal;
+      session.waking = true;
+      try {
+        await sleep(300, wakeSignal);
+        if (!wakeSignal.aborted && session.following) {
+          const text = child.signal.aborted ? "the subagent was stopped" : "the final answer, after the subagent";
+          session.history.push(text);
+          await client
+            .notify(acp.methods.client.session.update, { sessionId: session.id, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } })
+            .catch(() => undefined);
+          await sleep(200, wakeSignal);
+        }
+      } finally {
+        session.waking = false;
+      }
+    })();
+    return "end_turn";
   };
 
   const play = async (script: string, args: string, io: Play): Promise<acp.StopReason> => {
@@ -1289,6 +1435,9 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         await say(`Called the model ${String(count)} times.`);
         return "end_turn";
       }
+
+      case "subagent-bg":
+        return subagentInBackground(io, args);
 
       case "content":
         await update({

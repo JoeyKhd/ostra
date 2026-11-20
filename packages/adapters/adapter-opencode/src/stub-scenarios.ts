@@ -1,4 +1,4 @@
-import { conversationText } from "@ostra/adapter-sdk/testing";
+import { conversationText, stubMarker } from "@ostra/adapter-sdk/testing";
 import type { NormalizedMessage, Scenario } from "@ostra/adapter-sdk/testing";
 
 // The scripts the stub model plays for OpenCode in this package's tests. Ported from
@@ -8,8 +8,45 @@ import type { NormalizedMessage, Scenario } from "@ostra/adapter-sdk/testing";
 /** The marker a prompt carries to pick its script (`stubMarker` in the testing exports). */
 export const sleepCommand = (ms: number): string => `node -e "setTimeout(()=>{},Number(process.argv[1]))" ${String(ms)} ostra-test-sleep`;
 
+/** A subagent's model calls, told apart by the first message OpenCode gives every subagent. */
+export const isSubagentCall = (messages: readonly NormalizedMessage[]): boolean =>
+  messages.some((message) => message.role === "user" && message.text.includes("You are a subagent spawned by another session."));
+
 export const scenarios: Readonly<Record<string, Scenario>> = {
   hello: ({ step }) => (step === 0 ? { text: "hello from the stub" } : undefined),
+
+  // ---- subagents (2026-11-20): OpenCode runs each in the background, past the prompt's answer ----
+
+  /**
+   * Starts a subagent that works for the ms given (default 3000), and ends its turn as OpenCode
+   * tells it to; the subagent's report wakes it, and it answers. `hang` starts one that never ends.
+   */
+  "subagent-bg": ({ step, args }) => {
+    switch (step) {
+      case 0: {
+        const child = args === "hang" ? stubMarker("subagent-loop") : stubMarker("subagent-slow", args === "" ? "3000" : args);
+        return { toolCalls: [{ name: "subagent", arguments: { agent: "general", description: "slow child", prompt: `${child} read the README` } }] };
+      }
+      case 1:
+        return { text: "launched a subagent, ending my turn" };
+      case 2:
+        return { text: "the final answer, after the subagent" };
+      default:
+        return undefined;
+    }
+  },
+
+  /** A subagent's work: a wait of the ms given, then its answer. */
+  "subagent-slow": ({ step, args }) => {
+    if (step === 0) {
+      const ms = Number.parseInt(args, 10);
+      return { toolCalls: [{ name: "shell", arguments: { command: sleepCommand(Number.isFinite(ms) && ms > 0 ? ms : 3000), timeout: 120_000, description: "work" } }] };
+    }
+    return step === 1 ? { text: "child answer: the README says hello" } : undefined;
+  },
+
+  /** A subagent that never ends: a short wait at every step, each one a model call. */
+  "subagent-loop": ({ step }) => ({ toolCalls: [{ name: "shell", arguments: { command: sleepCommand(1500), timeout: 120_000, description: `wait ${String(step)}` } }] }),
 
   /** A turn that states nothing itself: the member put the fact in the prompt (the archive case). */
   remember: ({ step }) => (step === 0 ? { text: "Noted." } : undefined),

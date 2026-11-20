@@ -1346,6 +1346,8 @@ export class TinyAgent extends AgentAdapter {
     // Milestone 4: no MCP, so the memory block alone; and no reasoning level (F-137).
     memory: "index-only",
     reasoningEffort: "none",
+    // No subagents: a turn ends with its prompt's answer.
+    subagents: "none",
   };
   effortLevels(): readonly EffortLevel[] {
     return ["default"];

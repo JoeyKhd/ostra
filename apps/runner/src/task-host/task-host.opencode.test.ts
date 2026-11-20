@@ -83,6 +83,27 @@ beforeAll(async () => {
         }
         return step === 1 ? { text: "The README says hello." } : undefined;
       },
+      // Subagents (2026-11-20): a subagent, then the turn ended as OpenCode tells the agent to;
+      // the subagent's report wakes the agent, which gives its real answer.
+      "bg-subagent": ({ step, args }) => {
+        if (step === 0) {
+          const child = args === "hang" ? stubMarker("loop-child") : stubMarker("bg-child");
+          return { toolCalls: [{ name: "subagent", arguments: { agent: "general", description: "read the readme", prompt: `${child} Read README.md.` } }] };
+        }
+        if (step === 1) {
+          return { text: "launched a subagent, ending my turn" };
+        }
+        return step === 2 ? { text: "the final answer, after the subagent" } : undefined;
+      },
+      // A subagent's work, a few seconds long, then its answer.
+      "bg-child": ({ step }) => {
+        if (step === 0) {
+          return { toolCalls: [{ name: "shell", arguments: { command: `node -e "setTimeout(()=>{},4000)"`, timeout: 60_000, description: "work" } }] };
+        }
+        return step === 1 ? { text: "child answer: the README says hello" } : undefined;
+      },
+      // A subagent that never ends: a short wait at every step, each one a model call.
+      "loop-child": ({ step }) => ({ toolCalls: [{ name: "shell", arguments: { command: `node -e "setTimeout(()=>{},1500)"`, timeout: 60_000, description: `wait ${String(step)}` } }] }),
     }),
   });
 }, 60_000);
@@ -93,7 +114,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
-const harness = async (name: string): Promise<Harness> => {
+const harness = async (name: string, options: { readonly subagentWaitMs?: number } = {}): Promise<Harness> => {
   const dataDir = path.join(root, `runner-${name}`);
   const server = await startFakeServer();
   server.accessTokens.set(ACCESS_TOKEN, runnerId);
@@ -124,6 +145,7 @@ const harness = async (name: string): Promise<Harness> => {
     logger,
     listenHost: "127.0.0.1",
     stopGraceMs: 2_000,
+    ...(options.subagentWaitMs === undefined ? {} : { subagentWaitMs: options.subagentWaitMs }),
     capacity: 1,
     executorKind: "host",
     labels: [],
@@ -196,6 +218,19 @@ const eventsOf = (h: Harness, spec: TaskSpec): readonly RunnerEvent[] =>
   [...(h.gateway.stored.get(spec.sessionId)?.values() ?? [])].sort((a, b) => a.sessionSeq - b.sessionSeq);
 const kindsOf = (h: Harness, spec: TaskSpec): readonly TaskEvent["kind"][] => eventsOf(h, spec).map((item) => item.event.kind);
 
+/** The stub's calls made by a subagent: OpenCode opens each subagent's conversation with this line. */
+const subagentCallsOf = (calls: StubServer["calls"]): StubServer["calls"] =>
+  calls.filter((call) => call.messages.some((message) => message.role === "user" && message.text.includes("You are a subagent spawned by another session.")));
+
+/** Each `agent.message`'s text, with the event's place among the session's events. */
+const messagesOf = (h: Harness, spec: TaskSpec): readonly { readonly seq: number; readonly turnId: string; readonly text: string }[] =>
+  eventsOf(h, spec).flatMap((item) => (item.event.kind === "agent.message" ? [{ seq: item.sessionSeq, turnId: item.event.turnId, text: item.event.text }] : []));
+
+const pause = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 describe("the task host with OpenCode", () => {
   it("F-019: runs a task on OpenCode, the agent the runner ships, over ostra's ACP driver: it edits the repo through the proxies and leaves a PR-ready branch, counting the model's tokens", async () => {
     const h = await harness("stub");
@@ -246,6 +281,106 @@ describe("the task host with OpenCode", () => {
       expect(usage.reduce((sum, event) => sum + event.outputTokens, 0)).toBe(billed.reduce((sum, item) => sum + item.outputTokens, 0));
       const subagentBilled = subagentCalls.reduce((sum, call) => sum + (call.billed?.inputTokens ?? 0) + (call.billed?.cacheReadTokens ?? 0), 0);
       expect(subagentBilled).toBeGreaterThan(0);
+    } finally {
+      await h.close();
+    }
+  }, 180_000);
+});
+
+// Subagents (2026-11-20, `research/opencode-subagents.md`): OpenCode 2.3.2 runs each subagent in the
+// background and tells the agent to end its turn; the subagent's report wakes the agent later.
+describe("the task host with OpenCode's subagents", () => {
+  it("F-023, F-138: a task doesn't end while its agent's subagent runs: the agent's answer, woken by the subagent's report, is the turn's", async () => {
+    const h = await harness("bg-subagent");
+    try {
+      const spec = dispatchTask(h, "bg-subagent", `${stubMarker("bg-subagent")} Have a subagent read the README.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
+      await h.gateway.waitFor(() => kindsOf(h, spec).includes("session.ended") || kindsOf(h, spec).includes("session.crashed"), 150_000);
+      expect(kindsOf(h, spec), JSON.stringify(eventsOf(h, spec).filter((item) => item.event.kind === "session.crashed"))).toContain("session.ended");
+      const events = eventsOf(h, spec);
+      const started = events.find((item) => item.event.kind === "turn.started");
+      const ended = events.filter((item) => item.event.kind === "turn.ended");
+      expect(ended).toHaveLength(1);
+      expect(ended[0]?.event).toMatchObject({ kind: "turn.ended", stopReason: "end_turn" });
+      const endSeq = ended[0]?.sessionSeq ?? 0;
+      const turnId = started?.event.kind === "turn.started" ? started.event.turnId : undefined;
+      const messages = messagesOf(h, spec);
+      const final = messages.find((message) => message.text.includes("the final answer, after the subagent"));
+      // The real answer came, in the turn, before its end; and so did the subagent's own.
+      expect(final, JSON.stringify(messages)).toBeDefined();
+      expect(final?.turnId).toBe(turnId);
+      expect(final?.seq ?? Infinity).toBeLessThan(endSeq);
+      const child = messages.find((message) => message.text.includes("child answer: the README says hello"));
+      expect(child?.seq ?? Infinity).toBeLessThan(endSeq);
+      // Nothing of the turn's comes after its end, and the session ends after it.
+      expect(events.filter((item) => item.sessionSeq > endSeq && (item.event.kind === "agent.message" || item.event.kind === "tool.called"))).toEqual([]);
+      const sessionEnded = events.find((item) => item.event.kind === "session.ended");
+      expect(sessionEnded?.sessionSeq ?? 0).toBeGreaterThan(endSeq);
+    } finally {
+      await h.close();
+    }
+  }, 180_000);
+
+  it("F-023: a subagent that never ends ends its turn at the wait's bound: its starting call fails, and the runner logs the bound with IDs only", async () => {
+    const waitMs = 6_000;
+    const h = await harness("hung-subagent", { subagentWaitMs: waitMs });
+    const before = stub.calls.length;
+    try {
+      const spec = dispatchTask(h, "hung-subagent", `${stubMarker("bg-subagent", "hang")} Have a subagent work.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
+      await h.gateway.waitFor(() => kindsOf(h, spec).includes("session.ended") || kindsOf(h, spec).includes("session.crashed"), 150_000);
+      expect(kindsOf(h, spec)).toContain("session.ended");
+      const events = eventsOf(h, spec);
+      const subagentCall = events.find((item) => item.event.kind === "tool.called" && item.event.title === "subagent");
+      const callId = subagentCall?.event.kind === "tool.called" ? subagentCall.event.toolCallId : undefined;
+      expect(callId).toBeDefined();
+      // The clear event: the call that started the subagent fails, saying why, before the turn's end.
+      const failed = events.find((item) => item.event.kind === "tool.failed" && item.event.toolCallId === callId);
+      expect(failed?.event).toMatchObject({ kind: "tool.failed", error: "the subagent still ran 6 seconds after its agent's turn was answered, so ostra stopped it" });
+      const ended = events.find((item) => item.event.kind === "turn.ended");
+      expect(ended?.event).toMatchObject({ stopReason: "end_turn" });
+      expect(failed?.sessionSeq ?? Infinity).toBeLessThan(ended?.sessionSeq ?? 0);
+      // The bound, logged with the task's IDs and numbers only: no prompt, no answer.
+      const logged = h.logs.find((record) => record.message.includes("subagents ran past their wait"));
+      expect(logged?.fields).toMatchObject({ subagentWaitMs: waitMs, subagents: 1 });
+      expect(JSON.stringify(logged)).not.toMatch(/README|subagent spawned|wait \d/);
+      // The subagent was stopped with the turn: it calls the model no more.
+      const calls = subagentCallsOf(stub.calls.slice(before)).length;
+      expect(calls).toBeGreaterThan(0);
+      await pause(4_000);
+      expect(subagentCallsOf(stub.calls.slice(before)).length).toBe(calls);
+    } finally {
+      await h.close();
+    }
+  }, 180_000);
+
+  it("F-025: a stop while the agent's subagent runs stops both: the turn ends cancelled at once, and the subagent calls the model no more", async () => {
+    const h = await harness("stop-subagent");
+    const before = stub.calls.length;
+    try {
+      const spec = dispatchTask(h, "stop-subagent", `${stubMarker("bg-subagent", "hang")} Have a subagent work.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
+      // The prompt is answered, and the turn waits on its working subagent.
+      await h.gateway.waitFor(() => messagesOf(h, spec).some((message) => message.text.includes("launched a subagent")), 150_000);
+      await h.gateway.waitFor(() => subagentCallsOf(stub.calls.slice(before)).length >= 2, 60_000);
+      expect(kindsOf(h, spec)).not.toContain("turn.ended");
+      const at = Date.now();
+      h.gateway.sendCommand(
+        makeCommand({
+          seq: 2,
+          id: "stop-subagent",
+          notAfter: Date.now() + 120_000,
+          kind: "stop",
+          body: { taskId: spec.taskId, sessionId: spec.sessionId, leaseEpoch: spec.leaseEpoch, reason: "requested" },
+        }),
+      );
+      await h.gateway.waitFor(() => kindsOf(h, spec).includes("turn.ended"), 60_000);
+      expect(Date.now() - at).toBeLessThan(8_000);
+      expect(eventsOf(h, spec).find((item) => item.event.kind === "turn.ended")?.event).toMatchObject({ stopReason: "cancelled" });
+      await h.gateway.waitFor(() => h.gateway.acks.some((ack) => ack.results.some((item) => item.id === "stop-subagent")), 60_000);
+      // Both stopped: the subagent calls the model no more, and its report wakes no turn.
+      await pause(500);
+      const calls = subagentCallsOf(stub.calls.slice(before)).length;
+      await pause(4_000);
+      expect(subagentCallsOf(stub.calls.slice(before)).length).toBe(calls);
+      expect(messagesOf(h, spec).some((message) => message.text.includes("the final answer"))).toBe(false);
     } finally {
       await h.close();
     }

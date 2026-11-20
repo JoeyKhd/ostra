@@ -84,6 +84,21 @@ export type AgentProbes = {
   readonly steerable?:
     | string
     | { readonly prompt: string; readonly waitFor: string; readonly steerText: string; readonly expectMessage: string };
+  /**
+   * Subagents (2026-11-20): the agent starts a subagent and ends its turn; the subagent works on
+   * past the prompt's answer, and its report wakes the agent, which then answers. `prompt` makes it
+   * happen, with `launched` the agent's words at the answer, `childAnswer` the subagent's and
+   * `finalAnswer` the agent's once woken. `hangingPrompt` starts one that works until it's stopped.
+   */
+  readonly backgroundSubagent?: {
+    readonly prompt: string;
+    readonly hangingPrompt: string;
+    readonly launched: string;
+    readonly childAnswer: string;
+    readonly finalAnswer: string;
+    /** How many model calls the subagents have made so far, for an agent that calls a model. */
+    readonly childCalls?: () => number;
+  };
 };
 
 export type AgentFixture = {
@@ -160,6 +175,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       projectConfigOverride: "boolean",
       memory: "string",
       reasoningEffort: "string",
+      subagents: "string",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -533,6 +549,81 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         await started.stop();
       }
     }, 120_000);
+
+    it("F-023: a subagent that outlives its agent's prompt holds the turn until it reports and the agent answers, with subagents background", async (context) => {
+      const probed = probe(context, "backgroundSubagent");
+      if (probed === undefined) {
+        return;
+      }
+      if (subject().adapter.capabilities.subagents !== "background") {
+        context.skip();
+        return;
+      }
+      const { events, stopReason } = await runTurn(probed.prompt, {}, 7);
+      expect(stopReason).toBe("end_turn");
+      // Everything the subagent and the woken agent said is the turn's, before its one end.
+      expect(events.at(-1)).toEqual({ kind: "turn.ended", turnId: turn(7), stopReason: "end_turn" });
+      expect(events.filter((event) => event.kind === "turn.ended")).toHaveLength(1);
+      const said = textOf(events);
+      expect(said).toContain(probed.launched);
+      expect(said).toContain(probed.childAnswer);
+      expect(said).toContain(probed.finalAnswer);
+      expect(said.indexOf(probed.finalAnswer)).toBeGreaterThan(said.indexOf(probed.launched));
+    }, 180_000);
+
+    it("F-023: an agent without background subagents ends its turn with its prompt's answer", async (context) => {
+      const probed = probe(context, "backgroundSubagent");
+      if (probed === undefined) {
+        return;
+      }
+      if (subject().adapter.capabilities.subagents !== "none") {
+        context.skip();
+        return;
+      }
+      const { events, stopReason } = await runTurn(probed.prompt, {}, 7);
+      expect(stopReason).toBe("end_turn");
+      expect(events.at(-1)).toEqual({ kind: "turn.ended", turnId: turn(7), stopReason: "end_turn" });
+      // The turn ended with its prompt's answer: the woken agent's words never made it in.
+      expect(textOf(events)).toContain(probed.launched);
+      expect(textOf(events)).not.toContain(probed.finalAnswer);
+    }, 180_000);
+
+    it("F-025: a cancel while a subagent runs stops it with the turn, in under 5 s, and nothing of theirs comes after", async (context) => {
+      const probed = probe(context, "backgroundSubagent");
+      if (probed === undefined) {
+        return;
+      }
+      const { adapter } = subject();
+      if (adapter.capabilities.subagents !== "background") {
+        context.skip();
+        return;
+      }
+      const events: TaskEvent[] = [];
+      const { session: running, started } = await session(events);
+      try {
+        const turnResult = adapter.prompt(running, turn(8), probed.hangingPrompt);
+        // The prompt is answered, and the turn waits on its subagent.
+        await waitFor(() => (textOf(events).includes(probed.launched) ? true : undefined), 120_000);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        expect(events.some((event) => event.kind === "turn.ended"), "the turn waits for its subagent").toBe(false);
+        const at = Date.now();
+        await adapter.cancel(running);
+        expect(await turnResult).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+        expect(Date.now() - at).toBeLessThan(CANCEL_BUDGET_MS);
+        expect(events.at(-1)).toEqual({ kind: "turn.ended", turnId: turn(8), stopReason: "cancelled" });
+        // The subagent and the turn its report would wake are stopped: nothing comes after the end,
+        // and the subagent calls the model no more.
+        const count = events.length;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const calls = probed.childCalls?.();
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        expect(events.slice(count).filter((event) => event.kind !== "session.config_changed")).toEqual([]);
+        expect(probed.childCalls?.(), "the subagent called the model after the cancel").toBe(calls);
+      } finally {
+        await adapter.close(running);
+        await started.stop();
+      }
+    }, 180_000);
 
     it("refuses to resume a session when it doesn't declare sessionLoad", async (context) => {
       const { adapter, fixture } = subject();

@@ -28,7 +28,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { platformPackages, resolveOpenCodeBinary } from "./binary.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
-import { scenarios } from "./stub-scenarios.ts";
+import { isSubagentCall, scenarios } from "./stub-scenarios.ts";
 import { startTestMcpHttp, writeTestMcpStdio } from "./test-mcp-servers.ts";
 import type { TestMcpHttp } from "./test-mcp-servers.ts";
 
@@ -215,6 +215,15 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
         waitFor: "never appears",
         steerText: "STEER-TOKEN: also mention the colour blue",
         expectMessage: "steer seen mid-turn",
+      },
+      // Subagents (2026-11-20): OpenCode's own `subagent` tool, played by the stub model.
+      backgroundSubagent: {
+        prompt: `${stubMarker("subagent-bg", "3000")} have a subagent read the README`,
+        hangingPrompt: `${stubMarker("subagent-bg", "hang")} have a subagent work`,
+        launched: "launched a subagent, ending my turn",
+        childAnswer: "child answer: the README says hello",
+        finalAnswer: "the final answer, after the subagent",
+        childCalls: () => stub.calls.filter((call) => isSubagentCall(call.messages)).length,
       },
     },
     // Milestone 3 (ADR 0049): the profile cases, played by the stub model on the real binary.

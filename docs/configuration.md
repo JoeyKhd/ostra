@@ -159,6 +159,7 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 | `OSTRA_SIDECAR_MEMORY_MIB` | `--sidecar-memory-mib` | `256` | The memory limit, in MiB, of a box's sidecar, counted in the box's footprint. |
 | `OSTRA_SERVICE_CPU_MILLIS` | `--service-cpu-millis` | `1000` | The CPU limit, in millicores, of a service that names none, counted in the box's footprint. |
 | `OSTRA_SERVICE_MEMORY_MIB` | `--service-memory-mib` | `1024` | The memory limit, in MiB, of a service that names none, counted in the box's footprint. |
+| `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES` | `--subagent-wait-minutes` | `30` | How long a turn waits, once its agent's prompt is answered, for the subagents it started and the turns their reports wake (OpenCode runs subagents in the background). Past it, ostra stops them, fails each one on the call that started it, and ends the turn. The runner logs the bound and how many it stopped, never what they were asked. It counts inside the task's turn limit, and the runner passes it on to each `docker` and `kubernetes` box. |
 
 The `docker` executor finds the Docker Engine as Docker's own tools do: `DOCKER_HOST` (`unix://`, `npipe://` or `tcp://host:port`), or the platform's default socket. The socket is root on the host, so pool runners belong on dedicated hosts (Q97).
 

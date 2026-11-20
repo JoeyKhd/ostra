@@ -291,6 +291,26 @@ export type SessionConfigOption = {
 /** ACP's reserved category for a reasoning level selector (ACP, "Session Config Options"). */
 export const THOUGHT_LEVEL_CATEGORY = "thought_level";
 
+/**
+ * What a turn's prompt came to. With `subagents: "background"`, the driver answers it only once no
+ * subagent of the session runs and the agent has finished the turns their reports woke it for.
+ */
+export type PromptOutcome = {
+  readonly stopReason: StopReason;
+  /**
+   * The subagents still running when the turn's wait for them ran out (`AcpDriverOptions.subagentWaitMs`).
+   * The driver stopped them; each is named by the main agent's call that started it, `null` when
+   * the driver never saw that call. Absent: no subagent outlived the wait.
+   */
+  readonly subagentsStopped?: { readonly waitedMs: number; readonly startedBy: readonly (ToolCallId | null)[] };
+};
+
+/** What the base class tells the driver about its agent when it connects. */
+export type ConnectOptions = {
+  /** The adapter's `subagents` capability: with `background`, a turn waits for the subagents it started. Absent: `none`. */
+  readonly subagents?: AgentCapabilities["subagents"];
+};
+
 /** One initialized ACP connection to one agent process. */
 export type DriverConnection = {
   readonly agentName: string | null;
@@ -307,7 +327,7 @@ export type DriverConnection = {
     readonly cwd: string;
     readonly mcpServers: readonly McpServer[];
   }) => Promise<AdapterResult<{ readonly configOptions: readonly SessionConfigOption[] }>>;
-  readonly prompt: (agentSessionId: string, text: string) => Promise<AdapterResult<{ readonly stopReason: StopReason }>>;
+  readonly prompt: (agentSessionId: string, text: string) => Promise<AdapterResult<PromptOutcome>>;
   readonly cancel: (agentSessionId: string) => Promise<void>;
   readonly steer: (agentSessionId: string, text: string) => Promise<AdapterResult<void>>;
   /**
@@ -333,7 +353,7 @@ export type MapContext = {
 
 /** ostra's ACP driver, as the base class uses it (ticket 09 provides the real one). */
 export type DriverPort = {
-  readonly connect: (io: AgentIo, handlers: DriverHandlers) => Promise<AdapterResult<DriverConnection>>;
+  readonly connect: (io: AgentIo, handlers: DriverHandlers, options?: ConnectOptions) => Promise<AdapterResult<DriverConnection>>;
   /** The ACP-to-ostra mapping every agent shares (ADR 0018). */
   readonly mapUpdate: (update: AcpUpdate, context: MapContext) => readonly TaskEvent[];
   /**
@@ -343,6 +363,16 @@ export type DriverPort = {
   readonly finishTurn?: (context: MapContext) => readonly TaskEvent[];
   /** The session is over: drops what the mapping kept for it. */
   readonly closeSession?: (sessionId: SessionId) => void;
+};
+
+/** A wait, in the words a member reads: whole minutes, or seconds below one. */
+const waitedText = (ms: number): string => {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes >= 1) {
+    return minutes === 1 ? "1 minute" : `${String(minutes)} minutes`;
+  }
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return seconds === 1 ? "1 second" : `${String(seconds)} seconds`;
 };
 
 // ---------- sessions ----------
@@ -556,7 +586,9 @@ export abstract class AgentAdapter {
     this.#starts.set(sessionKey, input);
     this.#emitters.set(sessionKey, input.onEvents);
     let replayed = 0;
-    const connected = await this.#driver.connect(input.io, {
+    const connected = await this.#driver.connect(
+      input.io,
+      {
       onReplay: () => {
         replayed += 1;
       },
@@ -579,7 +611,9 @@ export abstract class AgentAdapter {
       onPermission: (agentSessionId, request, signal) =>
         input.onPermission(agentSessionId, { ...request, subject: this.describePermission(request, input.cwd) }, signal),
       onQuestion: input.onQuestion,
-    });
+      },
+      { subagents: this.capabilities.subagents },
+    );
     if (!connected.ok) {
       this.#emitters.delete(sessionKey);
       this.#starts.delete(sessionKey);
@@ -637,7 +671,7 @@ export abstract class AgentAdapter {
       readonly effort?: EffortLevel;
       readonly adjustedFrom?: EffortLevel;
     } = {},
-  ): Promise<AdapterResult<{ readonly stopReason: StopReason }>> {
+  ): Promise<AdapterResult<PromptOutcome>> {
     const key = String(session.sessionId);
     const emit = this.#emitters.get(key);
     this.#turns.set(key, turnId);
@@ -654,8 +688,19 @@ export abstract class AgentAdapter {
     ]);
     const result = await session.connection.prompt(session.agentSessionId, text);
     const held = this.#driver.finishTurn?.({ taskId: session.taskId, sessionId: session.sessionId, turnId }) ?? [];
+    // A subagent the wait gave up on fails on the call that started it: what the member sees end.
+    const stopped = result.ok ? result.value.subagentsStopped : undefined;
+    const stoppedEvents: TaskEvent[] =
+      stopped === undefined
+        ? []
+        : stopped.startedBy.flatMap((toolCallId): TaskEvent[] =>
+            toolCallId === null
+              ? []
+              : [{ kind: "tool.failed", toolCallId, error: `the subagent still ran ${waitedText(stopped.waitedMs)} after its agent's turn was answered, so ostra stopped it` }],
+          );
     emit?.([
       ...held,
+      ...stoppedEvents,
       result.ok
         ? { kind: "turn.ended", turnId, stopReason: result.value.stopReason }
         : { kind: "turn.failed", turnId, error: result.error.message.slice(0, 4000) },

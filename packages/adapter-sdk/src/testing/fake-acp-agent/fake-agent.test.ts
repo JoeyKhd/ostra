@@ -194,6 +194,13 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp", parity: FakeAgentPari
       plan: fakeMarker("plan"),
       leftoverProcess: fakeMarker("spawn"),
       steerable: fakeMarker("steerable"),
+      backgroundSubagent: {
+        prompt: fakeMarker("subagent-bg", "800"),
+        hangingPrompt: fakeMarker("subagent-bg", "hang"),
+        launched: "launched a subagent, ending my turn",
+        childAnswer: "child answer: the README says hello",
+        finalAnswer: "the final answer, after the subagent",
+      },
     },
     archive: {
       run: runAgentCommand,

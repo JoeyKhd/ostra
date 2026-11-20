@@ -35,8 +35,12 @@ One conversation with an agent within a task. A task can hold several, for examp
 _Avoid_: chat, thread, run
 
 **Turn**:
-One prompt and the agent's full response to it within a session.
+One prompt and the agent's full response to it within a session. The response includes what the agent's subagents do and what the agent says once their reports wake it: a turn ends only when none of them runs and the agent is idle again (ADR 0067).
 _Avoid_: message, step, round
+
+**Subagent**:
+An agent the task's agent starts for part of its work, in a child session of its own, such as OpenCode's `general` and its read-only `explore`. It belongs to the turn that started it, and stops when that turn is cancelled (ADR 0067).
+_Avoid_: child agent, worker, sub-task
 
 **Event**:
 One thing the agent or ostra did in a session: a message, a tool call, a file change, a question or a state change. It is saved before ostra acts on it, and it carries two numbers: one per session, which makes saving it idempotent, and one per task, which a browser resumes from. Text the agent is still writing is not an event.

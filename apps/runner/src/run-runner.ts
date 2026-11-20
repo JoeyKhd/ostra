@@ -97,6 +97,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         logger,
         listenHost: "127.0.0.1",
         stopGraceMs: STOP_GRACE_MS,
+        subagentWaitMs: config.subagentWaitMinutes * 60_000,
         // Milestone 5 (F-014, ADR 0059): two at once unless OSTRA_RUNNER_SLOTS says otherwise.
         capacity: hostSlots(config),
         executorKind: "host",
@@ -135,7 +136,8 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         return exitCodes.usage;
       }
       const engine = createEngine(address);
-      const boxes = createDockerBoxes(engine, { images: imagesOf(config) });
+      // Each box's sidecar runs the task, so it gets the subagent wait too (runner parity).
+      const boxes = createDockerBoxes(engine, { images: imagesOf(config), subagentWaitMinutes: config.subagentWaitMinutes });
       if (!(await boxes.ping())) {
         terminal.warn("The docker executor needs a Docker Engine, and none answers here (DOCKER_HOST, or the default socket).");
         return exitCodes.failed;
@@ -196,6 +198,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
           nodeWaitMinutes: config.k8sNodeWaitMinutes,
           sidecarLimits: { cpuMillis: config.sidecarCpuMillis, memoryMiB: config.sidecarMemoryMiB },
           serviceLimits: { cpuMillis: config.serviceCpuMillis, memoryMiB: config.serviceMemoryMiB },
+          subagentWaitMinutes: config.subagentWaitMinutes,
           ...(config.k8sBuildNamespace === undefined ? {} : { buildNamespace: config.k8sBuildNamespace }),
         },
         { logger, clock: { now: () => Date.now() } },

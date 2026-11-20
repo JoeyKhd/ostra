@@ -178,6 +178,8 @@ export type BoxOptions = {
   readonly runtime?: string;
   /** Milestone 5 (F-095): the sidecar's and a service's fixed limits. Default: `DEFAULT_FIXED_LIMITS`. */
   readonly limits?: FixedLimits;
+  /** The runner's `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`, for the sidecar, which runs the task. Absent: the sidecar's default. */
+  readonly subagentWaitMinutes?: number;
 };
 
 export type ContainerSpec = {
@@ -318,6 +320,7 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
           "OSTRA_SIDECAR_HOST=sidecar",
           `OSTRA_TASK_ROOT=${TASK_ROOT}`,
           `OSTRA_SIDECAR_DATA_DIR=${SIDECAR_DATA_DIR}`,
+          ...(options.subagentWaitMinutes === undefined ? [] : [`OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES=${String(options.subagentWaitMinutes)}`]),
         ],
         User: `${String(SIDECAR_UID)}:${String(SIDECAR_GID)}`,
         WorkingDir: TASK_ROOT,

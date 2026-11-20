@@ -177,6 +177,11 @@ export type TaskRunDeps = {
    * new session (a session still waiting in it ends first). `undefined` when there's none.
    */
   readonly claimKeptBox?: (box: BoxRef, sessionId: SessionId) => Promise<KeptBox | undefined>;
+  /**
+   * How long a turn waits for its agent's subagents once its prompt is answered
+   * (`OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`). Default: the driver's, 30 minutes.
+   */
+  readonly subagentWaitMs?: number;
 };
 
 /** A timer port: `after` calls `fire` once, `ms` from now, unless the answer is called first. */
@@ -1017,6 +1022,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { crashed: gone ? "the agent's process exited mid-turn" : `the turn failed: ${outcome.result.error.message}`.slice(0, ERROR_MAX), stopReason: null };
     }
     const stopReason: StopReason = outcome.result.value.stopReason;
+    const stopped = outcome.result.value.subagentsStopped;
+    if (stopped !== undefined) {
+      // The bound and how many, never what they were asked: the turn's events say which call each was.
+      log.warn("the turn's subagents ran past their wait: ostra stopped them and ended the turn", { subagentWaitMs: stopped.waitedMs, subagents: stopped.startedBy.length });
+    }
     log.info("turn ended", { stopReason, mode });
     return { crashed: null, stopReason };
   };
@@ -1779,6 +1789,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       onLiveText: (delta) => {
         channel?.appendLiveText({ turnId: delta.turnId, segmentId: delta.segmentId, kind: delta.kind }, delta.text);
       },
+      ...(deps.subagentWaitMs === undefined ? {} : { subagentWaitMs: deps.subagentWaitMs }),
     });
     return agent;
   };

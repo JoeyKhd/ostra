@@ -35,3 +35,8 @@ OpenCode reads skills from the folders the config's `skills` names, and from `$X
 ### The config that wins
 
 Without a switch, a repo's `opencode.json` that allows everything wins over the task's permissions, and its MCP servers are added. With the task's config given as `OPENCODE_CONFIG_CONTENT`, the task's permissions win, but the repo's MCP servers are still added, and its agents and plugins still load. `OPENCODE_DISABLE_PROJECT_CONFIG=1` reads none of the repo's `opencode.json`, `opencode.jsonc` or `.opencode/`. It also stops OpenCode reading the repo's `AGENTS.md` (without the config's names, none of it reaches the model), so the config names `<workspace>/AGENTS.md` and `<workspace>/*/AGENTS.md` in `instructions`, where a wildcard does work, and each repo's `.opencode/skills` in `skills` (above). The repo's agents, plugins and commands under `.opencode/` stay unread; the runner's hiding of `.opencode/` (ticket 29), for an agent that can't keep its project config out, drops them too.
+
+## Subagents (2026-11-20, ADR 0067)
+
+OpenCode's `subagent` tool always runs its subagent in the background: the call ends at once with the child's session ID, the agent is told to end its turn, and the subagent's report wakes the agent later (`context/research/opencode-subagents.md`). The adapter declares `subagents: "background"`, so the driver asks for `opencode/child-session-updates` and a turn waits for its subagents and the turns their reports wake, up to `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`. A cancel closes each running child session (`session/close` interrupts it), then the session's own follower, and resumes the session.
+

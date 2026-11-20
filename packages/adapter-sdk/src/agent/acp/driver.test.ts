@@ -12,7 +12,7 @@ import { fakeMarker, serveFakeAgent } from "../../testing/fake-acp-agent/agent.t
 import type { FakeAgentProfile } from "../../testing/fake-acp-agent/agent.ts";
 import { FakeAgentAdapter } from "../../testing/fake-acp-agent/fake-agent-adapter.ts";
 import { spawnAgentProcess } from "../../testing/spawn-agent.ts";
-import type { AcpUpdate, AgentIo, DriverConnection, DriverHandlers, DriverPort, PermissionRequest, QuestionRequest } from "../base.ts";
+import type { AcpUpdate, AgentIo, ConnectOptions, DriverConnection, DriverHandlers, DriverPort, PermissionRequest, QuestionRequest } from "../base.ts";
 import { createAcpDriver } from "./driver.ts";
 import type { AcpDriverOptions } from "./driver.ts";
 import { isAlive } from "./process-tree.ts";
@@ -47,6 +47,7 @@ const connectInProcess = async (
   handlerOverrides: Partial<DriverHandlers> = {},
   options: AcpDriverOptions = {},
   agentProcess: Pick<AgentIo, "pid" | "unitPids"> = {},
+  connectOptions: ConnectOptions = {},
 ): Promise<Peer> => {
   const toAgent = new PassThrough();
   const fromAgent = new PassThrough();
@@ -77,6 +78,7 @@ const connectInProcess = async (
       },
       ...handlerOverrides,
     },
+    connectOptions,
   );
   if (!connected.ok) {
     throw new Error(`connect failed: ${connected.error.message}`);
@@ -315,6 +317,75 @@ describe("the ACP driver, in process", () => {
     const turn = peer.connection.prompt(id, fakeMarker("crash"));
     expect(await turn).toMatchObject({ ok: false, error: { code: "unavailable" } });
     expect(await peer.connection.prompt(id, fakeMarker("say"))).toMatchObject({ ok: false, error: { code: "unavailable" } });
+  });
+});
+
+// Subagents (2026-11-20): the fake agent runs one as OpenCode 2.3.2 does, in the background past the
+// prompt's answer, its states as `opencode/session/child_update` to a client that asks for them.
+describe("the ACP driver, with background subagents", () => {
+  const background: ConnectOptions = { subagents: "background" };
+
+  it("F-023: a turn waits for its subagent and for the turn its report wakes: the agent's real answer is in it", async () => {
+    const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
+    const id = await newSession(peer);
+    const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "400"));
+    expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    // Everything came before the prompt resolved: the subagent's work under its prefixed IDs, then the woken answer.
+    expect(messageText(peer)).toBe("launched a subagent, ending my turnchild answer: the README says hellothe final answer, after the subagent");
+    expect(peer.updates.some(({ update }) => update.sessionUpdate === "tool_call" && String(update["toolCallId"]).includes(":"))).toBe(true);
+    expect(peer.updates.every((entry) => entry.agentSessionId === id)).toBe(true);
+  });
+
+  it("F-023: without the capability declared, the turn ends with its prompt's answer, and the subagent's updates never come", async () => {
+    const peer = await connectInProcess("rich", {}, { idlePollMs: 50 });
+    const id = await newSession(peer);
+    const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "400"));
+    expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(messageText(peer)).toBe("launched a subagent, ending my turn");
+    // The report still wakes the agent, past the turn: what ostra had before this fix.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(messageText(peer)).toBe("launched a subagent, ending my turnthe final answer, after the subagent");
+  });
+
+  it("F-023: a subagent past the wait's bound is stopped, and the turn ends naming the call that started it", async () => {
+    const peer = await connectInProcess("rich", {}, { idlePollMs: 50, subagentWaitMs: 600 }, {}, background);
+    const id = await newSession(peer);
+    const at = Date.now();
+    const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
+    expect(result).toEqual({ ok: true, value: { stopReason: "end_turn", subagentsStopped: { waitedMs: 600, startedBy: ["subagent-1"] } } });
+    expect(Date.now() - at).toBeLessThan(5000);
+    // Stopped, with the turn its report would wake: nothing more comes.
+    const count = peer.updates.length;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(peer.updates.slice(count)).toEqual([]);
+  });
+
+  it("F-025: a cancel while the turn waits on a subagent ends it cancelled within 5 s, the subagent stopped and nothing after", async () => {
+    const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
+    const id = await newSession(peer);
+    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(messageText(peer)).toBe("launched a subagent, ending my turn");
+    const at = Date.now();
+    await peer.connection.cancel(id);
+    expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+    expect(Date.now() - at).toBeLessThan(5000);
+    const count = peer.updates.length;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(peer.updates.slice(count)).toEqual([]);
+    // The session goes on: its next turn runs.
+    expect(await peer.connection.prompt(id, fakeMarker("say"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+  });
+
+  it("F-024: a steer while the agent idles on its subagent becomes the turn's next prompt, inside the turn", async () => {
+    const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
+    const id = await newSession(peer);
+    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "700"));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(await peer.connection.steer(id, fakeMarker("remember", "cobalt"))).toEqual({ ok: true, value: undefined });
+    expect(await turn).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(messageText(peer)).toContain("I'll remember cobalt.");
+    expect(messageText(peer)).toContain("the final answer, after the subagent");
   });
 });
 

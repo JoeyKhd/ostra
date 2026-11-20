@@ -47,6 +47,8 @@ export const sidecarEnvSchema = z
      */
     OSTRA_SIDECAR_DATA_DIR: z.string().min(1),
     OSTRA_RUNNER_SHELL: z.string().min(1).default("bash"),
+    /** The runner's `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`, which the executor passes on to each box. */
+    OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES: z.coerce.number().pipe(z.number().int().min(1).max(1440)).default(30),
     /** OpenCode in the base image, checked against its SHA-256 when the image was built (ADR 0046). */
     OSTRA_OPENCODE_BIN: z.string().min(1).default("/opt/opencode/bin/opencode"),
   })
@@ -134,6 +136,7 @@ export const runSidecarCommand: RunSidecar = async ({ env, terminal, signal }) =
     listenHost,
     advertiseHost: settings.OSTRA_SIDECAR_HOST,
     stopGraceMs: 5_000,
+    subagentWaitMs: settings.OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES * 60_000,
     capacity: 1,
     executorKind: "docker",
     labels: [],

@@ -119,6 +119,10 @@ export class OpenCodeAdapter extends AgentAdapter {
     // set with `session/set_config_option` and kept with the session (research section 3). Its
     // values are the variants the config's `capabilities.reasoning` gives (`effortLevels`).
     reasoningEffort: OPENCODE_REASONING_EFFORT,
+    // OpenCode's `subagent` tool always runs its subagent in the background and tells the agent to
+    // end its turn; the driver asks for `opencode/child-session-updates`, so a turn waits for them
+    // and for the turns their reports wake (`research/opencode-subagents.md`).
+    subagents: "background",
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */

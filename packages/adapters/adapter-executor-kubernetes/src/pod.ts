@@ -73,6 +73,8 @@ export type PodSettings = {
   readonly sidecarLimits: BoxSize;
   /** A service's limits (`OSTRA_SERVICE_CPU_MILLIS`, `OSTRA_SERVICE_MEMORY_MIB`): a service names none. */
   readonly serviceLimits: BoxSize;
+  /** The runner's `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`, for the sidecar, which runs the task; `null`: the sidecar's default. Absent: `null`. */
+  readonly subagentWaitMinutes?: number | null;
   /** Where the sidecar's bridge listens on the pod's loopback. */
   readonly bridgePort: number;
   /** The box's init in the base image. */
@@ -244,6 +246,7 @@ export const boxObjects = (input: BoxPodInput, settings: PodSettings): BoxObject
       { name: "OSTRA_SIDECAR_HOST", value: "127.0.0.1" },
       { name: "OSTRA_TASK_ROOT", value: TASK_ROOT },
       { name: "OSTRA_SIDECAR_DATA_DIR", value: SIDECAR_DATA_DIR },
+      ...(settings.subagentWaitMinutes === undefined || settings.subagentWaitMinutes === null ? [] : [{ name: "OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES", value: String(settings.subagentWaitMinutes) }]),
     ],
     securityContext: {
       runAsUser: SIDECAR_UID,

@@ -273,6 +273,8 @@ describe("the OpenCode adapter's capabilities", () => {
       memory: "mcp",
       // Milestone 4 (ticket 57, F-137).
       reasoningEffort: "session-option",
+      // Its subagents run on past the prompt (research/opencode-subagents.md).
+      subagents: "background",
     });
     expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });

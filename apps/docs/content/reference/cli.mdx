@@ -84,6 +84,7 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--sidecar-memory-mib` | `OSTRA_SIDECAR_MEMORY_MIB` | 256 | The memory limit, in MiB, of a box's sidecar, counted in the box's footprint. |
 | `--service-cpu-millis` | `OSTRA_SERVICE_CPU_MILLIS` | 1000 | The CPU limit, in millicores, of a service that names none, counted in the box's footprint. |
 | `--service-memory-mib` | `OSTRA_SERVICE_MEMORY_MIB` | 1024 | The memory limit, in MiB, of a service that names none, counted in the box's footprint. |
+| `--subagent-wait-minutes` | `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES` | 30 | How long a turn waits, once its agent's prompt is answered, for the subagents it started and the turns their reports wake (OpenCode runs subagents in the background). Past it, ostra stops them, fails each one on the call that started it, and ends the turn. |
 
 ## Other flags
 

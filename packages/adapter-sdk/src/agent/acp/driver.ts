@@ -2,7 +2,7 @@ import type { Readable, Writable } from "node:stream";
 
 import * as acp from "@agentclientprotocol/sdk/unstable";
 import { optionIdSchema, stopReasonSchema, toolCallIdSchema } from "@ostra/protocol";
-import type { QuestionField, StopReason, TaskEvent } from "@ostra/protocol";
+import type { QuestionField, StopReason, TaskEvent, ToolCallId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { adapterError, ok } from "../../common/result.ts";
@@ -10,12 +10,14 @@ import type { AdapterError, AdapterResult } from "../../common/result.ts";
 import type {
   AcpUpdate,
   AgentIo,
+  ConnectOptions,
   DriverConnection,
   DriverHandlers,
   DriverPort,
   McpServer,
   PermissionAnswer,
   PermissionRequest,
+  PromptOutcome,
   QuestionAnswer,
   QuestionRequest,
   SessionConfigOption,
@@ -39,6 +41,7 @@ import { isAlive, watchProcessTree } from "./process-tree.ts";
 //   still running at the deadline finishes after the turn has ended, limited to the processes born
 //   during that turn.
 // - Updates that `session/load` replays are not emitted as new events.
+// - With `subagents: "background"` (OpenCode), a turn waits for its subagents (below, "Subagents").
 // - ACP payloads are vendor data: they're read with loose schemas, and no ACP type leaves this
 //   file. Failures are values (`AdapterResult`), with messages that hold no agent content.
 
@@ -54,7 +57,23 @@ export type AcpDriverOptions = {
   readonly treeSnapshotMs?: number;
   /** Partial text, as it's written (ADR 0035): the runner turns it into live-text frames. */
   readonly onLiveText?: (delta: LiveTextDelta & { readonly sessionId: string }) => void;
+  /**
+   * With `subagents: "background"`: how long a turn waits, after its prompt is answered, for its
+   * subagents and the turns their reports wake. Past it the driver stops them and ends the turn.
+   * Default 30 minutes (`OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`).
+   */
+  readonly subagentWaitMs?: number;
+  /** How often a waiting turn asks whether the agent is still at work, once no subagent runs. Default 1 s. */
+  readonly idlePollMs?: number;
+  /**
+   * How long a turn waits, once its last subagent ended, for the agent to wake for its report
+   * before it counts the report as already read. Default 10 s: the wake is local, no model call.
+   */
+  readonly wakeGraceMs?: number;
 };
+
+/** `subagentWaitMs`' default: 30 minutes. */
+export const DEFAULT_SUBAGENT_WAIT_MS = 30 * 60_000;
 
 const STDERR_DRAIN = (): void => undefined;
 
@@ -227,6 +246,95 @@ const configResponseSchema = z.looseObject({
 const steerSchema = z.looseObject({ outcome: z.string().optional() });
 const rpcErrorSchema = z.looseObject({ code: z.number() });
 
+// ---------- subagents ----------
+//
+// OpenCode 2.3.2 runs every subagent in the background: its `subagent` call ends at once, the
+// agent is told to end its turn, and each subagent's report wakes the agent again later, with no
+// prompt in flight (`research/opencode-subagents.md`). The driver asks for OpenCode's extension
+// `opencode/child-session-updates`, so each child session's updates and states arrive as
+// `opencode/session/child_update` notifications, past the prompt's answer too. A turn then ends
+// only when its prompt has been answered, no child is `created` or `running`, and the agent has
+// been at work after the last one ended and is idle again. Whether it's idle, ACP doesn't say: the
+// driver asks with `_session/steering` and a prompt OpenCode refuses before injecting it (an image
+// with neither data nor URI). OpenCode checks for a running turn first, so an idle session answers
+// `promptRequired` and a busy one refuses the prompt (`-32602`, field `prompt`): nothing is ever
+// injected. Without both extensions advertised, a turn ends with its prompt's answer, as before.
+
+/** The client capability that asks OpenCode for its child sessions' updates. */
+const CHILD_SESSION_UPDATES = "opencode/child-session-updates";
+/** The notification that carries them. */
+const CHILD_UPDATE_METHOD = "opencode/session/child_update";
+
+const agentMetaSchema = z.looseObject({
+  agentCapabilities: z.looseObject({ _meta: z.record(z.string(), z.unknown()).nullish() }).nullish(),
+});
+
+const childUpdateSchema = z.looseObject({
+  rootSessionId: z.string().min(1),
+  childSessionId: z.string().min(1),
+  type: z.string(),
+  update: z.looseObject({ sessionUpdate: z.string() }).optional(),
+  status: z.string().optional(),
+});
+
+const childStatusSchema = z.enum(["created", "running", "completed", "failed", "interrupted"]);
+type ChildStatus = z.infer<typeof childStatusSchema>;
+
+const isOpen = (status: ChildStatus): boolean => status === "created" || status === "running";
+
+/** The main agent's `subagent` call, once it ended: its output names the child session it started. */
+const startedChildSchema = z.looseObject({
+  sessionUpdate: z.literal("tool_call_update"),
+  toolCallId: toolCallIdSchema,
+  rawOutput: z.looseObject({ metadata: z.looseObject({ sessionID: z.string().min(1) }) }),
+});
+
+/** How long the probe may take before the agent counts as at work. */
+const PROBE_TIMEOUT_MS = 5000;
+
+/** The steering probe's prompt: OpenCode refuses it before it reaches the session (`ACPPrompt.prepare`). */
+const IDLE_PROBE_PROMPT = [{ type: "image", mimeType: "image/png", data: "" }] as const;
+
+/** A refusal of the probe's prompt: the session has a running turn. */
+const probeRefusedSchema = z.looseObject({ code: z.literal(-32602), data: z.looseObject({ field: z.literal("prompt") }) });
+
+/** One session's subagents, as OpenCode reported them. */
+type Subagents = {
+  /** Each child session's last state, nested ones included. */
+  readonly children: Map<string, ChildStatus>;
+  /** The main agent's call that started each child. */
+  readonly startedBy: Map<string, ToolCallId>;
+  /** When a child last ended, and when the main session last sent an update, in ms since the epoch. */
+  lastChildEndAt: number;
+  lastRootUpdateAt: number;
+  /** When the probe last found the agent at work. */
+  lastBusyAt: number;
+  /** Wakes a waiting turn: a child's state changed, or the turn was cancelled. */
+  waiters: (() => void)[];
+};
+
+const openChildren = (subagents: Subagents): readonly string[] =>
+  [...subagents.children].flatMap(([child, status]) => (isOpen(status) ? [child] : []));
+
+const wake = (subagents: Subagents): void => {
+  const waiting = subagents.waiters;
+  subagents.waiters = [];
+  for (const resolve of waiting) {
+    resolve();
+  }
+};
+
+/** Resolves on the next `wake`, or after `ms`. */
+const nextChange = (subagents: Subagents, ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, Math.max(0, ms));
+    timer.unref();
+    subagents.waiters.push(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
 const fieldOptions = (property: Property): readonly string[] | undefined => {
   const fromEnum = (property.enum ?? []).filter((value): value is string => typeof value === "string");
   if (fromEnum.length > 0) {
@@ -294,10 +402,15 @@ const connectAgent = async (
   io: AgentIo,
   handlers: DriverHandlers,
   options: AcpDriverOptions,
+  connectOptions: ConnectOptions,
 ): Promise<AdapterResult<DriverConnection>> => {
   const cancelGraceMs = options.cancelGraceMs ?? 5000;
   const closeGraceMs = options.closeGraceMs ?? 3000;
   const treeSnapshotMs = options.treeSnapshotMs ?? 2000;
+  const subagentWaitMs = options.subagentWaitMs ?? DEFAULT_SUBAGENT_WAIT_MS;
+  const idlePollMs = options.idlePollMs ?? 1000;
+  const wakeGraceMs = options.wakeGraceMs ?? 10_000;
+  const asksForSubagents = connectOptions.subagents === "background";
   const pid = io.pid ?? null;
   const watch = pid === null ? undefined : watchProcessTree(pid);
 
@@ -321,6 +434,62 @@ const connectAgent = async (
   });
 
   const replaying = new Set<string>();
+  // Subagents, by the session that started them: set once `initialize` says the agent sends them.
+  let tracksSubagents = false;
+  const subagentsBySession = new Map<string, Subagents>();
+  const subagentsOf = (agentSessionId: string): Subagents => {
+    const existing = subagentsBySession.get(agentSessionId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const created: Subagents = { children: new Map(), startedBy: new Map(), lastChildEndAt: 0, lastRootUpdateAt: 0, lastBusyAt: 0, waiters: [] };
+    subagentsBySession.set(agentSessionId, created);
+    return created;
+  };
+  /** A child session's update or state, from `opencode/session/child_update`. */
+  const onChildUpdate = (params: unknown): void => {
+    const parsed = childUpdateSchema.safeParse(params);
+    if (!parsed.success) {
+      return;
+    }
+    const { rootSessionId, childSessionId, type, update, status } = parsed.data;
+    if (type === "update" && update !== undefined) {
+      // A nested subagent starts from its parent's call, whose ID OpenCode prefixes with the parent's session.
+      const started = tracksSubagents ? startedChildSchema.safeParse(update) : undefined;
+      if (started?.success === true) {
+        subagentsOf(rootSessionId).startedBy.set(started.data.rawOutput.metadata.sessionID, started.data.toolCallId);
+      }
+      // As OpenCode projects it without the extension: the child's `_meta`, its prefixed call IDs.
+      if (replaying.has(rootSessionId)) {
+        handlers.onReplay?.(rootSessionId, update);
+      } else {
+        handlers.onUpdate(rootSessionId, update);
+      }
+      return;
+    }
+    const state = childStatusSchema.safeParse(status);
+    if (type !== "status" || !state.success || !tracksSubagents) {
+      return;
+    }
+    const subagents = subagentsOf(rootSessionId);
+    subagents.children.set(childSessionId, state.data);
+    if (!isOpen(state.data)) {
+      subagents.lastChildEndAt = Date.now();
+    }
+    wake(subagents);
+  };
+  /** An update of a session's own: the agent is at work, and its `subagent` call may name a child. */
+  const onSessionUpdate = (agentSessionId: string, update: AcpUpdate): void => {
+    if (!tracksSubagents) {
+      return;
+    }
+    const subagents = subagentsOf(agentSessionId);
+    subagents.lastRootUpdateAt = Date.now();
+    const started = startedChildSchema.safeParse(update);
+    if (started.success) {
+      subagents.startedBy.set(started.data.rawOutput.metadata.sessionID, started.data.toolCallId);
+    }
+  };
   const wire = acp.ndJsonStream(writableFromNode(io.stdin), readableFromNode(io.stdout));
   // Session updates are taken off the wire here, before the SDK sees them. The SDK checks every
   // update against its own schema and throws on a kind it doesn't know, which stops that message
@@ -338,9 +507,14 @@ const connectAgent = async (
               if (replaying.has(notification.data.sessionId)) {
                 handlers.onReplay?.(notification.data.sessionId, notification.data.update);
               } else {
+                onSessionUpdate(notification.data.sessionId, notification.data.update);
                 handlers.onUpdate(notification.data.sessionId, notification.data.update);
               }
             }
+            return;
+          }
+          if ("method" in message && !("id" in message) && message.method === CHILD_UPDATE_METHOD) {
+            onChildUpdate(message.params);
             return;
           }
           controller.enqueue(message);
@@ -437,6 +611,8 @@ const connectAgent = async (
         elicitation: { form: {} },
         session: { compaction: {} },
         plan: {},
+        // OpenCode's own extension: its subagents' updates and states, past the turn's answer too.
+        ...(asksForSubagents ? { _meta: { [CHILD_SESSION_UPDATES]: true } } : {}),
       },
       clientInfo: { name: "ostra-runner", title: "ostra", version: options.clientVersion ?? "0.0.0" },
     }),
@@ -450,6 +626,9 @@ const connectAgent = async (
   }
   const info = initializeSchema.safeParse(initialized.value);
   const steeringAdvertised = info.success && info.data._meta?.steering?.supported === true;
+  // A turn can wait for subagents only when the agent sends their states and the probe can ask it.
+  const agentMeta = agentMetaSchema.safeParse(initialized.value);
+  tracksSubagents = asksForSubagents && steeringAdvertised && agentMeta.success && agentMeta.data.agentCapabilities?._meta?.[CHILD_SESSION_UPDATES] === true;
 
   // Turns in flight, by the agent's session ID: a cancel needs the one it's cancelling.
   type Turn = {
@@ -458,8 +637,178 @@ const connectAgent = async (
     cancelledAt: number | null;
     readonly graceExpired: Promise<void>;
     readonly expire: () => void;
+    /** A subagent ran when ostra cancelled the turn: what OpenCode follows of the session stops too. */
+    subagentsAtCancel: boolean;
+    /** The turn waits for its subagents (its prompt was answered). */
+    waiting: boolean;
+    /** Members' messages the agent couldn't take mid-turn while it waited idle: the turn's next prompts. */
+    readonly queued: string[];
   };
   const turns = new Map<string, Turn>();
+
+  /** Read afresh after an await: the agent's end and a cancel come from callbacks. */
+  const hasEnded = (): boolean => ended;
+  const cancelledAtOf = (turn: Turn): number => turn.cancelledAt ?? Date.now();
+
+  // Each session's folder and MCP servers, to attach it again after its subagents were stopped.
+  const sessionInputs = new Map<string, { readonly cwd: string; readonly mcpServers: readonly McpServer[] }>();
+
+  /** Waits for `work` until `until` (ms since the epoch) at most, or the agent's end. What it stops may be gone already: a failure is no matter. */
+  const within = async (work: Promise<unknown>, until: number): Promise<void> => {
+    await Promise.race([work.catch(() => undefined), delay(until - Date.now()), endedSignal]);
+  };
+
+  /** Whether the agent is at work on the session, by the steering probe ("Subagents", above). */
+  const probeIdle = async (agentSessionId: string): Promise<"idle" | "busy" | "gone"> => {
+    if (ended) {
+      return "gone";
+    }
+    try {
+      const answer = await Promise.race([
+        connection.agent.request("_session/steering", { sessionId: agentSessionId, prompt: IDLE_PROBE_PROMPT.map((block) => ({ ...block })) }),
+        endedSignal.then(() => "gone" as const),
+        delay(PROBE_TIMEOUT_MS).then(() => "slow" as const),
+      ]);
+      if (answer === "gone") {
+        return "gone";
+      }
+      // An agent too slow to answer is taken as at work: the wait's bound still holds.
+      if (answer === "slow") {
+        return "busy";
+      }
+      const outcome = steerSchema.safeParse(answer);
+      return outcome.success && outcome.data.outcome === "injected" ? "busy" : "idle";
+    } catch (error) {
+      if (hasEnded()) {
+        return "gone";
+      }
+      return probeRefusedSchema.safeParse(error).success ? "busy" : "idle";
+    }
+  };
+
+  const closeSession = (agentSessionId: string): Promise<unknown> =>
+    connection.agent.request(acp.methods.agent.session.close, { sessionId: agentSessionId });
+
+  /**
+   * Stops what a cancelled or timed-out turn left at work, by `until`: each running subagent
+   * (`session/close` on a child session interrupts it, and nothing else), then the agent's own turn
+   * and OpenCode's follower of the session (`session/close` on it), and attaches the session again
+   * for the next turn (`session/resume`). `session/cancel` can't: it reaches a prompt in flight only.
+   */
+  const stopSubagents = async (agentSessionId: string, until: number): Promise<void> => {
+    const subagents = subagentsOf(agentSessionId);
+    const open = openChildren(subagents);
+    await within(Promise.all(open.map(closeSession)), until);
+    await within(closeSession(agentSessionId), until);
+    const input = sessionInputs.get(agentSessionId);
+    if (input !== undefined) {
+      await within(
+        connection.agent.request(acp.methods.agent.session.resume, { sessionId: agentSessionId, cwd: input.cwd, mcpServers: mcp(input.mcpServers) }),
+        until,
+      );
+    }
+    // Their end won't be reported now: OpenCode no longer follows the session.
+    for (const child of open) {
+      subagents.children.set(child, "interrupted");
+    }
+    subagents.lastChildEndAt = Date.now();
+  };
+
+  /**
+   * After the prompt's answer: waits until no subagent of the session runs, and the agent was at
+   * work after the last one ended and is idle again; or until the turn is cancelled, the wait
+   * runs out or the agent ends. A member's message queued meanwhile goes in as the next prompt.
+   */
+  const waitForSubagents = async (agentSessionId: string, turn: Turn): Promise<"settled" | "cancelled" | "timed-out" | "gone"> => {
+    const subagents = subagentsOf(agentSessionId);
+    const deadline = Date.now() + subagentWaitMs;
+    turn.waiting = true;
+    try {
+      for (;;) {
+        if (turn.cancelledAt !== null) {
+          return "cancelled";
+        }
+        if (ended) {
+          return "gone";
+        }
+        const left = deadline - Date.now();
+        if (left <= 0) {
+          return "timed-out";
+        }
+        const queued = turn.queued.shift();
+        if (queued !== undefined) {
+          await Promise.race([
+            guarded("running the turn", connection.agent.request(acp.methods.agent.session.prompt, { sessionId: agentSessionId, prompt: [{ type: "text", text: queued }] })),
+            turn.graceExpired,
+            delay(left),
+          ]);
+          continue;
+        }
+        if (openChildren(subagents).length > 0) {
+          await Promise.race([nextChange(subagents, left), endedSignal]);
+          continue;
+        }
+        // No subagent runs: the last one's report wakes the agent, if it isn't at work already.
+        const state = await probeIdle(agentSessionId);
+        if (state === "gone") {
+          return "gone";
+        }
+        if (state === "busy") {
+          subagents.lastBusyAt = Date.now();
+        } else {
+          const worked = Math.max(subagents.lastRootUpdateAt, subagents.lastBusyAt) > subagents.lastChildEndAt;
+          // Idle after it read the report; or no sign of work long after the last end, so it had read it in the turn.
+          if ((worked || Date.now() - subagents.lastChildEndAt >= wakeGraceMs) && openChildren(subagents).length === 0) {
+            return "settled";
+          }
+        }
+        await Promise.race([nextChange(subagents, Math.min(idlePollMs, left)), endedSignal]);
+      }
+    } finally {
+      turn.waiting = false;
+    }
+  };
+
+  /** The prompt was answered: what the session's subagents still make of the turn. */
+  const afterAnswer = async (agentSessionId: string, turn: Turn, reason: StopReason): Promise<AdapterResult<PromptOutcome>> => {
+    const subagents = subagentsOf(agentSessionId);
+    /** Stops what's at work within the cancel's budget; past it the agent goes, as for a cancel it never answers. */
+    const stopForCancel = async (cancelledAt: number): Promise<AdapterResult<PromptOutcome>> => {
+      const stopped = await Promise.race([
+        stopSubagents(agentSessionId, cancelledAt + cancelGraceMs - Math.min(REAP_MARGIN_MS, cancelGraceMs / 2)).then(() => "stopped" as const),
+        turn.graceExpired.then(() => "expired" as const),
+      ]);
+      if (stopped === "expired") {
+        await killTree();
+      }
+      return ok({ stopReason: "cancelled" satisfies StopReason });
+    };
+    if (turn.cancelledAt !== null) {
+      // Ours: a subagent running when it came stops with the turn, and so do the turns it'd wake.
+      return turn.subagentsAtCancel || openChildren(subagents).length > 0 ? stopForCancel(turn.cancelledAt) : ok({ stopReason: reason });
+    }
+    if (reason === "cancelled" || openChildren(subagents).length === 0) {
+      // The agent's own cancel (a deny), whose re-prompt carries its subagents on; or none runs, and
+      // OpenCode follows nothing of the session past the answer.
+      return ok({ stopReason: reason });
+    }
+    const settled = await waitForSubagents(agentSessionId, turn);
+    switch (settled) {
+      case "settled":
+        return ok({ stopReason: reason });
+      case "gone":
+        return adapterError("unavailable", "running the turn failed: the agent's process ended while its subagents ran");
+      case "cancelled":
+        return stopForCancel(cancelledAtOf(turn));
+      case "timed-out": {
+        const startedBy = openChildren(subagents).map((child) => subagents.startedBy.get(child) ?? null);
+        await stopSubagents(agentSessionId, Date.now() + cancelGraceMs);
+        return ok({ stopReason: reason, subagentsStopped: { waitedMs: subagentWaitMs, startedBy } });
+      }
+      default:
+        return settled satisfies never;
+    }
+  };
 
   let snapshotTimer: NodeJS.Timeout | undefined;
   const startSnapshots = (): void => {
@@ -508,9 +857,11 @@ const connectAgent = async (
         return created;
       }
       const parsed = sessionNewSchema.safeParse(created.value);
-      return parsed.success
-        ? ok({ agentSessionId: parsed.data.sessionId, configOptions: parseConfigOptions(created.value) })
-        : adapterError("invalid-response", "the agent's new session had no ID");
+      if (!parsed.success) {
+        return adapterError("invalid-response", "the agent's new session had no ID");
+      }
+      sessionInputs.set(parsed.data.sessionId, { cwd: input.cwd, mcpServers: input.mcpServers });
+      return ok({ agentSessionId: parsed.data.sessionId, configOptions: parseConfigOptions(created.value) });
     },
 
     loadSession: async (input) => {
@@ -528,7 +879,11 @@ const connectAgent = async (
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
         });
-        return loaded.ok ? ok({ configOptions: parseConfigOptions(loaded.value) }) : loaded;
+        if (!loaded.ok) {
+          return loaded;
+        }
+        sessionInputs.set(input.agentSessionId, { cwd: input.cwd, mcpServers: input.mcpServers });
+        return ok({ configOptions: parseConfigOptions(loaded.value) });
       } finally {
         replaying.delete(input.agentSessionId);
       }
@@ -539,7 +894,7 @@ const connectAgent = async (
       const graceExpired = new Promise<void>((resolve) => {
         expire = resolve;
       });
-      const turn: Turn = { startedAt: Date.now(), cancelledAt: null, graceExpired, expire };
+      const turn: Turn = { startedAt: Date.now(), cancelledAt: null, graceExpired, expire, subagentsAtCancel: false, waiting: false, queued: [] };
       turns.set(agentSessionId, turn);
       startSnapshots();
       try {
@@ -573,7 +928,7 @@ const connectAgent = async (
           // agent's own (a deny ends OpenCode's turn `cancelled`): the reap runs to its end first.
           await (turn.cancelledAt === null ? reaped : Promise.race([reaped, delay(turn.cancelledAt + cancelGraceMs - Math.min(REAP_MARGIN_MS, cancelGraceMs / 2) - Date.now())]));
         }
-        return ok({ stopReason: reason });
+        return tracksSubagents ? await afterAnswer(agentSessionId, turn, reason) : ok({ stopReason: reason });
       } finally {
         turns.delete(agentSessionId);
         if (turns.size === 0) {
@@ -588,11 +943,20 @@ const connectAgent = async (
         turn.cancelledAt = Date.now();
         setTimeout(turn.expire, cancelGraceMs).unref();
       }
+      // OpenCode's cancel reaches the agent's own turn alone: each running subagent is closed, which interrupts it.
+      const open = tracksSubagents ? openChildren(subagentsOf(agentSessionId)) : [];
+      if (turn !== undefined && open.length > 0) {
+        turn.subagentsAtCancel = true;
+      }
+      if (tracksSubagents) {
+        wake(subagentsOf(agentSessionId));
+      }
       try {
         await connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: agentSessionId });
       } catch {
         // The connection is gone: the turn ends through its own failure.
       }
+      await within(Promise.all(open.map(closeSession)), Date.now() + cancelGraceMs);
     },
 
     steer: async (agentSessionId, text) => {
@@ -607,9 +971,17 @@ const connectAgent = async (
         return steered;
       }
       const outcome = steerSchema.safeParse(steered.value);
-      return outcome.success && outcome.data.outcome === "injected"
-        ? ok(undefined)
-        : adapterError("conflict", "the agent had no running turn to steer");
+      if (outcome.success && outcome.data.outcome === "injected") {
+        return ok(undefined);
+      }
+      // The turn waits for its subagents while the agent idles: the message is its next prompt, in this turn.
+      const turn = turns.get(agentSessionId);
+      if (turn?.waiting === true && turn.cancelledAt === null) {
+        turn.queued.push(text);
+        wake(subagentsOf(agentSessionId));
+        return ok(undefined);
+      }
+      return adapterError("conflict", "the agent had no running turn to steer");
     },
 
     setConfigOption: async (agentSessionId, configId, value) => {
@@ -674,7 +1046,7 @@ export const createAcpDriver = (options: AcpDriverOptions = {}): DriverPort => {
     return created;
   };
   return {
-    connect: (io, handlers) => connectAgent(io, handlers, options),
+    connect: (io, handlers, connectOptions = {}) => connectAgent(io, handlers, options, connectOptions),
     mapUpdate: (update: AcpUpdate, context) => mapperFor(String(context.sessionId)).map(update, context),
     finishTurn: (context) => mapperFor(String(context.sessionId)).finishTurn(context),
     closeSession: (sessionId) => {
