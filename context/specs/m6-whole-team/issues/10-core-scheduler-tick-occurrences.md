@@ -1,6 +1,6 @@
 # 10: Core: the scheduler tick and occurrences
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 06
 Features: F-106
@@ -17,9 +17,16 @@ Spec: `../spec.md`, section 4 ("A schedule"); ADR 0037 (amended), ADR 0056
 
 ## Done when
 
-- [ ] Tests named `it("F-106: ...")`: each occurrence inserted once with its job in one transaction (a rolled-back transaction leaves neither); two ticks in parallel start each occurrence once; the 6-hour rule with the clock moved 3 and 7 hours; pause, edit and delete at the next tick; "skip while open"; a prompt schedule's task and a filter schedule's matches; the gates on each start.
-- [ ] Break-it: the `ON CONFLICT` dropped fails the parallel-tick test; recorded in `context/proof/F-106.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the scheduler tick`.
+- [x] Tests named `it("F-106: ...")`: each occurrence inserted once with its job in one transaction (a rolled-back transaction leaves neither); two ticks in parallel start each occurrence once; the 6-hour rule with the clock moved 3 and 7 hours; pause, edit and delete at the next tick; "skip while open"; a prompt schedule's task and a filter schedule's matches; the gates on each start.
+- [x] Break-it: the `ON CONFLICT` dropped fails the parallel-tick test; recorded in `context/proof/F-106.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the scheduler tick`.
 
 ## Comments
+
+- 2026-11-20, core: built as `✨ add the scheduler tick`, on ticket 11's one start. The tick and the occurrence are `tickScheduler`, `tickAutomationInTx` and `runOccurrence` in `packages/domain/src/automations/scheduler.ts`; core's workers and the tick's pg-boss schedule (`* * * * *`, registered once by every replica) are in `apps/core/src/automations/automations.ts`; saving, pausing and deleting are in `packages/domain/src/automations/manage.ts` (ticket 24's router calls them). Readings:
+  - A due schedule is locked `FOR UPDATE SKIP LOCKED` with its due time checked again, so two ticks never offer one occurrence. The `ON CONFLICT DO NOTHING` insert is the backstop for a tick that finds its occurrence recorded (a schedule's row set back). The parallel test covers that case, and it's the one the break-it fails.
+  - Of several due occurrences, only the latest under `OSTRA_SCHEDULE_MISSED_HOURS` fires. The others (older, or over the limit) are recorded `missed`, with one `automation.occurrences-missed` audit entry per catch-up holding the count and the first and last times (at most 50 rows named, ticket 06's rule).
+  - An occurrence is inserted `started` without a task. Its job sets the task, or records it `skipped`: `paused` for a paused, disabled or deleted automation, `last_open` while any task the automation started is open. When the project's setup refuses a prompt schedule's start (no repo, no model), the occurrence keeps no task and the next one tries again. A filter schedule's matches are recorded as the rule's `ticket_match` runs, so a ticket starts once per automation, as with a rule.
+  - The gates act at the dispatch, as for any start. An automation's pool labels reach admission every time its task is queued (`starts/origin-labels.ts`, used by `dispatchTask` and `queueTask`).
+  - Proof: `context/proof/F-106.md`. The hunt's row stays `missing` (ticket 37), and the "a few seconds late" row stays `partial` until the hunt measures a live install.
