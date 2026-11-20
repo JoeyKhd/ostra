@@ -3,10 +3,14 @@
 import { CheckIcon, ChevronUpIcon, CircleAlertIcon, CircleDotIcon, CircleIcon, LoaderCircleIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { FocusEvent, KeyboardEvent, ReactNode } from "react";
+
+import { approvalIdSchema, questionIdSchema, taskIdSchema } from "@ostra/protocol";
 
 import { actionHref, actionKey, reasonParts } from "@/components/home/home-words";
 import type { Part } from "@/components/home/home-words";
+import { useFocusedItem } from "@/components/shell/actions/use-scope";
+import type { ItemScope } from "@/components/shell/actions/use-scope";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
 import { Button } from "@/components/ui/button";
@@ -123,7 +127,7 @@ export const ApprovalAnswer = ({
       title={askTitle(ask)}
       actions={
         <>
-          <Button size="sm" className="h-7" disabled={busy} onClick={() => { setDenying(true); }}>{pressed("deny")}{t("needsYouPage.deny")}</Button>
+          <Button size="sm" className="h-7" disabled={busy} onClick={() => { setDenying(true); }} data-action="deny">{pressed("deny")}{t("needsYouPage.deny")}</Button>
           <Button size="sm" variant="amber" className="h-7" disabled={busy} onClick={() => { void run("once", setState, () => answers.approval(row, ask, { kind: "once" }), onAnswered); }}>
             {pressed("once")}{t("needsYouPage.approveOnce")}
           </Button>
@@ -139,6 +143,7 @@ export const ApprovalAnswer = ({
           {denying ? (
             <span className="mb-2 flex flex-wrap items-center gap-2">
               <Input
+                autoFocus
                 aria-label={t("needsYouPage.denyReason")}
                 placeholder={t("needsYouPage.denyReason")}
                 value={reason}
@@ -311,6 +316,9 @@ export const NotificationRow = ({
   onAnswered,
   focusRef,
   onKeyDown,
+  tabbable = false,
+  onItemFocus,
+  onItemBlur,
 }: {
   readonly row: NotificationView;
   readonly now: number;
@@ -322,6 +330,11 @@ export const NotificationRow = ({
   readonly onAnswered: (row: NotificationView, outcome: Outcome) => void;
   readonly focusRef?: (node: HTMLDivElement | null) => void;
   readonly onKeyDown?: (event: KeyboardEvent<HTMLDivElement>, row: NotificationView) => void;
+  /** The list's one Tab stop (ticket 16): the row the arrows last reached, else the first. */
+  readonly tabbable?: boolean;
+  /** The row's item is in the shell's scope while the focus is inside the row (F-081: `a`, `d`, `r`). */
+  readonly onItemFocus?: (row: NotificationView) => void;
+  readonly onItemBlur?: () => void;
 }) => {
   const reason = reasonParts(row.detail);
   const inline = row.ask !== null && row.outcome === null;
@@ -342,10 +355,20 @@ export const NotificationRow = ({
     </Button>
   );
   return (
-    <li className="border-b border-line" data-notification={row.id} data-read={unreadDot ? "false" : "true"}>
+    <li
+      className="border-b border-line"
+      data-notification={row.id}
+      data-read={unreadDot ? "false" : "true"}
+      onFocus={() => onItemFocus?.(row)}
+      onBlur={(event: FocusEvent<HTMLLIElement>) => {
+        if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) onItemBlur?.();
+      }}
+    >
       <div
         ref={focusRef}
-        tabIndex={-1}
+        tabIndex={tabbable ? 0 : -1}
+        data-testid="needs-you-row"
+        aria-label={`${row.key} ${row.title}`}
         onKeyDown={(event) => onKeyDown?.(event, row)}
         className={cn("grid min-h-10 grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 outline-none hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted md:py-0", ROW_GRID)}
       >
@@ -396,6 +419,8 @@ export type OpenListProps = {
 export const OpenList = ({ rows, now, answers, unreadAtLoad }: OpenListProps) => {
   const groups = groupByProject(rows);
   const [expanded, setExpanded] = useState<string | null | undefined>(undefined);
+  const [current, setCurrent] = useState<string | null>(null);
+  const scope = useFocusedItem();
   const [answered, setAnswered] = useState<ReadonlyMap<string, Outcome>>(new Map());
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const open = expanded === undefined ? autoOpen(groups) : expanded;
@@ -405,6 +430,29 @@ export const OpenList = ({ rows, now, answers, unreadAtLoad }: OpenListProps) =>
     return outcome === undefined ? row : { ...row, outcome };
   };
   const toggle = (id: string) => { setExpanded(open === id ? null : id); };
+  const stop = current !== null && order.includes(current) ? current : (order[0] ?? null);
+  /** After the row opens, its control: the deny button pressed (`d`), or the answer's field (`r`). */
+  const inRow = (id: string, act: (row: HTMLElement) => void) => {
+    setExpanded(id);
+    requestAnimationFrame(() => {
+      const node = document.querySelector<HTMLElement>(`[data-notification="${CSS.escape(id)}"]`);
+      if (node !== null) act(node);
+    });
+  };
+  const itemOf = (row: NotificationView): ItemScope | null => {
+    if (row.ask === null || row.outcome !== null) return null;
+    const taskId = taskIdSchema.parse(row.taskId);
+    switch (row.ask.kind) {
+      case "approval":
+        return { kind: "approval", approvalId: approvalIdSchema.parse(row.ask.approvalId), taskId, key: row.key, deny: () => { inRow(row.id, (node) => { node.querySelector<HTMLElement>("[data-action='deny']")?.click(); }); } };
+      case "question":
+        return row.ask.driver !== null ? null : { kind: "question", questionId: questionIdSchema.parse(row.ask.questionId), taskId, key: row.key, reply: () => { inRow(row.id, (node) => { node.querySelector<HTMLElement>("textarea, input")?.focus(); }); } };
+      case "plan":
+        return null;
+      default:
+        return row.ask satisfies never;
+    }
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, row: NotificationView) => {
     if (event.target !== event.currentTarget) return;
     const index = order.indexOf(row.id);
@@ -412,6 +460,7 @@ export const OpenList = ({ rows, now, answers, unreadAtLoad }: OpenListProps) =>
       const next = order[index + (event.key === "ArrowDown" ? 1 : -1)];
       if (next === undefined) return;
       event.preventDefault();
+      setCurrent(next);
       nodes.current.get(next)?.focus();
     } else if (event.key === "Enter") {
       event.preventDefault();
@@ -447,6 +496,12 @@ export const OpenList = ({ rows, now, answers, unreadAtLoad }: OpenListProps) =>
                   else nodes.current.set(row.id, node);
                 }}
                 onKeyDown={onKeyDown}
+                tabbable={stop === row.id}
+                onItemFocus={(target) => {
+                  setCurrent(target.id);
+                  scope.focus(itemOf(target));
+                }}
+                onItemBlur={scope.blur}
               />
             ))}
           </ul>

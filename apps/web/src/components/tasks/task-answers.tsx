@@ -9,7 +9,7 @@ import type { ApprovalDecision, PlanEntry, TaskId } from "@ostra/protocol";
 
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
-import { NeedsYou } from "@/components/ui/needs-you";
+import { NeedsYou, useFocusOnAppear } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
@@ -134,6 +134,8 @@ export const ApprovalCard = ({
   return (
     <NeedsYou
       data-testid="approval"
+      item={approval.approvalId}
+      focusOnAppear
       title={approval.answerableAnyway ? t("taskAnswers.expiredTitle") : t("task.approval.title")}
       className="my-2.5"
       {...(denying
@@ -224,9 +226,10 @@ export const QuestionCard = ({
   const [values, setValues] = useState<Readonly<Record<string, string>>>({});
   const answer = useMutation(trpc.questions.answer.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) }));
   const complete = question.fields.every((field) => (values[field.id] ?? "").trim() !== "");
+  const card = useFocusOnAppear<HTMLDivElement>(true);
   const set = (id: string, value: string) => { setValues((now) => ({ ...now, [id]: value })); };
   return (
-    <div className="my-2.5 border-l-2 border-amber pl-3" data-testid="question">
+    <div ref={card} tabIndex={-1} role="group" aria-label={t("task.question.title")} className="my-2.5 border-l-2 border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal" data-testid="question" data-item={question.questionId}>
       <div className="flex items-center gap-2 text-body font-semibold text-amber">
         <MessageCircleQuestionIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("task.question.title")}
       </div>

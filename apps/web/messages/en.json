@@ -4617,5 +4617,139 @@
       "merged": "merged",
       "closed_unmerged": "closed"
     }
+  },
+  "palette": {
+    "title": "Command palette",
+    "placeholder": "Type a command, or search tasks",
+    "groups": {
+      "page": "On this page",
+      "actions": "Actions",
+      "pages": "Pages"
+    },
+    "actions": {
+      "go-needs-you": "Go to Needs you",
+      "go-home": "Go to Home",
+      "go-tasks": "Go to Tasks",
+      "search": "Search tasks",
+      "shortcut-sheet": "Show these shortcuts",
+      "new-task": "New task",
+      "new-project": "New project",
+      "toggle-theme": "Switch the theme",
+      "approve": "Approve",
+      "deny": "Deny",
+      "answer": "Reply or answer",
+      "take-over": "Take over",
+      "reopen": "Reopen",
+      "stop": "Stop",
+      "steer": "Message the agent"
+    },
+    "labels": {
+      "go-needs-you": "Needs you",
+      "go-home": "Home",
+      "go-tasks": "Tasks",
+      "search": "Search tasks",
+      "shortcut-sheet": "Keyboard shortcuts",
+      "new-task": "New task",
+      "new-project": "New project",
+      "toggle-theme": "Switch the theme",
+      "approve": "Approve…",
+      "deny": "Deny…",
+      "answer": "Answer…",
+      "take-over": "Take over",
+      "reopen": "Reopen a task…",
+      "stop": "Stop",
+      "steer": "Message the agent",
+      "approveThis": "Approve",
+      "denyThis": "Deny",
+      "answerThis": "Answer",
+      "reopenThis": "Reopen…",
+      "toLight": "Switch to the light theme",
+      "toDark": "Switch to the dark theme"
+    },
+    "keywords": {
+      "go-needs-you": "inbox waiting approvals questions",
+      "go-home": "dashboard start",
+      "go-tasks": "list all",
+      "search": "find",
+      "shortcut-sheet": "keys keyboard help",
+      "new-task": "create start prompt",
+      "new-project": "create add",
+      "toggle-theme": "light dark appearance colour",
+      "approve": "allow accept yes",
+      "deny": "reject refuse no",
+      "answer": "reply question respond",
+      "take-over": "drive control",
+      "reopen": "resume restart continue",
+      "stop": "cancel halt end",
+      "steer": "send tell composer"
+    },
+    "hint": {
+      "waiting": "{n} waiting",
+      "questionOne": "1 question",
+      "questionOther": "{n} questions"
+    },
+    "step": {
+      "approve": "Approve",
+      "deny": "Deny",
+      "answer": "Answer",
+      "reopen": "Reopen",
+      "denyReason": "Why, for the agent (optional)",
+      "answerText": "Your answer",
+      "filter": "Filter",
+      "noApprovals": "Nothing waits for your approval.",
+      "noQuestions": "No question waits for you.",
+      "noReopen": "No task of yours to reopen.",
+      "nothing": "Nothing here.",
+      "runApprove": "Approve once",
+      "runPick": "Choose",
+      "runDeny": "Deny",
+      "runAnswer": "Send the answer",
+      "runReopen": "Reopen task",
+      "message": "Message to the agent",
+      "resumes": "It resumes from its own session, with your message.",
+      "denyHint": "Enter denies {key}'s request, with your reason if you give one.",
+      "loading": "Loading…",
+      "answeredFirst": "Someone answered it a moment ago."
+    },
+    "footer": {
+      "run": "Run",
+      "next": "Next step",
+      "shortcuts": "All shortcuts",
+      "back": "Back"
+    },
+    "toast": {
+      "approved": "Approved {key}'s request.",
+      "denied": "Denied {key}'s request.",
+      "answered": "Answered {key}'s question.",
+      "reopened": "Reopened {key}.",
+      "tookOver": "Took over {key}.",
+      "stopped": "Stopped {key}.",
+      "newItemOne": "Something new needs you. 1 waiting.",
+      "newItemOther": "Something new needs you. {n} waiting."
+    },
+    "stop": {
+      "title": "Stop {key}?",
+      "body": "The agent's turn ends now. You can reopen it later.",
+      "action": "Stop task",
+      "busy": "Stopping…"
+    }
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "then": "then",
+    "asksToConfirm": "asks to confirm",
+    "openPalette": "Open the command palette",
+    "footnote": "Shortcuts don't fire while you type in a field or the composer.",
+    "everyAction": "Every action is in the command palette",
+    "scope": {
+      "global": "Anywhere",
+      "needs-you-item": "On a needs-you item",
+      "task": "On a task"
+    },
+    "scopeNote": {
+      "needs-you-item": "focused in a list",
+      "task": "on its page"
+    }
   }
 }

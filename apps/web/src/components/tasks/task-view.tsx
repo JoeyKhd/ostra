@@ -5,12 +5,14 @@ import { CheckIcon, GitPullRequestIcon, LinkIcon, SquareIcon } from "lucide-reac
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { clientMessageIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, clientMessageIdSchema, questionIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import { deriveTaskState } from "@ostra/task-view";
 
 import { servicesWaitText } from "@/components/projects/environment-services-words";
 import { RunnerKind } from "@/components/runners/runners-view";
+import { useProvideTaskScope } from "@/components/shell/actions/use-scope";
+import type { ItemScope, TaskScope } from "@/components/shell/actions/use-scope";
 import { TaskMemory } from "@/components/memory/task-memory";
 import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { initials } from "@/components/shell/user-menu";
@@ -349,6 +351,37 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     },
     [questions, taskId, agentName, isDriver, driverName, takeOverNow, takeOver.isPending],
   );
+
+  // F-081 (ticket 13): the page, its viewer's capabilities and its open item, for the palette and the keys.
+  const scopeData = task.data;
+  const actionScope = useMemo((): TaskScope | null => {
+    if (scopeData === undefined) return null;
+    const approval = scopeData.approvals.find((one) => one.state === "open");
+    const question = isDriver ? scopeData.questions[0] : undefined;
+    const inItem = (id: string, selector: string, act: (node: HTMLElement) => void) => {
+      const node = document.querySelector<HTMLElement>(`[data-item="${CSS.escape(id)}"] ${selector}`);
+      if (node !== null) act(node);
+    };
+    const item: ItemScope | null =
+      approval !== undefined
+        ? { kind: "approval", approvalId: approvalIdSchema.parse(approval.approvalId), taskId, key: scopeData.key, deny: () => { inItem(approval.approvalId, "[data-action='deny']", (node) => { node.click(); }); } }
+        : question !== undefined
+          ? { kind: "question", questionId: questionIdSchema.parse(question.questionId), taskId, key: scopeData.key, reply: () => { inItem(question.questionId, "input, textarea", (node) => { node.focus(); }); } }
+          : null;
+    return {
+      taskId,
+      projectId: scopeData.projectId,
+      key: scopeData.key,
+      title: scopeData.title,
+      canTakeOver: scopeData.capabilities.takeOver,
+      canStop: scopeData.capabilities.stop && scopeData.state !== "stopped",
+      canReopen: scopeData.capabilities.reopen,
+      canSend: scopeData.capabilities.send,
+      item,
+      focusComposer: () => { document.querySelector<HTMLElement>("[data-part='composer'] textarea")?.focus(); },
+    };
+  }, [scopeData, isDriver, taskId]);
+  useProvideTaskScope(actionScope);
 
   const data = task.data;
   if (task.error !== null) {

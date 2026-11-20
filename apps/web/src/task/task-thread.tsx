@@ -184,7 +184,12 @@ const Composer = ({ interrupt, onSend, reopen = false, hint = null }: { readonly
   };
   return (
     <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-3 focus-within:border-[#34363a]" onSubmit={(event) => { event.preventDefault(); send(false); }}>
-      <ComposerPrimitive.Input aria-label={t("task.composer.label")} placeholder={reopen ? t("taskPage.composer.reopenPlaceholder") : t("task.composer.placeholder")} rows={2} className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none" />
+      <ComposerPrimitive.Input
+        onKeyDown={(event) => {
+          // Ticket 16: Escape leaves the composer (Enter sends, Shift+Enter is a new line).
+          if (event.key === "Escape") event.currentTarget.blur();
+        }}
+        aria-label={t("task.composer.label")} placeholder={reopen ? t("taskPage.composer.reopenPlaceholder") : t("task.composer.placeholder")} rows={2} className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none" />
       {error === null ? null : <p role="alert" className="text-sm text-red">{error}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-faint">
