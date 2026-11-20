@@ -37,6 +37,7 @@ import {
   repoBranchName,
   runnerLimits,
   serviceNameSchema,
+  taskSpecHasOneGitIdentity,
   taskSpecToolSets,
   truncateBytes,
   turnIdSchema,
@@ -316,8 +317,11 @@ const deferred = <T>(): { readonly promise: Promise<T>; readonly resolve: (value
   return { promise, resolve };
 };
 
+/** The variables that would name one bot for every repo of the box. */
+const GIT_IDENTITY_ENV_NAMES = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"] as const;
+
 /** The agent's environment for the task: each repo's non-secret variables (secrets stay in the env files). */
-const agentVariables = (spec: TaskSpec): Record<string, string> => {
+const agentVariables =(spec: TaskSpec): Record<string, string> => {
   const out: Record<string, string> = {};
   for (const repo of spec.environment.repos) {
     for (const variable of repo.variables) {
@@ -327,12 +331,22 @@ const agentVariables = (spec: TaskSpec): Record<string, string> => {
       }
     }
   }
-  // The agent's own commits are the App's bot's too (F-078). These outrank any user.name an agent
-  // passes with `git -c`. The checkout's commit-msg hook adds the member's Co-authored-by trailer.
-  out["GIT_AUTHOR_NAME"] = spec.gitIdentity.name;
-  out["GIT_AUTHOR_EMAIL"] = spec.gitIdentity.email;
-  out["GIT_COMMITTER_NAME"] = spec.gitIdentity.name;
-  out["GIT_COMMITTER_EMAIL"] = spec.gitIdentity.email;
+  // The agent's own commits are the App's bot's too (F-078). The checkout's commit-msg hook adds
+  // the member's Co-authored-by trailer.
+  if (taskSpecHasOneGitIdentity(spec)) {
+    // One bot for every repo: these outrank any user.name an agent passes with `git -c`.
+    out["GIT_AUTHOR_NAME"] = spec.gitIdentity.name;
+    out["GIT_AUTHOR_EMAIL"] = spec.gitIdentity.email;
+    out["GIT_COMMITTER_NAME"] = spec.gitIdentity.name;
+    out["GIT_COMMITTER_EMAIL"] = spec.gitIdentity.email;
+  } else {
+    // Repos of two Apps (F-136, ADR 0065): one environment can't name each repo's bot, so none
+    // does, and no repo variable either. Each checkout's own config names its repo's bot, as
+    // `author.*` and `committer.*`, which outrank a `git -c user.name` too.
+    for (const name of GIT_IDENTITY_ENV_NAMES) {
+      Reflect.deleteProperty(out, name);
+    }
+  }
   return out;
 };
 

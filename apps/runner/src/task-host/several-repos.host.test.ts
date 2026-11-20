@@ -17,6 +17,7 @@ describe("several repos on host", () => {
   it("F-098: on host, a reopen on a fresh worktree restores each repo from its own hidden ref, and clones a repo new to the task at its base", cases.reopenRestoresBoth, 300_000);
   it("F-098: on host, the git proxy refuses a push to another task's branch in either repo, and takes the task's own", cases.proxyRefusesOtherBranch, 240_000);
   it("F-098: on host, each repo is cloned with its own git token", cases.ownTokenPerRepo, 240_000);
+  it("F-136: on host, repos of two Apps are each committed by their own bot, the agent's commits and ostra's, with the member's trailer", cases.ownIdentityPerRepo, 240_000);
   it("F-098: on host, each task's workspace holds its own repos and nothing of another task's", cases.containment, 240_000);
   it("F-098: on host, instructions that name other folders than the spec's repos crash the session before anything is cloned", cases.foldersMustMatch, 240_000);
 });

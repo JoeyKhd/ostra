@@ -107,6 +107,20 @@ export type TaskSpecRepo = z.infer<typeof taskSpecRepoSchema>;
 export const repoBranchName = (spec: { readonly branchName: string }, repo: { readonly branchName?: string | undefined }): string =>
   repo.branchName ?? spec.branchName;
 
+/** The bot that authors a repo's commits (F-136, ADR 0065): its own App's when the spec names one, else the task's. */
+export const repoGitIdentity = (spec: { readonly gitIdentity: GitPerson }, repo: { readonly gitIdentity?: GitPerson | undefined }): GitPerson =>
+  repo.gitIdentity ?? spec.gitIdentity;
+
+/** Whether every repo of a spec is committed as the task's top-level bot, so one identity serves the whole box. */
+export const taskSpecHasOneGitIdentity = (spec: {
+  readonly gitIdentity: GitPerson;
+  readonly repos: readonly { readonly gitIdentity?: GitPerson | undefined }[];
+}): boolean =>
+  spec.repos.every((repo) => {
+    const person = repoGitIdentity(spec, repo);
+    return person.name === spec.gitIdentity.name && person.email === spec.gitIdentity.email;
+  });
+
 /** The agent section at minors 0 and 1. */
 export const taskSpecAgentSchemaV1 = z.strictObject({
   profileId: agentProfileIdSchema,
@@ -699,13 +713,9 @@ export const taskSpecNeedsMinor2 = (spec: TaskSpec): boolean =>
  */
 export const taskSpecNeedsMinor3 = (spec: TaskSpec): boolean =>
   (spec.agent.effort ?? "default") !== "default" ||
-  spec.repos.some(
-    (repo) =>
-      (repo.gitIdentity !== undefined &&
-        (repo.gitIdentity.name !== spec.gitIdentity.name || repo.gitIdentity.email !== spec.gitIdentity.email)) ||
-      // A repo on its own branch (F-066): a runner below minor 3 would push it to the task's.
-      repoBranchName(spec, repo) !== spec.branchName,
-  );
+  !taskSpecHasOneGitIdentity(spec) ||
+  // A repo on its own branch (F-066): a runner below minor 3 would push it to the task's.
+  spec.repos.some((repo) => repoBranchName(spec, repo) !== spec.branchName);
 
 /** Whether a spec is a task kind or a feature a runner below minor 5 can't do (milestone 6). */
 export const taskSpecNeedsMinor5 = (spec: TaskSpec): boolean => taskNeedsMinor5Reason(spec) !== null;

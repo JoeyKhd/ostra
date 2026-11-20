@@ -326,6 +326,46 @@ export const severalReposCases = (mode: SeveralReposMode) => {
       await h.waitForAck(h.stop(spec));
     },
 
+    /**
+     * F-136 (ADR 0065): repos of two Apps' installations. Each repo's commits, the agent's own and
+     * ostra's after the turn, are authored and committed by that repo's bot, with the member's trailer.
+     */
+    ownIdentityPerRepo: async (): Promise<void> => {
+      const h = await runner();
+      const base = taskOn(h, fakeMarker("commit", "test1/own-1.txt test2/own-2.txt"));
+      const [first, second] = base.repos;
+      if (first === undefined || second === undefined) {
+        throw new Error("two repos");
+      }
+      // test2 is in another GitHub account's installation, of another App: its own bot.
+      const clientBot = { name: "client-b-ostra[bot]", email: "77001+client-b-ostra[bot]@users.noreply.github.com" };
+      const spec: TaskSpec = { ...base, repos: [first, { ...second, gitIdentity: clientBot }] };
+      credentialsFor(h, spec);
+      h.dispatch(spec);
+      await waitFor(h, spec, "session.saved");
+      // Turn 2: files the agent leaves uncommitted, which ostra commits in each repo.
+      h.steer(spec, fakeMarker("write", "test1/left-1.txt test2/left-2.txt"));
+      await waitFor(h, spec, "session.saved", 2);
+      expect([...branchPushes(h, spec, 2)].sort()).toEqual(["repo-test1", "repo-test2"]);
+      const person = (who: { readonly name: string; readonly email: string }): string => `${who.name} <${who.email}>`;
+      const branch = `refs/heads/${spec.branchName}`;
+      for (const [fullName, bot, files] of [
+        ["ostra-test/test1", spec.gitIdentity, ["own-1.txt", "left-1.txt"]],
+        ["ostra-test/test2", clientBot, ["own-2.txt", "left-2.txt"]],
+      ] as const) {
+        expect(await upstream().treeFiles(fullName, branch)).toEqual(expect.arrayContaining([...files]));
+        // The tip is ostra's commit of turn 2; the one under it is the agent's own, from turn 1.
+        expect(await upstream().commitMessage(fullName, `${branch}~1`)).toContain("The fake agent's own commit");
+        for (const ref of [branch, `${branch}~1`]) {
+          expect(await upstream().commitPeople(fullName, ref), `${fullName} ${ref}`).toEqual({ author: person(bot), committer: person(bot) });
+          const message = await upstream().commitMessage(fullName, ref);
+          for (const coAuthor of spec.coAuthors) {
+            expect(message, `${fullName} ${ref}`).toContain(`Co-authored-by: ${person(coAuthor)}`);
+          }
+        }
+      }
+    },
+
     /** Each repo is cloned with its own token: a token the code host refuses for test2 fails test2's clone, by name. */
     ownTokenPerRepo: async (): Promise<void> => {
       const h = await runner();

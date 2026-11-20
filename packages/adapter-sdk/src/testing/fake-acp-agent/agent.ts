@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 
@@ -204,7 +204,11 @@ export const fakeScripts = [
   /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
   "heads",
   // Milestone 6 (ticket 23).
-  /** Writes the files given (session-relative) and commits them itself in the repo the session opened on, as `git add` and `git commit` would. */
+  /**
+   * Writes the files given (session-relative) and commits them itself in the repo the session opened
+   * on, as `git add` and `git commit` would, naming itself with `git -c user.name`. At a workspace's
+   * root, which holds several repos, each file goes in the repo of its first folder, one commit each.
+   */
   "commit",
   // Subagents (2026-11-20).
   /**
@@ -1336,9 +1340,9 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
           await mkdir(path.dirname(target), { recursive: true });
           await writeFile(target, "Committed by the fake agent.\n");
         }
-        const gitIn = (gitArgs: readonly string[]): Promise<number | null> =>
+        const gitIn = (cwd: string, gitArgs: readonly string[]): Promise<number | null> =>
           new Promise((resolve) => {
-            const child = spawn("git", ["-c", "user.name=Fake Agent", "-c", "user.email=fake-agent@example.test", ...gitArgs], { cwd: root, stdio: "ignore", windowsHide: true });
+            const child = spawn("git", ["-c", "user.name=Fake Agent", "-c", "user.email=fake-agent@example.test", ...gitArgs], { cwd, stdio: "ignore", windowsHide: true });
             child.on("error", () => {
               resolve(null);
             });
@@ -1346,10 +1350,27 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
               resolve(code);
             });
           });
+        // The repo each file is in: the session's folder when it is one, else the file's first folder.
+        const rootIsRepo = await stat(path.join(root, ".git")).then(
+          () => true,
+          () => false,
+        );
+        const byRepo = new Map<string, string[]>();
+        for (const relative of relatives) {
+          const [first = ""] = relative.split(/[\\/]/);
+          const repo = rootIsRepo ? root : path.join(root, first);
+          byRepo.set(repo, [...(byRepo.get(repo) ?? []), path.relative(repo, path.resolve(root, relative))]);
+        }
         const toolCallId = "t-commit";
         await update({ sessionUpdate: "tool_call", toolCallId, title: "git commit", kind: "execute", status: "in_progress", rawInput: { command: "git commit" } });
-        const added = await gitIn(["add", "--", ...relatives]);
-        const committed = added === 0 ? await gitIn(["commit", "--quiet", "--no-verify", "-m", "The fake agent's own commit"]) : added;
+        let committed: number | null = 0;
+        for (const [repo, files] of byRepo) {
+          const added = await gitIn(repo, ["add", "--", ...files]);
+          committed = added === 0 ? await gitIn(repo, ["commit", "--quiet", "--no-verify", "-m", "The fake agent's own commit"]) : added;
+          if (committed !== 0) {
+            break;
+          }
+        }
         await update({ sessionUpdate: "tool_call_update", toolCallId, status: committed === 0 ? "completed" : "failed" });
         await say(committed === 0 ? `Committed ${relatives.join(", ")}.` : "The commit failed.");
         return "end_turn";

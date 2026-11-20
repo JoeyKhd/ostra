@@ -187,7 +187,11 @@ export type CommitAndPushInput = {
   readonly box: BoxRef;
   /** The commit message for what the agent left uncommitted. */
   readonly message: string;
-  /** The App's bot (F-078). */
+  /**
+   * The task's bot (F-078), the spec's top-level `gitIdentity`: it authors and commits each repo
+   * whose spec entry names no `gitIdentity`. A repo that names one is committed as that bot, its
+   * own App's, and its checkout's config names it too (F-136, ADR 0065).
+   */
   readonly author: GitPerson;
   /** `Co-authored-by` trailers. */
   readonly coAuthors: readonly GitPerson[];

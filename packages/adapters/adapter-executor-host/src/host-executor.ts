@@ -47,7 +47,7 @@ import type {
   TaskProxies,
   WipDeps,
 } from "@ostra/adapter-sdk";
-import { gitShaSchema, repoBranchName, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
+import { gitShaSchema, repoBranchName, repoGitIdentity, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec, TaskSpecReviewRepo } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import {
@@ -253,6 +253,27 @@ export const reviewRepoOf = (spec: Pick<TaskSpec, "review">, repoId: RepoId): Ta
 
 /** A `Co-authored-by` trailer, as git and GitHub read it. */
 export const coAuthorTrailer = (person: GitPerson): string => `Co-authored-by: ${person.name} <${person.email}>`;
+
+/** A bot as the author and committer of ostra's own commits: the environment outranks any config. */
+const identityEnv = (person: GitPerson): Readonly<Record<string, string>> => ({
+  GIT_AUTHOR_NAME: person.name,
+  GIT_AUTHOR_EMAIL: person.email,
+  GIT_COMMITTER_NAME: person.name,
+  GIT_COMMITTER_EMAIL: person.email,
+});
+
+/**
+ * A bot as a git config's identity. `author.*` and `committer.*` outrank `user.*` wherever each is
+ * set, so an agent's `git -c user.name=...` doesn't take a repo's commits from its bot.
+ */
+const identitySettings = (person: GitPerson): readonly (readonly [string, string])[] => [
+  ["user.name", person.name],
+  ["user.email", person.email],
+  ["author.name", person.name],
+  ["author.email", person.email],
+  ["committer.name", person.name],
+  ["committer.email", person.email],
+];
 
 /** The commit message with its trailers, one per co-author. */
 export const commitMessageWithTrailers = (message: string, coAuthors: readonly GitPerson[]): string => {
@@ -896,7 +917,7 @@ export class HostExecutor extends ExecutorAdapter {
         for (const name of rules.stdout.split(/\r?\n/).filter((line) => line.trim() !== "")) {
           await this.#git(record, ["config", "--local", "--unset-all", name.trim()], checkout);
         }
-        for (const [key, value] of await this.#settings(record)) {
+        for (const [key, value] of await this.#settings(record, repoGitIdentity(record.spec, repo))) {
           const set = await this.#git(record, ["config", "--local", key, value], checkout);
           if (set.code !== 0) {
             return adapterError("unavailable", `configuring the checkout failed (${key})`);
@@ -1340,19 +1361,11 @@ export class HostExecutor extends ExecutorAdapter {
 
   // ---------- inside ----------
 
-  /** The commit message file, with its trailers, and the App's bot as author and committer. */
-  async #commitMessage(record: BoxRecord, input: CommitWorkInput): Promise<{ readonly file: string; readonly env: Readonly<Record<string, string>> }> {
+  /** The commit message file, with its trailers, and the task's bot, which `#commitLeft` makes each repo's own. */
+  async #commitMessage(record: BoxRecord, input: CommitWorkInput): Promise<{ readonly file: string; readonly author: GitPerson }> {
     const file = path.join(record.root, "git", "commit-message.txt");
     await writeFile(file, commitMessageWithTrailers(input.message, input.coAuthors));
-    return {
-      file,
-      env: {
-        GIT_AUTHOR_NAME: input.author.name,
-        GIT_AUTHOR_EMAIL: input.author.email,
-        GIT_COMMITTER_NAME: input.author.name,
-        GIT_COMMITTER_EMAIL: input.author.email,
-      },
-    };
+    return { file, author: input.author };
   }
 
   /** Commits everything the turn left in one repo: changed, new and untracked files (the env files are excluded). */
@@ -1367,8 +1380,10 @@ export class HostExecutor extends ExecutorAdapter {
   async #commitLeft(
     record: BoxRecord,
     repo: TaskSpec["repos"][number],
-    commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
+    message: { readonly file: string; readonly author: GitPerson },
   ): Promise<AdapterResult<StagedCommitPaths | null>> {
+    // F-136 (ADR 0065): the repo's own App's bot authors and commits it, the task's when it has none.
+    const commit = { file: message.file, env: identityEnv(repoGitIdentity({ gitIdentity: message.author }, repo)) };
     const commitPaths = record.spec.commitPaths ?? null;
     if (commitPaths !== null) {
       return this.#commitAllowed(record, repo, commit, commitPaths);
@@ -1554,11 +1569,13 @@ export class HostExecutor extends ExecutorAdapter {
     return origins.map((from) => ({ from, to }));
   }
 
-  /** Settings both the task's git config and each checkout's local config get. */
-  async #settings(record: BoxRecord): Promise<readonly (readonly [string, string])[]> {
-    const settings: [string, string][] = [
-      ["user.name", record.spec.gitIdentity.name],
-      ["user.email", record.spec.gitIdentity.email],
+  /**
+   * Settings both the task's git config and each checkout's local config get, with the bot given:
+   * the task's in the task's config, and each repo's own in its checkout (F-136), which outranks it.
+   */
+  async #settings(record: BoxRecord, person: GitPerson): Promise<readonly (readonly [string, string])[]> {
+    const settings: (readonly [string, string])[] = [
+      ...identitySettings(person),
       // No credential helper: the proxy adds the token, and nothing should ask for one.
       ["credential.helper", ""],
       ["advice.detachedHead", "false"],
@@ -1582,7 +1599,7 @@ export class HostExecutor extends ExecutorAdapter {
 
   async #writeTaskGitConfig(record: BoxRecord): Promise<void> {
     await writeFile(record.gitConfig, "");
-    for (const [key, value] of await this.#settings(record)) {
+    for (const [key, value] of await this.#settings(record, record.spec.gitIdentity)) {
       const set = await runProgram("git", ["config", "--file", record.gitConfig, key, value], { cwd: record.root, env: baseEnv(this.#env) });
       if (set.code !== 0) {
         throw new Error(`git config ${key} failed`);
@@ -1592,8 +1609,8 @@ export class HostExecutor extends ExecutorAdapter {
 
   async #configureCheckout(record: BoxRecord, checkout: string, repo: TaskSpec["repos"][number]): Promise<AdapterResult<void>> {
     // The same settings locally, so the agent's own git (with its own environment) still goes
-    // through the proxy, as the App's bot, with no credential helper.
-    for (const [key, value] of await this.#settings(record)) {
+    // through the proxy, as the bot of this repo's App (F-136), with no credential helper.
+    for (const [key, value] of await this.#settings(record, repoGitIdentity(record.spec, repo))) {
       const set = await this.#git(record, ["config", "--local", key, value], checkout);
       if (set.code !== 0) {
         return adapterError("unavailable", `configuring the checkout failed (${key})`);

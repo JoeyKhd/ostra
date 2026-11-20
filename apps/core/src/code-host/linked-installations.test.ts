@@ -33,7 +33,7 @@ import {
   webhookDeliveryIdSchema,
 } from "@ostra/protocol";
 import type { ConnectionId, RunnerId } from "@ostra/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { deleteHiddenRefs } from "../cleanup/cleanup.ts";
 import { buildTaskSpec } from "../dispatch/task-spec.ts";
@@ -332,7 +332,7 @@ describe("no mint through an installation that isn't linked", () => {
 });
 
 describe("a bot per repo", () => {
-  it("F-136: a task across two Apps' repos has each repo's bot in its spec, and a minor-2 runner gets no offer for it", async () => {
+  it("F-136: a task across two Apps' repos has each repo's bot in its spec and opens each PR as its own App, and a minor-2 runner gets no offer for it", async () => {
     // A client's App, connected beside the organization's own, with its own key, bot and installation.
     const organizationId = world.organizationId;
     const appB = "4242999";
@@ -395,6 +395,25 @@ describe("a bot per repo", () => {
       // A minor-2 runner's spec carries the first repo's bot alone.
       const old = await buildTaskSpec(specDeps, { taskId: waiting.taskId, runnerId: newer, leaseEpoch: leaseEpochSchema.parse(1), minor: 2 });
       expect(old.ok && old.spec.repos.every((repo) => repo.gitIdentity === undefined)).toBe(true);
+
+      // Each repo's PR is opened as its own App, through its own installation, so its bot authors it.
+      const { appId: appA } = await test.db.connection.findUniqueOrThrow({ where: { id: connectionId } });
+      const opens = vi.spyOn(codeHost, "openPullRequest");
+      try {
+        await test.db.task.update({ where: { id: waiting.taskId }, data: { state: "running", subState: null } });
+        await test.db.taskRepo.updateMany({ where: { taskId: waiting.taskId }, data: { ahead: true } });
+        const opened = await openPullRequests(
+          { db: test.db, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, adapters: { codeHost: recording, secretStore, modelProvider: new FakeModelProvider() }, publicUrl: "https://ostra.example", jobs },
+          { organizationId: world.organizationId, taskId: waiting.taskId, sessionId: waiting.sessionId, eventSeq: taskSeqSchema.parse(1) },
+        );
+        expect(opened).toMatchObject({ ok: true });
+        expect(opens.mock.calls.map(([call]) => [call.access.repo, call.access.app.appId, call.access.installationId])).toEqual([
+          ["ostra-test/test1", appA, INSTALLATION_ID],
+          ["client-b/app", appB, "660001"],
+        ]);
+      } finally {
+        opens.mockRestore();
+      }
     } finally {
       await test.db.runner.updateMany({ where: { organizationId, kind: "pool" }, data: { state: "offline" } });
       await test.db.runnerPresence.updateMany({ where: { organizationId, runner: { kind: "pool" } }, data: { disconnectedAt: new Date() } });
