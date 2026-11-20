@@ -80,13 +80,16 @@ export const postJson = async (url: string, body: unknown, bearer?: string): Pro
   return { status: response.status, body: text === "" ? null : JSON.parse(text) };
 };
 
+/** The machine every test runner registers as, whatever machine the test runs on. */
+export const registeredOs = { platform: "win32", arch: "x64", release: "10.0" } as const;
+
 export const registerBody = (key: RunnerKey, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   publicKey: key.publicKey,
   name: "laptop",
   executor: "host",
   capacity: 1,
   labels: [],
-  os: { platform: "win32", arch: "x64", release: "10.0" },
+  os: registeredOs,
   version: "0.0.0",
   ...overrides,
 });

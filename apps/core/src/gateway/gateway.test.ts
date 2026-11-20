@@ -30,7 +30,7 @@ import { z } from "zod";
 
 import { connectPeer, makeRunnerKey, signAssertion } from "../testing/fake-peer.ts";
 import type { FakePeer } from "../testing/fake-peer.ts";
-import { accessToken, connect, postJson, registerBody, registerPersonal, seedDeviceSession, startGateway } from "../testing/harness.ts";
+import { accessToken, connect, postJson, registerBody, registeredOs, registerPersonal, seedDeviceSession, startGateway } from "../testing/harness.ts";
 import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
 import { BOOTSTRAP_JOIN_TOKEN_FILE, ensureBootstrapJoinToken } from "./bootstrap-join-token.ts";
 
@@ -504,9 +504,10 @@ describe("the WebSocket", () => {
     await waitFor(() => harness.gateway.connections.status(runner.runnerId)?.capacity === 2);
     await sleep(300);
     expect(await notices()).toBe(before + 1);
-    // Milestone 5 (F-069): its own label, with the built-in ones core adds from its registration.
+    // Milestone 5 (F-069): its own label, with the built-in ones core adds from its registration
+    // (the registered machine, not the one the test runs on: CI is Linux, run 44726825275).
     expect((await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).labels).toEqual(
-      ["gpu", "executor:host", `os:${process.platform}`, `arch:${process.arch}`].sort(),
+      ["gpu", "executor:host", `os:${registeredOs.platform}`, `arch:${registeredOs.arch}`].sort(),
     );
   });
 
