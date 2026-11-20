@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import type { SubmitEvent } from "react";
 
@@ -42,6 +43,31 @@ export const modelReasoningOf = (model: Pick<Model, "reasoning">): ModelReasonin
   reasoningPriceDiffers: model.reasoning.reasoningPriceDiffers,
 });
 
+const SOURCE_WORDS = { endpoint: "prices.sourceEndpointShort", catalog: "prices.sourceCatalogShort", admin: "prices.sourceAdminShort" } as const;
+
+/**
+ * F-037 (ticket 36): the model's four prices per million tokens and where they came from. They're set
+ * on Spend, the page budgets count them on: `Edit price` opens it with the model selected.
+ */
+const PriceGroup = ({ model, canEdit }: { readonly model: Model; readonly canEdit: boolean }) => (
+  <PropGroup title={t("models.priceTitle")}>
+    <div data-testid="model-price">
+      <PropRow label={t("prices.fresh")}><span className="font-mono">{formatPrice(model.inputPricePerMTok)}</span></PropRow>
+      <PropRow label={t("prices.output")}><span className="font-mono">{formatPrice(model.outputPricePerMTok)}</span></PropRow>
+      <PropRow label={t("prices.cacheRead")}><span className="font-mono">{formatPrice(model.cacheReadPricePerMTok)}</span></PropRow>
+      <PropRow label={t("prices.cacheWrite")}><span className="font-mono">{formatPrice(model.cacheWritePricePerMTok)}</span></PropRow>
+      <PropRow label={t("prices.source")}>
+        {model.priceSource === null ? <span className="text-faint">{t("prices.sourceNone")}</span> : <span data-testid="model-price-source">{t(SOURCE_WORDS[model.priceSource])}</span>}
+      </PropRow>
+      {canEdit ? (
+        <Link href={`/organization/spend?model=${encodeURIComponent(model.id)}`} className="mt-1.5 inline-block text-ui text-teal hover:underline">
+          {t("models.editPrice")}
+        </Link>
+      ) : null}
+    </div>
+  </PropGroup>
+);
+
 export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, settingDefault, canEditReasoning, profileLevels, confirmCatalog }: {
   readonly model: Model;
   /** F-137: an organization admin sets the model's reasoning. */
@@ -61,8 +87,6 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
     displayName: model.displayName ?? "",
     contextWindow: text(model.contextWindow),
     maxOutputTokens: text(model.maxOutputTokens),
-    inputPrice: text(model.inputPricePerMTok),
-    outputPrice: text(model.outputPricePerMTok),
   });
   const save = useMutation(
     trpc.providers.updateModel.mutationOptions({
@@ -84,8 +108,6 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
       displayName: name === "" ? null : name,
       contextWindow: numberOrNull(form.contextWindow),
       maxOutputTokens: numberOrNull(form.maxOutputTokens),
-      inputPricePerMTok: numberOrNull(form.inputPrice),
-      outputPricePerMTok: numberOrNull(form.outputPrice),
     });
   };
   const set = (key: keyof typeof form) => (value: string) => {
@@ -119,12 +141,6 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
               <Field id="model-output" label={t("models.maxOutput")}>
                 <Input id="model-output" inputMode="numeric" className="font-mono" value={form.maxOutputTokens} onChange={(e) => { set("maxOutputTokens")(e.target.value); }} />
               </Field>
-              <Field id="model-in" label={t("models.inputPrice")}>
-                <Input id="model-in" inputMode="decimal" className="font-mono" value={form.inputPrice} onChange={(e) => { set("inputPrice")(e.target.value); }} />
-              </Field>
-              <Field id="model-out" label={t("models.outputPrice")}>
-                <Input id="model-out" inputMode="decimal" className="font-mono" value={form.outputPrice} onChange={(e) => { set("outputPrice")(e.target.value); }} />
-              </Field>
             </div>
             {save.error === null ? null : <p role="alert" className="mb-2 text-sm text-red">{errorText(save.error)}</p>}
             <Button type="submit" disabled={save.isPending}>
@@ -136,10 +152,9 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
         <PropGroup title={t("models.fromCatalog")}>
           <PropRow label={t("models.context")}><span className="font-mono">{formatTokens(model.contextWindow)}</span></PropRow>
           <PropRow label={t("models.maxOutput")}><span className="font-mono">{formatTokens(model.maxOutputTokens)}</span></PropRow>
-          <PropRow label={t("models.inputPrice")}><span className="font-mono">{formatPrice(model.inputPricePerMTok)}</span></PropRow>
-          <PropRow label={t("models.outputPrice")}><span className="font-mono">{formatPrice(model.outputPricePerMTok)}</span></PropRow>
         </PropGroup>
       )}
+      <PriceGroup model={model} canEdit={canEditReasoning} />
       <ReasoningGroup
         modelName={model.displayName ?? model.endpointModelId}
         custom={model.custom}

@@ -96,6 +96,8 @@ const convertPart = (part: TaskUIPart): ThreadPart | null => {
     case "data-files-outside":
     case "data-saved":
     case "data-limit":
+    case "data-held":
+    case "data-released":
     case "data-ticket-files":
     case "data-system":
     case "data-unsupported":

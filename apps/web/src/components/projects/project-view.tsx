@@ -210,6 +210,7 @@ export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) =>
   const project = useQuery(trpc.projects.get.queryOptions({ projectId }));
   const boards = useQuery(trpc.boards.get.queryOptions({ projectId }));
   const groups = useQuery(trpc.tasks.list.queryOptions({ projectId }));
+  const me = useQuery(trpc.me.get.queryOptions());
   const now = useNow(30_000);
   const shown = groups.data?.filter((group) => group.tasks.length > 0) ?? [];
   const counts = project.data === undefined ? [] : ledeCounts(project.data.needsYouCount, project.data.runningCount);
@@ -217,7 +218,7 @@ export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) =>
   return (
     <PageFrame
       crumbs={[{ label: project.data?.name ?? "" }, { label: t("shell.tasks") }]}
-      properties={project.data === undefined ? undefined : <ProjectProperties project={project.data} boardKeys={boards.data?.boards.map((board) => board.key ?? board.name)} />}
+      properties={project.data === undefined ? undefined : <ProjectProperties project={project.data} boardKeys={boards.data?.boards.map((board) => board.key ?? board.name)} organizationAdmin={me.data?.organization?.role === "admin"} />}
     >
       {project.error === null ? null : <p role="alert" className="text-red">{errorText(project.error)}</p>}
       {project.data === undefined ? (

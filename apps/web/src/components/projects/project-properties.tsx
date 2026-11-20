@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { ProjectDefaults } from "@/components/agent-profiles/project-defaults";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
+import { ProjectSpend } from "@/components/spend/project-spend";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
@@ -16,7 +17,7 @@ type Project = RouterOutputs["projects"]["get"];
 const dayOf = (epochMs: number): string => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(epochMs);
 
 /** A project's properties panel (project.md): its access, its repo, and where and how its tasks run (F-086). */
-export const ProjectProperties = ({ project, boardKeys }: { readonly project: Project; readonly boardKeys?: readonly string[] | undefined }) => (
+export const ProjectProperties = ({ project, boardKeys, organizationAdmin = false }: { readonly project: Project; readonly boardKeys?: readonly string[] | undefined; readonly organizationAdmin?: boolean }) => (
   <div data-testid="project-properties">
     <PropGroup title={t("projects.title")}>
       <PropRow label={t("projects.access")}>{project.access === "open" ? t("projects.open") : t("projects.restricted")}</PropRow>
@@ -63,6 +64,7 @@ export const ProjectProperties = ({ project, boardKeys }: { readonly project: Pr
         <span className="truncate font-mono">{project.pools.map((pool) => pool.name).join(", ") || "–"}</span>
       </PropRow>
     </PropGroup>
+    <ProjectSpend projectId={project.id} organizationAdmin={organizationAdmin} />
     <ProjectDefaults projectId={project.id} defaults={project.defaultProfiles} admin={project.role === "admin"} />
   </div>
 );

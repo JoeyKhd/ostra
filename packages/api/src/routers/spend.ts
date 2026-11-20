@@ -3,6 +3,7 @@ import {
   budgetMonthBounds,
   budgetMonthOf,
   budgetOvershoot,
+  dispatchWaitFromDb,
   setBudget,
 } from "@ostra/domain";
 import type { BudgetLevel } from "@ostra/domain";
@@ -194,14 +195,16 @@ const loadBudgetExtras = async (
   db: DbOrTx,
   organizationId: OrganizationId,
   month: string,
-  rows: readonly { readonly id: string; readonly updatedByMemberId: string | null; readonly updatedAt: Date }[],
+  rows: readonly { readonly id: string; readonly projectId: string | null; readonly updatedByMemberId: string | null; readonly updatedAt: Date }[],
 ): Promise<ReadonlyMap<string, BudgetExtras>> => {
   const ids = rows.map((row) => row.id);
   const memberIds = [...new Set(rows.flatMap((row) => (row.updatedByMemberId === null ? [] : [row.updatedByMemberId])))];
-  const [notices, held, members] = await Promise.all([
+  const [notices, held, members, waiting] = await Promise.all([
     db.budgetNotice.findMany({ where: { organizationId, budgetId: { in: ids }, month }, select: { budgetId: true, threshold: true, sentAt: true } }),
     db.heldTurn.findMany({ where: { organizationId, budgetId: { in: ids }, releasedAt: null }, select: { budgetId: true, origin: true, taskId: true } }),
     db.member.findMany({ where: { organizationId, id: { in: memberIds } }, select: { id: true, user: { select: { name: true } } } }),
+    // A new task the gate keeps queued has no held turn: its dispatch note names the budget's scope.
+    db.task.findMany({ where: { organizationId, state: "queued", dispatchWait: { path: ["code"], equals: "budget-reached" } }, select: { id: true, projectId: true, dispatchWait: true } }),
   ]);
   const names = new Map(members.map((member) => [member.id, member.user.name] as const));
   return new Map(
@@ -215,7 +218,15 @@ const loadBudgetExtras = async (
         {
           warnedAt: at("warn"),
           reachedAt: at("reached"),
-          queuedTasks: new Set(own.filter((turn) => turn.origin === "dispatch").map((turn) => turn.taskId)).size,
+          queuedTasks: new Set([
+            ...own.filter((turn) => turn.origin === "dispatch").map((turn) => turn.taskId),
+            ...waiting
+              .filter((task) => {
+                const wait = dispatchWaitFromDb(task.dispatchWait);
+                return wait?.code === "budget-reached" && (row.projectId === null ? wait.scope === "organization" : wait.scope === "project" && task.projectId === row.projectId);
+              })
+              .map((task) => task.id),
+          ]).size,
           heldTurns: own.filter((turn) => turn.origin !== "dispatch").length,
           setBy: name === undefined ? null : { name, at: row.updatedAt.getTime() },
         },

@@ -17,6 +17,8 @@ import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Section } from "@/components/shell/page-frame";
+import { BudgetNoticeRows } from "@/components/spend/budget-notices";
+import type { BudgetNotice } from "@/components/spend/budget-notices";
 import { projectColour } from "@/components/shell/project-colour";
 import { buttonVariants } from "@/components/ui/button";
 import { SkeletonRows } from "@/components/ui/skeleton";
@@ -109,10 +111,16 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
 };
 
 /** Needs you (home.md): first, amber, at most five rows, newest first; never gone, so the page doesn't jump. */
-export const NeedsYouSection = ({ load, now }: { readonly load: Load<Overview["needsYou"]>; readonly now: number }) => {
-  const empty = load.kind === "ready" && load.data.total === 0;
+export const NeedsYouSection = ({ load, now, budget }: {
+  readonly load: Load<Overview["needsYou"]>;
+  readonly now: number;
+  /** F-037: the member's budget notices this month, above the task rows. */
+  readonly budget?: { readonly notices: readonly BudgetNotice[]; readonly organizationAdmin: boolean };
+}) => {
+  const notices = budget?.notices ?? [];
+  const empty = load.kind === "ready" && load.data.total === 0 && notices.length === 0;
   return (
-    <Section title={t("home.needsYou.title")} tone={empty ? "grey" : "amber"} {...(load.kind === "ready" ? { count: load.data.total } : {})}>
+    <Section title={t("home.needsYou.title")} tone={empty ? "grey" : "amber"} {...(load.kind === "ready" ? { count: load.data.total + notices.length } : {})}>
       {load.kind === "loading" ? (
         <SkeletonRows />
       ) : load.kind === "error" ? (
@@ -120,11 +128,16 @@ export const NeedsYouSection = ({ load, now }: { readonly load: Load<Overview["n
       ) : empty ? (
         <OneRow>{t("home.needsYou.empty")}</OneRow>
       ) : (
-        <ul className="rows" data-testid="needs-you">
-          {load.data.rows.map((row) => (
-            <NeedsYouLine key={row.taskId} row={row} amber={row.taskId === amberRow(load.data.rows)} now={now} />
-          ))}
-        </ul>
+        <>
+          <BudgetNoticeRows notices={notices} organizationAdmin={budget?.organizationAdmin ?? false} />
+          {load.data.rows.length === 0 ? null : (
+            <ul className="rows" data-testid="needs-you">
+              {load.data.rows.map((row) => (
+                <NeedsYouLine key={row.taskId} row={row} amber={row.taskId === amberRow(load.data.rows)} now={now} />
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </Section>
   );

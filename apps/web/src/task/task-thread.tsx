@@ -61,7 +61,13 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
       <div className="flex items-baseline gap-2">
         <span className="font-semibold">{meta?.author === undefined ? "" : memberName(meta.author.memberId)}</span>
         {time === null ? null : <Meta dot={false}>{time}</Meta>}
-        {delivery === "queued" ? <span className="text-sm text-faint">{t("task.queued")}</span> : null}
+        {meta?.author?.held === true ? (
+          <span className="text-sm text-red" data-testid="message-held">
+            {t("task.held")}
+          </span>
+        ) : delivery === "queued" ? (
+          <span className="text-sm text-faint">{t("task.queued")}</span>
+        ) : null}
         {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
         {meta?.author?.reopen === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="reopen">{t("task.reopenTag")}</span> : null}
         {meta?.author?.replayed === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="replayed">{t("task.replayedTag")}</span> : null}
@@ -205,6 +211,8 @@ const Composer = ({ interrupt, onSend, reopen = false, hint = null }: { readonly
 
 export type TaskThreadProps = {
   readonly taskId: TaskId;
+  /** The task's project, for the budget's held row (F-037). */
+  readonly projectName?: string;
   readonly log: TaskStreamState;
   readonly memberId: MemberId | null;
   readonly memberName: (memberId: string) => string;
@@ -235,7 +243,7 @@ export type TaskThreadProps = {
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, projectName, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -311,8 +319,9 @@ export const TaskThread = ({ taskId, log, memberId, memberName, canSend, canInte
       ...(approvalCard === undefined ? {} : { approvalCard }),
       ...(approvalReceipt === undefined ? {} : { approvalReceipt }),
       ...(questionCard === undefined ? {} : { questionCard }),
+      ...(projectName === undefined ? {} : { projectName }),
     }),
-    [store, memberName, agentName, agentModel, approvalSummary, approvalCard, approvalReceipt, questionCard],
+    [store, memberName, agentName, agentModel, approvalSummary, approvalCard, approvalReceipt, questionCard, projectName],
   );
 
   useEffect(() => {

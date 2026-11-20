@@ -26,6 +26,7 @@ import { safeHref } from "@/task/renderers";
 import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
+import { monthWord } from "./budget-reason";
 import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
@@ -480,6 +481,15 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               {organizationAdmin || admins.length === 0 ? null : <p className="mt-0.5 text-sm text-faint">{adminNames(admins)}</p>}
             </div>
           )}
+          {data.waiting?.kind === "no-runner" && (data.waiting.reason.code === "budget-reached" || data.waiting.reason.code === "model-unpriced") ? (
+            <p className="mt-1.5 text-ui text-muted" data-testid="task-budget-wait">
+              {data.waiting.reason.code === "model-unpriced"
+                ? t("taskPage.waitUnpriced")
+                : data.waiting.reason.scope === "project"
+                  ? t("taskPage.waitBudgetProject", { project: projectName, month: monthWord(now) })
+                  : t("taskPage.waitBudgetOrganization", { month: monthWord(now) })}
+            </p>
+          ) : null}
           {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
           {data.source === "ticket" ? <AgentGot files={data.contextFiles} /> : null}
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
@@ -533,6 +543,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           </div>
         ) : (
         <TaskThread
+          projectName={projectName}
           taskId={taskId}
           log={log.state}
           memberId={me.data?.memberId ?? null}

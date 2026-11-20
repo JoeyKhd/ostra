@@ -354,6 +354,34 @@ const addUsage = (sum: TokenCounts | undefined, add: Omit<TokenCounts, "reasonin
   };
 };
 
+/**
+ * Minor 3 (F-037, ADR 0055): a member's message to an idle session that the budget gate held is
+ * saved queued, then `turn.held` with the origin `message` follows it; it stays held until the
+ * session's next `turn.released` or turn start.
+ */
+export const heldMessages = (events: readonly StoredEvent[]): ReadonlySet<ClientMessageId> => {
+  const held = new Set<ClientMessageId>();
+  const lastQueued = new Map<SessionId, ClientMessageId>();
+  const bySession = new Map<SessionId, ClientMessageId[]>();
+  for (const { sessionId, event } of events) {
+    if (event.kind === "user.message") {
+      if (event.delivery === "queued") lastQueued.set(sessionId, event.clientMessageId);
+    } else if (event.kind === "turn.held") {
+      const id = lastQueued.get(sessionId);
+      if (event.origin === "message" && id !== undefined) {
+        held.add(id);
+        bySession.set(sessionId, [...(bySession.get(sessionId) ?? []), id]);
+        lastQueued.delete(sessionId);
+      }
+    } else if (event.kind === "turn.released" || event.kind === "turn.started") {
+      for (const id of bySession.get(sessionId) ?? []) held.delete(id);
+      bySession.delete(sessionId);
+      lastQueued.delete(sessionId);
+    }
+  }
+  return held;
+};
+
 // ---- the fold ---------------------------------------------------------------------------
 
 /**
@@ -379,6 +407,8 @@ export const foldTaskEvents = (
   // Where each member message stands, the same for every viewer (ticket 19): "queued" until the
   // turn that carries it starts, then "delivered after the turn".
   const deliveries = messageDeliveries(events);
+  // Minor 3 (F-037): the messages whose turn the budget gate holds now.
+  const held = heldMessages(events);
 
   const push = (builder: Builder): Builder => {
     builders.push(builder);
@@ -474,6 +504,7 @@ export const foldTaskEvents = (
               memberId: event.memberId,
               delivery: event.delivery,
               deliveryState: deliveries.get(event.clientMessageId) ?? "delivered",
+              ...(held.has(event.clientMessageId) ? { held: true } : {}),
               ...(event.reopen === true ? { reopen: true } : {}),
               ...(event.replayed === true ? { replayed: true } : {}),
               ...(event.intent === undefined || event.intent === "message" ? {} : { intent: event.intent }),
@@ -816,10 +847,16 @@ export const foldTaskEvents = (
       case "pr.comment_received":
         // Protocol minor 2. No row until the milestone 3 task page (tickets 43, 46, 47) draws them.
         break;
+      case "turn.held": {
+        row(seq, sessionId, { type: "data-held", id: `held:${String(seq)}`, data: { origin: event.origin, scope: event.scope, at: stored.at } });
+        break;
+      }
+      case "turn.released": {
+        row(seq, sessionId, { type: "data-released", id: `released:${String(seq)}`, data: { at: stored.at } });
+        break;
+      }
       case "memory.used":
       case "memory.proposed":
-      case "turn.held":
-      case "turn.released":
       case "review.check_updated":
       case "pr.related_updated":
         // Protocol minor 3. No row until the milestone 4 task page draws them.

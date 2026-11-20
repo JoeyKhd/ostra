@@ -74,6 +74,8 @@ export type TaskContextValue = {
   readonly memberName: (memberId: string) => string;
   /** The agent's display name and its model's, for the agent's message header. */
   readonly agent: { readonly name: string; readonly model: string | null };
+  /** The task's project, for the budget's held row (F-037). */
+  readonly projectName?: string;
   /** What an open approval asks, in the descriptor's words (the needs-you item's summary), or `null`. */
   readonly approvalSummary: (approvalId: string) => string | null;
   /** Milestone 3 (ticket 43): the answerable card of an open approval, or `null` to keep the read-only note. */

@@ -9,6 +9,7 @@ import {
   optionIdSchema,
 } from "@ostra/protocol";
 import type {
+  BudgetScope,
   EffortLevel,
   MemberId,
   MessageDelivery,
@@ -26,6 +27,7 @@ import type {
   ToolOutput,
   TurnId,
   TurnMode,
+  TurnOrigin,
   TypedToolKind,
 } from "@ostra/protocol";
 
@@ -167,6 +169,18 @@ export type SavedData = {
 /** A runaway limit that stopped the session (`session.limit_reached`, F-068). */
 export type LimitData = { readonly limit: "max-duration" | "stall" | "spend-cap"; readonly observed: number };
 
+/**
+ * Minor 3 (F-037, ADR 0055): the budget gate held a turn (`turn.held`), or the held turns went
+ * (`turn.released`). The thread words it with the task's project and the month it was held in.
+ */
+export type HeldData = {
+  readonly origin: TurnOrigin;
+  readonly scope: BudgetScope;
+  /** When it was recorded, in ms since the epoch: the month it names. */
+  readonly at: number;
+};
+export type ReleasedData = { readonly at: number };
+
 /** The ticket's files, written into the workspace for the agent (`ticket.files_ready`). */
 export type TicketFilesData = { readonly paths: readonly string[] };
 
@@ -184,6 +198,8 @@ export type TaskDataParts = {
   "files-outside": FilesOutsideReposData;
   saved: SavedData;
   limit: LimitData;
+  held: HeldData;
+  released: ReleasedData;
   "ticket-files": TicketFilesData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };
@@ -222,6 +238,8 @@ export type TaskMessageMeta = {
     delivery: MessageDelivery;
     /** Where the message stands now, from the log (ticket 19): a queued one reads "delivered after the turn" once its turn starts. Missing on an optimistic message. */
     deliveryState?: MessageDeliveryState;
+    /** Minor 3 (F-037): the budget gate holds the turn this message would start, until a raise releases it. */
+    held?: boolean;
     reopen?: boolean;
     replayed?: boolean;
     /** Milestone 3 (ticket 46): why ostra sent it for the member (diff comments, update branch, a PR comment, fix checks, keep working). */

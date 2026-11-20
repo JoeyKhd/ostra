@@ -118,6 +118,28 @@ describe("spend.month for the Spend page", () => {
     expect(past.budgets.find((row) => row.budgetId === budgetId)).toMatchObject({ warnedAt: Date.parse(`${LAST_MONTH}-20T00:00:00Z`), reachedAt: null });
   });
 
+  it("F-037: a new task the gate keeps queued counts as a queued task of the budget its dispatch note names", async () => {
+    const { a } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    const queuedOf = async (): Promise<{ readonly project: number; readonly organization: number }> => {
+      const view = await admin.spend.month({ month: MONTH });
+      return {
+        project: view.budgets.find((row) => row.scope.kind === "project" && row.scope.projectId === a.openProject.id)?.queuedTasks ?? -1,
+        organization: view.budgets.find((row) => row.scope.kind === "organization")?.queuedTasks ?? -1,
+      };
+    };
+    const before = await queuedOf();
+    const scope = { organizationId: a.organization.id, projectId: a.openProject.id };
+    const atProject = await seedTask(harness, { ...scope, state: "queued" });
+    const atOrganization = await seedTask(harness, { ...scope, state: "queued" });
+    const forRunner = await seedTask(harness, { ...scope, state: "queued" });
+    await harness.test.db.task.update({ where: { id: atProject.taskId }, data: { dispatchWait: { code: "budget-reached", scope: "project" } } });
+    await harness.test.db.task.update({ where: { id: atOrganization.taskId }, data: { dispatchWait: { code: "budget-reached", scope: "organization" } } });
+    // A task waiting for a runner isn't the budget's.
+    await harness.test.db.task.update({ where: { id: forRunner.taskId }, data: { dispatchWait: { code: "no-runner-online" } } });
+    expect(await queuedOf()).toEqual({ project: before.project + 1, organization: before.organization + 1 });
+  });
+
   it("F-037: each model line says whether it's custom, with the catalog's logo for one that isn't", async () => {
     const view = await (await harness.as(harness.fixture.a.admin)).spend.month({ month: MONTH });
     const sonnet = view.byModel.find((line) => line.modelId === priced);

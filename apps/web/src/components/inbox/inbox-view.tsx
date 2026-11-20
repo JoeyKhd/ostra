@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightIcon, ArrowUpIcon, ArrowUpRightIcon, BotIcon, ChevronDownIcon, CircleAlertIcon, InfoIcon, LoaderCircleIcon, PlusIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpIcon, ArrowUpRightIcon, BotIcon, ChevronDownIcon, CircleAlertIcon, InfoIcon, LoaderCircleIcon, PauseIcon, PlusIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +15,7 @@ import type { RepoDetail } from "@/components/projects/repo-checks-words";
 import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
 import { ProfilePicker, useStartProfile } from "@/components/agent-profiles/profile-picker";
 import { POOLS, RunOnPicker, useRunOn } from "@/components/tasks/run-on";
+import { budgetWaitText } from "@/components/tasks/budget-reason";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -204,6 +205,8 @@ export type StartFormProps = {
   readonly onStart: () => void;
   readonly starting: boolean;
   readonly error: string | null;
+  /** F-037: why the task would wait at the budget gate, before Start; it still starts, queued. */
+  readonly budgetWait?: string | null;
 };
 
 /** The selected ticket: its rows, its description, and Start a task (or its active task). */
@@ -294,6 +297,14 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
                 ))}
             </p>
           )}
+          {start.budgetWait === undefined || start.budgetWait === null ? null : (
+            <p id="inbox-budget-wait" role="status" className="mt-2 flex items-start gap-2 text-xs text-muted" data-testid="budget-reason">
+              <PauseIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
+              <span>
+                <span className="text-text">{start.budgetWait}</span> {t("budgetWait.startsQueued")}
+              </span>
+            </p>
+          )}
           <Button
             variant="primary"
             className="mt-3 h-8 w-full"
@@ -359,6 +370,18 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const { chosen, runner, setRunOn } = useRunOn(runners.data);
   // The member's profiles for this project, its default first (F-021).
   const profiles = useStartProfile(projectId);
+  // F-037: the budget gate's reason before Start, for the chosen profile.
+  const check = useQuery(
+    trpc.tasks.startCheck.queryOptions(profiles.options === undefined ? skipToken : { projectId, ...(profiles.chosen === null ? {} : { profileId: profiles.chosen.profileId }) }, { retry: false }),
+  );
+  const budgetWait =
+    check.data?.kind !== "wait" || project.data === undefined
+      ? null
+      : check.data.reason === "budget-reached"
+        ? budgetWaitText({ reason: "budget-reached", scope: check.data.scope, month: check.data.month }, project.data.name)
+        : check.data.reason === "unpriced"
+          ? budgetWaitText({ reason: "unpriced" }, project.data.name)
+          : null;
   // Paged by cursor. `inbox.list`'s input is strict, so the pages are fetched with the plain client
   // rather than tRPC's infinite options, which add a `direction` to the input.
   const client = useTRPCClient();
@@ -449,6 +472,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
           runOn: <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={start.isPending} />,
           starting: start.isPending,
           error: errorText(start.error),
+          budgetWait,
           onStart: () => {
             start.mutate({
               projectId,

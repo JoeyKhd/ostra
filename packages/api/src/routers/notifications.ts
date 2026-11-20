@@ -1,5 +1,17 @@
-import { choosableNotificationKinds, defaultChoice, markNotificationRead, notificationChannels, notificationKinds, saveNotificationPreferences } from "@ostra/domain";
-import { notificationIdSchema } from "@ostra/protocol";
+import {
+  budgetMonthBounds,
+  budgetMonthOf,
+  budgetNoticeIdOfKey,
+  budgetPercent,
+  choosableNotificationKinds,
+  defaultChoice,
+  markNotificationRead,
+  monthSpendInTx,
+  notificationChannels,
+  notificationKinds,
+  saveNotificationPreferences,
+} from "@ostra/domain";
+import { notificationIdSchema, projectIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 import { loadEmailRow, viewEmail } from "../services/email.ts";
@@ -157,6 +169,78 @@ export const notificationsRouter = router({
     const { db, ports } = ctx.deps;
     const result = await markNotificationRead({ db, clock: ports.clock, notices: ports.notices }, ctx.scope, { notificationIds: input.ids });
     return { marked: result.marked };
+  }),
+
+  /**
+   * F-037 (ticket 36): the member's budget notices this month, for the Needs you page and Home. Each
+   * names its budget (a project's, or the organization's) and where its spend stands now. A notice
+   * has no needs-you item, so `list` leaves it out; a project budget's notice shows only while the
+   * member can open the project.
+   */
+  budgetNotices: memberProcedure.query(async ({ ctx }) => {
+    const { db } = ctx.deps;
+    const { organizationId, memberId } = ctx.scope;
+    const now = ctx.deps.ports.clock.now();
+    const month = budgetMonthOf(now);
+    const bounds = budgetMonthBounds(month);
+    const projectIds = new Set((await boardProjectIds(db, ctx.scope, undefined)) ?? []);
+    const rows = await db.notification.findMany({
+      where: {
+        organizationId,
+        memberId,
+        state: "open",
+        kind: { in: ["budget_warning", "budget_reached"] },
+        createdAt: { gte: new Date(bounds.start), lt: new Date(bounds.end) },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 50,
+      select: {
+        id: true,
+        kind: true,
+        readAt: true,
+        createdAt: true,
+        projectId: true,
+        project: { select: { name: true } },
+        deliveries: { select: { idempotencyKey: true }, take: 1 },
+      },
+    });
+    const noticeIds = rows.flatMap((row) => {
+      const key = row.deliveries[0]?.idempotencyKey;
+      const id = key === undefined ? null : budgetNoticeIdOfKey(key);
+      return id === null ? [] : [id];
+    });
+    const notices = await db.budgetNotice.findMany({
+      where: { organizationId, id: { in: noticeIds } },
+      select: { id: true, budget: { select: { monthlyMicroUsd: true, projectId: true } } },
+    });
+    const visible = rows.filter((row) => row.projectId === null || projectIds.has(row.projectId));
+    const out = [];
+    for (const row of visible) {
+      const key = row.deliveries[0]?.idempotencyKey;
+      const noticeId = key === undefined ? null : budgetNoticeIdOfKey(key);
+      const notice = notices.find((one) => one.id === noticeId);
+      const projectId = row.projectId === null ? null : projectIdSchema.parse(row.projectId);
+      const spent =
+        notice === undefined
+          ? null
+          : await monthSpendInTx(db, { organizationId, projectId, month });
+      out.push({
+        notificationId: notificationIdSchema.parse(row.id),
+        threshold: row.kind === "budget_reached" ? ("reached" as const) : ("warn" as const),
+        read: row.readAt !== null,
+        createdAt: row.createdAt.getTime(),
+        scope:
+          projectId === null
+            ? { kind: "organization" as const }
+            : { kind: "project" as const, projectId, name: row.project?.name ?? "" },
+        /** Where the month's spend stands now, in whole percent of the budget; `null` once the budget is gone. */
+        percent:
+          notice === undefined || spent === null
+            ? null
+            : budgetPercent(spent, notice.budget.monthlyMicroUsd),
+      });
+    }
+    return out;
   }),
 
   /** The sidebar's count: the member's open, unread notifications of projects they can open. */

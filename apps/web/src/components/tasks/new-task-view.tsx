@@ -44,6 +44,8 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { BudgetReason } from "./budget-reason";
+import type { BudgetWait } from "./budget-reason";
 import { KeyRow, NoKeyNext, NoKeyReason, ProjectKeys } from "./no-key";
 import type { NoKey } from "./no-key";
 import { POOLS, RunOnPicker, Trigger, useRunOn } from "./run-on";
@@ -53,6 +55,7 @@ type ProjectSummary = RouterOutputs["projects"]["list"][number];
 type Runner = RouterOutputs["runners"]["mine"][number];
 
 const NO_KEY_ID = "new-task-no-key";
+const BUDGET_WAIT_ID = "new-task-budget-wait";
 type TaskSummary = RouterOutputs["tasks"]["list"][number]["tasks"][number];
 
 
@@ -410,6 +413,9 @@ export const NewTaskView = () => {
       ? { model: profile?.modelName ?? check.data.modelName, mono: profile?.modelName === null || profile?.modelName === undefined, projectName: project.name }
       : null;
   const checking = check.isFetching;
+  // F-037: the budget gate's reason; the task still starts, queued (ADR 0055).
+  const budgetWait: BudgetWait | null =
+    check.data?.kind !== "wait" ? null : check.data.reason === "budget-reached" ? { reason: "budget-reached", scope: check.data.scope, month: check.data.month } : check.data.reason === "unpriced" ? { reason: "unpriced" } : null;
   const organizationAdmin = me.data?.organization?.role === "admin";
   // Who can fix a missing key, by name and role only (no-key-for-model.md, open point 3).
   const members = useQuery(trpc.organization.members.queryOptions(undefined, { enabled: noKey !== null && !organizationAdmin }));
@@ -499,7 +505,7 @@ export const NewTaskView = () => {
                 variant={noKey === null ? "primary" : "outline"}
                 disabled={loading || starting || prompt.trim() === "" || blocked || noKey !== null || checking}
                 data-action="start-task"
-                {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : noKey === null ? {} : { "aria-describedby": NO_KEY_ID })}
+                {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : noKey !== null ? { "aria-describedby": NO_KEY_ID } : budgetWait === null ? {} : { "aria-describedby": BUDGET_WAIT_ID })}
               >
                 {starting || checking ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : <ArrowUpIcon aria-hidden />}
                 {starting ? t("newTask.starting") : t("newTask.startTask")}
@@ -510,6 +516,9 @@ export const NewTaskView = () => {
         </form>
         {noKey === null || projectId === undefined ? null : (
           <NoKeyReason id={NO_KEY_ID} noKey={noKey} projectId={projectId} organizationAdmin={organizationAdmin} admins={admins} />
+        )}
+        {budgetWait === null || project === undefined ? null : (
+          <BudgetReason id={BUDGET_WAIT_ID} wait={budgetWait} projectName={project.name} organizationAdmin={organizationAdmin} />
         )}
         {create.error === null ? (
           runner !== null && !runner.isolated ? (

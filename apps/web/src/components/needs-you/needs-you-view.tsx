@@ -7,6 +7,7 @@ import { approvalIdSchema, notificationIdSchema, taskIdSchema } from "@ostra/pro
 import type { ApprovalDecision } from "@ostra/protocol";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
+import { BudgetNoticeRows, useBudgetNotices } from "@/components/spend/budget-notices";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -130,6 +131,17 @@ export const NeedsYouView = () => {
   const plan = useMutation(trpc.plans.answer.mutationOptions());
   const question = useMutation(trpc.questions.answer.mutationOptions());
   const memberId = me.data?.memberId ?? null;
+  // F-037 (ticket 36): the member's budget notices this month, above the task rows.
+  const budgetNotices = useBudgetNotices();
+  const notices = budgetNotices.data ?? [];
+  const markNotices = useMutation(trpc.notifications.markRead.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.notifications.budgetNotices.queryKey() }) }));
+  const unreadNotices = notices.filter((notice) => !notice.read).map((notice) => notice.notificationId).join(",");
+  useEffect(() => {
+    if (tab !== "open" || unreadNotices === "") return undefined;
+    const timer = setTimeout(() => { markNotices.mutate({ ids: unreadNotices.split(",").map((id) => notificationIdSchema.parse(id)) }); }, READ_AFTER_MS);
+    return () => { clearTimeout(timer); };
+    // markNotices' identity changes each render; the unread notices decide.
+  }, [unreadNotices, tab]);
   const [unreadAtLoad, setUnreadAtLoad] = useState<ReadonlySet<string> | null>(null);
 
   const rows = useMemo(() => (open.data?.rows ?? []).map((row) => notificationViewOf(row, memberId)), [open.data, memberId]);
@@ -212,10 +224,13 @@ export const NeedsYouView = () => {
             <p role="alert" className="text-red">{errorText(open.error)}</p>
           ) : open.data === undefined ? (
             <ListSkeleton />
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && notices.length === 0 ? (
             <OpenEmpty />
           ) : (
-            <OpenList rows={rows} now={open.dataUpdatedAt} answers={answers} unreadAtLoad={unreadAtLoad ?? new Set()} />
+            <>
+              <BudgetNoticeRows notices={notices} organizationAdmin={me.data?.organization?.role === "admin"} />
+              {rows.length === 0 ? null : <OpenList rows={rows} now={open.dataUpdatedAt} answers={answers} unreadAtLoad={unreadAtLoad ?? new Set()} />}
+            </>
           )
         ) : (
           <DoneList

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
+import { useBudgetNotices } from "@/components/spend/budget-notices";
 import { buttonVariants } from "@/components/ui/button";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -39,6 +40,7 @@ export const HomeView = () => {
   const me = useQuery(trpc.me.get.queryOptions());
   const setup = useQuery(trpc.setup.status.queryOptions());
   const overview = useQuery({ ...trpc.home.overview.queryOptions(), refetchInterval: REFRESH_MS });
+  const budgetNotices = useBudgetNotices();
   const [now] = useState(() => new Date());
   const router = useRouter();
   const params = useSearchParams();
@@ -90,7 +92,7 @@ export const HomeView = () => {
         </div>
       ) : (
         <>
-          {firstRun ? <SetupChecklist admin={admin} /> : <NeedsYouSection load={load((data) => data.needsYou)} now={at} />}
+          {firstRun ? <SetupChecklist admin={admin} /> : <NeedsYouSection load={load((data) => data.needsYou)} now={at} budget={{ notices: budgetNotices.data ?? [], organizationAdmin: admin }} />}
           <ProjectsSection load={load((data) => data.projects)} admin={admin} now={now} />
           <ActivitySection load={load((data) => data.activity)} now={at} />
         </>

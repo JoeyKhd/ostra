@@ -349,13 +349,13 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "turn.held": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).toContain("data-held");
     },
   },
   "turn.released": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).toContain("data-released");
     },
   },
   "review.check_updated": {
@@ -911,5 +911,44 @@ describe("queued messages (ticket 19)", () => {
     expect(stateOf(before, steered)).toBe("delivered");
     const after = foldTaskEvents([...log, stored(5, { kind: "turn.started", turnId: turnIdSchema.parse("t-2") })], []);
     expect(stateOf(after, queued)).toBe("delivered-after-turn");
+  });
+});
+
+describe("held turns (F-037)", () => {
+  const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e3");
+  const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d3", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
+  const memberId = memberIdSchema.parse("01900000-0000-7000-8000-0000000000b3");
+  const message = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c4");
+  const later = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c5");
+  const budgetId = f["turn.held"].budgetId;
+  const authorOf = (messages: readonly TaskUIMessage[], id: string) => messages.find((one) => one.id === `user:${id}`)?.metadata?.author;
+
+  it("F-037: a message the budget held reads held, with the held row after it, until the release lets its turn start", () => {
+    const log = [
+      stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
+      stored(2, { kind: "turn.ended", turnId: turnIdSchema.parse("t-1"), stopReason: "end_turn" }),
+      stored(3, { kind: "user.message", memberId, clientMessageId: message, text: "Also add a line about tests", delivery: "queued" }),
+      stored(4, { kind: "turn.held", origin: "message", budgetId, scope: "project" }),
+    ];
+    const held = foldTaskEvents(log, []);
+    expect(authorOf(held, message)).toMatchObject({ held: true, deliveryState: "queued" });
+    const row = held.at(-1)?.parts.find((part) => part.type === "data-held");
+    expect(row).toMatchObject({ data: { origin: "message", scope: "project", at: 4000 } });
+
+    const released = foldTaskEvents([...log, stored(5, { kind: "turn.released", budgetId })], []);
+    expect(authorOf(released, message)?.held).toBeUndefined();
+    expect(released.at(-1)?.parts.map((part) => part.type)).toEqual(["data-released"]);
+    const started = foldTaskEvents([...log, stored(5, { kind: "turn.released", budgetId }), stored(6, { kind: "turn.started", turnId: turnIdSchema.parse("t-2") })], []);
+    expect(authorOf(started, message)).toMatchObject({ deliveryState: "delivered-after-turn" });
+  });
+
+  it("F-037: a queued message under a running turn isn't held, and a held dispatch holds no message", () => {
+    const log = [
+      stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
+      stored(2, { kind: "user.message", memberId, clientMessageId: later, text: "Then the docs", delivery: "queued" }),
+      stored(3, { kind: "turn.ended", turnId: turnIdSchema.parse("t-1"), stopReason: "end_turn" }),
+      stored(4, { kind: "turn.held", origin: "dispatch", budgetId, scope: "organization" }),
+    ];
+    expect(authorOf(foldTaskEvents(log, []), later)?.held).toBeUndefined();
   });
 });

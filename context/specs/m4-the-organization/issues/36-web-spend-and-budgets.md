@@ -1,6 +1,6 @@
 # 36: Web: spend and budgets
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: 27, 31
 Features: F-037
@@ -17,8 +17,10 @@ Spec: `../spec.md`, sections 3 (step 6) and 12; target `spend-budgets`
 
 ## Done when
 
-- [ ] Playwright, named `it("F-037: ...")`: an admin sets a project budget below the spend, a new task in it shows the reason before Start, a message to an idle task shows as held, and raising the budget starts both.
-- [ ] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
-- [ ] Committed as `✨ add spend and budgets to the panel`.
+- [x] Playwright, named `it("F-037: ...")`: an admin sets a project budget below the spend, a new task in it shows the reason before Start, a message to an idle task shows as held, and raising the budget starts both.
+- [x] Each screen checked by eye against its target, dark and light, at 1440 px and phone width.
+- [x] Committed as `✨ add spend and budgets to the panel`.
 
 ## Comments
+
+- 2026-11-20, web builder B: Spend (`/organization/spend`, `components/spend/`) to the `spend-budgets` target: the month picker (`?month=`), the total against the organization's budget with its bar, warn tick and overshoot, each project's row with its bar and state, each model's four token kinds, the no-price warning, and the panel's budget form (Waiting group, "After the raise", remove with a confirm) and four-price form; a member gets `AdminOnly`. The budget's states elsewhere: New task and the Inbox show the gate's reason before Start (`tasks.startCheck`; the task still starts, queued); the task page words a task queued by the budget, a held message reads `Held`, and the thread draws the held and released rows (`turn.held`/`turn.released` now fold to `data-held`/`data-released` in `@ostra/task-view`); Models shows the four prices and their source with `Edit price` (the custom model form no longer edits prices: they're set on Spend); the project page's panel shows the month's spend and its budget's share (`spend.project`); Home's and Needs you's rows list the member's budget notices this month through a new `notifications.budgetNotices` (additive). One API fix: `spend.month`'s `queuedTasks` counted only held turns of origin `dispatch`, which a new task's dispatch never writes; it now also counts a queued task whose dispatch note is the budget's. Proof: `apps/web/e2e/14-spend.spec.ts` (core runs in the stack; with no runner connected, "starts both" is the held turn released with its steer handed to the runner's outbox and the waiting task offered again), `budget-notices-panel.test.ts`, a new `spend-page.test.ts` case, `budget-notices.test.tsx` and two fold cases, with break-its in `context/proof/F-037.md`. Checked by eye at 1440 px and 412 px in the dark theme against `spend-budgets.webp` and `spend-budgets-price.webp` (finals in the session's `ui-check/m4-spend-*-final.png`); the panel has no light theme yet, so there is none to check. Commit: see the git log for `✨ add spend and budgets to the panel`.

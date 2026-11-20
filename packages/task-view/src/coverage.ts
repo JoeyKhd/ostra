@@ -62,8 +62,8 @@ export const foldCoverage = {
   // Protocol minor 3: no row until the milestone 4 task page draws them.
   "memory.used": "no row (milestone 4)",
   "memory.proposed": "no row (milestone 4)",
-  "turn.held": "no row (milestone 4)",
-  "turn.released": "no row (milestone 4)",
+  "turn.held": "held row (F-037)",
+  "turn.released": "released row (F-037)",
   "review.check_updated": "no row (milestone 4)",
   "pr.related_updated": "no row (milestone 4)",
   "effort.changed": "effort row",

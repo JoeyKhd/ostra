@@ -1,6 +1,6 @@
 "use client";
 
-import { BellIcon, ChartNoAxesColumnIcon, CheckIcon, ChevronsUpDownIcon, CircleUserRoundIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, ScrollTextIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon, UsersIcon } from "lucide-react";
+import { BellIcon, ChartNoAxesColumnIcon, CheckIcon, ChevronsUpDownIcon, CircleUserRoundIcon, CpuIcon, GitPullRequestIcon, HouseIcon, MailIcon, PlusIcon, HardDriveIcon, ScrollTextIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, TicketIcon, UsersIcon, WalletIcon } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
@@ -133,6 +133,11 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
       <NavLink href="/organization/agent-profiles" icon={<SlidersHorizontalIcon />} onNavigate={onNavigate}>
         {t("shell.agentProfiles")}
       </NavLink>
+      {admin ? (
+        <NavLink href="/organization/spend" icon={<WalletIcon />} onNavigate={onNavigate}>
+          {t("shell.spend")}
+        </NavLink>
+      ) : null}
       <NavLink href="/organization/insights" icon={<ChartNoAxesColumnIcon />} onNavigate={onNavigate}>
         {t("shell.insights")}
       </NavLink>

@@ -70,7 +70,8 @@
     "instance": "Instance",
     "accounts": "Accounts",
     "restrictedProject": "Restricted",
-    "auditLog": "Audit log"
+    "auditLog": "Audit log",
+    "spend": "Spend"
   },
   "signIn": {
     "title": "Sign in",
@@ -484,7 +485,9 @@
       "confirm": "Confirm",
       "saveChoice": "Save choice",
       "kept": "Kept on {key}."
-    }
+    },
+    "priceTitle": "Price per million tokens",
+    "editPrice": "Edit price"
   },
   "github": {
     "title": "GitHub",
@@ -1068,7 +1071,11 @@
     "ticketFiles": "Ticket files ready",
     "reopenTag": "reopened",
     "replayedTag": "replayed",
-    "tookOver": "{name} took over"
+    "tookOver": "{name} took over",
+    "held": "Held",
+    "heldProject": "Held: {project}’s budget for {month} is reached",
+    "heldOrganization": "Held: the organization’s budget for {month} is reached",
+    "released": "Released: the budget has room again, so the held work goes on"
   },
   "taskState": {
     "queued": "Queued",
@@ -1356,7 +1363,10 @@
       "ticketHasTask": "The ticket already has an active task."
     },
     "servicesWait": "Waiting for a runner that can start services. Online now: {runners}.",
-    "servicesWaitNone": "Waiting for a runner that can start services. None is online."
+    "servicesWaitNone": "Waiting for a runner that can start services. None is online.",
+    "waitBudgetProject": "Queued: {project}’s budget for {month} is reached. It starts once an admin raises it, or when the month ends.",
+    "waitBudgetOrganization": "Queued: the organization’s budget for {month} is reached. It starts once an admin raises it, or when the month ends.",
+    "waitUnpriced": "Queued: this task’s model has no price, so the budget can’t count it. It starts once an admin enters its price."
   },
   "linear": {
     "title": "Linear",
@@ -3589,5 +3599,131 @@
       "typeKey": "Type a key",
       "task": "Task"
     }
+  },
+  "spend": {
+    "title": "Spend",
+    "lede": "What agents spent, counted at the key proxy and priced per model. Budgets run by calendar month in UTC: at {warn}% admins are told, and at 100% new tasks and turns wait while running turns finish.",
+    "month": "Month",
+    "thisMonth": "This month, {range}",
+    "of": "of the organization's {amount} budget",
+    "noOrgBudget": "this month · no organization budget",
+    "meta": "{tokens} tokens · resets {date}",
+    "metaPast": "{tokens} tokens",
+    "setBudget": "Set budget",
+    "changeBudget": "Change budget",
+    "projects": "Projects",
+    "models": "Models",
+    "colProject": "Project",
+    "colSpent": "Spent",
+    "colBudget": "Budget",
+    "colUsed": "Used",
+    "colStatus": "Status",
+    "colModel": "Model",
+    "colFresh": "Fresh input",
+    "colOutput": "Output",
+    "colCacheRead": "Cache read",
+    "colCacheWrite": "Cache write",
+    "colTokens": "Tokens",
+    "noBudget": "No budget",
+    "warned": "Warned {date}",
+    "warnedNoDate": "Warned",
+    "reached": "Reached",
+    "reachedOver": "Reached · {amount} over",
+    "reachedOn": "Reached {date}",
+    "overTooltip": "Spent after the budget was reached{on}: the turns that were already running.",
+    "overTooltipOn": " on {date}",
+    "custom": "custom",
+    "noPrice": "No price",
+    "otherProjects": "Other projects",
+    "idleOne": "1 project spent nothing this month.",
+    "idleMany": "{n} projects spent nothing this month.",
+    "warnOne": "{model} has no price, so budgets can't count it.",
+    "warnMany": "{n} models have no price, so budgets can't count them.",
+    "warnTokens": "{tokens} tokens this month aren't in these figures.",
+    "warnTokensPast": "{tokens} tokens in {month} aren't in these figures.",
+    "enterPrice": "Enter its price.",
+    "seeModels": "See the models.",
+    "nothingSpent": "Nothing spent in {month} yet.",
+    "noSpendEver": "Spend shows here once agents run. Prices come from each provider and models.dev; a model with no price is counted in tokens until it has one.",
+    "modelsLink": "Models",
+    "pick": "Pick a project, a model or the organization's budget.",
+    "used": "{share} used",
+    "meterLabel": "{name}: {spent} of {budget}"
+  },
+  "budgets": {
+    "eyebrowProject": "Project budget",
+    "eyebrowOrg": "Organization budget",
+    "statusReached": "Spent {spent} this month. Reached on {date}: new tasks and turns wait.",
+    "statusReachedNoDate": "Spent {spent} this month. Reached: new tasks and turns wait.",
+    "statusWarned": "Spent {spent} this month, {share} of its budget.",
+    "statusUnder": "Spent {spent} this month, {share} of its budget.",
+    "statusNone": "Spent {spent} this month, with no budget. The organization's budget still covers it.",
+    "statusNoneOrg": "Spent {spent} this month, with no budget.",
+    "monthly": "Monthly budget",
+    "placeholder": "No budget",
+    "help": "Each calendar month in UTC. A raise above what's spent lets the held work go, in the order it was held.",
+    "helpOrg": "Each calendar month in UTC. It covers every project's spend, with or without its own budget. A raise above what's spent lets the held work go, in the order it was held.",
+    "belowSpend": "That's below this month's {spent}, so the budget is reached at once and its admins are told.",
+    "waiting": "Waiting on this budget",
+    "heldTurns": "Held turns",
+    "queuedTasks": "Queued tasks",
+    "afterRaise": "After the raise",
+    "stillReached": "Still reached",
+    "setBy": "Set by {name} on {date}",
+    "save": "Save budget",
+    "saving": "Saving…",
+    "remove": "Remove budget",
+    "removeTitle": "Remove {name}'s budget?",
+    "removeBody": "Its held work goes at once, and its spend stops being limited.",
+    "pastMonth": "Budgets change only for this month.",
+    "invalid": "A budget is dollars and cents, up to $1,000,000."
+  },
+  "prices": {
+    "eyebrow": "Model price",
+    "sourceEndpoint": "{provider} · the endpoint lists its price.",
+    "sourceCatalog": "{provider} · the price comes from models.dev.",
+    "sourceAdmin": "{provider} · an admin set this price on {date}.",
+    "sourceNoneLine": "{provider} · neither the endpoint nor models.dev lists a price.",
+    "source": "Price source",
+    "sourceEndpointShort": "Endpoint",
+    "sourceCatalogShort": "models.dev",
+    "sourceAdminShort": "Admin",
+    "sourceNone": "None yet",
+    "unpriced": "Unpriced this month",
+    "unpricedTokens": "{tokens} tokens",
+    "group": "Price per million tokens, in USD",
+    "fresh": "Fresh input",
+    "output": "Output",
+    "cacheRead": "Cache read",
+    "cacheWrite": "Cache write",
+    "help": "Applies from when you save. Spend already counted is never repriced.",
+    "helpTokens": "Applies from when you save. Spend already counted is never repriced, so these {tokens} tokens stay unpriced.",
+    "override": "Override",
+    "save": "Save price",
+    "required": "Fresh input and output need a price.",
+    "invalid": "A price is a number of dollars, up to $1,000,000."
+  },
+  "budgetWait": {
+    "project": "{project}’s budget for {month} is reached.",
+    "organization": "The organization’s budget for {month} is reached.",
+    "unpriced": "This task’s model has no price, so the budget can’t count it.",
+    "startsQueued": "The task starts queued, and goes once an admin raises the budget or the month ends.",
+    "openSpend": "Spend"
+  },
+  "projectSpend": {
+    "title": "This month",
+    "spent": "Spent",
+    "budget": "Budget",
+    "share": "{share} of {budget}",
+    "tokens": "Tokens",
+    "open": "See spend"
+  },
+  "budgetNotice": {
+    "warn": "{project} is at {percent}% of its budget",
+    "warnOrganization": "The organization is at {percent}% of its budget",
+    "reached": "{project} reached its budget",
+    "reachedOrganization": "The organization reached its budget",
+    "open": "Open Spend",
+    "openProject": "Open project"
   }
 }

@@ -7,6 +7,8 @@ import {
   HistoryIcon,
   LayersIcon,
   PaperclipIcon,
+  PauseIcon,
+  PlayIcon,
   SquarePlayIcon,
   CheckIcon,
   CircleDotIcon,
@@ -27,6 +29,7 @@ import type { ReactNode } from "react";
 import { approvalMetadataSchema } from "@ostra/task-view";
 import type { TaskDataPart } from "@ostra/task-view";
 
+import { monthWord } from "@/components/tasks/budget-reason";
 import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
@@ -456,6 +459,16 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           </Line>
         </div>
       );
+    case "data-held":
+      return <HeldRow at={part.data.at} scope={part.data.scope} />;
+    case "data-released":
+      return (
+        <div data-part="released">
+          <Line icon={<PlayIcon />} tone="muted">
+            {t("task.released")}
+          </Line>
+        </div>
+      );
     case "data-ticket-files":
       return (
         <div data-part="ticket-files">
@@ -540,6 +553,19 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
     default:
       return part satisfies never;
   }
+};
+
+/** F-037: "Held: test1's budget for November is reached", the month the gate held the turn in (UTC). */
+const HeldRow = ({ at, scope }: { readonly at: number; readonly scope: "organization" | "project" }) => {
+  const { projectName } = useTaskContext();
+  const month = monthWord(at);
+  return (
+    <div data-part="held" data-scope={scope}>
+      <Line icon={<PauseIcon />} tone="muted">
+        {scope === "project" && projectName !== undefined ? t("task.heldProject", { project: projectName, month }) : t("task.heldOrganization", { month })}
+      </Line>
+    </div>
+  );
 };
 
 export const DataRow = ({ id }: { readonly id: string }) => {
