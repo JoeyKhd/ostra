@@ -290,7 +290,8 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 40px 66px 0;
+  /* The hero spans the same width as the sections under it (the maintainer, 2026-11-20). */
+  padding: 40px 0 0;
   min-height: 278px;
 }
 
