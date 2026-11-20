@@ -31,6 +31,8 @@ const ticket: InboxTicket = {
   assignee: { id: "u1", name: "Sam Rivera" },
   updatedAt: now - 3 * 60_000,
   task: null,
+  subIssues: 0,
+  codeStart: { tasks: 1, overLimit: false },
 };
 
 const source: InboxSource = {

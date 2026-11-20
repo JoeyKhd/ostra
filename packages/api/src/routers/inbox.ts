@@ -1,13 +1,14 @@
-import { parseBoardMapping } from "@ostra/domain";
+import { parseBoardMapping, startMany } from "@ostra/domain";
 import type { BoardMapping } from "@ostra/domain";
 import type { Prisma } from "@ostra/db";
-import { boardIdSchema, connectionIdSchema, memberIdSchema, projectIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
-import type { ProjectId } from "@ostra/protocol";
+import { agentProfileIdSchema, boardIdSchema, bulkStartIdSchema, connectionIdSchema, memberIdSchema, projectIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
+import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type { ApiDeps } from "../trpc/context.ts";
-import { projectProcedure, router } from "../trpc/init.ts";
+import { projectProcedure, router, unwrap } from "../trpc/init.ts";
+import { cacheTree, leavesOf } from "./ticket-tree.ts";
 
 // F-010, F-007, ticket 29: the project's Inbox. It lists the open tickets of the project's boards
 // from the ticket cache, and never calls the tracker: a read costs the database, and the cache's
@@ -45,6 +46,10 @@ const ticketRowSchema = z.object({
   /** Epoch ms of the tracker's last change to the ticket, as cached. */
   updatedAt: z.number().int(),
   task: taskMarkSchema.nullable(),
+  /** F-077: its open sub-issues in the cache; `0` for a ticket without any. */
+  subIssues: z.number().int(),
+  /** What a code start on it starts: one task, or one per leaf of its sub-issues (none over the limit). */
+  codeStart: z.object({ tasks: z.number().int(), overLimit: z.boolean() }),
 });
 type TicketRow = z.infer<typeof ticketRowSchema>;
 
@@ -212,7 +217,48 @@ type TicketRecord = {
   readonly trackerUpdatedAt: Date;
 };
 
-const rowOf = (record: TicketRecord, boards: ReadonlyMap<string, BoardRow>, tasks: ReadonlyMap<string, z.infer<typeof taskMarkSchema>>): TicketRow => {
+type SubIssueMark = Pick<TicketRow, "subIssues" | "codeStart">;
+const NO_SUB_ISSUES: SubIssueMark = { subIssues: 0, codeStart: { tasks: 1, overLimit: false } };
+
+/**
+ * F-077: each ticket's open sub-issues in the cache and what a code start on it starts (its leaves on
+ * the project's boards, by the domain's walk), from the cache only: the Inbox never calls the tracker.
+ */
+const subIssueMarks = async (
+  deps: ApiDeps,
+  organizationId: OrganizationId,
+  projectId: ProjectId,
+  records: readonly { readonly id: string; readonly key: string; readonly connectionId: string; readonly externalId: string }[],
+): Promise<ReadonlyMap<string, SubIssueMark>> => {
+  const marks = new Map<string, SubIssueMark>();
+  if (records.length === 0) return marks;
+  const counts = await deps.db.ticket.groupBy({
+    by: ["connectionId", "parentExternalId"],
+    where: { organizationId, open: true, removedAt: null, parentExternalId: { in: records.map((record) => record.externalId) } },
+    _count: { _all: true },
+  });
+  const parents = records.flatMap((record) => {
+    const count = counts.find((row) => row.connectionId === record.connectionId && row.parentExternalId === record.externalId)?._count._all ?? 0;
+    return count === 0 ? [] : [{ record, count }];
+  });
+  if (parents.length === 0) return marks;
+  const boardIds = (await deps.db.board.findMany({ where: { organizationId, projectId, detachedAt: null }, select: { id: true } })).map((board) => board.id);
+  const { subIssuesDepth: depth, subIssuesMax: max } = deps.settings.team;
+  for (const { record, count } of parents) {
+    const children = await cacheTree(deps.db, { organizationId, boardIds }, record, depth);
+    const leaves = leavesOf(record, children, boardIds, depth, max);
+    const codeStart = leaves.ok ? { tasks: leaves.start.length, overLimit: false } : leaves.reason === "over-limit" ? { tasks: leaves.count, overLimit: true } : { tasks: 1, overLimit: false };
+    marks.set(record.id, { subIssues: count, codeStart });
+  }
+  return marks;
+};
+
+const rowOf = (
+  record: TicketRecord,
+  boards: ReadonlyMap<string, BoardRow>,
+  tasks: ReadonlyMap<string, z.infer<typeof taskMarkSchema>>,
+  marks: ReadonlyMap<string, SubIssueMark> = new Map(),
+): TicketRow => {
   const board = boards.get(record.boardId);
   const labels = z.array(z.string()).safeParse(record.labels);
   return {
@@ -227,6 +273,7 @@ const rowOf = (record: TicketRecord, boards: ReadonlyMap<string, BoardRow>, task
     assignee: record.assigneeName === null ? null : { id: record.assigneeId, name: record.assigneeName },
     updatedAt: record.trackerUpdatedAt.getTime(),
     task: tasks.get(record.id) ?? null,
+    ...(marks.get(record.id) ?? NO_SUB_ISSUES),
   };
 };
 
@@ -276,10 +323,10 @@ export const inboxRouter = router({
       ]);
       const page = records.slice(0, input.limit);
       const last = page.at(-1);
-      const tasks = await tasksOf(ctx.deps, organizationId, page.map((record) => record.id));
+      const [tasks, marks] = await Promise.all([tasksOf(ctx.deps, organizationId, page.map((record) => record.id)), subIssueMarks(ctx.deps, organizationId, input.projectId, page)]);
       const byBoard = new Map(boards.map((board) => [board.id, board] as const));
       return {
-        tickets: page.map((record) => rowOf(record, byBoard, tasks)),
+        tickets: page.map((record) => rowOf(record, byBoard, tasks, marks)),
         nextCursor: records.length > input.limit && last !== undefined ? encodeCursor(last.trackerUpdatedAt, last.id) : null,
         total,
         source,
@@ -319,7 +366,7 @@ export const inboxRouter = router({
       const driver = driverId === null ? null : await db.member.findFirst({ where: { id: driverId, organizationId }, select: { id: true, user: { select: { name: true } } } });
       const byBoard = new Map(boards.map((candidate) => [candidate.id, candidate] as const));
       return {
-        ...rowOf(record, byBoard, tasks),
+        ...rowOf(record, byBoard, tasks, await subIssueMarks(ctx.deps, organizationId, input.projectId, [record])),
         description: record.description,
         parentKey: record.parentExternalId === null ? null : (await db.ticket.findFirst({ where: { organizationId, boardId: record.boardId, externalId: record.parentExternalId }, select: { key: true } }))?.key ?? null,
         imageCount: (record.description?.match(IMAGE_MARKDOWN) ?? []).length,
@@ -357,6 +404,100 @@ export const inboxRouter = router({
         statuses: statuses.flatMap((row) => (row.statusId === null || row.statusName === null ? [] : [{ id: row.statusId, name: row.statusName, category: row.statusCategory }])),
         labels: z.array(z.object({ label: z.string() })).parse(labels).map((row) => row.label),
         assignees: assignees.flatMap((row) => (row.assigneeId === null || row.assigneeName === null ? [] : [{ id: row.assigneeId, name: row.assigneeName }])),
+      };
+    }),
+
+  /**
+   * F-107: the selected tickets started in one action, as one bulk start (ticket 11): at most
+   * `OSTRA_BULK_START_MAX`, each through the one start and its gates in its own job, idempotent by
+   * the request's key. Any member who can open the project; a ticket of another project is refused.
+   */
+  startMany: projectProcedure(
+    "read",
+    z.strictObject({
+      projectId: projectIdSchema,
+      ticketIds: z.array(ticketIdSchema).min(1).max(500),
+      kind: z.enum(["code", "refine"]),
+      agentProfileId: agentProfileIdSchema.nullable(),
+      requestKey: z.string().trim().min(1).max(200),
+    }),
+  )
+    .output(z.object({ bulkStartId: bulkStartIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports, settings } = ctx.deps;
+      const started = unwrap(
+        await startMany({ db, ...ports, bulkStartMax: settings.team.bulkStartMax, publicUrl: settings.publicUrl }, ctx.scope, {
+          projectId: input.projectId,
+          ticketIds: input.ticketIds,
+          taskKind: input.kind,
+          agentProfileId: input.agentProfileId,
+          requestKey: input.requestKey,
+          source: "inbox",
+          automationId: null,
+        }),
+        { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "invalid-input": "BAD_REQUEST", "too-many": "BAD_REQUEST" },
+      );
+      return { bulkStartId: started.bulkStartId };
+    }),
+
+  /**
+   * A bulk start's items and each one's outcome. Each decided item sends the project's change notice
+   * on the tab's one stream (ADR 0035), so the panel reads this again as the outcomes come in.
+   */
+  bulkStart: projectProcedure("read", z.strictObject({ projectId: projectIdSchema, bulkStartId: bulkStartIdSchema }))
+    .output(
+      z.object({
+        id: bulkStartIdSchema,
+        source: z.enum(["inbox", "dry_run"]),
+        kind: z.enum(["refine", "code", "review"]),
+        requested: z.number().int(),
+        createdAt: z.number().int(),
+        /** Every item is decided. */
+        done: z.boolean(),
+        counts: z.object({ pending: z.number().int(), started: z.number().int(), skipped: z.number().int(), failed: z.number().int() }),
+        items: z.array(
+          z.object({
+            ticket: z.object({ id: ticketIdSchema, key: z.string(), title: z.string() }),
+            state: z.enum(["pending", "started", "skipped", "failed"]),
+            /** Why it was skipped or failed, as a code (`has-task`, `has-sub-issues`, `no-repo`, ...). */
+            reason: z.string().nullable(),
+            task: z.object({ id: taskIdSchema, shortId: z.string(), state: taskStateSchema }).nullable(),
+          }),
+        ),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const organizationId: OrganizationId = ctx.scope.organizationId;
+      const bulk = await ctx.deps.db.bulkStart.findFirst({
+        where: { id: input.bulkStartId, organizationId, projectId: input.projectId },
+        include: {
+          items: {
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            include: { ticket: { select: { id: true, key: true, title: true } }, task: { select: { id: true, state: true } } },
+          },
+        },
+      });
+      if (bulk === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No such bulk start in this project" });
+      }
+      const counts = { pending: 0, started: 0, skipped: 0, failed: 0 };
+      for (const item of bulk.items) {
+        counts[item.state] += 1;
+      }
+      return {
+        id: bulkStartIdSchema.parse(bulk.id),
+        source: bulk.source,
+        kind: bulk.taskKind,
+        requested: bulk.requested,
+        createdAt: bulk.createdAt.getTime(),
+        done: counts.pending === 0,
+        counts,
+        items: bulk.items.map((item) => ({
+          ticket: { id: ticketIdSchema.parse(item.ticket.id), key: item.ticket.key, title: item.ticket.title },
+          state: item.state,
+          reason: item.reason,
+          task: item.task === null ? null : { id: taskIdSchema.parse(item.task.id), shortId: shortIdOf(item.task.id), state: item.task.state },
+        })),
       };
     }),
 });

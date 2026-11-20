@@ -22,6 +22,7 @@ import { registryUseRouter } from "./registry-use.ts";
 import { runnersRouter } from "./runners.ts";
 import { streamRouter } from "./stream.ts";
 import { approvalsRouter, tasksRouter } from "./tasks.ts";
+import { ticketsRouter } from "./tickets.ts";
 import { accountRouter } from "./account.ts";
 import { accountsRouter } from "./accounts.ts";
 import { auditRouter } from "./audit.ts";
@@ -57,6 +58,7 @@ export const appRouter = router({
   projects: projectsRouter,
   boards: boardsRouter,
   inbox: inboxRouter,
+  tickets: ticketsRouter,
   automations: automationsRouter,
   environments: environmentsRouter,
   diff: diffRouter,
