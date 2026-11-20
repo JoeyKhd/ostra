@@ -1,16 +1,25 @@
 name: Proof
 
-# The heavier proof: pnpm check:proof (context/proof/) and apps/web's Playwright e2e suite. By hand
-# only (the Actions tab, or `gh workflow run Proof`); the maintainer, 2026-11-19: never on push, never
-# on a schedule. The everyday checks are in ci.yml.
+# The heavier proof: pnpm check:proof (context/proof/), apps/web's Playwright e2e suite, the docs'
+# commands, and milestone 5's live jobs on Linux with Docker, on kind and on macOS (ticket 35, ADR
+# 0061). By hand only (the Actions tab, or `gh workflow run Proof`, `-f jobs=fleet` for the live
+# jobs alone); the maintainer, 2026-11-19: never on push, never on a schedule. The everyday checks
+# are in ci.yml.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Which jobs: all, ledger-and-panel (check:proof, e2e, docs commands) or fleet (the live Docker, kind and macOS jobs)"
+        type: choice
+        default: all
+        options: [all, ledger-and-panel, fleet]
 
 permissions:
   contents: read
 
 jobs:
   proof:
+    if: inputs.jobs != 'fleet'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -27,6 +36,7 @@ jobs:
   # The panel's Playwright suite (apps/web/e2e/): the production build on a throwaway stack, with an
   # embedded Postgres, a fake GitHub, a stub model endpoint, core and a runner on the host executor.
   e2e:
+    if: inputs.jobs != 'fleet'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -90,6 +100,7 @@ jobs:
   # candidate's images are built from this commit, and its compose file is this commit's, so the
   # install guide's download link points at deploy/ (`--release-assets`). No secret.
   docs-commands:
+    if: inputs.jobs != 'fleet'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -118,3 +129,92 @@ jobs:
             docs-commands-stack.log
           retention-days: 14
           if-no-files-found: ignore
+
+  # Milestone 5's live proofs (ticket 35, ADR 0061): each job runs its script in scripts/live/ (the
+  # same steps run on anyone's own machine), with stub models, the fake git upstream and no secret.
+  # Every tool the scripts install is pinned by version and SHA-256, every image by digest. Each step
+  # ends in a RESULT line; a step a hosted runner can't do says why, and its condition stays
+  # `partial`. The logs are checked for anything secret-like before they're uploaded, and ticket 37
+  # keeps them in context/specs/m5-the-fleet/demo/linux/ and demo/macos/ as live evidence.
+  live-docker:
+    if: inputs.jobs != 'ledger-and-panel'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      LIVE_OUT: ${{ github.workspace }}/live-logs/docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run generate
+      - run: bash scripts/live/docker.sh
+      - if: always()
+        run: grep '^RESULT' "$LIVE_OUT/results.txt" >> "$GITHUB_STEP_SUMMARY" || true
+      - id: check
+        if: always()
+        run: bash scripts/live/check-logs.sh "$LIVE_OUT"
+      - if: always() && steps.check.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-docker
+          path: live-logs/docker/
+          retention-days: 30
+
+  live-kind:
+    if: inputs.jobs != 'ledger-and-panel'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      LIVE_OUT: ${{ github.workspace }}/live-logs/kind
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run generate
+      - run: bash scripts/live/kind.sh
+      - if: always()
+        run: grep '^RESULT' "$LIVE_OUT/results.txt" >> "$GITHUB_STEP_SUMMARY" || true
+      - id: check
+        if: always()
+        run: bash scripts/live/check-logs.sh "$LIVE_OUT"
+      - if: always() && steps.check.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-kind
+          path: live-logs/kind/
+          retention-days: 30
+
+  live-macos:
+    if: inputs.jobs != 'ledger-and-panel'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      LIVE_OUT: ${{ github.workspace }}/live-logs/macos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/live/macos.sh
+      - if: always()
+        run: grep '^RESULT' "$LIVE_OUT/results.txt" >> "$GITHUB_STEP_SUMMARY" || true
+      - id: check
+        if: always()
+        run: bash scripts/live/check-logs.sh "$LIVE_OUT"
+      - if: always() && steps.check.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-macos
+          path: live-logs/macos/
+          retention-days: 30
