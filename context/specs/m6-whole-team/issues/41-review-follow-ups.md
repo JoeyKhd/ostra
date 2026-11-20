@@ -38,3 +38,5 @@ Each line is a difference from a build spec that the building ticket didn't reco
 - [ ] **The switch's colour:** the targets disagree (teal in `automations.md`, `--shell` in `review-settings.md`, green in `linear-agent-mode.md`); the app's `Switch` is green. One answer for every screen is the maintainer's.
 
 ## Comments
+
+- 2026-11-20, the follow-ups agent: ticked items are built, each in its own commit with its proof row. Left open: the onboarding agent's other paths, a cap for review reruns on new heads, and the switch's colour (the maintainer's decisions); the minimum interval at each tick, the review screen's two lines and the environment proposal's 7-day diff (not in this pass's list); and the task rounds' `The turn ended without a push.` (it needs the round's turn's end, which `tasks.rounds` doesn't read yet).
