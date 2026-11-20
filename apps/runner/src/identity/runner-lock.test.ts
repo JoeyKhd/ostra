@@ -5,8 +5,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startLockHolder } from "../testing/lock-holder.ts";
 import type { LockHolder } from "../testing/lock-holder.ts";
-import { lockHeldMessage, systemLockProbe, takeRunnerLock } from "./runner-lock.ts";
-import type { LockProbe, LockRecord } from "./runner-lock.ts";
+import { linuxProgramName, lockHeldMessage, systemLockProbe, takeRunnerLock } from "./runner-lock.ts";
+import type { LockProbe, LockRecord, ProcReader } from "./runner-lock.ts";
 import { dataPaths } from "./store.ts";
 
 // One `ostra runner` per data folder on a machine (ADR 0034, amended 2026-11-20): the lock, with
@@ -172,5 +172,25 @@ describe("one runner per data folder", () => {
       await taken.lock.release();
     }
     expect(JSON.parse(await readFile(dataPaths(dataDir).lock, "utf8"))).toEqual(other);
+  });
+});
+
+describe("a Linux pid's program", () => {
+  const procOf = (files: Readonly<Record<string, string>>, links: Readonly<Record<string, string>>): ProcReader => ({
+    readlink: (file) => (file in links ? Promise.resolve(links[file] ?? "") : Promise.reject(new Error(`EACCES ${file}`))),
+    readFile: (file) => (file in files ? Promise.resolve(files[file] ?? "") : Promise.reject(new Error(`ENOENT ${file}`))),
+  });
+
+  it("F-013: is the executable, not the main thread's name (Node 24 calls it MainThread)", async () => {
+    const proc = procOf({ "/proc/42/comm": "MainThread\n", "/proc/42/cmdline": "node\0main.ts\0runner\0" }, { "/proc/42/exe": "/opt/hostedtoolcache/node/24.11.0/x64/bin/node" });
+    expect(await linuxProgramName(42, proc)).toBe("node");
+  });
+
+  it("F-013: falls back to cmdline's first word, then comm, and says nothing when it can't be read", async () => {
+    expect(await linuxProgramName(7, procOf({ "/proc/7/cmdline": "/usr/bin/node\0main.ts\0", "/proc/7/comm": "MainThread\n" }, {}))).toBe("node");
+    expect(await linuxProgramName(7, procOf({ "/proc/7/cmdline": "node (vitest 1)\0" }, {}))).toBe("node");
+    expect(await linuxProgramName(7, procOf({ "/proc/7/comm": "ostra\n" }, {}))).toBe("ostra");
+    expect(await linuxProgramName(7, procOf({}, {}))).toBeNull();
+    expect(await linuxProgramName(7, procOf({}, { "/proc/7/exe": "/usr/bin/python3 (deleted)" }))).toBe("python3");
   });
 });

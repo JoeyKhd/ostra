@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { epochMsSchema } from "@ostra/protocol";
@@ -76,13 +76,45 @@ const execText = (file: string, args: readonly string[]): Promise<string | null>
     });
   });
 
+/** What `linuxProgramName` reads from `/proc`; tests pass their own. */
+export type ProcReader = {
+  readonly readlink: (file: string) => Promise<string>;
+  readonly readFile: (file: string) => Promise<string>;
+};
+
+const procReader: ProcReader = { readlink: (file) => readlink(file), readFile: (file) => readFile(file, "utf8") };
+
+/**
+ * A Linux pid's program: the executable `/proc/<pid>/exe` points at, else `cmdline`'s first word,
+ * else `comm`. Not `comm` first: it holds the main thread's name, which Node 24 sets to
+ * `MainThread`, so a live runner read as "not a runner" and lost its lock (CI run 44665896475).
+ */
+export const linuxProgramName = async (pid: number, proc: ProcReader = procReader): Promise<string | null> => {
+  const base = `/proc/${String(pid)}`;
+  const exe = await proc.readlink(`${base}/exe`).then(
+    (target) => path.posix.basename(target.replace(/ \(deleted\)$/, "")),
+    () => "",
+  );
+  if (exe !== "") {
+    return exe;
+  }
+  const first = await proc.readFile(`${base}/cmdline`).then(
+    (text) => text.split("\0")[0] ?? "",
+    () => "",
+  );
+  if (first !== "") {
+    return path.posix.basename(first.split(" ")[0] ?? first);
+  }
+  return proc.readFile(`${base}/comm`).then(
+    (text) => text.trim() || null,
+    () => null,
+  );
+};
+
 /** The program name of a running pid: `/proc` on Linux, `ps` on macOS, `tasklist` on Windows. */
 const programName = async (pid: number): Promise<string | null> => {
   if (process.platform === "linux") {
-    return readFile(`/proc/${String(pid)}/comm`, "utf8").then(
-      (text) => text.trim(),
-      () => null,
-    );
+    return linuxProgramName(pid);
   }
   if (process.platform === "win32") {
     // `"node.exe","1234","Console","1","45,000 K"`, or a line of words when nothing matches.
