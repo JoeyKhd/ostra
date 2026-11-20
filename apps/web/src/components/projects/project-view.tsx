@@ -56,7 +56,7 @@ const rowGrid =
 const markIcon = "size-[13px] stroke-[1.75]";
 const bandIcon = "size-[15px] stroke-[1.75]";
 
-const Mark = ({ mark }: { readonly mark: TaskMark }) => {
+export const Mark = ({ mark }: { readonly mark: TaskMark }) => {
   switch (mark) {
     case "amber":
       return <Dot tone="amber" />;

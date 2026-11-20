@@ -247,6 +247,26 @@ for (const row of await db.agentProfile.findMany({ where: { organizationId }, se
 for (const row of await db.runnerPool.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
 for (const row of await db.boxSize.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
 
+// Milestone 6 (ticket 31): a prompt schedule, for the automation editor and its history.
+const automation =
+  (await db.automation.findFirst({ where: { organizationId, projectId: project.id, name: data("Weekly dependency update") } })) ??
+  (await db.automation.create({
+    data: {
+      organizationId,
+      projectId: project.id,
+      kind: "schedule",
+      name: data("Weekly dependency update"),
+      taskKind: "code",
+      poolLabels: [],
+      schedule: "0 9 * * 1",
+      timeZone: "Europe/Amsterdam",
+      title: data("Update the dependencies"),
+      prompt: data("Update every dependency to its latest minor version."),
+      nextOccurrenceAt: new Date(Date.now() + 3 * 86_400_000),
+      createdByMemberId: admin.id,
+    },
+  }));
+
 // A pending invitation, for the invitation page a new member opens.
 const invitation = await db.invitation.create({
   data: { id: randomUUID(), organizationId, email: data(`routes-${args.tag}@example.com`), role: "member", expiresAt: new Date(Date.now() + 7 * 86_400_000), inviterId: admin.userId },
@@ -265,6 +285,7 @@ process.stdout.write(
     runnerId: runner.id,
     profileId: profile.id,
     invitationId: invitation.id,
+    automationId: automation.id,
     username,
     memberUsername,
     userData: [...userData],

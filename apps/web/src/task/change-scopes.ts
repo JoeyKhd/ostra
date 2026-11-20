@@ -4,7 +4,7 @@ import type { ChangeEntity } from "@ostra/protocol";
 // over `ChangeEntity`, so a new kind of notice fails the build until the panel says what it refreshes.
 
 /** A top-level tRPC router whose cached queries a notice can invalidate. */
-export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse";
+export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox";
 
 export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
   switch (entity) {
@@ -21,7 +21,8 @@ export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
       return ["agentProfiles"];
     case "project":
     case "environment":
-      return ["projects", "environments", "fleetUse"];
+      // Milestone 6: an automation's change and a bulk start's decided item send the project's notice.
+      return ["projects", "environments", "fleetUse", "automations", "inbox"];
     case "connection":
       return ["github"];
     case "member":

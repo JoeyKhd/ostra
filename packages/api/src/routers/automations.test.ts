@@ -279,6 +279,28 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     const history = await (await member()).automations.history({ automationId: ruleId });
     expect(history.runs.map((run) => run.kind).sort()).toEqual(["start_all", "ticket_match"]);
     expect(history.runs.find((run) => run.kind === "ticket_match")).toMatchObject({ state: "started", ticket: { key: "ENG-101" }, task: { id: started.id }, bulkStartId: pressed.bulkStartId });
+
+    // The list says what the screen's row and panel show: the counts, this hour's starts, the last start's key.
+    const listed = (await (await member()).automations.list({ projectId })).automations.find((row) => row.id === ruleId);
+    expect(listed?.counts).toEqual({ started: 1, skipped: 0, missed: 0, lastHour: 1 });
+    const runs = await harness.test.db.automationRun.findMany({ where: { automationId: ruleId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: { ticket: { select: { key: true } } } });
+    expect(listed?.lastRun?.ticketKey).toBe(runs[0]?.ticket?.key ?? null);
+  });
+
+  it("F-011: Home lists a rule its hourly limit paused to the project's admins only, and resuming it clears the row", async () => {
+    const paused = await (await admin()).automations.create({ projectId, settings: bugRule("Limit reached") });
+    await harness.test.db.automation.update({ where: { id: paused.id }, data: { pausedAt: new Date(), pausedReason: "hourly_limit" } });
+    const byMember = await (await admin()).automations.pause({ automationId: (await (await admin()).automations.create({ projectId, settings: bugRule("Paused by hand") })).id });
+    const forAdmin = await (await projectAdmin()).automations.pausedByLimit();
+    expect(forAdmin.map((row) => row.name)).toEqual(["Limit reached"]);
+    expect(forAdmin[0]).toMatchObject({ id: paused.id, projectId, projectName: "automations" });
+    expect(forAdmin.map((row) => row.id)).not.toContain(byMember.id);
+    // A member who isn't the project's admin, and another organization, see none.
+    expect(await (await member()).automations.pausedByLimit()).toEqual([]);
+    expect(await (await outsider()).automations.pausedByLimit()).toEqual([]);
+    await (await admin()).automations.resume({ automationId: paused.id });
+    expect(await (await projectAdmin()).automations.pausedByLimit()).toEqual([]);
+    expect((await (await member()).automations.list({ projectId })).limits).toEqual({ startsPerHour: 20, bulkStartMax: 50, missedHours: 6, minIntervalMinutes: 60 });
   });
 
   it("F-011, F-106: a delete is soft: the automation leaves the list and starts nothing, and its history and tasks stay", async () => {

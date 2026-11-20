@@ -26,6 +26,7 @@ const worldSchema = z.object({
   runnerId: z.string(),
   profileId: z.string(),
   invitationId: z.string(),
+  automationId: z.string(),
   /** The member who opens the routes, an organization and instance admin (its password: `e2eAdmin.password`). */
   username: z.string(),
   /** A member of the organization who isn't an admin (the same password). */
@@ -79,6 +80,10 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/organization/storage", path: "/organization/storage" },
     { pattern: "/projects/new", path: "/projects/new" },
     { pattern: "/projects/[project-id]", path: `/projects/${p}` },
+    { pattern: "/projects/[project-id]/automations", path: `/projects/${p}/automations` },
+    { pattern: "/projects/[project-id]/automations/new", path: `/projects/${p}/automations/new?starts=schedule` },
+    { pattern: "/projects/[project-id]/automations/[automation-id]", path: `/projects/${p}/automations/${world.automationId}` },
+    { pattern: "/projects/[project-id]/automations/[automation-id]/history", path: `/projects/${p}/automations/${world.automationId}/history` },
     { pattern: "/projects/[project-id]/boards", path: `/projects/${p}/boards` },
     { pattern: "/projects/[project-id]/environment", path: `/projects/${p}/environment` },
     { pattern: "/projects/[project-id]/inbox", path: `/projects/${p}/inbox` },

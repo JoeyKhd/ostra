@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
+import { usePausedRules } from "@/components/automations/paused-rules";
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { useBudgetNotices } from "@/components/spend/budget-notices";
 import { buttonVariants } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export const HomeView = () => {
   const setup = useQuery(trpc.setup.status.queryOptions());
   const overview = useQuery({ ...trpc.home.overview.queryOptions(), refetchInterval: REFRESH_MS });
   const budgetNotices = useBudgetNotices();
+  const pausedRules = usePausedRules();
   const [now] = useState(() => new Date());
   const router = useRouter();
   const params = useSearchParams();
@@ -88,7 +90,7 @@ export const HomeView = () => {
         </div>
       ) : (
         <>
-          {firstRun ? <SetupChecklist admin={admin} /> : <NeedsYouSection load={load((data) => data.needsYou)} now={at} budget={{ notices: budgetNotices.data ?? [], organizationAdmin: admin }} />}
+          {firstRun ? <SetupChecklist admin={admin} /> : <NeedsYouSection load={load((data) => data.needsYou)} now={at} budget={{ notices: budgetNotices.data ?? [], organizationAdmin: admin }} paused={pausedRules.data ?? []} />}
           <ProjectsSection load={load((data) => data.projects)} admin={admin} now={now} />
           <ActivitySection load={load((data) => data.activity)} now={at} />
         </>

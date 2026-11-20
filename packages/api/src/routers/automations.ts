@@ -11,6 +11,7 @@ import {
   parseCron,
   parseIntakeFilter,
   pauseAutomation,
+  requireProjectAccess,
   saveAutomation,
   startMany,
 } from "@ostra/domain";
@@ -116,7 +117,9 @@ const automationSchema = z.object({
   paused: pausedSchema.nullable(),
   nextOccurrenceAt: z.number().int().nullable(),
   lastOccurrenceAt: z.number().int().nullable(),
-  lastRun: z.object({ at: z.number().int(), state: runStateSchema, taskId: taskIdSchema.nullable() }).nullable(),
+  lastRun: z.object({ at: z.number().int(), state: runStateSchema, taskId: taskIdSchema.nullable(), ticketKey: z.string().nullable() }).nullable(),
+  /** Its runs by outcome, and its starts in the last hour (the hourly limit's count). */
+  counts: z.object({ started: z.number().int(), skipped: z.number().int(), missed: z.number().int(), lastHour: z.number().int() }),
   deleted: z.boolean(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
@@ -182,11 +185,12 @@ const viewOf = async (
   organizationId: OrganizationId,
   rows: readonly AutomationRow[],
   runners: readonly (readonly string[])[],
+  now: number,
 ): Promise<AutomationView[]> => {
   const ids = rows.map((row) => row.id);
   const profileIds = rows.flatMap((row) => (row.agentProfileId === null ? [] : [row.agentProfileId]));
   const pauserIds = rows.flatMap((row) => (row.pausedReason === "member" && row.updatedByMemberId !== null ? [row.updatedByMemberId] : []));
-  const [profiles, pausers, lastRuns] = await Promise.all([
+  const [profiles, pausers, lastRuns, byState, lastHour] = await Promise.all([
     db.agentProfile.findMany({ where: { organizationId, id: { in: profileIds } }, select: { id: true, name: true } }),
     db.member.findMany({ where: { organizationId, id: { in: pauserIds } }, select: { id: true, user: { select: { name: true } } } }),
     ids.length === 0
@@ -195,9 +199,18 @@ const viewOf = async (
           where: { organizationId, automationId: { in: ids } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           distinct: ["automationId"],
-          select: { automationId: true, createdAt: true, state: true, taskId: true },
+          select: { automationId: true, createdAt: true, state: true, taskId: true, ticket: { select: { key: true } } },
         }),
+    // A "Start all" press is a run of its own, and so is each ticket it matched: only runs that hold a task count as starts.
+    db.automationRun.groupBy({ by: ["automationId", "state"], where: { organizationId, automationId: { in: ids }, OR: [{ state: { not: "started" } }, { taskId: { not: null } }] }, _count: { _all: true } }),
+    db.automationRun.groupBy({
+      by: ["automationId"],
+      where: { organizationId, automationId: { in: ids }, state: "started", taskId: { not: null }, createdAt: { gte: new Date(now - 3_600_000) } },
+      _count: { _all: true },
+    }),
   ]);
+  const countOf = (automationId: string, state: z.infer<typeof runStateSchema>): number =>
+    byState.find((row) => row.automationId === automationId && row.state === state)?._count._all ?? 0;
   const profileName = new Map(profiles.map((profile) => [profile.id, profile.name] as const));
   const pauserName = new Map(pausers.map((member) => [member.id, member.user.name] as const));
   const lastRun = new Map(lastRuns.map((run) => [run.automationId, run] as const));
@@ -235,7 +248,16 @@ const viewOf = async (
           : { at: row.pausedAt.getTime(), reason: row.pausedReason, byName: row.pausedReason === "member" && row.updatedByMemberId !== null ? (pauserName.get(row.updatedByMemberId) ?? null) : null },
       nextOccurrenceAt: row.nextOccurrenceAt?.getTime() ?? null,
       lastOccurrenceAt: row.lastOccurrenceAt?.getTime() ?? null,
-      lastRun: run === undefined ? null : { at: run.createdAt.getTime(), state: run.state, taskId: run.taskId === null ? null : taskIdSchema.parse(run.taskId) },
+      lastRun:
+        run === undefined
+          ? null
+          : { at: run.createdAt.getTime(), state: run.state, taskId: run.taskId === null ? null : taskIdSchema.parse(run.taskId), ticketKey: run.ticket?.key ?? null },
+      counts: {
+        started: countOf(row.id, "started"),
+        skipped: countOf(row.id, "skipped"),
+        missed: countOf(row.id, "missed"),
+        lastHour: lastHour.find((one) => one.automationId === row.id)?._count._all ?? 0,
+      },
       deleted: row.deletedAt !== null,
       createdAt: row.createdAt.getTime(),
       updatedAt: row.updatedAt.getTime(),
@@ -247,7 +269,7 @@ const viewOf = async (
 const oneView = async (deps: ApiDeps, organizationId: OrganizationId, automationId: AutomationId): Promise<AutomationView> => {
   const row = await deps.db.automation.findFirstOrThrow({ where: { id: automationId, organizationId } });
   const runners = await poolRunnerLabels(deps.db, organizationId, projectIdSchema.parse(row.projectId));
-  const [view] = await viewOf(deps.db, organizationId, [row], runners);
+  const [view] = await viewOf(deps.db, organizationId, [row], runners, deps.ports.clock.now());
   if (view === undefined) {
     throw new TRPCError({ code: "NOT_FOUND", message: "No such automation" });
   }
@@ -403,12 +425,46 @@ const NEXT_OCCURRENCES = 3;
 export const automationsRouter = router({
   /** The project's automations, newest first. Any member who can open the project; `canEdit` for its admins. */
   list: projectProcedure("read", z.strictObject({ projectId: projectIdSchema }))
-    .output(z.object({ canEdit: z.boolean(), automations: z.array(automationSchema) }))
+    .output(
+      z.object({
+        canEdit: z.boolean(),
+        automations: z.array(automationSchema),
+        /** The install's limits the screens name (`OSTRA_INTAKE_STARTS_PER_HOUR`, and the others). */
+        limits: z.object({ startsPerHour: z.number().int(), bulkStartMax: z.number().int(), missedHours: z.number().int(), minIntervalMinutes: z.number().int() }),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.scope.organizationId;
       const rows = await ctx.deps.db.automation.findMany({ where: { organizationId, projectId: input.projectId, deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
       const runners = await poolRunnerLabels(ctx.deps.db, organizationId, input.projectId);
-      return { canEdit: ctx.project.role === "admin", automations: await viewOf(ctx.deps.db, organizationId, rows, runners) };
+      const { team } = ctx.deps.settings;
+      return {
+        canEdit: ctx.project.role === "admin",
+        automations: await viewOf(ctx.deps.db, organizationId, rows, runners, ctx.deps.ports.clock.now()),
+        limits: { startsPerHour: team.intakeStartsPerHour, bulkStartMax: team.bulkStartMax, missedHours: team.scheduleMissedHours, minIntervalMinutes: team.scheduleMinIntervalMinutes },
+      };
+    }),
+
+  /**
+   * Home's needs-you rows for a rule its hourly limit paused (automations.md, "Paused by the limit"):
+   * every such automation in a project the member is an admin of. Resuming it clears the row.
+   */
+  pausedByLimit: memberProcedure
+    .output(z.array(z.object({ id: automationIdSchema, name: z.string(), projectId: projectIdSchema, projectName: z.string(), pausedAt: z.number().int(), startsPerHour: z.number().int() })))
+    .query(async ({ ctx }) => {
+      const rows = await ctx.deps.db.automation.findMany({
+        where: { organizationId: ctx.scope.organizationId, pausedReason: "hourly_limit", pausedAt: { not: null }, deletedAt: null },
+        orderBy: [{ pausedAt: "desc" }, { id: "desc" }],
+        take: 50,
+        select: { id: true, name: true, pausedAt: true, project: { select: { id: true, name: true, access: true } } },
+      });
+      return rows.flatMap((row) => {
+        const projectId = projectIdSchema.parse(row.project.id);
+        const admin = requireProjectAccess(ctx.scope, { id: projectId, organizationId: ctx.scope.organizationId, access: row.project.access }, "admin").ok;
+        return admin && row.pausedAt !== null
+          ? [{ id: automationIdSchema.parse(row.id), name: row.name, projectId, projectName: row.project.name, pausedAt: row.pausedAt.getTime(), startsPerHour: ctx.deps.settings.team.intakeStartsPerHour }]
+          : [];
+      });
     }),
 
   /** One automation, for the editor: read-only to a member, editable by a project admin. */

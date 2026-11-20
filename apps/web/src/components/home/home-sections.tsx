@@ -16,6 +16,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { PausedRuleRows } from "@/components/automations/paused-rules";
+import type { PausedRule } from "@/components/automations/paused-rules";
 import { Section } from "@/components/shell/page-frame";
 import { BudgetNoticeRows } from "@/components/spend/budget-notices";
 import type { BudgetNotice } from "@/components/spend/budget-notices";
@@ -112,16 +114,18 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
 };
 
 /** Needs you (home.md): first, amber, at most five rows, newest first; never gone, so the page doesn't jump. */
-export const NeedsYouSection = ({ load, now, budget }: {
+export const NeedsYouSection = ({ load, now, budget, paused = [] }: {
   readonly load: Load<Overview["needsYou"]>;
   readonly now: number;
   /** F-037: the member's budget notices this month, above the task rows. */
   readonly budget?: { readonly notices: readonly BudgetNotice[]; readonly organizationAdmin: boolean };
+  /** F-011: the rules their hourly limit paused, in projects the member is an admin of. */
+  readonly paused?: readonly PausedRule[];
 }) => {
   const notices = budget?.notices ?? [];
-  const empty = load.kind === "ready" && load.data.total === 0 && notices.length === 0;
+  const empty = load.kind === "ready" && load.data.total === 0 && notices.length === 0 && paused.length === 0;
   return (
-    <Section title={t("home.needsYou.title")} tone={empty ? "grey" : "amber"} {...(load.kind === "ready" ? { count: load.data.total + notices.length } : {})}>
+    <Section title={t("home.needsYou.title")} tone={empty ? "grey" : "amber"} {...(load.kind === "ready" ? { count: load.data.total + notices.length + paused.length } : {})}>
       {load.kind === "loading" ? (
         <SkeletonRows />
       ) : load.kind === "error" ? (
@@ -131,6 +135,7 @@ export const NeedsYouSection = ({ load, now, budget }: {
       ) : (
         <>
           <BudgetNoticeRows notices={notices} organizationAdmin={budget?.organizationAdmin ?? false} />
+          <PausedRuleRows rules={paused} />
           {load.data.rows.length === 0 ? null : (
             <ul className="rows" data-testid="needs-you">
               {load.data.rows.map((row) => (
