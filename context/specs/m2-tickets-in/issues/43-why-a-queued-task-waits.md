@@ -1,6 +1,6 @@
 # 43: Say why a queued task waits
 
-Status: ready-for-agent
+Status: done
 Builder: api, web; core for the reason's shape
 Blocked by: none
 Features: F-014, F-067, F-069
@@ -33,3 +33,4 @@ Settled as Q132 on 2026-11-19 (`context/open-questions.md`, Settled). A task sta
   - **The read:** `waitingFor(task, lease)` in the domain, used by `tasks.get` and `tasks.list`: `{ kind: "offered", runner: { id, name }, since }`, `{ kind: "no-runner", reason }` or `null`. No procedure returns `dispatchNote`.
   - **Panel copy to add with the line:** one key per code, with `{until}` and `{cap}`, and the offer's "Offered to {runner}, waiting for it to accept".
   - Tests: `apps/core/src/dispatch/waiting.test.ts` (each reason stored by its real path, the offer timeout included) and `packages/api/src/routers/tasks-waiting.test.ts` (each returned from `get` and the list, offered/accepted/declined, null, another organization, no sentence). They're titled `F-014`, whose row carries Q132; no feature's "done when" has a sentence for this yet, so there is no proof row.
+- 2026-11-20, audit: **done**; every box held already, only the status was never set. The panel's line, which waited for an amended target, came with milestone 5: `e263b979` (`✨ add the registry and the waiting line`) reads `tasks.get`'s `waiting` into one line under a queued task's state (`apps/web/src/components/tasks/task-waiting.tsx`, `task-waiting-words.ts`, every sentence under `waitLine` in `apps/web/messages/en.json`, `Offered to {runner}; waiting for it to accept.` among them), tested in `task-waiting-words.test.ts` and in Playwright by `apps/web/e2e/16-registry-waiting.spec.ts` > "F-067, F-069: a queued task's page says why it waits, …". Re-run today: `apps/core/src/dispatch/waiting.test.ts` (5) and `packages/api/src/routers/tasks-waiting.test.ts` pass.

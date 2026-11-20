@@ -1,6 +1,6 @@
 # 46: A project's branch names are unique in the database
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 05 (so this migration follows milestone 2's)
 Features: F-016
@@ -32,3 +32,4 @@ Settled as Q136, item 10, on 2026-11-19 (`context/open-questions.md`, Settled). 
   - **The create:** `claimBranchNameInTx` (`packages/domain/src/use-cases/create-prompt-task.ts`) sets the name under a savepoint, and on a refusal by that index (SQLSTATE 23505 naming it) rolls back to the savepoint and tries 12, then 16 hex digits (`BRANCH_ID_DIGITS`), in the caller's transaction. `startTicketTask` (ticket 29) isn't written yet: it calls `claimBranchNameInTx` the same way.
   - Test seeds that wrote one fixed branch name for every task (`seedTask` in `packages/api/src/testing/world.ts`, `newTask` in `packages/db/src/schema.test.ts`) now write a random 8-digit part, as a real task's ID gives.
   - Tests: `packages/api/src/routers/branch-names.test.ts`, `packages/db/src/schema.test.ts` and `packages/db/src/migrations.test.ts` (an empty database; one migrated to milestone 1's schema with the demo's rows, then the rest; one with a shared branch). Proof: F-016's third row, `partial` (the box and the working tree wait for F-017).
+- 2026-11-20, audit: **done**; every box held already, only the status was never set. What the comment left for later is in too: the ticket start shares the prompt start's body, `packages/domain/src/starts/start-task-body.ts`, which names every task's branch through `claimBranchNameInTx` (a ticket's with `ticketBranchWith(key)`), and so does `apps/core/src/starts/outside.ts`; milestone 3's fresh branch after a merge (`packages/domain/src/use-cases/fresh-branch.ts`, `freshBranchesInTx`) skips every name another task of the project holds. Re-run today: `packages/api/src/routers/branch-names.test.ts` passes.
