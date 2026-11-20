@@ -72,7 +72,16 @@ export const step6 = async (d: Demo): Promise<void> => {
   await rows.first().waitFor({ timeout: 30_000 });
   const order = (await rows.allInnerTexts()).map((text) => text.replaceAll(/\s+/g, " "));
   const titles = order.map((text) => (text.includes("Urgent fix") ? "Urgent" : text.includes("Low tidy-up") ? "Low" : (/Queue prompt (\d)/.exec(text)?.[1] ?? "?")));
-  d.check(6, "the queue is the Urgent ticket, then the prompts in order, then the Low ticket", titles.join(",") === "Urgent,3,4,5,Low", titles.join(" → "));
+  // The step's own tasks, in their order. Other tasks can share the queue: since milestone 6 a code
+  // task's PR starts an AI review task in its project (step 2's did), queued by the same rule.
+  const own = titles.filter((title) => title !== "?");
+  const others = titles.length - own.length;
+  d.check(
+    6,
+    "the queue is the Urgent ticket, then the prompts in order, then the Low ticket",
+    own.join(",") === "Urgent,3,4,5,Low",
+    `${own.join(" → ")}${others === 0 ? "" : ` (the whole queue, with ${String(others)} other: ${titles.join(" → ")})`}`,
+  );
   await d.shot(page, "06-pool-queue");
   await page.goto(`/tasks/${prompts[3] ?? ""}`);
   const waitLine = page.getByTestId("task-wait-line");

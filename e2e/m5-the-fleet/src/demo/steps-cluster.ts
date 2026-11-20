@@ -258,7 +258,11 @@ export const step14 = async (d: Demo): Promise<void> => {
   await mkdir(path.join(d.settings.screenshotDir, "helm"), { recursive: true });
   await writeFile(path.join(d.settings.screenshotDir, "helm", "check-helm.txt"), masked);
   const vitest = path.join(repoRoot, "node_modules", "vitest", "vitest.mjs");
-  const egress = await run(process.execPath, [vitest, "run", "--reporter=dot", "-t", "F-116"], path.join(repoRoot, "packages", "adapters", "adapter-executor-kubernetes"));
+  // Only the files that hold F-116's tests, one at a time: beside the demo's stack, seven files in
+  // parallel failed to load in the 2026-11-20 run from a fresh clone. The whole output is kept.
+  const egressFiles = ["src/egress-baseline.test.ts", "src/services-egress.test.ts", "src/snapshots.test.ts"];
+  const egress = await run(process.execPath, [vitest, "run", "--reporter=dot", "--maxWorkers=1", "-t", "F-116", ...egressFiles], path.join(repoRoot, "packages", "adapters", "adapter-executor-kubernetes"));
+  await writeFile(path.join(d.settings.stateDir, "step14-egress.log"), egress.output);
   d.check(14, "the docker rules and the chart's NetworkPolicy match the baseline's list (F-116's tests)", egress.code === 0, egress.output.trim().split("\n").filter((line) => /Tests|passed|failed/.test(line)).slice(-2).join(" "));
 };
 
