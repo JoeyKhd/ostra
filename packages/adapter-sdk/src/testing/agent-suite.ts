@@ -588,6 +588,54 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       expect(textOf(events)).not.toContain(probed.finalAnswer);
     }, 180_000);
 
+    it("F-138: a subagent's start, its state, its calls and its answer are named as its own, with subagents background", async (context) => {
+      const probed = probe(context, "backgroundSubagent");
+      if (probed === undefined) {
+        return;
+      }
+      if (subject().adapter.capabilities.subagents !== "background") {
+        context.skip();
+        return;
+      }
+      const { events } = await runTurn(probed.prompt, {}, 7);
+      // Its start names the main agent's call that started it, what it is and what it was asked.
+      const started = events.flatMap((event) => (event.kind === "subagent.started" ? [event] : []));
+      expect(started).toHaveLength(1);
+      const start = started[0];
+      if (start === undefined) {
+        return;
+      }
+      expect(start).toMatchObject({ depth: 1 });
+      expect(start.parentSubagentId).toBeUndefined();
+      expect(start.type).not.toBe("");
+      expect(start.prompt).not.toBe("");
+      const starter = events.flatMap((event) => (event.kind === "tool.called" && event.toolCallId === start.toolCallId ? [event] : []));
+      expect(starter, "the call that started it is the main agent's").toHaveLength(1);
+      expect(starter[0]?.subagentId).toBeUndefined();
+      // Its state, to the end; its calls and its answer, as its own; the main agent's words, as its.
+      const states = events.flatMap((event) => (event.kind === "subagent.status" && event.subagentId === start.subagentId ? [event.status] : []));
+      expect(states.at(-1)).toBe("completed");
+      const answers = events.flatMap((event) => (event.kind === "agent.message" ? [event] : []));
+      expect(answers.find((event) => event.text.includes(probed.childAnswer))?.subagentId).toBe(start.subagentId);
+      expect(answers.filter((event) => event.text.includes(probed.launched) || event.text.includes(probed.finalAnswer)).every((event) => event.subagentId === undefined)).toBe(true);
+      const theirs = events.filter((event) => event.kind === "tool.called" && event.subagentId === start.subagentId);
+      expect(theirs.length, "the subagent's own calls").toBeGreaterThanOrEqual(1);
+    }, 180_000);
+
+    it("F-138: an agent without background subagents names no subagent: every call and message is its own", async (context) => {
+      const probed = probe(context, "backgroundSubagent");
+      if (probed === undefined) {
+        return;
+      }
+      if (subject().adapter.capabilities.subagents !== "none") {
+        context.skip();
+        return;
+      }
+      const { events } = await runTurn(probed.prompt, {}, 7);
+      expect(events.some((event) => event.kind === "subagent.started" || event.kind === "subagent.status")).toBe(false);
+      expect(events.some((event) => "subagentId" in event)).toBe(false);
+    }, 180_000);
+
     it("F-025: a cancel while a subagent runs stops it with the turn, in under 5 s, and nothing of theirs comes after", async (context) => {
       const probed = probe(context, "backgroundSubagent");
       if (probed === undefined) {

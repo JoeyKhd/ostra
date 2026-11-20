@@ -217,8 +217,28 @@ export const fakeScripts = [
    * which then says `the final answer, after the subagent`, with no prompt in flight.
    */
   "subagent-bg",
+  /**
+   * F-138: three subagents, one nested, within the turn, as OpenCode plays them with
+   * `experimental.subagent_depth` 2 (`research/opencode-subagents.md`, run F): `explore` "Find the
+   * version source" reads and searches, and answers; `general` "Write version row test" reads,
+   * starts its own `explore` "Find test helpers" (which searches and answers), edits, and answers.
+   * Each child's updates and states come as `opencode/session/child_update` to a client that asked,
+   * and projected on the session with their `_meta` to one that didn't. Args: `fail` (the general
+   * one fails with an error), `ask` (the general one's command asks for an approval, naming it).
+   */
+  "subagent-tree",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
+
+/** F-138: the three subagents `[[fake:subagent-tree]]` plays, by their place in the tree. */
+export const FAKE_SUBAGENT_TREE = {
+  explore: { type: "explore", description: "Find the version source", prompt: "Find where the app version is read at build time.", answer: "The version comes from package.json, read in src/lib/build-info.ts." },
+  general: { type: "general", description: "Write version row test", prompt: "Add a test for the version row in src/settings/version-row.test.tsx. Run pnpm test settings and report what fails.", answer: "Added the version row test; it passes." },
+  nested: { type: "explore", description: "Find test helpers", prompt: "Find the render helpers the settings tests use.", answer: "renderWithProviders, in test/render.tsx." },
+  error: "the model endpoint returned 500",
+  command: "pnpm test settings",
+  mainAnswer: "The subagents are done: the version row has a test.",
+} as const;
 
 /** A turn's own usage, as ACP's prompt answer carries it (milestone 7, ticket 03). */
 export type FakeTurnUsage = { inputTokens: number; outputTokens: number; totalTokens: number; cachedReadTokens: number };
@@ -833,6 +853,108 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         session.waking = false;
       }
     })();
+    return "end_turn";
+  };
+
+  /** F-138: `[[fake:subagent-tree]]` (`fakeScripts`, `FAKE_SUBAGENT_TREE`). */
+  const subagentTree = async (io: Play, args: string): Promise<acp.StopReason> => {
+    const { session, update, say } = io;
+    const client = io.ctx.client;
+    const flags = new Set(args.split(/\s+/));
+    const tree = FAKE_SUBAGENT_TREE;
+    counter += 1;
+    type Child = { readonly id: string; readonly parent: string; readonly depth: number; readonly title: string };
+    const explore: Child = { id: `fake-child-${String(counter)}-explore`, parent: session.id, depth: 1, title: tree.explore.description };
+    const general: Child = { id: `fake-child-${String(counter)}-general`, parent: session.id, depth: 1, title: tree.general.description };
+    const nested: Child = { id: `fake-child-${String(counter)}-nested`, parent: general.id, depth: 2, title: tree.nested.description };
+    const metaOf = (child: Child): Record<string, unknown> => ({ "opencode/child-session": { id: child.id, parentID: child.parent, depth: child.depth, title: child.title } });
+    const envelope = (child: Child): Record<string, unknown> => ({
+      rootSessionId: session.id,
+      childSessionId: child.id,
+      parentSessionId: child.parent,
+      depth: child.depth,
+      title: child.title,
+    });
+    /** A child's update: its own notification to a client that asked, else on the session with its `_meta`, as OpenCode projects it. */
+    const childSays = async (child: Child, body: Record<string, unknown>): Promise<void> => {
+      const withMeta = { ...body, _meta: metaOf(child) };
+      if (childUpdates) {
+        await client.notify<Record<string, unknown>>(FAKE_CHILD_UPDATE_METHOD, { ...envelope(child), type: "update", update: withMeta }).catch(() => undefined);
+      } else {
+        await update(withMeta);
+      }
+    };
+    /** A child's state: only to a client that asked (OpenCode sends none otherwise). */
+    const childState = async (child: Child, status: string, error?: Record<string, unknown>): Promise<void> => {
+      if (childUpdates) {
+        await client.notify<Record<string, unknown>>(FAKE_CHILD_UPDATE_METHOD, { ...envelope(child), type: "status", status, ...(error === undefined ? {} : { error }) }).catch(() => undefined);
+      }
+    };
+    /** The `subagent` call, of the main agent (`owner` null) or of a child: it ends at once, naming the child's session. */
+    const start = async (callId: string, owner: Child | null, child: Child, input: { readonly type: string; readonly description: string; readonly prompt: string }): Promise<void> => {
+      const send = owner === null ? update : (body: Record<string, unknown>) => childSays(owner, body);
+      const id = owner === null ? callId : `${owner.id}:${callId}`;
+      await send({ sessionUpdate: "tool_call", toolCallId: id, title: owner === null ? "subagent" : `${owner.title}: subagent`, kind: "think", status: "pending" });
+      await send({ sessionUpdate: "tool_call_update", toolCallId: id, status: "in_progress", rawInput: { agent: input.type, description: input.description, prompt: input.prompt } });
+      await childState(child, "created");
+      await send({ sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", rawOutput: { metadata: { sessionID: child.id, status: "running", truncated: false } } });
+      await childState(child, "running");
+    };
+    let calls = 0;
+    const tool = async (child: Child, kind: string, title: string, rawInput: Record<string, unknown>, content: readonly Record<string, unknown>[] = []): Promise<void> => {
+      calls += 1;
+      const id = `${child.id}:call-${String(calls)}`;
+      await childSays(child, { sessionUpdate: "tool_call", toolCallId: id, title: `${child.title}: ${title}`, kind, status: "pending", rawInput });
+      await childSays(child, { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", ...(content.length === 0 ? {} : { content }) });
+    };
+    const answer = async (child: Child, text: string): Promise<void> => {
+      await childSays(child, { sessionUpdate: "agent_message_chunk", content: { type: "text", text } });
+    };
+
+    await say("I'll have subagents find the version source and write the test, then add the row.");
+    await start("subagent-explore", null, explore, tree.explore);
+    await start("subagent-general", null, general, tree.general);
+    await tool(explore, "read", "read", { path: "src/settings/page.tsx" }, [{ type: "content", content: { type: "text", text: "export const Page = () => null;" } }]);
+    await tool(explore, "search", "grep", { pattern: "version" });
+    await answer(explore, tree.explore.answer);
+    await childState(explore, "completed");
+    await tool(general, "read", "read", { path: "test/render.tsx" }, [{ type: "content", content: { type: "text", text: "export const renderWithProviders = () => null;" } }]);
+    await start("subagent-nested", general, nested, tree.nested);
+    await tool(nested, "search", "grep", { pattern: "renderWithProviders" });
+    await answer(nested, tree.nested.answer);
+    await childState(nested, "completed");
+    if (flags.has("ask")) {
+      calls += 1;
+      const id = `${general.id}:call-${String(calls)}`;
+      const rawInput = { command: tree.command };
+      await childSays(general, { sessionUpdate: "tool_call", toolCallId: id, title: `${general.title}: shell`, kind: "execute", status: "pending", rawInput });
+      const asked = await client.request(acp.methods.client.session.requestPermission, {
+        sessionId: session.id,
+        toolCall: { toolCallId: id, title: tree.command, kind: "execute", status: "pending", rawInput, _meta: metaOf(general) },
+        options: [
+          { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+          { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+        ],
+      });
+      const read = permissionAnswerSchema.safeParse(asked);
+      const allowed = read.success && read.data.outcome.outcome === "selected" && (read.data.outcome.optionId ?? "").startsWith("allow");
+      await childSays(
+        general,
+        allowed
+          ? { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", content: [{ type: "content", content: { type: "text", text: "1 passed" } }] }
+          : { sessionUpdate: "tool_call_update", toolCallId: id, status: "failed", content: [{ type: "content", content: { type: "text", text: "rejected" } }] },
+      );
+    }
+    if (flags.has("fail")) {
+      await childState(general, "failed", { name: "APIError", message: tree.error });
+    } else {
+      await tool(general, "edit", "edit", { filePath: "src/settings/version-row.test.tsx" }, [
+        { type: "diff", path: "src/settings/version-row.test.tsx", oldText: null, newText: "it('shows the version', () => {});" },
+      ]);
+      await answer(general, tree.general.answer);
+      await childState(general, "completed");
+    }
+    await say(tree.mainAnswer);
     return "end_turn";
   };
 
@@ -1459,6 +1581,9 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
 
       case "subagent-bg":
         return subagentInBackground(io, args);
+
+      case "subagent-tree":
+        return subagentTree(io, args);
 
       case "content":
         await update({

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { optionIdSchema, sessionIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
+import { optionIdSchema, sessionIdSchema, subagentIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -306,5 +306,73 @@ describe("approval options", () => {
       ["reject-once", "deny"],
       ["reject-always", "deny"],
     ]);
+  });
+});
+
+// F-138: a subagent's updates, as the driver names them (`MapContext.subagent`).
+describe("the ACP mapping of subagents (F-138)", () => {
+  const child = { id: subagentIdSchema.parse("ses_child"), parentId: null, depth: 1 } as const;
+  const grandchild = { id: subagentIdSchema.parse("ses_grandchild"), parentId: subagentIdSchema.parse("ses_child"), depth: 2 } as const;
+  const main: MapContext = { ...context(), reportsSubagents: true };
+  const of = (subagent: typeof child | typeof grandchild): MapContext => ({ ...main, subagent });
+  const startCall = (id: string, input: Record<string, unknown>, sessionID: string): readonly AcpUpdate[] => [
+    { sessionUpdate: "tool_call", toolCallId: id, title: "subagent", kind: "think", status: "pending" },
+    { sessionUpdate: "tool_call_update", toolCallId: id, status: "in_progress", rawInput: input },
+    { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", rawOutput: { metadata: { sessionID, status: "running" } } },
+  ];
+
+  it("F-138: a call that starts a subagent is followed by subagent.started, with the main agent as its parent", () => {
+    const mapper = createAcpMapper();
+    const events = startCall("call-sub", { agent: "explore", description: "Find the version source", prompt: "Find it." }, "ses_child").flatMap((update) => mapper.map(update, main));
+    expect(events.map((event) => event.kind)).toEqual(["tool.called", "tool.completed", "subagent.started"]);
+    expect(events.at(-1)).toEqual({ kind: "subagent.started", toolCallId: "call-sub", subagentId: "ses_child", depth: 1, type: "explore", description: "Find the version source", prompt: "Find it." });
+  });
+
+  it("F-138: a subagent's own subagent names its parent and its depth", () => {
+    const mapper = createAcpMapper();
+    const events = startCall("ses_child:call-sub", { agent: "explore", description: "Find test helpers", prompt: "Find them." }, "ses_grandchild").flatMap((update) => mapper.map(update, of(child)));
+    expect(events.at(0)).toMatchObject({ kind: "tool.called", subagentId: "ses_child" });
+    expect(events.at(-1)).toMatchObject({ kind: "subagent.started", subagentId: "ses_grandchild", parentSubagentId: "ses_child", depth: 2 });
+  });
+
+  it("F-138: without the capability, the same call is the agent's own, flat: no subagent.started", () => {
+    const mapper = createAcpMapper();
+    const events = startCall("call-sub", { agent: "explore", description: "x", prompt: "y" }, "ses_child").flatMap((update) => mapper.map(update, context()));
+    expect(events.map((event) => event.kind)).toEqual(["tool.called", "tool.completed"]);
+  });
+
+  it("F-138: each subagent's words are its own segment, never streamed, and never cut by the main agent's updates", () => {
+    const live: LiveTextDelta[] = [];
+    const mapper = createAcpMapper({ onLiveText: (delta) => live.push(delta) });
+    const events = [
+      ...mapper.map(text("agent_message_chunk", "Main starts. "), main),
+      ...mapper.map(text("agent_message_chunk", "Child says "), of(child)),
+      ...mapper.map({ sessionUpdate: "tool_call", toolCallId: "main-read", title: "read", kind: "read", status: "pending", locations: [{ path: "README.md" }] }, main),
+      ...mapper.map(text("agent_message_chunk", "its answer."), of(child)),
+      ...mapper.map(text("agent_message_chunk", "Grandchild answers."), of(grandchild)),
+      ...mapper.subagentStatus({ subagent: child, status: "completed" }, main),
+      ...mapper.finishTurn(main),
+    ];
+    const said = events.flatMap((event) => (event.kind === "agent.message" ? [[event.text, event.subagentId ?? null]] : []));
+    expect(said).toEqual([
+      ["Main starts. ", null],
+      ["Child says its answer.", "ses_child"],
+      ["Grandchild answers.", "ses_grandchild"],
+    ]);
+    // The child's answer lands before its state.
+    expect(events.findIndex((event) => event.kind === "subagent.status")).toBeGreaterThan(events.findIndex((event) => event.kind === "agent.message" && event.subagentId === "ses_child"));
+    expect(live.map((delta) => delta.text)).toEqual(["Main starts. "]);
+  });
+
+  it("F-138: a subagent's plan is its own, and its mode, usage and compaction aren't the session's", () => {
+    const mapper = createAcpMapper();
+    const events = [
+      ...mapper.map({ sessionUpdate: "plan", entries: [{ content: "Look", priority: "high", status: "pending" }] }, of(child)),
+      ...mapper.map({ sessionUpdate: "current_mode_update", currentModeId: "plan" }, of(child)),
+      ...mapper.map({ sessionUpdate: "usage_update", used: 10, size: 100 }, of(child)),
+      ...mapper.map({ sessionUpdate: "compaction_update", status: "running" }, of(child)),
+      ...mapper.finishTurn(main),
+    ];
+    expect(events).toEqual([{ kind: "plan.updated", turnId: "turn-1", entries: [{ content: "Look", priority: "high", status: "pending" }], subagentId: "ses_child" }]);
   });
 });

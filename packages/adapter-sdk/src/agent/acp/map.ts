@@ -1,10 +1,10 @@
 import path from "node:path";
 
-import { segmentIdSchema, toolCallIdSchema } from "@ostra/protocol";
-import type { ApprovalOption, ContentBlock, PlanEntry, SegmentId, TaskEvent, ToolKind } from "@ostra/protocol";
+import { runnerLimits, segmentIdSchema, subagentIdSchema, toolCallIdSchema } from "@ostra/protocol";
+import type { ApprovalOption, ContentBlock, PlanEntry, SegmentId, TaskEvent, ToolCallId, ToolKind } from "@ostra/protocol";
 import { z } from "zod";
 
-import type { AcpUpdate, MapContext, PermissionRequest } from "../base.ts";
+import type { AcpUpdate, MapContext, PermissionRequest, SubagentNotice } from "../base.ts";
 
 // The ACP-to-ostra event mapping every agent shares (ADR 0018, ADR 0036, Q124), by the table in
 // `research/agent-ui-stream.md`. Ported from spikes/live-stream-and-task-view/src/producer/
@@ -38,6 +38,14 @@ import type { AcpUpdate, MapContext, PermissionRequest } from "../base.ts";
 //   -   anything else                  `agent.unknown`
 // Rows 10 to 13 (permissions and questions) are the driver's callbacks, and 21 to 22 (the turn's
 // end) are the base class's.
+//
+// Subagents (F-138, protocol minor 6). An update the driver names a subagent's (`MapContext.subagent`)
+// maps as above, with the subagent on its `agent.message`, `agent.thought`, `tool.called` and
+// `plan.updated`, and its own text segment, so a subagent's answer is never the main agent's and
+// never streams into the thread. Its mode, config, usage and compaction updates aren't the
+// session's and are left out. A call whose input names a subagent (OpenCode's `subagent` tool:
+// `agent`, `description`, `prompt`) and whose output names the session it started
+// (`rawOutput.metadata.sessionID`) is followed by `subagent.started`.
 
 // ---------- the ACP shapes ostra reads ----------
 
@@ -98,6 +106,11 @@ const resourceLinkContent = z.looseObject({
   name: z.string().nullish(),
   title: z.string().nullish(),
 });
+
+/** A call that starts a subagent, by its input (OpenCode's `subagent` tool). */
+const subagentInput = z.looseObject({ agent: z.string().min(1), description: z.string().nullish(), prompt: z.string() });
+/** Its output, once it ended: the session it started. */
+const startedOutput = z.looseObject({ metadata: z.looseObject({ sessionID: z.string().min(1) }) });
 
 /** What an update the table doesn't place carries away, capped (the event schema allows 4000). */
 const RAW_MAX_CHARS = 4000;
@@ -265,6 +278,13 @@ const mergeCallFields = (first: ToolCallFields, next: ToolCallFields): ToolCallF
 
 type Open = { readonly part: "message" | "thought"; readonly messageId: string | null; readonly segmentId: SegmentId; text: string };
 
+/** Whose text a segment is: the main agent's (`""`) or a subagent's ID. */
+const speakerOf = (context: MapContext): string => context.subagent?.id ?? "";
+
+/** The subagent field of an event, when the update is a subagent's. */
+const subagentOf = (context: MapContext): { readonly subagentId?: NonNullable<MapContext["subagent"]>["id"] } =>
+  context.subagent === undefined ? {} : { subagentId: context.subagent.id };
+
 /** A delta of the text still being written: what live-text frames are made of (ADR 0035). */
 export type LiveTextDelta = {
   readonly turnId: MapContext["turnId"];
@@ -280,11 +300,14 @@ export type AcpMapper = {
   readonly map: (update: AcpUpdate, context: MapContext) => readonly TaskEvent[];
   /** The turn ended: closes the open segment and reports the usage the agent last gave. */
   readonly finishTurn: (context: MapContext) => readonly TaskEvent[];
+  /** F-138: a subagent's state, after what it said so far. */
+  readonly subagentStatus: (notice: SubagentNotice, context: MapContext) => readonly TaskEvent[];
 };
 
 /** One mapper per session: it holds that session's open text segment, tool kinds and config. */
 export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTextDelta) => void } = {}): AcpMapper => {
-  let open: Open | undefined;
+  /** The open text segment of each speaker: the main agent's, and each subagent's (F-138). */
+  const opens = new Map<string, Open>();
   let turnKey = "";
   let segments = 0;
   let usage: { readonly used: number; readonly size: number } | undefined;
@@ -293,6 +316,8 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
   const config = new Map<string, string>();
   /** Calls waiting for their input: emitted with the next update, whichever it is. */
   const held = new Map<string, { readonly context: MapContext; readonly fields: ToolCallFields }>();
+  /** F-138: the calls that start a subagent, with what they asked, until their output names it. */
+  const subagentCalls = new Map<string, z.infer<typeof subagentInput>>();
 
   const calledEvent = (context: MapContext, toolCallId: z.infer<typeof toolCallIdSchema>, fields: ToolCallFields): TaskEvent => {
     const toolKind = kindsById.get(toolCallId) ?? toToolKind(fields.kind);
@@ -303,6 +328,41 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
       toolKind,
       title: (fields.title ?? toolKind).slice(0, 2000),
       input: normalizeInput(toolKind, fields, context.cwd),
+      ...subagentOf(context),
+    };
+  };
+
+  /** F-138: remembers a call that starts a subagent, by its input. */
+  const noteSubagentCall = (context: MapContext, fields: ToolCallFields): void => {
+    if (context.reportsSubagents !== true) {
+      return;
+    }
+    const input = subagentInput.safeParse(fields.rawInput);
+    if (input.success) {
+      subagentCalls.set(fields.toolCallId, input.data);
+    }
+  };
+
+  /** F-138: a subagent call's output named the session it started: `subagent.started`. */
+  const startedEvent = (context: MapContext, toolCallId: ToolCallId, fields: ToolCallFields): TaskEvent | undefined => {
+    const input = subagentCalls.get(toolCallId);
+    const output = startedOutput.safeParse(fields.rawOutput);
+    const subagentId = subagentIdSchema.safeParse(output.success ? output.data.metadata.sessionID : undefined);
+    if (input === undefined || !subagentId.success) {
+      return undefined;
+    }
+    // A follow-up to the same subagent starts it again: another round, with this call's prompt.
+    subagentCalls.delete(toolCallId);
+    const parent = context.subagent;
+    return {
+      kind: "subagent.started",
+      toolCallId,
+      subagentId: subagentId.data,
+      ...(parent === undefined ? {} : { parentSubagentId: parent.id }),
+      depth: Math.min(64, (parent?.depth ?? 0) + 1),
+      type: input.agent.slice(0, 200),
+      description: (input.description ?? "").slice(0, runnerLimits.subagentDescriptionMaxChars),
+      prompt: input.prompt.slice(0, runnerLimits.subagentPromptMaxChars),
     };
   };
 
@@ -324,17 +384,25 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
     }
   };
 
-  const flush = (context: MapContext, out: TaskEvent[]): void => {
-    const text = open;
-    open = undefined;
+  /** Closes a speaker's open segment: the main agent's (`""`), or a subagent's. */
+  const flushSpeaker = (speaker: string, turnId: MapContext["turnId"], out: TaskEvent[]): void => {
+    const text = opens.get(speaker);
+    opens.delete(speaker);
     if (text === undefined || text.text === "") {
       return;
     }
+    const subagentId = subagentIdSchema.safeParse(speaker);
+    const owner = speaker !== "" && subagentId.success ? { subagentId: subagentId.data } : {};
     out.push(
       text.part === "message"
-        ? { kind: "agent.message", turnId: context.turnId, segmentId: text.segmentId, text: text.text }
-        : { kind: "agent.thought", turnId: context.turnId, segmentId: text.segmentId, text: text.text },
+        ? { kind: "agent.message", turnId, segmentId: text.segmentId, text: text.text, ...owner }
+        : { kind: "agent.thought", turnId, segmentId: text.segmentId, text: text.text, ...owner },
     );
+  };
+
+  /** Closes the open segment of the update's speaker: the main agent's, or the subagent's the context names. */
+  const flush = (context: MapContext, out: TaskEvent[]): void => {
+    flushSpeaker(speakerOf(context), context.turnId, out);
   };
 
   /** The one way an update the table has no row for leaves: visible, never dropped (ADR 0018). */
@@ -361,6 +429,11 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
     const messageId = chunk.data.messageId ?? null;
     if (content.type !== "text") {
       flush(context, out);
+      if (context.subagent !== undefined) {
+        // F-138: a subagent's image or link has no place in its window yet, and `agent.content`
+        // would show it as the main agent's: its text answer is what the window shows.
+        return;
+      }
       const block = part === "message" ? toContentBlock(content) : undefined;
       if (block === undefined) {
         unknown(context, out, `${update.sessionUpdate}:${content.type}`, update);
@@ -375,22 +448,35 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
       return;
     }
     startTurnIfNew(context);
+    const speaker = speakerOf(context);
+    const current = opens.get(speaker);
     // A new message ID, a switch between message and thought, or a new turn closes the segment.
-    if (open !== undefined && (open.part !== part || open.messageId !== messageId)) {
+    if (current !== undefined && (current.part !== part || current.messageId !== messageId)) {
       flush(context, out);
     }
+    let open = opens.get(speaker);
     if (open === undefined) {
       segments += 1;
       open = { part, messageId, segmentId: segmentIdSchema.parse(`${context.turnId}-s${String(segments)}`), text: "" };
+      opens.set(speaker, open);
     }
     const offset = open.text.length;
     open.text += piece.data.text;
-    options.onLiveText?.({ turnId: context.turnId, segmentId: open.segmentId, kind: part, offset, text: piece.data.text });
+    // A subagent's words stay out of the thread's live text: its answer shows in its window when it's said.
+    if (context.subagent === undefined) {
+      options.onLiveText?.({ turnId: context.turnId, segmentId: open.segmentId, kind: part, offset, text: piece.data.text });
+    }
   };
 
   const map = (update: AcpUpdate, context: MapContext): readonly TaskEvent[] => {
     const out: TaskEvent[] = [];
     const kind = update.sessionUpdate;
+    // A subagent's update closes the main agent's open words, as any other update did before
+    // subagents had their own (its run went on past them). Never the other way: a subagent's
+    // answer is cut only by its own updates.
+    if (context.subagent !== undefined) {
+      flushSpeaker("", context.turnId, out);
+    }
     // Tool calls run in parallel: only an update that isn't about tools releases the held ones.
     if (kind !== "tool_call" && kind !== "tool_call_update") {
       releaseHeld(out);
@@ -412,6 +498,7 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
         flush(context, out);
         const toolKind = toToolKind(call.data.kind);
         kindsById.set(toolCallId.data, toolKind);
+        noteSubagentCall(context, call.data);
         if (stillWaiting(call.data)) {
           held.set(toolCallId.data, { context, fields: call.data });
           return out;
@@ -426,6 +513,7 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
           unknown(context, out, kind, update);
           return out;
         }
+        noteSubagentCall(context, call.data);
         const waiting = held.get(toolCallId.data);
         if (waiting !== undefined) {
           held.delete(toolCallId.data);
@@ -439,6 +527,10 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
         const toolKind = kindsById.get(toolCallId.data) ?? toToolKind(call.data.kind);
         if (call.data.status === "completed") {
           out.push({ kind: "tool.completed", toolCallId: toolCallId.data, output: normalizeOutput(toolKind, call.data, 0, context.cwd) });
+          const started = startedEvent(context, toolCallId.data, call.data);
+          if (started !== undefined) {
+            out.push(started);
+          }
         } else if (call.data.status === "failed") {
           out.push({ kind: "tool.failed", toolCallId: toolCallId.data, error: (textOf(call.data) || "tool failed").slice(0, 4000) });
         } else if (call.data.status === "in_progress" && (call.data.content?.length ?? 0) > 0) {
@@ -459,9 +551,34 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
           priority: entry.priority,
           status: entry.status,
         }));
-        out.push({ kind: "plan.updated", turnId: context.turnId, entries });
+        out.push({ kind: "plan.updated", turnId: context.turnId, entries, ...subagentOf(context) });
         return out;
       }
+      case "current_mode_update":
+      case "config_option_update":
+      case "usage_update":
+      case "compaction_update":
+      case "compaction_summary_chunk":
+        if (context.subagent !== undefined) {
+          // F-138: a subagent's mode, config, context and compaction are its own, not the session's.
+          return out;
+        }
+        return sessionWide(kind, update, context, out);
+      case "user_message_chunk":
+      case "available_commands_update":
+      case "session_info_update":
+      case "notice":
+        // Task state or display only: not a message, and not unknown (rows 2, 15, 17, 19).
+        return out;
+      default:
+        unknown(context, out, kind, update);
+        return out;
+    }
+  };
+
+  /** The updates about the session as a whole (rows 16, 18 and 20): the main agent's only. */
+  const sessionWide = (kind: string, update: AcpUpdate, context: MapContext, out: TaskEvent[]): TaskEvent[] => {
+    switch (kind) {
       case "current_mode_update": {
         const mode = modeFields.safeParse(update);
         if (!mode.success) {
@@ -526,12 +643,6 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
         compactionSummary = `${compactionSummary}${parsed.data.content?.text ?? ""}`.slice(0, SUMMARY_MAX_CHARS);
         return out;
       }
-      case "user_message_chunk":
-      case "available_commands_update":
-      case "session_info_update":
-      case "notice":
-        // Task state or display only: not a message, and not unknown (rows 2, 15, 17, 19).
-        return out;
       default:
         unknown(context, out, kind, update);
         return out;
@@ -541,7 +652,13 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
   const finishTurn = (context: MapContext): readonly TaskEvent[] => {
     const out: TaskEvent[] = [];
     releaseHeld(out);
-    flush(context, out);
+    // Each subagent's open words first, as their own, then the main agent's.
+    for (const speaker of [...opens.keys()]) {
+      if (speaker !== "") {
+        flushSpeaker(speaker, context.turnId, out);
+      }
+    }
+    flushSpeaker("", context.turnId, out);
     if (usage !== undefined) {
       out.push({
         kind: "session.usage",
@@ -553,7 +670,21 @@ export const createAcpMapper = (options: { readonly onLiveText?: (delta: LiveTex
     return out;
   };
 
-  return { map, finishTurn };
+  const subagentStatus = (notice: SubagentNotice, context: MapContext): readonly TaskEvent[] => {
+    const out: TaskEvent[] = [];
+    // Its last words land before its state: a `completed` subagent's answer is already said.
+    releaseHeld(out);
+    flush({ ...context, subagent: notice.subagent }, out);
+    out.push({
+      kind: "subagent.status",
+      subagentId: notice.subagent.id,
+      status: notice.status,
+      ...(notice.error === undefined ? {} : { error: notice.error.slice(0, 4000) }),
+    });
+    return out;
+  };
+
+  return { map, finishTurn, subagentStatus };
 };
 
 const toContentBlock = (content: { readonly type: string }): ContentBlock | undefined => {

@@ -1,8 +1,8 @@
 import type { Readable, Writable } from "node:stream";
 
 import * as acp from "@agentclientprotocol/sdk/unstable";
-import { optionIdSchema, stopReasonSchema, toolCallIdSchema } from "@ostra/protocol";
-import type { QuestionField, StopReason, TaskEvent, ToolCallId } from "@ostra/protocol";
+import { optionIdSchema, stopReasonSchema, subagentIdSchema, toolCallIdSchema } from "@ostra/protocol";
+import type { QuestionField, StopReason, SubagentId, TaskEvent, ToolCallId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { adapterError, ok } from "../../common/result.ts";
@@ -21,6 +21,7 @@ import type {
   QuestionAnswer,
   QuestionRequest,
   SessionConfigOption,
+  SubagentRef,
 } from "../base.ts";
 import { createAcpMapper } from "./map.ts";
 import type { AcpMapper, LiveTextDelta } from "./map.ts";
@@ -41,7 +42,8 @@ import { isAlive, watchProcessTree } from "./process-tree.ts";
 //   still running at the deadline finishes after the turn has ended, limited to the processes born
 //   during that turn.
 // - Updates that `session/load` replays are not emitted as new events.
-// - With `subagents: "background"` (OpenCode), a turn waits for its subagents (below, "Subagents").
+// - With `subagents: "background"` (OpenCode), a turn waits for its subagents (below, "Subagents"),
+//   and each subagent's updates, states and approvals are named as its own (F-138).
 // - ACP payloads are vendor data: they're read with loose schemas, and no ACP type leaves this
 //   file. Failures are values (`AdapterResult`), with messages that hold no agent content.
 
@@ -165,6 +167,8 @@ const permissionSchema = z.looseObject({
     kind: z.string().nullish(),
     rawInput: z.unknown().optional(),
     locations: z.array(z.looseObject({ path: z.string() })).nullish().catch(null),
+    // F-138: OpenCode names the subagent whose call asks.
+    _meta: z.record(z.string(), z.unknown()).nullish().catch(null),
   }),
   options: z.array(z.looseObject({ optionId: z.string(), name: z.string(), kind: z.string() })),
 });
@@ -272,10 +276,42 @@ const agentMetaSchema = z.looseObject({
 const childUpdateSchema = z.looseObject({
   rootSessionId: z.string().min(1),
   childSessionId: z.string().min(1),
+  // F-138: who started it and how deep it is, for the tree.
+  parentSessionId: z.string().min(1).optional().catch(undefined),
+  depth: z.number().int().positive().optional().catch(undefined),
   type: z.string(),
   update: z.looseObject({ sessionUpdate: z.string() }).optional(),
   status: z.string().optional(),
+  error: z.unknown().optional(),
 });
+
+/** OpenCode's own name for a child session's update, on the update itself (`_meta["opencode/child-session"]`). */
+const CHILD_SESSION_META = "opencode/child-session";
+const childMetaSchema = z.looseObject({
+  id: z.string().min(1),
+  parentID: z.string().min(1).optional().catch(undefined),
+  depth: z.number().int().positive().optional().catch(undefined),
+});
+
+/** The child session a `_meta` names, when it names one. */
+const childOfMeta = (meta: unknown): z.infer<typeof childMetaSchema> | undefined => {
+  const record = z.record(z.string(), z.unknown()).safeParse(meta);
+  const child = childMetaSchema.safeParse(record.success ? record.data[CHILD_SESSION_META] : undefined);
+  return child.success ? child.data : undefined;
+};
+
+/** A failed subagent's error, as words: OpenCode's text, or the message of its error object. */
+const errorWords = (error: unknown): string | undefined => {
+  if (typeof error === "string" && error !== "") {
+    return error;
+  }
+  const message = z.looseObject({ message: z.string().min(1) }).safeParse(error);
+  if (message.success) {
+    return message.data.message;
+  }
+  const data = z.looseObject({ data: z.looseObject({ message: z.string().min(1) }) }).safeParse(error);
+  return data.success ? data.data.data.message : undefined;
+};
 
 const childStatusSchema = z.enum(["created", "running", "completed", "failed", "interrupted"]);
 type ChildStatus = z.infer<typeof childStatusSchema>;
@@ -305,6 +341,8 @@ const probeRefusedSchema = z.looseObject({ code: z.literal(-32602), data: z.loos
 type Subagents = {
   /** Each child session's last state, nested ones included. */
   readonly children: Map<string, ChildStatus>;
+  /** F-138: each child as the page names it: its ID, its parent and its depth. */
+  readonly refs: Map<string, SubagentRef>;
   /** The main agent's call that started each child. */
   readonly startedBy: Map<string, ToolCallId>;
   /** When a child last ended, and when the main session last sent an update, in ms since the epoch. */
@@ -445,9 +483,34 @@ const connectAgent = async (
     if (existing !== undefined) {
       return existing;
     }
-    const created: Subagents = { children: new Map(), startedBy: new Map(), lastChildEndAt: 0, lastRootUpdateAt: 0, lastBusyAt: 0, waiters: [] };
+    const created: Subagents = { children: new Map(), refs: new Map(), startedBy: new Map(), lastChildEndAt: 0, lastRootUpdateAt: 0, lastBusyAt: 0, waiters: [] };
     subagentsBySession.set(agentSessionId, created);
     return created;
+  };
+  /**
+   * F-138: a child session as the page names it, relative to the session that started the tree: no
+   * parent when the main agent started it. Kept, so a later notice that names no parent still has one.
+   * `undefined` when the adapter reports no subagents, or the agent's IDs can't be ostra's.
+   */
+  const refOf = (rootSessionId: string, childSessionId: string, parentSessionId: string | undefined, depth: number | undefined): SubagentRef | undefined => {
+    if (!asksForSubagents) {
+      return undefined;
+    }
+    const subagents = subagentsOf(rootSessionId);
+    const known = subagents.refs.get(childSessionId);
+    const id = subagentIdSchema.safeParse(childSessionId);
+    if (!id.success) {
+      return undefined;
+    }
+    const parent = parentSessionId === undefined || parentSessionId === rootSessionId ? null : subagentIdSchema.safeParse(parentSessionId);
+    const parentId: SubagentId | null = parent === null ? null : parent.success ? parent.data : null;
+    const ref: SubagentRef = {
+      id: id.data,
+      parentId: parentSessionId === undefined ? (known?.parentId ?? null) : parentId,
+      depth: depth ?? known?.depth ?? (parentId === null ? 1 : (subagents.refs.get(parentId)?.depth ?? 1) + 1),
+    };
+    subagents.refs.set(childSessionId, ref);
+    return ref;
   };
   /** A child session's update or state, from `opencode/session/child_update`. */
   const onChildUpdate = (params: unknown): void => {
@@ -455,7 +518,8 @@ const connectAgent = async (
     if (!parsed.success) {
       return;
     }
-    const { rootSessionId, childSessionId, type, update, status } = parsed.data;
+    const { rootSessionId, childSessionId, parentSessionId, depth, type, update, status, error } = parsed.data;
+    const ref = refOf(rootSessionId, childSessionId, parentSessionId, depth);
     if (type === "update" && update !== undefined) {
       // A nested subagent starts from its parent's call, whose ID OpenCode prefixes with the parent's session.
       const started = tracksSubagents ? startedChildSchema.safeParse(update) : undefined;
@@ -463,15 +527,23 @@ const connectAgent = async (
         subagentsOf(rootSessionId).startedBy.set(started.data.rawOutput.metadata.sessionID, started.data.toolCallId);
       }
       // As OpenCode projects it without the extension: the child's `_meta`, its prefixed call IDs.
+      // F-138: named as the subagent's, so its calls and its answer are its own.
       if (replaying.has(rootSessionId)) {
         handlers.onReplay?.(rootSessionId, update);
       } else {
-        handlers.onUpdate(rootSessionId, update);
+        handlers.onUpdate(rootSessionId, update, ref);
       }
       return;
     }
     const state = childStatusSchema.safeParse(status);
-    if (type !== "status" || !state.success || !tracksSubagents) {
+    if (type !== "status" || !state.success) {
+      return;
+    }
+    if (ref !== undefined && !replaying.has(rootSessionId)) {
+      const words = state.data === "failed" ? errorWords(error) : undefined;
+      handlers.onSubagentStatus?.(rootSessionId, { subagent: ref, status: state.data, ...(words === undefined ? {} : { error: words }) });
+    }
+    if (!tracksSubagents) {
       return;
     }
     const subagents = subagentsOf(rootSessionId);
@@ -480,6 +552,17 @@ const connectAgent = async (
       subagents.lastChildEndAt = Date.now();
     }
     wake(subagents);
+  };
+  /**
+   * F-138: a child's update OpenCode projected onto the session itself (no extension, or a turn's
+   * own child): its `_meta` names the child.
+   */
+  const projectedChild = (agentSessionId: string, update: AcpUpdate): SubagentRef | undefined => {
+    if (!asksForSubagents) {
+      return undefined;
+    }
+    const child = childOfMeta(update["_meta"]);
+    return child === undefined ? undefined : refOf(agentSessionId, child.id, child.parentID, child.depth);
   };
   /** An update of a session's own: the agent is at work, and its `subagent` call may name a child. */
   const onSessionUpdate = (agentSessionId: string, update: AcpUpdate): void => {
@@ -510,8 +593,11 @@ const connectAgent = async (
               if (replaying.has(notification.data.sessionId)) {
                 handlers.onReplay?.(notification.data.sessionId, notification.data.update);
               } else {
-                onSessionUpdate(notification.data.sessionId, notification.data.update);
-                handlers.onUpdate(notification.data.sessionId, notification.data.update);
+                const child = projectedChild(notification.data.sessionId, notification.data.update);
+                if (child === undefined) {
+                  onSessionUpdate(notification.data.sessionId, notification.data.update);
+                }
+                handlers.onUpdate(notification.data.sessionId, notification.data.update, child);
               }
             }
             return;
@@ -533,9 +619,13 @@ const connectAgent = async (
         return { outcome: { outcome: "cancelled" } };
       }
       const { kind, rawInput, locations } = parsed.data.toolCall;
+      // F-138: a subagent's call names it in `_meta`, so the approval can say which subagent asks.
+      const child = asksForSubagents ? childOfMeta(parsed.data.toolCall._meta) : undefined;
+      const subagent = child === undefined ? undefined : refOf(ctx.params.sessionId, child.id, child.parentID, child.depth);
       const request: PermissionRequest = {
         toolCallId: parsed.data.toolCall.toolCallId,
         title: parsed.data.toolCall.title ?? "",
+        ...(subagent === undefined ? {} : { subagentId: subagent.id }),
         ...(typeof kind === "string" ? { toolKind: kind } : {}),
         ...(rawInput === undefined ? {} : { rawInput }),
         ...(locations === null || locations === undefined ? {} : { locations: locations.map((location) => location.path) }),
@@ -703,6 +793,15 @@ const connectAgent = async (
   const stopSubagents = async (agentSessionId: string, until: number): Promise<void> => {
     const subagents = subagentsOf(agentSessionId);
     const open = openChildren(subagents);
+    // F-138: what was stopped is reported as such, for the page: OpenCode won't report it now.
+    const report = (): void => {
+      for (const child of open) {
+        const ref = subagents.refs.get(child);
+        if (ref !== undefined && subagents.children.get(child) !== "interrupted") {
+          handlers.onSubagentStatus?.(agentSessionId, { subagent: ref, status: "interrupted" });
+        }
+      }
+    };
     await within(Promise.all(open.map(closeSession)), until);
     await within(closeSession(agentSessionId), until);
     const input = sessionInputs.get(agentSessionId);
@@ -717,6 +816,7 @@ const connectAgent = async (
       await within(resumed, until);
     }
     // Their end won't be reported now: OpenCode no longer follows the session.
+    report();
     for (const child of open) {
       subagents.children.set(child, "interrupted");
     }
@@ -1062,6 +1162,7 @@ export const createAcpDriver = (options: AcpDriverOptions = {}): DriverPort => {
   return {
     connect: (io, handlers, connectOptions = {}) => connectAgent(io, handlers, options, connectOptions),
     mapUpdate: (update: AcpUpdate, context) => mapperFor(String(context.sessionId)).map(update, context),
+    mapSubagentStatus: (notice, context) => mapperFor(String(context.sessionId)).subagentStatus(notice, context),
     finishTurn: (context) => mapperFor(String(context.sessionId)).finishTurn(context),
     closeSession: (sessionId) => {
       mappers.delete(String(sessionId));

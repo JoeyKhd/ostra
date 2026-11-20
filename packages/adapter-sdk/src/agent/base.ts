@@ -12,6 +12,8 @@ import type {
   ReasoningControls,
   SessionId,
   StopReason,
+  SubagentId,
+  SubagentStatus,
   TaskEvent,
   TaskId,
   TaskKind,
@@ -228,6 +230,25 @@ export type AgentIo = {
 /** An ACP `session/update`'s update, as the agent sent it: vendor-owned, so loose. */
 export type AcpUpdate = { readonly sessionUpdate: string; readonly [field: string]: unknown };
 
+/**
+ * F-138: the subagent an update or a request comes from (OpenCode's child session): its ID, the
+ * subagent that started it (`null`: the main agent), and its depth from 1. The driver reads it from
+ * the agent's own data; an adapter with `subagents: "none"` never gets one, and its calls stay flat.
+ */
+export type SubagentRef = {
+  readonly id: SubagentId;
+  readonly parentId: SubagentId | null;
+  readonly depth: number;
+};
+
+/** F-138: a subagent's state changed, as its agent reported it (or as the driver stopped it). */
+export type SubagentNotice = {
+  readonly subagent: SubagentRef;
+  readonly status: SubagentStatus;
+  /** With `failed`: the agent's words for why. Content: never logged. */
+  readonly error?: string;
+};
+
 /** An ACP permission request, reduced to what ostra uses. */
 export type PermissionRequest = {
   readonly toolCallId: ToolCallId;
@@ -245,6 +266,8 @@ export type PermissionRequest = {
    * `describePermission`; `null` when the request names nothing the rules can match.
    */
   readonly subject?: ApprovalRequestSubject | null;
+  /** F-138: the subagent whose call asks. Absent: the main agent's own call. */
+  readonly subagentId?: SubagentId;
 };
 
 export type PermissionAnswer =
@@ -261,7 +284,10 @@ export type QuestionAnswer =
 
 /** What the driver calls back with. Each callback names the agent's own session ID. */
 export type DriverHandlers = {
-  readonly onUpdate: (agentSessionId: string, update: AcpUpdate) => void;
+  /** An update of the session, or (F-138) of one of its subagents, named by `subagent`. */
+  readonly onUpdate: (agentSessionId: string, update: AcpUpdate, subagent?: SubagentRef) => void;
+  /** F-138: a subagent of the session changed state. */
+  readonly onSubagentStatus?: (agentSessionId: string, notice: SubagentNotice) => void;
   /**
    * An update `session/load` replayed: the session's history, which ostra already stored. The
    * driver marks it so; it's counted, never stored as a new event (ADR 0035).
@@ -349,6 +375,10 @@ export type MapContext = {
   readonly turnId: TurnId;
   /** The session's working folder: paths inside it are shown relative to it. */
   readonly cwd?: string;
+  /** F-138: the subagent the update is from. Absent: the main agent's own. */
+  readonly subagent?: SubagentRef;
+  /** F-138: the adapter reports subagents (`subagents` isn't `none`), so a call that starts one says so. */
+  readonly reportsSubagents?: boolean;
 };
 
 /** ostra's ACP driver, as the base class uses it (ticket 09 provides the real one). */
@@ -356,6 +386,8 @@ export type DriverPort = {
   readonly connect: (io: AgentIo, handlers: DriverHandlers, options?: ConnectOptions) => Promise<AdapterResult<DriverConnection>>;
   /** The ACP-to-ostra mapping every agent shares (ADR 0018). */
   readonly mapUpdate: (update: AcpUpdate, context: MapContext) => readonly TaskEvent[];
+  /** F-138: a subagent's state, as `subagent.status`. A driver that knows no subagents omits it. */
+  readonly mapSubagentStatus?: (notice: SubagentNotice, context: MapContext) => readonly TaskEvent[];
   /**
    * The turn ended: the events the mapping held back until now (the open text segment, the turn's
    * context usage). A driver whose mapping holds nothing back omits it.
@@ -586,13 +618,15 @@ export abstract class AgentAdapter {
     this.#starts.set(sessionKey, input);
     this.#emitters.set(sessionKey, input.onEvents);
     let replayed = 0;
+    // F-138: an adapter that declares no subagents shows their calls flat, whatever the agent sends.
+    const reportsSubagents = this.capabilities.subagents !== "none";
     const connected = await this.#driver.connect(
       input.io,
       {
         onReplay: () => {
           replayed += 1;
         },
-        onUpdate: (_agentSessionId, update) => {
+        onUpdate: (_agentSessionId, update, subagent) => {
           const turnId = this.#turns.get(sessionKey);
           if (turnId === undefined) {
             // Before the first turn there's nothing to attach an update to: a load's replay that the
@@ -600,16 +634,38 @@ export abstract class AgentAdapter {
             replayed += 1;
             return;
           }
-          const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId, cwd: input.cwd };
+          const context: MapContext = {
+            taskId: input.taskId,
+            sessionId: input.sessionId,
+            turnId,
+            cwd: input.cwd,
+            reportsSubagents,
+            ...(subagent === undefined || !reportsSubagents ? {} : { subagent }),
+          };
           const own = this.mapUpdate(update, context);
           const events = own.handled ? own.events : this.#driver.mapUpdate(own.update ?? update, context);
           if (events.length > 0) {
             input.onEvents(events);
           }
         },
-        // The request goes on with its subject, read once here, for the runner's rules.
-        onPermission: (agentSessionId, request, signal) =>
-          input.onPermission(agentSessionId, { ...request, subject: this.describePermission(request, input.cwd) }, signal),
+        onSubagentStatus: (_agentSessionId, notice) => {
+          const turnId = this.#turns.get(sessionKey);
+          if (turnId === undefined || !reportsSubagents) {
+            return;
+          }
+          const context: MapContext = { taskId: input.taskId, sessionId: input.sessionId, turnId, cwd: input.cwd, reportsSubagents, subagent: notice.subagent };
+          const events = this.#driver.mapSubagentStatus?.(notice, context) ?? [];
+          if (events.length > 0) {
+            input.onEvents(events);
+          }
+        },
+        // The request goes on with its subject, read once here, for the runner's rules, and (F-138)
+        // without its subagent for an adapter that declares none.
+        onPermission: (agentSessionId, request, signal) => {
+          const { subagentId, ...rest } = request;
+          const asked: PermissionRequest = reportsSubagents && subagentId !== undefined ? { ...rest, subagentId } : rest;
+          return input.onPermission(agentSessionId, { ...asked, subject: this.describePermission(asked, input.cwd) }, signal);
+        },
         onQuestion: input.onQuestion,
       },
       { subagents: this.capabilities.subagents },

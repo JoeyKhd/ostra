@@ -40,6 +40,8 @@ export type FakeGatewayOptions = {
   readonly now?: () => number;
   /** Pings every open connection this often, as core does, except one gone silent. */
   readonly pingMs?: number;
+  /** The server's minor (default this build's): an older server reads and writes its own minor's frames (ADR 0034). */
+  readonly serverMinor?: number;
 };
 
 export type FakeGateway = {
@@ -106,6 +108,9 @@ export const makeCommand = (fields: {
 
 export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions = {}): FakeGateway => {
   const now = options.now ?? Date.now;
+  const serverMinor = options.serverMinor ?? PROTOCOL_MINOR;
+  // The minor each connection negotiated: its frames are read and written at it.
+  const minors = new WeakMap<WebSocket, number>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: runnerLimits.frameMaxBytes });
   const stored = new Map<SessionId, Map<number, RunnerEvent>>();
   const received = new Map<string, number>();
@@ -146,7 +151,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
 
   const sendTo = (socket: WebSocket | undefined, frame: DownFrame): void => {
     if (socket?.readyState === 1) {
-      socket.send(encodeDownFrame(frame));
+      socket.send(encodeDownFrame(frame, minors.get(socket) ?? serverMinor));
     }
   };
 
@@ -225,12 +230,13 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
         if (gateway.holdWelcomes) {
           return;
         }
-        const negotiation = negotiate(PROTOCOL_MINOR, frame.protocolMajor, frame.protocolMinor);
+        const negotiation = negotiate(serverMinor, frame.protocolMajor, frame.protocolMinor);
         if (!negotiation.ok) {
-          sendTo(socket, { type: "error", code: "version-unsupported", message: "outside the window", supported: negotiation.window, serverMinor: PROTOCOL_MINOR });
+          sendTo(socket, { type: "error", code: "version-unsupported", message: "outside the window", supported: negotiation.window, serverMinor });
           socket.close(closeCodes.upgradeRequired);
           return;
         }
+        minors.set(socket, negotiation.minor);
         sendTo(socket, {
           type: "welcome",
           minor: negotiation.minor,
@@ -331,7 +337,7 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
           return;
         }
         const text = Buffer.isBuffer(data) ? data.toString("utf8") : Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(data).toString("utf8");
-        const parsed = parseUpFrame(text);
+        const parsed = parseUpFrame(text, minors.get(ws) ?? serverMinor);
         if (!parsed.ok) {
           protocolErrors.push(parsed.error.detail);
           ws.close(closeCodes.protocolViolation, parsed.error.reason);

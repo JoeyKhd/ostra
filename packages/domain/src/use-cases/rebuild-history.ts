@@ -56,7 +56,8 @@ export const rebuildInputInTx = async (
         memberIds.add(event.memberId);
         members.push({ at, memberId: event.memberId, text: event.text });
       }
-    } else if (event.kind === "agent.message") {
+    } else if (event.kind === "agent.message" && event.subagentId === undefined) {
+      // F-138: a subagent's answer was the agent's input, not a message of its own to the member.
       if (interruptedFrom !== null && row.seq > interruptedFrom) {
         partial.push(event.text);
       } else {

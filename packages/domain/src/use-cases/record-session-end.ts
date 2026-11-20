@@ -63,7 +63,8 @@ export const lastAgentMessageInTx = async (tx: Tx, taskId: TaskId, sessionId: Se
   const rows = await tx.event.findMany({ where: { taskId, sessionId, kind: "agent.message" }, orderBy: { seq: "desc" }, take: 200, select: { payload: true } });
   for (const row of rows) {
     const parsed = taskEventSchema.safeParse(row.payload);
-    if (parsed.success && parsed.data.kind === "agent.message" && !planTurnIds.includes(parsed.data.turnId)) {
+    // F-138: a subagent's answer is its own, never the agent's last word.
+    if (parsed.success && parsed.data.kind === "agent.message" && parsed.data.subagentId === undefined && !planTurnIds.includes(parsed.data.turnId)) {
       return parsed.data.text;
     }
   }

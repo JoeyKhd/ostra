@@ -12,7 +12,7 @@ import { fakeMarker, serveFakeAgent } from "../../testing/fake-acp-agent/agent.t
 import type { FakeAgentProfile } from "../../testing/fake-acp-agent/agent.ts";
 import { FakeAgentAdapter } from "../../testing/fake-acp-agent/fake-agent-adapter.ts";
 import { spawnAgentProcess } from "../../testing/spawn-agent.ts";
-import type { AcpUpdate, AgentIo, ConnectOptions, DriverConnection, DriverHandlers, DriverPort, PermissionRequest, QuestionRequest } from "../base.ts";
+import type { AcpUpdate, AgentIo, ConnectOptions, DriverConnection, DriverHandlers, DriverPort, PermissionRequest, QuestionRequest, SubagentNotice, SubagentRef } from "../base.ts";
 import { createAcpDriver } from "./driver.ts";
 import type { AcpDriverOptions } from "./driver.ts";
 import { isAlive } from "./process-tree.ts";
@@ -386,6 +386,85 @@ describe("the ACP driver, with background subagents", () => {
     expect(await turn).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(messageText(peer)).toContain("I'll remember cobalt.");
     expect(messageText(peer)).toContain("the final answer, after the subagent");
+  });
+});
+
+// F-138: the driver names each subagent's updates, states and approvals as its own, from OpenCode's
+// child-session notices and `_meta`, for the page's tree; without the capability it names nothing.
+describe("the ACP driver, naming each subagent's work (F-138)", () => {
+  const background: ConnectOptions = { subagents: "background" };
+  type Named = { readonly update: AcpUpdate; readonly subagent: SubagentRef | undefined };
+  const naming = (): { readonly named: Named[]; readonly notices: SubagentNotice[]; readonly handlers: Partial<DriverHandlers> } => {
+    const named: Named[] = [];
+    const notices: SubagentNotice[] = [];
+    return {
+      named,
+      notices,
+      handlers: {
+        onUpdate: (_id, update, subagent) => {
+          named.push({ update, subagent });
+        },
+        onSubagentStatus: (_id, notice) => {
+          notices.push(notice);
+        },
+      },
+    };
+  };
+
+  it("F-138: each child's updates come named with its ID, its parent and its depth, and its states with them; the main agent's come unnamed", async () => {
+    const seen = naming();
+    const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 }, {}, background);
+    const id = await newSession(peer);
+    expect(await peer.connection.prompt(id, fakeMarker("subagent-tree"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    const refs = new Map<string, SubagentRef>();
+    for (const entry of seen.named) {
+      if (entry.subagent !== undefined && !refs.has(entry.subagent.id)) refs.set(entry.subagent.id, entry.subagent);
+    }
+    const [explore, general, nested] = [...refs.values()];
+    expect(explore).toMatchObject({ parentId: null, depth: 1 });
+    expect(explore?.id.endsWith("-explore")).toBe(true);
+    expect(general).toMatchObject({ parentId: null, depth: 1 });
+    expect(general?.id.endsWith("-general")).toBe(true);
+    expect(nested).toMatchObject({ parentId: general?.id, depth: 2 });
+    // Each child's states, in order, named the same way.
+    for (const ref of [explore, general, nested]) {
+      expect(seen.notices.filter((notice) => notice.subagent.id === ref?.id).map((notice) => notice.status)).toEqual(["created", "running", "completed"]);
+    }
+    // The main agent's words and its `subagent` calls are its own.
+    const main = seen.named.filter((entry) => entry.subagent === undefined);
+    expect(main.some((entry) => entry.update["toolCallId"] === "subagent-explore")).toBe(true);
+    expect(main.filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")).toHaveLength(2);
+  });
+
+  it("F-138: a subagent's permission request names it", async () => {
+    const peer = await connectInProcess("rich", naming().handlers, { idlePollMs: 50 }, {}, background);
+    const id = await newSession(peer);
+    expect(await peer.connection.prompt(id, fakeMarker("subagent-tree", "ask"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(peer.permissions).toHaveLength(1);
+    expect(peer.permissions[0]?.subagentId?.endsWith("-general")).toBe(true);
+  });
+
+  it("F-138: without the capability declared, nothing is named: the children's updates come as the session's own, and no state", async () => {
+    const seen = naming();
+    const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 });
+    const id = await newSession(peer);
+    expect(await peer.connection.prompt(id, fakeMarker("subagent-tree", "ask"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(seen.named.length).toBeGreaterThan(10);
+    expect(seen.named.every((entry) => entry.subagent === undefined)).toBe(true);
+    expect(seen.notices).toEqual([]);
+    expect(peer.permissions[0]?.subagentId).toBeUndefined();
+  });
+
+  it("F-138: a subagent the driver stops on a cancel is reported interrupted, since the agent no longer reports it", async () => {
+    const seen = naming();
+    const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 }, {}, background);
+    const id = await newSession(peer);
+    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await peer.connection.cancel(id);
+    expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+    expect(seen.notices.map((notice) => notice.status).at(-1)).toBe("interrupted");
+    expect(seen.notices.filter((notice) => notice.status === "interrupted")).toHaveLength(1);
   });
 });
 

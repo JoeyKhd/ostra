@@ -61,6 +61,7 @@ import type {
   RestoreOrigin,
   SessionId,
   StopReason,
+  SubagentId,
   TaskCredentials,
   TaskEvent,
   TaskEventOf,
@@ -531,6 +532,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     void cancelTurn();
   };
 
+  /** F-138: the subagent whose call asks, so the approval names it. The codec drops it for a minor-5 server. */
+  const subagentOf = (request: PermissionRequest): { readonly subagentId?: SubagentId } =>
+    request.subagentId === undefined ? {} : { subagentId: request.subagentId };
+
   const onPermission = (agentSessionId: string, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> => {
     const options = toApprovalOptions(request);
     const currentTurn = turn;
@@ -573,6 +578,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           options: listed,
           rule: { source: "task", ruleId: decision.rule.ruleId, name: TASK_RULE_NAME },
           ...shown,
+          ...subagentOf(request),
         });
         void emit({ kind: "approval.auto_answered", approvalId, ruleId: decision.rule.ruleId });
         log.info("permission answered by a task rule", { approvalId, ruleId: decision.rule.ruleId });
@@ -590,6 +596,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       options: listed,
       rule: decision.rule,
       ...shown,
+      ...subagentOf(request),
     });
     log.info("permission held for a person", { approvalId, ruleId: decision.rule?.ruleId ?? null, tool: subject?.tool ?? null });
     return new Promise<PermissionAnswer>((resolve) => {
@@ -1906,9 +1913,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   /** What the running turn shows of its plan (F-063): the latest plan entries and the last agent message. */
   const notePlan = (event: TaskEvent): void => {
-    if (event.kind === "plan.updated" && event.turnId === turn) {
+    if (event.kind === "plan.updated" && event.subagentId === undefined && event.turnId === turn) {
       turnPlan.entries = [...event.entries];
-    } else if (event.kind === "agent.message" && event.turnId === turn && event.text.trim() !== "") {
+    } else if (event.kind === "agent.message" && event.subagentId === undefined && event.turnId === turn && event.text.trim() !== "") {
       turnPlan.message = event.text;
     }
   };
@@ -2124,6 +2131,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       mcpServers: [{ name: "ostra", url: mcp.url, headers: { authorization: `Bearer ${mcp.bearer}` } }],
       onEvents: (events) => {
         for (const event of events) {
+          // A kind the server's minor can't read is left out (F-138: a minor-5 server gets no
+          // subagent's start or state, and the codec drops the subagent from the rest, so its calls show flat).
+          if (channel?.supports(event.kind) === false) {
+            continue;
+          }
           notePlan(event);
           void emit(event);
         }

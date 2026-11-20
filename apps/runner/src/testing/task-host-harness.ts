@@ -78,6 +78,8 @@ export const startShared = async (name: string, options: SharedOptions = {}): Pr
 };
 
 export type HarnessOptions = {
+  /** The server's protocol minor (default this build's): an older server, inside the window (ADR 0034). */
+  readonly serverMinor?: number;
   /** Overrides of the task host's options (the idle timer's clock, the temp folder). */
   readonly host?: Partial<Omit<TaskHostOptions, "link" | "executor" | "agents" | "logger">>;
   /** The runner's data folder; a new one by default. Two harnesses with two folders are two runners. */
@@ -139,7 +141,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
   const runnerId = runnerIdSchema.parse(`runner-m2-${String(run)}`);
   const server = await startFakeServer();
   server.accessTokens.set(ACCESS_TOKEN, runnerId);
-  const gateway = startFakeGateway(server);
+  const gateway = startFakeGateway(server, options.serverMinor === undefined ? {} : { serverMinor: options.serverMinor });
   const tokens = { get: () => Promise.resolve({ ok: true as const, token: ACCESS_TOKEN, expiresAt: Date.now() + 600_000 }), invalidate: () => undefined };
   const holder: { connection: RunnerConnection | undefined } = { connection: undefined };
   const logs: LogRecord[] = [];

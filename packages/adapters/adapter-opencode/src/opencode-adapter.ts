@@ -249,7 +249,8 @@ export class OpenCodeAdapter extends AgentAdapter {
   }
 
   protected mapUpdate(update: AcpUpdate, context: MapContext): MappedUpdate {
-    const key = String(context.sessionId);
+    // F-138: each subagent keeps its own todo list, as the main agent does.
+    const key = context.subagent === undefined ? String(context.sessionId) : `${String(context.sessionId)}:${context.subagent.id}`;
     let tracker = this.#todos.get(key);
     if (tracker === undefined) {
       tracker = createTodoTracker();
