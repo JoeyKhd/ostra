@@ -21,6 +21,7 @@ import type {
   StatusMapping,
   TaskLink,
   Ticket,
+  TicketAttachment,
   TicketContext,
   TicketPage,
   TicketQuery,
@@ -693,8 +694,18 @@ export class JiraFakeAdapter extends TrackerAdapter {
       const id = this.#site.nextId();
       const url = `https://jira-fake.invalid/secure/attachment/${id}/${encodeURIComponent(file.name)}`;
       this.#site.files.set(url, { bytes: new Uint8Array(file.bytes), contentType: file.contentType });
-      issue.attachments.push({ id, url, title: file.name, subtitle: null });
+      issue.attachments.push({ id, url, title: file.name, subtitle: file.marker ?? null });
       return ok({ attachmentId: id, url });
+    });
+  }
+
+  /** Milestone 6 (F-099): the issue's attachments, files and links, each with its subtitle. */
+  override listAttachments(board: BoardRef, ref: TicketRef): Promise<AdapterResult<readonly TicketAttachment[]>> {
+    return this.#read(() => {
+      const found = this.#find(board, ref);
+      return found.ok
+        ? ok([...found.value.remoteLinks, ...found.value.attachments].map((link) => ({ id: link.id, url: link.url, title: link.title, subtitle: link.subtitle })))
+        : found;
     });
   }
 

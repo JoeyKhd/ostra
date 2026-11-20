@@ -10,7 +10,10 @@ export type TrackerCapabilities = {
   readonly webhooks: boolean;
   /** Milestone 2: ostra's own comment can be edited in place (`updateComment`, ADR 0047). */
   readonly commentEdit: boolean;
-  /** Milestone 2: the ticket can take file copies (ADR 0043); Linear yes, used from milestone 6. */
+  /**
+   * Milestone 2: the ticket can take file copies (ADR 0043); Linear yes, used from milestone 6.
+   * `attachFile` and `listAttachments` (which reads back each attachment's marker) come with it.
+   */
   readonly attachments: boolean;
   /** Milestone 2: moves go through a transition graph (Jira), not a direct status write (Linear). */
   readonly transitions: boolean;

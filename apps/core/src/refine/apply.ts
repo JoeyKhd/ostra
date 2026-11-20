@@ -32,7 +32,9 @@ import type { ConnectionTrackers } from "../tracker/connections.ts";
 //      a ticket of its own linked from it.
 // The job runs once per version: its `draft.applied` event is the mark a replay finds. A retry
 // after a part of it went out looks each sub-ticket up by its marker before making it, so none is
-// made twice; an image already attached has `attachedAt`. A draft's text never reaches a log line.
+// made twice; an image already attached has `attachedAt`, and one the tracker took before a crash
+// kept `attachedAt` from being written carries its own marker (`listAttachments`), so it isn't
+// attached twice either. A draft's text never reaches a log line.
 
 export type DraftApplyDeps = {
   readonly db: Db;
@@ -78,6 +80,9 @@ const findMade = async (
   }
   return null;
 };
+
+/** The subtitle each attached image carries, so a retry finds the one it attached: ostra's words and the image's ID. */
+const imageMarkerOf = (imageId: string): string => `Attached by ostra from a draft (image ${imageId})`;
 
 const fail = (what: string, code: string): never => {
   throw new Error(`${what} failed (${code})`);
@@ -143,23 +148,37 @@ export const draftApplyHandler =
 
     // 2 first: what can't be attached is named in the description.
     const unattached: string[] = [];
+    // The markers already on the ticket, read once: an earlier try's attach whose `attachedAt` a
+    // crash kept from being written.
+    let onTicket: ReadonlySet<string> | null = null;
+    const markersOnTicket = async (): Promise<ReadonlySet<string>> => {
+      if (onTicket !== null) return onTicket;
+      const listed = await tracker.listAttachments(boardRef, ref);
+      if (!listed.ok) return fail("reading the ticket's attachments", listed.error.code);
+      onTicket = new Set(listed.value.flatMap((one) => (one.subtitle === null ? [] : [one.subtitle])));
+      return onTicket;
+    };
     for (const image of draftRow.images) {
       if (image.attachedAt !== null) continue;
       if (!caps.attachments) {
         unattached.push(image.name);
         continue;
       }
-      const bytes = await deps.readBlob(organizationId, image.blobId);
-      if (bytes === null) {
-        unattached.push(image.name);
-        continue;
+      const marker = imageMarkerOf(image.id);
+      if (!(await markersOnTicket()).has(marker)) {
+        const bytes = await deps.readBlob(organizationId, image.blobId);
+        if (bytes === null) {
+          unattached.push(image.name);
+          continue;
+        }
+        const attached = await tracker.attachFile(boardRef, ref, {
+          name: image.name,
+          contentType: image.contentType,
+          bytes,
+          marker,
+        });
+        if (!attached.ok) fail("attaching an image", attached.error.code);
       }
-      const attached = await tracker.attachFile(boardRef, ref, {
-        name: image.name,
-        contentType: image.contentType,
-        bytes,
-      });
-      if (!attached.ok) fail("attaching an image", attached.error.code);
       await deps.db.refineDraftImage.update({
         where: { id: image.id },
         data: { attachedAt: new Date(deps.clock.now()) },

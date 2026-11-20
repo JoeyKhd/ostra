@@ -94,6 +94,8 @@ let useJira = false;
 /** The Jira fake as a tracker without sub-issues, whose next `linkFailures` links fail. */
 let flatTracker: JiraFakeAdapter | null = null;
 let linkFailures = 0;
+/** The next Linear attaches that go through, then die before the job writes `attachedAt`. */
+let crashesAfterAttach = 0;
 
 const trackers = () =>
   createConnectionTrackers({
@@ -104,10 +106,20 @@ const trackers = () =>
     build: (input): TrackerAdapter | null => {
       // One tracker connection per organization: the Jira cases switch what it is.
       if (useJira) return flatTracker ?? jiraAdapter;
-      return new LinearAdapter(
+      const linear = new LinearAdapter(
         { apiUrl: fake.apiUrl, auth: { kind: "oauth", token: input.token } },
         input.context,
       );
+      const attach = linear.attachFile.bind(linear);
+      linear.attachFile = async (...args) => {
+        const attached = await attach(...args);
+        if (crashesAfterAttach > 0) {
+          crashesAfterAttach -= 1;
+          throw new Error("the process died after the tracker's attach");
+        }
+        return attached;
+      };
+      return linear;
     },
   });
 
@@ -616,6 +628,60 @@ describe("refine drafts (F-099)", () => {
     expect(applied[0]?.payload).toMatchObject({
       ticketKey: ticketKeySchema.parse(after.ticket.key),
     });
+  });
+
+  it("F-099/c6,c7: a retry after a crash between the tracker's attach and attachedAt attaches the image once", async () => {
+    const { taskId, sessionId, token, ticket } = await refineTask();
+    await submit(taskId, token, draft());
+    await turnEnds(taskId, sessionId);
+    const blob = await test.db.blob.create({
+      data: {
+        organizationId,
+        projectId,
+        taskId,
+        store: "postgres",
+        key: `k-${randomUUID()}`,
+        purpose: "draft-image",
+        contentType: "image/png",
+        size: 4,
+        sha256: "00".repeat(32),
+      },
+    });
+    blobBytes.set(blob.id, new Uint8Array([137, 80, 78, 71]));
+    expect(
+      await addDraftImage(
+        { db: test.db, notices: postgresChangeNotices },
+        scopeOf(fixture.a.member),
+        { taskId, blobId: blob.id, name: "crash-once.png", contentType: "image/png", size: 4 },
+        { max: 10 },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await applyDraft({ db: test.db, ...ports() }, scopeOf(fixture.a.member), {
+        taskId,
+        version: 1,
+      }),
+    ).toMatchObject({ ok: true });
+    const v1 = await test.db.refineDraft.findFirstOrThrow({ where: { taskId, version: 1 } });
+    const attachedHere = () =>
+      fake
+        .issueView(externalTicketIdSchema.parse(ticket.externalId))
+        .attachments.filter((attachment) => attachment.url.endsWith("/crash-once.png"));
+    crashesAfterAttach = 1;
+    try {
+      await expect(runApply(v1.id, 1)).rejects.toThrow("the process died");
+    } finally {
+      crashesAfterAttach = 0;
+    }
+    const image = await test.db.refineDraftImage.findFirstOrThrow({ where: { draftId: v1.id } });
+    expect(image.attachedAt).toBeNull();
+    expect(attachedHere()).toHaveLength(1);
+    await runApply(v1.id, 1, 1);
+    expect(attachedHere()).toHaveLength(1);
+    expect(
+      (await test.db.refineDraftImage.findUniqueOrThrow({ where: { id: image.id } })).attachedAt,
+    ).not.toBeNull();
+    expect(await test.db.event.count({ where: { taskId, kind: "draft.applied" } })).toBe(1);
   });
 
   it("F-099/c6: Mark ready moves the ticket to the board's ready status through the ticket outbox", async () => {

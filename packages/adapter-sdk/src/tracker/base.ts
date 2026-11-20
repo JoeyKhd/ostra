@@ -259,6 +259,11 @@ export type TicketFile = {
   readonly name: string;
   readonly contentType: string;
   readonly bytes: Uint8Array;
+  /**
+   * ostra's own line kept with the attachment (its subtitle), so `listAttachments` finds a file a
+   * retry already attached. Never a member's text.
+   */
+  readonly marker?: string;
 };
 
 /** The file once attached: where the tracker keeps it. */
@@ -532,5 +537,14 @@ export abstract class TrackerAdapter {
   attachFile(board: BoardRef, ref: TicketRef, file: TicketFile): Promise<AdapterResult<AttachedFile>> {
     this.plumbing.logger.debug("attachFile is not supported", { board: board.externalId, ticket: refId(ref), bytes: file.bytes.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't attach a file`));
+  }
+
+  /**
+   * The ticket's attachments, each with the subtitle `attachFile`'s marker set (F-099): how a retry
+   * finds a file it already attached. Needs `attachments`.
+   */
+  listAttachments(board: BoardRef, ref: TicketRef): Promise<AdapterResult<readonly TicketAttachment[]>> {
+    this.plumbing.logger.debug("listAttachments is not supported", { board: board.externalId, ticket: refId(ref) });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't list a ticket's attachments`));
   }
 }

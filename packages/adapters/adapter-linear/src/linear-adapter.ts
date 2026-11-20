@@ -713,7 +713,7 @@ export class LinearAdapter extends TrackerAdapter {
         : adapterError("invalid-response", `attaching a file failed (HTTP ${String(put.status)}): the upload was refused`);
     }
     const assetUrl = new URL(target.assetUrl).href;
-    const created = await this.#query("attachmentCreate", { issueId: issue.value.id, url: assetUrl, title: file.name, subtitle: null }, answers.attachmentCreate);
+    const created = await this.#query("attachmentCreate", { issueId: issue.value.id, url: assetUrl, title: file.name, subtitle: file.marker ?? null }, answers.attachmentCreate);
     if (!created.ok) {
       return created;
     }
@@ -721,6 +721,26 @@ export class LinearAdapter extends TrackerAdapter {
     return success && attachment !== null && attachment !== undefined
       ? ok({ attachmentId: attachment.id, url: assetUrl })
       : adapterError("conflict", "Linear did not attach the file");
+  }
+
+  /** The issue's attachments (its first 100), each with its subtitle: where `attachFile` keeps its marker. */
+  override async listAttachments(board: BoardRef, ref: TicketRef): Promise<AdapterResult<readonly TicketAttachment[]>> {
+    const issue = await this.#issueOnBoard(board, ref);
+    if (!issue.ok) {
+      return issue;
+    }
+    const found = await this.#query("issueAttachments", { id: issue.value.id }, answers.issueAttachments);
+    if (!found.ok) {
+      return found;
+    }
+    return ok(
+      found.value.issue.attachments.nodes.map((attachment) => ({
+        id: attachment.id,
+        url: attachment.url,
+        title: attachment.title ?? "",
+        subtitle: attachment.subtitle ?? null,
+      })),
+    );
   }
 
   // ---------- milestone 6: agent sessions (F-012) ----------

@@ -230,6 +230,7 @@ const defineMilestone6Cases = (subject: () => { readonly adapter: TrackerAdapter
     if (!capabilities.attachments) {
       const ref = { key: ticketKeySchema.parse("NONE-1") };
       expect(await adapter.attachFile(fixture.board, ref, { name: "a.png", contentType: "image/png", bytes: PNG })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(await adapter.listAttachments(fixture.board, ref)).toMatchObject({ ok: false, error: { code: "unsupported" } });
     }
   });
 
@@ -304,7 +305,7 @@ const defineMilestone6Cases = (subject: () => { readonly adapter: TrackerAdapter
     expect((await adapter.updateTicket({ externalId: "no-such-board" }, ref, { description })).ok).toBe(false);
   });
 
-  it("attaches a file to a ticket, which downloads back", async (context) => {
+  it("attaches a file to a ticket, which downloads back and is listed with its marker", async (context) => {
     const { adapter, fixture } = subject();
     const { seedTicket } = fixture;
     if (seedTicket === undefined || fixture.hooks === undefined || !adapter.capabilities.attachments) {
@@ -312,12 +313,15 @@ const defineMilestone6Cases = (subject: () => { readonly adapter: TrackerAdapter
       return;
     }
     const seeded = await seedTicket({ title: "With a file" });
-    const attached = must(
-      await adapter.attachFile(fixture.board, { externalId: seeded.externalId }, { name: "mock-up.png", contentType: "image/png", bytes: PNG }),
-      "attachFile",
-    );
-    const context6 = must(await adapter.getTicketContext(fixture.board, { externalId: seeded.externalId }), "getTicketContext");
+    const ref = { externalId: seeded.externalId };
+    expect(must(await adapter.listAttachments(fixture.board, ref), "listAttachments")).toEqual([]);
+    const marker = "Attached by ostra from a draft (image 1)";
+    const attached = must(await adapter.attachFile(fixture.board, ref, { name: "mock-up.png", contentType: "image/png", bytes: PNG, marker }), "attachFile");
+    const context6 = must(await adapter.getTicketContext(fixture.board, ref), "getTicketContext");
     expect(context6.attachments.map((attachment) => attachment.url)).toContain(attached.url);
+    // F-099: a retry finds the file by its marker, so it isn't attached twice.
+    const listed = must(await adapter.listAttachments(fixture.board, ref), "listAttachments");
+    expect(listed.filter((attachment) => attachment.subtitle === marker).map((attachment) => attachment.url)).toEqual([attached.url]);
     const file = must(await adapter.downloadFile(attached.url, 1024 * 1024), "downloadFile");
     expect([...file.bytes]).toEqual([...PNG]);
   });
