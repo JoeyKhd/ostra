@@ -19,6 +19,10 @@ export const auditActions = {
   "task.history_removed": "task",
   // Milestone 6 (F-040, ADR 0057): an outside task's answer.
   "task.approved": "task",
+  // Milestone 6 (F-099, ticket 15): a member's edit of a refine draft, "Update ticket" and "Mark ready".
+  "draft.edited": "task",
+  "draft.applied": "task",
+  "draft.marked-ready": "task",
   "task.rejected": "task",
   "checks.fix-asked": "task",
   "diff.comments-sent": "task",

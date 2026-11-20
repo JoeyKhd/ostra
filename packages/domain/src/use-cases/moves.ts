@@ -57,7 +57,8 @@ export const moveTaskInTx = async (deps: TaskMoveDeps, task: TaskRow, input: Tas
     },
     select: { ticketId: true },
   });
-  if (updated.ticketId !== null) {
+  // A refine task writes nothing to its ticket until a member acts on its draft (F-099).
+  if (updated.ticketId !== null && task.kind !== "refine") {
     // A ticket task's progress comment shows every move (F-031): its edit commits with the move.
     await recordTicketProgressInTx(deps.tx, task.id, columns.state);
   }

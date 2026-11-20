@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Logger, TicketContext, TicketImage } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { appendServerEvent, isProgressComment, markTicketInline, parentCriteriaOf, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
+import { appendServerEvent, isProgressComment, markTicketInline, parentCriteriaOf, refinePrompt, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
 import type { ChangeNotices, Clock, JobQueue, TicketPromptContext } from "@ostra/domain";
 import type { JobHandler } from "@ostra/jobs";
 import {
@@ -261,7 +261,9 @@ export const fetchContextHandler =
         ? null
         : await deps.db.agentProfile.findFirst({ where: { id: session?.agentProfileId ?? "", organizationId: payload.organizationId }, select: { instructions: true } });
     const project = await deps.db.project.findUniqueOrThrow({ where: { id: task.projectId }, select: { ticketTemplate: true } });
-    const rendered = renderTicketPrompt(
+    // Milestone 6 (F-099): a refine task's first prompt is the refine prompt, around the same ticket.
+    const repos = task.kind === "refine" ? await deps.db.taskRepo.findMany({ where: { taskId: task.id }, select: { repo: { select: { fullName: true, checkoutDir: true } } } }) : [];
+    const rendered = task.kind === "refine" ? refinePrompt({ ticket: { key: ticket.key, title: ticketContext.ticket.title, description: ticketContext.ticket.description }, repos: repos.map((row) => row.repo) }) : renderTicketPrompt(
       ticketTemplateFor(project.ticketTemplate).template,
       promptContextOf(ticketContext, images.copied, {
         instructions: profile?.instructions ?? null,

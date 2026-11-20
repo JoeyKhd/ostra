@@ -358,12 +358,13 @@ export const archiveAgentProfile: ArchiveAgentProfile = async (deps, scope, inpu
   }
   const organizationId = scope.organizationId;
   return deps.db.$transaction(async (tx) => {
-    const profile = await tx.agentProfile.findFirst({ where: { id: input.profileId, organizationId }, select: { id: true, builtIn: true, archivedAt: true } });
+    const profile = await tx.agentProfile.findFirst({ where: { id: input.profileId, organizationId }, select: { id: true, builtIn: true, builtInKind: true, archivedAt: true } });
     if (profile === null) {
       return { ok: false, error: "not-found", message: "No such agent profile" } as const;
     }
-    if (profile.builtIn) {
-      return { ok: false, error: "built-in", message: "The built-in profile can't be archived" } as const;
+    if (profile.builtIn || profile.builtInKind !== null) {
+      // Milestone 6 (F-099): the built-in Refine and Review profiles can be edited, never archived.
+      return { ok: false, error: "built-in", message: "A built-in profile can't be archived" } as const;
     }
     const builtInId = await ensureBuiltInAgentProfile(tx, organizationId);
     const moved = new Set<string>();

@@ -108,7 +108,8 @@ export const ticketMagicLine = (key: TicketKey, word: MagicWord): string => `${w
 
 /** What each kind of `TicketWrite` writes. Its text is never logged. */
 export const ticketWritePayloadSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("move"), target: z.enum(["started", "in-review", "done"]) }),
+  /** Milestone 6 (F-099): `ready` is "Mark ready", the board's ready status. */
+  z.strictObject({ kind: z.literal("move"), target: z.enum(["started", "in-review", "done", "ready"]) }),
   /** ostra's one progress comment, made once; its ID goes on the task. */
   z.strictObject({ kind: z.literal("comment"), markdown: z.string().min(1).max(65_536) }),
   /** The same comment, edited in place. */
@@ -152,7 +153,7 @@ export const ticketWriteKey = (taskId: TaskId, step: TicketWriteStep): string =>
 
 /** What a ticket write's key is made from. */
 export type TicketWriteStep =
-  | { readonly kind: "move"; readonly target: "started" | "in-review" | "done" }
+  | { readonly kind: "move"; readonly target: "started" | "in-review" | "done" | "ready" }
   | { readonly kind: "comment" }
   /** `revision`: what the comment shows, such as `pr-opened:3` (the event's seq). */
   | { readonly kind: "comment_update"; readonly revision: string }

@@ -3,6 +3,7 @@ import {
   acceptInvitation,
   activateVerifiedMemberships,
   ensureBuiltInAgentProfile,
+  ensureBuiltInKindProfilesInTx,
   ensureDefaultPool,
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -451,6 +452,8 @@ export const createAuth = (input: CreateAuthInput) => {
             const organizationId = organizationIdSchema.parse(created.id);
             await db.$transaction(async (tx) => {
               await ensureBuiltInAgentProfile(tx, organizationId);
+              // Milestone 6 (F-099, F-100): its built-in Refine and Review profiles.
+              await ensureBuiltInKindProfilesInTx(tx, organizationId);
               await ensureDefaultPool(tx, organizationId);
             });
           },

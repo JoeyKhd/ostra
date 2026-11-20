@@ -1,4 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
+import { handInDraftInTx } from "./refine-drafts.ts";
 import { mapTask, sessionLimitToDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { boxIdSchema, leaseEpochSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits } from "@ostra/protocol";
@@ -228,6 +229,13 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
 
+  // Milestone 6 (F-099, F-036): a refine task hands in a draft, not a branch: a draft from this turn
+  // puts it in front of its owner (`draft_ready`). It never opens a PR.
+  if (task.kind === "refine") {
+    const handedIn = await handInDraftInTx(deps, tx, { taskId: task.id, savedSeq: input.eventSeq });
+    await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+    return { ok: true, outcome: handedIn ? "needs-you" : "unchanged" };
+  }
   if (needsPullRequest) {
     // A branch ahead with no PR: the opener, idempotent per task repo, moves the task to review.
     await deps.jobs.enqueueInTx(tx, "task.open-pull-requests", {

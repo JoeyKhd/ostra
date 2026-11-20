@@ -25,7 +25,7 @@ import {
 import type { ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { replicaIdSchema } from "@ostra/protocol";
+import { blobIdSchema, replicaIdSchema } from "@ostra/protocol";
 
 import { startAutomationWorkers } from "./automations/automations.ts";
 import { createBlobService } from "./blobs/blob-service.ts";
@@ -80,6 +80,8 @@ import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-tok
 import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { agentEventHandler } from "./linear/agent-mode/events.ts";
+import { draftApplyHandler, enqueueBuiltInProfileSeeds, seedProfilesHandler } from "./refine/apply.ts";
+import { handleDraftEndpoint } from "./runner-http/draft.ts";
 import { activitySendHandler, ensureHeartbeatSchedule, heartbeatHandler } from "./linear/agent-mode/outbox.ts";
 import { applyBoxRunnerEvent } from "./dispatch/box-waits.ts";
 import { handleSnapshotEndpoint } from "./snapshots/endpoints.ts";
@@ -372,6 +374,8 @@ export const startCore = async (
     logger,
     findingsMax: settings.team.reviewFindingsMax,
   });
+  // Milestone 6 (F-099, ticket 15): a refine task's sidecar hands in its draft here.
+  const draftEndpoints = handleDraftEndpoint({ db, tokens: gateway.context.tokens, taskTokens: gateway.context.taskTokens, jobs, notices, audit: postgresAuditLog, clock: systemClock, logger });
   const snapshotEndpoints = handleSnapshotEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
   // Milestone 5 (F-120, ticket 17): the registry's push and pull credentials, by the runner's token.
   const registryEndpoints = handleRegistryEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
@@ -499,6 +503,26 @@ export const startCore = async (
   await jobs.work("linear.activity.send", activitySendHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger, heartbeatMs }), { localConcurrency: 4 });
   await jobs.work("linear.heartbeat", heartbeatHandler({ db, jobs, clock: systemClock, heartbeatMs, heartbeatKind: settings.team.linearHeartbeatKind }), { localConcurrency: 1 });
   await ensureHeartbeatSchedule(jobs);
+  // Milestone 6 (F-099, ticket 15): "Update ticket" goes out once per draft version, and every
+  // organization gets its built-in Refine and Review profiles.
+  await jobs.work(
+    "draft.apply",
+    draftApplyHandler({
+      db,
+      trackers,
+      notices,
+      clock: systemClock,
+      publicUrl: settings.publicUrl,
+      logger,
+      readBlob: async (organizationId, blobId) => {
+        const read = await blobs.read(organizationId, blobIdSchema.parse(blobId));
+        return read.ok ? read.value.bytes : null;
+      },
+    }),
+    { localConcurrency: 2 },
+  );
+  await jobs.work("profiles.seed-built-in", seedProfilesHandler({ db, jobs, notices, audit: postgresAuditLog, clock: systemClock }), { localConcurrency: 1 });
+  await enqueueBuiltInProfileSeeds({ db, jobs });
   const trackerTick = async (): Promise<void> => {
     await pollSchedules.ensure().catch((error: unknown) => {
       logger.warn("tracker.schedules-failed", { error: error instanceof Error ? error.name : "unknown" });
@@ -633,7 +657,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

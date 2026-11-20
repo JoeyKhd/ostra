@@ -1,6 +1,6 @@
 # 15: Core: refine drafts and writing them to the tracker
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 06, 07
 Features: F-099, F-036 (the draft's owner)
@@ -20,9 +20,14 @@ Spec: `../spec.md`, section 4 ("A refine task"); ADR 0028 (amended)
 
 ## Done when
 
-- [ ] Tests named `it("F-099: ...")`: the built-in Refine profile exists in every organization, read-only, on its default model, can be edited and not deleted, and is each project's refine default; a code task's token posting a draft is refused; the typed fields stored per version; needs you for the owner on the turn's end; "Update ticket" writes the description, attaches images and creates sub-issues once under a replayed job; "Mark ready" moves to the mapped status; nothing reaches the tracker before a member acts; the Jira fake with its acceptance-criteria field and its transitions.
-- [ ] Break-it: the kind check on the endpoint dropped fails its test; recorded in `context/proof/F-099.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add refine drafts`.
+- [x] Tests named `it("F-099: ...")`: the built-in Refine profile exists in every organization, read-only, on its default model, can be edited and not deleted, and is each project's refine default; a code task's token posting a draft is refused; the typed fields stored per version; needs you for the owner on the turn's end; "Update ticket" writes the description, attaches images and creates sub-issues once under a replayed job; "Mark ready" moves to the mapped status; nothing reaches the tracker before a member acts; the Jira fake with its acceptance-criteria field and its transitions.
+- [x] Break-it: the kind check on the endpoint dropped fails its test; recorded in `context/proof/F-099.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add refine drafts`.
 
 ## Comments
+
+- 2026-11-20: built in `✨ add refine drafts`. The built-in profiles are `ensureBuiltInKindProfilesInTx` / `seedBuiltInProfiles` (`packages/domain/src/use-cases/refine-drafts.ts`): "Refine" and "Review" (`builtInKind`, `builtIn: false` so milestone 3's lookups of the generic built-in never find them) on the model and provider of the organization's built-in OpenCode profile, filled in later if they were seeded before it had one; each project's refine and review default where it had none or the generic one. They're seeded with the first admin's organization and a new one, and by `profiles.seed-built-in` for every existing organization at core's start (`enqueueBuiltInProfileSeeds`). `archiveAgentProfile` refuses them. A refine task on a ticket is `startTicketTask` with `kind: "refine"`; it writes nothing to the ticket (neither the "started" writes nor the progress comment), its prompt is ticket 06's refine prompt (`ticket.fetch-context`), and its spec has `tools: ["draft", "memory"]`. `POST /runner/v1/tasks/:taskId/draft` is `apps/core/src/runner-http/draft.ts`, checked by the memory endpoints' task-token check (`authorizeTaskCall`). The turn's end is `handInDraftInTx` in `recordWorkSaved`: a `draft.submitted` since the turn's previous `session.saved` moves the task to needs you (`draft_ready`, the driver, else the project's members). `editDraft`, `addDraftImage` (at most `OSTRA_DRAFT_IMAGES_MAX`), `applyDraft` and `markTicketReady` are in the same module; "Update ticket" is `draft.apply` (`apps/core/src/refine/apply.ts`), "Mark ready" a ticket outbox `move` with the new target `ready` (`boardMappingSchema` gains the optional `ready`). Proof: `context/proof/F-099.md`.
+- Choices and differences: (1) "Update ticket" writes through `draft.apply`, keyed by the draft version, rather than new `TicketWrite` kinds, which would have needed new enum values in a migration; its idempotency is its `draft.applied` event, each image's `attachedAt`, and a marker line on each sub-ticket that a retry looks up before making one. (2) "Mark ready" moves through the adapter's `moveTicket` with the ready status in the `started` slot, so a Jira's transitions apply without a new `MoveTarget`. (3) A tracker without `attachments` gets the images named in the description, with the task's link, rather than linked by URL: a draft's blob has no public address. (4) A draft version cap of 50 (`DRAFT_VERSIONS_MAX`), the `limit-reached` the protocol names.
+- Not built here: "Create ticket" from a prompt refine task's draft (`createTicketFromDraft`, F-097's path with the draft and its sub-tickets) is left for ticket 27, with the API; the git proxy's read-only mode and the sidecar's `submit_draft` are ticket 22's; the board-mapping draft of a `ready` status shown to a project admin is tickets 27 and 34's. The built-in Refine profile is editable through milestone 3's `saveAgentProfile` (it refuses only the generic built-in one); that case goes with ticket 27's API tests.
+- Checks: whole-repo typecheck through turbo; lint and tests of `@ostra/domain`, `@ostra/core` and `@ostra/api`, and tests of `@ostra/web`; `check:licenses`; `check:proof`. Break-its: the kind check dropped from the endpoint and `saveDraft` (the code task's draft was stored), and `draft.apply` writing a version no member had sent (the description changed first); each failed its case and was restored.

@@ -257,6 +257,8 @@ export const buildTaskSpec = async (
     projectId: task.projectId,
     organizationId,
     kind: task.kind,
+    // Milestone 6 (F-099, ADR 0028): a refine task's sidecar serves the draft tool and memory, not the PR's text.
+    ...(task.kind === "refine" ? { tools: ["draft", "memory"] } : {}),
     title: task.title,
     prompt: extras.prompt ?? task.prompt ?? "",
     ticket: extras.ticket,

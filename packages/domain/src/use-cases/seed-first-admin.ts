@@ -9,6 +9,7 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, organizationNameSchema, usern
 import { slugify } from "../branch-name.ts";
 import type { AuditLog, ChangeNotices, Clock } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
+import { ensureBuiltInKindProfilesInTx } from "./refine-drafts.ts";
 import { ensureBoxSizes, ensureDefaultPool } from "./pools.ts";
 import type { UseCaseResult } from "./common.ts";
 
@@ -147,6 +148,8 @@ export const seedFirstAdmin: SeedFirstAdmin = async (deps, input) => {
     });
     // Every organization has its built-in OpenCode profile (F-086); the admin picks its model later.
     await ensureBuiltInAgentProfile(tx, organizationId);
+    // Milestone 6 (F-099, F-100): and its built-in Refine and Review profiles.
+    await ensureBuiltInKindProfilesInTx(tx, organizationId);
     // And its default runner pool, which a new project links to.
     await ensureDefaultPool(tx, organizationId);
     // Milestone 5 (F-095): its three box sizes, for an install that first starts after the

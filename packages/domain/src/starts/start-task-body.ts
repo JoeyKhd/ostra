@@ -182,11 +182,15 @@ export const enqueueStartWorkInTx = async (deps: { readonly tx: Tx; readonly pub
   }
   const at = { organizationId: work.organizationId, projectId: work.projectId, taskId: work.taskId, ...work.ticket };
   const taskUrl = `${(deps.publicUrl ?? "").replace(/\/+$/, "")}/tasks/${work.taskId}`;
-  await writeTicketOutboxInTx(deps, at, { kind: "move", target: "started" }, { kind: "move", target: "started" });
-  await writeTicketOutboxInTx(deps, at, { kind: "comment" }, { kind: "comment", markdown: `ostra is working on this: ${taskUrl}` });
-  await writeTicketOutboxInTx(deps, at, { kind: "link_task" }, { kind: "link_task", url: taskUrl, title: `ostra task: ${work.title}`.slice(0, 256), subtitle: null });
-  // A sub-issue's start shows on its parent's comment (F-077).
-  await writeParentProgressInTx({ tx, jobs: deps.jobs }, { taskId: work.taskId, revision: "started" });
+  // Milestone 6 (F-099): a refine task writes nothing to its ticket until a member acts on its draft.
+  const kind = (await tx.task.findUnique({ where: { id: work.taskId }, select: { kind: true } }))?.kind;
+  if (kind !== "refine") {
+    await writeTicketOutboxInTx(deps, at, { kind: "move", target: "started" }, { kind: "move", target: "started" });
+    await writeTicketOutboxInTx(deps, at, { kind: "comment" }, { kind: "comment", markdown: `ostra is working on this: ${taskUrl}` });
+    await writeTicketOutboxInTx(deps, at, { kind: "link_task" }, { kind: "link_task", url: taskUrl, title: `ostra task: ${work.title}`.slice(0, 256), subtitle: null });
+    // A sub-issue's start shows on its parent's comment (F-077).
+    await writeParentProgressInTx({ tx, jobs: deps.jobs }, { taskId: work.taskId, revision: "started" });
+  }
   // The prompt is rendered from the ticket's full context, which the job reads: it then dispatches.
   await deps.jobs.enqueueInTx(tx, "ticket.fetch-context", { organizationId: work.organizationId, taskId: work.taskId, sessionId: work.sessionId });
 };

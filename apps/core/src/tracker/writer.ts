@@ -239,7 +239,18 @@ export const applyTicketWrite = async (
         return { outcome: "failed", reason: "the board has no status mapping" };
       }
       // A move is idempotent on the tracker: one already there writes nothing.
-      const moved = await attempt(() => tracker.moveTicket(board, ref, data.target, statusMappingOf(mapping)), true);
+      const statuses = statusMappingOf(mapping);
+      // Milestone 6 (F-099): "Mark ready" moves to the board's ready status, by the tracker's own
+      // move (a Jira's transitions), as the move to "started" would with that status as its target.
+      const ready = mapping.ready;
+      if (data.target === "ready" && ready === undefined) {
+        await store.release(row.idempotencyKey);
+        return { outcome: "failed", reason: "the board has no ready status" };
+      }
+      const moved = await attempt(
+        () => (data.target === "ready" ? tracker.moveTicket(board, ref, "started", { ...statuses, started: ready ?? statuses.started }) : tracker.moveTicket(board, ref, data.target, statuses)),
+        true,
+      );
       return moved.ok ? finish(moved.value.status.id, "written") : fail(moved.error);
     }
     case "comment": {

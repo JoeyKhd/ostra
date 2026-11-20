@@ -74,8 +74,8 @@ export const ingestTicketHint: IngestTicketHint = (deps, change) => ingestTicket
 export const startTicketTaskInputSchema = z.strictObject({
   projectId: projectIdSchema,
   ticketId: ticketIdSchema,
-  /** Defaults to `code`. */
-  kind: z.enum(["code"]).optional(),
+  /** Defaults to `code`. Milestone 6 (F-099): `refine`, a draft of the ticket. */
+  kind: z.enum(["code", "refine"]).optional(),
   /** Defaults to the project's default profile for the kind. */
   agentProfileId: agentProfileIdSchema.optional(),
   /** The member's own personal runner, or unset to pick from the project's pools. */

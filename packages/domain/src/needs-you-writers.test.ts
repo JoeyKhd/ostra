@@ -107,6 +107,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/review-loop/start-round.ts",
       // Milestone 6's ticket 11: a start that waits for approval (a rule's "wait for approval", F-040's path).
       "packages/domain/src/starts/start-task-body.ts",
+      // Ticket 15 (F-099): a refine draft's item, and its answer.
+      "packages/domain/src/use-cases/refine-drafts.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);

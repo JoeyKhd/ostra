@@ -27,6 +27,8 @@ export const boardMappingSchema = z.strictObject({
   started: statusIdSchema,
   inReview: statusIdSchema,
   done: statusIdSchema,
+  /** Milestone 6 (F-099): where "Mark ready" moves a refined ticket; absent until a project admin picks it. */
+  ready: statusIdSchema.optional(),
   doneBy: doneBySchema,
   magicWord: magicWordSchema.default("Closes"),
 });

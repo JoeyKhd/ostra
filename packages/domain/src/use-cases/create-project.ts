@@ -11,6 +11,7 @@ import { detectEnvironment, pathsToRead } from "../environment/detect.ts";
 import type { DetectedEnvironment } from "../environment/detect.ts";
 import type { Ports } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
+import { builtInProfileOfKindInTx } from "./refine-drafts.ts";
 import type { UseCaseResult } from "./common.ts";
 import { ensureDefaultPool } from "./pools.ts";
 import { checkoutDirFor, PROJECT_MAX_REPOS_DEFAULT } from "../repos/several-repos.ts";
@@ -204,9 +205,10 @@ export const createProject: CreateProject = async (deps, input) => {
       name: input.name,
       slug: input.slug,
       access: input.access,
-      defaultRefineProfileId: profileId,
+      // Milestone 6 (F-099, F-100): the built-in Refine and Review profiles, where the organization has them.
+      defaultRefineProfileId: (await builtInProfileOfKindInTx(tx, organizationId, "refine")) ?? profileId,
       defaultCodeProfileId: profileId,
-      defaultReviewProfileId: profileId,
+      defaultReviewProfileId: (await builtInProfileOfKindInTx(tx, organizationId, "review")) ?? profileId,
     },
     select: { id: true },
   });

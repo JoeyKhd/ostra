@@ -97,8 +97,13 @@ describe("the first account", () => {
     expect(member).toMatchObject({ organizationId: seeded.organizationId, role: "admin" });
     // The organization has its default runner pool, and its built-in OpenCode profile with no model until the admin picks one.
     expect(await harness.test.db.runnerPool.findMany({ where: { organizationId: seeded.organizationId } })).toMatchObject([{ isDefault: true }]);
-    expect(await harness.test.db.agentProfile.findMany({ where: { organizationId: seeded.organizationId } })).toMatchObject([
+    expect(await harness.test.db.agentProfile.findMany({ where: { organizationId: seeded.organizationId, builtInKind: null } })).toMatchObject([
       { name: "OpenCode", adapter: "opencode", builtIn: true, modelId: null },
+    ]);
+    // Milestone 6 (F-099, F-100): and its built-in Refine and Review profiles.
+    expect((await harness.test.db.agentProfile.findMany({ where: { organizationId: seeded.organizationId, builtInKind: { not: null } }, orderBy: { name: "asc" } })).map((row) => [row.name, row.builtInKind])).toEqual([
+      ["Refine", "refine"],
+      ["Review", "review"],
     ]);
   });
 
