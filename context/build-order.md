@@ -16,6 +16,8 @@ These aren't a milestone of their own. Every milestone is built on them, and the
 
 ## Milestones
 
+**Milestone demos move to the launch gate too (2026-11-20).** Milestones 4, 5 and 6 keep their per-ticket proofs, CI, the browser suite and their review, but their scripted end-to-end demos (tickets m4 41, m5 37, m6 39) run once, at the launch gate, with milestone 7's ticket 32. The maintainer: "i think this 'demo' thing you are doing is taking a loooooong time".
+
 **The launch gate waits for the maintainer (2026-11-20).** Milestone 7's whole-product checks run last, only when the maintainer says it's time, so features added in between don't force a redo: the load test as the gate (ticket 26), the security review (27, 28), the launch's end-to-end demo and ledger (32), the 30-minute measure (25) and the launch itself (33). Each milestone's own demo, review and fixes still run as it finishes. The maintainer: "make sure you skip the things that you might need to redo later ... a security review should come at the absolute end when i tell you it's time to do it".
 
 | # | Milestone | Features | Ends with |

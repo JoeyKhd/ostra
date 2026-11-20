@@ -1,6 +1,7 @@
 # 39: The end-to-end demo and the ledger
 
-Status: ready-for-agent
+Status: needs-triage
+Held: the end-to-end demo runs once, at the launch gate, over the finished product. The maintainer, 2026-11-20: "i think this 'demo' thing you are doing is taking a loooooong time".
 Builder: core (lead), with each builder on call for their part
 Blocked by: 10 to 23, 31 to 38
 Features: every F-ID in the spec's section 2, and F-010, F-036, F-111 and F-048
@@ -25,3 +26,4 @@ Spec: `../spec.md`, section 3
 - [ ] Committed as `✅ add the milestone 6 end-to-end demo`, and the record and ledger as `📝 set milestone 6's ledger statuses`.
 
 ## Comments
+- 2026-11-20: held for the launch gate on the maintainer's word: no more per-milestone demo runs. The milestone's review and fixes still ran.
