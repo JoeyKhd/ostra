@@ -238,6 +238,81 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     const all = request.messages.map((message) => message.text).join("\n");
     return { text: args.split(",").map((marker) => `${marker}=${String(all.includes(`${marker}:`))}`).join(" ") };
   },
+  // ---- milestone 6: the whole team's task kinds (ticket 09). Each says what OpenCode let happen. ----
+
+  /**
+   * OpenCode's question tool, then a line with the answer it got: an automatic turn's question
+   * (Q160, spike 10). The question offers no option, so the answer is the text field's.
+   */
+  "ask-and-continue": ({ step, lastToolResults }) => {
+    if (step === 0) {
+      return { toolCalls: [{ name: "question", arguments: { questions: [{ question: "Should the banner show the full name?", header: "Banner", options: [] }] } }] };
+    }
+    return step === 1 ? { text: `carried on with: ${lastToolResults.map((result) => result.text).join(" ").slice(0, 400)}` } : undefined;
+  },
+
+  /** Pushes the marker's repo folder to its `origin`, and says whether the push went through. */
+  "git-push": ({ step, args, lastToolResults }) => {
+    if (step === 0) {
+      return { toolCalls: [{ name: "shell", arguments: { command: `git -C ${args} push origin HEAD`, description: "push the change" } }] };
+    }
+    if (step !== 1) {
+      return undefined;
+    }
+    const text = lastToolResults.map((result) => result.text).join(" ");
+    return { text: /error|fatal|rejected|refused|denied|403|failed/i.test(text) ? "push refused" : "push went through" };
+  },
+
+  /** Reads each of the marker's repo folders' HEAD, and says them as `<folder> <sha>`. */
+  heads: ({ step, args, since }) => {
+    const folders = args.split(" ").filter((folder) => folder !== "");
+    if (step === 0) {
+      return { toolCalls: folders.map((folder) => ({ name: "shell", arguments: { command: `git -C ${folder} rev-parse HEAD`, description: `the HEAD of ${folder}` } })) };
+    }
+    if (step !== 1) {
+      return undefined;
+    }
+    // Each call's result, in the order the calls were made: one SHA each.
+    const shas = since.filter((message) => message.role === "tool").map((message) => /\b[0-9a-f]{40}\b/.exec(message.text)?.[0] ?? "unknown");
+    return { text: folders.map((folder, index) => `${folder} ${shas[index] ?? "unknown"}`).join("\n") };
+  },
+
+  /** Names every tool ostra's MCP server offers, as OpenCode lists them, without the server's prefix. */
+  "ostra-tools": ({ step, request }) => {
+    if (step !== 0) {
+      return undefined;
+    }
+    const names = request.toolNames.filter((name) => name.startsWith(OSTRA_PREFIX)).map((name) => name.slice(OSTRA_PREFIX.length));
+    return { text: `memory tools: ${names.length === 0 ? "none" : names.join(", ")}` };
+  },
+
+  /** Calls ostra's tool the marker names with the marker's JSON (base64url), and says what it answered. */
+  "ostra-call": ({ step, args, lastToolResults }) => {
+    const [tool = "", encoded = ""] = args.split(" ");
+    return memoryCall(step, `${OSTRA_PREFIX}${tool}`, toolArgs(encoded), lastToolResults);
+  },
+
+  /** Writes each workspace-relative file the marker names, then says it did. */
+  write: ({ step, args }) => {
+    const files = args.split(" ").filter((file) => file !== "");
+    if (step === 0) {
+      return { toolCalls: files.map((file) => ({ name: "write", arguments: { path: file, content: `written for ${file}\n` } })) };
+    }
+    return step === 1 ? { text: `wrote ${String(files.length)} files` } : undefined;
+  },
+};
+
+/** The prefix OpenCode gives each tool of ostra's MCP server. */
+const OSTRA_PREFIX = "ostra_";
+
+/** A marker's base64url JSON as a tool's arguments; `{}` when it can't be read. */
+const toolArgs = (encoded: string): Record<string, unknown> => {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : {};
+  } catch {
+    return {};
+  }
 };
 
 /** One call of a memory tool, then a reply with what it answered. */

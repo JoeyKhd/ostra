@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { effortModelOf } from "@ostra/adapter-sdk";
-import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
+import type { AgentSession, PrepareLaunchInput, QuestionAnswer, QuestionRequest } from "@ostra/adapter-sdk";
 import {
   createScenarioBrain,
   FakeAgentAdapter,
@@ -15,12 +15,13 @@ import {
   runAgentSuite,
   spawnAgentProcess,
   startFakeMemoryCore,
+  startGitUpstream,
   startStubModelServer,
   stubMarker,
   wireReasoningOf,
 } from "@ostra/adapter-sdk/testing";
-import type { AgentFixture, FakeMemoryCore, StubServer } from "@ostra/adapter-sdk/testing";
-import { approvalRuleIdSchema, turnIdSchema } from "@ostra/protocol";
+import type { AgentFixture, FakeMemoryCore, GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
+import { approvalRuleIdSchema, NEUTRAL_REPLY, PROPOSE_ENVIRONMENT_TOOL, repoFullNameSchema, SUBMIT_DRAFT_TOOL, SUBMIT_REVIEW_TOOL, turnIdSchema } from "@ostra/protocol";
 import type { ApiFormat, ApprovalRule, EffortLevel, TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
@@ -41,7 +42,9 @@ const roots: string[] = [];
 const servers: StubServer[] = [];
 const mcpServers: TestMcpHttp[] = [];
 const cores: FakeMemoryCore[] = [];
+const upstreams: GitUpstream[] = [];
 afterAll(async () => {
+  await Promise.all(upstreams.map((upstream) => upstream.close()));
   await Promise.all(servers.map((server) => server.close()));
   await Promise.all(cores.map((core) => core.close()));
   await Promise.all(mcpServers.map((server) => server.close()));
@@ -64,6 +67,83 @@ const writeFakePnpm = async (root: string): Promise<string> => {
   await writeFile(path.join(fakeBin, "pnpm"), '#!/bin/sh\necho fake pnpm "$@"\n', { encoding: "utf8", mode: 0o755 });
   return fakeBin;
 };
+
+/** A commit of everything in a folder, by a test author; its SHA. */
+const commitAll = async (dir: string, message: string): Promise<string> => {
+  await run("git", ["add", "-A"], { cwd: dir });
+  await run("git", ["-c", "user.email=ostra@example.test", "-c", "user.name=ostra", "commit", "-q", "--allow-empty", "-m", message], { cwd: dir });
+  return (await run("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
+};
+
+/** A tool's JSON arguments as one marker argument (base64url, so no space or `]` ends it early). */
+const toolArgsOf = (value: unknown): string => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+
+const TEAM_REPO = repoFullNameSchema.parse("test-org/test1");
+
+/**
+ * Milestone 6 (ticket 09): the team cases' set-ups on the pinned OpenCode, each played by the stub
+ * model (`stub-scenarios.ts`): OpenCode's own question tool, its shell pushing to a fetch-only
+ * upstream and reading each repo's HEAD, ostra's tools through the fake core's MCP stand-in, and
+ * its write tool for the commit's paths.
+ */
+const teamProbes = (root: string, workspaceDir: string): NonNullable<AgentFixture["team"]> => ({
+  askAndContinue: `${stubMarker("ask-and-continue")} ask first`,
+  readOnlyPush: async () => {
+    // The fetch-only upstream stands where a refine or review task's git proxy is.
+    const upstream = await startGitUpstream(path.join(root, `upstream-${String(Date.now())}`), { requireToken: false, fetchOnly: true });
+    upstreams.push(upstream);
+    await upstream.createRepo("test-org/readonly", { "README.md": "# readonly\n" });
+    await rm(path.join(workspaceDir, "readonly"), { recursive: true, force: true });
+    await run("git", ["clone", "-q", upstream.cloneUrl("test-org/readonly"), "readonly"], { cwd: workspaceDir });
+    await writeFile(path.join(workspaceDir, "readonly", "change.txt"), "a change\n");
+    await commitAll(path.join(workspaceDir, "readonly"), "A change the task can't push");
+    return {
+      prompt: `${stubMarker("git-push", "readonly")} push it`,
+      pushesReceived: () => Promise.resolve(upstream.requests.filter((request) => request.endpoint === "git-receive-pack").length),
+    };
+  },
+  reviewCheckout: async () => {
+    // Two repos, each checked out at its PR's head: one at its newest commit, one at an older one.
+    const heads: { folder: string; sha: string }[] = [];
+    for (const [folder, back] of [["review-a", false], ["review-b", true]] as const) {
+      const dir = path.join(workspaceDir, folder);
+      await rm(dir, { recursive: true, force: true });
+      await mkdir(dir, { recursive: true });
+      await run("git", ["init", "-q"], { cwd: dir });
+      const first = await commitAll(dir, "first");
+      const second = await commitAll(dir, "second");
+      if (back) await run("git", ["checkout", "-q", "--detach", first], { cwd: dir });
+      heads.push({ folder, sha: back ? first : second });
+    }
+    return { prompt: `${stubMarker("heads", heads.map((head) => head.folder).join(" "))} say them`, heads };
+  },
+  tools: {
+    start: async (tools) => {
+      const core = await startFakeMemoryCore({
+        taskId: fixtureIds.task,
+        taskToken: "ostra-task-fake-token",
+        mcpBearer: "fake-mcp-bearer",
+        notes: memoryNoteFixtures,
+        tools,
+        repos: [{ repoId: fixtureIds.repo, fullName: TEAM_REPO }],
+      });
+      cores.push(core);
+      return { core, mcp: { url: core.mcpUrl, bearer: core.mcpBearer } };
+    },
+    list: `${stubMarker("ostra-tools")} list them`,
+    submitDraft: (draft) => `${stubMarker("ostra-call", `${SUBMIT_DRAFT_TOOL} ${toolArgsOf(draft)}`)} hand it in`,
+    submitReview: (review) => `${stubMarker("ostra-call", `${SUBMIT_REVIEW_TOOL} ${toolArgsOf(review)}`)} hand it in`,
+    proposeEnvironment: (proposal) => `${stubMarker("ostra-call", `${PROPOSE_ENVIRONMENT_TOOL} ${toolArgsOf(proposal)}`)} propose it`,
+    repo: TEAM_REPO,
+  },
+  writeFiles: async () => {
+    const dir = path.join(workspaceDir, "onboarding");
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+    await run("git", ["init", "-q"], { cwd: dir });
+    return { prompt: (files) => `${stubMarker("write", files.join(" "))} write them`, repo: "onboarding" };
+  },
+});
 
 const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
   const stub = await startStubModelServer({
@@ -208,6 +288,8 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
       mismatchedChecksum: () =>
         new OpenCodeAdapter({ resolveBinary: () => resolveOpenCodeBinary({ checksums: Object.fromEntries(platformPackages().map((name) => [name, "0".repeat(64)])) }) }),
     },
+    // Milestone 6 (ticket 09): the whole team's task kinds, played by the stub model on the real binary.
+    team: teamProbes(root, workspaceDir),
   };
 };
 
@@ -787,5 +869,141 @@ describe("ticket 57 on the pinned OpenCode", () => {
     } finally {
       await proxy.close();
     }
+  }, 120_000);
+});
+
+// Milestone 6 (ticket 09): what the team cases check for every agent, said for OpenCode's own
+// config, so the proof ledger can name them: its tool filter and the read-only kinds' edits.
+
+describe("milestone 6 on the pinned OpenCode", () => {
+  /** A fake core whose MCP stand-in serves every tool set, as a server that lists too much would. */
+  const everyToolCore = async (): Promise<FakeMemoryCore> => {
+    const core = await startFakeMemoryCore({
+      taskId: fixtureIds.task,
+      taskToken: "ostra-task-fake-token",
+      mcpBearer: "fake-mcp-bearer",
+      notes: memoryNoteFixtures,
+      tools: ["pr-text", "memory", "draft", "review", "environment"],
+      repos: [{ repoId: fixtureIds.repo, fullName: TEAM_REPO }],
+    });
+    cores.push(core);
+    return core;
+  };
+
+  const listed = async (setup: Partial<PrepareLaunchInput>): Promise<readonly string[]> => {
+    const core = await everyToolCore();
+    const profiled = await openProfiled({ ...setup, mcp: { url: core.mcpUrl, bearer: core.mcpBearer } });
+    try {
+      expect(await profiled.prompt(`${stubMarker("ostra-tools")} list them`)).toBe("end_turn");
+      const names = /memory tools: (.*)/.exec(messageText(profiled.events))?.[1]?.split(", ") ?? [];
+      return names.filter((name) => ["submit_draft", "submit_review", "propose_environment"].includes(name)).sort();
+    } finally {
+      await profiled.stop();
+    }
+  };
+
+  it("F-100: a code task's OpenCode offers none of submit_draft, submit_review and propose_environment, and a review task's offers submit_review only, even from a server that lists them all", async () => {
+    expect(await listed({ kind: "code", tools: ["pr-text", "memory"] })).toEqual([]);
+    expect(await listed({ kind: "review", tools: ["memory", "review"] })).toEqual(["submit_review"]);
+    expect(await listed({ kind: "refine", tools: ["memory", "draft"] })).toEqual(["submit_draft"]);
+    expect(await listed({ kind: "code", tools: ["pr-text", "memory", "environment"] })).toEqual(["propose_environment"]);
+  }, 180_000);
+
+  it("F-100: a review task's OpenCode refuses an edit, and runs a command in its box", async () => {
+    const profiled = await openProfiled({ kind: "review", tools: ["memory", "review"] });
+    try {
+      expect(await profiled.prompt(`${stubMarker("ask-path", "review-edit.txt")} write it`)).toBe("end_turn");
+      expect(messageText(profiled.events)).toContain("Could not write review-edit.txt.");
+      expect(await exists(path.join(profiled.input.workspaceDir, "review-edit.txt"))).toBe(false);
+      expect(await profiled.prompt(`${stubMarker("ask-command", `node -e "console.log('review-ran')"`)} run it`)).toBe("end_turn");
+      expect(messageText(profiled.events)).toContain("Ran node");
+      // Nothing was asked of a person: the deny is OpenCode's own, and the shell is allowed.
+      expect(profiled.asked).toEqual([]);
+    } finally {
+      await profiled.stop();
+    }
+  }, 120_000);
+
+  it("F-099: a refine task's OpenCode edits only when its profile allows prototyping", async () => {
+    for (const [allowPrototyping, wrote] of [
+      [false, false],
+      [true, true],
+    ] as const) {
+      const profiled = await openProfiled({ kind: "refine", allowPrototyping, tools: ["memory", "draft"] });
+      try {
+        const file = `prototype-${String(allowPrototyping)}.txt`;
+        expect(await profiled.prompt(`${stubMarker("ask-path", file)} write it`)).toBe("end_turn");
+        expect(messageText(profiled.events)).toContain(wrote ? `Wrote ${file}.` : `Could not write ${file}.`);
+        expect(await exists(path.join(profiled.input.workspaceDir, file))).toBe(wrote);
+      } finally {
+        await profiled.stop();
+      }
+    }
+  }, 120_000);
+
+  it("F-099: a shell command that exits non-zero, such as a refused push, reaches ostra as a failed call", async () => {
+    const profiled = await openProfiled({});
+    try {
+      expect(await profiled.prompt(`${stubMarker("ask-command", `node -e "process.exit(3)"`)} run it`)).toBe("end_turn");
+      expect(profiled.events.filter((event) => event.kind === "tool.failed")).toHaveLength(1);
+      expect(await profiled.prompt(`${stubMarker("ask-command", `node -e "console.log('fine')"`)} run it`)).toBe("end_turn");
+      expect(profiled.events.filter((event) => event.kind === "tool.completed").length).toBeGreaterThanOrEqual(1);
+      expect(profiled.events.filter((event) => event.kind === "tool.failed")).toHaveLength(1);
+    } finally {
+      await profiled.stop();
+    }
+  }, 120_000);
+});
+
+describe("milestone 6's automatic turn on the pinned OpenCode", () => {
+  /** One turn of the asking scenario on OpenCode, answered by `answer`: what it asked, said and stopped with. */
+  const askedTurn = async (answer: (request: QuestionRequest) => QuestionAnswer) => {
+    const adapter = new OpenCodeAdapter();
+    const fixture = await fixtureFor("openai-compatible");
+    const launch = await adapter.prepareLaunch(fixture.launchInput);
+    if (!launch.ok) throw new Error(launch.error.message);
+    const started = await fixture.start(launch.value);
+    const events: TaskEvent[] = [];
+    const asked: QuestionRequest[] = [];
+    const session = await adapter.startSession({
+      taskId: fixture.launchInput.taskId,
+      sessionId: fixture.launchInput.sessionId,
+      io: started.io,
+      cwd: fixture.launchInput.workspaceDir,
+      mcpServers: [],
+      onEvents: (batch) => {
+        events.push(...batch);
+      },
+      onPermission: () => Promise.resolve({ outcome: "cancelled" }),
+      onQuestion: (_agentSessionId, request) => {
+        asked.push(request);
+        return Promise.resolve(answer(request));
+      },
+    });
+    if (!session.ok) {
+      await started.stop();
+      throw new Error(session.error.message);
+    }
+    try {
+      const turn = await adapter.prompt(session.value, turnOf(200 + asked.length), `${stubMarker("ask-and-continue")} ask first`);
+      if (!turn.ok) throw new Error(turn.error.message);
+      return { asked, text: messageText(events), stopReason: turn.value.stopReason };
+    } finally {
+      await adapter.close(session.value);
+      await started.stop();
+    }
+  };
+
+  it("F-101: OpenCode's question in an automatic turn gets the fixed neutral reply in every field, and the turn carries on with it", async () => {
+    const answered = await askedTurn((request) => ({ outcome: "answered", answers: Object.fromEntries(request.fields.map((field) => [field.id, NEUTRAL_REPLY])) }));
+    // OpenCode's question tool reaches ostra as one ACP elicitation, which the runner answers itself.
+    expect(answered.asked).toHaveLength(1);
+    expect(answered.stopReason).toBe("end_turn");
+    expect(answered.text).toContain("carried on with:");
+    expect(answered.text).toContain(NEUTRAL_REPLY);
+    // The control (spike 10): declined, OpenCode fails its question tool and the turn ends cancelled.
+    const declined = await askedTurn(() => ({ outcome: "declined" }));
+    expect(declined.stopReason).toBe("cancelled");
+    expect(declined.text).not.toContain("carried on with");
   }, 120_000);
 });

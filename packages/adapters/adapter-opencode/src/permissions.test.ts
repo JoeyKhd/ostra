@@ -275,3 +275,46 @@ describe("what an OpenCode permission request touches", () => {
     expect(adapter.subjectOf(request("files_wipe", "other", {}), path.join(tmpdir(), "another-task")), "another task").toBeNull();
   });
 });
+
+describe("milestone 6: the read-only kinds and ostra's tools on OpenCode (ticket 09)", () => {
+  const editRule = rule("m6-edit", "edit", { kind: "path-glob", glob: "src/**" });
+
+  it("F-100: a review task's agent never edits, whatever a rule asks, and still runs commands in its box, never outside it", () => {
+    const rules = buildPermissions({ approvalRules: [editRule], mcpServers: [], kind: "review" });
+    expect(decide(rules, "edit", "src/banner.ts")).toBe("deny");
+    expect(decide(rules, "edit", "README.md")).toBe("deny");
+    expect(decide(rules, "shell", "pnpm test")).toBe("allow");
+    expect(decide(rules, "read", "src/banner.ts")).toBe("allow");
+    expect(decide(rules, "external_directory", "/etc/passwd")).toBe("deny");
+    expect(rules.at(-1)).toEqual({ action: "external_directory", resource: "*", effect: "deny" });
+  });
+
+  it("F-099: a refine task edits only when its profile allows prototyping; the built-in Refine profile doesn't, and a code task always may", () => {
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine" }), "edit", "src/a.ts")).toBe("deny");
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine", allowPrototyping: false }), "edit", "src/a.ts")).toBe("deny");
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine", allowPrototyping: true }), "edit", "src/a.ts")).toBe("allow");
+    // Prototyping is a refine profile's: a review task never edits, even with it set.
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "review", allowPrototyping: true }), "edit", "src/a.ts")).toBe("deny");
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "code" }), "edit", "src/a.ts")).toBe("allow");
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [] }), "edit", "src/a.ts")).toBe("allow");
+    // A prototyping refine task's edits still stay inside the workspace.
+    expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine", allowPrototyping: true }), "external_directory", "/tmp/x")).toBe("deny");
+  });
+
+  it("F-100: a code task's config offers none of submit_draft, submit_review and propose_environment, and a review task's only submit_review", async () => {
+    const adapter = newAdapter();
+    const permissionsOf = async (setup: Partial<PrepareLaunchInput>): Promise<readonly OpenCodePermission[]> => permissionsSchema.parse((await configOf(adapter, setup))["permissions"]);
+    const offered = async (setup: Partial<PrepareLaunchInput>): Promise<readonly string[]> => {
+      const permissions = await permissionsOf(setup);
+      return ["submit_draft", "submit_review", "propose_environment"].filter((tool) => decide(permissions, `ostra_${tool}`, "{}") !== "deny");
+    };
+    expect(await offered({ kind: "code", tools: ["pr-text", "memory"] })).toEqual([]);
+    expect(await offered({ kind: "review", tools: ["memory", "review"] })).toEqual(["submit_review"]);
+    expect(await offered({ kind: "refine", tools: ["memory", "draft"] })).toEqual(["submit_draft"]);
+    expect(await offered({ kind: "code", tools: ["pr-text", "memory", "environment"] })).toEqual(["propose_environment"]);
+    // The memory tools and the PR's text stay offered to every kind.
+    expect(decide(await permissionsOf({ kind: "review", tools: ["memory", "review"] }), "ostra_memory_search", "{}")).toBe("allow");
+    // Without the task's sets (a runner before milestone 6), the config filters nothing: the sidecar serves the defaults.
+    expect(await offered({})).toEqual(["submit_draft", "submit_review", "propose_environment"]);
+  });
+});

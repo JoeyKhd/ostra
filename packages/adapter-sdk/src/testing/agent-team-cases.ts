@@ -212,7 +212,8 @@ export const defineAgentTeamCases = (subject: Subject): void => {
     for (const sets of Object.values(toolSetsByKind)) {
       const { core, mcp } = await tools.start(sets);
       try {
-        const listed = await runTurn(tools.list, { extra: { mcp, memory: withTools } });
+        // The launch names the task's tool sets, as the runner's does from the spec's `tools`.
+        const listed = await runTurn(tools.list, { extra: { mcp, memory: withTools, tools: sets } });
         const names = /memory tools: (.*)/.exec(listed.text)?.[1]?.split(", ").filter((name) => name !== "none") ?? [];
         expect(names.sort()).toEqual([...fakeCoreToolNames(sets)].sort());
       } finally {
@@ -229,11 +230,11 @@ export const defineAgentTeamCases = (subject: Subject): void => {
     }
     const { core, mcp } = await tools.start(toolSetsByKind.refine);
     try {
-      const saved = await runTurn(tools.submitDraft(sampleDraft), { extra: { mcp, memory: withTools } });
+      const saved = await runTurn(tools.submitDraft(sampleDraft), { extra: { mcp, memory: withTools, tools: toolSetsByKind.refine } });
       expect(saved.text).toContain("Draft version 1 is saved");
       expect(core.drafts).toEqual([sampleDraft]);
       core.refusals.draft = { code: "limit-reached" };
-      const refused = await runTurn(tools.submitDraft(sampleDraft), { extra: { mcp, memory: withTools } });
+      const refused = await runTurn(tools.submitDraft(sampleDraft), { extra: { mcp, memory: withTools, tools: toolSetsByKind.refine } });
       expect(refused.text).toContain("as many drafts as it may");
       expect(core.drafts).toHaveLength(1);
     } finally {
@@ -250,7 +251,7 @@ export const defineAgentTeamCases = (subject: Subject): void => {
     const { core, mcp } = await tools.start(toolSetsByKind.review);
     try {
       const review = sampleReview(tools.repo);
-      const saved = await runTurn(tools.submitReview(review), { extra: { mcp, memory: withTools } });
+      const saved = await runTurn(tools.submitReview(review), { extra: { mcp, memory: withTools, tools: toolSetsByKind.review } });
       expect(saved.text).toContain("The review is saved");
       expect(core.reviews).toHaveLength(1);
       expect(core.reviews[0]?.findings.map((finding) => [finding.severity, finding.path, finding.line])).toEqual([
@@ -258,11 +259,11 @@ export const defineAgentTeamCases = (subject: Subject): void => {
         ["nit", "src/banner.ts", 3],
       ]);
       core.refusals.review = { code: "not-in-review" };
-      const refused = await runTurn(tools.submitReview(review), { extra: { mcp, memory: withTools } });
+      const refused = await runTurn(tools.submitReview(review), { extra: { mcp, memory: withTools, tools: toolSetsByKind.review } });
       expect(refused.text).toContain("no longer waiting for this review");
       // A finding on a repo the task lacks is refused before core is asked.
       const calls = core.teamCalls.review;
-      const stranger = await runTurn(tools.submitReview(sampleReview(repoFullNameSchema.parse(`${tools.repo}-other`))), { extra: { mcp, memory: withTools } });
+      const stranger = await runTurn(tools.submitReview(sampleReview(repoFullNameSchema.parse(`${tools.repo}-other`))), { extra: { mcp, memory: withTools, tools: toolSetsByKind.review } });
       expect(stranger.text).toContain("This task has no repo");
       expect(core.teamCalls.review).toBe(calls);
     } finally {
@@ -278,11 +279,11 @@ export const defineAgentTeamCases = (subject: Subject): void => {
     }
     const { core, mcp } = await tools.start(toolSetsByKind.onboarding);
     try {
-      const saved = await runTurn(tools.proposeEnvironment(sampleProposal(tools.repo)), { extra: { mcp, memory: withTools } });
+      const saved = await runTurn(tools.proposeEnvironment(sampleProposal(tools.repo)), { extra: { mcp, memory: withTools, tools: toolSetsByKind.onboarding } });
       expect(saved.text).toContain("The proposal is saved");
       expect(core.environmentProposals[0]?.repos[0]?.variableNames).toEqual(["DATABASE_URL"]);
       core.refusals.environment = { code: "secret-found", found: ["a GitHub token"] };
-      const refused = await runTurn(tools.proposeEnvironment(sampleProposal(tools.repo)), { extra: { mcp, memory: withTools } });
+      const refused = await runTurn(tools.proposeEnvironment(sampleProposal(tools.repo)), { extra: { mcp, memory: withTools, tools: toolSetsByKind.onboarding } });
       expect(refused.text).toContain("a GitHub token");
       expect(core.environmentProposals).toHaveLength(1);
     } finally {

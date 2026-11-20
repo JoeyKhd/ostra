@@ -20,6 +20,7 @@ import type {
 } from "@ostra/adapter-sdk";
 import { checkoutDirSchema, mcpSubjectValue } from "@ostra/protocol";
 import type { ApprovalRequestSubject, EffortLevel } from "@ostra/protocol";
+import { z } from "zod";
 
 import { ARCHIVE_VERIFIED_VERSIONS, OPENCODE_VERSION, resolveOpenCodeBinary } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
@@ -253,7 +254,10 @@ export class OpenCodeAdapter extends AgentAdapter {
     const outcome = tracker.read(update);
     switch (outcome.kind) {
       case "other":
-        return { handled: false };
+        // Milestone 6: OpenCode reports a shell command that exits non-zero as `completed`, with
+        // the exit in `rawOutput.metadata.exit`; ostra reads it as the failed call it is (a push
+        // a read-only task's git proxy refused, a test that fails).
+        return failedShell(update) ? { handled: false, update: { ...update, status: "failed" } } : { handled: false };
       case "swallow":
         return { handled: true, events: [] };
       case "plan":
@@ -263,3 +267,14 @@ export class OpenCodeAdapter extends AgentAdapter {
     }
   }
 }
+
+const shellOutputSchema = z.looseObject({ metadata: z.looseObject({ exit: z.number().int() }) });
+
+/** A `tool_call_update` OpenCode marked `completed` for a shell command whose exit code isn't 0. */
+export const failedShell = (update: AcpUpdate): boolean => {
+  if (update.sessionUpdate !== "tool_call_update" || update["status"] !== "completed") {
+    return false;
+  }
+  const parsed = shellOutputSchema.safeParse(update["rawOutput"]);
+  return parsed.success && parsed.data.metadata.exit !== 0;
+};

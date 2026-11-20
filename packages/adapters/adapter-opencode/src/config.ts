@@ -126,7 +126,14 @@ export type OpenCodePermissionRule = OpenCodePermission;
  * no ask here: it runs as OpenCode's plan agent, whose own denies make it read-only (F-063).
  */
 export const taskPermissionRules = (input: PrepareLaunchInput): readonly OpenCodePermissionRule[] =>
-  buildPermissions({ approvalRules: input.approvalRules ?? [], mcpServers: input.mcpServers ?? [] });
+  buildPermissions({
+    approvalRules: input.approvalRules ?? [],
+    mcpServers: input.mcpServers ?? [],
+    // Milestone 6 (ADR 0028): the task's kind, its profile's prototyping and ostra's tool sets.
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
+    ...(input.allowPrototyping === undefined ? {} : { allowPrototyping: input.allowPrototyping }),
+    ...(input.tools === undefined ? {} : { tools: input.tools }),
+  });
 
 export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath: string | null): Record<string, unknown> => {
   const { model } = input;

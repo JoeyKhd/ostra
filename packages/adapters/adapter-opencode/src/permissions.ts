@@ -1,7 +1,7 @@
 import { PLAN_MODE_READ_ONLY_COMMANDS } from "@ostra/adapter-sdk";
 import type { LaunchMcpServer } from "@ostra/adapter-sdk";
-import { commandOutsideAllowlist, parseCommandLine } from "@ostra/protocol";
-import type { ApprovalRule, TurnMode } from "@ostra/protocol";
+import { commandOutsideAllowlist, parseCommandLine, PROPOSE_ENVIRONMENT_TOOL, SUBMIT_DRAFT_TOOL, SUBMIT_REVIEW_TOOL } from "@ostra/protocol";
+import type { ApprovalRule, OstraToolSet, TaskKind, TurnMode } from "@ostra/protocol";
 
 // The profile's approval rules as OpenCode's own permissions (ADR 0049, ADR 0031, F-026), for
 // OpenCode 2.3.2's V2 config: an ordered list of `{ action, resource, effect }` where the last rule
@@ -109,7 +109,47 @@ const serversFor = (rule: ApprovalRule, servers: readonly LaunchMcpServer[]): re
 export type PermissionInput = {
   readonly approvalRules: readonly ApprovalRule[];
   readonly mcpServers: readonly LaunchMcpServer[];
+  /** Milestone 6: the task's kind. Absent: `code`. */
+  readonly kind?: TaskKind;
+  /** Milestone 6: a refine profile that allows prototyping inside the box. Absent: `false`. */
+  readonly allowPrototyping?: boolean;
+  /** Milestone 6: the tool sets of ostra's MCP server for the task. Absent: no filter, as before milestone 6. */
+  readonly tools?: readonly OstraToolSet[];
 };
+
+/**
+ * Milestone 6 (ADR 0028): whether a task's agent may edit files. A review task's never does; a
+ * refine task's only when its profile allows prototyping (the built-in Refine profile doesn't); a
+ * code task's always. The shell stays allowed for every kind: the box contains it (ADR 0031), and
+ * a read-only kind's git proxy takes no push.
+ */
+export const editsAllowed = (kind: TaskKind, allowPrototyping: boolean): boolean => {
+  switch (kind) {
+    case "code":
+      return true;
+    case "refine":
+      return allowPrototyping;
+    case "review":
+      return false;
+    default:
+      return kind satisfies never;
+  }
+};
+
+/** Milestone 6's tools of ostra's server, each with the tool set that serves it (protocol minor 5). */
+export const teamTools: readonly { readonly set: OstraToolSet; readonly tool: string }[] = [
+  { set: "draft", tool: SUBMIT_DRAFT_TOOL },
+  { set: "review", tool: SUBMIT_REVIEW_TOOL },
+  { set: "environment", tool: PROPOSE_ENVIRONMENT_TOOL },
+];
+
+/**
+ * The deny for each of ostra's milestone 6 tools the task's tool sets don't name (`ostra_<tool>`):
+ * OpenCode then offers it to no agent of the task, so a code task never sees `submit_review` even
+ * if a server lists it. The sidecar serves only the task's sets too; this is the adapter's own half.
+ */
+export const toolFilterPermissions = (tools: readonly OstraToolSet[]): readonly OpenCodePermission[] =>
+  teamTools.filter((entry) => !tools.includes(entry.set)).map((entry) => ({ action: `${OSTRA_MCP_SERVER}_${entry.tool}`, resource: "*", effect: "deny" as const }));
 
 /**
  * The task's permissions in OpenCode's order (ADR 0049): everything allowed, then each rule as
@@ -166,8 +206,13 @@ export const buildPermissions = (input: PermissionInput): readonly OpenCodePermi
     }
   }
   const unreadable: OpenCodePermission[] = watchesCommands ? UNREADABLE_SHELL.map((resource) => ({ action: "shell", resource, effect: "ask" })) : [];
+  // Milestone 6: a read-only kind's edits denied after every ask, so no rule's ask lets one through;
+  // and ostra's tools the task's sets don't name.
+  const readOnly: OpenCodePermission[] = editsAllowed(input.kind ?? "code", input.allowPrototyping ?? false) ? [] : [{ action: "edit", resource: "*", effect: "deny" }];
+  // Without the sets (a runner before milestone 6), the server is the filter: it serves the defaults.
+  const filtered = input.tools === undefined ? [] : toolFilterPermissions(input.tools);
   const [allowAll, denyOutside] = permissionRules;
-  return [allowAll, ...allowlisted, ...asks, ...unreadable, denyOutside];
+  return [allowAll, ...allowlisted, ...asks, ...unreadable, ...readOnly, ...filtered, denyOutside];
 };
 
 /**

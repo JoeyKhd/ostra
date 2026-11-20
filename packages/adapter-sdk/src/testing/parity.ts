@@ -198,15 +198,11 @@ const cases = (...list: readonly ParityCase[]): ParityProof => ({ kind: "cases",
 const fallback = (capability: keyof AgentCapabilities, ...list: readonly ParityCase[]): ParityProof => ({ kind: "fallback", capability, cases: list });
 const waits = (on: string): ParityProof => ({ kind: "waits", on });
 
-/** Milestone 6's rows on OpenCode: its fixture gains the team probes with ticket 09; agent mode is tickets 13 and 38. */
-const milestone6Waits = {
-  "F-099, F-100 Refine, review": waits("milestone 6, ticket 09: OpenCode's fixture gains the read-only, review and tools probes"),
-  "F-012 Start from Linear": waits("milestone 6, tickets 13 and 38: the agent-mode case"),
-  "F-101 Automatic turns": waits("milestone 6, ticket 09: OpenCode's fixture gains the asking probe"),
-  "F-113 Onboarding": waits("milestone 6, ticket 09: OpenCode's fixture gains the proposal and commit probes"),
-} as const;
-
-/** Milestone 6's rows on a scripted fake with ostra's tools over MCP (ticket 04): every team case runs on it. */
+/**
+ * Milestone 6's rows on an agent with ostra's tools over MCP: every team case runs on it. The
+ * scripted fakes since ticket 04; OpenCode since ticket 09, played by the stub model on its pinned
+ * binary. Agent mode waits for tickets 13 and 38.
+ */
 const milestone6WithTools = {
   "F-099, F-100 Refine, review": cases(suiteCases.readOnlyPush, suiteCases.reviewHeads, suiteCases.toolsByKind, suiteCases.submitDraft, suiteCases.submitReview),
   "F-012 Start from Linear": waits("milestone 6, tickets 13 and 38: the agent-mode case"),
@@ -247,7 +243,7 @@ const common = {
 export const parityTable: Readonly<Record<string, Readonly<Record<string, ParityProof>>>> = {
   opencode: {
     ...common,
-    ...milestone6Waits,
+    ...milestone6WithTools,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan),
     "F-025 Stop": cases(suiteCases.cancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),
