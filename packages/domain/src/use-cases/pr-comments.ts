@@ -62,8 +62,9 @@ const linkedMemberScope = async (deps: Pick<M3Deps, "db">, organizationId: Organ
   if (user === null) {
     return null;
   }
-  const member = await deps.db.member.findUnique({ where: { organizationId_userId: { organizationId, userId: user.id } }, select: { id: true, role: true } });
-  if (member === null) {
+  const member = await deps.db.member.findUnique({ where: { organizationId_userId: { organizationId, userId: user.id } }, select: { id: true, role: true, state: true } });
+  // A removed member keeps their GitHub link on their account, and is heard no more than a stranger.
+  if (member?.state !== "active") {
     return null;
   }
   const memberId = memberIdSchema.parse(member.id);

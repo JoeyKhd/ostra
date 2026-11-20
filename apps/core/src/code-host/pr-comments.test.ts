@@ -308,6 +308,19 @@ describe("@ostra on the PR (F-053)", () => {
     expect(await messagesOf(hidden.taskId)).toHaveLength(1);
   });
 
+  it("F-053/c2: a removed member's comment is dropped as a stranger's, though their account keeps its GitHub link", async () => {
+    const task = await taskWithPr(world, fixture.a.member, runner, "removed-1");
+    await test.db.member.update({ where: { id: fixture.a.member.id }, data: { state: "removed", removedAt: new Date() } });
+    try {
+      const made = await deliver({ of: world, number: task.number, body: "@ostra push the old branch", author: GITHUB.member });
+      expect(dropped(made.commentId)).toEqual(["unlinked"]);
+      expect(reactionsOn(made.commentId)).toBe(0);
+      expect(await messagesOf(task.taskId)).toHaveLength(0);
+    } finally {
+      await test.db.member.update({ where: { id: fixture.a.member.id }, data: { state: "active", removedAt: null } });
+    }
+  });
+
   it("F-053/c1: a comment while a session runs waits for the turn's end", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "running-1");
     // The insider drives it now, and a turn is running.
