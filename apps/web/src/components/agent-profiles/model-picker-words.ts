@@ -23,6 +23,36 @@ export const sortOptions = <T extends Sortable,>(options: readonly T[]): readonl
 export const keysText = (names: readonly string[]): string =>
   names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${String(names.length - 2)}`;
 
+type Disambiguable = Searchable & {
+  readonly name: { readonly kind: "catalog" | "custom" };
+  readonly providers: readonly { readonly providerId: string; readonly endpointModelId: string }[];
+};
+
+/** What the picker shows as an option's name: a custom model's endpoint ID, else its display name. */
+const labelOf = (option: Disambiguable): string => (option.name.kind === "custom" ? option.text : option.displayName);
+
+/**
+ * F-088: for each option that one key lists beside another option of the same name, that key's
+ * endpoint model ID, which the picker shows after the name, muted, so the two can be told apart.
+ * Keyed by the option's `text`; an option whose name no other option on its keys shares has none.
+ */
+export const disambiguatorsOf = (options: readonly Disambiguable[]): ReadonlyMap<string, string> => {
+  const byLabel = new Map<string, Disambiguable[]>();
+  for (const option of options) {
+    byLabel.set(labelOf(option), [...(byLabel.get(labelOf(option)) ?? []), option]);
+  }
+  const found = new Map<string, string>();
+  for (const same of byLabel.values()) {
+    for (const option of same) {
+      const shared = option.providers.find((provider) =>
+        same.some((other) => other !== option && other.providers.some((theirs) => theirs.providerId === provider.providerId)),
+      );
+      if (shared !== undefined) found.set(option.text, shared.endpointModelId);
+    }
+  }
+  return found;
+};
+
 /** `No key in globex-shop`, `No key in a, b`, or `No key in 3 projects`; null when every project is served. */
 export const noKeyText = (projects: readonly string[]): string | null => {
   if (projects.length === 0) return null;

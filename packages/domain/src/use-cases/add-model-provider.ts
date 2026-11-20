@@ -6,6 +6,7 @@ import type { AddModelProviderInput, ProviderId } from "@ostra/protocol";
 import { requireOrganizationAdmin } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
+import { isBatchVariant } from "../providers/model-name.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-088, ADR 0033: an admin adds a model provider. The token goes to the secret store, the row keeps
@@ -91,7 +92,8 @@ export const addModelProvider: AddModelProvider = async (deps, input) => {
   }
 
   // The models the endpoint listed are rows at once (custom, until the refresh matches the
-  // catalog), so the admin can pick one without waiting for the job.
+  // catalog), so the admin can pick one without waiting for the job. A batch variant (`x:batch`)
+  // is kept unlisted, as the refresh keeps it (F-088).
   await tx.model.createMany({
     data: tested.value.models.map((model) => ({
       organizationId,
@@ -99,6 +101,7 @@ export const addModelProvider: AddModelProvider = async (deps, input) => {
       endpointModelId: model.endpointModelId,
       displayName: model.displayName,
       contextWindow: model.contextWindow,
+      listed: !isBatchVariant(model.endpointModelId),
     })),
     skipDuplicates: true,
   });

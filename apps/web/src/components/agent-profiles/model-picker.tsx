@@ -14,7 +14,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { keysText, matchesQuery, noKeyText, sortOptions } from "./model-picker-words";
+import { disambiguatorsOf, keysText, matchesQuery, noKeyText, sortOptions } from "./model-picker-words";
 
 // The profile's model, chosen by name (F-135, F-021, app-targets/m4/agent-profile-model.md): a
 // combobox over every model name any key lists, each with the keys that list it and the projects
@@ -27,9 +27,16 @@ const ModelLogo = () => <CpuIcon aria-hidden className="size-[15px] shrink-0 tex
 /** Whether a model is a custom one, named by its endpoint ID (set in mono). */
 const isCustom = (option: ModelOption): boolean => option.name.kind === "custom";
 
-/** A model's name: its display name, or a custom model's endpoint ID in mono. */
-export const ModelLabel = ({ option }: { readonly option: ModelOption }) =>
-  isCustom(option) ? <span className="truncate font-mono text-ui">{option.text}</span> : <span className="truncate">{option.displayName}</span>;
+/**
+ * A model's name: its display name, or a custom model's endpoint ID in mono. Then, muted, the
+ * endpoint ID that tells it from another model of the same name on one of its keys (F-088).
+ */
+export const ModelLabel = ({ option, endpointId }: { readonly option: ModelOption; readonly endpointId?: string | undefined }) => (
+  <>
+    {isCustom(option) ? <span className="truncate font-mono text-ui">{option.text}</span> : <span className="truncate">{option.displayName}</span>}
+    {endpointId === undefined ? null : <span className="min-w-0 truncate font-mono text-xs text-muted" data-testid="model-endpoint-id">{endpointId}</span>}
+  </>
+);
 
 /** The keys that list a model, by name. */
 const keyNames = (option: ModelOption): readonly string[] => option.providers.map((provider) => provider.name);
@@ -49,6 +56,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
   const [active, setActive] = useState(0);
   const [custom, setCustom] = useState<string | null>(null);
   const shown = useMemo(() => sortOptions((options ?? []).filter((option) => matchesQuery(option, query))), [options, query]);
+  const endpointIds = useMemo(() => disambiguatorsOf(options ?? []), [options]);
   const chosen = options?.find((option) => option.text === chosenKey);
 
   if (loading || options === undefined) return <Skeleton className="h-8 w-full" />;
@@ -106,7 +114,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
         ) : (
           <>
             <ModelLogo />
-            <ModelLabel option={chosen} />
+            <ModelLabel option={chosen} endpointId={endpointIds.get(chosen.text)} />
             {chosen.providers.length === 0 ? <TriangleAlertIcon aria-label={t("agentProfiles.editor.modelPicker.noKeyLists")} className="size-[13px] shrink-0 stroke-[1.75] text-red" /> : null}
           </>
         )}
@@ -153,7 +161,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
                       <span className="flex h-[22px] items-center gap-2">
                         <span className="w-[15px] shrink-0">{option.text === chosenKey ? <CheckIcon aria-hidden className="size-[15px] stroke-[1.75] text-green" /> : null}</span>
                         <ModelLogo />
-                        <ModelLabel option={option} />
+                        <ModelLabel option={option} endpointId={endpointIds.get(option.text)} />
                         <span className="ml-auto hidden shrink-0 font-mono text-xs text-faint sm:inline">{keysText(keyNames(option))}</span>
                       </span>
                       <span className="block pl-[46px] font-mono text-xs text-faint sm:hidden">{keysText(keyNames(option))}</span>

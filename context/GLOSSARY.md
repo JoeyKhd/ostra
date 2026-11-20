@@ -315,7 +315,7 @@ A named setup of an agent (a model by its model name, instructions, tools, how m
 _Avoid_: preset, config, persona
 
 **Model provider**:
-An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself. Each one is one key: an organization may hold several that serve the same models, one per client, and a project uses only those on its provider list.
+An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself, except a model's batch listing (`x:batch` beside `x`, the endpoint's asynchronous batch API), which it keeps unlisted. Each one is one key: an organization may hold several that serve the same models, one per client, and a project uses only those on its provider list.
 _Avoid_: vendor, LLM, key (alone, when you mean the provider: the key is its token)
 
 **Model name**:

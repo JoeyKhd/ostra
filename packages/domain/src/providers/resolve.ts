@@ -1,6 +1,6 @@
 import type { ModelId, ProviderId } from "@ostra/protocol";
 
-import { modelNameKey } from "./model-name.ts";
+import { modelNameKey, variantTagOf } from "./model-name.ts";
 import type { ModelName } from "./model-name.ts";
 
 // Keys per project (F-135, ADR 0065, Q270 to Q278): which provider serves a model in a project.
@@ -15,7 +15,7 @@ export type ListedModel = {
   readonly name: ModelName;
   /** The endpoint's own ID: one provider may list a name twice, as `x` and `x:batch`. */
   readonly endpointModelId: string;
-  /** Whether the provider's endpoint still lists it. */
+  /** Whether the provider's endpoint still lists it, and it isn't a batch variant (`x:batch`, F-088). */
   readonly listed: boolean;
 };
 
@@ -58,15 +58,12 @@ export const resolveProjectModel = (
   return { ok: true, providerId: only.providerId, modelId: only.modelId };
 };
 
-/** A `:variant` tag on an endpoint's model ID (`:batch`, `:free`), which the catalog match ignores. */
-const VARIANT_TAG = /:[^/:]+$/;
-
 /**
  * One provider's rows for one name, the plain one first: an endpoint that lists `x` and `x:batch`
  * serves the name from `x`, and otherwise from its lowest row ID, so it never moves on its own.
  */
 const byPlainRowFirst = (a: ListedModel, b: ListedModel): number => {
-  const tagged = Number(VARIANT_TAG.test(a.endpointModelId)) - Number(VARIANT_TAG.test(b.endpointModelId));
+  const tagged = Number(variantTagOf(a.endpointModelId) !== null) - Number(variantTagOf(b.endpointModelId) !== null);
   if (tagged !== 0) {
     return tagged;
   }

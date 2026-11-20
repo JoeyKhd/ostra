@@ -50,3 +50,15 @@ export const modelNameOfColumns = (columns: { readonly modelCatalogId: string | 
 
 /** The name as people read it: the catalog ID, or the endpoint's model ID. */
 export const modelNameText = (name: ModelName): string => (name.kind === "catalog" ? name.catalogId : name.endpointModelId);
+
+/** A `:variant` tag on an endpoint's model ID (`x:batch`, `x:free`), which the catalog match ignores. */
+const VARIANT_TAG = /:([^/:]+)$/;
+
+/** The `:variant` tag of an endpoint's model ID (`batch` for `x:batch`), or `null` for a plain ID. */
+export const variantTagOf = (endpointModelId: string): string | null => VARIANT_TAG.exec(endpointModelId)?.[1] ?? null;
+
+/**
+ * F-088: whether an endpoint's model ID is its batch variant (`x:batch`): the provider's
+ * asynchronous batch API, which an interactive agent can't use. ostra keeps its row, unlisted.
+ */
+export const isBatchVariant = (endpointModelId: string): boolean => variantTagOf(endpointModelId) === "batch";

@@ -6,7 +6,7 @@ import { requireOrganizationAdmin, requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
-import { modelNameColumns, modelNameKey, modelNameOfModel } from "./model-name.ts";
+import { isBatchVariant, modelNameColumns, modelNameKey, modelNameOfModel } from "./model-name.ts";
 import type { ModelName } from "./model-name.ts";
 import { keepChoicesOnRefresh, planProviderChange, resolveProjectModel } from "./resolve.ts";
 import type { ListedModel, ModelChoiceRow, ProviderChangePlan, Resolution } from "./resolve.ts";
@@ -174,6 +174,35 @@ export const keepChoicesAfterRefreshInTx = async (
     }
   }
   return recorded;
+};
+
+/**
+ * F-088, in a model refresh's transaction, after it keeps batch rows (`x:batch`) unlisted: a
+ * choice on one of the provider's batch rows moves to the row the provider serves the name from
+ * without it (`x`), so the list keeps its provider (ADR 0065) on a row a turn can use. A choice
+ * whose provider lists the name from no other row stays. Returns how many choices moved.
+ */
+export const moveChoicesOffBatchRowsInTx = async (tx: Tx, organizationId: OrganizationId, providerId: ProviderId): Promise<number> => {
+  const models = await loadListedModelsInTx(tx, organizationId);
+  const batch = models.filter((model) => model.providerId === providerId && isBatchVariant(model.endpointModelId));
+  if (batch.length === 0) {
+    return 0;
+  }
+  const choices = await tx.modelChoice.findMany({ where: { organizationId, modelId: { in: batch.map((model) => model.modelId) } }, select: { id: true, modelKey: true, modelId: true } });
+  let moved = 0;
+  for (const choice of choices) {
+    const row = batch.find((model) => model.modelId === choice.modelId);
+    if (row === undefined || modelNameKey(row.name) !== choice.modelKey) {
+      continue;
+    }
+    const plain = resolveProjectModel([providerId], [], models, row.name);
+    if (!plain.ok || plain.modelId === row.modelId) {
+      continue;
+    }
+    await tx.modelChoice.update({ where: { id: choice.id }, data: { modelId: plain.modelId } });
+    moved += 1;
+  }
+  return moved;
 };
 
 /** Idle boxes holding a key a project no longer allows are released (ADR 0065). */

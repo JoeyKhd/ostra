@@ -6,7 +6,8 @@ import { reasoningControlsSchema } from "@ostra/protocol";
 import type { OrganizationId, ProviderId } from "@ostra/protocol";
 
 import type { Ports } from "../ports.ts";
-import { keepChoicesAfterRefreshInTx, loadListedModelsInTx } from "../providers/provider-lists.ts";
+import { isBatchVariant } from "../providers/model-name.ts";
+import { keepChoicesAfterRefreshInTx, loadListedModelsInTx, moveChoicesOffBatchRowsInTx } from "../providers/provider-lists.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-088, ADR 0033: lists a provider's models from its endpoint, matches each to the models.dev
@@ -16,6 +17,14 @@ import type { UseCaseResult } from "./common.ts";
 // What a refresh never does: overwrite what an admin entered for a custom model (its name, limits
 // and prices) or an admin's reasoning controls for any model (F-137), or delete a model that agent profiles point at: one the endpoint no longer lists
 // is marked unlisted.
+//
+// A batch variant (`x:batch`, the endpoint's asynchronous batch API) is kept unlisted too, so no
+// picker offers it beside `x`. Only this sync writes `listed` (no admin sets it), so every refresh
+// applies the rule to every row, including those an earlier version listed, and a choice on one
+// moves to its provider's plain row.
+
+/** Whether a model the endpoint lists is one ostra offers: all but a batch variant (F-088). */
+const offered = (endpointModelId: string): boolean => !isBatchVariant(endpointModelId);
 
 export type SyncProviderModelsDeps = Pick<Ports, "notices" | "clock" | "adapters"> & {
   readonly db: Db;
@@ -100,7 +109,7 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
           // F-137 (ADR 0066): the catalog's reasoning controls. An admin's (`adminReasoning`) are
           // never written here, so a refresh never undoes them.
           catalogReasoning: reasoningControlsSchema.parse(entry.reasoning),
-          listed: true,
+          listed: offered(model.endpointModelId),
         };
         if (row === undefined) {
           await tx.model.create({ data: { organizationId, providerId, endpointModelId: model.endpointModelId, ...values } });
@@ -115,6 +124,7 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
             endpointModelId: model.endpointModelId,
             displayName: model.displayName,
             contextWindow: model.contextWindow,
+            listed: offered(model.endpointModelId),
           },
         });
       } else {
@@ -122,7 +132,7 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
         await tx.model.update({
           where: { id: row.id },
           data: {
-            listed: true,
+            listed: offered(model.endpointModelId),
             ...(row.catalogId === null
               ? {
                   displayName: row.displayName ?? model.displayName,
@@ -138,6 +148,8 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
     if (gone.length > 0) {
       await tx.model.updateMany({ where: { id: { in: gone } }, data: { listed: false } });
     }
+    // F-088: a choice on a batch row stays on its provider, from the plain row.
+    await moveChoicesOffBatchRowsInTx(tx, organizationId, providerId);
     // A model this refresh gives a second provider on a list keeps the one serving it (ADR 0065).
     await keepChoicesAfterRefreshInTx(tx, organizationId, providerId, before);
     await tx.modelProvider.update({ where: { id: providerId }, data: { modelsRefreshedAt: now } });

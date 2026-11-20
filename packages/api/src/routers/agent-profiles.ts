@@ -702,7 +702,8 @@ export const agentProfilesRouter = router({
           name: modelNameSchema,
           text: z.string(),
           displayName: z.string(),
-          providers: z.array(z.object({ providerId: providerIdSchema, name: z.string(), modelId: modelIdSchema })),
+          /** F-088: `endpointModelId` is the provider's own ID for it, which tells two models of one name apart. */
+          providers: z.array(z.object({ providerId: providerIdSchema, name: z.string(), modelId: modelIdSchema, endpointModelId: z.string() })),
           projectsWithout: z.array(z.object({ projectId: projectIdSchema, name: z.string() })),
           /** Every project with the provider that serves the model there, `null` for "no key" (ticket 50, item 10). */
           projects: z.array(z.object({ projectId: projectIdSchema, name: z.string(), providerName: z.string().nullable() })),
@@ -719,13 +720,18 @@ export const agentProfilesRouter = router({
       ]);
       const providerName = new Map(providers.map((provider) => [provider.id, provider.name] as const));
       const lists = await Promise.all(projects.map(async (project) => ({ project, state: await loadProviderList(db, organizationId, projectIdSchema.parse(project.id)) })));
-      const byKey = new Map<string, { name: ModelName; displayName: string; providers: { providerId: ProviderId; name: string; modelId: ModelId }[] }>();
+      const byKey = new Map<string, { name: ModelName; displayName: string; providers: { providerId: ProviderId; name: string; modelId: ModelId; endpointModelId: string }[] }>();
       for (const row of rows) {
         const name = modelNameOfModel(row);
         const key = modelNameKey(name);
         const entry = byKey.get(key) ?? { name, displayName: row.displayName ?? row.endpointModelId, providers: [] };
         if (!entry.providers.some((provider) => provider.providerId === row.providerId)) {
-          entry.providers.push({ providerId: providerIdSchema.parse(row.providerId), name: providerName.get(row.providerId) ?? "", modelId: modelIdSchema.parse(row.id) });
+          entry.providers.push({
+            providerId: providerIdSchema.parse(row.providerId),
+            name: providerName.get(row.providerId) ?? "",
+            modelId: modelIdSchema.parse(row.id),
+            endpointModelId: row.endpointModelId,
+          });
         }
         byKey.set(key, entry);
       }
