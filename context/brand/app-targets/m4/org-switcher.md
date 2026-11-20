@@ -8,7 +8,7 @@
 - **Prompts:** `org-switcher.prompt.txt`, `org-switcher-create.prompt.txt`, `org-switcher-switched.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high). References: `app-targets/m1/home.png` (the approved page this one starts from, spec section 12) for the first two, the approved `m2/home-first-run` generation for the third, plus `app-concepts/html/home-graphite.png` and the Hinge logo `kit/logo/export/ostra-hinge-single-color-2048.png`. Generations:
   - `org-switcher`: 1, kept as made.
   - `org-switcher-create`: 2. Both squeezed the page behind the sheet into a narrower layout, which a sheet never does. The kept picture is the first generation's sheet pasted over `m1/home.png` darkened to 40% (the overlay), so the page behind is the approved Home, unchanged.
-  - `org-switcher-switched`: 1, with the right column asked for empty and then composited with the Deep water illustration exactly as `../m2/home-first-run.md` ("The illustration") says.
+  - `org-switcher-switched`: 1, with the right column asked for empty. It was composited with the Deep water illustration; since 2026-11-20 it holds Home's empty right panel instead, the same composite as `../m2/home-first-run.md` ("The right panel"), under the notice.
 - **Where:** the shared sidebar (`components/shell/sidebar.tsx`, its `OrganizationSwitcher`), on every panel page. The sheet and the notice belong to the shell too, not to a route.
 - **Features:** F-049 (several organizations). Spec section 12, screen 6; section 3, step 12; section 4, "Switching organizations". Ticket 24 (`organizations.mine`, `.switch`, `.create`, `.resolve`), ticket 33 (this screen). ADR 0053, ADR 0026.
 - **Status:** a proposed target, waiting on approval (ticket 31's `## Comments`). Ticket 33 builds its data and tests until then, not its UI.
@@ -89,7 +89,7 @@ It stays 8 seconds, longer while hovered or focused, and goes with Escape. One n
 | A link to a record of another of the member's organizations (ADR 0053: `organizations.resolve`, then `.switch`) | `The page you opened belongs to it.` then a teal `Back to Acme Corp`, which switches back and returns to the page the member came from |
 | The active organization went away (the member was removed from it, ADR 0053) and the panel fell back to another | `You're no longer a member of Acme Corp.` |
 
-The page behind is the new organization's: in the picture, Second's first-run Home (`../m2/home-first-run.md`), with only `Create the first admin` done, `Add a provider →` as the next step's primary button, and the Deep water illustration in the right column.
+The page behind is the new organization's: in the picture, Second's first-run Home (`../m2/home-first-run.md`), with only `Create the first admin` done, `Add a provider →` as the next step's primary button, and Home's right panel with its empty values in the right column.
 
 ## States and copy
 
@@ -126,7 +126,7 @@ The demo data in the pictures (fixtures, not real): `Acme Corp` (active, admin),
 | Token | Value | Used for |
 |---|---|---|
 | `--bg` | `#0D0E10` | the sheet |
-| `--side` | `#0A0B0C` | sidebar; the right column under the illustration |
+| `--side` | `#0A0B0C` | sidebar |
 | `--surface` | `#131416` | the menu, the notice, inputs |
 | `--raise` | `#17181B` | a menu row's hover and focus |
 | `--sel` | `#1A1B1E` | the active row, the trigger while open |
@@ -165,7 +165,7 @@ Build the copy and details in this file, not these:
 - **`org-switcher`: the `instance admin` badge** is drawn in mono; it's Plex Sans 11px.
 - **`org-switcher`: the sidebar's Organization rows** (`Runners`, `Models`, `GitHub`, `Linear`, `Members`, `Audit log`) are flavour. Build the shell's rows.
 - **`org-switcher-create`: the page behind** is `m1/home` pasted in at 40% brightness; the sidebar there is milestone 1's flavour (`Runner pools`, `Agent profiles`, `Insights`, …). The shell decides.
-- **`org-switcher-switched`:** the sidebar lists `Linear` with a board icon and no `Agent profiles`; the shell decides. The illustration is composited from the real asset, as `../m2/home-first-run.md` says, not drawn.
+- **`org-switcher-switched`:** the sidebar lists `Linear` with a board icon and no `Agent profiles`; the shell decides. The right panel is rendered from `HomePanel`'s markup, as `../m2/home-first-run.md` says, not drawn.
 - **The logo** in all three approximates the Hinge mark. Use `kit/logo/export/ostra-hinge-single-color.svg`, 20px.
 - The pictures have no loading, error, one-organization, link or narrow states: they're in the tables above.
 

@@ -10,6 +10,8 @@ The design targets for milestone 2's screens (`context/specs/m2-tickets-in/spec.
 
 **Status: approved for the build on 2026-11-19 by the lead, on the maintainer's delegation, pending the maintainer's own review.** The maintainer asked for the work to go on through the night ("continue working on everything throughout the night, would be nice to wake up to the finished product"), so tickets 33 to 37 build to these targets now. If the maintainer rejects a screen, its target is remade and the screen rebuilt.
 
+**Moved to the panel's graphite theme, 2026-11-20:** `inbox-empty-illustration` is the regraded empty-state art the panel serves (chroma ×0.08 and an alpha mask that fades it into any page; B-017 in `../../assets.md`). `home-first-run`'s right column is Home's normal right panel with its empty values, not the Deep water picture: the maintainer, "on home this image on the right is ugly", and the app dropped it the same day (`home-first-run.md`, "The right panel").
+
 ## Screens
 
 | # (spec §12) | Screen | Target |
@@ -40,5 +42,5 @@ These hold too:
   - A project's items: Tasks, Inbox, Environment, Boards, Repos and Settings (the ticket template lives under Settings).
   - Organization: Runners, Models, GitHub, Linear and Storage.
   - Rows for later milestones (Agent profiles, Insights, Memory, Members, Audit log, Background work) appear in some pictures as flavour only.
-- **Decorative areas use the Deep water illustration** (`../../files/web/sign-in-illustration.webp`, B-017), never a mock of the product.
+- **Decorative areas use the Deep water illustration** (`../../files/web/sign-in-illustration.webp`, B-017), in its graphite grade, never a mock of the product. Home's first run no longer has one.
 - **Decisions the specs leave open.** Each `.md` lists them under its differences or open points (for example the member view of the Linear page, the "Skip for now" state of the Linear setup step, and the extra `linear.status` fields). The build takes the spec's recommended option, and records it in the ticket that builds the screen. **Settled on 2026-11-19** by the lead, on the delegation. Each ticket's `## Decided 2026-11-19 (ticket 40)` section holds the answer, under `context/specs/m2-tickets-in/issues/`. Where a target's open point and its ticket disagree, the ticket wins.

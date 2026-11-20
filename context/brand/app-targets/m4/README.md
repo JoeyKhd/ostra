@@ -13,6 +13,8 @@ These are the design targets for milestone 4's screens (`context/specs/m4-the-or
 
 **Added 2026-11-19 (ticket 62, F-137, ADR 0066):** `agent-profile-effort`, `task-effort` and `model-reasoning`, made the same way, one generation each, approved 2026-11-19 by the lead on the maintainer's delegation, pending the maintainer's review. Ticket 63 builds their UI. `app-targets/m1/models`, the one screen spec section 12 says grows with F-137 (a model's row shows whether it reasons and its levels), is drawn by `model-reasoning`'s `Models` tab, so it gets no other picture.
 
+**Moved to the panel's graphite theme, 2026-11-20:** `accept-invite`, `accept-invite-inbox`, `reset-password` and `reset-password-link` re-composited with the regraded Deep water picture (B-017 in `../../assets.md`) at their original placement; `search-empty-illustration` regraded with the empty-state art's grade and alpha mask; `org-switcher-switched`'s right column is Home's empty right panel, as `../m2/home-first-run.md` now says. No generation: the pictures were blue-green, the panel isn't.
+
 ## Screens
 
 | Screen | Target |
@@ -49,7 +51,7 @@ The earlier milestones' rules hold:
 - One sidebar, built from the shared shell, holding only what's shipped.
 - Real data only.
 - The brand's fonts and logo.
-- Decorative areas use the Deep water illustration.
+- Decorative areas use the Deep water illustration, in its graphite grade.
 - Check each screen by eye against its picture.
 
 The pages outside the panel (accepting an invitation, the password reset) use the sign-in frame and its scale.
