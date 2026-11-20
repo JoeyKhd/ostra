@@ -7,17 +7,23 @@ import {
   authorizeUrlInputSchema,
   disconnectLinear,
   disconnectLinearInputSchema,
+  enableAgentMode,
+  LINEAR_AGENT_MODE_SCOPES,
+  LINEAR_REFRESH_MARGIN_MS,
   linearAppName,
   linearCallbackUrl,
   linearWebhookUrl,
+  missingAgentModeScopes,
+  setBoardAgentMode,
   startLinearConnection,
 } from "@ostra/domain";
-import { connectionIdSchema } from "@ostra/protocol";
+import { agentSessionIdSchema, boardIdSchema, connectionIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { OrganizationId } from "@ostra/protocol";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type { ApiDeps } from "../trpc/context.ts";
-import { adminProcedure, router, unwrap } from "../trpc/init.ts";
+import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-005, F-042, ticket 27: the organization's Linear connection. Every procedure is for organization
 // admins and works inside their organization only (ADR 0026), `status` included: a member gets what
@@ -71,6 +77,41 @@ const connectionSchema = commonSchema.extend({
   silentSince: z.number().int().nullable(),
   startedAt: z.number().int(),
   startedByName: z.string().nullable(),
+  /** Milestone 6 (F-012, ticket 26): agent mode, its boards and its sessions; `null` until the connection is active. */
+  agentMode: z
+    .object({
+      on: z.boolean(),
+      since: z.number().int().nullable(),
+      /** The organization admin whose consent turned it on, from the audit entry. */
+      turnedOnByName: z.string().nullable(),
+      /** Agent mode's scopes the token was granted, and the ones it lacks. */
+      grantedScopes: z.array(z.string()),
+      missingScopes: z.array(z.string()),
+      /** Linear can reach the install: webhooks mode, and the address passes milestone 2's pre-check. */
+      reachable: z.boolean(),
+      unreachableReason: z.string().nullable(),
+      /** When core renews the app's token next: an hour before it expires. */
+      nextRenewalAt: z.number().int().nullable(),
+      /** Each board of the connection, and whether a delegation in its team starts a task in its project. */
+      boards: z.array(
+        z.object({ boardId: boardIdSchema, name: z.string(), teamKey: z.string().nullable(), projectId: projectIdSchema, projectName: z.string(), startFromLinear: z.boolean() }),
+      ),
+      sessions: z.object({ open: z.number().int(), awaitingApproval: z.number().int(), postedToday: z.number().int() }),
+      /** The last ten sessions, newest first: who started each, whether they matched a member, and its task. */
+      lastSessionEvents: z.array(
+        z.object({
+          agentSessionId: agentSessionIdSchema,
+          at: z.number().int(),
+          ticketKey: z.string().nullable(),
+          taskId: taskIdSchema.nullable(),
+          taskState: z.string().nullable(),
+          creatorName: z.string(),
+          matched: z.boolean(),
+          state: z.enum(["active", "awaiting_approval", "ended"]),
+        }),
+      ),
+    })
+    .nullable(),
 });
 
 export const linearStatusSchema = z.discriminatedUnion("state", [noneSchema, connectionSchema]);
@@ -169,6 +210,66 @@ const statusOf = async (deps: ApiDeps, organizationId: OrganizationId): Promise<
     silentSince: await silentSinceOf(deps, row, lastEvent?.at ?? null),
     startedAt: row.createdAt.getTime(),
     startedByName: starter?.user.name ?? null,
+    agentMode: state === "active" ? await agentModeOf(deps, row) : null,
+  };
+};
+
+const DAY_MS = 86_400_000;
+const SESSION_EVENTS = 10;
+
+/** Agent mode's part of the status (F-012): its scopes, reach, boards, sessions and the last events. */
+const agentModeOf = async (
+  deps: ApiDeps,
+  row: { readonly id: string; readonly organizationId: string; readonly scopes: readonly string[]; readonly agentModeAt: Date | null; readonly webhookMode: "webhooks" | "polling"; readonly accessTokenExpiresAt: Date | null },
+) => {
+  const { db } = deps;
+  const organizationId = row.organizationId;
+  const now = deps.ports.clock.now();
+  const startOfDay = new Date(Math.floor(now / DAY_MS) * DAY_MS);
+  const reach = deps.linear.checkPublicUrl(deps.settings.corePublicUrl);
+  const [turnedOn, boards, open, awaiting, posted, sessions] = await Promise.all([
+    db.auditEntry.findFirst({ where: { organizationId, action: "linear.agent-mode-enabled", entityId: row.id }, orderBy: { createdAt: "desc" }, select: { actorId: true } }),
+    db.board.findMany({ where: { organizationId, connectionId: row.id, detachedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, key: true, agentMode: true, project: { select: { id: true, name: true } } } }),
+    db.agentSession.count({ where: { organizationId, connectionId: row.id, state: "active" } }),
+    db.agentSession.count({ where: { organizationId, connectionId: row.id, state: "awaiting_approval" } }),
+    db.agentActivity.count({ where: { organizationId, agentSession: { connectionId: row.id }, sentAt: { gte: startOfDay } } }),
+    db.agentSession.findMany({
+      where: { organizationId, connectionId: row.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: SESSION_EVENTS,
+      select: { id: true, createdAt: true, creatorName: true, matchedMemberId: true, state: true, ticket: { select: { key: true } }, task: { select: { id: true, state: true } } },
+    }),
+  ]);
+  const turnedOnBy = turnedOn?.actorId === null || turnedOn === null ? null : await db.member.findFirst({ where: { id: turnedOn.actorId, organizationId }, select: { user: { select: { name: true } } } });
+  const expiresAt = row.accessTokenExpiresAt?.getTime() ?? null;
+  return {
+    on: row.agentModeAt !== null,
+    since: row.agentModeAt?.getTime() ?? null,
+    turnedOnByName: turnedOnBy?.user.name ?? null,
+    grantedScopes: LINEAR_AGENT_MODE_SCOPES.filter((scope) => row.scopes.includes(scope)),
+    missingScopes: [...missingAgentModeScopes(row.scopes)],
+    reachable: row.webhookMode === "webhooks" && reach.public,
+    unreachableReason: row.webhookMode === "polling" ? "The connection polls: Linear's webhooks don't reach it" : reach.public ? null : reach.reason,
+    nextRenewalAt: expiresAt === null ? null : Math.max(now + 60_000, expiresAt - LINEAR_REFRESH_MARGIN_MS),
+    boards: boards.map((board) => ({
+      boardId: boardIdSchema.parse(board.id),
+      name: board.name,
+      teamKey: board.key,
+      projectId: projectIdSchema.parse(board.project.id),
+      projectName: board.project.name,
+      startFromLinear: board.agentMode,
+    })),
+    sessions: { open, awaitingApproval: awaiting, postedToday: posted },
+    lastSessionEvents: sessions.map((session) => ({
+      agentSessionId: agentSessionIdSchema.parse(session.id),
+      at: session.createdAt.getTime(),
+      ticketKey: session.ticket?.key ?? null,
+      taskId: session.task === null ? null : taskIdSchema.parse(session.task.id),
+      taskState: session.task?.state ?? null,
+      creatorName: session.creatorName,
+      matched: session.matchedMemberId !== null,
+      state: session.state,
+    })),
   };
 };
 
@@ -269,6 +370,63 @@ export const linearRouter = router({
         "missing-scopes": "PRECONDITION_FAILED",
       });
       return { connectionId: connected.connectionId, workspaceName: connected.workspaceName, appUserName: connected.appUserName, mode: connected.mode };
+    }),
+
+  /**
+   * "Turn on agent mode" (F-012, ADR 0013): an organization admin's, from their own panel session.
+   * It answers Linear's consent URL with agent mode's scopes on the existing install (`actor=app`,
+   * PKCE, an `OAuthState` bound to this session); the callback (`complete`) keeps the granted scopes
+   * and turns it on, or refuses a token without them. A token that already holds them is turned on
+   * at once. It needs Linear's webhooks: a connection that polls is refused.
+   */
+  enableAgentMode: adminProcedure
+    .output(z.discriminatedUnion("kind", [z.object({ kind: z.literal("consent"), authorizeUrl: z.string() }), z.object({ kind: z.literal("on"), agentModeAt: z.number().int() })]))
+    .mutation(async ({ ctx }) => {
+      const { db, ports, settings, linear } = ctx.deps;
+      const organizationId = ctx.scope.organizationId;
+      const row = await db.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } }, select: { id: true, state: true, scopes: true, webhookMode: true } });
+      if (row === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "This organization isn't connected to Linear" });
+      }
+      if (row.state !== "active") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs an active Linear connection: authorize it first" });
+      }
+      if (row.webhookMode !== "webhooks") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs Linear's webhooks: set OSTRA_CORE_PUBLIC_URL to a public https address" });
+      }
+      const connectionId = connectionIdSchema.parse(row.id);
+      if (missingAgentModeScopes(row.scopes).length === 0) {
+        const on = unwrap(await enableAgentMode({ db, ...ports }, ctx.scope, { connectionId }), { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "missing-scopes": "PRECONDITION_FAILED" });
+        return { kind: "on" as const, agentModeAt: on.agentModeAt };
+      }
+      const mode = modeOf(ctx.deps);
+      const result = await db.$transaction((tx) =>
+        createLinearAuthorizeUrl(
+          { tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports },
+          { connectionId },
+          { agentMode: true },
+        ),
+      );
+      const made = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-ready": "PRECONDITION_FAILED" });
+      return { kind: "consent" as const, authorizeUrl: made.authorizeUrl };
+    }),
+
+  /**
+   * "Start from Linear" on a board: a project admin's switch (organization admins administer every
+   * project). One board per team in the organization: a second is refused, naming the project that
+   * holds the team.
+   */
+  setBoardAgentMode: memberProcedure
+    .input(z.strictObject({ boardId: boardIdSchema, on: z.boolean() }))
+    .output(z.object({ boardId: boardIdSchema, on: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const set = unwrap(await setBoardAgentMode({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+        "team-taken": "CONFLICT",
+        "agent-mode-off": "PRECONDITION_FAILED",
+      });
+      return { boardId: input.boardId, on: set.on };
     }),
 
   /**

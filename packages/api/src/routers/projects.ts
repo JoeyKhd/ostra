@@ -28,6 +28,7 @@ import { projectReposProcedures } from "./project-repos.ts";
 import { projectProviderProcedures } from "./project-providers.ts";
 import { projectRunnerProcedures } from "./project-runners.ts";
 import { projectReviewProcedures } from "./review.ts";
+import { setOutsideApprovalProcedure } from "./task-approval.ts";
 
 // F-086, ticket 32: projects. A project is one repo linked through the organization's App, with its
 // one environment. Another organization's projects, and a restricted one a member isn't on, are
@@ -172,6 +173,8 @@ export const projectsRouter = router({
   ...projectRunnerProcedures,
   // F-100, F-101 (milestone 6's ticket 28): the project's "Review" settings.
   ...projectReviewProcedures,
+  // F-040 (milestone 6's ticket 26): whether outside tasks wait for approval; an organization admin's switch.
+  setOutsideApproval: setOutsideApprovalProcedure,
 
   /**
    * Creates a project on one or more repos the App's installations include (`repo` first, then

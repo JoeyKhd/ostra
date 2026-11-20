@@ -145,6 +145,8 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
     "linear.authorizeUrl",
     "linear.complete",
     "linear.disconnect",
+    // Milestone 6 (F-012, ticket 26): turning on agent mode is the install's consent, an organization admin's.
+    "linear.enableAgentMode",
     "linear.saveApp",
     "linear.start",
   ],
@@ -178,8 +180,15 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
     "agentProfiles.setRunnerLabels",
   ],
   budgets: ["budgets.clear", "budgets.set"],
-  projects: ["projects.create"],
+  // Milestone 6 (F-040, ticket 26): whether a project's outside tasks wait for approval is an organization admin's switch.
+  projects: ["projects.create", "projects.setOutsideApproval"],
 };
+
+/**
+ * Writes in the admin routers that are a project admin's, with their own tests: "Start from Linear"
+ * on a board (F-012, ticket 26: `agent-mode-approvals.test.ts`).
+ */
+const PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS: readonly string[] = ["linear.setBoardAgentMode"];
 
 /** The routers whose every write is an organization admin's: a new one fails the guard until it's listed above. */
 const ADMIN_ROUTERS: readonly string[] = [
@@ -201,7 +210,7 @@ describe("an organization admin manages the organization (F-003)", () => {
     expect(listed.filter((path) => !paths.includes(path))).toEqual([]);
     expect(
       paths.filter(
-        (path) => ADMIN_ROUTERS.includes(path.split(".")[0] ?? "") && !listed.includes(path),
+        (path) => ADMIN_ROUTERS.includes(path.split(".")[0] ?? "") && !listed.includes(path) && !PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS.includes(path),
       ),
     ).toEqual([]);
 

@@ -60,6 +60,7 @@ import { startCheckProcedure } from "./task-start-check.ts";
 import { runnerChoicesProcedure } from "./task-runner-choices.ts";
 import { taskMemoryProcedure } from "./memory.ts";
 import { taskRoundsProcedure } from "./review.ts";
+import { approveProcedure, needsApprovalProcedure, rejectProcedure } from "./task-approval.ts";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
@@ -176,6 +177,10 @@ export const tasksRouter = router({
 
   /** F-035, F-101, F-105 (milestone 6's ticket 28): the task's CI, findings and changes-requested rounds. */
   rounds: taskRoundsProcedure,
+  /** F-040, F-012 (milestone 6's ticket 26): the tasks waiting for a member's approval, and the answers. */
+  needsApproval: needsApprovalProcedure,
+  approve: approveProcedure,
+  reject: rejectProcedure,
 
   /**
    * Cancels a queued task (F-067, Q248): an organization admin any, the task's member their own. It

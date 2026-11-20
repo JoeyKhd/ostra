@@ -21,7 +21,7 @@ Spec: `../spec.md`, section 4 ("A bulk start", "Sub-issues")
 
 ## Comments
 
-- 2026-11-20, api: built as `✨ add bulk starts and the parent ticket API`. `inbox.startMany`, `inbox.bulkStart` and the Inbox's new fields are in `packages/api/src/routers/inbox.ts`; `tickets.parent` and `tickets.startSubIssues` in `tickets.ts`, with the tree in `ticket-tree.ts`; tests in `bulk-starts.test.ts` and `tickets.test.ts` (on Linear's adapter against the fake Linear server), and the isolation suite reads both. Readings and differences:
+- 2026-11-20, api: built as `✨ add bulk starts and the parent ticket API` (47bfef72). `inbox.startMany`, `inbox.bulkStart` and the Inbox's new fields are in `packages/api/src/routers/inbox.ts`; `tickets.parent` and `tickets.startSubIssues` in `tickets.ts`, with the tree in `ticket-tree.ts`; tests in `bulk-starts.test.ts` and `tickets.test.ts` (on Linear's adapter against the fake Linear server), and the isolation suite reads both. Readings and differences:
   - **The outcomes' stream:** no second subscription. ADR 0035 gives a tab one stream; each decided item sends the project's change notice on it (ticket 11's `startBulkItem`), and the panel reads `inbox.bulkStart` again. The test opens the stream, runs the items and sees the notice, then the outcomes.
   - **`inbox.startMany`** takes `kind` as `code` or `refine`; over `OSTRA_BULK_START_MAX` (50) it's `BAD_REQUEST` with nothing written.
   - **`inbox.list`** (and `get`) gain `subIssues` (open sub-issues in the cache) and `codeStart: { tasks, overLimit }`: how many tasks a code start starts, by the domain's leaf walk over the cache. The Inbox never calls the tracker.

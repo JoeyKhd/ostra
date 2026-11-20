@@ -45,6 +45,7 @@ const active: LinearConnection = {
   silentSince: null,
   startedAt: Date.UTC(2026, 10, 12, 8, 50),
   startedByName: "demo",
+  agentMode: null,
   ...common,
 };
 
