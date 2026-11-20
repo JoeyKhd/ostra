@@ -5,7 +5,7 @@ import type { Demo } from "./context.ts";
 import { mailTo } from "./steps-people.ts";
 import { PROFILE } from "./steps-setup.ts";
 import { sleep, waitFor } from "./state.ts";
-import { openNewTask, running, sendMessage, settled, startNewTask, taskRow, turnRunning } from "./tasks.ts";
+import { openNewTask, sendMessage, settled, startNewTask, taskRow, turnRunning } from "./tasks.ts";
 
 // Spec section 3, steps 6 and 13: costs and a budget, and Insights.
 
@@ -120,9 +120,18 @@ export const budget = async (d: Demo): Promise<void> => {
     await demo.goto(`/tasks/${taskId}`);
     await demo.locator('[data-action="approve-plan"]').first().click({ timeout: 30_000 });
   }
-  await running(d, taskId).catch(() => undefined);
+  // The build turn starts, or, when the plan turn's own spend crossed the line, the gate holds it.
+  const heldPlan = await waitFor("the build turn, or its hold", 10 * 60_000, async () => {
+    if (await turnRunning(d, taskId)) return "running";
+    return (await d.db.heldTurn.count({ where: { taskId, releasedAt: null } })) > 0 ? "held" : null;
+  }, 1000).catch(() => "neither");
   const reachedSince = Date.now();
-  if (await turnRunning(d, taskId)) {
+  if (heldPlan === "held") {
+    d.check("step 6: past 100% after the plan turn, the approved plan's build turn is held", true, "held at the approval: the plan turn's spend crossed the line, so there was no build turn to lower the budget under");
+    await demo.goto(`/tasks/${taskId}`);
+    await demo.waitForLoadState("networkidle");
+    await d.shot(demo, "step06-plan-held");
+  } else if (await turnRunning(d, taskId)) {
     const sofar = await test1Spent(d);
     const lowUsd = Math.max(0.01, Math.floor(sofar * 0.9 / 10_000) / 100);
     d.run.notes["step6-budget-2"] = `$${lowUsd.toFixed(2)} (spend so far ${dollars(sofar)})`;
@@ -131,11 +140,13 @@ export const budget = async (d: Demo): Promise<void> => {
   } else {
     d.check("step 6: the budget was lowered while the build turn ran", false, "the build turn wasn't running");
   }
-  const after = await settled(d, taskId);
+  const after = heldPlan === "held" ? "held at the approval" : await settled(d, taskId);
   say(`step 6: the build turn ended: ${after}`);
   const reached = await waitFor("the 100% notice", 180_000, async () => (await d.db.budgetNotice.findFirst({ where: { threshold: "reached" }, select: { sentAt: true } })) ?? null, 3000).catch(() => null);
   d.check("step 6: test1 reached its budget: the notice is written", reached !== null, reached === null ? "none" : "written");
-  const reachedMail = await mailTo(d, settings.adminEmail, /reached/i, reachedSince).catch(() => null);
+  // Where the line was crossed: by the plan turn's own spend, or by the lowering during the build turn.
+  if (reached !== null) d.run.notes["step6-reached"] = reached.sentAt.getTime() < reachedSince ? "crossed by the plan turn's spend, before the build turn" : "crossed when the budget was lowered during the build turn";
+  const reachedMail = await mailTo(d, settings.adminEmail, /reached/i, since).catch(() => null);
   d.check("step 6: the 100% mail reaches Demo", reachedMail !== null && /reached/i.test(`${reachedMail.subject} ${reachedMail.text}`), reachedMail === null ? "no mail" : `subject "${reachedMail.subject}"`);
   await demo.goto("/needs-you");
   await demo.waitForLoadState("networkidle");

@@ -74,15 +74,20 @@ export const acrossRepos = async (d: Demo): Promise<void> => {
   for (const pr of prs) {
     const [owner = "", repo = ""] = pr.taskRepo.repo.fullName.split("/");
     d.run.ids[`pr:step4:${repo}`] = String(pr.number);
-    const body = prSchema((await github.octokit.rest.pulls.get({ owner, repo, pull_number: pr.number })).data.body);
     const others = prs.filter((one) => one.number !== pr.number || one.taskRepo.repo.fullName !== pr.taskRepo.repo.fullName);
-    const related = /Related/i.test(body) && others.every((one) => body.includes(one.url) || body.includes(`${one.taskRepo.repo.fullName}#${String(one.number)}`));
+    // The first PR's section is written once the second opens: read until it names the other.
+    const related = await waitFor(`${repo}'s Related section`, 3 * 60_000, async () => {
+      const body = prSchema((await github.octokit.rest.pulls.get({ owner, repo, pull_number: pr.number })).data.body);
+      return /Related/i.test(body) && others.every((one) => body.includes(one.url) || body.includes(`${one.taskRepo.repo.fullName}#${String(one.number)}`)) ? true : null;
+    }, 10_000).catch(() => false);
     d.check(`step 4: ${repo}'s PR has a Related section naming the other`, related, `${pr.url}: ${related ? "names the other" : "no Related link found"}`);
   }
   await d.save();
-  const issue = await readIssue(d.tool, made.id);
-  const linked = prs.every((pr) => issue.attachments.nodes.some((one) => one.url === pr.url));
-  d.check("step 4: the ticket links both PRs", linked, `${String(issue.attachments.nodes.length)} attachments`);
+  const attachments = await waitFor("the ticket's links to both PRs", 3 * 60_000, async () => {
+    const issue = await readIssue(d.tool, made.id);
+    return prs.every((pr) => issue.attachments.nodes.some((one) => one.url === pr.url)) ? issue.attachments.nodes.length : null;
+  }, 10_000).catch(() => 0);
+  d.check("step 4: the ticket links both PRs", attachments > 0, `${String(attachments)} attachments`);
   const row = await d.db.task.findUniqueOrThrow({ where: { id: taskId }, select: { state: true } });
   d.check("step 4: the task is in review", row.state === "in_review", row.state);
   await demo.goto(`/tasks/${taskId}`);
