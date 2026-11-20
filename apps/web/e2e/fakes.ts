@@ -12,7 +12,7 @@ import type { FakeGitHub } from "@ostra/adapter-github/testing";
 import { createFakeLinear, createScenarioBrain, startAnthropicStub, startFakeResendApi, startOpenAiStub } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear, FakeResendApi } from "@ostra/adapter-sdk/testing";
 
-import { e2eChangesHeads, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
+import { e2eChangesHeads, e2eGitHubMember, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
 export type E2eFakes = {
   readonly github: FakeGitHub;
@@ -119,7 +119,16 @@ export const writeStackFile = async (file: string, databaseUrl: string, github: 
       dataDir,
       linear: { apiUrl: linear.apiUrl, apiKey: linear.adminApiKey, teamId: linear.team.id, teamKey: linear.team.key },
       resend: { apiUrl: resend.url, apiKey: resend.apiKey },
-      github: { appId: github.appId, privateKey: github.privateKey, webhookSecret: github.webhookSecret, slug: github.appSlug },
+      github: {
+        appId: github.appId,
+        privateKey: github.privateKey,
+        webhookSecret: github.webhookSecret,
+        slug: github.appSlug,
+        // F-119 (ticket 47): the App's OAuth client secret, and a sign-in's code for `e2eGitHubMember`
+        // that the fake trades for that account as often as it is sent, as GitHub's sign-in would give one.
+        clientSecret: github.oauthClient.clientSecret,
+        linkCode: github.issueUserCode(e2eGitHubMember),
+      },
       githubB: {
         login: e2eGitHubOrgB.login,
         repo: e2eGitHubOrgB.repo,

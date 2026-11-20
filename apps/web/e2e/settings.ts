@@ -78,6 +78,8 @@ export const e2eChangesHeads = { first: "c4a9e2b7d1f0835a6e2c9b4d7f1a0e3c5b8d2f6
  * linked, and one repo. A third, `client-c`, owns a second App (`stack.ts`), whose key the stack writes out.
  */
 export const e2eGitHubOrgB = { login: "client-b", id: 6_002, installationId: 8, repo: "billing" } as const;
+/** F-119 (ticket 47): the GitHub account the admin links on Account, through the fake GitHub's OAuth. */
+export const e2eGitHubMember = { userId: "7001", login: "demo-octocat" } as const;
 export const e2eRunnerName = "e2e-runner";
 /** A second stub model endpoint, in the OpenAI-compatible format, with the same token and models (F-088). */
 export const e2eOpenAiStubPort = basePort + 3;

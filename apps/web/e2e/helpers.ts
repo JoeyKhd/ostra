@@ -134,7 +134,15 @@ export const expectSignInRefused = async (page: Page, identifier: string, passwo
 const stackSchema = z.object({
   databaseUrl: z.string(),
   /** The fake GitHub's App: the credentials the setup spec types into "Use an existing App". */
-  github: z.object({ appId: z.string(), privateKey: z.string(), webhookSecret: z.string(), slug: z.string() }),
+  github: z.object({
+    appId: z.string(),
+    privateKey: z.string(),
+    webhookSecret: z.string(),
+    slug: z.string(),
+    /** F-119: the App's OAuth client secret, and a sign-in's code the fake trades for `e2eGitHubMember`. */
+    clientSecret: z.string(),
+    linkCode: z.string(),
+  }),
   /**
    * F-136: a second GitHub organization with the App installed, waiting to be linked (`login`, its
    * repo), and a second App owned by a third account, for "Connect another App" (`appId`, `privateKey`, `slug`).
